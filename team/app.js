@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.620";
+  var APP_VERSION = "6.9.622";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -40310,8 +40310,8 @@ function viewCatalogue() {
       if (ty === "in" && _bref[String(row.ref || "").trim().toLowerCase()]) return;   /* that bill is already counted from Tally */
       var _k0 = String(row.code || "").trim();
       if (ty === "opening" && _olast[_k0] !== row) return;   /* only the latest count - 6.9.608: and only its last save */
-      if (ty !== "opening" && ty !== "reorder" && ty !== "rate" && ty !== "landing" && ty !== "register" && ty !== "alias" && !stkCounts(_k0, row.asOn, cut)) return;
-      if (ty === "reorder" || ty === "rate" || ty === "landing" || ty === "register" || ty === "alias") return;   /* settings rows, not movements (register/alias: v6.9.605) */
+      if (ty !== "opening" && ty !== "reorder" && ty !== "rate" && ty !== "landing" && ty !== "register" && ty !== "alias" && ty !== "plan" && !stkCounts(_k0, row.asOn, cut)) return;
+      if (ty === "reorder" || ty === "rate" || ty === "landing" || ty === "register" || ty === "alias" || ty === "plan") return;   /* settings rows, not movements (register/alias: v6.9.605; plan: 6.9.621) */
       var k = String(row.code || "").trim(); if (!k) return;
       m[k] = (m[k] || 0) + (Number(row.qty) || 0);
       if (row.desc && !desc[k]) desc[k] = row.desc;
@@ -40477,7 +40477,11 @@ function viewCatalogue() {
       (canSetPricing() ? '<button class="btn sm ghost" data-act="stock-landing">Landing %</button>' : '') +
       '<button class="btn sm ghost" data-act="stock-refresh">Refresh</button></div></div>';
     if (!STOCK_LOADED && !(S.stock && S.stock.length)) return h + '<div class="empty">Loading stock…</div>';
+    h += stkPlanBar();   /* 6.9.621 */
     if (S.stkOrd) return h + stkOrderHtml(true);   /* 6.9.617 - the Stock to order section */
+    if (S.stkView === "levels") return h + stkLevelsHtml();
+    if (S.stkView === "dead") return h + stkDeadHtml();
+    if (S.stkView === "count") return h + stkCountHtml();
     h += stkOrderHtml(false);
     /* v6.9.605 - THE MONTH'S BILLS, TALLY AGAINST STOCK: which bills on the uploaded Purchase
        Register are in stock and which are still to upload */
@@ -40504,6 +40508,7 @@ function viewCatalogue() {
     Object.keys(mv.m).forEach(function (k) { codes[k] = 1; });
     Object.keys(del).forEach(function (k) { codes[k] = 1; });
     Object.keys(reo).forEach(function (k) { codes[k] = 1; });
+    var _sctx = stkCtx(), _sLvl = _sctx.lvl;   /* 6.9.621 - ABC / FSN on every row; 6.9.622 - and the levels */
     var list = Object.keys(codes).map(function (k) {
       var p = (PRODUCTS.filter(function (x) { return x.code === k; })[0]) || {};
       var onhand = (mv.m[k] || 0) - (del[k] || 0) + (ret[k] || 0);
@@ -40528,16 +40533,16 @@ function viewCatalogue() {
 
     h += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">' +
       '<thead><tr style="background:#0b3b36;color:#fff"><th style="padding:6px 8px;text-align:left">Product</th>' +
-      '<th style="padding:6px 8px;text-align:right">On hand</th><th style="padding:6px 8px;text-align:right">Reorder</th>' +
+      '<th style="padding:6px 8px;text-align:right">On hand</th><th style="padding:6px 8px;text-align:right">Critical \u00b7 Reorder \u00b7 Max</th>' +
       '<th style="padding:6px 8px;text-align:right">Value</th></tr></thead><tbody>' +
       list.map(function (x, i) {
         var col = x.zero ? '#b91c1c' : (x.low ? '#c2410c' : '#0f766e');
         var bg = x.zero ? '#fef2f2' : (x.low ? '#fff7ed' : (i % 2 ? '#f8fafc' : '#fff'));
         return '<tr data-act="stk-open" data-code="' + esc(x.code) + '" style="border-bottom:1px solid #eef2f7;background:' + bg + ';cursor:pointer">' +
-          '<td style="padding:6px 8px"><div style="font-weight:600">' + esc(x.desc) + '</div><div style="font-size:12px;color:#94a3b8">' + esc(x.code) + (x.brand ? ' &middot; ' + esc(x.brand) : '') +
+          '<td style="padding:6px 8px"><div style="font-weight:600">' + esc(x.desc) + ' ' + stkTag(x.code, _sctx) + '</div><div style="font-size:12px;color:#94a3b8">' + esc(x.code) + (x.brand ? ' &middot; ' + esc(x.brand) : '') +
           '<br>in ' + x.inq + ' &middot; del ' + x.del + ' &middot; ret ' + x.ret + (x.rate ? ' &middot; @' + money(x.rate) : '') + '</div></td>' +
           '<td style="padding:6px 8px;text-align:right;font-weight:800;color:' + col + ';white-space:nowrap">' + x.onhand + '<div style="font-size:12px;font-weight:400;color:#64748b">' + esc(stkQ(x.onhand, x.code).replace(/^\S+\s?/, "")) + '</div></td>' +
-          '<td style="padding:6px 8px;text-align:right;color:#64748b">' + (x.reorder ? x.reorder : '—') + '</td>' +
+          '<td style="padding:6px 8px;text-align:right;color:#475569;font-size:12.5px;white-space:nowrap">' + (function () { var _L = _sLvl[x.code] || {}; return (_L.crit || _L.min || _L.max) ? (_L.crit || '\u2014') + ' \u00b7 ' + (_L.min || '\u2014') + ' \u00b7 ' + (_L.max || '\u2014') + '<div style="margin-top:3px">' + stkPill(stkState(_sctx.pos[x.code] && _sctx.pos[x.code].counted ? _sctx.pos[x.code].free : null, _L)) + '</div>' : '\u2014'; })() + '</td>' +
           '<td style="padding:6px 8px;text-align:right;color:#64748b">' + (x.value ? money(x.value) : '—') + '</td></tr>' +
           (S.stkOpen === x.code ? '<tr><td colspan="4" style="padding:0 0 10px">' + stockLedgerPanel(x.code) + '</td></tr>' : '');
       }).join("") + '</tbody></table></div>' +
@@ -40576,59 +40581,389 @@ function viewCatalogue() {
     return m;
   }
   function stkShort(x) { return !!(x && x.min > 0 && x.counted && x.free <= x.min); }
+  /* ===== 6.9.621 - PLANNING THE STOCK  (26 Sep 2026) =====
+     His words: "guide me professional way to manage stock, like minimum level, reorder level",
+     then, on the guide ("Energy World - how to manage stock"): "work on all recommendations".
+     Six things, all from data the CRM already holds:
+       1. suggested levels - average daily sale from the last 90 days of challans, a lead time per
+          brand, safety days per class: reorder point = sale x lead + sale x safety days,
+          maximum = reorder point + sale x cover days;
+       2. a MAXIMUM and a PACK per product, so Stock to order says how much, not only what;
+       3. ABC by value moved (quantity out x catalogue price, 12 months: A = the lines making the
+          first 80% of the value, B the next 15%, C the rest) and FSN by movement (Fast = out in
+          at least 60% of the last 13 weeks, Non-moving = nothing out in 180 days, Slow between);
+       4. Stock to order grouped by brand, each brand with its own Excel and WhatsApp text;
+       5. a non-moving report with the money in each line;
+       6. a daily count list - 15 products due by class (A monthly, B quarterly, C twice a year).
+     Storage, no new sheet column and nothing deleted: the maximum and pack ride in the notes of the
+     product's "reorder" row as {"max":..,"pack":..} (the row's qty stays the reorder point, which
+     every older reader still reads); the plan settings are ONE "plan" row, code "*", notes = JSON.
+     "plan" is a settings row, so stockMovementByCode skips it - in this app and, identically, in the
+     Challan app (1.108.0), which shares the function byte for byte. */
+  var STK_PLAN_DEF = { leadDef: 7, safe: { A: 7, B: 5, C: 3 }, cover: 21 };
+  var STK_COUNT_EVERY = { A: 30, B: 90, C: 180, "-": 365 };
+  function stkNum(v, d) { return (v === "" || v === null || v === undefined || !isFinite(Number(v))) ? d : Number(v); }
+  function stkPlan() {
+    var o = {};
+    (S.stock || []).forEach(function (r) {
+      if (String(r.type) !== "plan" || String(r.code || "").trim() !== "*") return;
+      try { o = JSON.parse(r.notes || "{}") || {}; } catch (e) { }
+    });
+    var sf = o.safe || {}, ld = {};
+    Object.keys(o.lead || {}).forEach(function (b) { var v = Number(o.lead[b]); if (v > 0) ld[b] = v; });
+    return { leadDef: stkNum(o.leadDef, STK_PLAN_DEF.leadDef) || STK_PLAN_DEF.leadDef, lead: ld,
+      safe: { A: stkNum(sf.A, STK_PLAN_DEF.safe.A), B: stkNum(sf.B, STK_PLAN_DEF.safe.B), C: stkNum(sf.C, STK_PLAN_DEF.safe.C) },
+      cover: stkNum(o.cover, STK_PLAN_DEF.cover) || STK_PLAN_DEF.cover };
+  }
+  /* a product's levels: the last "reorder" row wins, as reorderByCode */
+  function stkLvl() {
+    var m = {};
+    (S.stock || []).forEach(function (r) {
+      if (String(r.type) !== "reorder") return;
+      var k = String(r.code || "").trim(); if (!k) return;
+      var n = {}; try { n = JSON.parse(r.notes || "{}") || {}; } catch (e) { n = {}; }
+      m[k] = { min: Number(r.qty) || 0, max: Number(n.max) || 0, pack: Number(n.pack) || 0, crit: Number(n.crit) || 0 };
+    });
+    return m;
+  }
+  function stkPMap() {
+    var m = {}; PRODUCTS.forEach(function (p) { var k = String(p.code || "").trim(); if (k && !m[k]) m[k] = p; }); return m;
+  }
+  /* what went out, product by product: challans out of the godown (dispatched, received or billed),
+     one row per challan number, by the day the challan was made */
+  function stkHist() {
+    var DAY = 86400000, now = Date.parse(today() + "T00:00:00"), by = {}, first = "";
+    dedupeChallans(S.data.challans || []).forEach(function (c) {
+      if (!stkChOut(c)) return;
+      var d = String(c.createdAt || "").slice(0, 10); if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return;
+      if (!first || d < first) first = d;
+      var age = Math.max(0, Math.floor((now - Date.parse(d + "T00:00:00")) / DAY));
+      chItems(c).forEach(function (i) {
+        var k = String(i.code || "").trim(), q = Number(i.qty) || 0; if (!k || !(q > 0)) return;
+        var x = by[k] || (by[k] = { q90: 0, q365: 0, wk: {}, last: "" });
+        if (age < 90) x.q90 += q;
+        if (age < 365) x.q365 += q;
+        if (age < 91) x.wk[Math.floor(age / 7)] = 1;
+        if (d > x.last) x.last = d;
+      });
+    });
+    var span = first ? Math.max(1, Math.floor((now - Date.parse(first + "T00:00:00")) / DAY) + 1) : 0;
+    return { by: by, span: span, first: first };
+  }
+  function stkAge(ymd) { return ymd ? Math.max(0, Math.floor((Date.parse(today() + "T00:00:00") - Date.parse(ymd + "T00:00:00")) / 86400000)) : 99999; }
+  /* ABC and FSN, for every product that has moved or is held */
+  function stkClasses(hist, pmap, pos) {
+    var val = [], tot = 0, cls = {}, fsn = {}, run = 0;
+    Object.keys(hist.by).forEach(function (k) {
+      var v = hist.by[k].q365 * (Number((pmap[k] || {}).price) || 0);
+      if (v > 0) { val.push({ k: k, v: v }); tot += v; }
+    });
+    val.sort(function (a, b) { return b.v - a.v; });
+    val.forEach(function (x) { cls[x.k] = run < tot * 0.8 ? "A" : run < tot * 0.95 ? "B" : "C"; run += x.v; });
+    var wAvail = Math.max(1, Math.min(13, Math.ceil(hist.span / 7))), nDays = Math.min(180, hist.span);
+    var keys = {}; Object.keys(hist.by).forEach(function (k) { keys[k] = 1; }); Object.keys(pos || {}).forEach(function (k) { keys[k] = 1; });
+    Object.keys(keys).forEach(function (k) {
+      var x = hist.by[k];
+      if (!x || stkAge(x.last) >= nDays) fsn[k] = "N";
+      else fsn[k] = Object.keys(x.wk).length >= Math.max(2, Math.round(wAvail * 0.6)) ? "F" : "S";
+    });
+    return { cls: cls, fsn: fsn, nDays: nDays };
+  }
+  var _stkCtx = null, _stkCtxKey = "";
+  function stkCtx() {
+    var key = (S.stock || []).length + "|" + ((S.data && S.data.challans) || []).length + "|" + PRODUCTS.length + "|" + today();
+    if (_stkCtx && key === _stkCtxKey) return _stkCtx;
+    var pmap = stkPMap(), hist = stkHist(), pos = stkPositions(), c = stkClasses(hist, pmap, pos);
+    _stkCtx = { pmap: pmap, hist: hist, pos: pos, cls: c.cls, fsn: c.fsn, nDays: c.nDays, plan: stkPlan(), lvl: stkLvl() };
+    _stkCtxKey = key;
+    return _stkCtx;
+  }
+  var FSN_WORD = { F: "Fast", S: "Slow", N: "Non-moving" };
+  function stkTag(k, ctx) {
+    var c = ctx.cls[k], f = ctx.fsn[k];
+    if (!c && !f) return "";
+    var col = c === "A" ? "#b91c1c" : c === "B" ? "#b45309" : "#475569";
+    return '<span style="display:inline-block;font-size:12px;font-weight:700;padding:1px 6px;border-radius:6px;border:1px solid ' + col + ';color:' + col + ';white-space:nowrap">' +
+      (c || "-") + (f ? ' · ' + FSN_WORD[f] : '') + '</span>';
+  }
+  /* the suggestion for one product, or why there is none */
+  function stkSuggest(k, ctx) {
+    var x = ctx.hist.by[k], win = Math.min(90, ctx.hist.span);
+    if (win < 14) return { why: "less than two weeks of challans on the book" };
+    if (!x || !(x.q90 > 0)) return { why: "nothing went out in the last " + win + " days" };
+    var c = ctx.cls[k] || "C", f = ctx.fsn[k] || "S";
+    if (f === "N") return { why: "non-moving: clear it, do not reorder" };
+    if (c === "C" && f === "S") return { why: "slow and small: order it when a customer orders it" };
+    var p = ctx.pmap[k] || {}, lt = ctx.plan.lead[p.brand] || ctx.plan.leadDef, sd = ctx.plan.safe[c];
+    var ads = x.q90 / (win * 6 / 7);
+    var ss = Math.ceil(ads * sd), min = Math.ceil(ads * lt) + ss, max = min + Math.ceil(ads * ctx.plan.cover);
+    return { ads: Math.round(ads * 100) / 100, lt: lt, sd: sd, ss: ss, min: min, max: max, cls: c, win: win };
+  }
+  /* ===== 6.9.622 - THE LEVELS BESIDE THE STOCK =====
+     Critical = the safety stock: below it a customer may be told "not in stock". Reorder = the
+     point to order at. Max = the ceiling. One word says where the product stands, judged on FREE
+     stock (on hand less challans made, not dispatched): Critical (red), Reorder (orange), Over max
+     (blue), OK (green); "No levels set" and "Not counted" in grey. Tapping the line opens the
+     levels pop-up for that product. */
+  function stkState(free, L) {
+    L = L || {};
+    if (free === null || free === undefined) return { w: "Not counted", c: "#475569", bg: "#e2e8f0" };
+    if (!L.crit && !L.min && !L.max) return { w: "No levels set", c: "#475569", bg: "#e2e8f0" };
+    if (L.crit && free <= L.crit) return { w: "Critical", c: "#fff", bg: "#b91c1c" };
+    if (L.min && free <= L.min) return { w: "Reorder", c: "#fff", bg: "#c2410c" };
+    if (L.max && free > L.max) return { w: "Over max", c: "#fff", bg: "#1d4ed8" };
+    return { w: "OK", c: "#fff", bg: "#15803d" };
+  }
+  function stkPill(st) { return '<span style="display:inline-block;font-size:12px;font-weight:800;padding:2px 7px;border-radius:6px;background:' + st.bg + ';color:' + st.c + ';white-space:nowrap">' + st.w + '</span>'; }
+  function stkTrio(crit, rop, mx, code) {
+    return [crit ? 'critical ' + stkQ(crit, code) : '', rop ? 'reorder ' + stkQ(rop, code) : '', mx ? 'max ' + stkQ(mx, code) : ''].filter(Boolean).join(' \u00b7 ') || 'not set';
+  }
+  /* one tappable line: status, stock, critical, reorder, max */
+  function stkLevelLine(code, pos, lvl) {
+    var x = pos[code], L = lvl[code] || {}, st = stkState(x && x.counted ? x.free : null, L);
+    var bits = [];
+    if (x && x.counted) bits.push('<b>In stock ' + esc(stkQ(x.onhand, code)) + '</b>' + (x.held ? ' (free ' + esc(stkQ(x.free, code)) + ')' : ''));
+    bits.push(L.crit ? 'Critical <b>' + esc(stkQ(L.crit, code)) + '</b>' : 'Critical \u2014');
+    bits.push(L.min ? 'Reorder <b>' + esc(stkQ(L.min, code)) + '</b>' : 'Reorder \u2014');
+    bits.push(L.max ? 'Max <b>' + esc(stkQ(L.max, code)) + '</b>' : 'Max \u2014');
+    return '<div data-act="stock-item" data-code="' + esc(code) + '" title="Set the levels" style="display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;min-height:44px;margin-top:4px;padding:4px 8px;border:1px dashed #cbd5e1;border-radius:8px;font-size:12.5px;color:#334155;cursor:pointer">' +
+      stkPill(st) + bits.map(function (b) { return '<span style="white-space:nowrap">' + b + '</span>'; }).join('') +
+      '<span style="margin-left:auto;color:#0f766e;font-weight:700;white-space:nowrap">Set levels \u203a</span></div>';
+  }
+  function stkRoundPack(q, pack) { q = Math.max(0, q); return pack > 0 ? Math.ceil(q / pack) * pack : Math.ceil(q); }
+
+  /* ---- Stock to order, with how much ---- */
   function stkToOrder(pos) {
     pos = pos || stkPositions();
-    var out = [], uncounted = [];
+    var lvl = stkLvl(), pm = stkPMap(), out = [], uncounted = [];
     Object.keys(pos).forEach(function (k) {
       var x = pos[k]; if (!(x.min > 0)) return;
-      var p = PRODUCTS.filter(function (y) { return y.code === k; })[0] || {};
+      var p = pm[k] || {}, L = lvl[k] || {};
       var r = { code: k, desc: p.desc || x.desc || k, brand: p.brand || "", unit: p.unit || "", onhand: x.onhand, held: x.held, free: x.free, min: x.min,
-        need: Math.max(0, Math.round((x.min - x.free) * 100) / 100) };
+        max: L.max || 0, pack: L.pack || 0, crit: L.crit || 0 };
+      r.need = stkRoundPack(Math.round(((r.max > r.min ? r.max : r.min) - x.free) * 100) / 100, r.pack);
       if (!x.counted) uncounted.push(r); else if (stkShort(x)) out.push(r);
     });
-    out.sort(function (a, b) { return (a.free / a.min) - (b.free / b.min) || String(a.brand).localeCompare(String(b.brand)); });
+    out.sort(function (a, b) { return String(a.brand).localeCompare(String(b.brand)) || (a.free / a.min) - (b.free / b.min); });
     uncounted.sort(function (a, b) { return String(a.desc).localeCompare(String(b.desc)); });
     return { list: out, uncounted: uncounted };
   }
+  function stkByBrand(L) {
+    var g = {}, order = [];
+    L.forEach(function (x) { var b = x.brand || "Other"; if (!g[b]) { g[b] = []; order.push(b); } g[b].push(x); });
+    return order.map(function (b) { return { brand: b, list: g[b] }; });
+  }
   function stkOrderHtml(full) {
     var o = stkToOrder(), L = o.list;
-    var th = 'style="padding:6px 8px;text-align:right;white-space:nowrap"';
     var h = '<div class="card" style="border-color:' + (L.length ? '#fecaca' : '#99f6e4') + ';background:' + (L.length ? '#fef2f2' : '#f0fdfa') + '">' +
       '<div class="acts" style="align-items:center;margin:0;flex-wrap:wrap;gap:6px"><h3 class="grow" style="margin:0;color:' + (L.length ? '#b91c1c' : '#0f766e') + '">Stock to order' +
-        (L.length ? ' \u2014 ' + plural(L.length, "item") : ' \u2014 nothing below its minimum') + '</h3>' +
-        (full ? '<button class="btn sm ghost" data-act="stk-ord-xlsx">&#8681; Excel</button><button class="btn sm ghost" data-act="stk-ord" data-v="">All stock</button>'
+        (L.length ? ' — ' + plural(L.length, "item") : ' — nothing at or below its reorder point') + '</h3>' +
+        (full ? '<button class="btn sm ghost" data-act="stk-ord-xlsx" data-b="">&#8681; Excel, all</button><button class="btn sm ghost" data-act="stk-ord" data-v="">All stock</button>'
               : '<button class="btn sm" data-act="stk-ord" data-v="1">Open the list</button>') + '</div>' +
-      '<div class="meta" style="font-size:12.5px;margin-top:3px">Only products with a <b>minimum stock level</b> set. One is listed when its <b>free</b> stock (on hand less challans made but not yet dispatched) is at or below that minimum. Set a minimum from a product\u2019s <b>Set min</b> button here, or from the master search.</div>';
+      '<div class="meta" style="font-size:12.5px;margin-top:3px">Only products with a reorder point (“Min”) set. One is listed when its <b>free</b> stock (on hand less challans made but not yet dispatched) is at or below it. <b>Order</b> = maximum less free, rounded up to the pack; with no maximum set, up to the reorder point only.</div>';
     if (full && L.length) {
-      /* one card per product, not a table: on his phone a six-column table squeezed the name to one word a line */
       var fig = function (lab, v, col) { return '<span style="display:inline-block;margin-right:14px;white-space:nowrap"><span style="color:#64748b">' + lab + '</span> <b style="color:' + (col || '#0f172a') + '">' + v + '</b></span>'; };
-      h += '<div style="margin-top:8px;background:#fff;border:1px solid #fee2e2;border-radius:10px">' +
-        L.map(function (x, i) {
-          return '<div class="acts" style="align-items:center;flex-wrap:nowrap;gap:8px;margin:0;padding:8px 10px' + (i ? ';border-top:1px solid #fee2e2' : '') + '"><div class="grow" style="min-width:0">' +
-            '<div style="font-weight:700;font-size:14px">' + esc(x.desc) + '</div><div style="font-size:12px;color:#64748b">' + esc([x.code, x.brand, x.unit].filter(Boolean).join(" \u00b7 ")) + '</div>' +
-            '<div style="font-size:13px;margin-top:3px">' + fig("On hand", stkQ(x.onhand, x.code)) + (x.held ? fig("Held", stkQ(x.held, x.code)) : '') + fig("Free", stkQ(x.free, x.code), '#b91c1c') + fig("Min", stkQ(x.min, x.code)) +
-              fig("Short", x.need > 0 ? stkQ(x.need, x.code) : 'at min', x.need > 0 ? '#b91c1c' : '#c2410c') + '</div></div>' +
-            '<button class="btn sm ghost" style="min-height:44px;flex:0 0 auto" data-act="stock-item" data-code="' + esc(x.code) + '">Set min</button></div>';
-        }).join("") + '</div>' +
-        '<div class="meta" style="font-size:12px;margin-top:4px">Short = minimum less free: the least to order to get back to the minimum. Order more than that to cover the weeks until the goods arrive.</div>';
+      stkByBrand(L).forEach(function (g) {
+        h += '<div class="acts" style="align-items:center;margin:12px 0 4px;gap:6px;flex-wrap:wrap"><b class="grow" style="font-size:15px">' + esc(g.brand) + ' <span style="font-weight:400;color:#64748b">· ' + plural(g.list.length, "item") + '</span></b>' +
+          '<button class="btn sm ghost" style="min-height:44px" data-act="stk-ord-xlsx" data-b="' + esc(g.brand) + '">&#8681; Excel</button>' +
+          '<button class="btn sm" style="min-height:44px;background:#16a34a;border-color:#16a34a" data-act="stk-ord-wa" data-b="' + esc(g.brand) + '">WhatsApp order</button></div>' +
+          '<div style="background:#fff;border:1px solid #fee2e2;border-radius:10px">' +
+          g.list.map(function (x, i) {
+            return '<div class="acts" style="align-items:center;flex-wrap:nowrap;gap:8px;margin:0;padding:8px 10px' + (i ? ';border-top:1px solid #fee2e2' : '') + '"><div class="grow" style="min-width:0">' +
+              '<div style="font-weight:700;font-size:14px">' + esc(x.desc) + '</div><div style="font-size:12px;color:#64748b">' + esc([x.code, x.unit].filter(Boolean).join(" · ")) + '</div>' +
+              '<div style="font-size:13px;margin-top:3px">' + fig("Free", stkQ(x.free, x.code), '#b91c1c') + (x.held ? fig("Held", stkQ(x.held, x.code)) : '') + (x.crit ? fig("Critical", stkQ(x.crit, x.code)) : '') + fig("Reorder", stkQ(x.min, x.code)) +
+                (x.max ? fig("Max", stkQ(x.max, x.code)) : '') + fig("Order", x.need > 0 ? stkQ(x.need, x.code) : 'at min', '#b91c1c') + (x.pack ? fig("Pack", stkQ(x.pack, x.code)) : '') + '</div></div>' +
+              '<button class="btn sm ghost" style="min-height:44px;flex:0 0 auto" data-act="stock-item" data-code="' + esc(x.code) + '">Levels</button></div>';
+          }).join("") + '</div>';
+      });
     } else if (!full && L.length) {
       h += '<div style="font-size:13px;margin-top:6px">' + L.slice(0, 5).map(function (x) {
-        return '<div style="border-top:1px solid #fee2e2;padding:5px 0"><b>' + esc(x.desc) + '</b> <span style="color:#b91c1c">free ' + stkQ(x.free, x.code) + ' \u00b7 min ' + stkQ(x.min, x.code) + '</span></div>'; }).join("") +
-        (L.length > 5 ? '<div class="meta" style="font-size:12px">and ' + (L.length - 5) + ' more \u2014 open the list</div>' : '') + '</div>';
+        return '<div style="border-top:1px solid #fee2e2;padding:5px 0"><b>' + esc(x.desc) + '</b> <span style="color:#b91c1c">free ' + stkQ(x.free, x.code) + ' · order ' + stkQ(x.need, x.code) + '</span></div>'; }).join("") +
+        (L.length > 5 ? '<div class="meta" style="font-size:12px">and ' + (L.length - 5) + ' more — open the list</div>' : '') + '</div>';
     }
-    if (o.uncounted.length) h += '<div style="font-size:12.5px;color:#92400e;margin-top:8px">' + plural(o.uncounted.length, "product") + ' with a minimum set ' + (o.uncounted.length > 1 ? 'have' : 'has') + ' not been counted yet, so ' + (o.uncounted.length > 1 ? 'their' : 'its') + ' stock is not known: ' +
+    if (o.uncounted.length) h += '<div style="font-size:12.5px;color:#92400e;margin-top:8px">' + plural(o.uncounted.length, "product") + ' with a reorder point set ' + (o.uncounted.length > 1 ? 'have' : 'has') + ' not been counted yet, so ' + (o.uncounted.length > 1 ? 'their' : 'its') + ' stock is not known: ' +
       esc(o.uncounted.slice(0, 8).map(function (x) { return String(x.desc).replace(/\.+$/, ""); }).join(", ")) + (o.uncounted.length > 8 ? ' and ' + (o.uncounted.length - 8) + ' more' : '') + '. Count ' + (o.uncounted.length > 1 ? 'them' : 'it') + ' and ' + (o.uncounted.length > 1 ? 'they join' : 'it joins') + ' this list when short.</div>';
     return h + '</div>';
   }
-  function stkOrderXlsx() {
-    var o = stkToOrder();
-    var HEAD = ["Code", "Product", "Brand", "Unit", "On hand", "Held on challans", "Free", "Minimum", "Short (min - free)"];
-    var out = [[{ v: "Energy World \u00b7 Stock to order \u00b7 " + fullDate(today()), s: XL.BOLD }], [], HEAD.map(function (t) { return { v: t, s: XL.HEAD }; })];
-    o.list.forEach(function (x) { out.push([x.code, x.desc, x.brand, x.unit, x.onhand, x.held, x.free, x.min, x.need]); });
+  function stkOrderXlsx(brand) {
+    var o = stkToOrder(), L = o.list.filter(function (x) { return !brand || (x.brand || "Other") === brand; });
+    var HEAD = ["Brand", "Code", "Product", "Unit", "On hand", "Held on challans", "Free", "Reorder point", "Maximum", "Pack", "Order"];
+    var out = [[{ v: "Energy World · Stock to order" + (brand ? " · " + brand : "") + " · " + fullDate(today()), s: XL.BOLD }], [], HEAD.map(function (t) { return { v: t, s: XL.HEAD }; })];
+    L.forEach(function (x) { out.push([x.brand, x.code, x.desc, x.unit, x.onhand, x.held, x.free, x.min, x.max || "", x.pack || "", x.need]); });
     out.push([]);
-    out.push(["Only products with a minimum stock level set. Listed when free stock (on hand less challans made but not yet dispatched) is at or below the minimum."]);
-    if (o.uncounted.length) out.push(["Minimum set but not counted yet (stock not known): " + o.uncounted.map(function (x) { return x.desc; }).join(", ")]);
-    dlXlsx("Stock_to_order_" + today() + ".xlsx", "Stock to order", out, [14, 38, 16, 9, 10, 14, 9, 10, 16]);
+    out.push(["Listed when free stock (on hand less challans made but not yet dispatched) is at or below the reorder point. Order = maximum less free, rounded up to the pack."]);
+    if (!brand && o.uncounted.length) out.push(["Reorder point set but not counted yet (stock not known): " + o.uncounted.map(function (x) { return x.desc; }).join(", ")]);
+    dlXlsx("Stock_to_order_" + (brand ? brand.replace(/[^\w]+/g, "_") + "_" : "") + today() + ".xlsx", "Stock to order", out, [16, 14, 38, 9, 10, 14, 9, 13, 10, 8, 10]);
+  }
+  /* the order as a message - drafted here, sent by him, to whom he picks in WhatsApp */
+  function stkOrderText(brand) {
+    var L = stkToOrder().list.filter(function (x) { return (x.brand || "Other") === brand && x.need > 0; });
+    return "Energy World — order for " + brand + "\n" + fullDate(today()) + "\n\n" +
+      L.map(function (x, i) { return (i + 1) + ". " + x.desc + " (" + x.code + ") — " + stkQ(x.need, x.code); }).join("\n") +
+      "\n\nPlease confirm the delivery date.";
+  }
+
+  /* ---- the Planning bar on the Stock screen ---- */
+  function stkPlanBar() {
+    var v = S.stkOrd ? "order" : (S.stkView || ""), ctx = stkCtx();
+    var nOrd = stkToOrder(ctx.pos).list.length, nDead = stkDead(ctx).list.length;
+    var chip = function (key, label, act, extra) {
+      var on = v === key;
+      return '<button class="btn sm' + (on ? '' : ' ghost') + '" style="min-height:44px" data-act="' + act + '"' + (extra || '') + '>' + label + '</button>';
+    };
+    return '<div class="acts" style="flex-wrap:wrap;gap:6px;margin:8px 0">' +
+      chip("", "All stock", "stk-view", ' data-v=""') +
+      chip("order", "Stock to order" + (nOrd ? " (" + nOrd + ")" : ""), "stk-ord", ' data-v="1"') +
+      chip("levels", "Levels", "stk-view", ' data-v="levels"') +
+      chip("dead", "Non-moving" + (nDead ? " (" + nDead + ")" : ""), "stk-view", ' data-v="dead"') +
+      chip("count", "Today’s count", "stk-view", ' data-v="count"') +
+      '<button class="btn sm ghost" style="min-height:44px" data-act="stk-plan">Plan settings</button></div>';
+  }
+
+  /* ---- 1 + 2: suggested levels ---- */
+  function stkLevelRows(ctx, f) {
+    var keys = {};
+    Object.keys(ctx.hist.by).forEach(function (k) { keys[k] = 1; });
+    Object.keys(ctx.lvl).forEach(function (k) { keys[k] = 1; });
+    return Object.keys(keys).filter(function (k) { return ctx.pmap[k]; }).map(function (k) {
+      var s = stkSuggest(k, ctx), cur = ctx.lvl[k] || { min: 0, max: 0, pack: 0 };
+      return { code: k, p: ctx.pmap[k], s: s, cur: cur, cls: ctx.cls[k] || "", fsn: ctx.fsn[k] || "",
+        diff: !!(s && s.min !== undefined && (s.min !== cur.min || s.max !== cur.max || s.ss !== (cur.crit || 0))) };
+    }).filter(function (r) {
+      if (f === "all") return true;
+      if (f === "A" || f === "B" || f === "C") return r.cls === f;
+      return r.diff;
+    }).sort(function (a, b) {
+      var o = { A: 0, B: 1, C: 2, "": 3 };
+      return (o[a.cls] - o[b.cls]) || String(a.p.desc || "").localeCompare(String(b.p.desc || ""));
+    });
+  }
+  function stkLevelsHtml() {
+    var ctx = stkCtx(), f = S.stkLvF || "change", rows = stkLevelRows(ctx, f), pl = ctx.plan, win = Math.min(90, ctx.hist.span);
+    var useable = rows.filter(function (r) { return r.diff; });
+    var h = '<div class="card"><h3 style="margin:0">Levels — suggested from your challans</h3>' +
+      '<div class="meta" style="font-size:12.5px;margin-top:3px">' +
+      (ctx.hist.span ? 'Worked out from the last <b>' + win + ' days</b> of challans (the book starts ' + esc(dmy(ctx.hist.first)) + ').' + (ctx.hist.span < 90 ? ' That is short: the figures get better as more months come in.' : '') : 'No challans out of the godown yet — nothing to work from.') +
+      ' Reorder point = daily sale × (lead time + safety days); maximum = reorder point + daily sale × ' + pl.cover + ' cover days. Lead time ' + pl.leadDef + ' days unless set for the brand; safety days A ' + pl.safe.A + ', B ' + pl.safe.B + ', C ' + pl.safe.C + '. ' +
+      '<b>Nothing changes until you press Use.</b></div>' +
+      '<div class="acts" style="flex-wrap:wrap;gap:6px;margin-top:8px">' +
+      [["change", "Changes (" + stkLevelRows(ctx, "change").length + ")"], ["A", "A"], ["B", "B"], ["C", "C"], ["all", "All"]].map(function (x) {
+        return '<button class="btn sm' + (f === x[0] ? '' : ' ghost') + '" style="min-height:44px" data-act="stk-lv-f" data-v="' + x[0] + '">' + x[1] + '</button>';
+      }).join("") +
+      '<button class="btn sm ghost" style="min-height:44px" data-act="stk-plan">Plan settings</button>' +
+      (useable.length ? '<button class="btn sm" style="min-height:44px" data-act="stk-lv-all" data-n="' + useable.length + '">Use all ' + useable.length + ' shown</button>' : '') +
+      '</div>' + (S.lvSave ? '<div style="font-size:13px;font-weight:700;color:#0f766e;margin-top:6px">' + esc(S.lvSave) + '</div>' : '') + '</div>';
+    if (!rows.length) return h + '<div class="empty">' + (f === "change" ? 'Every level already matches its suggestion.' : 'No products in this group.') + '</div>';
+    var fig = function (lab, v, col) { return '<span style="display:inline-block;margin-right:12px;white-space:nowrap"><span style="color:#64748b">' + lab + '</span> <b style="color:' + (col || '#0f172a') + '">' + v + '</b></span>'; };
+    h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px">' + rows.slice(0, 150).map(function (r, i) {
+      var s = r.s || {}, has = s.min !== undefined;
+      return '<div class="acts" style="align-items:center;flex-wrap:nowrap;gap:8px;margin:0;padding:8px 10px' + (i ? ';border-top:1px solid #eef2f7' : '') + '"><div class="grow" style="min-width:0">' +
+        '<div style="font-weight:700;font-size:14px">' + esc(r.p.desc || r.code) + ' ' + stkTag(r.code, ctx) + '</div>' +
+        '<div style="font-size:12px;color:#64748b">' + esc([r.code, r.p.brand].filter(Boolean).join(" · ")) + (has ? ' · sells ' + esc(stkQ(s.ads, r.code)) + ' a day · lead ' + s.lt + ' days' : '') + '</div>' +
+        '<div style="font-size:13px;margin-top:3px">' + fig("Now", r.cur.min ? stkTrio(r.cur.crit, r.cur.min, r.cur.max, r.code) : 'not set') +
+          (has ? fig("Suggested", stkTrio(s.ss, s.min, s.max, r.code), '#0f766e') : '<span style="color:#92400e">' + esc(s.why || "") + '</span>') + '</div></div>' +
+        (has && r.diff ? '<button class="btn sm" style="min-height:44px;flex:0 0 auto" data-act="stk-lv-use" data-code="' + esc(r.code) + '">Use</button>' : '') +
+        '<button class="btn sm ghost" style="min-height:44px;flex:0 0 auto" data-act="stock-item" data-code="' + esc(r.code) + '">Edit</button></div>';
+    }).join("") + '</div>' + (rows.length > 150 ? '<div class="meta" style="font-size:12px;margin-top:4px">Showing 150 of ' + rows.length + ' — pick A, B or C to see the rest.</div>' : '');
+    return h;
+  }
+  /* write levels: one "reorder" row per product (qty = reorder point, notes = max and pack), three
+     calls at a time, on this phone at once so the screen moves while the sheet catches up */
+  function stkLvlSave(items) {
+    if (!items.length) return;
+    var rows = items.map(function (x, i) {
+      return { id: "S-" + Date.now() + "-" + i + "-" + Math.floor(Math.random() * 1000000) + "-reorder", type: "reorder", code: x.code, desc: "",
+        qty: Math.max(0, Number(x.min) || 0), ref: "", asOn: today(), notes: JSON.stringify({ max: Math.max(0, Number(x.max) || 0), pack: Math.max(0, Number(x.pack) || 0), crit: Math.max(0, Number(x.crit) || 0) }) };
+    });
+    S.stock = (S.stock || []).concat(rows);
+    var next = 0, ok = 0, bad = 0, why = "", total = rows.length;
+    var say = function () { S.lvSave = (ok + bad < total) ? "Saving levels… " + (ok + bad) + " of " + total : (bad ? ok + " saved, " + bad + " NOT saved (" + why + ") — they are on this screen until the next refresh; press Use again." : "All " + ok + " levels saved."); renderBg(); };
+    var lane = function () {
+      if (next >= rows.length) return Promise.resolve();
+      var r = rows[next++];
+      return api("stockSave", { row: r }).then(function (a) { if (a && a.ok) ok++; else { bad++; why = (a && a.error) || "refused"; } }, function (e) { bad++; why = (e && e.message) || "no answer"; })
+        .then(function () { say(); return lane(); });
+    };
+    say();
+    Promise.all([lane(), lane(), lane()]).then(function () { setTimeout(function () { if (!/Saving/.test(S.lvSave || "")) { S.lvSave = ""; renderBg(); } }, 8000); });
+  }
+
+  /* ---- plan settings ---- */
+  function modalStkPlan() {
+    var ctx = stkCtx(), pl = ctx.plan, br = {};
+    Object.keys(ctx.hist.by).forEach(function (k) { var b = (ctx.pmap[k] || {}).brand; if (b) br[b] = (br[b] || 0) + 1; });
+    Object.keys(ctx.pos).forEach(function (k) { var b = (ctx.pmap[k] || {}).brand; if (b && !br[b]) br[b] = 0; });
+    var inp = 'inputmode="numeric" style="width:84px;min-height:44px;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:15px;text-align:right"';
+    var line = function (label, id, v, note) { return '<div class="acts" style="align-items:center;flex-wrap:nowrap;margin:6px 0;gap:8px"><div class="grow" style="min-width:0;flex:1 1 auto"><b>' + label + '</b>' + (note ? '<div style="font-size:12px;color:#64748b">' + note + '</div>' : '') + '</div><input id="' + id + '" value="' + esc(v) + '" ' + inp + '/></div>'; };
+    return '<h2 style="margin:0 0 4px">Plan settings</h2>' +
+      '<div class="meta" style="font-size:12.5px">These drive the suggested levels. Days are working days (six a week).</div>' +
+      line("Lead time, any brand not listed", "pl_lead", pl.leadDef, "Days from placing the order to goods in the godown") +
+      line("Safety days — A", "pl_sa", pl.safe.A, "The few lines that carry 80% of the value") +
+      line("Safety days — B", "pl_sb", pl.safe.B, "") +
+      line("Safety days — C", "pl_sc", pl.safe.C, "") +
+      line("Cover days", "pl_cover", pl.cover, "How long one order should last") +
+      '<div style="font-weight:800;margin:12px 0 2px">Lead time by brand</div><div class="meta" style="font-size:12px">Leave blank to use the lead time above.</div>' +
+      Object.keys(br).sort().map(function (b, i) { return '<div class="acts" style="align-items:center;flex-wrap:nowrap;margin:4px 0;gap:8px"><div class="grow" style="min-width:0;flex:1 1 auto">' + esc(b) + '</div><input class="pl-brand" data-b="' + esc(b) + '" value="' + esc(pl.lead[b] || "") + '" placeholder="' + pl.leadDef + '" ' + inp + '/></div>'; }).join("") +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button><button class="btn" data-act="stk-plan-save">Save</button></div>';
+  }
+
+  /* ---- 5: non-moving ---- */
+  function stkDead(ctx) {
+    ctx = ctx || stkCtx();
+    var rate = rateByCode(), out = [];
+    Object.keys(ctx.pos).forEach(function (k) {
+      var x = ctx.pos[k], p = ctx.pmap[k]; if (!p || !x.counted || !(x.onhand > 0) || ctx.fsn[k] !== "N") return;
+      var r = rate[k] || Number(p.price) || 0, h = ctx.hist.by[k];
+      out.push({ code: k, desc: p.desc || k, brand: p.brand || "", onhand: x.onhand, rate: r, value: Math.round(x.onhand * r), last: h ? h.last : "" });
+    });
+    out.sort(function (a, b) { return b.value - a.value; });
+    return { list: out, total: out.reduce(function (a, x) { return a + x.value; }, 0), days: ctx.nDays };
+  }
+  function stkDeadHtml() {
+    var ctx = stkCtx(), d = stkDead(ctx);
+    var h = '<div class="card" style="border-color:#fcd34d;background:#fffbeb"><div class="acts" style="align-items:center;margin:0;gap:6px;flex-wrap:wrap"><h3 class="grow" style="margin:0;color:#92400e">Non-moving — ' + plural(d.list.length, "product") + ' · ' + money(d.total) + '</h3>' +
+      (d.list.length ? '<button class="btn sm ghost" style="min-height:44px" data-act="stk-dead-xlsx">&#8681; Excel</button>' : '') + '</div>' +
+      '<div class="meta" style="font-size:12.5px;margin-top:3px">Counted, in stock, and nothing went out on a challan in the last <b>' + d.days + ' days</b>' + (d.days < 180 ? ' (that is all the challan history there is yet; the full test is 180 days)' : '') + '. Value = on hand × purchase rate, or the price-list rate where no purchase rate is set. Do not reorder these: offer them to plumbers, return them to the supplier, or put them in a site order.</div></div>';
+    if (!d.list.length) return h + '<div class="empty">Nothing counted is sitting still.</div>';
+    return h + '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px">' + d.list.slice(0, 200).map(function (x, i) {
+      return '<div class="acts" style="align-items:center;flex-wrap:nowrap;gap:8px;margin:0;padding:8px 10px' + (i ? ';border-top:1px solid #eef2f7' : '') + '"><div class="grow" style="min-width:0">' +
+        '<div style="font-weight:700">' + esc(x.desc) + '</div><div style="font-size:12px;color:#64748b">' + esc([x.code, x.brand].filter(Boolean).join(" · ")) + ' · ' + (x.last ? 'last out ' + esc(dmy(x.last)) : 'never out on a challan') + '</div></div>' +
+        '<div style="text-align:right;white-space:nowrap"><div style="font-weight:800">' + money(x.value) + '</div><div style="font-size:12px;color:#64748b">' + esc(stkQ(x.onhand, x.code)) + '</div></div></div>';
+    }).join("") + '</div>';
+  }
+  function stkDeadXlsx() {
+    var d = stkDead();
+    var out = [[{ v: "Energy World · Non-moving stock · " + fullDate(today()), s: XL.BOLD }], [], ["Code", "Product", "Brand", "On hand", "Rate", "Value", "Last out"].map(function (t) { return { v: t, s: XL.HEAD }; })];
+    d.list.forEach(function (x) { out.push([x.code, x.desc, x.brand, x.onhand, x.rate, x.value, x.last ? dmy(x.last) : "never"]); });
+    out.push([]); out.push(["Counted, in stock, and nothing out on a challan in the last " + d.days + " days. Total " + d.total + "."]);
+    dlXlsx("Non_moving_" + today() + ".xlsx", "Non-moving", out, [14, 38, 16, 10, 10, 12, 12]);
+  }
+
+  /* ---- 6: today's count ---- */
+  function stkCountDue(ctx, n) {
+    ctx = ctx || stkCtx();
+    var keys = {};
+    Object.keys(ctx.pos).forEach(function (k) { keys[k] = 1; });
+    Object.keys(ctx.hist.by).forEach(function (k) { keys[k] = 1; });
+    var ord = { A: 0, B: 1, C: 2, "-": 3 };
+    return Object.keys(keys).filter(function (k) { return ctx.pmap[k]; }).map(function (k) {
+      var c = ctx.cls[k] || "-", every = STK_COUNT_EVERY[c], x = ctx.pos[k], on = x && x.countedOn ? x.countedOn : "";
+      var age = on ? stkAge(on) : 99999;
+      return { code: k, p: ctx.pmap[k], cls: c, every: every, on: on, score: on ? age / every : 999 };
+    }).filter(function (r) { return r.score >= 1; }).sort(function (a, b) {
+      return (ord[a.cls] - ord[b.cls]) || (b.score - a.score) || String(a.p.desc || "").localeCompare(String(b.p.desc || ""));
+    }).slice(0, n || 15);
+  }
+  function stkCountHtml() {
+    var ctx = stkCtx(), L = stkCountDue(ctx, 15);
+    var h = '<div class="card"><div class="acts" style="align-items:center;margin:0;gap:6px;flex-wrap:wrap"><h3 class="grow" style="margin:0">Today’s count — ' + plural(L.length, "product") + '</h3>' +
+      (L.length ? '<button class="btn sm" style="min-height:44px" data-act="stk-count-go">Count these ' + L.length + '</button>' : '') + '</div>' +
+      '<div class="meta" style="font-size:12.5px;margin-top:3px">Fifteen a day, most important first: A products every 30 days, B every 90, C every 180, the rest once a year; never counted comes first. Count before dispatch starts or after it ends. A recount replaces the book figure, so a difference is put right the moment it is saved.</div></div>';
+    if (!L.length) return h + '<div class="empty">Nothing is due for counting today.</div>';
+    return h + '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px">' + L.map(function (r, i) {
+      return '<div style="padding:8px 10px' + (i ? ';border-top:1px solid #eef2f7' : '') + '"><div style="font-weight:700">' + (i + 1) + '. ' + esc(r.p.desc || r.code) + ' ' + stkTag(r.code, ctx) + '</div>' +
+        '<div style="font-size:12px;color:#64748b">' + esc([r.code, r.p.brand].filter(Boolean).join(" · ")) + ' · ' + (r.on ? 'last counted ' + esc(dmy(r.on)) : 'never counted') + '</div></div>';
+    }).join("") + '</div>';
   }
   /* 6.9.619 - HIS WORDS, on the search popup: "in stock 1000 Mtrs, show like this for every thing,
      per Pc, per Set". The unit comes from the catalogue's own column ("Per Mtr.", "Per Pc.",
@@ -40665,7 +41000,7 @@ function viewCatalogue() {
       line = '<span style="color:' + col + '"><b>In stock ' + stkQ(x.onhand, x.code) + '</b>' + (x.held ? ' \u00b7 held ' + stkQ(x.held, x.code) + ' \u00b7 <b>free ' + stkQ(x.free, x.code) + '</b>' : '') +
         (x.min ? ' \u00b7 min ' + stkQ(x.min, x.code) : ' \u00b7 no min set') + '</span>' + (sh ? ' <span class="pill due" style="font-size:12px">Stock to order</span>' : '');
     }
-    return '<div class="acts stk-sl" data-code="' + esc(p.code) + '" style="align-items:center;flex-wrap:nowrap;margin:6px 0 0;gap:6px"><div class="grow" style="font-size:13px;min-width:0">' + line + '</div>' + btn.replace('min-height:44px', 'min-height:44px;flex:0 0 auto') + '</div>';
+    return '<div class="acts stk-sl" data-code="' + esc(p.code) + '" style="align-items:center;flex-wrap:nowrap;margin:6px 0 0;gap:6px"><div class="grow" style="font-size:13px;min-width:0">' + line + (function () { try { return STOCK_LOADED ? ' ' + stkTag(String(p.code || "").trim(), stkCtx()) : ''; } catch (e) { return ''; } })() + '</div>' + btn.replace('min-height:44px', 'min-height:44px;flex:0 0 auto') + '</div>';
   }
   function stkReserved(skipId) {
     var cut = stkCutoff(), m = {};
@@ -40783,8 +41118,21 @@ function viewCatalogue() {
     var inp = 'style="width:100%;padding:9px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px"';
     return '<h2 style="margin:0 0 2px">' + esc(p.desc || mv.desc[code] || code) + '</h2>' +
       '<div class="meta" style="font-size:12px;margin-bottom:4px">' + esc(code) + (p.brand ? ' · ' + esc(p.brand) : '') + ' · on hand <b>' + stkQ(onhand, code) + '</b></div>' +
-      '<div ' + lbl + '>Minimum stock level \u2014 at or below this (free stock) it goes on <b>Stock to order</b>. Leave 0 for no minimum.</div>' +
+      '<div ' + lbl + '>Reorder point (Min) \u2014 at or below this free stock it goes on <b>Stock to order</b>. 0 = none.</div>' +
       '<input id="si_reorder" inputmode="numeric" value="' + esc(reo[code] || "") + '" placeholder="e.g. 20" ' + inp + '/>' +
+      (function () {   /* 6.9.621 */
+        var L = stkLvl()[code] || {}, sg = {}; try { sg = stkSuggest(code, stkCtx()) || {}; } catch (e) { sg = {}; }
+        return '<div ' + lbl + '>Critical stock \u2014 the safety buffer; below it you risk saying \u201cnot in stock\u201d (blank = none)</div>' +
+          '<input id="si_crit" inputmode="numeric" value="' + esc(L.crit || "") + '" placeholder="e.g. 5" ' + inp + '/>' +
+          '<div ' + lbl + '>Maximum \u2014 order up to this (blank = none)</div>' +
+          '<input id="si_max" inputmode="numeric" value="' + esc(L.max || "") + '" placeholder="e.g. 60" ' + inp + '/>' +
+          '<div ' + lbl + '>Pack \u2014 the supplier sells it in multiples of (optional)</div>' +
+          '<input id="si_pack" inputmode="numeric" value="' + esc(L.pack || "") + '" placeholder="e.g. 10" ' + inp + '/>' +
+          (sg.min !== undefined
+            ? '<div style="margin-top:8px;padding:8px 10px;border-radius:8px;background:#f0fdfa;font-size:13px">Suggested from challans: critical <b>' + esc(stkQ(sg.ss, code)) + '</b>, reorder at <b>' + esc(stkQ(sg.min, code)) + '</b>, maximum <b>' + esc(stkQ(sg.max, code)) + '</b> (sells ' + esc(stkQ(sg.ads, code)) + ' a day, class ' + sg.cls + ', lead ' + sg.lt + ' days). ' +
+              '<button class="btn sm ghost" style="min-height:44px" data-act="si-sug" data-crit="' + sg.ss + '" data-min="' + sg.min + '" data-max="' + sg.max + '">Use these</button></div>'
+            : (sg.why ? '<div style="margin-top:6px;font-size:12.5px;color:#92400e">No suggestion: ' + esc(sg.why) + '.</div>' : ''));
+      })() +
       '<div ' + lbl + '>Latest purchase rate (₹ / unit, optional — used for stock value)</div>' +
       '<input id="si_rate" inputmode="decimal" value="' + esc(rate[code] || "") + '" placeholder="e.g. 250" ' + inp + '/>' +
       '<div ' + lbl + '>Landing % for this item (optional — leave blank to use the ' + (Number(landingPcts().global) || 0) + '% set for everything)</div>' +
@@ -41325,7 +41673,8 @@ function viewCatalogue() {
   }
   function viewPhysCount() {
     pcWire();
-    var PL = pcProducts();   /* 6.9.616 - one row per product code */
+    var _lvPos = stkPositions(), _lvL = stkLvl();   /* 6.9.622 - the levels beside the stock */
+    var PL = pcProducts().filter(function (p) { return !S.pc.only || S.pc.only.indexOf(p.code) >= 0; });   /* 6.9.616 - one row per product code; 6.9.621 - or just today's count list */
     var pc = S.pc, brands = {}, done = {}, last = stkOpenLast();
     PL.forEach(function (p) {
       var b = p.brand || "Other";
@@ -41354,7 +41703,7 @@ function viewCatalogue() {
           ? '<img src="' + esc(pic) + '" loading="lazy" alt="" data-act="pc-zoom" data-code="' + esc(p.code) + '" title="See it large" style="width:56px;height:56px;object-fit:contain;border-radius:8px;background:#fff;border:1px solid #e2e8f0;cursor:zoom-in;display:block"/>'
           : '<div style="width:56px;height:56px;border-radius:8px;background:#f1f5f9;color:#94a3b8;font-size:12px;display:flex;align-items:center;justify-content:center;text-align:center">no picture</div>') + '</td>' +
         '<td style="padding:8px 6px"><div style="font-weight:700;color:#0f172a;word-break:break-word"><span style="color:#94a3b8;font-weight:600;font-size:12px">' + (i + 1) + '.</span> ' + esc(p.desc || p.code) + '</div>' +
-          '<div style="font-size:12px;color:#64748b;margin-top:2px;word-break:break-word">' + esc(p.code) + (q && p.brand ? ' &middot; ' + esc(p.brand) : '') + (p.unit ? ' &middot; <b style="color:#475569">' + esc(p.unit) + '</b>' : '') + '</div></td>' +
+          '<div style="font-size:12px;color:#64748b;margin-top:2px;word-break:break-word">' + esc(p.code) + (q && p.brand ? ' &middot; ' + esc(p.brand) : '') + (p.unit ? ' &middot; <b style="color:#475569">' + esc(p.unit) + '</b>' : '') + '</div>' + stkLevelLine(p.code, _lvPos, _lvL) + '</td>' +
         '<td style="padding:6px 10px 6px 4px;text-align:right"><input class="pc-box" data-sec="' + (secP ? 'p' : 'd') + '" data-code="' + esc(p.code) + '" inputmode="decimal" enterkeyhint="next" autocomplete="off" aria-label="Counted ' + esc(p.desc || p.code) + '" value="' + esc(pc.v[p.code] != null ? pc.v[p.code] : "") + '" ' +
           'placeholder="' + (lr && !f ? esc(String(Number(lr.qty) || 0)) : '') + '" ' +
           'style="width:84px;min-height:44px;padding:8px 8px;border:1px solid ' + (f ? '#86efac' : '#cbd5e1') + ';border-radius:8px;text-align:right;font-size:16px;font-weight:700"/>' +
@@ -43098,11 +43447,66 @@ function viewCatalogue() {
       }).catch(function () { toast("Save failed — check connection."); });
       return;
     }
-    if (act === "stock-item") { S.modal = modalStockItem(t.getAttribute("data-code")); render(); return; }
+    if (act === "stock-item") { if (S.pc) pcKeep(); S.modal = modalStockItem(t.getAttribute("data-code")); render(); return; }   /* 6.9.622 - pcKeep: the count's typed figures survive the pop-up */
     if (act === "stk-open") { var _sc = t.getAttribute("data-code") || ""; S.stkOpen = (S.stkOpen === _sc) ? "" : _sc; keepScroll = true; render(); return; }   /* v6.9.605 */
     if (act === "stk-xlsx") { if (!STOCK_LOADED) { ensureStock(); toast("Stock is still loading \u2014 try again in a moment."); return; } stockXlsx(); return; }   /* v6.9.606 */
-    if (act === "stk-ord") { S.stkOrd = !!t.getAttribute("data-v"); render(); window.scrollTo(0, 0); return; }   /* 6.9.617 */
-    if (act === "stk-ord-xlsx") { if (!STOCK_LOADED) { ensureStock(); toast("Stock is still loading \u2014 try again in a moment."); return; } stkOrderXlsx(); return; }
+    if (act === "stk-ord") { S.stkOrd = !!t.getAttribute("data-v"); S.stkView = ""; render(); window.scrollTo(0, 0); return; }   /* 6.9.617 */
+    if (act === "stk-ord-xlsx") { if (!STOCK_LOADED) { ensureStock(); toast("Stock is still loading \u2014 try again in a moment."); return; } stkOrderXlsx(t.getAttribute("data-b") || ""); return; }
+    /* ---- 6.9.621 - planning ---- */
+    if (act === "stk-view") { S.stkView = t.getAttribute("data-v") || ""; S.stkOrd = false; render(); window.scrollTo(0, 0); return; }
+    if (act === "stk-ord-wa") {
+      var _wb = t.getAttribute("data-b") || "", _wt = stkOrderText(_wb);
+      window.open("https://wa.me/?text=" + encodeURIComponent(_wt), "_blank");
+      toast("WhatsApp is open with the " + _wb + " order \u2014 pick the supplier and send it yourself.");
+      return;
+    }
+    if (act === "stk-lv-f") { S.stkLvF = t.getAttribute("data-v") || "change"; render(); return; }
+    if (act === "stk-lv-use") {
+      var _uc = t.getAttribute("data-code"), _ux = stkCtx(), _us = stkSuggest(_uc, _ux);
+      if (!_us || _us.min === undefined) { toast("No suggestion for this one."); return; }
+      stkLvlSave([{ code: _uc, min: _us.min, max: _us.max, crit: _us.ss, pack: ((_ux.lvl[_uc] || {}).pack) || 0 }]);
+      return;
+    }
+    if (act === "stk-lv-all") {
+      var _ax = stkCtx(), _ar = stkLevelRows(_ax, S.stkLvF || "change").filter(function (r) { return r.diff; });
+      if (!t.getAttribute("data-sure")) {
+        t.setAttribute("data-sure", "1"); t.textContent = "Press again to set " + plural(_ar.length, "level");
+        toast("This sets the reorder point and maximum of " + plural(_ar.length, "product") + " to the suggestion. Press again to go ahead.");
+        return;
+      }
+      stkLvlSave(_ar.map(function (r) { return { code: r.code, min: r.s.min, max: r.s.max, crit: r.s.ss, pack: r.cur.pack || 0 }; }));
+      return;
+    }
+    if (act === "si-sug") {
+      if (el("si_reorder")) el("si_reorder").value = t.getAttribute("data-min") || "";
+      if (el("si_max")) el("si_max").value = t.getAttribute("data-max") || "";
+      if (el("si_crit")) el("si_crit").value = t.getAttribute("data-crit") || "";
+      toast("Filled in \u2014 press Save to keep them."); return;
+    }
+    if (act === "stk-plan") { S.modal = modalStkPlan(); render(); return; }
+    if (act === "stk-plan-save") {
+      var _pv = function (id, d) { var v = String((el(id) || {}).value || "").trim(); return v === "" ? d : Math.max(0, Number(v) || 0); };
+      var _lead = {};
+      [].forEach.call(document.querySelectorAll(".pl-brand"), function (x) { var v = Number(String(x.value || "").trim()); if (v > 0) _lead[x.getAttribute("data-b")] = v; });
+      var _pp = { leadDef: _pv("pl_lead", STK_PLAN_DEF.leadDef) || STK_PLAN_DEF.leadDef, lead: _lead,
+        safe: { A: _pv("pl_sa", STK_PLAN_DEF.safe.A), B: _pv("pl_sb", STK_PLAN_DEF.safe.B), C: _pv("pl_sc", STK_PLAN_DEF.safe.C) },
+        cover: _pv("pl_cover", STK_PLAN_DEF.cover) || STK_PLAN_DEF.cover };
+      var _prow = { id: "S-" + Date.now() + "-" + Math.floor(Math.random() * 1000000) + "-plan", type: "plan", code: "*", desc: "", qty: 0, ref: "", asOn: today(), notes: JSON.stringify(_pp) };
+      S.stock = (S.stock || []).concat([_prow]); S.modal = null; render(); toast("Saving the plan\u2026");
+      api("stockSave", { row: _prow }).then(function (r) { toast((r && r.ok) ? "Plan saved. The suggestions use it now." : ((r && r.error) || "Save failed \u2014 only admin/godown can edit stock.")); render(); })
+        .catch(function () { toast("Save failed \u2014 check connection."); });
+      return;
+    }
+    if (act === "stk-dead-xlsx") { stkDeadXlsx(); return; }
+    if (act === "stk-count-go") {
+      var _cl = stkCountDue(stkCtx(), 15).map(function (r) { return r.code; });
+      if (!_cl.length) { toast("Nothing is due for counting today."); return; }
+      S.imp = null; S.grn = null;
+      S.pc = { v: {}, date: today(), brand: "", show: "all", only: _cl };
+      render(); window.scrollTo(0, 0);
+      setTimeout(pcAutoSave, 1500);
+      return;
+    }
     if (act === "stk-reglist") { S.stkReg = !S.stkReg; keepScroll = true; render(); return; }
     if (act === "stock-landing") { S.modal = modalStockLanding(); render(); return; }
     if (act === "stock-landing-save") {
@@ -43123,7 +43527,13 @@ function viewCatalogue() {
       var _irl = String((el("si_reorder") || {}).value || "").trim();
       var _irt = String((el("si_rate") || {}).value || "").trim();
       var _saves = [];
-      if (_irl !== "") _saves.push({ type: "reorder", qty: Number(_irl) || 0 });
+      /* 6.9.621 - one reorder row carries the reorder point (qty) and the maximum and pack (notes) */
+      var _imx = String((el("si_max") || {}).value || "").trim(), _ipk = String((el("si_pack") || {}).value || "").trim(), _icr = String((el("si_crit") || {}).value || "").trim();
+      if (_irl !== "" || _imx !== "" || _ipk !== "" || _icr !== "") {
+        var _L0 = stkLvl()[_icode] || {};
+        _saves.push({ type: "reorder", qty: _irl !== "" ? (Number(_irl) || 0) : (_L0.min || 0),
+          notes: JSON.stringify({ max: Number(_imx) || 0, pack: Number(_ipk) || 0, crit: Number(_icr) || 0 }) });
+      }
       if (_irt !== "") _saves.push({ type: "rate", qty: Number(_irt) || 0 });
       var _ild = String((el("si_landing") || {}).value || "").trim();
       if (_ild !== "") _saves.push({ type: "landing", qty: Number(_ild) || 0 });
@@ -43131,7 +43541,7 @@ function viewCatalogue() {
       S.modal = null; render(); toast("Saving…");
       var _proms = _saves.map(function (s) {
         var row = { id: "S-" + Date.now() + "-" + Math.floor(Math.random() * 1000000) + "-" + s.type,
-          type: s.type, code: _icode, desc: "", qty: s.qty, ref: "", asOn: today(), notes: "" };
+          type: s.type, code: _icode, desc: "", qty: s.qty, ref: "", asOn: today(), notes: s.notes || "" };
         S.stock = (S.stock || []).concat([row]);
         return api("stockSave", { row: row });
       });
