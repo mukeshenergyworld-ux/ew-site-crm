@@ -215,7 +215,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.107.0";
+  var APP_VERSION = "1.108.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -3811,8 +3811,8 @@ function discRowOn(client, brand, onYmd) {
       if (ty === "in" && _bref[String(row.ref || "").trim().toLowerCase()]) return;   /* that bill is already counted from Tally */
       var _k0 = String(row.code || "").trim();
       if (ty === "opening" && _olast[_k0] !== row) return;   /* only the latest count - 6.9.608: and only its last save */
-      if (ty !== "opening" && ty !== "reorder" && ty !== "rate" && ty !== "landing" && ty !== "register" && ty !== "alias" && !stkCounts(_k0, row.asOn, cut)) return;
-      if (ty === "reorder" || ty === "rate" || ty === "landing" || ty === "register" || ty === "alias") return;   /* settings rows, not movements (register/alias: v6.9.605) */
+      if (ty !== "opening" && ty !== "reorder" && ty !== "rate" && ty !== "landing" && ty !== "register" && ty !== "alias" && ty !== "plan" && !stkCounts(_k0, row.asOn, cut)) return;
+      if (ty === "reorder" || ty === "rate" || ty === "landing" || ty === "register" || ty === "alias" || ty === "plan") return;   /* settings rows, not movements (register/alias: v6.9.605; plan: 6.9.621) */
       var k = String(row.code || "").trim(); if (!k) return;
       m[k] = (m[k] || 0) + (Number(row.qty) || 0);
       if (row.desc && !desc[k]) desc[k] = row.desc;
