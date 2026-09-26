@@ -241,7 +241,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.109.0";
+  var APP_VERSION = "1.110.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -1099,7 +1099,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      allowed" and deleted the sign-in and the saved book. Now a reply that is not a JSON object is
      a dropped request: a read is asked once more, a write fails out loud and is never re-sent,
      and only the server's own plain "no" signs a device out. */
-  var API_READS = { teamAuth: 1, teamGet: 1, teamStamp: 1, search: 1, waStatus: 1 };
+  var API_READS = { teamAuth: 1, teamGet: 1, teamStamp: 1, search: 1, waStatus: 1, driverPayList: 1 };   /* 1.110.0 */
   function apiDropped(e) { return /answered a different question/i.test(String((e && e.message) || "")); }
   function api(action, extra, ms) {
     var p = apiRaw(action, extra, ms);
@@ -4158,7 +4158,13 @@ function discRowOn(client, brand, onYmd) {
      different one - that is a real thing that happens - but it starts from his own. */
   function driverPicker(z, pfx) {
     var p = pfx || "m";
-    var list = ((S.data && S.data.drivers) || []).filter(function (d) { return String(d.name || "").trim(); });
+    /* 1.110.0 - a driver merged into another (CRM, "Review & merge") is not offered again */
+    var list = ((S.data && S.data.drivers) || []).filter(function (d) {
+      if (!String(d.name || "").trim()) return false;
+      if (lower(d.name) === lower(z.driver)) return true;
+      var k = "id:" + String(d.id || "").trim();
+      try { return k === "id:" || drvResolve(k) === k; } catch (e) { return true; }
+    });
     var picked = list.filter(function (d) { return lower(d.name) === lower(z.driver); })[0];
     var h = '<label>' + (p === "r" ? 'Driver who brought it back' : 'Driver') + '</label>';
     if (!list.length) {
@@ -6524,6 +6530,7 @@ function discRowOn(client, brand, onYmd) {
            this the corner answered "what could be settled" and never "what do I still owe
            him", which is the only question a man settling up actually asks. */
         (function () {
+          if (!S.dp) return g.ready ? '<div class="muted" style="margin-top:5px">Paid ' + (S.dpErr ? '<b style="color:#b91c1c">not read</b> &mdash; pull down to refresh' : '&hellip; loading') + '</div>' : '';   /* 1.110.0 */
           var paid = paidTo(g.key), owed = g.ready - paid;
           if (!paid && !g.ready) return '';
           return '<div class="muted" style="margin-top:5px">Paid ' + esc(money(paid)) + ' &middot; ' +
@@ -6840,12 +6847,14 @@ function discRowOn(client, brand, onYmd) {
      A negative figure reads as "he is ahead", which is the truth. */
   function stillOwed(g) { return g.ready - paidTo(g.key); }
 
+  /* 1.110.0 - 20 s was shorter than this sheet takes on a bad hour (18-40 s measured), and a
+     failure was silent and never tried again: "Paid Rs 0 - still owed" the full figure. */
   function dpPull() {
-    return api("driverPayList", {}, 20000).then(function (r) {
-      if (!r || !r.ok || !Array.isArray(r.driverpay)) return false;
-      S.dp = { rows: r.driverpay, at: Date.now() };
+    return api("driverPayList", {}, 45000).then(function (r) {
+      if (!r || !r.ok || !Array.isArray(r.driverpay)) { S.dpErr = String((r && r.error) || "the server did not send the list"); return false; }
+      S.dp = { rows: r.driverpay, at: Date.now() }; S.dpErr = "";
       return true;
-    }).catch(function () { return false; });
+    }).catch(function (e) { S.dpErr = String((e && e.message) || "no answer"); return false; });
   }
 
   function sheetPayout(key) {
@@ -9062,15 +9071,17 @@ function discRowOn(client, brand, onYmd) {
         forTrips: dg.readyN + " trips, " + Math.round(dg.ready)
       };
       t.disabled = true; t.textContent = "Recording\u2026";
-      api("driverPaySave", body, 20000).then(function (r) {
+      /* 6.9.626 / 1.110.0 - measured 26 Sep: a Rs 1,500 payout to Satish gave up at 20 s ("no answer"); sheet writes run 18-40 s on this book */
+      api("driverPaySave", body, 60000).then(function (r) {
         if (!r || !r.ok) {
           t.disabled = false; t.textContent = "Record the payment";
           toast((r && r.error) || "The server refused it. Nothing was recorded.");
           return;
         }
-        /* keep this phone in step at once - the man is standing there */
-        S.dp = S.dp || { rows: [] };
-        S.dp.rows.push({ id: r.id, createdAt: new Date().toISOString(), createdBy: S.user,
+        /* keep this phone in step at once - the man is standing there.
+           1.110.0 - but a list never read must not become a list of one payment */
+        if (!S.dp) { _dpTried = true; dpPull().then(function () { render(); }); }
+        else S.dp.rows.push({ id: r.id, createdAt: new Date().toISOString(), createdBy: S.user,
                          driverId: body.driverId, driver: body.driver, amount: damt,
                          mode: body.mode, ref: body.ref, forTrips: body.forTrips, note: body.note });
         S.sheet = null; render();
