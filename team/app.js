@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.625";
+  var APP_VERSION = "6.9.626";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -1074,7 +1074,7 @@
      Now: a reply that is not a JSON object is a dropped request, and is said so. A READ is asked
      once more after a short pause - asking again changes nothing on the server. A write is never
      re-sent from here; it fails out loud and the journal that already guards every save keeps it. */
-  var API_READS = { teamAuth: 1, teamGet: 1, teamStamp: 1, search: 1, waStatus: 1, botChats: 1 };
+  var API_READS = { teamAuth: 1, teamGet: 1, teamStamp: 1, search: 1, waStatus: 1, botChats: 1, driverPayList: 1 };   /* 6.9.626 */
   function apiDropped(e) { return /answered a different question/i.test(String((e && e.message) || "")); }
   function api(action, extra, ms) {
     var p = apiRaw(action, extra, ms);
@@ -13270,7 +13270,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
   /* The driver, from the register. Picking him is what makes the existing cascade fire, so
      his lorry and his number fill themselves in - which is what he asked for. */
   function strictDriverField(id, value, label) {
-    var list = (S.data.drivers || []).filter(function (d) { return String(d.name || "").trim(); })
+    var list = (S.data.drivers || []).filter(function (d) { return String(d.name || "").trim() && (d.name === String(value || "") || !drvMergedAway(d)); })   /* 6.9.626 */
       /* v6.9.303 - was a plain localeCompare, which files "Tempo 10" before "Tempo 9" */
       .sort(alphaBy(function (d) { return d.name; }));
     var cur = String(value || "");
@@ -20145,6 +20145,118 @@ function viewCatalogue() {
   function frKey(r) {
     return drvResolve(drvRawKey(r && r.driverId, r && r.driver));
   }
+  /* ===== SAME PHONE OR SAME LORRY - PROBABLY THE SAME MAN  (CRM 6.9.626, 26 Sep 2026) =====
+     His words: "driver with same phone no or same vechile no. ask to merge them if found to
+     avoid duplicate", and "i have paid and etered rs 1700 payment to mintu, its not showing".
+
+     MEASURED on the live book, 26 Sep: the register holds seven drivers and two of them are one
+     man - "MIntu Tempo" and "MINTU", the same mobile 7895679713 and the same lorry HR67E7987. His
+     Rs 1,700 cash went to MINTU (Rs 1,200 proved); his Rs 500 trip sat on MIntu Tempo. So one row
+     read Rs 500 ahead and the other Rs 500 pending, and neither was the truth about the man.
+
+     A merge is the same append-only "driver:link" the stray-linking already writes (6.9.600):
+     nothing on any delivery, payout or register row is edited or removed, and Undo is a second
+     link back. Two men CAN share one tempo, so it asks rather than merging by itself, and
+     "Not the same man" is filed as "driver:notdup" so it stops asking about that pair. */
+  function drvMob10(m) { var d = String(m || "").replace(/\D/g, ""); return d.length >= 10 ? d.slice(-10) : ""; }
+  function drvVehKey(v) { var x = String(v || "").toUpperCase().replace(/[^A-Z0-9]/g, ""); return x.length >= 6 ? x : ""; }
+  function drvMergedAway(d) {
+    var k = "id:" + String((d && d.id) || "").trim();
+    return k !== "id:" && drvResolve(k) !== k;
+  }
+  function drvNotDupSet() {
+    var o = {};
+    ((S.data && S.data.audit) || []).forEach(function (a) {
+      if (!a || String(a.action || "") !== "driver:notdup") return;
+      var d = {}; try { d = JSON.parse(a.detail || "{}") || {}; } catch (e) { return; }
+      if (d.a && d.b) o[[String(d.a), String(d.b)].sort().join("|")] = 1;
+    });
+    return o;
+  }
+  /* another man on the register with this mobile or this lorry - for the add and edit forms */
+  function drvSameAs(mob, veh, exceptId) {
+    var m = drvMob10(mob), v = drvVehKey(veh), hit = null;
+    ((S.data && S.data.drivers) || []).forEach(function (d) {
+      if (hit || !String(d.name || "").trim() || String(d.id || "") === String(exceptId || "") || drvMergedAway(d)) return;
+      if (m && drvMob10(d.mobile) === m) hit = { d: d, what: "mobile " + m };
+      else if (v && drvVehKey(d.vehicle) === v) hit = { d: d, what: "vehicle " + String(d.vehicle || "") };
+    });
+    return hit;
+  }
+  function drvDupGroups() {
+    var ents = [];
+    ((S.data && S.data.drivers) || []).forEach(function (d) {
+      var id = String(d.id || "").trim();
+      if (!id || !String(d.name || "").trim() || drvMergedAway(d)) return;
+      ents.push({ key: "id:" + id, name: String(d.name), mob: drvMob10(d.mobile), veh: drvVehKey(d.vehicle), vehRaw: String(d.vehicle || "") });
+    });
+    frRows().forEach(function (g) {
+      if (ents.some(function (e) { return e.key === g.key; })) return;
+      ents.push({ key: g.key, name: g.name, mob: drvMob10(g.mobile), veh: drvVehKey(g.vehicle), vehRaw: String(g.vehicle || "") });
+    });
+    var no = drvNotDupSet(), par = ents.map(function (x, i) { return i; }), pairs = [];
+    var root = function (i) { while (par[i] !== i) { par[i] = par[par[i]]; i = par[i]; } return i; };
+    for (var i = 0; i < ents.length; i++) for (var j = i + 1; j < ents.length; j++) {
+      var a = ents[i], b = ents[j], w = [];
+      if (a.mob && a.mob === b.mob) w.push("same mobile " + a.mob);
+      if (a.veh && a.veh === b.veh) w.push("same vehicle " + (a.vehRaw || a.veh));
+      if (!w.length || no[[a.key, b.key].sort().join("|")]) continue;
+      par[root(j)] = root(i); pairs.push({ i: i, w: w });
+    }
+    var by = {};
+    pairs.forEach(function (pr) {
+      var r = root(pr.i); by[r] = by[r] || { why: [] };
+      pr.w.forEach(function (x) { if (by[r].why.indexOf(x) < 0) by[r].why.push(x); });
+    });
+    return Object.keys(by).map(function (r) {
+      return { why: by[r].why, ents: ents.filter(function (e, k) { return root(k) === +r; }) };
+    });
+  }
+  function modalDriverMerge(ks) {
+    var keys = String(ks || "").split("|").filter(Boolean);
+    var rows = frRows(), reg = (S.data && S.data.drivers) || [], dpOk = !!S.dp;
+    var ents = keys.map(function (k) {
+      var g = rows.filter(function (x) { return x.key === k; })[0] || null;
+      var d = k.indexOf("id:") === 0 ? (reg.filter(function (x) { return String(x.id || "").trim() === k.slice(3); })[0] || null) : null;
+      return { key: k, name: String((d && d.name) || (g && g.name) || k), mob: String((d && d.mobile) || (g && g.mobile) || ""),
+        veh: String((d && d.vehicle) || (g && g.vehicle) || ""), onReg: !!d, trips: g ? g.trips.length : 0,
+        ready: g ? g.ready : 0, held: g ? g.held : 0, paid: dpOk ? paidTo(k) : 0 };
+    });
+    if (ents.length < 2) return '<h2>Nothing to merge</h2><div class="foot"><button class="btn" data-act="close">Close</button></div>';
+    var keepable = ents.filter(function (e) { return e.onReg; });
+    if (!keepable.length) keepable = ents;
+    var def = keepable.slice().sort(function (a, b) { return (b.trips - a.trips) || (b.paid - a.paid) || (b.name.length - a.name.length); })[0].key;
+    var T = ents.reduce(function (a, e) { a.ready += e.ready; a.held += e.held; a.paid += e.paid; a.trips += e.trips; return a; }, { ready: 0, held: 0, paid: 0, trips: 0 });
+    var th = function (x, r) { return '<th style="padding:5px 5px;font-size:12px;text-align:' + (r ? 'right' : 'left') + ';background:#e2e8f0;border:1px solid #cbd5e1;white-space:nowrap">' + x + '</th>'; };
+    var td = function (x, r) { return '<td style="padding:5px 5px;font-size:12.5px;border:1px solid #e2e8f0;text-align:' + (r ? 'right' : 'left') + ';white-space:nowrap">' + x + '</td>'; };
+    var h = '<h2>Same man twice?</h2>' +
+      '<p class="sub">These share a mobile or a vehicle number. If they are one man, merge them: every trip and every payment ' +
+      'comes into one ledger. Nothing on any delivery or payment is changed, and a merge can be undone from the register.</p>' +
+      '<div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%"><thead><tr>' +
+      th("DRIVER") + th("PROVED", 1) + th("PENDING", 1) + th("PAID", 1) + '</tr></thead><tbody>' +
+      ents.map(function (e) {
+        return '<tr>' + td('<b>' + esc(e.name) + '</b>' + (e.onReg ? '' : '<br><span class="pill" style="background:#fef3c7;color:#92400e">not on register</span>')) +
+          td(money(e.ready), 1) + td(money(e.held), 1) +
+          td(dpOk ? money(e.paid) : '\u2026', 1) + '</tr>';
+      }).join("") +
+      '<tr style="background:#f0fdfa">' + td('<b>Together</b>') + td('<b>' + money(T.ready) + '</b>', 1) +
+        td('<b>' + money(T.held) + '</b>', 1) + td(dpOk ? '<b>' + money(T.paid) + '</b>' : '\u2026', 1) + '</tr>' +
+      '</tbody></table></div>' +
+      (dpOk ? '<div class="meta" style="font-size:13px;margin-top:6px">Together: proved ' + money(T.ready) + ', paid ' + money(T.paid) + ' &mdash; ' +
+        (T.ready - T.paid > 0.5 ? '<b style="color:#b91c1c">still owed ' + money(T.ready - T.paid) + '</b>'
+          : (T.paid - T.ready > 0.5 ? '<b style="color:#0f766e">' + money(T.paid - T.ready) + ' ahead</b>' : '<b>settled</b>')) +
+        (T.held > 0.5 ? ', and ' + money(T.held) + ' waits on receipts.' : '.') + '</div>'
+        : '<div class="meta" style="font-size:12.5px;color:#b45309;margin-top:6px">Payments have not loaded yet, so the paid figures are not shown.</div>') +
+      '<label>Keep him as</label><select id="dm_keep">' +
+      keepable.map(function (e) {
+        return '<option value="' + esc(e.key) + '"' + (e.key === def ? ' selected' : '') + '>' + esc(e.name) + (e.veh ? ' \u00b7 ' + esc(e.veh) : '') + (e.mob ? ' \u00b7 ' + esc(e.mob) : '') + '</option>';
+      }).join("") + '</select>' +
+      '<div class="meta" style="font-size:12px;margin-top:4px">The name, mobile and vehicle of the one you keep are what the register shows. The other stays on the sheet, marked merged.</div>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
+      '<button class="btn ghost" data-act="dv-notdup" data-ks="' + esc(keys.join("|")) + '">Not the same man</button>' +
+      '<button class="btn" data-act="dv-merge-save" data-ks="' + esc(keys.join("|")) + '">Merge</button></div>';
+    return h;
+  }
   function frRows() {
     var by = {}, order = [];
     frTrips().forEach(function (t) {
@@ -20199,12 +20311,16 @@ function viewCatalogue() {
       .sort(function (a, b) { return String(b.createdAt || "").localeCompare(String(a.createdAt || "")); });
   }
   function stillOwed(g) { return g.ready - paidTo(g.key); }
+  /* 6.9.626 - MEASURED: sheet calls on this book take 18-40 s (see 6.9.588) and this one gave up
+     at 20 s. A failure was then silent and never retried, so PAID read "\u2014" and STILL OWED read
+     the whole proved figure - Rs 1,700 paid to MINTU looked like nothing paid. Now it waits 45 s,
+     is asked once more if Google drops it, and a failure is shown with a Try again button. */
   function dpPull() {
-    return api("driverPayList", {}, 20000).then(function (r) {
-      if (!r || !r.ok || !Array.isArray(r.driverpay)) return false;
-      S.dp = { rows: r.driverpay, at: Date.now() };
+    return api("driverPayList", {}, 45000).then(function (r) {
+      if (!r || !r.ok || !Array.isArray(r.driverpay)) { S.dpErr = String((r && r.error) || "the server did not send the list"); return false; }
+      S.dp = { rows: r.driverpay, at: Date.now() }; S.dpErr = "";
       return true;
-    }).catch(function () { return false; });
+    }).catch(function (e) { S.dpErr = String((e && e.message) || "no answer"); return false; });
   }
   function frStatePill(state) {
     return state === "ready" ? '<span class="pill teal">receipt in</span>'
@@ -20213,8 +20329,9 @@ function viewCatalogue() {
   }
   function frMonthOf(c) { return String(c && c.createdAt || "").slice(0, 7); }
   function viewFreight() {
-    if (S.data && !S.dp && !_dpTried) { _dpTried = true; dpPull().then(function (g) { if (g) render(); }); }
-    var rows = frRows();
+    if (S.data && !S.dp && !_dpTried) { _dpTried = true; dpPull().then(function () { render(); }); }
+    var rows = frRows(), dpOk = !!S.dp;
+    var dpWait = '<span style="color:#94a3b8" title="Payments not loaded yet">' + (S.dpErr ? 'not read' : '\u2026') + '</span>';
     var T = rows.reduce(function (a, g) { a.ready += g.ready; a.held += g.held; a.waiting += g.waiting; a.heldN += g.heldN; a.readyN += g.readyN; return a; },
                         { ready: 0, held: 0, waiting: 0, heldN: 0, readyN: 0 });
     var paidAll = payouts().reduce(function (a, p) { return a + dpAmt(p); }, 0);
@@ -20226,11 +20343,15 @@ function viewCatalogue() {
     h += '<div class="cards">' +
       '<div class="stat"><div class="n">' + money(T.ready) + '</div><div class="l">Proved trips &middot; ' + T.readyN + '</div></div>' +
       '<div class="stat' + (T.held > 0 ? ' alert' : '') + '"><div class="n">' + money(T.held) + '</div><div class="l">Receipt pending &middot; ' + T.heldN + '</div></div>' +
-      '<div class="stat"><div class="n">' + money(paidAll) + '</div><div class="l">Paid to drivers</div></div>' +
-      '<div class="stat' + (T.ready - paidAll > 0.5 ? ' alert' : '') + '"><div class="n">' + money(T.ready - paidAll) + '</div><div class="l">Still owed to drivers</div></div>' +
+      '<div class="stat"><div class="n">' + (dpOk ? money(paidAll) : dpWait) + '</div><div class="l">Paid to drivers</div></div>' +
+      '<div class="stat' + (dpOk && T.ready - paidAll > 0.5 ? ' alert' : '') + '"><div class="n">' + (dpOk ? money(T.ready - paidAll) : dpWait) + '</div><div class="l">Still owed to drivers</div></div>' +
       '</div>';
     if (T.waiting > 0) h += '<div class="meta" style="font-size:12.5px;margin:-2px 0 8px">' + money(T.waiting) + ' more sits on deliveries not yet dispatched &mdash; no trip has happened, so it is in neither figure.</div>';
-    if (S.dp === undefined || S.dp === null) h += '<div class="meta" style="font-size:12px;color:#94a3b8;margin-bottom:6px">Payouts are being fetched from the sheet&hellip;</div>';
+    if (!dpOk) h += S.dpErr
+      ? '<div class="card" style="border-color:#fca5a5;background:#fef2f2;padding:8px 12px;margin-bottom:8px"><div style="font-size:13px;color:#b91c1c"><b>Payments to drivers could not be read</b> (' + esc(S.dpErr) + '). ' +
+        'Paid and Still owed are not shown until they are &mdash; nothing is lost on the sheet.</div>' +
+        '<div class="row" style="margin-top:6px"><button class="btn sm" data-act="dp-retry">Try again</button></div></div>'
+      : '<div class="meta" style="font-size:12px;color:#94a3b8;margin-bottom:6px">Payments to drivers are being read from the sheet&hellip; Paid and Still owed fill in when they arrive.</div>';
 
     /* ---- the drivers ---- */
     var noDrv = (S.data.challans || []).filter(function (c) { return c && c.status !== "Cancelled" && frAmt(c) > 0 && !(c.driverId || c.driver); });
@@ -20239,6 +20360,14 @@ function viewCatalogue() {
       '<div class="meta" style="font-size:12.5px;margin:0 0 6px">Tap a driver&rsquo;s name for his complete ledger &mdash; every trip, every payout, what is finally due, and what waits on which receipt.</div>';
     if (noDrv.length) h += '<div class="meta" style="font-size:12.5px;color:#b45309;margin-bottom:6px"><b>' + noDrv.length + '</b> deliver' + (noDrv.length === 1 ? 'y carries' : 'ies carry') +
       ' freight with no driver named &mdash; ' + money(noDrv.reduce(function (t, c) { return t + frAmt(c); }, 0)) + ' that can be settled with nobody. They are in the ledger below marked <b>not named</b>; open the delivery and put the driver on it.</div>';
+    /* 6.9.626 - same mobile or same vehicle: ask whether it is one man */
+    drvDupGroups().forEach(function (grp) {
+      h += '<div class="card" style="border-color:#f59e0b;background:#fffbeb;padding:9px 12px;margin:0 0 8px">' +
+        '<div style="font-size:13.5px"><b>Same man twice?</b> ' + grp.ents.map(function (e) { return '<b>' + esc(e.name) + '</b>'; }).join(' and ') +
+        ' &mdash; ' + esc(grp.why.join(", ")) + '. His trips and payments are split between them.</div>' +
+        (canManageDrivers() ? '<div class="row" style="margin-top:6px"><button class="btn sm" data-act="dv-merge" data-ks="' + esc(grp.ents.map(function (e) { return e.key; }).join("|")) + '">Review &amp; merge</button></div>'
+          : '<div class="meta" style="font-size:12px;margin-top:3px">Accounts or the owner can merge them.</div>') + '</div>';
+    });
     h += xlTable("drivers", [
       { k: "name", t: "DRIVER", w: "130px" }, { k: "veh", t: "VEHICLE" }, { k: "mobile", t: "MOBILE" },
       { k: "ready", t: "PROVED", n: 1, r: 1 }, { k: "held", t: "RECEIPT PENDING", n: 1, r: 1 }, { k: "paid", t: "PAID", n: 1, r: 1 }, { k: "owed", t: "STILL OWED", n: 1, r: 1 }, { k: "go", t: "" }
@@ -20254,8 +20383,8 @@ function viewCatalogue() {
           mobile: g.mobile ? '<a href="tel:' + esc(g.mobile) + '">' + esc(g.mobile) + '</a>' : '<span style="color:#94a3b8">—</span>',
           ready: g.ready > 0.5 ? '<b>' + money(g.ready) + '</b> <span style="color:#94a3b8;font-size:12px">' + g.readyN + '</span>' : '<span style="color:#94a3b8">—</span>',
           held: g.held > 0.5 ? '<span style="color:#b91c1c">' + money(g.held) + '</span> <span style="color:#94a3b8;font-size:12px">' + g.heldN + '</span>' : '<span style="color:#94a3b8">—</span>',
-          paid: paid > 0.5 ? money(paid) : '<span style="color:#94a3b8">—</span>',
-          owed: owed > 0.5 ? '<b style="color:#b91c1c">' + money(owed) + '</b>' : (owed < -0.5 ? '<span style="color:#0f766e">' + money(-owed) + ' ahead</span>' : '<span style="color:#94a3b8">—</span>'),
+          paid: !dpOk ? dpWait : paid > 0.5 ? money(paid) : '<span style="color:#94a3b8">—</span>',
+          owed: !dpOk ? dpWait : owed > 0.5 ? '<b style="color:#b91c1c">' + money(owed) + '</b>' : (owed < -0.5 ? '<span style="color:#0f766e">' + money(-owed) + ' ahead</span>' : '<span style="color:#94a3b8">—</span>'),
           go: canPay ? '<button class="btn sm" data-act="dp-open" data-k="' + esc(g.key) + '" style="padding:2px 8px;font-size:12px">Record a payment</button>' : ''
         } };
     }), "what is proved, pending, paid and owed");
@@ -20271,14 +20400,18 @@ function viewCatalogue() {
       var vt = driverType(d);
       var _rk2 = drvResolve("id:" + String(d.id || "").trim());
       var _hasRow = rows.some(function (g) { return g.key === _rk2; });
+      var _mInto = drvMergedAway(d) ? (((S.data.drivers || []).filter(function (x) { return "id:" + String(x.id || "").trim() === _rk2; })[0] || {}).name || "another driver") : "";
       return { v: { name: d.name || "", mob: d.mobile || "", type: vt, veh: d.vehicle || "" },
         after: (S.dlOpen === _rk2 && !_hasRow) ? driverLedgerPanel(_rk2) : "",
         cells: {
-          name: '<a href="#" data-act="dl-open" data-k="' + esc(drvResolve("id:" + String(d.id || "").trim())) + '" style="font-weight:700;color:#0b3b36;text-decoration:underline dotted">' + esc(d.name) + '</a>',
+          name: '<a href="#" data-act="dl-open" data-k="' + esc(drvResolve("id:" + String(d.id || "").trim())) + '" style="font-weight:700;color:#0b3b36;text-decoration:underline dotted">' + esc(d.name) + '</a>' +
+            (_mInto ? ' <span class="pill" style="background:#e2e8f0;color:#334155" title="His trips and payments count under ' + esc(_mInto) + '">merged into ' + esc(_mInto) + '</span>' : ''),
           mob: d.mobile ? '<a href="tel:' + esc(d.mobile) + '">' + esc(d.mobile) + '</a>' : '<span style="color:#b45309">no mobile</span>',
           type: vt ? esc(vt) : '<span style="color:#b45309">not set</span>',
           veh: d.vehicle ? esc(d.vehicle) : '<span style="color:#b45309">not set</span>',
-          go: canManageDrivers() ? '<button class="btn sm ghost" data-act="dv-edit" data-id="' + esc(d.id) + '" style="padding:2px 8px;font-size:12px">Edit</button>' : ''
+          go: canManageDrivers() ? (_mInto
+            ? '<button class="btn sm ghost" data-act="dv-unmerge" data-k="' + esc("id:" + String(d.id || "").trim()) + '" style="padding:2px 8px;font-size:12px">Undo merge</button>'
+            : '<button class="btn sm ghost" data-act="dv-edit" data-id="' + esc(d.id) + '" style="padding:2px 8px;font-size:12px">Edit</button>') : ''
         } };
     }), "");
 
@@ -20490,15 +20623,18 @@ function viewCatalogue() {
   function modalDriverPayout(key) {
     var g = frRows().filter(function (x) { return x.key === key; })[0];
     if (!g) return '<h2>Not found</h2><div class="foot"><button class="btn" data-act="close">Close</button></div>';
-    var owed = stillOwed(g);
+    var owed = stillOwed(g), dpKnown = !!S.dp;   /* 6.9.626 - as the Challan app has done since 1.92.0 */
+    if (!dpKnown) dpPull().then(function (ok) { if (ok && S.modal) { S.modal = modalDriverPayout(key); render(); } });
     return '<h2>Pay ' + esc(g.name) + '</h2>' +
       '<p class="sub">' + esc([g.vehicle, g.mobile].filter(Boolean).join(" · ") || "no vehicle on file") + '</p>' +
       '<div class="card" style="background:#f8fafc;padding:9px 12px"><div style="font-size:13px">' +
-        'Proved trips <b>' + money(g.ready) + '</b> &middot; already paid <b>' + money(paidTo(g.key)) + '</b><br>' +
-        (owed >= 0 ? 'Still owed <b>' + money(owed) + '</b>' : '<b>He is ' + money(-owed) + ' ahead</b> — more has been paid than proved trips come to') + '</div>' +
+        (dpKnown
+          ? 'Proved trips <b>' + money(g.ready) + '</b> &middot; already paid <b>' + money(paidTo(g.key)) + '</b><br>' +
+            (owed >= 0 ? 'Still owed <b>' + money(owed) + '</b>' : '<b>He is ' + money(-owed) + ' ahead</b> — more has been paid than proved trips come to')
+          : 'Proved trips <b>' + money(g.ready) + '</b><br><b style="color:#b91c1c">What he has already been paid has not loaded</b> &mdash; reading it now. Do not pay until it shows.') + '</div>' +
         (g.held > 0 ? '<div class="meta" style="font-size:12.5px;color:#92400e;margin-top:4px">' + money(g.held) + ' more is receipt pending on ' + g.heldN + ' deliver' + (g.heldN === 1 ? 'y' : 'ies') + ' and is NOT in the figure above.</div>' : '') +
       '</div>' +
-      '<label>Amount paid</label><input id="dp_amt" inputmode="numeric" value="' + (owed > 0 ? esc(String(Math.round(owed))) : "") + '" placeholder="0"/>' +
+      '<label>Amount paid</label><input id="dp_amt" inputmode="numeric" value="' + (dpKnown && owed > 0 ? esc(String(Math.round(owed))) : "") + '" placeholder="0"/>' +
       '<label>How</label><select id="dp_mode">' + ["Cash", "Bank transfer", "UPI", "Cheque", "Adjusted"].map(function (m) { return '<option>' + m + '</option>'; }).join("") + '</select>' +
       '<label>Reference (UTR, cheque no — optional)</label><input id="dp_ref" value=""/>' +
       '<label>Note (optional)</label><input id="dp_note" value=""/>' +
@@ -39993,7 +40129,7 @@ function viewCatalogue() {
        incentives from commpay, and driver payouts from the Drivers & freight corner (S.dp, the
        server's driverpay list - pulled once here if the freight screen has not pulled it yet).
        Before this the driver money was on another screen and the note below said "not here". */
-    if (S.data && !S.dp && !_dpTried) { _dpTried = true; dpPull().then(function (g) { if (g) render(); }); }
+    if (S.data && !S.dp && !_dpTried) { _dpTried = true; dpPull().then(function () { render(); }); }
     var log = rows;
     h += '<h3 style="margin:16px 0 6px;font-size:15px">Payments made, date-wise</h3>';
     if (!log.length) {
@@ -40008,7 +40144,9 @@ function viewCatalogue() {
                    amt: money(p.amt), mode: esc(p.mode || "\u2014"), "for": esc(p.forWhat || "\u2014"),
                    by: p.by ? whoChip(p.by) : "\u2014" } };
       }), "how and for what");
-      if (!S.dp) h += '<div class="meta" style="font-size:12px;margin-top:4px">Driver payouts are being read from the server\u2026</div>';
+      if (!S.dp) h += S.dpErr
+        ? '<div class="meta" style="font-size:12px;margin-top:4px;color:#b91c1c">Driver payouts could not be read (' + esc(S.dpErr) + ') \u2014 they are NOT in this list. <button class="btn sm ghost" data-act="dp-retry">Try again</button></div>'
+        : '<div class="meta" style="font-size:12px;margin-top:4px">Driver payouts are being read from the server\u2026</div>';
     }
 
     /* ---- the two kinds of money-out that are NOT here, said out loud ---- */
@@ -47010,6 +47148,57 @@ function viewCatalogue() {
       return;
     }
     if (act === "dl-xlsx") { driverLedgerXlsx(t.getAttribute("data-k") || ""); return; }
+    if (act === "dp-retry") {
+      S.dp = null; S.dpErr = ""; _dpTried = true; render();
+      dpPull().then(function () { render(); }); return;
+    }
+    if (act === "dv-merge") {
+      if (!canManageDrivers()) { toast("Merging drivers is for accounts."); return; }
+      S.modal = modalDriverMerge(t.getAttribute("data-ks") || ""); render(); return;
+    }
+    if (act === "dv-merge-save" || act === "dv-notdup") {
+      if (!canManageDrivers()) { toast("Merging drivers is for accounts."); return; }
+      var _mks = String(t.getAttribute("data-ks") || "").split("|").filter(Boolean);
+      var _mnm = function (k) {
+        var _d = k.indexOf("id:") === 0 ? (S.data.drivers || []).filter(function (x) { return String(x.id || "").trim() === k.slice(3); })[0] : null;
+        var _g = frRows().filter(function (x) { return x.key === k; })[0];
+        return String((_d && _d.name) || (_g && _g.name) || k);
+      };
+      var _mnow = new Date().toISOString();
+      if (act === "dv-notdup") {
+        for (var _mi = 0; _mi < _mks.length; _mi++) for (var _mj = _mi + 1; _mj < _mks.length; _mj++) {
+          var _nr = { id: mintId("DN"), createdAt: _mnow, actor: S.user || "", action: "driver:notdup",
+            target: _mnm(_mks[_mi]) + " / " + _mnm(_mks[_mj]),
+            detail: JSON.stringify({ a: _mks[_mi], b: _mks[_mj], aName: _mnm(_mks[_mi]), bName: _mnm(_mks[_mj]) }) };
+          (S.data.audit = S.data.audit || []).push(_nr); save("audit", _nr, true);
+        }
+        S.modal = null; render(); toast("Noted \u2014 they stay two drivers, and this will not ask again.");
+        return;
+      }
+      var _keep = String(val("dm_keep") || "").trim();
+      if (!_keep || _mks.indexOf(_keep) < 0) { toast("Pick which one to keep."); return; }
+      _mks.forEach(function (k) {
+        if (k === _keep) return;
+        var _lr = { id: mintId("DL"), createdAt: _mnow, actor: S.user || "", action: "driver:link",
+          target: _mnm(k) + " -> " + _mnm(_keep),
+          detail: JSON.stringify({ from: k, to: _keep, fromName: _mnm(k), toName: _mnm(_keep), why: "merge: same mobile or vehicle" }) };
+        (S.data.audit = S.data.audit || []).push(_lr); save("audit", _lr, true);
+      });
+      _dlCache = null; S.dlOpen = drvResolve(_keep); S.modal = null; render();
+      toast("Merged into " + _mnm(_keep) + " \u2014 one ledger now.");
+      return;
+    }
+    if (act === "dv-unmerge") {
+      if (!canManageDrivers()) { toast("Merging drivers is for accounts."); return; }
+      var _uk = t.getAttribute("data-k") || "";
+      var _ud = (S.data.drivers || []).filter(function (x) { return "id:" + String(x.id || "").trim() === _uk; })[0] || {};
+      var _ur = { id: mintId("DL"), createdAt: new Date().toISOString(), actor: S.user || "", action: "driver:link",
+        target: String(_ud.name || _uk) + " -> (own ledger again)",
+        detail: JSON.stringify({ from: _uk, to: "", fromName: _ud.name || "", toName: "", why: "merge undone" }) };
+      (S.data.audit = S.data.audit || []).push(_ur); save("audit", _ur, true);
+      _dlCache = null; render(); toast(String(_ud.name || "He") + " has his own ledger again.");
+      return;
+    }
     if (act === "dl-link") {
       if (!canManageDrivers()) { toast("Linking drivers is for accounts."); return; }
       S.modal = modalDriverLink(t.getAttribute("data-k") || ""); render(); return;
@@ -47063,6 +47252,9 @@ function viewCatalogue() {
       if (_nm && _nm.length !== 10) { toast("A mobile is 10 digits, or leave it blank."); return; }
       var _clash = (S.data.drivers || []).filter(function (d) { return String(d.id) !== _sid && dkey(d.name) === dkey(_nn); })[0];
       if (_clash) { toast(_nn + " is already on the register."); return; }
+      var _same = drvSameAs(_nm, _nv, _sid), _sameK = "e|" + _sid + "|" + _nm + "|" + _nv;   /* 6.9.626 */
+      if (_same && S.dvDupOk !== _sameK) { S.dvDupOk = _sameK; toast(_same.d.name + " already has " + _same.what + ". If they are one man, use Review & merge instead. If not, press Save again."); return; }
+      S.dvDupOk = null;
       var _vtS = (S.dedit && S.dedit.id === _sid) ? S.dedit.vtype : driverType(_d0);
       var _upd = Object.assign({}, _d0, { name: _nn, mobile: _nm, vehicle: _nv, vehicleType: _vtS || "" });
       save("drivers", _upd);
@@ -47094,10 +47286,13 @@ function viewCatalogue() {
         forTrips: dg.readyN + " trips, " + Math.round(dg.ready)
       };
       var _dpl = t.textContent; t.disabled = true; t.textContent = "Recording…";
-      api("driverPaySave", body, 20000).then(function (r) {
+      /* 6.9.626 / 1.110.0 - measured 26 Sep: a Rs 1,500 payout to Satish gave up at 20 s ("no answer"); sheet writes run 18-40 s on this book */
+      api("driverPaySave", body, 60000).then(function (r) {
         if (!r || !r.ok) { btnBack(t, _dpl); toast((r && r.error) || "The server refused it. Nothing was recorded."); return; }
-        S.dp = S.dp || { rows: [] };
-        S.dp.rows.push({ id: r.id, createdAt: new Date().toISOString(), createdBy: S.user,
+        /* 6.9.626 - if the list had never been read, "S.dp || {rows:[]}" made it a list of ONE
+           payment, and every other driver's payments vanished from this screen. Read it whole. */
+        if (!S.dp) { S.dpErr = ""; _dpTried = true; dpPull().then(function () { render(); }); }
+        else S.dp.rows.push({ id: r.id, createdAt: new Date().toISOString(), createdBy: S.user,
                          driverId: body.driverId, driver: body.driver, amount: damt,
                          mode: body.mode, ref: body.ref, forTrips: body.forTrips, note: body.note });
         S.modal = null; render();
@@ -48862,6 +49057,9 @@ function viewCatalogue() {
       if (!dnName) { toast("His name, at least."); return; }
       if (dnMob && dnMob.length !== 10) { toast("A mobile is 10 digits, or leave it blank."); return; }
       if (driverByNameC(dnName)) { toast(dnName + " is already on the register."); return; }
+      var _sameN = drvSameAs(dnMob, dnVeh, ""), _sameNK = "n|" + dnName + "|" + dnMob + "|" + dnVeh;   /* 6.9.626 */
+      if (_sameN && S.dvDupOk !== _sameNK) { S.dvDupOk = _sameNK; toast(_sameN.d.name + " is already on the register with " + _sameN.what + ". If it is him, pick him instead. If he really is a different man, press Add him again."); return; }
+      S.dvDupOk = null;
       var _wk = (S.dnew && S.dnew.withKey) || "";      /* v6.9.600 - read before the form is cleared */
       var dBack2 = S.dvBack;
       S.dvBack = null; S.dnew = null;
