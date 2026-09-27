@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.631";
+  var APP_VERSION = "6.9.632";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -41293,6 +41293,7 @@ function viewCatalogue() {
       }).join("") +
       '<button class="btn sm ghost" style="min-height:44px" data-act="stk-plan">Plan settings</button>' +
       '<button class="btn sm ghost" style="min-height:44px" data-act="stk-lv-xlsx">&#8681; Excel for the sales meeting</button>' +   /* 6.9.629 */
+      '<label class="btn sm ghost" style="min-height:44px;display:inline-flex;align-items:center;cursor:pointer">&#8679; Load levels from Excel<input type="file" id="stk_lv_file" accept=".xlsx,.xls" style="display:none"/></label>' +   /* 6.9.632 */
       (useable.length ? '<button class="btn sm" style="min-height:44px" data-act="stk-lv-all" data-n="' + useable.length + '">Use all ' + useable.length + ' shown</button>' : '') +
       '</div>' + (S.lvSave ? '<div style="font-size:13px;font-weight:700;color:#0f766e;margin-top:6px">' + esc(S.lvSave) + '</div>' : '') + '</div>';
     if (!rows.length) return h + '<div class="empty">' + (f === "change" ? 'Every level already matches its suggestion.' : 'No products in this group.') + '</div>';
@@ -41319,7 +41320,7 @@ function viewCatalogue() {
     });
     S.stock = (S.stock || []).concat(rows);
     var next = 0, ok = 0, bad = 0, why = "", total = rows.length;
-    var say = function () { S.lvSave = (ok + bad < total) ? "Saving levels… " + (ok + bad) + " of " + total : (bad ? ok + " saved, " + bad + " NOT saved (" + why + ") — they are on this screen until the next refresh; press Use again." : "All " + ok + " levels saved."); renderBg(); };
+    var say = function () { S.lvSave = (ok + bad < total) ? "Saving levels… " + (ok + bad) + " of " + total : (bad ? ok + " saved, " + bad + " NOT saved (" + why + ") — they are on this screen until the next refresh; press Use again." : "All " + ok + " levels saved."); if (S.lvImp && S.lvImp.done && S.modal && String(S.modal).indexOf('data-lvimp') >= 0) { S.modal = modalStkLvImport(); render(); } else renderBg(); };   /* 6.9.632 - the preview shows it too */
     var lane = function () {
       if (next >= rows.length) return Promise.resolve();
       var r = rows[next++];
@@ -41440,6 +41441,102 @@ function viewCatalogue() {
     }).catch(function (e) { toast("Could not make the Excel: " + ((e && e.message) || "error")); })
       .then(function () { _stkXlBusy = false; });
   }
+
+  /* ===== 6.9.632 - THE AGREED LEVELS, LOADED BACK =====
+     His words, with the filled sheet: "these are inventory stock level, set as per attached sheet".
+     Reads the Excel this app gives out (or any sheet with a Code column): per row the Agreed
+     columns when any is filled, else Critical set / Reorder set / Max set, else plain Critical /
+     Reorder / Max. A row with all three blank is not touched. Nothing is written until he presses
+     Save on the preview; a row that does not read critical <= reorder <= max is shown and left out. */
+  function stkLvParse(aoa) {
+    var hi = -1, H = [];
+    for (var r = 0; r < Math.min(aoa.length, 15); r++) {
+      var row = (aoa[r] || []).map(function (x) { return String(x == null ? "" : x).trim().toLowerCase(); });
+      if (row.indexOf("code") >= 0) { hi = r; H = row; break; }
+    }
+    if (hi < 0) return { err: "No column headed Code was found in the first rows of the sheet." };
+    var col = function (names) { for (var i = 0; i < names.length; i++) { var k = H.indexOf(names[i]); if (k >= 0) return k; } return -1; };
+    var cC = H.indexOf("code"), cP = col(["product", "description", "item"]);
+    var ag = [col(["agreed critical"]), col(["agreed reorder"]), col(["agreed max"])];
+    var st = [col(["critical set", "critical", "critical stock", "min"]), col(["reorder set", "reorder", "reorder point", "reorder level"]), col(["max set", "max", "maximum"])];
+    if (st[1] < 0 && ag[1] < 0) return { err: "No Reorder column was found (Reorder set, Reorder, or Agreed reorder)." };
+    var blank = function (v) { return v === null || v === undefined || String(v).trim() === ""; };
+    var n = function (v) { var x = Number(String(v).replace(/[^0-9.]/g, "")); return isFinite(x) ? x : 0; };
+    var out = [];
+    for (var i = hi + 1; i < aoa.length; i++) {
+      var a = aoa[i] || [], code = String(a[cC] == null ? "" : a[cC]).trim();
+      if (!code) continue;
+      var pick = ag.some(function (k) { return k >= 0 && !blank(a[k]); }) ? ag : st;
+      var v = pick.map(function (k) { return k >= 0 ? a[k] : ""; });
+      if (v.every(blank)) continue;
+      out.push({ code: code, desc: cP >= 0 ? String(a[cP] || "") : "", crit: n(v[0]), min: n(v[1]), max: n(v[2]), from: pick === ag ? "agreed" : "set" });
+    }
+    return { rows: out };
+  }
+  function stkLvPlan(parsed) {
+    var lvl = stkLvl(), pm = stkPMap(), keyOf = function (x) { return String(x || "").replace(/\s+/g, "").toLowerCase(); }, byKey = {};
+    Object.keys(pm).forEach(function (k) { byKey[keyOf(k)] = k; });
+    var plan = { change: [], same: 0, unknown: [], doubt: [], cleared: 0 };
+    parsed.rows.forEach(function (r) {
+      var code = pm[r.code] ? r.code : byKey[keyOf(r.code)];
+      if (!code) { plan.unknown.push(r); return; }
+      var cur = lvl[code] || { crit: 0, min: 0, max: 0, pack: 0 };
+      if ((r.crit && r.min && r.crit > r.min) || (r.max && r.min > r.max)) { r.code = code; r.cur = cur; plan.doubt.push(r); return; }
+      if ((cur.crit || 0) === r.crit && (cur.min || 0) === r.min && (cur.max || 0) === r.max) { plan.same++; return; }
+      if (!r.crit && !r.min && !r.max) plan.cleared++;
+      plan.change.push({ code: code, desc: (pm[code] || {}).desc || r.desc, crit: r.crit, min: r.min, max: r.max, pack: cur.pack || 0, cur: cur });
+    });
+    return plan;
+  }
+  function modalStkLvImport() {
+    var p = S.lvImp || {}, pl = p.plan || { change: [], unknown: [], doubt: [] };
+    var trio = function (a, b, c) { return (a || 0) + ' \u00b7 ' + (b || 0) + ' \u00b7 ' + (c || 0); };
+    var cell = 'style="padding:5px 6px;border-bottom:1px solid #eef2f7;font-size:13px"';
+    var h = '<h2 data-lvimp="1">Levels from ' + esc(p.file || "the sheet") + '</h2>' +
+      '<p class="sub">Critical \u00b7 Reorder \u00b7 Max, per product. Nothing is saved until you press the button below.</p>' +
+      '<div class="cards" style="margin:6px 0 10px">' +
+        '<div class="stat"><div class="n">' + pl.change.length + '</div><div class="l">to set or change</div></div>' +
+        '<div class="stat"><div class="n">' + (pl.same || 0) + '</div><div class="l">already the same</div></div>' +
+        '<div class="stat' + (pl.doubt.length ? ' alert' : '') + '"><div class="n">' + pl.doubt.length + '</div><div class="l">not in order \u2014 left out</div></div>' +
+        '<div class="stat' + (pl.unknown.length ? ' alert' : '') + '"><div class="n">' + pl.unknown.length + '</div><div class="l">code not on the price list</div></div></div>';
+    if (pl.doubt.length) h += '<div class="card" style="border-color:#fecaca;background:#fef2f2"><b style="color:#b91c1c">Left out \u2014 critical must not be above reorder, and reorder not above max:</b>' +
+      pl.doubt.map(function (r) { return '<div style="font-size:13px;margin-top:4px"><b>' + esc(r.code) + '</b> ' + esc(r.desc || "") + ' \u2014 critical ' + r.crit + ', reorder ' + r.min + ', max ' + r.max + '</div>'; }).join("") +
+      '<div class="meta" style="font-size:12px;margin-top:4px">Correct these on the product (Levels \u203a Edit) or in the sheet and load it again.</div></div>';
+    if (pl.unknown.length) h += '<div class="card" style="border-color:#fcd34d;background:#fffbeb"><b>Codes not on the price list (not saved):</b> ' + esc(pl.unknown.slice(0, 30).map(function (r) { return r.code; }).join(", ")) + (pl.unknown.length > 30 ? ' and ' + (pl.unknown.length - 30) + ' more' : '') + '</div>';
+    if (pl.change.length) {
+      h += '<div style="overflow-x:auto;max-height:46vh;overflow-y:auto;border:1px solid #e2e8f0;border-radius:10px"><table style="border-collapse:collapse;width:100%">' +
+        '<thead><tr style="background:#f1f5f9;text-align:left"><th ' + cell + '>Product</th><th ' + cell + '>Now</th><th ' + cell + '>New</th></tr></thead><tbody>' +
+        pl.change.map(function (r) {
+          return '<tr><td ' + cell + '><b>' + esc(r.desc || r.code) + '</b><div style="font-size:12px;color:#64748b">' + esc(r.code) + '</div></td>' +
+            '<td ' + cell + ' style="white-space:nowrap;color:#64748b">' + ((r.cur.crit || r.cur.min || r.cur.max) ? trio(r.cur.crit, r.cur.min, r.cur.max) : 'not set') + '</td>' +
+            '<td ' + cell + ' style="white-space:nowrap"><b>' + ((r.crit || r.min || r.max) ? trio(r.crit, r.min, r.max) : 'none (clears it)') + '</b></td></tr>';
+        }).join("") + '</tbody></table></div>';
+    }
+    h += (S.lvSave ? '<div style="font-size:13px;font-weight:700;color:#0f766e;margin-top:8px">' + esc(S.lvSave) + '</div>' : '') +
+      '<div class="foot"><button class="btn ghost" data-act="close">' + (p.done ? 'Close' : 'Cancel') + '</button>' +
+      (pl.change.length && !p.done ? '<button class="btn" data-act="stk-lvimp-go">Save ' + plural(pl.change.length, "level") + '</button>' : '') + '</div>';
+    return h;
+  }
+  document.addEventListener("change", function (ev) {
+    var tg = ev && ev.target; if (!tg || tg.id !== "stk_lv_file" || !tg.files || !tg.files[0]) return;
+    var f = tg.files[0]; tg.value = "";
+    toast("Reading " + f.name + "\u2026");
+    xlsxReady().then(function (X) {
+      if (!X) { toast("The Excel reader did not load \u2014 check the connection and pick the file again."); return; }
+      var rd = new FileReader();
+      rd.onload = function () {
+        try {
+          var wb = X.read(new Uint8Array(rd.result), { type: "array" });
+          var ws = wb.Sheets[wb.SheetNames[0]];
+          var parsed = stkLvParse(X.utils.sheet_to_json(ws, { header: 1, defval: "", raw: true }));
+          if (parsed.err) { toast(parsed.err); return; }
+          S.lvSave = ""; S.lvImp = { file: f.name, plan: stkLvPlan(parsed) };
+          S.modal = modalStkLvImport(); render();
+        } catch (e) { toast("Couldn't read that file: " + ((e && e.message) || "error")); }
+      };
+      rd.readAsArrayBuffer(f);
+    });
+  });
 
   /* ---- plan settings ---- */
   function modalStkPlan() {
@@ -44039,6 +44136,13 @@ function viewCatalogue() {
       toast("Filled in \u2014 press Save to keep them."); return;
     }
     if (act === "stk-plan") { S.modal = modalStkPlan(); render(); return; }
+    if (act === "stk-lvimp-go") {   /* 6.9.632 */
+      var _li = S.lvImp; if (!_li || !_li.plan || _li.done) return;
+      _li.done = true;
+      stkLvlSave(_li.plan.change.map(function (r) { return { code: r.code, min: r.min, max: r.max, crit: r.crit, pack: r.pack || 0 }; }));
+      S.modal = modalStkLvImport(); render();
+      return;
+    }
     if (act === "stk-plan-save") {
       var _pv = function (id, d) { var v = String((el(id) || {}).value || "").trim(); return v === "" ? d : Math.max(0, Number(v) || 0); };
       var _lead = {};
