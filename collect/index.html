@@ -146,7 +146,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.55.0";
+  var APP_VERSION = "1.56.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_collect_session";
 
@@ -1740,11 +1740,34 @@ function dgKey(s) {
       if (d.kind !== "fix") return;
       var mn = String((d.det && d.det.mainName) || "").trim();
       if (!mn) return;
+      /* 27 Sep 2026 - NEWEST WINS, BOTH WAYS. A driver merged one way and then the other made a
+         loop that undid both; a name here had the same two holes. (1) A man made the MAIN name
+         after he had been an alias stayed an alias of his old main. (2) A name merged again
+         under a new main stayed on the old main's list as well, so both families counted it. */
+      var _unAlias = function (k) {
+        var v = byName[k]; if (!v) return;
+        var ok = dgKey(v.main);
+        aliasOf[ok] = (aliasOf[ok] || []).filter(function (x) { return dgKey(x) !== k; });
+        if (!aliasOf[ok].length) delete aliasOf[ok];
+        delete byName[k];
+      };
+      var mk0 = dgKey(mn);
+      _unAlias(mk0);
       ((d.det && d.det.aliases) || []).forEach(function (a) {
         var an = String(a.name || "").trim();
-        if (!an || dgKey(an) === dgKey(mn)) return;
-        byName[dgKey(an)] = { main: mn, alias: an, id: String(a.id || ""), mainId: String((d.det && d.det.main) || ""), at: d.at, by: d.by };
-        (aliasOf[dgKey(mn)] = aliasOf[dgKey(mn)] || []).push(an);
+        if (!an || dgKey(an) === mk0) return;
+        var ak = dgKey(an);
+        _unAlias(ak);
+        byName[ak] = { main: mn, alias: an, id: String(a.id || ""), mainId: String((d.det && d.det.main) || ""), at: d.at, by: d.by };
+        (aliasOf[mk0] = aliasOf[mk0] || []).push(an);
+        /* whoever was filed under the name just folded in comes along to the new main */
+        Object.keys(byName).forEach(function (k) {
+          var v = byName[k];
+          if (k === ak || k === mk0 || dgKey(v.main) !== ak) return;
+          byName[k] = { main: mn, alias: v.alias, id: v.id, mainId: String((d.det && d.det.main) || ""), at: v.at, by: v.by };
+          if (aliasOf[mk0].map(dgKey).indexOf(k) < 0) aliasOf[mk0].push(v.alias);
+        });
+        delete aliasOf[ak];
       });
     });
     _aliasCache = { byName: byName, aliasOf: aliasOf };
