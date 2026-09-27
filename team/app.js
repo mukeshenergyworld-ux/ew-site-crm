@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.629";
+  var APP_VERSION = "6.9.630";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -19472,7 +19472,8 @@ function viewCatalogue() {
       var cls = stt === "Received" ? "Won" : (stt === "Raised" ? "due" : "teal");
       var its = [];
       try { its = JSON.parse(r.itemsJson || "[]"); } catch (e) { }
-      var itxt = its.map(function (x) { return String(x.desc || x.code || "") + " x" + (Number(x.qty) || 0); }).join(", ");
+      var itxt = its.map(function (x) { return x.lump ? String(x.brand || "") + " " + money(Number(x.rate) || 0) + " (old rate, total)" : String(x.desc || x.code || "") + " x" + (Number(x.qty) || 0); }).join(", ");
+      var _rPic = (its.filter(function (x) { return x && x.lump && x.pic; })[0] || {}).pic || "";   /* 6.9.630 */
       var d = String(r.createdAt || "").slice(0, 10);
       return { v: { no: r.returnNo || "", st: stt, go: "", client: r.customerName || "", against: r.challanNo || "", items: itxt, reason: r.reason || "",
                     pickup: r.driver || "", raised: d, by: r.createdBy || "", "in": r.receivedBy || "" },
@@ -19486,7 +19487,7 @@ function viewCatalogue() {
               (stt === "Received" ? retFinaliseBtn(r) + ' ' : "") +
               cxCardBtn("returns", r.id),
           client: '<b>' + esc(r.customerName || "") + '</b>' + (r.site ? ' <span style="color:#64748b">' + esc(r.site) + '</span>' : ""),
-          against: esc(r.challanNo || "—"), items: esc(itxt || "—"), reason: esc(r.reason || "—"),
+          against: esc(r.challanNo || "—"), items: esc(itxt || "—") + (_rPic ? ' <a href="' + esc(_rPic) + '" target="_blank" rel="noopener" style="white-space:nowrap">&#128206; photo of the old paper</a>' : ''), reason: esc(r.reason || "—"),
           pickup: r.driver ? esc(r.driver) + (r.vehicle ? " (" + esc(r.vehicle) + ")" : "") : "—",
           raised: esc(dmy(d)), by: whoChip(r.createdBy), "in": r.receivedBy ? whoChip(r.receivedBy) : "—"
         } };
@@ -19538,6 +19539,16 @@ function viewCatalogue() {
   function chDraftKey() { return "ew_chdraft_" + String(S.user || ""); }
   document.addEventListener("input", function () { if (S.ch && el("m_client")) chDraftKeepSoon(); });
   document.addEventListener("change", function () { if (S.ch && el("m_client")) chDraftKeepSoon(); });
+  /* 6.9.630 - the old paper's photo, held the moment it is picked; a brand chosen repaints the total */
+  document.addEventListener("change", function (ev) {
+    var tg = ev && ev.target; if (!tg || !S.rt || !S.rt.lump) return;
+    if (tg.id === "rtl_pic" && tg.files && tg.files[0]) {
+      rtLumpSync(); S.rt.lumpFile = tg.files[0];
+      var rs = keepFields(RT_FIELDS); keepScroll = true; S.modal = modalReturn(); render(); rs();
+    } else if (/^rtl_[ba]\d+$/.test(tg.id || "")) {
+      rtLumpSync(); var rs2 = keepFields(RT_FIELDS); keepScroll = true; S.modal = modalReturn(); render(); rs2();
+    }
+  });
   var _chDraftT = null;
   function chDraftKeep() {
     if (!S.ch || S.ch.editId || !el("m_client")) return;
@@ -19620,10 +19631,15 @@ function viewCatalogue() {
       strictAgainstField("r_ch", (S.rt && S.rt.client) || "", (z && z.challanNo) || "") +
       '<label>Reason</label><select id="r_reason">' +
       opts(["Excess at site", "Damaged", "Wrong item supplied", "Client cancelled", "Other"], "Excess at site") + '</select>' +
-      '<h3 style="margin:14px 0 4px;font-size:14px">Material coming back ' +
+      /* 6.9.630 - two ways to say what came back: the items, or an old delivery's total */
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 4px">' +
+        '<button class="btn sm' + (z.lump ? ' ghost' : '') + '" style="min-height:44px" data-act="rt-mode" data-v="">Pick the items</button>' +
+        '<button class="btn sm' + (z.lump ? '' : ' ghost') + '" style="min-height:44px" data-act="rt-mode" data-v="1">Old delivery \u2014 total amount only</button></div>' +
+      (z.lump ? rtLumpBox(z) :
+      '<h3 style="margin:10px 0 4px;font-size:14px">Material coming back ' +
       '<span class="pill teal">' + (z.items || []).length + ' picked</span></h3>' +
       '<div id="rt_pick">' + rtPicker() + '</div>' +
-      pickedTable(z, PICKERS.rt) +
+      pickedTable(z, PICKERS.rt)) +
       '<div class="grid2" style="margin-top:10px">' +
       '<div>' + strictDriverField("r_driver", (z && z.driver) || "", "Pickup driver") + '</div>' +
       '<div><label>Freight on the return</label><input id="r_freight" inputmode="numeric" value="0"/></div>' +
@@ -19634,6 +19650,68 @@ function viewCatalogue() {
 
   /* v6.9.454 - the one picker (prodPicker); this form's own state and acts */
   function rtPicker() { return prodPicker(S.rt, PICKERS.rt); }
+  /* ===== 6.9.630 - AN OLD DELIVERY COMING BACK, BY ITS TOTAL =====
+     His words: "make option to register items at old rate, total amt only with attached screenshot,
+     however it will affect partner incentive". One amount per brand, a line saying what it is, and a
+     photo of the old paper. Each amount is saved as a "worked out by hand" line (manualLine): no
+     discount is taken off it - it is credited exactly as typed - and it carries its brand, so when
+     the goods are booked in at the godown the partner's incentive on that brand is reversed at his
+     rate, as for any return. */
+  function rtLumpRows(z) {
+    if (!z.lumpRows || !z.lumpRows.length) z.lumpRows = [{ brand: "", amt: "" }];
+    return z.lumpRows;
+  }
+  /* what is on the screen, into the state - before every repaint and before saving */
+  function rtLumpSync() {
+    var z = S.rt; if (!z || !z.lump) return;
+    rtLumpRows(z).forEach(function (r, i) {
+      var b = el("rtl_b" + i), a = el("rtl_a" + i);
+      if (b) r.brand = String(b.value || "").trim();
+      if (a) r.amt = String(a.value || "").replace(/[^0-9.]/g, "");
+    });
+    var d = el("rtl_desc"); if (d) z.lumpDesc = d.value;
+  }
+  function rtLumpLines(z) {
+    return rtLumpRows(z).filter(function (r) { return r.brand && num(r.amt) > 0; })
+      .map(function (r) { return { brand: r.brand, amt: Math.round(num(r.amt)) }; });
+  }
+  function rtLumpBox(z) {
+    var rows = rtLumpRows(z), brands = brandList();
+    var inp = 'style="width:100%;box-sizing:border-box;min-height:44px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:15px;background:#fff"';
+    var tot = rtLumpLines(z).reduce(function (a, x) { return a + x.amt; }, 0);
+    var h = '<div class="card" style="border-color:#fecaca;background:#fef2f2;padding:10px 12px;margin-top:6px">' +
+      '<div style="font-weight:800;color:#b91c1c">Goods from an old delivery, at the old rate</div>' +
+      '<div class="meta" style="font-size:12.5px;margin:2px 0 8px">Type what the client was billed for the goods coming back, brand by brand. The amount is credited <b>exactly as typed</b> \u2014 no discount is taken off it. The brand decides the incentive: when the goods are booked in at the godown, the partner\u2019s incentive on that brand comes off at his rate, as for any return.</div>' +
+      rows.map(function (r, i) {
+        return '<div style="display:flex;gap:6px;align-items:flex-end;margin-bottom:6px">' +
+          '<div style="flex:1 1 55%"><label style="margin-top:0">Brand</label><select id="rtl_b' + i + '" ' + inp + '><option value="">\u2014 pick the brand \u2014</option>' +
+            brands.map(function (b) { return '<option' + (b === r.brand ? ' selected' : '') + '>' + esc(b) + '</option>'; }).join("") + '</select></div>' +
+          '<div style="flex:1 1 40%"><label style="margin-top:0">Amount (Rs)</label><input id="rtl_a' + i + '" inputmode="decimal" value="' + esc(r.amt || "") + '" placeholder="e.g. 12500" ' + inp + '/></div>' +
+          (rows.length > 1 ? '<button class="btn sm ghost" style="min-height:44px;min-width:44px" data-act="rt-lump-del" data-i="' + i + '" title="Remove this brand">\u2715</button>' : '') +
+          '</div>';
+      }).join("") +
+      '<button class="btn sm ghost" style="min-height:44px" data-act="rt-lump-add">+ Another brand</button>' +
+      '<label>What is coming back</label><input id="rtl_desc" value="' + esc(z.lumpDesc || "") + '" placeholder="e.g. PPR fittings from the March 2026 bill" ' + inp + '/>' +
+      '<label>Photo of the old bill or paper <span style="color:#b91c1c">(needed)</span></label>' +
+      (z.lumpFile
+        ? '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="pill" style="background:#dcfce7;color:#166534">\u2713 ' + esc(z.lumpFile.name || "photo") + '</span>' +
+          '<button class="btn sm ghost" style="min-height:44px" data-act="rt-lump-pic-clear">Change</button></div>'
+        : '<input type="file" id="rtl_pic" accept="image/*" capture="environment" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;background:#fff"/>') +
+      '<div style="margin-top:10px;font-size:14px"><b>Total credited: ' + money(tot) + '</b></div>';
+    /* who loses what when it is booked in - the owner sees it before he presses Register */
+    if (tot > 0 && roleIs("admin")) {
+      var cl = val("r_client") || z.client || "";
+      var who = [];
+      try {
+        who = cl ? incPreview({ customerName: cl }, rtLumpLines(z).map(function (x) { return { brand: x.brand, amt: x.amt, job: false }; }))
+          .filter(function (m) { return m.amt > 0.5; }) : [];
+      } catch (e) { who = []; }
+      h += '<div class="meta" style="font-size:12.5px;margin-top:4px">' + (!cl ? 'Pick the client to see whose incentive comes off.' :
+        who.length ? 'When booked in, incentive comes off: ' + who.map(function (m) { return '<b>' + esc(m.name) + '</b> ' + money(Math.round(m.amt)) + (m.pct ? ' (' + m.pct + '%)' : ''); }).join(', ') + '.'
+          : 'Nobody earns an incentive on these brands for this client, so no incentive comes off.') + '</div>';
+    }
+    return h + '</div>';
+  }
 
   /* Deliveries hub: Challans + Material returns are one lifecycle, so they share a screen with
      a small sub-tab switch instead of two top-level tabs. Each sub-view is unchanged. */
@@ -48948,6 +49026,17 @@ function viewCatalogue() {
       return;
     }
     if (act === "rt-new") { S.rt = { brand: "", family: "", items: [] }; S.modal = modalReturn(); render(); return; }
+    if (act === "rt-mode" || act === "rt-lump-add" || act === "rt-lump-del" || act === "rt-lump-pic-clear") {   /* 6.9.630 */
+      if (!S.rt) return;
+      rtLumpSync();
+      var rsL = keepFields(RT_FIELDS);
+      if (act === "rt-mode") S.rt.lump = !!t.getAttribute("data-v");
+      else if (act === "rt-lump-add") rtLumpRows(S.rt).push({ brand: "", amt: "" });
+      else if (act === "rt-lump-del") rtLumpRows(S.rt).splice(Number(t.getAttribute("data-i")) || 0, 1);
+      else S.rt.lumpFile = null;
+      keepScroll = true; S.modal = modalReturn(); render(); rsL();
+      return;
+    }
     if (act === "rt-brand" || act === "rt-fam" || act === "rt-brandclear" || act === "rt-famclear") {
       var restoreR = keepFields(RT_FIELDS);
       if (act === "rt-brand") { S.rt.brand = t.getAttribute("data-brand"); S.rt.family = ""; S.rt.q = ""; }
@@ -49094,6 +49183,17 @@ function viewCatalogue() {
       var rcl = val("r_client");
       if (!rcl) { toast("Pick a registered client from the list, or tap + Register new."); return; }
       if (!clientByName(rcl)) { toast("“" + rcl + "” isn’t a registered client — register it first."); return; }
+      /* 6.9.630 - an old delivery by its total: brand + amount lines, a photo, then the same save */
+      var _lump = !!S.rt.lump, _lumpL = [], _lumpDesc = "";
+      if (_lump) {
+        rtLumpSync();
+        _lumpL = rtLumpLines(S.rt);
+        var _half = rtLumpRows(S.rt).filter(function (r) { return (r.brand && !(num(r.amt) > 0)) || (!r.brand && num(r.amt) > 0); });
+        if (_half.length) { toast(_half[0].brand ? "Type the amount for " + _half[0].brand + "." : "Pick the brand for Rs " + _half[0].amt + " \u2014 it decides whose incentive comes off."); return; }
+        if (!_lumpL.length) { toast("Pick a brand and type the amount the client was billed."); return; }
+        if (!S.rt.lumpFile) { toast("Attach a photo of the old bill or paper \u2014 it is the proof of the amount."); return; }
+        _lumpDesc = String(S.rt.lumpDesc || "").trim() || "Goods from an old delivery";
+      } else
       if (!(S.rt.items || []).length) { toast("Pick at least one product."); return; }
       var rcObj = clientByName(rcl) || {};
       var _lbl = t.textContent; t.disabled = true; t.textContent = "Registering...";
@@ -49101,7 +49201,29 @@ function viewCatalogue() {
       var drec = (S.data.drivers || []).filter(function (x) {
         return String(x.name).trim().toLowerCase() === rdrv.trim().toLowerCase();
       })[0] || {};
-      api("returnNo", { client: rcObj.shortName || rcl }).then(function (n) {
+      /* 6.9.630 - the photo goes up first; no photo, no return (it is the proof of the figure) */
+      var _picUp = !_lump ? Promise.resolve("") : shrinkPhoto(S.rt.lumpFile, 1100, 0.6).then(function (b64) {
+        if (!b64) throw new Error("that photo could not be read - pick it again");
+        t.textContent = "Sending the photo...";
+        var nm = ("RETURN-" + String(rcObj.shortName || rcl).replace(/[^\w]+/g, "") + "-" + Date.now() + ".jpg");
+        return api("pdfHost", { pdfBase64: b64, filename: nm, mime: "image/jpeg" }, 240000).then(function (h) {
+          if (!h || !h.ok || !h.url) throw new Error((h && h.error) || "the server gave no link for the photo");
+          return String(h.url);
+        });
+      });
+      _picUp.then(function (picUrl) {
+        if (_lump) {
+          var _st = Date.now();
+          S.rt.items = _lumpL.map(function (x, i) {
+            var ln = manualLine(_lumpDesc + " \u2014 " + x.brand + " (old rate, total)", x.amt, x.brand);
+            ln.code = MANUAL_PFX + _st + "-" + i;   /* two brands in one millisecond are still two lines */
+            ln.lump = true; ln.pic = picUrl;
+            return ln;
+          });
+        }
+        t.textContent = "Registering...";
+        return api("returnNo", { client: rcObj.shortName || rcl });
+      }).then(function (n) {
         var rowR = {
           id: "", createdBy: S.user,
           returnNo: (n && n.returnNo) || (rcl.toUpperCase().slice(0, 6) + "/" + today().slice(8) + "/R01"),
@@ -49110,7 +49232,8 @@ function viewCatalogue() {
           itemsJson: JSON.stringify(S.rt.items),
           reason: val("r_reason"), status: "Raised",
           driver: rdrv, driverMobile: drec.mobile || "", vehicle: drec.vehicle || "",
-          freight: val("r_freight") || 0, freightTo: "Energy World"
+          freight: val("r_freight") || 0, freightTo: "Energy World",
+          notes: _lump ? "Old delivery, total amount only, credited as typed. Photo of the old paper: " + ((S.rt.items[0] || {}).pic || "") : ""
         };
         /* v6.9.401 - the number had to come from the server; the row does not have to go
            back to it before the form closes. save() has merged it, journalled it and
@@ -49123,6 +49246,7 @@ function viewCatalogue() {
         /* no number, no row - and no invented number either: a local "R01" would collide
            with the next return the same day. Everything typed is still on the form. */
         btnBack(t, _lbl);
+        if (_lump && S.rt) S.rt.items = [];   /* 6.9.630 - the form is still in total mode; nothing half-made is kept */
         toast("The return was NOT registered \u2014 " + apiWhy(e) + ". Everything typed is still here \u2014 press Register again.");
       });
       return;
