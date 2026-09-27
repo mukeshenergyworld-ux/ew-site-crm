@@ -241,7 +241,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.111.0";
+  var APP_VERSION = "1.112.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -3864,20 +3864,49 @@ function discRowOn(client, brand, onYmd) {
     });
     return out;
   }
+  /* ===== KITS (BOM) - CRM 6.9.633 / Challan 1.112.0, 27 Sep 2026 =====
+     A kit (softener, sand filter, heat pump ...) is sold as one line and leaves the godown as its
+     parts. One "bom" stock row per kit: code = the kit, notes = {"parts":[{c:code,q:qty,d:desc}],
+     "show":1 to print the parts on the challan}. The last row wins; no parts = no kit. */
+  function stkBom() {
+    var m = {};
+    ((S && S.stock) || []).forEach(function (r) {
+      if (String(r.type) !== "bom") return;
+      var k = String(r.code || "").trim(); if (!k) return;
+      var o = {}; try { o = JSON.parse(r.notes || "{}") || {}; } catch (e) { o = {}; }
+      var parts = (o.parts || []).map(function (p) { return { code: String((p && p.c) || "").trim(), qty: Number(p && p.q) || 0, desc: String((p && p.d) || "") }; })
+        .filter(function (p) { return p.code && p.qty > 0 && p.code !== k; });
+      if (parts.length) m[k] = { parts: parts, show: !!o.show }; else delete m[k];
+    });
+    return m;
+  }
+  /* a list of lines, with every kit replaced by its parts (x the kit's qty), three deep */
+  function stkExpand(items, bom, depth) {
+    bom = bom || stkBom(); depth = depth || 0;
+    var out = [];
+    (items || []).forEach(function (i) {
+      var k = String((i && i.code) || "").trim(), b = k && bom[k];
+      if (!b || depth > 2) { out.push(i); return; }
+      var q = Number(i.qty) || 0;
+      stkExpand(b.parts.map(function (p) { return { code: p.code, qty: q * p.qty, desc: p.desc, kit: k }; }), bom, depth + 1)
+        .forEach(function (x) { out.push(x); });
+    });
+    return out;
+  }
   function stockDeliveredByCode() {
-    var m = {}, cut = stkCutoff();
+    var m = {}, cut = stkCutoff(), _bom = stkBom();
     (S.data.challans || []).forEach(function (c) {
       if (!stkChOut(c)) return;   /* 6.9.607 - out when dispatched, not when the receipt comes back */
-      chItems(c).forEach(function (i) { var k = String(i.code || "").trim(); if (k && stkCounts(k, c.createdAt, cut)) m[k] = (m[k] || 0) + (Number(i.qty) || 0); });
+      stkExpand(chItems(c), _bom).forEach(function (i) { var k = String(i.code || "").trim(); if (k && stkCounts(k, c.createdAt, cut)) m[k] = (m[k] || 0) + (Number(i.qty) || 0); });
     });
     return m;
   }
   function stockReturnedByCode() {
-    var m = {}, _cutR = stkCutoff();
+    var m = {}, _cutR = stkCutoff(), _bomR = stkBom();
     (S.data.returns || []).forEach(function (r) {
       if (String(r.status || "").trim().toLowerCase() !== "received") return;
       var items = []; try { items = JSON.parse(r.itemsJson || "[]"); } catch (e) {}
-      items.forEach(function (i) { var k = String(i.code || "").trim(); if (k && stkCounts(k, r.createdAt, _cutR)) m[k] = (m[k] || 0) + (Number(i.qty) || 0); });
+      stkExpand(items, _bomR).forEach(function (i) { var k = String(i.code || "").trim(); if (k && stkCounts(k, r.createdAt, _cutR)) m[k] = (m[k] || 0) + (Number(i.qty) || 0); });
     });
     return m;
   }
@@ -3890,8 +3919,8 @@ function discRowOn(client, brand, onYmd) {
       if (ty === "in" && _bref[String(row.ref || "").trim().toLowerCase()]) return;   /* that bill is already counted from Tally */
       var _k0 = String(row.code || "").trim();
       if (ty === "opening" && _olast[_k0] !== row) return;   /* only the latest count - 6.9.608: and only its last save */
-      if (ty !== "opening" && ty !== "reorder" && ty !== "rate" && ty !== "landing" && ty !== "register" && ty !== "alias" && ty !== "plan" && !stkCounts(_k0, row.asOn, cut)) return;
-      if (ty === "reorder" || ty === "rate" || ty === "landing" || ty === "register" || ty === "alias" || ty === "plan") return;   /* settings rows, not movements (register/alias: v6.9.605; plan: 6.9.621) */
+      if (ty !== "opening" && ty !== "reorder" && ty !== "rate" && ty !== "landing" && ty !== "register" && ty !== "alias" && ty !== "plan" && ty !== "bom" && !stkCounts(_k0, row.asOn, cut)) return;
+      if (ty === "reorder" || ty === "rate" || ty === "landing" || ty === "register" || ty === "alias" || ty === "plan" || ty === "bom") return;   /* bom: a kit's parts list (6.9.633 / 1.112.0) */   /* settings rows, not movements (register/alias: v6.9.605; plan: 6.9.621) */
       var k = String(row.code || "").trim(); if (!k) return;
       m[k] = (m[k] || 0) + (Number(row.qty) || 0);
       if (row.desc && !desc[k]) desc[k] = row.desc;
@@ -3922,11 +3951,11 @@ function discRowOn(client, brand, onYmd) {
      known stock, and no warning is given for it: a warning built on a guess is one he learns to
      ignore. The challan is never blocked - he is told, and pressing Save again saves it. */
   function stkReserved(skipId) {
-    var cut = stkCutoff(), m = {};
+    var cut = stkCutoff(), m = {}, _bomV = stkBom();
     ((S.data && S.data.challans) || []).forEach(function (c) {
       if (!c || (skipId && c.id === skipId)) return;
       if (stkChDead(c) || stkChOut(c)) return;   /* 6.9.607 - held = made, not yet dispatched */
-      chItems(c).forEach(function (i) {
+      stkExpand(chItems(c), _bomV).forEach(function (i) {
         var k = String(i.code || "").trim();
         if (k && cut[k] && stkCounts(k, c.createdAt, cut)) m[k] = (m[k] || 0) + (Number(i.qty) || 0);
       });
@@ -3937,7 +3966,7 @@ function discRowOn(client, brand, onYmd) {
     if (!S.stock || !S.stock.length) return [];
     var cut = stkCutoff(), mv = stockMovementByCode().m, del = stockDeliveredByCode(), ret = stockReturnedByCode(), res = stkReserved(skipId);
     var want = {}, desc = {};
-    (lines || []).forEach(function (l) { var k = String((l && l.code) || "").trim(); if (!k) return; want[k] = (want[k] || 0) + (Number(l.qty) || 0); if (!desc[k]) desc[k] = l.desc || k; });
+    stkExpand(lines || []).forEach(function (l) { var k = String((l && l.code) || "").trim(); if (!k) return; want[k] = (want[k] || 0) + (Number(l.qty) || 0); if (!desc[k]) desc[k] = (l.desc || k) + (l.kit ? " (in kit " + l.kit + ")" : ""); });
     return Object.keys(want).filter(function (k) { return cut[k]; }).map(function (k) {
       var free = (mv[k] || 0) - (del[k] || 0) + (ret[k] || 0) - (res[k] || 0);
       return { code: k, desc: desc[k], want: want[k], free: Math.round(free * 100) / 100 };
@@ -5783,11 +5812,20 @@ function discRowOn(client, brand, onYmd) {
       var ds = String(l.desc || l.code || "");
       return ds + (cd && cd !== ds ? "  (" + cd + ")" : "");
     };
+    /* CRM 6.9.633 / Challan 1.112.0 - a kit set to show its parts: one small grey line under it */
+    var _kits = {}; try { _kits = stkBom(); } catch (e) { _kits = {}; }
+    var kitWords = function (l) {
+      var b = _kits[String((l && l.code) || "").trim()];
+      if (!b || !b.show) return "";
+      var q = num(l.qty) || 1;
+      return "Includes: " + b.parts.map(function (p) { return (p.qty * q) + " x " + (p.desc || p.code); }).join(", ");
+    };
+    var kitLines = function (l, s) { var t = kitWords(l); if (!t) return []; F(); doc.setFontSize(9 * s); var r = doc.splitTextToSize(t, dW(s)); F("bold"); doc.setFontSize(12 * s); return r; };
     var measure = function (s) {
       F("bold"); doc.setFontSize(12 * s);      /* measured in the face it is drawn in */
       return items.map(function (l) {
-        var d = doc.splitTextToSize(words(l), dW(s));
-        return Math.max(7 * s, d.length * 4.9 * s + 2.4 * s);
+        var d = doc.splitTextToSize(words(l), dW(s)), k = kitLines(l, s);
+        return Math.max(7 * s, d.length * 4.9 * s + 2.4 * s + (k.length ? k.length * 3.7 * s + 0.6 * s : 0));
       });
     };
     var total = function (a) { return a.reduce(function (t, x) { return t + x; }, 0); };
@@ -5814,6 +5852,8 @@ function discRowOn(client, brand, onYmd) {
       g(10); F("bold"); doc.setFontSize(12 * sc);
       var d = doc.splitTextToSize(words(l), _dw);
       doc.text(d, Xd, ty, { lineHeightFactor: 1.2 });
+      var _kl = kitLines(l, sc);
+      if (_kl.length) { g(115); F(); doc.setFontSize(9 * sc); doc.text(_kl, Xd, ty + d.length * 4.9 * sc - 0.6 * sc, { lineHeightFactor: 1.15 }); g(10); F("bold"); doc.setFontSize(12 * sc); }
       g(60); F(); doc.setFontSize(10.5 * sc); doc.text(String(l.unit || ""), _ur, ty, { align: "right" });
       g(0); F("bold"); doc.setFontSize(15 * sc); doc.text(String(num(l.qty)), R - 2, ty + 0.4, { align: "right" });
       y += rh;
