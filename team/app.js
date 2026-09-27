@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.630";
+  var APP_VERSION = "6.9.631";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -40407,6 +40407,110 @@ function viewCatalogue() {
   window.ewCrashLog = crashLogList;
   window.addEventListener("error", function (ev) { logCrash("window.error", (ev && ev.error) || { message: ev && ev.message }); });
   window.addEventListener("unhandledrejection", function (ev) { logCrash("promise", ev); });
+
+  /* ===== 6.9.631 - WHEN SAFARI RESTARTS THE APP =====
+     His words, under Safari's bar "This web app was reloaded because a problem occurred":
+     "reloading log, reason and what lost ??". Safari stops the page without a word to it - no
+     event, no reason - so the crash log above cannot see it. Instead the app leaves a note every
+     four seconds (the screen, the open form and what is typed in it, saves waiting, how long the
+     page had been open) and marks it closed when the page is closed or reloaded on purpose. On
+     start-up, a note from THIS window that was never closed is a restart: it is shown at the top of
+     the screen and kept in the restart log (last 20), under the crash log. The note is per window
+     (sessionStorage), so opening a second window is never mistaken for a restart. A PIN or
+     password box is never read. */
+  var LIFE_PFX = "ew_life_", RESTART_KEY = "ew_restart_log", _lifeT0 = Date.now(), _lifeId = "";
+  try { _lifeId = sessionStorage.getItem("ew_life_id") || ""; if (!_lifeId) { _lifeId = String(Date.now()) + "-" + Math.floor(Math.random() * 1e6); sessionStorage.setItem("ew_life_id", _lifeId); } } catch (e) { _lifeId = ""; }
+  function lifeTyped() {
+    var box = null; try { box = S && S.modal ? document.querySelector(".modal") : null; } catch (e) { box = null; }
+    if (!box) return [];
+    var out = [], list = box.querySelectorAll("input,select,textarea");
+    for (var i = 0; i < list.length && out.length < 24; i++) {
+      var e = list[i], ty = String(e.type || "").toLowerCase(), nm = String((e.id || "") + " " + (e.name || "") + " " + (e.getAttribute("autocomplete") || ""));
+      if (ty === "file" || ty === "password" || ty === "hidden" || ty === "checkbox" || ty === "radio" || /pin|pass|otp|secret|token/i.test(nm)) continue;
+      var v = String(e.value == null ? "" : e.value).trim();
+      if (!v || (e.tagName === "SELECT" && e.selectedIndex === 0 && e.options.length > 1 && !e.options[0].value)) continue;
+      if (e.tagName === "SELECT") { var o = e.options[e.selectedIndex]; v = o ? String(o.text || v).trim() : v; }
+      var lb = "";
+      try { if (e.labels && e.labels[0]) lb = e.labels[0].textContent; } catch (x) { }
+      if (!lb) { var p = e.previousElementSibling; if (p && p.tagName === "LABEL") lb = p.textContent; }
+      if (!lb && e.parentNode) { var pl = e.parentNode.querySelector("label"); if (pl) lb = pl.textContent; }
+      lb = String(lb || e.getAttribute("placeholder") || e.id || "box").replace(/\s+/g, " ").trim().slice(0, 40);
+      out.push({ l: lb, v: v.slice(0, 160) });
+    }
+    return out;
+  }
+  function lifeNote(clean) {
+    if (!_lifeId) return;
+    try {
+      if (typeof S === "undefined" || !S || !S.user) return;
+      var mh = null, h2 = null;
+      try { mh = S.modal ? document.querySelector(".modal h2") : null; h2 = document.querySelector("main h2, main h3"); } catch (e) { }
+      var tb = null; try { tb = document.querySelector('[data-act="tab"][data-tab="' + String(S.tab || "") + '"]'); } catch (e) { }
+      var rec = { t: Date.now(), v: APP_VERSION, user: S.user, tab: (tb && String(tb.textContent || "").trim().slice(0, 30)) || S.tab || "", head: h2 ? String(h2.textContent || "").trim().slice(0, 80) : "",
+        form: mh ? String(mh.textContent || "").trim().slice(0, 80) : "", typed: clean ? [] : lifeTyped(),
+        pend: (function () { try { return pendCount(); } catch (e) { return 0; } })(),
+        up: Math.round((Date.now() - _lifeT0) / 60000), dom: document.getElementsByTagName("*").length,
+        hidden: !!document.hidden, clean: !!clean };
+      localStorage.setItem(LIFE_PFX + _lifeId, JSON.stringify(rec));
+    } catch (e) { }
+  }
+  function restartLog() { try { return JSON.parse(localStorage.getItem(RESTART_KEY) || "[]") || []; } catch (e) { return []; } }
+  /* on start-up, before the first note of this page overwrites the last one */
+  (function () {
+    try {
+      /* notes from windows closed a day ago are dropped */
+      for (var i = localStorage.length - 1; i >= 0; i--) {
+        var k = localStorage.key(i);
+        if (k && k.indexOf(LIFE_PFX) === 0 && k !== LIFE_PFX + _lifeId) {
+          var o = null; try { o = JSON.parse(localStorage.getItem(k) || "null"); } catch (x) { }
+          if (!o || Date.now() - (o.t || 0) > 86400000) localStorage.removeItem(k);
+        }
+      }
+      if (!_lifeId) return;
+      var last = null; try { last = JSON.parse(localStorage.getItem(LIFE_PFX + _lifeId) || "null"); } catch (x) { }
+      if (!last || last.clean || Date.now() - (last.t || 0) > 30 * 60000) return;
+      var rec = { at: Date.now(), last: last };
+      var log = restartLog(); log.push(rec); if (log.length > 20) log = log.slice(-20);
+      localStorage.setItem(RESTART_KEY, JSON.stringify(log));
+      window._ewRestart = rec;
+    } catch (e) { }
+  })();
+  setInterval(function () { lifeNote(_lifeGone); }, 4000);
+  /* closed on purpose = pagehide (a reload, a close, a link away). Once it has fired, the
+     "hidden" note that follows must not undo it; a page brought back from the cache opens it again. */
+  var _lifeGone = false;
+  window.addEventListener("pagehide", function () { _lifeGone = true; lifeNote(true); });
+  window.addEventListener("pageshow", function () { _lifeGone = false; });
+  document.addEventListener("visibilitychange", function () { lifeNote(_lifeGone); });
+  window.ewRestartLog = restartLog;
+  function lifeWhy(last) {
+    return last.hidden
+      ? "The app was in the background, and the system took the page out of memory to make room."
+      : "Safari stopped the page and started it again. It does this when a page runs short of memory, or when its web-content process crashes; Safari does not tell the page which.";
+  }
+  function lifeWhen(ms) { var d = new Date(ms); return ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2) + ":" + ("0" + d.getSeconds()).slice(-2) + ", " + dmy(ymdLocal(d)); }
+  function lifeLostHtml(last, nowPend) {
+    var lost = (last.typed || []).length
+      ? '<div style="margin-top:6px"><b>Lost:</b> the form <b>' + esc(last.form || "that was open") + '</b> had not been saved. What was typed in it, to type again:</div>' +
+        '<table style="margin-top:4px;font-size:13px;border-collapse:collapse">' + last.typed.map(function (x) {
+          return '<tr><td style="padding:2px 10px 2px 0;color:#64748b;vertical-align:top">' + esc(x.l) + '</td><td style="padding:2px 0"><b>' + esc(x.v) + '</b></td></tr>'; }).join("") + '</table>'
+      : (last.form ? '<div style="margin-top:6px"><b>Lost:</b> nothing typed \u2014 the form <b>' + esc(last.form) + '</b> was open but empty.</div>'
+                   : '<div style="margin-top:6px"><b>Lost:</b> nothing. No form was open.</div>');
+    var sent = last.pend
+      ? '<div style="margin-top:4px">' + plural(last.pend, "save") + ' ' + (last.pend === 1 ? 'was' : 'were') + ' waiting to reach the sheet. ' + (last.pend === 1 ? 'It was' : 'They were') + ' kept on this device and ' + (nowPend === null ? 'sent after the restart.' : nowPend ? 'are being sent now (' + nowPend + ' still waiting).' : 'have reached the sheet.') + '</div>'
+      : '<div style="margin-top:4px">No save was waiting \u2014 everything already saved was on the sheet.</div>';
+    return lost + sent;
+  }
+  function restartCard() {
+    var r = window._ewRestart; if (!r || S.restartSeen) return "";
+    var last = r.last || {}, np = 0; try { np = pendCount(); } catch (e) { }
+    return '<div class="card" style="border-color:#fcd34d;background:#fffbeb;padding:10px 12px">' +
+      '<div class="acts" style="align-items:center;margin:0;gap:8px;flex-wrap:wrap"><h3 class="grow" style="margin:0;font-size:14px;color:#92400e">The app was restarted at ' + esc(lifeWhen(r.at)) + '</h3>' +
+      '<button class="btn sm ghost" style="min-height:44px" data-act="crash-log">Restart log</button>' +
+      '<button class="btn sm" style="min-height:44px;background:#b45309;border-color:#b45309" data-act="restart-ok">Got it</button></div>' +
+      '<div class="meta" style="font-size:12.5px;color:#78350f;margin-top:4px">It was on <b>' + esc(last.tab || "?") + (last.head ? ' \u00b7 ' + esc(last.head) : '') + '</b>, open for ' + plural(last.up || 0, "minute") + '. ' + esc(lifeWhy(last)) + '</div>' +
+      '<div style="font-size:13px;color:#78350f">' + lifeLostHtml(last, np) + '</div></div>';
+  }
   function modalCrashLog() {
     var list = crashLogList().slice().reverse();
     var h = '<h2>Crash log</h2><p class="sub">Errors the app caught on this device &mdash; newest first. Send me a screenshot of this if something breaks.</p>';
@@ -40416,6 +40520,15 @@ function viewCatalogue() {
         '<div class="meta" style="font-size:12px">' + esc(String(e.t).replace("T", " ").slice(0, 19)) + ' &middot; v' + esc(e.v) + ' &middot; ' + esc(e.where || "") + (e.tab ? ' &middot; tab: ' + esc(e.tab) : "") + (e.user ? ' &middot; ' + esc(e.user) : "") + '</div>' +
         (e.stack ? '<pre style="white-space:pre-wrap;font-size:12px;color:#64748b;margin:6px 0 0;max-height:130px;overflow:auto">' + esc(e.stack) + '</pre>' : "") + '</div>';
     });
+    /* 6.9.631 - and every time Safari restarted the app, on this device */
+    var rl = restartLog().slice().reverse();
+    h += '<h3 style="margin:16px 0 6px;font-size:14px">Restarts by Safari <span class="pill">' + rl.length + '</span></h3>' +
+      (rl.length ? rl.map(function (r) {
+        var L = r.last || {};
+        return '<div class="card" style="border-color:#fcd34d"><div style="font-weight:700;font-size:13px">' + esc(lifeWhen(r.at)) + ' \u00b7 v' + esc(L.v || "") + ' \u00b7 ' + esc(L.tab || "") + (L.head ? ' \u00b7 ' + esc(L.head) : '') + '</div>' +
+          '<div class="meta" style="font-size:12px">' + esc(lifeWhy(L)) + ' Open ' + plural(L.up || 0, "minute") + ', ' + (L.dom || 0) + ' page elements.</div>' +
+          '<div style="font-size:12.5px">' + lifeLostHtml(L, null) + '</div></div>';
+      }).join("") : '<div class="empty">No restart recorded on this device since 6.9.631.</div>');
     h += '<div class="foot"><button class="btn ghost" data-act="crash-clear">Clear log</button>' +
       '<button class="btn" data-act="close">Close</button></div>';
     return h;
@@ -42750,7 +42863,8 @@ function viewCatalogue() {
        inside <main>, so it is the first thing on every screen and nothing else moved to make
        room for it. It draws nothing when nothing is waiting. */
     var _appr = ""; try { _appr = apprStrip(); } catch (eAp) { _appr = ""; }
-    h += '<main>' + _appr + body +
+    var _rst = ""; try { _rst = restartCard(); } catch (eRs) { _rst = ""; }   /* 6.9.631 */
+    h += '<main>' + _rst + _appr + body +
       '<div class="foot-note">Energy World Team <span data-act="crash-log" style="cursor:pointer;border-bottom:1px dotted #cbd5e1;display:inline-block;padding:13px 6px;margin:-13px 0" title="View crash log">v' + APP_VERSION + '</span> &middot; data lives in your Google Sheet</div></main>';
 
     h += '</div>';
@@ -43755,6 +43869,7 @@ function viewCatalogue() {
       return;
     }
     if (act === "crash-log") { S.modal = modalCrashLog(); render(); return; }
+    if (act === "restart-ok") { S.restartSeen = true; render(); return; }   /* 6.9.631 */
     if (act === "crash-clear") { try { localStorage.removeItem(CRASH_KEY); } catch (e) { } S.modal = modalCrashLog(); render(); return; }
     if (act === "reload-app") { location.reload(); return; }
     /* v6.9.388 - one action for both doors into the queue: the red band and the tile. It also
