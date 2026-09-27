@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.627";
+  var APP_VERSION = "6.9.628";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -9152,11 +9152,34 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       if (d.kind !== "fix") return;
       var mn = String((d.det && d.det.mainName) || "").trim();
       if (!mn) return;
+      /* 27 Sep 2026 - NEWEST WINS, BOTH WAYS. A driver merged one way and then the other made a
+         loop that undid both; a name here had the same two holes. (1) A man made the MAIN name
+         after he had been an alias stayed an alias of his old main. (2) A name merged again
+         under a new main stayed on the old main's list as well, so both families counted it. */
+      var _unAlias = function (k) {
+        var v = byName[k]; if (!v) return;
+        var ok = dgKey(v.main);
+        aliasOf[ok] = (aliasOf[ok] || []).filter(function (x) { return dgKey(x) !== k; });
+        if (!aliasOf[ok].length) delete aliasOf[ok];
+        delete byName[k];
+      };
+      var mk0 = dgKey(mn);
+      _unAlias(mk0);
       ((d.det && d.det.aliases) || []).forEach(function (a) {
         var an = String(a.name || "").trim();
-        if (!an || dgKey(an) === dgKey(mn)) return;
-        byName[dgKey(an)] = { main: mn, alias: an, id: String(a.id || ""), mainId: String((d.det && d.det.main) || ""), at: d.at, by: d.by };
-        (aliasOf[dgKey(mn)] = aliasOf[dgKey(mn)] || []).push(an);
+        if (!an || dgKey(an) === mk0) return;
+        var ak = dgKey(an);
+        _unAlias(ak);
+        byName[ak] = { main: mn, alias: an, id: String(a.id || ""), mainId: String((d.det && d.det.main) || ""), at: d.at, by: d.by };
+        (aliasOf[mk0] = aliasOf[mk0] || []).push(an);
+        /* whoever was filed under the name just folded in comes along to the new main */
+        Object.keys(byName).forEach(function (k) {
+          var v = byName[k];
+          if (k === ak || k === mk0 || dgKey(v.main) !== ak) return;
+          byName[k] = { main: mn, alias: v.alias, id: v.id, mainId: String((d.det && d.det.main) || ""), at: v.at, by: v.by };
+          if (aliasOf[mk0].map(dgKey).indexOf(k) < 0) aliasOf[mk0].push(v.alias);
+        });
+        delete aliasOf[ak];
       });
     });
     _aliasCache = { byName: byName, aliasOf: aliasOf };
@@ -20125,22 +20148,37 @@ function viewCatalogue() {
      wins, nothing edited on any delivery), and a trip or payout filed under the stray counts
      for him from then on. A name that matches a register name exactly is his without asking. */
   var _dlCache = null;
+  /* 27 Sep 2026 - A MERGE THE OTHER WAY ROUND MADE A LOOP, AND A LOOP UNDID EVERY MERGE.
+     MEASURED in the AuditLog sheet: MINTU -> MIntu Tempo at 12:55, MIntu Tempo -> MINTU at
+     13:02, and two more each way the next morning. Newest-wins was kept per driver, so both
+     directions stood at once, the walk below went round the loop and stopped where it started,
+     neither man counted as merged, and "Same man twice?" came back after every press. The links
+     are now replayed oldest first, and a new link cuts any older one that would carry the kept
+     man back to the one being merged: the newest press is the answer. Nothing is deleted from
+     the sheet; this is only how the rows are read. */
   function drvLinkMap() {
     if (_dlCache) return _dlCache;
-    var m = {}, at = {};
+    var ev = [];
     ((S.data && S.data.audit) || []).forEach(function (a) {
       if (!a || String(a.action || "") !== "driver:link") return;
       var d = {}; try { d = JSON.parse(a.detail || "{}") || {}; } catch (e) { return; }
       var f = String(d.from || ""), to = String(d.to || "");
       if (!f) return;
-      if (at[f] && String(a.createdAt || "") < at[f]) return;
-      at[f] = String(a.createdAt || ""); m[f] = to;          /* to "" = unlinked again */
+      ev.push({ f: f, to: to, at: String(a.createdAt || ""), id: String(a.id || "") });
+    });
+    ev.sort(function (x, y) { return x.at < y.at ? -1 : x.at > y.at ? 1 : (x.id < y.id ? -1 : x.id > y.id ? 1 : 0); });
+    var m = {};
+    ev.forEach(function (e) {
+      if (!e.to || e.to === e.f) { delete m[e.f]; return; }   /* to "" = his own ledger again */
+      var y = e.to, seen = {};
+      while (m[y] && !seen[y]) { seen[y] = 1; if (m[y] === e.f) { delete m[y]; break; } y = m[y]; }
+      m[e.f] = e.to;
     });
     return (_dlCache = m);
   }
   function drvResolve(k) {
-    var m = drvLinkMap(), n = 0;
-    while (m[k] && m[k] !== k && n++ < 6) k = m[k];
+    var m = drvLinkMap(), seen = {};
+    while (m[k] && m[k] !== k && !seen[k]) { seen[k] = 1; k = m[k]; }
     return k;
   }
   function drvRawKey(id, name) {
@@ -47192,8 +47230,14 @@ function viewCatalogue() {
           detail: JSON.stringify({ from: k, to: _keep, fromName: _mnm(k), toName: _mnm(_keep), why: "merge: same mobile or vehicle" }) };
         (S.data.audit = S.data.audit || []).push(_lr); save("audit", _lr, true);
       });
-      _dlCache = null; S.dlOpen = drvResolve(_keep); S.modal = null; render();
-      toast("Merged into " + _mnm(_keep) + " \u2014 one ledger now.");
+      _dlCache = null;
+      /* 6.9.628 - say what is TRUE after the press, not what was meant: every man merged must
+         now read as the one kept. If not, it says so, instead of "Merged" over a card that
+         comes straight back. */
+      var _mTo = drvResolve(_keep), _mBad = _mks.filter(function (k) { return drvResolve(k) !== _mTo; });
+      S.dlOpen = _mTo; S.modal = null; render();
+      if (_mBad.length) toast("Not merged: " + _mBad.map(_mnm).join(", ") + " still has a ledger of his own. Nothing was lost \u2014 send a screenshot of this.");
+      else toast("Merged into " + _mnm(_mTo) + " \u2014 one ledger now.");
       return;
     }
     if (act === "dv-unmerge") {
