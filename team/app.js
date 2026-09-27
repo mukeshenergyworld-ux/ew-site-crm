@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.636";
+  var APP_VERSION = "6.9.638";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -4178,91 +4178,183 @@ window.addEventListener("beforeunload", function (ev) {
     D.wait.forEach(function (r) { g(r.exec).wait++; });
     return Object.keys(m).map(function (k) { return m[k]; }).sort(function (a, b) { return b.due - a.due; });
   }
-  function rvText(D) {
+  /* 6.9.638 - mode "tg": names and headings marked for Telegram's bold (rvTg turns the marks
+     into <b> after escaping); otherwise WhatsApp's own *bold*. */
+  function rvText(D, mode) {
+    var b = mode === "tg" ? function (t) { return "\u0001" + t + "\u0002"; } : function (t) { return "*" + t + "*"; };
     var L = [], R = D.R, A = moneyAscii;
-    L.push("Energy World – twice-weekly review");
-    L.push(d10(today()) + " · " + R.label + " (" + R.span + ")" + (D.ex ? " · " + D.ex : ""));
+    L.push(b("Energy World – twice-weekly review"));
+    L.push(d10(today()) + " · " + R.label + " (" + R.span + ")" + (D.ex ? " · " + b(D.ex) : ""));
     L.push("");
-    L.push("PAYMENTS");
+    L.push(b("PAYMENTS"));
     L.push("Total due till date: " + A(D.dueTot) + " (" + plural(D.dues.length, "client") + ")");
     L.push("  0-30 days " + A(D.age.cur) + " | 31-60 " + A(D.age.d30) + " | 61-90 " + A(D.age.d60) + " | 90+ " + A(D.age.d90));
     L.push("Material dispatched: " + plural(D.disp.length, "delivery") + ", " + A(D.dispTot));
     L.push("Collected: " + plural(D.coll.length, "payment") + ", " + A(D.collTot));
     L.push("");
-    L.push("QUOTATIONS");
+    L.push(b("QUOTATIONS"));
     L.push("New clients: " + D.newCl.length + (D.newCl.length ? " – " + D.newCl.slice(0, 12).map(function (x) { return x.name; }).join(", ") + (D.newCl.length > 12 ? " and " + (D.newCl.length - 12) + " more" : "") : ""));
     L.push("New quotes: " + D.newQ.length + ", " + A(D.newQTot));
     L.push("Quotes to follow: " + D.wait.length + ", " + A(D.waitTot) + " – mark each Won or Lost in the CRM");
     L.push("Plumbers to call: " + D.plumb.length);
+    if (!D.ex && seesAllClients()) {
+      var be = rvByExec(D);
+      if (be.length) {
+        L.push("");
+        L.push(b("BY EXECUTIVE"));
+        be.forEach(function (x) {
+          L.push("▪ " + b(x.exec) + " – due " + A(x.due) + (x.d90 > 0.5 ? " (90+ " + A(x.d90) + ")" : "") +
+            " | dispatched " + A(x.disp) + " | collected " + A(x.coll) + " | " + x.newCl + " new clients | " +
+            x.newQ + " new quotes | " + x.wait + " to follow");
+        });
+      }
+    }
     L.push("");
     L.push("Detailed sheet attached.");
     return L.join("\n");
   }
+  /* 6.9.637 - ONE COLOUR LANGUAGE. His words: "must be in excel with color coding, so that
+     instant to understand quickly". Every coloured cell on this sheet means the same four things,
+     and row 3 says so: green fresh / on time, amber watch, orange chase, red urgent.
+       money owed     by the age of the oldest unpaid rupee: 0-30 / 31-60 / 61-90 / 90+ days
+       quote waiting  by days without a decision: 0-15 / 16-30 / 31-60 / 60+
+       plumber        by days since contact: up to 60 amber, 61-90 orange, 90+ or never red
+     The word is always in the cell as well as the colour, so it still reads printed in black and
+     white or by a man who cannot tell red from green. */
+  function rvBand(d, a, b, c) { d = Number(d) || 0; return d <= a ? XL.G : d <= b ? XL.A : d <= c ? XL.O : XL.R; }
+  function rvM(st) { var m = {}; m[XL.G] = XL.G_M; m[XL.A] = XL.A_M; m[XL.O] = XL.O_M; m[XL.R] = XL.R_M; return m[st] || XL.MONEY; }
   function rvXlsxRows(D) {
     var H = function (a) { return a.map(function (h) { return { v: h, s: XL.HEAD }; }); };
-    var band = function (txt) { return [{ v: txt, s: XL.BAND }, { v: "", s: XL.BAND }, { v: "", s: XL.BAND }, { v: "", s: XL.BAND }, { v: "", s: XL.BAND }, { v: "", s: XL.BAND }, { v: "", s: XL.BAND }, { v: "", s: XL.BAND }]; };
+    var W = 8, fill = function (txt, st) { var r = [{ v: txt, s: st }]; for (var k = 1; k < W; k++) r.push({ v: "", s: st }); return r; };
+    var M = function (n, st) { return { v: Math.round(Number(n) || 0), s: st || XL.MONEY }; };
+    var nz = function (n, st) { return (Number(n) || 0) > 0.5 ? M(n, rvM(st)) : M(0); };
+    var E = function (e) { return { v: e || "(no executive)", s: XL.EXECC }; };      /* his name, marked, in every table */
     var R = D.R, out = [];
-    out.push([{ v: "Energy World – twice-weekly review", s: XL.BOLD }]);
+    out.push(fill("Energy World – twice-weekly review", XL.TITLE));
     out.push([R.label + ": " + d10(R.from) + " to " + d10(R.to) + (D.ex ? "   Executive: " + D.ex : "") + "   Made " + d10(today()) + " by " + String(S.user || "")]);
+    out.push([{ v: "Colour key:", s: XL.BOLD }, { v: "Green – fresh / on time", s: XL.G }, { v: "Amber – watch", s: XL.A },
+              { v: "Orange – chase", s: XL.O }, { v: "Red – urgent", s: XL.R }, { v: "Executive", s: XL.EXECC }]);
     out.push([]);
-    out.push(band("PAYMENTS"));
-    out.push(["Total due till date", { v: D.dueTot, s: XL.BOLD }, plural(D.dues.length, "client")]);
-    out.push(["Past " + CREDIT_DAYS + " days (overdue)", D.overdue]);
-    out.push(["0-30 days", D.age.cur]); out.push(["31-60 days", D.age.d30]); out.push(["61-90 days", D.age.d60]); out.push(["90+ days", D.age.d90]);
-    out.push(["Material dispatched", D.dispTot, plural(D.disp.length, "delivery")]);
-    out.push(["Collected", D.collTot, plural(D.coll.length, "payment")]);
+
+    /* ---- THE COMPANY, ON ONE SCREEN ---- */
+    out.push(fill("PAYMENTS" + (D.ex ? " – " + D.ex : " – all executives"), XL.SECT));
+    out.push([{ v: "Total due till date", s: XL.TILE }, M(D.dueTot, XL.TILE_M), { v: plural(D.dues.length, "client"), s: XL.TILE }]);
+    out.push([{ v: "0-30 days", s: XL.G }, M(D.age.cur, XL.G_M), { v: "fresh", s: XL.G }]);
+    out.push([{ v: "31-60 days", s: XL.A }, M(D.age.d30, XL.A_M), { v: "watch", s: XL.A }]);
+    out.push([{ v: "61-90 days", s: XL.O }, M(D.age.d60, XL.O_M), { v: "chase", s: XL.O }]);
+    out.push([{ v: "90+ days", s: XL.R }, M(D.age.d90, XL.R_M), { v: "urgent", s: XL.R }]);
+    out.push([{ v: "Past " + CREDIT_DAYS + " days (overdue)", s: XL.BOLD }, M(D.overdue, XL.MONEYB)]);
+    out.push([{ v: "Material dispatched", s: XL.TILE }, M(D.dispTot, XL.TILE_M), { v: plural(D.disp.length, "delivery"), s: XL.TILE }]);
+    out.push([{ v: "Collected", s: XL.TILE }, M(D.collTot, XL.TILE_M), { v: plural(D.coll.length, "payment"), s: XL.TILE }]);
     out.push([]);
-    if (!D.ex && seesAllClients()) {
-      out.push([{ v: "By executive", s: XL.BOLD }]);
-      out.push(H(["Executive", "Total due", "90+ days", "Dispatched", "Collected", "New clients", "New quotes", "Quotes waiting"]));
-      rvByExec(D).forEach(function (x) { out.push([x.exec, x.due, x.d90, x.disp, x.coll, x.newCl, x.newQ, x.wait]); });
+    out.push(fill("QUOTATIONS" + (D.ex ? " – " + D.ex : " – all executives"), XL.SECT));
+    out.push([{ v: "New clients", s: XL.TILE }, { v: D.newCl.length, s: XL.TILE }, { v: "New quotes", s: XL.TILE }, { v: D.newQ.length, s: XL.TILE }, M(D.newQTot, XL.TILE_M)]);
+    out.push([{ v: "Quotes to follow", s: XL.TILE }, { v: D.wait.length, s: XL.TILE }, M(D.waitTot, XL.TILE_M), { v: "Plumbers to call", s: XL.TILE }, { v: D.plumb.length, s: XL.TILE }]);
+    out.push([]);
+    var be = rvByExec(D);
+    out.push([{ v: "By executive – each one has his own block below", s: XL.BOLD }]);
+    out.push(H(["Executive", "Total due", "90+ days", "Dispatched", "Collected", "New clients", "New quotes", "Quotes waiting"]));
+    be.forEach(function (x) { out.push([E(x.exec), M(x.due, XL.MONEYB), nz(x.d90, XL.R), M(x.disp), M(x.coll), x.newCl, x.newQ, x.wait]); });
+    out.push([]);
+
+    /* ---- ONE BLOCK PER EXECUTIVE ---- */
+    var key = function (e) { return String(e || "") || "(no executive)"; };
+    var clientsOf = {};
+    (S.data.clients || []).forEach(function (c) { if (c && c.plumber) { var k = key(rvOwner(c.name)); (clientsOf[k] = clientsOf[k] || {})[dkey(c.plumber)] = 1; } });
+    var shownPlumb = {};
+    be.forEach(function (x) {
+      var k = x.exec, mine = function (r) { return key(r.exec) === k; };
+      var dues = D.dues.filter(mine), disp = D.disp.filter(mine), coll = D.coll.filter(mine),
+          ncl = D.newCl.filter(mine), nq = D.newQ.filter(mine), wait = D.wait.filter(mine),
+          pl = D.plumb.filter(function (p) { return (clientsOf[k] || {})[dkey(p.name)]; });
+      var d90 = dues.reduce(function (a, r) { return a + (r.b.d90 || 0); }, 0);
+      out.push(fill("EXECUTIVE: " + k, XL.EXEC));
+      out.push([{ v: "Due", s: XL.EXECC }, M(x.due, XL.EXEC_M), { v: "90+ days", s: XL.EXECC }, nz(d90, XL.R),
+                { v: "Dispatched", s: XL.EXECC }, M(x.disp, XL.EXEC_M), { v: "Collected", s: XL.EXECC }, M(x.coll, XL.EXEC_M)]);
+      out.push([{ v: "New clients", s: XL.EXECC }, { v: ncl.length, s: XL.EXECC }, { v: "New quotes", s: XL.EXECC }, { v: nq.length, s: XL.EXECC },
+                { v: "Quotes to follow", s: XL.EXECC }, { v: wait.length, s: XL.EXECC }, { v: "Plumbers to call", s: XL.EXECC }, { v: pl.length, s: XL.EXECC }]);
+      if (dues.length) {
+        out.push([{ v: "Who owes – the name takes the colour of his oldest unpaid money", s: XL.BOLD }]);
+        out.push(H(["Client", "Executive", "Total due", "0-30 days", "31-60 days", "61-90 days", "90+ days", "Oldest (days)"]));
+        dues.forEach(function (r) {
+          var st = rvBand(r.oldest, 30, 60, 90);
+          out.push([{ v: r.name, s: st }, E(r.exec), M(r.due, XL.MONEYB), nz(r.b.cur, XL.G), nz(r.b.d30, XL.A), nz(r.b.d60, XL.O), nz(r.b.d90, XL.R), { v: r.oldest, s: st }]);
+        });
+      }
+      if (disp.length) {
+        out.push([{ v: "Material dispatched", s: XL.BOLD }]);
+        out.push(H(["Date", "Challan", "Client", "Executive", "Value"]));
+        disp.forEach(function (r) { out.push([d10(r.d), r.no, r.name, E(r.exec), M(r.amt)]); });
+      }
+      if (coll.length) {
+        out.push([{ v: "Collected", s: XL.BOLD }]);
+        out.push(H(["Date", "Client", "Executive", "Amount", "Mode", "Reference"]));
+        coll.forEach(function (r) { out.push([d10(r.d), r.name, E(r.exec), M(r.amt, XL.G_M), r.mode, r.ref]); });
+      }
+      if (ncl.length) {
+        out.push([{ v: "New clients", s: XL.BOLD }]);
+        out.push(H(["Date", "Client", "Executive", "Area", "Plumber", "Mobile", "Stage"]));
+        ncl.forEach(function (r) { out.push([d10(r.d), { v: r.name, s: XL.G }, E(r.exec), r.where, r.plumber, r.mobile, r.stage]); });
+      }
+      if (nq.length) {
+        out.push([{ v: "New quotes", s: XL.BOLD }]);
+        out.push(H(["Date", "Quote", "Client", "Executive", "Brands", "Value", "Status"]));
+        nq.forEach(function (r) {
+          var st = r.status === "Won" ? XL.G : r.status === "Lost" ? XL.R : XL.PLAIN;
+          out.push([d10(r.d), r.no, r.name, E(r.exec), r.brands, M(r.amt), { v: r.status, s: st }]);
+        });
+      }
+      if (wait.length) {
+        out.push([{ v: "Quotes to follow – oldest first; colour by days waiting (0-15 green, 16-30 amber, 31-60 orange, 60+ red)", s: XL.BOLD }]);
+        out.push(H(["Date", "Quote", "Client", "Executive", "Brands", "Value", "Days waiting", "Won / Lost"]));
+        wait.forEach(function (r) {
+          var st = rvBand(r.age, 15, 30, 60);
+          out.push([d10(r.d), r.no, { v: r.name, s: st }, E(r.exec), r.brands, M(r.amt), { v: r.age, s: st }, { v: "", s: XL.INPUT }]);
+        });
+      }
+      if (pl.length) {
+        out.push([{ v: "Plumbers on his clients to call – up to 60 days amber, 61-90 orange, 90+ or never red", s: XL.BOLD }]);
+        out.push(H(["Plumber", "Mobile", "Area", "Days since contact", "Executive"]));
+        pl.forEach(function (p) {
+          shownPlumb[dkey(p.name)] = 1;
+          var st = p.days === null ? XL.R : p.days > 90 ? XL.R : p.days > 60 ? XL.O : XL.A;
+          out.push([{ v: p.name, s: st }, p.mobile, p.where, { v: p.days === null ? "never" : p.days, s: st }, E(k)]);
+        });
+      }
       out.push([]);
+    });
+    /* plumbers on nobody's client still need a call - they are listed once, at the end */
+    var rest = D.plumb.filter(function (p) { return !shownPlumb[dkey(p.name)]; });
+    if (rest.length) {
+      out.push(fill("PLUMBERS NOT LINKED TO ANY EXECUTIVE'S CLIENT", XL.SECT));
+      out.push(H(["Plumber", "Mobile", "Area", "Days since contact"]));
+      rest.forEach(function (p) {
+        var st = p.days === null ? XL.R : p.days > 90 ? XL.R : p.days > 60 ? XL.O : XL.A;
+        out.push([{ v: p.name, s: st }, p.mobile, p.where, { v: p.days === null ? "never" : p.days, s: st }]);
+      });
     }
-    out.push([{ v: "Total due – by client", s: XL.BOLD }]);
-    out.push(H(["Client", "Executive", "Total due", "0-30 days", "31-60 days", "61-90 days", "90+ days", "Oldest (days)"]));
-    D.dues.forEach(function (r) { out.push([r.name, r.exec, { v: r.due, s: XL.BOLD }, r.b.cur, r.b.d30, r.b.d60, r.b.d90, r.oldest]); });
-    out.push([]);
-    out.push([{ v: "Material dispatched", s: XL.BOLD }]);
-    out.push(H(["Date", "Challan", "Client", "Executive", "Value"]));
-    D.disp.forEach(function (x) { out.push([d10(x.d), x.no, x.name, x.exec, x.amt]); });
-    if (!D.disp.length) out.push(["None in this period."]);
-    out.push([]);
-    out.push([{ v: "Collected", s: XL.BOLD }]);
-    out.push(H(["Date", "Client", "Executive", "Amount", "Mode", "Reference"]));
-    D.coll.forEach(function (x) { out.push([d10(x.d), x.name, x.exec, x.amt, x.mode, x.ref]); });
-    if (!D.coll.length) out.push(["None in this period."]);
-    out.push([]);
-    out.push(band("QUOTATIONS"));
-    out.push([{ v: "New clients", s: XL.BOLD }]);
-    out.push(H(["Date", "Client", "Executive", "Area", "Plumber", "Mobile", "Stage"]));
-    D.newCl.forEach(function (x) { out.push([d10(x.d), x.name, x.exec, x.where, x.plumber, x.mobile, x.stage]); });
-    if (!D.newCl.length) out.push(["None in this period."]);
-    out.push([]);
-    out.push([{ v: "New quotes", s: XL.BOLD }]);
-    out.push(H(["Date", "Quote", "Client", "Executive", "Brands", "Value", "Status"]));
-    D.newQ.forEach(function (x) { out.push([d10(x.d), x.no, x.name, x.exec, x.brands, x.amt, x.status]); });
-    if (!D.newQ.length) out.push(["None in this period."]);
-    out.push([]);
-    out.push([{ v: "Quotes to follow – mark Won or Lost in the CRM", s: XL.BOLD }]);
-    out.push(H(["Date", "Quote", "Client", "Executive", "Brands", "Value", "Days waiting", "Won / Lost"]));
-    D.wait.forEach(function (x) { out.push([d10(x.d), x.no, x.name, x.exec, x.brands, x.amt, x.age, { v: "", s: XL.INPUT }]); });
-    if (!D.wait.length) out.push(["None waiting."]);
-    out.push([]);
-    out.push([{ v: "Plumbers to call", s: XL.BOLD }]);
-    out.push(H(["Plumber", "Mobile", "Area", "Days since contact"]));
-    D.plumb.forEach(function (x) { out.push([x.name, x.mobile, x.where, x.days === null ? "never" : x.days]); });
-    if (!D.plumb.length) out.push(["Every plumber has been in touch within " + COLD_PARTNER + " days."]);
     return out;
   }
+  /* the title and the section bands run the width of the sheet; the title row is taller */
+  function rvXlOpts(rows) {
+    var merges = [], last = "H";
+    rows.forEach(function (r, i) {
+      var st = r && r[0] && typeof r[0] === "object" ? r[0].s : null;
+      if (st === XL.TITLE || st === XL.SECT || st === XL.EXEC) merges.push("A" + (i + 1) + ":" + last + (i + 1));
+    });
+    merges.push("A2:" + last + "2");
+    return { freeze: { r: 3, c: 0 }, merges: merges, heights: { 0: 28 } };
+  }
+  function rvXlBytes(D) { var r = rvXlsxRows(D); return xlBook("Review", r, RV_COLS, rvXlOpts(r)); }
   function rvFileName(D) { return "Review_" + (D.ex ? String(D.ex).replace(/[^A-Za-z0-9]+/g, "_") + "_" : "") + today() + ".xlsx"; }
-  var RV_COLS = [26, 20, 22, 18, 18, 14, 14, 14];
-  function rvXlsx(D) { dlXlsx(rvFileName(D), "Review", rvXlsxRows(D), RV_COLS, { freeze: { r: 2, c: 0 } }); }
+  var RV_COLS = [30, 18, 24, 18, 18, 16, 16, 14];
+  function rvXlsx(D) { var r = rvXlsxRows(D); dlXlsx(rvFileName(D), "Review", r, RV_COLS, rvXlOpts(r)); }
   /* the file to the share sheet and the message to the clipboard - in the one tap, which is
      what the phone requires of both */
   function rvSend(D) {
     var txt = rvText(D), name = rvFileName(D), f = null;
     try { if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).catch(function () { }); } catch (e) { }
-    try { f = new File([xlBook("Review", rvXlsxRows(D), RV_COLS, { freeze: { r: 2, c: 0 } })], name, { type: XLSX_MIME }); } catch (e) { f = null; }
+    try { f = new File([rvXlBytes(D)], name, { type: XLSX_MIME }); } catch (e) { f = null; }
     var can = false;
     try { can = !!(f && navigator.share && navigator.canShare && navigator.canShare({ files: [f] })); } catch (e) { can = false; }
     if (!can) { rvXlsx(D); toast("Excel downloaded, message copied — paste it in the chat and attach the file."); return; }
@@ -4287,6 +4379,10 @@ window.addEventListener("beforeunload", function (ev) {
     var h = (all ? items : items.slice(0, cap)).map(draw).join("");
     if (items.length > cap) h += rvBtn("rv-more", all ? "Show fewer" : "Show all " + items.length, ' data-k="' + key + '"', true);
     return h;
+  }
+  /* 6.9.638 - the executive's name, marked the same way everywhere on the review */
+  function rvExecPill(e) {
+    return e ? '<span style="background:#d6e4f9;color:#1e3a8a;font-weight:700;border-radius:999px;padding:1px 8px;white-space:nowrap">' + esc(e) + '</span>' : "";
   }
   function rvStat(n, l, alert) { return '<div class="stat' + (alert ? ' alert' : '') + '"><div class="n">' + n + '</div><div class="l">' + l + '</div></div>'; }
   function rvHead(t, sub) { return '<h3 style="margin:16px 0 2px;font-size:15px">' + t + '</h3>' + (sub ? '<div style="font-size:12px;color:var(--muted);margin-bottom:4px">' + sub + '</div>' : ''); }
@@ -4316,16 +4412,16 @@ window.addEventListener("beforeunload", function (ev) {
     if (all && !D.ex) {
       var be = rvByExec(D);
       if (be.length) h += rvHead("By executive") + be.map(function (x) {
-        return rvRow(esc(x.exec), "Dispatched " + money(x.disp) + " · Collected " + money(x.coll) + " · " + x.newQ + " new quotes · " + x.wait + " waiting",
+        return rvRow(rvExecPill(x.exec), "Dispatched " + money(x.disp) + " · Collected " + money(x.coll) + " · " + x.newQ + " new quotes · " + x.wait + " waiting",
           money(x.due), x.d90 > 0.5 ? '<span style="font-size:12px;color:#b91c1c">90+ ' + money(x.d90) + '</span>' : "");
       }).join("");
     }
     h += rvHead("Who owes", "Largest first. The full list is in the Excel.") +
-      rvList("dues", D.dues, 15, function (r) { return rvRow(esc(r.name), esc(r.exec || ""), money(r.due), agePill(r.ag)); }, "Nothing is owed.");
+      rvList("dues", D.dues, 15, function (r) { return rvRow(esc(r.name), rvExecPill(r.exec), money(r.due), agePill(r.ag)); }, "Nothing is owed.");
     h += rvHead("Material dispatched", R.span) +
-      rvList("disp", D.disp, 10, function (x) { return rvRow(esc(x.name), d10(x.d) + " · " + esc(x.no) + (x.exec ? " · " + esc(x.exec) : ""), money(x.amt)); }, "Nothing dispatched in this period.");
+      rvList("disp", D.disp, 10, function (x) { return rvRow(esc(x.name), d10(x.d) + " · " + esc(x.no) + (x.exec ? " · " + rvExecPill(x.exec) : ""), money(x.amt)); }, "Nothing dispatched in this period.");
     h += rvHead("Collected", R.span) +
-      rvList("coll", D.coll, 10, function (x) { return rvRow(esc(x.name), d10(x.d) + (x.mode ? " · " + esc(x.mode) : "") + (x.exec ? " · " + esc(x.exec) : ""), money(x.amt)); }, "Nothing collected in this period.");
+      rvList("coll", D.coll, 10, function (x) { return rvRow(esc(x.name), d10(x.d) + (x.mode ? " · " + esc(x.mode) : "") + (x.exec ? " · " + rvExecPill(x.exec) : ""), money(x.amt)); }, "Nothing collected in this period.");
     h += '</div>';
 
     /* QUOTATIONS */
@@ -4336,15 +4432,15 @@ window.addEventListener("beforeunload", function (ev) {
       rvStat(D.plumb.length, "Plumbers to call") + '</div><div class="card">';
     h += rvHead("New clients", R.span) +
       rvList("newCl", D.newCl, 15, function (x) {
-        return rvRow(esc(x.name), [d10(x.d), x.exec, x.where, x.plumber ? "Plumber " + x.plumber : ""].filter(Boolean).map(esc).join(" · "), "",
+        return rvRow(esc(x.name), [d10(x.d), x.where, x.plumber ? "Plumber " + x.plumber : ""].filter(Boolean).map(esc).join(" · ") + (x.exec ? " · " + rvExecPill(x.exec) : ""), "",
           x.mobile ? '<a class="btn sm ghost" style="min-height:44px;display:inline-flex;align-items:center" href="tel:' + esc(x.mobile) + '">Call</a>' : "");
       }, "No new clients in this period.");
     h += rvHead("New quotes", R.span) +
-      rvList("newQ", D.newQ, 10, function (x) { return rvRow(esc(x.name), [d10(x.d), x.no, x.brands, x.exec, x.status].filter(Boolean).map(esc).join(" · "), money(x.amt)); }, "No new quotes in this period.");
+      rvList("newQ", D.newQ, 10, function (x) { return rvRow(esc(x.name), [d10(x.d), x.no, x.brands, x.status].filter(Boolean).map(esc).join(" · ") + (x.exec ? " · " + rvExecPill(x.exec) : ""), money(x.amt)); }, "No new quotes in this period.");
     h += rvHead("Quotes to follow", "Oldest first. One tap marks it – Lost asks why.") +
       rvList("wait", D.wait, 20, function (x) {
         return rvRow(esc(x.name) + ' <span style="font-size:12px;color:var(--muted);font-weight:400">' + (x.age === null ? "" : x.age + " d") + '</span>',
-          [x.no, x.brands, x.exec, money(x.amt)].filter(Boolean).map(esc).join(" · "), "",
+          [x.no, x.brands, money(x.amt)].filter(Boolean).map(esc).join(" · ") + (x.exec ? " · " + rvExecPill(x.exec) : ""), "",
           rvBtn("q-win", "Won", ' data-id="' + esc(x.id) + '"') + rvBtn("q-lose", "Lost", ' data-id="' + esc(x.id) + '"', true));
       }, "No quote is waiting.");
     h += rvHead("Plumbers to call", "No contact for " + COLD_PARTNER + " days or more. “Called” records today’s call.") +
@@ -4377,11 +4473,11 @@ window.addEventListener("beforeunload", function (ev) {
     return m || "no answer from the server";
   }
   function rvTg(D) {
-    var txt = rvText(D), name = rvFileName(D), b64 = "";
-    try { b64 = rvB64(xlBook("Review", rvXlsxRows(D), RV_COLS, { freeze: { r: 2, c: 0 } })); } catch (e) { toast("Could not build the Excel on this device."); return; }
+    var txt = rvText(D, "tg"), name = rvFileName(D), b64 = "";
+    try { b64 = rvB64(rvXlBytes(D)); } catch (e) { toast("Could not build the Excel on this device."); return; }
     toast("Sending to @" + RV_BOT + "…");
     var chk = function (r) { if (!r || r.ok === false) throw new Error((r && (r.error || r.description)) || ""); return r; };
-    api("tgSend", { bot: "TG_REMIND", text: rvTgEsc(txt) }, 60000).then(chk).then(function () {
+    api("tgSend", { bot: "TG_REMIND", text: rvTgEsc(txt).replace(/\u0001/g, "<b>").replace(/\u0002/g, "</b>") }, 60000).then(chk).then(function () {
       return api("tgSend", { bot: "TG_REMIND", pdfBase64: b64, filename: name, mime: XLSX_MIME,
         caption: rvTgEsc("Detailed sheet – " + D.R.label + " (" + D.R.span + ")" + (D.ex ? " · " + D.ex : "")) }, 120000).then(chk);
     }).then(function () { toast("Sent to @" + RV_BOT + ": the message and the Excel."); },
@@ -28896,7 +28992,9 @@ function viewCatalogue() {
     return s2;
   }
   /* style ids, in the order they are written into cellXfs below */
-  var XL = { PLAIN: 0, HEAD: 1, WON: 2, LIVE: 3, NONE: 4, LOST: 5, NR: 6, BOLD: 7, BAND: 8, INPUT: 9, MID: 10, MIDB: 11, HEADW: 12, C_WON: 13, C_LIVE: 14, C_NONE: 15, C_LOST: 16, C_NR: 17 };
+  var XL = { PLAIN: 0, HEAD: 1, WON: 2, LIVE: 3, NONE: 4, LOST: 5, NR: 6, BOLD: 7, BAND: 8, INPUT: 9, MID: 10, MIDB: 11, HEADW: 12, C_WON: 13, C_LIVE: 14, C_NONE: 15, C_LOST: 16, C_NR: 17,
+    /* 6.9.637 - the review sheet: money in Indian grouping, and the four-colour scale */
+    MONEY: 18, MONEYB: 19, G: 20, A: 21, O: 22, R: 23, G_M: 24, A_M: 25, O_M: 26, R_M: 27, TITLE: 28, SECT: 29, TILE: 30, TILE_M: 31, EXEC: 32, EXECC: 33, EXEC_M: 34 };
   var XL_STATUS = { won: XL.WON, live: XL.LIVE, none: XL.NONE, lost: XL.LOST, nr: XL.NR };
   function xlStyles() {
     var solid = function (hex) {
@@ -28905,21 +29003,29 @@ function viewCatalogue() {
     };
     return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
       '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
-      '<fonts count="3">' +
+      /* 6.9.637 - 164 is rupees the Indian way: 1,25,60,447 */
+      '<numFmts count="1"><numFmt numFmtId="164" formatCode="[&gt;=10000000]##\\,##\\,##\\,##0;[&gt;=100000]##\\,##\\,##0;##,##0"/></numFmts>' +
+      '<fonts count="5">' +
         '<font><sz val="11"/><name val="Calibri"/></font>' +
         '<font><b/><color rgb="FFFFFFFF"/><sz val="11"/><name val="Calibri"/></font>' +
         '<font><b/><color rgb="FF11222D"/><sz val="11"/><name val="Calibri"/></font>' +
+        '<font><b/><color rgb="FFFFFFFF"/><sz val="14"/><name val="Calibri"/></font>' +
+        '<font><b/><color rgb="FF1E3A8A"/><sz val="11"/><name val="Calibri"/></font>' +
       '</fonts>' +
-      '<fills count="10">' +
+      '<fills count="18">' +
         '<fill><patternFill patternType="none"/></fill>' +
         '<fill><patternFill patternType="gray125"/></fill>' +
         solid("1E293B") + solid("008300") + solid("EDA100") +
         solid("2A78D6") + solid("E34948") + solid("9AA3AD") + solid("F1F5F9") + solid("F9F1C4") +
+        /* 6.9.637 - 10 green, 11 amber, 12 orange, 13 red (soft, so black text reads), 14 teal, 15 pale teal */
+        solid("D9F2E1") + solid("F6E7B8") + solid("F8D9B8") + solid("F7C9C9") + solid("0F766E") + solid("D5F3EF") +
+        /* 6.9.638 - 16 the executive's band (dark blue), 17 his name in a table (pale blue) */
+        solid("1E3A8A") + solid("D6E4F9") +
       '</fills>' +
       '<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border>' +
         '<border><left style="thin"><color rgb="FFD97706"/></left><right style="thin"><color rgb="FFD97706"/></right><top style="thin"><color rgb="FFD97706"/></top><bottom style="thin"><color rgb="FFD97706"/></bottom><diagonal/></border></borders>' +
       '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
-      '<cellXfs count="18">' +
+      '<cellXfs count="35">' +
         '<xf xfId="0" numFmtId="0" fontId="0" fillId="0" borderId="0"/>' +
         '<xf xfId="0" fontId="1" fillId="2" borderId="0" applyFont="1" applyFill="1"/>' +
         '<xf xfId="0" fontId="1" fillId="3" borderId="0" applyFont="1" applyFill="1"/>' +
@@ -28940,6 +29046,26 @@ function viewCatalogue() {
         '<xf xfId="0" fontId="1" fillId="5" borderId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>' +
         '<xf xfId="0" fontId="1" fillId="6" borderId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>' +
         '<xf xfId="0" fontId="2" fillId="7" borderId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>' +
+        /* 6.9.637 - 18 money, 19 money bold, 20-23 green/amber/orange/red, 24-27 the same with money,
+           28 the title, 29 a section band, 30-31 a summary tile and its figure */
+        '<xf xfId="0" numFmtId="164" fontId="0" fillId="0" borderId="0" applyNumberFormat="1"/>' +
+        '<xf xfId="0" numFmtId="164" fontId="2" fillId="0" borderId="0" applyNumberFormat="1" applyFont="1"/>' +
+        '<xf xfId="0" fontId="0" fillId="10" borderId="0" applyFill="1"/>' +
+        '<xf xfId="0" fontId="0" fillId="11" borderId="0" applyFill="1"/>' +
+        '<xf xfId="0" fontId="0" fillId="12" borderId="0" applyFill="1"/>' +
+        '<xf xfId="0" fontId="2" fillId="13" borderId="0" applyFont="1" applyFill="1"/>' +
+        '<xf xfId="0" numFmtId="164" fontId="0" fillId="10" borderId="0" applyNumberFormat="1" applyFill="1"/>' +
+        '<xf xfId="0" numFmtId="164" fontId="0" fillId="11" borderId="0" applyNumberFormat="1" applyFill="1"/>' +
+        '<xf xfId="0" numFmtId="164" fontId="0" fillId="12" borderId="0" applyNumberFormat="1" applyFill="1"/>' +
+        '<xf xfId="0" numFmtId="164" fontId="2" fillId="13" borderId="0" applyNumberFormat="1" applyFont="1" applyFill="1"/>' +
+        '<xf xfId="0" fontId="3" fillId="14" borderId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment vertical="center"/></xf>' +
+        '<xf xfId="0" fontId="1" fillId="14" borderId="0" applyFont="1" applyFill="1"/>' +
+        '<xf xfId="0" fontId="2" fillId="15" borderId="0" applyFont="1" applyFill="1"/>' +
+        '<xf xfId="0" numFmtId="164" fontId="2" fillId="15" borderId="0" applyNumberFormat="1" applyFont="1" applyFill="1"/>' +
+        /* 6.9.638 - 32 the executive's band, 33 his name in any table, 34 a figure on his band */
+        '<xf xfId="0" fontId="3" fillId="16" borderId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment vertical="center"/></xf>' +
+        '<xf xfId="0" fontId="4" fillId="17" borderId="0" applyFont="1" applyFill="1"/>' +
+        '<xf xfId="0" numFmtId="164" fontId="4" fillId="17" borderId="0" applyNumberFormat="1" applyFont="1" applyFill="1"/>' +
       '</cellXfs>' +
       /* openpyxl warns "workbook contains no default style" without this, and Excel is stricter
          than openpyxl - a repair prompt on first open is exactly the thing that would make him
