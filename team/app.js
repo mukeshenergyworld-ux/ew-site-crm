@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.633";
+  var APP_VERSION = "6.9.634";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -41302,7 +41302,10 @@ function viewCatalogue() {
       chip("dead", "Non-moving" + (nDead ? " (" + nDead + ")" : ""), "stk-view", ' data-v="dead"') +
       chip("count", "Today’s count", "stk-view", ' data-v="count"') +
       '<button class="btn sm ghost" style="min-height:44px" data-act="stk-plan">Plan settings</button>' +
-      '<button class="btn sm ghost" style="min-height:44px" data-act="stk-lv-xlsx" title="Every product with its picture, grouped by brand and category, for the sales meeting">&#8681; Levels Excel, with pictures</button></div>';   /* 6.9.629 */
+      '<button class="btn sm ghost" style="min-height:44px" data-act="stk-lv-xlsx" title="Every product with its picture, grouped by brand and category, for the sales meeting">&#8681; Levels Excel, with pictures</button>' +   /* 6.9.629 */
+      /* 6.9.634 - his words, on the count screen: "nowhere level to upload mention". The load was only
+         on the Levels card; it is here too, beside the download, where he looks for it */
+      '<label class="btn sm" style="min-height:44px;display:inline-flex;align-items:center;cursor:pointer">&#8679; Upload levels (Excel)<input type="file" id="stk_lv_file" accept=".xlsx,.xls" style="display:none"/></label></div>';
   }
 
   /* ---- 1 + 2: suggested levels ---- */
