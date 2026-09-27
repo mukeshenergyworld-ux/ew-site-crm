@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.635";
+  var APP_VERSION = "6.9.636";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -4301,7 +4301,7 @@ window.addEventListener("beforeunload", function (ev) {
       h += '<div style="margin-top:2px">' + rvBtn("rv-exec", "Everyone", ' data-k=""', !!D.ex) +
         ex.map(function (e) { return rvBtn("rv-exec", esc(e), ' data-k="' + esc(e) + '"', D.ex !== e); }).join("") + '</div>';
     }
-    h += '<div style="margin-top:6px">' + rvBtn("rv-send", "Send to team (Excel + message)") + rvBtn("rv-xlsx", "⇩ Excel", "", true) + rvBtn("rv-wa", "WhatsApp message only", "", true) + '</div>' +
+    h += '<div style="margin-top:6px">' + (all ? rvBtn("rv-tg", "Send to Telegram (@" + RV_BOT + ")") : "") + rvBtn("rv-send", "Send to team (Excel + message)", "", all) + rvBtn("rv-xlsx", "⇩ Excel", "", true) + rvBtn("rv-wa", "WhatsApp message only", "", true) + '</div>' +
       '<div style="font-size:12px;color:var(--muted)">Send puts the Excel on the share sheet and copies the message — it ends "Detailed sheet attached". Paste it under the file.</div></div>';
 
     /* PAYMENTS */
@@ -4353,8 +4353,64 @@ window.addEventListener("beforeunload", function (ev) {
           (x.mobile ? '<a class="btn sm ghost" style="min-height:44px;display:inline-flex;align-items:center;margin-right:6px" href="tel:' + esc(x.mobile) + '">Call</a>' : "") +
           rvBtn("rv-called", "Called", ' data-n="' + esc(x.name) + '"', true));
       }, "Every plumber has been in touch within " + COLD_PARTNER + " days.");
+    return h + '</div>' + rvBotCard();   /* 6.9.636 */
+  }
+  /* ================= THE REMINDER BOT  (6.9.636, 27 Sep 2026) =================
+     His words: "@ewreminder_bot , have to use this bot for reminders". Server V139 keeps it in
+     the TG_REMIND slot. The token is pasted here by the owner, checked by Telegram and by name
+     on the server, and stored there only - never kept on this phone, never shown again. The
+     Monday/Thursday digests move to this bot the moment it has a group; until then they stay
+     where they were. */
+  var RV_BOT = "ewreminder_bot";
+  function rvTgEsc(t) { return String(t == null ? "" : t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+  function rvB64(u8) {
+    var b = u8 instanceof Uint8Array ? u8 : new Uint8Array(u8), out = "", CH = 0x8000;
+    for (var i = 0; i < b.length; i += CH) out += String.fromCharCode.apply(null, b.subarray(i, i + CH));
+    return btoa(out);
+  }
+  /* what a refusal from the server means, in his words */
+  function rvTgWhy(e) {
+    var m = String((e && (e.message || e.error || e.description)) || e || "");
+    if (/No bot configured for TG_REMIND/i.test(m)) return "the reminder bot is not connected yet – set it up below.";
+    if (/Missing token or chatId/i.test(m)) return "the reminder bot has no group yet – choose one below.";
+    if (/cannot be set from the app|Not a bot this screen manages/i.test(m)) return "the server needs its V139 update first.";
+    return m || "no answer from the server";
+  }
+  function rvTg(D) {
+    var txt = rvText(D), name = rvFileName(D), b64 = "";
+    try { b64 = rvB64(xlBook("Review", rvXlsxRows(D), RV_COLS, { freeze: { r: 2, c: 0 } })); } catch (e) { toast("Could not build the Excel on this device."); return; }
+    toast("Sending to @" + RV_BOT + "…");
+    var chk = function (r) { if (!r || r.ok === false) throw new Error((r && (r.error || r.description)) || ""); return r; };
+    api("tgSend", { bot: "TG_REMIND", text: rvTgEsc(txt) }, 60000).then(chk).then(function () {
+      return api("tgSend", { bot: "TG_REMIND", pdfBase64: b64, filename: name, mime: XLSX_MIME,
+        caption: rvTgEsc("Detailed sheet – " + D.R.label + " (" + D.R.span + ")" + (D.ex ? " · " + D.ex : "")) }, 120000).then(chk);
+    }).then(function () { toast("Sent to @" + RV_BOT + ": the message and the Excel."); },
+      function (e) { toast("Not sent: " + rvTgWhy(e)); });
+  }
+  function rvBotCard() {
+    if (!roleIs("admin")) return "";
+    var b = S.rvBot || {};
+    var h = '<div class="card"><div style="display:flex;gap:8px;align-items:center"><div style="flex:1;font-weight:700">Reminder bot · @' + RV_BOT + '</div>' +
+      rvBtn("rv-bot-open", b.open ? "Hide" : "Set up", "", true) + '</div>' +
+      '<div style="font-size:13px;color:var(--muted)">' + (b.msg ? esc(b.msg) :
+        "The Monday and Thursday reminders go out through this bot once it has a group. Until then they go to the quotes group, as before.") + '</div>';
+    if (!b.open) return h + '</div>';
+    h += '<div style="margin-top:10px;font-weight:600">1. Connect the bot</div>' +
+      '<div style="font-size:12px;color:var(--muted)">Paste the token BotFather gave for @' + RV_BOT + '. It goes straight to the server and is not kept on this phone.</div>' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px"><input type="password" id="rv_bot_tok" autocomplete="off" placeholder="Bot token" style="flex:1;min-width:200px;min-height:44px;font-size:16px"/>' +
+      rvBtn("rv-bot-connect", "Connect") + '</div>' +
+      '<div style="margin-top:10px;font-weight:600">2. Choose where it posts</div>' +
+      '<div style="font-size:12px;color:var(--muted)">Add @' + RV_BOT + ' to the team group and send any message there (or open the bot and press Start), then press Find.</div>' +
+      '<div style="margin-top:6px">' + rvBtn("rv-bot-find", "Find its groups", "", true) + '</div>';
+    if ((b.chats || []).length) h += b.chats.map(function (c) {
+      var on = String(b.bound || "") === String(c.id);
+      return rvRow(esc(c.title), esc(c.type === "private" ? "direct chat" : c.type) + (on ? " · in use" : ""), "",
+        on ? "" : rvBtn("rv-bot-use", "Use this", ' data-id="' + esc(c.id) + '"'));
+    }).join("");
+    else if (b.found) h += '<div style="font-size:13px;color:#b45309;margin-top:6px">The bot has not seen a group yet. Add it, send a message there, then Find again.</div>';
     return h + '</div>';
   }
+
   /* on the Today screen, Monday and Thursday only */
   function rvDashCard() {
     var w = rvDow(today());
@@ -44626,6 +44682,44 @@ function viewCatalogue() {
     if (act === "rv-xlsx") { rvXlsx(rvData(S.rvPer, S.rvExec)); return; }
     if (act === "rv-send") { rvSend(rvData(S.rvPer, S.rvExec)); return; }
     if (act === "rv-wa") { window.open("https://wa.me/?text=" + encodeURIComponent(rvText(rvData(S.rvPer, S.rvExec)).replace(/\nDetailed sheet attached\.$/, "")), "_blank"); return; }
+    /* 6.9.636 - the reminder bot */
+    if (act === "rv-tg") { if (!seesAllClients()) return; rvTg(rvData(S.rvPer, S.rvExec)); return; }
+    if (act === "rv-bot-open") { S.rvBot = Object.assign({}, S.rvBot || {}, { open: !(S.rvBot || {}).open }); keepScroll = true; render(); return; }
+    if (act === "rv-bot-connect") {
+      if (!roleIs("admin")) return;
+      var _rbt = el("rv_bot_tok"), _rtk = _rbt ? String(_rbt.value || "").trim() : "";
+      if (_rbt) _rbt.value = "";               /* never left in the box */
+      if (!_rtk) { toast("Paste the bot token first."); return; }
+      toast("Checking the token with Telegram…");
+      api("botConnect", { key: "TG_REMIND", token: _rtk, expect: RV_BOT }, 60000).then(function (r) {
+        _rtk = "";
+        if (!r || !r.ok) { toast("Not connected: " + rvTgWhy((r && r.error) || "")); return; }
+        S.rvBot = Object.assign({}, S.rvBot || {}, { open: true, bound: r.chat || "", msg: r.bot + " connected" + (r.chat ? " and already has a group." : " – now choose its group.") });
+        toast(r.bot + " is connected."); render();
+      }).catch(function (e) { _rtk = ""; toast("Not connected: " + apiWhy(e)); });
+      return;
+    }
+    if (act === "rv-bot-find") {
+      if (!roleIs("admin")) return;
+      toast("Asking the bot which groups it is in…");
+      api("botChats", { key: "TG_REMIND" }, 60000).then(function (r) {
+        if (!r || !r.ok) { toast("Could not look: " + rvTgWhy((r && r.error) || "")); return; }
+        S.rvBot = Object.assign({}, S.rvBot || {}, { open: true, found: true, chats: r.chats || [], bound: r.bound || "" });
+        render();
+      }).catch(function (e) { toast("Could not look: " + apiWhy(e)); });
+      return;
+    }
+    if (act === "rv-bot-use") {
+      if (!roleIs("admin")) return;
+      var _rcid = String(id || "");
+      toast("Pointing the bot at that group…");
+      api("botBind", { key: "TG_REMIND", chat: _rcid }, 60000).then(function (r) {
+        if (!r || !r.ok) { toast("Not done: " + ((r && r.error) || "no answer")); return; }
+        S.rvBot = Object.assign({}, S.rvBot || {}, { bound: _rcid, msg: "Posting to " + (r.to || "the group") + ". The Monday and Thursday reminders go there from now on." });
+        toast("Done – the bot posted a line in " + (r.to || "the group") + "."); render();
+      }).catch(function (e) { toast("Not done: " + apiWhy(e)); });
+      return;
+    }
     if (act === "rv-called") {
       var _pn = t.getAttribute("data-n") || "";
       if (!_pn) return;
