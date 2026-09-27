@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.632";
+  var APP_VERSION = "6.9.633";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -15154,6 +15154,7 @@ function viewCatalogue() {
       '<div class="pmeta" style="font-size:12px;color:#94a3b8;margin:2px 0 8px">Parts separated by <b>|</b>, label before the colon. After saving, the app reads the price list back and tells you whether the specifications were kept; if not, type them in the sheet, column L.</div>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
       (p.code && !copy ? '<button class="btn ghost" data-act="pr-copy" data-code="' + esc(p.code) + '">+ Add similar</button>' : '') +
+      (p.code && !copy && typeof bomProdBtn === "function" ? bomProdBtn(p.code) : '') +   /* 6.9.633 */
       '<button class="btn" data-act="cat-save" data-new="' + (isNew ? '1' : '') + '">Save product</button></div>' +
       '<div id="p_err" style="display:none;margin-top:8px;padding:8px 10px;border-radius:8px;background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;font-size:13px;font-weight:600"></div>';
   }
@@ -18315,11 +18316,20 @@ function viewCatalogue() {
       var ds = String(l.desc || l.code || "");
       return ds + (cd && cd !== ds ? "  (" + cd + ")" : "");
     };
+    /* CRM 6.9.633 / Challan 1.112.0 - a kit set to show its parts: one small grey line under it */
+    var _kits = {}; try { _kits = stkBom(); } catch (e) { _kits = {}; }
+    var kitWords = function (l) {
+      var b = _kits[String((l && l.code) || "").trim()];
+      if (!b || !b.show) return "";
+      var q = num(l.qty) || 1;
+      return "Includes: " + b.parts.map(function (p) { return (p.qty * q) + " x " + (p.desc || p.code); }).join(", ");
+    };
+    var kitLines = function (l, s) { var t = kitWords(l); if (!t) return []; F(); doc.setFontSize(9 * s); var r = doc.splitTextToSize(t, dW(s)); F("bold"); doc.setFontSize(12 * s); return r; };
     var measure = function (s) {
       F("bold"); doc.setFontSize(12 * s);      /* measured in the face it is drawn in */
       return items.map(function (l) {
-        var d = doc.splitTextToSize(words(l), dW(s));
-        return Math.max(7 * s, d.length * 4.9 * s + 2.4 * s);
+        var d = doc.splitTextToSize(words(l), dW(s)), k = kitLines(l, s);
+        return Math.max(7 * s, d.length * 4.9 * s + 2.4 * s + (k.length ? k.length * 3.7 * s + 0.6 * s : 0));
       });
     };
     var total = function (a) { return a.reduce(function (t, x) { return t + x; }, 0); };
@@ -18346,6 +18356,8 @@ function viewCatalogue() {
       g(10); F("bold"); doc.setFontSize(12 * sc);
       var d = doc.splitTextToSize(words(l), _dw);
       doc.text(d, Xd, ty, { lineHeightFactor: 1.2 });
+      var _kl = kitLines(l, sc);
+      if (_kl.length) { g(115); F(); doc.setFontSize(9 * sc); doc.text(_kl, Xd, ty + d.length * 4.9 * sc - 0.6 * sc, { lineHeightFactor: 1.15 }); g(10); F("bold"); doc.setFontSize(12 * sc); }
       g(60); F(); doc.setFontSize(10.5 * sc); doc.text(String(l.unit || ""), _ur, ty, { align: "right" });
       g(0); F("bold"); doc.setFontSize(15 * sc); doc.text(String(num(l.qty)), R - 2, ty + 0.4, { align: "right" });
       y += rh;
@@ -40724,20 +40736,49 @@ function viewCatalogue() {
     });
     return out;
   }
+  /* ===== KITS (BOM) - CRM 6.9.633 / Challan 1.112.0, 27 Sep 2026 =====
+     A kit (softener, sand filter, heat pump ...) is sold as one line and leaves the godown as its
+     parts. One "bom" stock row per kit: code = the kit, notes = {"parts":[{c:code,q:qty,d:desc}],
+     "show":1 to print the parts on the challan}. The last row wins; no parts = no kit. */
+  function stkBom() {
+    var m = {};
+    ((S && S.stock) || []).forEach(function (r) {
+      if (String(r.type) !== "bom") return;
+      var k = String(r.code || "").trim(); if (!k) return;
+      var o = {}; try { o = JSON.parse(r.notes || "{}") || {}; } catch (e) { o = {}; }
+      var parts = (o.parts || []).map(function (p) { return { code: String((p && p.c) || "").trim(), qty: Number(p && p.q) || 0, desc: String((p && p.d) || "") }; })
+        .filter(function (p) { return p.code && p.qty > 0 && p.code !== k; });
+      if (parts.length) m[k] = { parts: parts, show: !!o.show }; else delete m[k];
+    });
+    return m;
+  }
+  /* a list of lines, with every kit replaced by its parts (x the kit's qty), three deep */
+  function stkExpand(items, bom, depth) {
+    bom = bom || stkBom(); depth = depth || 0;
+    var out = [];
+    (items || []).forEach(function (i) {
+      var k = String((i && i.code) || "").trim(), b = k && bom[k];
+      if (!b || depth > 2) { out.push(i); return; }
+      var q = Number(i.qty) || 0;
+      stkExpand(b.parts.map(function (p) { return { code: p.code, qty: q * p.qty, desc: p.desc, kit: k }; }), bom, depth + 1)
+        .forEach(function (x) { out.push(x); });
+    });
+    return out;
+  }
   function stockDeliveredByCode() {
-    var m = {}, cut = stkCutoff();
+    var m = {}, cut = stkCutoff(), _bom = stkBom();
     (S.data.challans || []).forEach(function (c) {
       if (!stkChOut(c)) return;   /* 6.9.607 - out when dispatched, not when the receipt comes back */
-      chItems(c).forEach(function (i) { var k = String(i.code || "").trim(); if (k && stkCounts(k, c.createdAt, cut)) m[k] = (m[k] || 0) + (Number(i.qty) || 0); });
+      stkExpand(chItems(c), _bom).forEach(function (i) { var k = String(i.code || "").trim(); if (k && stkCounts(k, c.createdAt, cut)) m[k] = (m[k] || 0) + (Number(i.qty) || 0); });
     });
     return m;
   }
   function stockReturnedByCode() {
-    var m = {}, _cutR = stkCutoff();
+    var m = {}, _cutR = stkCutoff(), _bomR = stkBom();
     (S.data.returns || []).forEach(function (r) {
       if (String(r.status || "").trim().toLowerCase() !== "received") return;
       var items = []; try { items = JSON.parse(r.itemsJson || "[]"); } catch (e) {}
-      items.forEach(function (i) { var k = String(i.code || "").trim(); if (k && stkCounts(k, r.createdAt, _cutR)) m[k] = (m[k] || 0) + (Number(i.qty) || 0); });
+      stkExpand(items, _bomR).forEach(function (i) { var k = String(i.code || "").trim(); if (k && stkCounts(k, r.createdAt, _cutR)) m[k] = (m[k] || 0) + (Number(i.qty) || 0); });
     });
     return m;
   }
@@ -40750,8 +40791,8 @@ function viewCatalogue() {
       if (ty === "in" && _bref[String(row.ref || "").trim().toLowerCase()]) return;   /* that bill is already counted from Tally */
       var _k0 = String(row.code || "").trim();
       if (ty === "opening" && _olast[_k0] !== row) return;   /* only the latest count - 6.9.608: and only its last save */
-      if (ty !== "opening" && ty !== "reorder" && ty !== "rate" && ty !== "landing" && ty !== "register" && ty !== "alias" && ty !== "plan" && !stkCounts(_k0, row.asOn, cut)) return;
-      if (ty === "reorder" || ty === "rate" || ty === "landing" || ty === "register" || ty === "alias" || ty === "plan") return;   /* settings rows, not movements (register/alias: v6.9.605; plan: 6.9.621) */
+      if (ty !== "opening" && ty !== "reorder" && ty !== "rate" && ty !== "landing" && ty !== "register" && ty !== "alias" && ty !== "plan" && ty !== "bom" && !stkCounts(_k0, row.asOn, cut)) return;
+      if (ty === "reorder" || ty === "rate" || ty === "landing" || ty === "register" || ty === "alias" || ty === "plan" || ty === "bom") return;   /* bom: a kit's parts list (6.9.633 / 1.112.0) */   /* settings rows, not movements (register/alias: v6.9.605; plan: 6.9.621) */
       var k = String(row.code || "").trim(); if (!k) return;
       m[k] = (m[k] || 0) + (Number(row.qty) || 0);
       if (row.desc && !desc[k]) desc[k] = row.desc;
@@ -41071,14 +41112,17 @@ function viewCatalogue() {
   }
   /* what went out, product by product: challans out of the godown (dispatched, received or billed),
      one row per challan number, by the day the challan was made */
+  var _stkHistBom = null;
   function stkHist() {
+    _stkHistBom = null;
     var DAY = 86400000, now = Date.parse(today() + "T00:00:00"), by = {}, first = "";
     dedupeChallans(S.data.challans || []).forEach(function (c) {
       if (!stkChOut(c)) return;
       var d = String(c.createdAt || "").slice(0, 10); if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return;
       if (!first || d < first) first = d;
       var age = Math.max(0, Math.floor((now - Date.parse(d + "T00:00:00")) / DAY));
-      chItems(c).forEach(function (i) {
+      var _ci = chItems(c), _hb = _stkHistBom || (_stkHistBom = stkBom());
+      _ci.concat(stkExpand(_ci.filter(function (x) { return _hb[String((x && x.code) || "").trim()]; }), _hb)).forEach(function (i) {   /* 6.9.633 - the kit and its parts */
         var k = String(i.code || "").trim(), q = Number(i.qty) || 0; if (!k || !(q > 0)) return;
         var x = by[k] || (by[k] = { q90: 0, q365: 0, wk: {}, last: "" });
         if (age < 90) x.q90 += q;
@@ -41653,11 +41697,11 @@ function viewCatalogue() {
     return '<div class="acts stk-sl" data-code="' + esc(p.code) + '" style="align-items:center;flex-wrap:nowrap;margin:6px 0 0;gap:6px"><div class="grow" style="font-size:13px;min-width:0">' + line + (function () { try { return STOCK_LOADED ? ' ' + stkTag(String(p.code || "").trim(), stkCtx()) : ''; } catch (e) { return ''; } })() + '</div>' + btn.replace('min-height:44px', 'min-height:44px;flex:0 0 auto') + '</div>';
   }
   function stkReserved(skipId) {
-    var cut = stkCutoff(), m = {};
+    var cut = stkCutoff(), m = {}, _bomV = stkBom();
     ((S.data && S.data.challans) || []).forEach(function (c) {
       if (!c || (skipId && c.id === skipId)) return;
       if (stkChDead(c) || stkChOut(c)) return;   /* 6.9.607 - held = made, not yet dispatched */
-      chItems(c).forEach(function (i) {
+      stkExpand(chItems(c), _bomV).forEach(function (i) {
         var k = String(i.code || "").trim();
         if (k && cut[k] && stkCounts(k, c.createdAt, cut)) m[k] = (m[k] || 0) + (Number(i.qty) || 0);
       });
@@ -41668,7 +41712,7 @@ function viewCatalogue() {
     if (!S.stock || !S.stock.length) return [];
     var cut = stkCutoff(), mv = stockMovementByCode().m, del = stockDeliveredByCode(), ret = stockReturnedByCode(), res = stkReserved(skipId);
     var want = {}, desc = {};
-    (lines || []).forEach(function (l) { var k = String((l && l.code) || "").trim(); if (!k) return; want[k] = (want[k] || 0) + (Number(l.qty) || 0); if (!desc[k]) desc[k] = l.desc || k; });
+    stkExpand(lines || []).forEach(function (l) { var k = String((l && l.code) || "").trim(); if (!k) return; want[k] = (want[k] || 0) + (Number(l.qty) || 0); if (!desc[k]) desc[k] = (l.desc || k) + (l.kit ? " (in kit " + l.kit + ")" : ""); });
     return Object.keys(want).filter(function (k) { return cut[k]; }).map(function (k) {
       var free = (mv[k] || 0) - (del[k] || 0) + (ret[k] || 0) - (res[k] || 0);
       return { code: k, desc: desc[k], want: want[k], free: Math.round(free * 100) / 100 };
@@ -41787,8 +41831,64 @@ function viewCatalogue() {
       '<input id="si_rate" inputmode="decimal" value="' + esc(rate[code] || "") + '" placeholder="e.g. 250" ' + inp + '/>' +
       '<div ' + lbl + '>Landing % for this item (optional — leave blank to use the ' + (Number(landingPcts().global) || 0) + '% set for everything)</div>' +
       '<input id="si_landing" inputmode="decimal" value="' + esc(landingPcts().byCode[code] !== undefined ? landingPcts().byCode[code] : "") + '" placeholder="e.g. 4" ' + inp + '/>' +
+      '<div style="margin-top:10px;padding:8px 10px;border:1px dashed #cbd5e1;border-radius:8px;font-size:13px">' + (function () {   /* 6.9.633 */
+        var b = stkBom()[code];
+        return (b ? '<b>Kit</b> of ' + plural(b.parts.length, "part") + ': ' + esc(b.parts.map(function (x) { return x.qty + " \u00d7 " + (x.desc || x.code); }).join(", ")) + ' '
+                  : 'Is this a kit made of other products (softener, sand filter, heat pump)? ') +
+          '<button class="btn sm ghost" style="min-height:44px" data-act="bom-open" data-code="' + esc(code) + '">' + (b ? 'Change the parts' : 'Set its parts (BOM)') + '</button>';
+      })() + '</div>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
       '<button class="btn" data-act="stock-item-save" data-code="' + esc(code) + '">Save</button></div>';
+  }
+  /* ===== 6.9.633 - THE KIT EDITOR =====
+     His words: "provision to make BOM so that that item challan automatic reduce qty of related
+     items ... option to show or not show bom in challan". Parts are picked by code or name, each
+     with how many go into ONE kit. Saved as one "bom" stock row; the last one wins. */
+  function modalBom(code) {
+    var p = (PRODUCTS.filter(function (x) { return x.code === code; })[0]) || {};
+    var z = S.bomEd && S.bomEd.code === code ? S.bomEd : (S.bomEd = { code: code, rows: ((stkBom()[code] || {}).parts || []).map(function (x) { return { code: x.code, qty: x.qty }; }), show: !!(stkBom()[code] || {}).show });
+    if (!z.rows.length) z.rows.push({ code: "", qty: 1 });
+    if (!z.hasOwnProperty("show")) z.show = false;
+    var inp = 'style="width:100%;box-sizing:border-box;min-height:44px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;background:#fff"';
+    var opts = PRODUCTS.filter(function (x) { return x.code !== code; }).map(function (x) { return '<option value="' + esc(x.code) + '">' + esc(x.code) + ' \u2014 ' + esc(x.desc || "") + '</option>'; }).join("");
+    var nameOf = function (c) { var q = PRODUCTS.filter(function (x) { return x.code === c; })[0]; return q ? q.desc || c : ""; };
+    return '<h2 style="margin:0 0 2px">Parts in this kit</h2>' +
+      '<div class="meta" style="font-size:12.5px;margin-bottom:8px"><b>' + esc(p.desc || code) + '</b> \u00b7 ' + esc(code) + '. When a challan carries this, stock goes out of these parts (qty on the challan \u00d7 qty per kit), not out of the kit itself. The same for returns booked in.</div>' +
+      '<datalist id="bom_prods">' + opts + '</datalist>' +
+      z.rows.map(function (r, i) {
+        return '<div style="display:flex;gap:6px;align-items:flex-end;margin-bottom:6px">' +
+          '<div style="flex:1 1 70%"><label style="margin-top:0">Part</label><input id="bom_c' + i + '" list="bom_prods" value="' + esc(r.code || "") + '" placeholder="type a code or name" ' + inp + '/>' +
+            (r.code ? '<div style="font-size:12px;color:' + (nameOf(r.code) ? '#64748b' : '#b91c1c') + '">' + esc(nameOf(r.code) || "not on the price list") + '</div>' : '') + '</div>' +
+          '<div style="flex:0 0 84px"><label style="margin-top:0">Per kit</label><input id="bom_q' + i + '" inputmode="decimal" value="' + esc(r.qty || "") + '" ' + inp + '/></div>' +
+          '<button class="btn sm ghost" style="min-height:44px;min-width:44px" data-act="bom-del" data-i="' + i + '" title="Remove this part">\u2715</button></div>';
+      }).join("") +
+      '<button class="btn sm ghost" style="min-height:44px" data-act="bom-add">+ Another part</button>' +
+      '<label style="display:flex;gap:8px;align-items:center;margin-top:12px;min-height:44px;cursor:pointer"><input type="checkbox" id="bom_show"' + (z.show ? ' checked' : '') + ' style="width:22px;height:22px"/> Show the parts on the challan, in small grey type under the kit</label>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
+      ((stkBom()[code]) ? '<button class="btn ghost" data-act="bom-off" data-code="' + esc(code) + '">Not a kit</button>' : '') +
+      '<button class="btn" data-act="bom-save" data-code="' + esc(code) + '">Save the kit</button></div>';
+  }
+  function bomProdBtn(code) {
+    try { return roleAny(["admin", "accounts", "godown"]) ? '<button class="btn ghost" data-act="bom-open" data-code="' + esc(code) + '">' + (stkBom()[code] ? 'Kit parts' : 'Make it a kit') + '</button>' : ''; } catch (e) { return ''; }
+  }
+  function bomSync() {
+    var z = S.bomEd; if (!z) return;
+    z.rows.forEach(function (r, i) {
+      var c = el("bom_c" + i), q = el("bom_q" + i);
+      if (c) { var v = String(c.value || "").trim(); var hit = PRODUCTS.filter(function (x) { return x.code === v || (x.code + " \u2014 " + (x.desc || "")) === v; })[0]; r.code = hit ? hit.code : v; }
+      if (q) r.qty = String(q.value || "").trim();
+    });
+    var sh = el("bom_show"); if (sh) z.show = !!sh.checked;
+  }
+  function bomWrite(code, parts, show) {
+    var row = { id: "S-" + Date.now() + "-" + Math.floor(Math.random() * 1000000) + "-bom", type: "bom", code: code, desc: "", qty: 0, ref: "", asOn: today(),
+      notes: JSON.stringify({ parts: parts.map(function (p) { return { c: p.code, q: p.qty, d: p.desc }; }), show: show ? 1 : 0 }) };
+    S.stock = (S.stock || []).concat([row]);
+    try { _stkCtx = null; } catch (e) { }
+    return api("stockSave", { row: row }).then(function (r) {
+      if (!r || !r.ok) throw new Error((r && r.error) || "the server did not keep it");
+      return r;
+    });
   }
   /* One figure for the whole catalogue, saved as a "landing" stock row with code "*".
      Deliberately one number: a per-item freight sheet is the kind of thing that gets set
@@ -44136,6 +44236,36 @@ function viewCatalogue() {
       toast("Filled in \u2014 press Save to keep them."); return;
     }
     if (act === "stk-plan") { S.modal = modalStkPlan(); render(); return; }
+    if (act === "bom-open") {   /* 6.9.633 */
+      if (!roleAny(["admin", "accounts", "godown"])) { toast("Kits are set by the owner, accounts or the godown."); return; }
+      S.bomEd = null; S.modal = modalBom(t.getAttribute("data-code")); render(); return;
+    }
+    if (act === "bom-add" || act === "bom-del") {
+      if (!S.bomEd) return; bomSync();
+      if (act === "bom-add") S.bomEd.rows.push({ code: "", qty: 1 }); else S.bomEd.rows.splice(Number(t.getAttribute("data-i")) || 0, 1);
+      keepScroll = true; S.modal = modalBom(S.bomEd.code); render(); return;
+    }
+    if (act === "bom-save" || act === "bom-off") {
+      var _bc = t.getAttribute("data-code"), _bparts = [];
+      if (act === "bom-save") {
+        bomSync();
+        var _bz = S.bomEd || { rows: [] }, _bad = [];
+        _bz.rows.forEach(function (r) {
+          if (!r.code && !String(r.qty || "").trim()) return;
+          var pr = PRODUCTS.filter(function (x) { return x.code === r.code; })[0], q = Number(String(r.qty || "").replace(/[^0-9.]/g, "")) || 0;
+          if (!pr || !(q > 0) || r.code === _bc) { _bad.push(r.code || "(blank)"); return; }
+          _bparts.push({ code: pr.code, qty: q, desc: pr.desc || pr.code });
+        });
+        if (_bad.length) { toast("Check " + _bad.join(", ") + " \u2014 pick a part from the price list and give how many go into one kit."); return; }
+        if (!_bparts.length) { toast("Add at least one part, or press Not a kit."); return; }
+      }
+      var _lb = t.textContent; t.disabled = true; t.textContent = "Saving\u2026";
+      bomWrite(_bc, _bparts, act === "bom-save" && S.bomEd && S.bomEd.show).then(function () {
+        S.bomEd = null; S.modal = null; render();
+        toast(_bparts.length ? "Kit saved: " + plural(_bparts.length, "part") + ". Challans now take stock out of the parts." : "It is not a kit any more.");
+      }, function (e) { t.disabled = false; t.textContent = _lb; toast("The kit was NOT saved \u2014 " + ((e && e.message) || "no answer") + ". Press Save again."); });
+      return;
+    }
     if (act === "stk-lvimp-go") {   /* 6.9.632 */
       var _li = S.lvImp; if (!_li || !_li.plan || _li.done) return;
       _li.done = true;
