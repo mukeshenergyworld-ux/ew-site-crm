@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.634";
+  var APP_VERSION = "6.9.635";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -549,10 +549,10 @@
   }
 
   var ROLE_TABS = {
-    admin:    ["dash","agent","report","scorecard","returns","tools","rates","clients","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","register","freight","payments","paidout","billing","discounts","commission","service","spares","dues","payroll","products","catalogs","brandstory","pricelist","catalogue","rules","teampins","health","trouble","changelog","booksweep","dups","stock","brief"],
-    accounts: ["dash","agent","returns","tools","clients","partners","followups","challans","register","freight","payments","billing","service","spares","dues","products","catalogs","rates","pricelist","dups","stock","trouble"],
+    admin:    ["dash","review","agent","report","scorecard","returns","tools","rates","clients","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","register","freight","payments","paidout","billing","discounts","commission","service","spares","dues","payroll","products","catalogs","brandstory","pricelist","catalogue","rules","teampins","health","trouble","changelog","booksweep","dups","stock","brief"],
+    accounts: ["dash","review","agent","returns","tools","clients","partners","followups","challans","register","freight","payments","billing","service","spares","dues","products","catalogs","rates","pricelist","dups","stock","trouble"],
     godown:   ["dash","agent","returns","tools","challans","freight","products","stock","trouble"],
-    sales:    ["dash","agent","report","returns","tools","clients","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","register","freight","billing","payments","products","catalogs","dups","brief","trouble"],
+    sales:    ["dash","review","agent","report","returns","tools","clients","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","register","freight","billing","payments","products","catalogs","dups","brief","trouble"],
     service:  ["dash","agent","tools","service","spares","dues","followups","products","catalogs","trouble"]
   };
   /* v6.9.320 - EVERY SCREEN EITHER OF HIS ROLES OPENS.
@@ -4024,6 +4024,10 @@ window.addEventListener("beforeunload", function (ev) {
       [st.architect, st.plumber, st.builder].forEach(function (n) { touch(n, d); });
     });
     (S.data.commpay || []).forEach(function (p) { touch(p.associate, dstr(p.date)); });
+    /* 6.9.635 - "Called" on the twice-weekly review is an audit row, never a new column */
+    (S.data.audit || []).forEach(function (r) {
+      if (r && String(r.action || "") === "partner:call") touch(r.target, dstr(r.createdAt));
+    });
     _pcCache = m;
     return m;
   }
@@ -4035,6 +4039,329 @@ window.addEventListener("beforeunload", function (ev) {
     return (S.data.associates || []).map(function (a) { return { a: a, days: partnerLastContactDays(a.name) }; })
       .filter(function (x) { return x.days !== null && x.days >= COLD_PARTNER; })
       .sort(function (a, b) { return b.days - a.days; });
+  }
+
+  /* ================= THE TWICE-WEEKLY REVIEW  (6.9.635, 27 Sep 2026) =================
+     HIS WORDS: "i want to manage twice a week payment and quotation to chase reminder" - and
+     "include plumber to follow in it". Monday and Thursday. Two parts, the same figures on this
+     screen and in the Excel, so the executive who opens the file and the owner who opens the
+     screen are arguing about the same numbers.
+
+       PAYMENTS    total due till date, with ageing (hisabOutstanding + clientAging - the HISAB
+                   figures, not a second sum); material dispatched in the period (the challan's
+                   own dispatchedAt, else the challan date once it has left); collected in the
+                   period (payments by their date - the ledger's own list).
+       QUOTATIONS  new clients by name; new quotes; quotes still waiting, with Won / Lost here -
+                   the same write the quote book makes; plumbers to call, with "Called".
+
+     Every list honours the role filter exactly as the book does: an executive sees his own.
+     Nothing on this screen writes a money record. The only writes are the quote status (the
+     existing q-win / q-lose) and an added audit row "partner:call". Nothing is deleted.
+
+     THE FILE. The server hosts pdf and pictures only (ALLOWED_MIME), so the Excel cannot be sent
+     through Telegram or a link without a server change. It goes out from the phone: the share
+     sheet takes the file, and the message - which says the detailed sheet is attached - is put
+     on the clipboard in the same tap, to paste under it. */
+  var XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+  function rvShort(d) {
+    var m = String(d || "").match(/^(\d{4})-(\d{2})-(\d{2})/); if (!m) return "";
+    return Number(m[3]) + " " + ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][Number(m[2]) - 1];
+  }
+  function rvDow(d) { return new Date(String(d).slice(0, 10) + "T12:00:00").getDay(); }
+  /* the review before today: the latest Monday or Thursday strictly before it */
+  function rvLastReview(t) {
+    for (var i = 1; i <= 7; i++) { var d = addDays(t, -i), w = rvDow(d); if (w === 1 || w === 4) return d; }
+    return addDays(t, -7);
+  }
+  var RV_PERIODS = [["since", "Since last review"], ["7", "Last 7 days"], ["week", "This week"], ["last", "Last week"]];
+  function rvRange(k, t) {
+    t = t || today(); k = k || "since";
+    var mon = addDays(t, -((rvDow(t) + 6) % 7));
+    var r;
+    if (k === "week") r = { from: mon, to: t };
+    else if (k === "last") r = { from: addDays(mon, -7), to: addDays(mon, -1) };
+    else if (k === "7") r = { from: addDays(t, -6), to: t };
+    else { k = "since"; r = { from: rvLastReview(t), to: t }; }
+    r.k = k;
+    r.label = RV_PERIODS.filter(function (p) { return p[0] === k; })[0][1];
+    r.span = rvShort(r.from) + " – " + rvShort(r.to);
+    return r;
+  }
+  function rvOwner(n) { var cl = clientByName(n) || {}; return String(cl.ownedBy || cl.createdBy || "").trim(); }
+  function rvQExec(q) { return String(q.createdBy || "").trim() || rvOwner(q.client); }
+  function rvQMine(q) { return seesAllClients() || q.createdBy === S.user || isMineClient(q.client); }
+  /* the executives he can pick: whoever owns money owed or a quote still waiting */
+  function rvExecs() {
+    var seen = {}, out = [];
+    var add = function (e) { e = String(e || "").trim(); if (e && !seen[e.toLowerCase()]) { seen[e.toLowerCase()] = 1; out.push(e); } };
+    hisabOutstanding().forEach(function (r) { add(r.owner); });
+    (S.data.quotes || []).forEach(function (q) { if (qOpen216(q)) add(rvQExec(q)); });
+    return out.sort(function (a, b) { return a.toLowerCase().localeCompare(b.toLowerCase()); });
+  }
+  function rvData(per, ex, t) {
+    var R = rvRange(per, t);
+    ex = seesAllClients() ? String(ex || "") : "";
+    var inR = function (d) { return !!d && d >= R.from && d <= R.to; };
+    var okC = function (n) { return (seesAllClients() || isMineClient(n)) && (!ex || rvOwner(n) === ex); };
+    var okQ = function (q) { return rvQMine(q) && (!ex || rvQExec(q) === ex || rvOwner(q.client) === ex); };
+    var D = { R: R, ex: ex };
+
+    /* PAYMENTS */
+    D.dues = hisabOutstanding().filter(function (r) { return okC(r.name); }).map(function (r) {
+      var ag = clientAging(r.name);
+      return { name: r.name, exec: r.owner, due: r.due, paid: r.paid, b: ag.b, oldest: ag.oldest, ag: ag };
+    }).sort(function (a, b) { return b.due - a.due; });
+    D.age = { cur: 0, d30: 0, d60: 0, d90: 0 };
+    D.dues.forEach(function (r) { ["cur", "d30", "d60", "d90"].forEach(function (k) { D.age[k] += r.b[k] || 0; }); });
+    D.dueTot = D.dues.reduce(function (a, r) { return a + r.due; }, 0);
+    D.overdue = D.dues.reduce(function (a, r) { return a + (r.ag.overdue || 0); }, 0);
+
+    D.disp = dedupeChallans((S.data.challans || []).filter(function (c) { return !stkChDead(c); })).map(function (c) {
+      var d = dstr(c.dispatchedAt) || (FR_DONE.indexOf(String(c.status || "")) >= 0 ? dstr(c.createdAt) : "");
+      return { d: d, no: String(c.challanNo || ""), name: String(c.customerName || ""), exec: rvOwner(c.customerName), amt: chValue(c), id: c.id };
+    }).filter(function (x) { return inR(x.d) && okC(x.name); })
+      .sort(function (a, b) { return b.d.localeCompare(a.d) || b.amt - a.amt; });
+    D.dispTot = D.disp.reduce(function (a, x) { return a + x.amt; }, 0);
+
+    D.coll = (S.data.payments || []).map(function (p) {
+      return { d: dstr(p.date || p.createdAt), name: String(p.client || ""), exec: rvOwner(p.client), amt: payAmt(p), mode: String(p.mode || ""), ref: String(p.ref || "") };
+    }).filter(function (x) { return inR(x.d) && x.amt > 0 && okC(x.name); })
+      .sort(function (a, b) { return b.d.localeCompare(a.d) || b.amt - a.amt; });
+    D.collTot = D.coll.reduce(function (a, x) { return a + x.amt; }, 0);
+
+    /* QUOTATIONS */
+    D.newCl = (S.data.clients || []).filter(function (c) {
+      return c && inR(dstr(c.createdAt)) && okC(c.name) && !isCancelled("clients", c.id);
+    }).map(function (c) {
+      return { d: dstr(c.createdAt), name: String(c.name || ""), exec: rvOwner(c.name), where: String(c.area || c.location || ""),
+               plumber: String(c.plumber || ""), mobile: String(c.mobile || ""), stage: String(c.stage || "") };
+    }).sort(function (a, b) { return b.d.localeCompare(a.d); });
+
+    var qRow = function (q) {
+      var d = dstr(q.createdAt);
+      return { id: q.id, d: d, no: String(q.quoteNo || ""), name: String(q.client || ""), exec: rvQExec(q),
+               brands: quoteBrands(q).join(", "), amt: nAmt(q.net) || nAmt(q.total), status: String(q.status || "Open"),
+               age: d ? Math.max(0, -daysTo(d)) : null };
+    };
+    var qs = (S.data.quotes || []).filter(function (q) { return q && !isCancelled("quotes", q.id) && okQ(q); });
+    D.newQ = qs.filter(function (q) { return inR(dstr(q.createdAt)); }).map(qRow).sort(function (a, b) { return b.d.localeCompare(a.d); });
+    D.newQTot = D.newQ.reduce(function (a, x) { return a + x.amt; }, 0);
+    D.wait = qs.filter(qOpen216).map(qRow).sort(function (a, b) { return (b.age || 0) - (a.age || 0); });
+    D.waitTot = D.wait.reduce(function (a, x) { return a + x.amt; }, 0);
+
+    /* plumbers: quiet for COLD_PARTNER days or more, or never in touch. An executive gets the
+       plumbers on his own clients (and the ones he entered). */
+    var onMine = null;
+    if (ex || !seesAllClients()) {
+      onMine = {};
+      (S.data.clients || []).forEach(function (c) { if (c && c.plumber && okC(c.name)) onMine[dkey(c.plumber)] = 1; });
+    }
+    D.plumb = (S.data.associates || []).filter(function (a) {
+      if (!a || !/plumb/i.test(String(a.role || ""))) return false;
+      if (isCancelled("associates", a.id)) return false;
+      if (onMine && !onMine[dkey(a.name)] && String(a.createdBy || "") !== (ex || S.user)) return false;
+      return true;
+    }).map(function (a) {
+      return { name: String(a.name || ""), mobile: String(a.mobile || ""), where: String(a.area || ""), days: partnerLastContactDays(a.name) };
+    }).filter(function (x) { return x.days === null || x.days >= COLD_PARTNER; })
+      .sort(function (a, b) { return (a.days === null) - (b.days === null) || (b.days || 0) - (a.days || 0); });
+    return D;
+  }
+  /* by executive, for the owner: one line a man */
+  function rvByExec(D) {
+    var m = {}, g = function (e) { e = e || "(no executive)"; return m[e] = m[e] || { exec: e, due: 0, d90: 0, disp: 0, coll: 0, newCl: 0, newQ: 0, wait: 0 }; };
+    D.dues.forEach(function (r) { var x = g(r.exec); x.due += r.due; x.d90 += r.b.d90 || 0; });
+    D.disp.forEach(function (r) { g(r.exec).disp += r.amt; });
+    D.coll.forEach(function (r) { g(r.exec).coll += r.amt; });
+    D.newCl.forEach(function (r) { g(r.exec).newCl++; });
+    D.newQ.forEach(function (r) { g(r.exec).newQ++; });
+    D.wait.forEach(function (r) { g(r.exec).wait++; });
+    return Object.keys(m).map(function (k) { return m[k]; }).sort(function (a, b) { return b.due - a.due; });
+  }
+  function rvText(D) {
+    var L = [], R = D.R, A = moneyAscii;
+    L.push("Energy World – twice-weekly review");
+    L.push(d10(today()) + " · " + R.label + " (" + R.span + ")" + (D.ex ? " · " + D.ex : ""));
+    L.push("");
+    L.push("PAYMENTS");
+    L.push("Total due till date: " + A(D.dueTot) + " (" + plural(D.dues.length, "client") + ")");
+    L.push("  0-30 days " + A(D.age.cur) + " | 31-60 " + A(D.age.d30) + " | 61-90 " + A(D.age.d60) + " | 90+ " + A(D.age.d90));
+    L.push("Material dispatched: " + plural(D.disp.length, "delivery") + ", " + A(D.dispTot));
+    L.push("Collected: " + plural(D.coll.length, "payment") + ", " + A(D.collTot));
+    L.push("");
+    L.push("QUOTATIONS");
+    L.push("New clients: " + D.newCl.length + (D.newCl.length ? " – " + D.newCl.slice(0, 12).map(function (x) { return x.name; }).join(", ") + (D.newCl.length > 12 ? " and " + (D.newCl.length - 12) + " more" : "") : ""));
+    L.push("New quotes: " + D.newQ.length + ", " + A(D.newQTot));
+    L.push("Quotes to follow: " + D.wait.length + ", " + A(D.waitTot) + " – mark each Won or Lost in the CRM");
+    L.push("Plumbers to call: " + D.plumb.length);
+    L.push("");
+    L.push("Detailed sheet attached.");
+    return L.join("\n");
+  }
+  function rvXlsxRows(D) {
+    var H = function (a) { return a.map(function (h) { return { v: h, s: XL.HEAD }; }); };
+    var band = function (txt) { return [{ v: txt, s: XL.BAND }, { v: "", s: XL.BAND }, { v: "", s: XL.BAND }, { v: "", s: XL.BAND }, { v: "", s: XL.BAND }, { v: "", s: XL.BAND }, { v: "", s: XL.BAND }, { v: "", s: XL.BAND }]; };
+    var R = D.R, out = [];
+    out.push([{ v: "Energy World – twice-weekly review", s: XL.BOLD }]);
+    out.push([R.label + ": " + d10(R.from) + " to " + d10(R.to) + (D.ex ? "   Executive: " + D.ex : "") + "   Made " + d10(today()) + " by " + String(S.user || "")]);
+    out.push([]);
+    out.push(band("PAYMENTS"));
+    out.push(["Total due till date", { v: D.dueTot, s: XL.BOLD }, plural(D.dues.length, "client")]);
+    out.push(["Past " + CREDIT_DAYS + " days (overdue)", D.overdue]);
+    out.push(["0-30 days", D.age.cur]); out.push(["31-60 days", D.age.d30]); out.push(["61-90 days", D.age.d60]); out.push(["90+ days", D.age.d90]);
+    out.push(["Material dispatched", D.dispTot, plural(D.disp.length, "delivery")]);
+    out.push(["Collected", D.collTot, plural(D.coll.length, "payment")]);
+    out.push([]);
+    if (!D.ex && seesAllClients()) {
+      out.push([{ v: "By executive", s: XL.BOLD }]);
+      out.push(H(["Executive", "Total due", "90+ days", "Dispatched", "Collected", "New clients", "New quotes", "Quotes waiting"]));
+      rvByExec(D).forEach(function (x) { out.push([x.exec, x.due, x.d90, x.disp, x.coll, x.newCl, x.newQ, x.wait]); });
+      out.push([]);
+    }
+    out.push([{ v: "Total due – by client", s: XL.BOLD }]);
+    out.push(H(["Client", "Executive", "Total due", "0-30 days", "31-60 days", "61-90 days", "90+ days", "Oldest (days)"]));
+    D.dues.forEach(function (r) { out.push([r.name, r.exec, { v: r.due, s: XL.BOLD }, r.b.cur, r.b.d30, r.b.d60, r.b.d90, r.oldest]); });
+    out.push([]);
+    out.push([{ v: "Material dispatched", s: XL.BOLD }]);
+    out.push(H(["Date", "Challan", "Client", "Executive", "Value"]));
+    D.disp.forEach(function (x) { out.push([d10(x.d), x.no, x.name, x.exec, x.amt]); });
+    if (!D.disp.length) out.push(["None in this period."]);
+    out.push([]);
+    out.push([{ v: "Collected", s: XL.BOLD }]);
+    out.push(H(["Date", "Client", "Executive", "Amount", "Mode", "Reference"]));
+    D.coll.forEach(function (x) { out.push([d10(x.d), x.name, x.exec, x.amt, x.mode, x.ref]); });
+    if (!D.coll.length) out.push(["None in this period."]);
+    out.push([]);
+    out.push(band("QUOTATIONS"));
+    out.push([{ v: "New clients", s: XL.BOLD }]);
+    out.push(H(["Date", "Client", "Executive", "Area", "Plumber", "Mobile", "Stage"]));
+    D.newCl.forEach(function (x) { out.push([d10(x.d), x.name, x.exec, x.where, x.plumber, x.mobile, x.stage]); });
+    if (!D.newCl.length) out.push(["None in this period."]);
+    out.push([]);
+    out.push([{ v: "New quotes", s: XL.BOLD }]);
+    out.push(H(["Date", "Quote", "Client", "Executive", "Brands", "Value", "Status"]));
+    D.newQ.forEach(function (x) { out.push([d10(x.d), x.no, x.name, x.exec, x.brands, x.amt, x.status]); });
+    if (!D.newQ.length) out.push(["None in this period."]);
+    out.push([]);
+    out.push([{ v: "Quotes to follow – mark Won or Lost in the CRM", s: XL.BOLD }]);
+    out.push(H(["Date", "Quote", "Client", "Executive", "Brands", "Value", "Days waiting", "Won / Lost"]));
+    D.wait.forEach(function (x) { out.push([d10(x.d), x.no, x.name, x.exec, x.brands, x.amt, x.age, { v: "", s: XL.INPUT }]); });
+    if (!D.wait.length) out.push(["None waiting."]);
+    out.push([]);
+    out.push([{ v: "Plumbers to call", s: XL.BOLD }]);
+    out.push(H(["Plumber", "Mobile", "Area", "Days since contact"]));
+    D.plumb.forEach(function (x) { out.push([x.name, x.mobile, x.where, x.days === null ? "never" : x.days]); });
+    if (!D.plumb.length) out.push(["Every plumber has been in touch within " + COLD_PARTNER + " days."]);
+    return out;
+  }
+  function rvFileName(D) { return "Review_" + (D.ex ? String(D.ex).replace(/[^A-Za-z0-9]+/g, "_") + "_" : "") + today() + ".xlsx"; }
+  var RV_COLS = [26, 20, 22, 18, 18, 14, 14, 14];
+  function rvXlsx(D) { dlXlsx(rvFileName(D), "Review", rvXlsxRows(D), RV_COLS, { freeze: { r: 2, c: 0 } }); }
+  /* the file to the share sheet and the message to the clipboard - in the one tap, which is
+     what the phone requires of both */
+  function rvSend(D) {
+    var txt = rvText(D), name = rvFileName(D), f = null;
+    try { if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).catch(function () { }); } catch (e) { }
+    try { f = new File([xlBook("Review", rvXlsxRows(D), RV_COLS, { freeze: { r: 2, c: 0 } })], name, { type: XLSX_MIME }); } catch (e) { f = null; }
+    var can = false;
+    try { can = !!(f && navigator.share && navigator.canShare && navigator.canShare({ files: [f] })); } catch (e) { can = false; }
+    if (!can) { rvXlsx(D); toast("Excel downloaded, message copied — paste it in the chat and attach the file."); return; }
+    navigator.share({ files: [f] }).then(function () { toast("Sent. Paste the message under the file — it is copied."); },
+      function (e) { if (!(e && /abort/i.test(String(e.name)))) rvXlsx(D); });
+    toast("Message copied — paste it under the file.");
+  }
+  function rvBtn(act, label, extra, ghost) {
+    return '<button class="btn sm' + (ghost ? ' ghost' : '') + '" data-act="' + act + '"' + (extra || '') + ' style="min-height:44px;margin:0 6px 6px 0">' + label + '</button>';
+  }
+  function rvRow(left, sub, right, tail) {
+    return '<div style="display:flex;gap:10px;align-items:center;padding:9px 0;border-top:1px solid var(--line)">' +
+      '<div style="flex:1;min-width:0"><div style="font-weight:600;overflow-wrap:anywhere">' + left + '</div>' +
+      (sub ? '<div style="font-size:12px;color:var(--muted);margin-top:2px">' + sub + '</div>' : '') + '</div>' +
+      (right ? '<div style="font-weight:700;white-space:nowrap">' + right + '</div>' : '') +
+      (tail ? '<div style="white-space:nowrap">' + tail + '</div>' : '') + '</div>';
+  }
+  /* a list longer than its cap shows the cap and one button for the rest */
+  function rvList(key, items, cap, draw, none) {
+    if (!items.length) return '<div style="font-size:13px;color:var(--muted);padding:8px 0">' + none + '</div>';
+    var all = !!(S.rvMore && S.rvMore[key]);
+    var h = (all ? items : items.slice(0, cap)).map(draw).join("");
+    if (items.length > cap) h += rvBtn("rv-more", all ? "Show fewer" : "Show all " + items.length, ' data-k="' + key + '"', true);
+    return h;
+  }
+  function rvStat(n, l, alert) { return '<div class="stat' + (alert ? ' alert' : '') + '"><div class="n">' + n + '</div><div class="l">' + l + '</div></div>'; }
+  function rvHead(t, sub) { return '<h3 style="margin:16px 0 2px;font-size:15px">' + t + '</h3>' + (sub ? '<div style="font-size:12px;color:var(--muted);margin-bottom:4px">' + sub + '</div>' : ''); }
+  function viewReview() {
+    var D = rvData(S.rvPer, S.rvExec);
+    var R = D.R, all = seesAllClients();
+    var h = '<div class="card"><h3 style="margin:0">Twice-weekly review</h3>' +
+      '<div class="meta">Monday and Thursday · ' + esc(R.label) + ': ' + esc(R.span) + (D.ex ? ' · ' + esc(D.ex) : '') + '</div>' +
+      '<div style="margin-top:10px">' + RV_PERIODS.map(function (p) { return rvBtn("rv-per", esc(p[1]), ' data-k="' + p[0] + '"', p[0] !== R.k); }).join("") + '</div>';
+    if (all) {
+      var ex = rvExecs();
+      h += '<div style="margin-top:2px">' + rvBtn("rv-exec", "Everyone", ' data-k=""', !!D.ex) +
+        ex.map(function (e) { return rvBtn("rv-exec", esc(e), ' data-k="' + esc(e) + '"', D.ex !== e); }).join("") + '</div>';
+    }
+    h += '<div style="margin-top:6px">' + rvBtn("rv-send", "Send to team (Excel + message)") + rvBtn("rv-xlsx", "⇩ Excel", "", true) + rvBtn("rv-wa", "WhatsApp message only", "", true) + '</div>' +
+      '<div style="font-size:12px;color:var(--muted)">Send puts the Excel on the share sheet and copies the message — it ends "Detailed sheet attached". Paste it under the file.</div></div>';
+
+    /* PAYMENTS */
+    h += '<h2 style="margin:18px 0 8px;font-size:18px">Payments</h2><div class="cards">' +
+      rvStat(money(D.dueTot), "Total due till date · " + plural(D.dues.length, "client"), D.dueTot > 0.5) +
+      rvStat(money(D.overdue), "Past " + CREDIT_DAYS + " days", D.overdue > 0.5) +
+      rvStat(money(D.dispTot), "Dispatched · " + plural(D.disp.length, "delivery")) +
+      rvStat(money(D.collTot), "Collected · " + plural(D.coll.length, "payment")) + '</div>';
+    var ages = [["0-30 days", D.age.cur, "#e2e8f0", "#334155"], ["31-60 days", D.age.d30, "#fef3c7", "#92400e"], ["61-90 days", D.age.d60, "#ffedd5", "#c2410c"], ["90+ days", D.age.d90, "#fee2e2", "#b91c1c"]];
+    h += '<div class="card"><div style="font-weight:700;margin-bottom:6px">Total due, by age</div><div style="display:flex;flex-wrap:wrap;gap:8px">' +
+      ages.map(function (a) { return '<div style="background:' + a[2] + ';color:' + a[3] + ';border-radius:10px;padding:8px 12px;min-width:120px"><div style="font-size:12px">' + a[0] + '</div><div style="font-weight:700;font-size:16px">' + money(a[1]) + '</div></div>'; }).join("") + '</div>';
+    if (all && !D.ex) {
+      var be = rvByExec(D);
+      if (be.length) h += rvHead("By executive") + be.map(function (x) {
+        return rvRow(esc(x.exec), "Dispatched " + money(x.disp) + " · Collected " + money(x.coll) + " · " + x.newQ + " new quotes · " + x.wait + " waiting",
+          money(x.due), x.d90 > 0.5 ? '<span style="font-size:12px;color:#b91c1c">90+ ' + money(x.d90) + '</span>' : "");
+      }).join("");
+    }
+    h += rvHead("Who owes", "Largest first. The full list is in the Excel.") +
+      rvList("dues", D.dues, 15, function (r) { return rvRow(esc(r.name), esc(r.exec || ""), money(r.due), agePill(r.ag)); }, "Nothing is owed.");
+    h += rvHead("Material dispatched", R.span) +
+      rvList("disp", D.disp, 10, function (x) { return rvRow(esc(x.name), d10(x.d) + " · " + esc(x.no) + (x.exec ? " · " + esc(x.exec) : ""), money(x.amt)); }, "Nothing dispatched in this period.");
+    h += rvHead("Collected", R.span) +
+      rvList("coll", D.coll, 10, function (x) { return rvRow(esc(x.name), d10(x.d) + (x.mode ? " · " + esc(x.mode) : "") + (x.exec ? " · " + esc(x.exec) : ""), money(x.amt)); }, "Nothing collected in this period.");
+    h += '</div>';
+
+    /* QUOTATIONS */
+    h += '<h2 style="margin:18px 0 8px;font-size:18px">Quotations</h2><div class="cards">' +
+      rvStat(D.newCl.length, "New clients") +
+      rvStat(D.newQ.length, "New quotes · " + money(D.newQTot)) +
+      rvStat(D.wait.length, "Quotes to follow · " + money(D.waitTot), false) +
+      rvStat(D.plumb.length, "Plumbers to call") + '</div><div class="card">';
+    h += rvHead("New clients", R.span) +
+      rvList("newCl", D.newCl, 15, function (x) {
+        return rvRow(esc(x.name), [d10(x.d), x.exec, x.where, x.plumber ? "Plumber " + x.plumber : ""].filter(Boolean).map(esc).join(" · "), "",
+          x.mobile ? '<a class="btn sm ghost" style="min-height:44px;display:inline-flex;align-items:center" href="tel:' + esc(x.mobile) + '">Call</a>' : "");
+      }, "No new clients in this period.");
+    h += rvHead("New quotes", R.span) +
+      rvList("newQ", D.newQ, 10, function (x) { return rvRow(esc(x.name), [d10(x.d), x.no, x.brands, x.exec, x.status].filter(Boolean).map(esc).join(" · "), money(x.amt)); }, "No new quotes in this period.");
+    h += rvHead("Quotes to follow", "Oldest first. One tap marks it – Lost asks why.") +
+      rvList("wait", D.wait, 20, function (x) {
+        return rvRow(esc(x.name) + ' <span style="font-size:12px;color:var(--muted);font-weight:400">' + (x.age === null ? "" : x.age + " d") + '</span>',
+          [x.no, x.brands, x.exec, money(x.amt)].filter(Boolean).map(esc).join(" · "), "",
+          rvBtn("q-win", "Won", ' data-id="' + esc(x.id) + '"') + rvBtn("q-lose", "Lost", ' data-id="' + esc(x.id) + '"', true));
+      }, "No quote is waiting.");
+    h += rvHead("Plumbers to call", "No contact for " + COLD_PARTNER + " days or more. “Called” records today’s call.") +
+      rvList("plumb", D.plumb, 15, function (x) {
+        return rvRow(esc(x.name), [x.where, x.days === null ? "never in touch" : x.days + " days quiet"].filter(Boolean).map(esc).join(" · "), "",
+          (x.mobile ? '<a class="btn sm ghost" style="min-height:44px;display:inline-flex;align-items:center;margin-right:6px" href="tel:' + esc(x.mobile) + '">Call</a>' : "") +
+          rvBtn("rv-called", "Called", ' data-n="' + esc(x.name) + '"', true));
+      }, "Every plumber has been in touch within " + COLD_PARTNER + " days.");
+    return h + '</div>';
+  }
+  /* on the Today screen, Monday and Thursday only */
+  function rvDashCard() {
+    var w = rvDow(today());
+    if ((w !== 1 && w !== 4) || !canSee("review")) return "";
+    return '<div class="card" style="border-left:4px solid #0f766e"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
+      '<div style="flex:1;min-width:200px"><div style="font-weight:700">Review day</div><div style="font-size:13px;color:var(--muted)">Payments and quotations since the last review – send the sheet to the team.</div></div>' +
+      '<button class="btn sm" data-act="tab" data-tab="review" style="min-height:44px">Open the review</button></div></div>';
   }
 
   /* ================= v6.9.205  WHY WE LOSE  =================
@@ -32771,7 +33098,7 @@ function viewCatalogue() {
      nothing else could reach it - so the usage counter would have had to keep a second copy
      of the same forty-two names, and a second copy is how the two quietly stop agreeing.
      Hoisted, not duplicated. render() still reads exactly this. */
-  var TAB_TABS = [["search", "Search"], ["dash", "Today"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["register", "Challan log"], ["freight", "Drivers & freight"], ["deliveries", "Deliveries"], ["collections", "Payments"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Service dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["paidout", "Paid out"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["catalogs", "Brand catalogues"], ["brandstory", "Brand stories"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["trouble", "Troubleshoot"], ["changelog", "Change log"], ["booksweep", "Book numbers"], ["dups", "Duplicate check"], ["stock", "Stock"], ["brief", "The brief"]];
+  var TAB_TABS = [["search", "Search"], ["dash", "Today"], ["review", "Twice-weekly review"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["register", "Challan log"], ["freight", "Drivers & freight"], ["deliveries", "Deliveries"], ["collections", "Payments"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Service dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["paidout", "Paid out"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["catalogs", "Brand catalogues"], ["brandstory", "Brand stories"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["trouble", "Troubleshoot"], ["changelog", "Change log"], ["booksweep", "Book numbers"], ["dups", "Duplicate check"], ["stock", "Stock"], ["brief", "The brief"]];
   var TAB_LABEL = (function () {
     var m = {}; TAB_TABS.forEach(function (t) { m[t[0]] = t[1]; }); return m;
   })();
@@ -37415,6 +37742,7 @@ function viewCatalogue() {
       (seesAllClients() ? '<div class="stat"><div class="n">' + money(comm) + '</div><div class="l">Incentive owed</div></div>' : '') +
       '</div>';
 
+    try { h += rvDashCard(); } catch (e) { }   /* 6.9.635 - Monday and Thursday */
     try { h += chDraftBanner(); } catch (e) { }   /* v6.9.554 */
     try { h += draftDashCard(); } catch (e) { console.warn("[draft] card:", e); }
     try { h += dupDashCard(); } catch (e) { console.warn("[dups] card:", e); }
@@ -42665,12 +42993,12 @@ function viewCatalogue() {
     /* v6.9.526 - "where is dedicated challan log under hisab". The register had no door: it was
        a sub-tab of the old Deliveries hub ("deliveries"), which no group names. It is a tab now,
        in both places a man would look. */
-    ["HISAB",      ["billing", "register", "payments", "paidout", "dues"]],
+    ["HISAB",      ["billing", "register", "payments", "paidout", "dues", "review"]],   /* 6.9.635 - the twice-weekly review, in both places */
     ["Deliveries", ["challans", "register", "freight", "returns"]],
     /* v6.9.533 - his third list, item 13: "merge Leads and Clients into one tab with sub-tabs",
        and item 16: "remove Leads tab from header". One group; the lead board is its second
        chip. Every chip the two groups had is still here. */
-    ["Clients",    ["clients", "leads", "brandfollow", "followups", "quotes", "discounts", "pitch", "winloss"]],
+    ["Clients",    ["clients", "leads", "brandfollow", "followups", "quotes", "discounts", "pitch", "winloss", "review"]],
     ["Service",    ["service"]],
     ["Products",   ["products", "pricelist", "catalogue", "catalogs", "brandstory", "stock"]],   /* 6.9.612 - price list and add-product back */   /* v6.9.581 - the catalogue library; v6.9.605 - Stock, on his "stock entry in CRM" */
     ["Team",       ["partners", "commission", "payroll", "scorecard", "report", "teampins"]],
@@ -42997,7 +43325,7 @@ function viewCatalogue() {
       setTimeout(function () { try { preloadLogos(); } catch (e) { } }, 4000);
     }
     if (!S.pin) { renderLogin(); return; }
-    var views = { agent: viewAgent, search: viewSearch, dossier: viewDossier, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, payments: viewPayments, paidout: viewPaidOut, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, catalogs: viewCatalogues, brandstory: viewBrandStories, clients: viewClients, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, register: viewRegister, freight: viewFreight, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, trouble: viewTrouble, changelog: viewChangeLog, booksweep: viewBookSweep, dups: viewDups, stock: viewStock, brief: viewBrief };
+    var views = { agent: viewAgent, search: viewSearch, dossier: viewDossier, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, payments: viewPayments, paidout: viewPaidOut, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, catalogs: viewCatalogues, brandstory: viewBrandStories, clients: viewClients, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, register: viewRegister, freight: viewFreight, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, trouble: viewTrouble, changelog: viewChangeLog, booksweep: viewBookSweep, dups: viewDups, stock: viewStock, brief: viewBrief, review: viewReview };
     var tabs = TAB_TABS;
 
     var h = '<div class="top">' +
@@ -44291,6 +44619,23 @@ function viewCatalogue() {
     }
     if (act === "stk-dead-xlsx") { stkDeadXlsx(); return; }
     if (act === "stk-lv-xlsx") { stkLevelsXlsx(); return; }   /* 6.9.629 */
+    /* 6.9.635 - the twice-weekly review */
+    if (act === "rv-per") { S.rvPer = t.getAttribute("data-k") || "since"; S.rvMore = {}; keepScroll = true; render(); return; }
+    if (act === "rv-exec") { S.rvExec = t.getAttribute("data-k") || ""; S.rvMore = {}; keepScroll = true; render(); return; }
+    if (act === "rv-more") { S.rvMore = S.rvMore || {}; var _rk = t.getAttribute("data-k") || ""; S.rvMore[_rk] = !S.rvMore[_rk]; keepScroll = true; render(); return; }
+    if (act === "rv-xlsx") { rvXlsx(rvData(S.rvPer, S.rvExec)); return; }
+    if (act === "rv-send") { rvSend(rvData(S.rvPer, S.rvExec)); return; }
+    if (act === "rv-wa") { window.open("https://wa.me/?text=" + encodeURIComponent(rvText(rvData(S.rvPer, S.rvExec)).replace(/\nDetailed sheet attached\.$/, "")), "_blank"); return; }
+    if (act === "rv-called") {
+      var _pn = t.getAttribute("data-n") || "";
+      if (!_pn) return;
+      /* an added audit row - the contact map reads it as today's touch */
+      save("audit", { id: "", createdAt: new Date().toISOString(), actor: S.user, action: "partner:call",
+        target: _pn, detail: JSON.stringify({ name: _pn, by: S.user, from: "review" }), ip: "" });
+      _pcCache = null;
+      toast("Marked called: " + _pn);
+      keepScroll = true; render(); return;
+    }
     if (act === "stk-count-go") {
       var _cl = stkCountDue(stkCtx(), 15).map(function (r) { return r.code; });
       if (!_cl.length) { toast("Nothing is due for counting today."); return; }
