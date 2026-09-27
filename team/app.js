@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.628";
+  var APP_VERSION = "6.9.629";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -28386,7 +28386,7 @@ function viewCatalogue() {
     var u16 = function (n) { return [n & 255, (n >> 8) & 255]; };
     var u32 = function (n) { return [n & 255, (n >> 8) & 255, (n >> 16) & 255, (n >>> 24) & 255]; };
     files.forEach(function (f) {
-      var nm = xlBytes(f.name), data = xlBytes(f.data), crc = xlCrc32(data);
+      var nm = xlBytes(f.name), data = (f.data instanceof Uint8Array) ? f.data : xlBytes(f.data), crc = xlCrc32(data);   /* 6.9.629 - a picture is bytes already */
       var local = [].concat([80, 75, 3, 4], u16(20), u16(0), u16(0), u16(0), u16(0),
                             u32(crc), u32(data.length), u32(data.length),
                             u16(nm.length), u16(0));
@@ -28423,7 +28423,7 @@ function viewCatalogue() {
     return s2;
   }
   /* style ids, in the order they are written into cellXfs below */
-  var XL = { PLAIN: 0, HEAD: 1, WON: 2, LIVE: 3, NONE: 4, LOST: 5, NR: 6, BOLD: 7, BAND: 8 };
+  var XL = { PLAIN: 0, HEAD: 1, WON: 2, LIVE: 3, NONE: 4, LOST: 5, NR: 6, BOLD: 7, BAND: 8, INPUT: 9, MID: 10, MIDB: 11, HEADW: 12, C_WON: 13, C_LIVE: 14, C_NONE: 15, C_LOST: 16, C_NR: 17 };
   var XL_STATUS = { won: XL.WON, live: XL.LIVE, none: XL.NONE, lost: XL.LOST, nr: XL.NR };
   function xlStyles() {
     var solid = function (hex) {
@@ -28437,15 +28437,16 @@ function viewCatalogue() {
         '<font><b/><color rgb="FFFFFFFF"/><sz val="11"/><name val="Calibri"/></font>' +
         '<font><b/><color rgb="FF11222D"/><sz val="11"/><name val="Calibri"/></font>' +
       '</fonts>' +
-      '<fills count="9">' +
+      '<fills count="10">' +
         '<fill><patternFill patternType="none"/></fill>' +
         '<fill><patternFill patternType="gray125"/></fill>' +
         solid("1E293B") + solid("008300") + solid("EDA100") +
-        solid("2A78D6") + solid("E34948") + solid("9AA3AD") + solid("F1F5F9") +
+        solid("2A78D6") + solid("E34948") + solid("9AA3AD") + solid("F1F5F9") + solid("F9F1C4") +
       '</fills>' +
-      '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>' +
+      '<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border>' +
+        '<border><left style="thin"><color rgb="FFD97706"/></left><right style="thin"><color rgb="FFD97706"/></right><top style="thin"><color rgb="FFD97706"/></top><bottom style="thin"><color rgb="FFD97706"/></bottom><diagonal/></border></borders>' +
       '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
-      '<cellXfs count="9">' +
+      '<cellXfs count="18">' +
         '<xf xfId="0" numFmtId="0" fontId="0" fillId="0" borderId="0"/>' +
         '<xf xfId="0" fontId="1" fillId="2" borderId="0" applyFont="1" applyFill="1"/>' +
         '<xf xfId="0" fontId="1" fillId="3" borderId="0" applyFont="1" applyFill="1"/>' +
@@ -28455,6 +28456,17 @@ function viewCatalogue() {
         '<xf xfId="0" fontId="2" fillId="7" borderId="0" applyFont="1" applyFill="1"/>' +
         '<xf xfId="0" fontId="2" fillId="0" borderId="0" applyFont="1"/>' +
         '<xf xfId="0" fontId="2" fillId="8" borderId="0" applyFont="1" applyFill="1"/>' +
+        /* 6.9.629 - 9 a box for the team to fill in, 10 plain text centred on a picture row, 11 bold */
+        '<xf xfId="0" fontId="2" fillId="9" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>' +
+        '<xf xfId="0" fontId="0" fillId="0" borderId="0" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf>' +
+        '<xf xfId="0" fontId="2" fillId="0" borderId="0" applyFont="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf>' +
+        /* 12 the header, wrapped; 13-16 the status words, centred on a picture row */
+        '<xf xfId="0" fontId="1" fillId="2" borderId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf>' +
+        '<xf xfId="0" fontId="1" fillId="3" borderId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>' +
+        '<xf xfId="0" fontId="2" fillId="4" borderId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>' +
+        '<xf xfId="0" fontId="1" fillId="5" borderId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>' +
+        '<xf xfId="0" fontId="1" fillId="6" borderId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>' +
+        '<xf xfId="0" fontId="2" fillId="7" borderId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>' +
       '</cellXfs>' +
       /* openpyxl warns "workbook contains no default style" without this, and Excel is stricter
          than openpyxl - a repair prompt on first open is exactly the thing that would make him
@@ -28463,7 +28475,8 @@ function viewCatalogue() {
       '</styleSheet>';
   }
   /* rows: array of arrays. A cell is a plain value, or { v: value, s: styleId }. */
-  function xlSheet(rows, cols, freezeTop) {
+  function xlSheet(rows, cols, freezeTop, opts) {
+    opts = opts || {};   /* 6.9.629 - { heights: {rowIndex: points}, freeze: {r, c}, filter: "A3:W3", merges: ["A2:W2"], drawing: true } */
     var body = (rows || []).map(function (row, r) {
       var cells = (row || []).map(function (cell, c) {
         var o = (cell && typeof cell === "object" && !(cell instanceof Date)) ? cell : { v: cell };
@@ -28474,7 +28487,8 @@ function viewCatalogue() {
         return '<c r="' + ref + '"' + st + ' t="inlineStr"><is><t xml:space="preserve">' +
                xlEsc(v) + '</t></is></c>';
       }).join("");
-      return '<row r="' + (r + 1) + '">' + cells + '</row>';
+      var _ht = opts.heights && opts.heights[r] ? ' ht="' + opts.heights[r] + '" customHeight="1"' : '';
+      return '<row r="' + (r + 1) + '"' + _ht + '>' + cells + '</row>';
     }).join("");
     var colXml = (cols && cols.length)
       ? '<cols>' + cols.map(function (w, i) {
@@ -28485,18 +28499,63 @@ function viewCatalogue() {
       ? '<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" ' +
         'activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>'
       : "";
+    if (opts.freeze) {
+      var _fr = opts.freeze.r || 0, _fc = opts.freeze.c || 0;
+      view = '<sheetViews><sheetView workbookViewId="0"><pane' + (_fc ? ' xSplit="' + _fc + '"' : '') + (_fr ? ' ySplit="' + _fr + '"' : '') +
+        ' topLeftCell="' + xlCol(_fc) + (_fr + 1) + '" activePane="' + (_fc && _fr ? 'bottomRight' : _fr ? 'bottomLeft' : 'topRight') + '" state="frozen"/></sheetView></sheetViews>';
+    }
     return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
-      '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
-      view + colXml + '<sheetData>' + body + '</sheetData></worksheet>';
+      '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+      view + colXml + '<sheetData>' + body + '</sheetData>' +
+      (opts.filter ? '<autoFilter ref="' + opts.filter + '"/>' : '') +
+      (opts.merges && opts.merges.length ? '<mergeCells count="' + opts.merges.length + '">' + opts.merges.map(function (m) { return '<mergeCell ref="' + m + '"/>'; }).join("") + '</mergeCells>' : '') +
+      (opts.drawing ? '<drawing r:id="rId1"/>' : '') + '</worksheet>';
   }
-  function xlBook(sheetName, rows, cols) {
+  /* 6.9.629 - PICTURES IN THE SHEET. opts.media = [Uint8Array jpeg, ...]; opts.pics = [{ r: row index,
+     c: column index, m: media index, w: px, h: px, x: px offset, y: px offset }]. Each picture is
+     anchored to its own cell and moves AND sizes with it, so a filter that hides a row hides its
+     picture too, instead of leaving it floating over the next product. One photo used by a whole
+     family is stored once and drawn on every row that needs it. */
+  function xlDrawing(pics) {
+    var E = 9525, R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="' + R + '">' +
+      pics.map(function (p, i) {
+        var x = Math.round(p.x || 0), y = Math.round(p.y || 0), w = Math.round(p.w), h = Math.round(p.h);
+        return '<xdr:twoCellAnchor editAs="twoCell">' +
+          '<xdr:from><xdr:col>' + p.c + '</xdr:col><xdr:colOff>' + (x * E) + '</xdr:colOff><xdr:row>' + p.r + '</xdr:row><xdr:rowOff>' + (y * E) + '</xdr:rowOff></xdr:from>' +
+          '<xdr:to><xdr:col>' + p.c + '</xdr:col><xdr:colOff>' + ((x + w) * E) + '</xdr:colOff><xdr:row>' + p.r + '</xdr:row><xdr:rowOff>' + ((y + h) * E) + '</xdr:rowOff></xdr:to>' +
+          '<xdr:pic><xdr:nvPicPr><xdr:cNvPr id="' + (i + 2) + '" name="Picture ' + (i + 1) + '"/><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr>' +
+          '<xdr:blipFill><a:blip r:embed="rId' + (p.m + 1) + '"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill>' +
+          '<xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="' + (w * E) + '" cy="' + (h * E) + '"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic>' +
+          '<xdr:clientData/></xdr:twoCellAnchor>';
+      }).join("") + '</xdr:wsDr>';
+  }
+  function xlBook(sheetName, rows, cols, opts) {
     var NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+    opts = opts || {};
+    var hasPics = !!(opts.pics && opts.pics.length && opts.media && opts.media.length);
+    var extra = !hasPics ? [] : [
+      { name: "xl/worksheets/_rels/sheet1.xml.rels", data:
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+        '<Relationship Id="rId1" Type="' + NS + '/drawing" Target="../drawings/drawing1.xml"/></Relationships>' },
+      { name: "xl/drawings/drawing1.xml", data: xlDrawing(opts.pics) },
+      { name: "xl/drawings/_rels/drawing1.xml.rels", data:
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+        opts.media.map(function (m, i) { return '<Relationship Id="rId' + (i + 1) + '" Type="' + NS + '/image" Target="../media/image' + (i + 1) + '.jpeg"/>'; }).join("") +
+        '</Relationships>' }
+    ].concat(opts.media.map(function (m, i) { return { name: "xl/media/image" + (i + 1) + ".jpeg", data: m }; }));
+    var sheetOpts = { heights: opts.heights, freeze: opts.freeze, filter: opts.filter, merges: opts.merges, drawing: hasPics };
     return xlZip([
       { name: "[Content_Types].xml", data:
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
         '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
         '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
         '<Default Extension="xml" ContentType="application/xml"/>' +
+        (hasPics ? '<Default Extension="jpeg" ContentType="image/jpeg"/>' +
+          '<Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>' : '') +
         '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
         '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>' +
         '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>' +
@@ -28518,12 +28577,12 @@ function viewCatalogue() {
         '<Relationship Id="rId2" Type="' + NS + '/styles" Target="styles.xml"/>' +
         '</Relationships>' },
       { name: "xl/styles.xml", data: xlStyles() },
-      { name: "xl/worksheets/sheet1.xml", data: xlSheet(rows, cols, true) }
-    ]);
+      { name: "xl/worksheets/sheet1.xml", data: xlSheet(rows, cols, !opts.freeze, sheetOpts) }
+    ].concat(extra));
   }
-  function dlXlsx(name, sheetName, rows, cols) {
+  function dlXlsx(name, sheetName, rows, cols, opts) {
     try {
-      var blob = new Blob([xlBook(sheetName, rows, cols)],
+      var blob = new Blob([xlBook(sheetName, rows, cols, opts)],
         { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
       var url = URL.createObjectURL(blob), a = document.createElement("a");
       a.href = url; a.download = name; a.style.display = "none";
@@ -41007,7 +41066,8 @@ function viewCatalogue() {
       chip("levels", "Levels", "stk-view", ' data-v="levels"') +
       chip("dead", "Non-moving" + (nDead ? " (" + nDead + ")" : ""), "stk-view", ' data-v="dead"') +
       chip("count", "Today’s count", "stk-view", ' data-v="count"') +
-      '<button class="btn sm ghost" style="min-height:44px" data-act="stk-plan">Plan settings</button></div>';
+      '<button class="btn sm ghost" style="min-height:44px" data-act="stk-plan">Plan settings</button>' +
+      '<button class="btn sm ghost" style="min-height:44px" data-act="stk-lv-xlsx" title="Every product with its picture, grouped by brand and category, for the sales meeting">&#8681; Levels Excel, with pictures</button></div>';   /* 6.9.629 */
   }
 
   /* ---- 1 + 2: suggested levels ---- */
@@ -41041,6 +41101,7 @@ function viewCatalogue() {
         return '<button class="btn sm' + (f === x[0] ? '' : ' ghost') + '" style="min-height:44px" data-act="stk-lv-f" data-v="' + x[0] + '">' + x[1] + '</button>';
       }).join("") +
       '<button class="btn sm ghost" style="min-height:44px" data-act="stk-plan">Plan settings</button>' +
+      '<button class="btn sm ghost" style="min-height:44px" data-act="stk-lv-xlsx">&#8681; Excel for the sales meeting</button>' +   /* 6.9.629 */
       (useable.length ? '<button class="btn sm" style="min-height:44px" data-act="stk-lv-all" data-n="' + useable.length + '">Use all ' + useable.length + ' shown</button>' : '') +
       '</div>' + (S.lvSave ? '<div style="font-size:13px;font-weight:700;color:#0f766e;margin-top:6px">' + esc(S.lvSave) + '</div>' : '') + '</div>';
     if (!rows.length) return h + '<div class="empty">' + (f === "change" ? 'Every level already matches its suggestion.' : 'No products in this group.') + '</div>';
@@ -41076,6 +41137,117 @@ function viewCatalogue() {
     };
     say();
     Promise.all([lane(), lane(), lane()]).then(function () { setTimeout(function () { if (!/Saving/.test(S.lvSave || "")) { S.lvSave = ""; renderBg(); } }, 8000); });
+  }
+
+  /* ===== 6.9.629 - THE LEVELS, AS AN EXCEL FOR THE SALES MEETING =====
+     His words: "download excel for stock level, motive is to discuss with sales team what will be
+     actual critical, to order, to maintain qty of each item, categorize all items with item pics".
+     Every product on the price list, grouped brand by brand and family by family (a shaded line
+     heads each family), with its picture, what went out in 90 days and 12 months, the average a
+     month, stock and free stock, where it stands today, the levels set now, the levels the challans
+     suggest (or why there is none), and three yellow boxes - Agreed critical, Agreed reorder,
+     Agreed max - plus Remarks, for the meeting to fill in. Brand and Category are also columns, so
+     Excel's filter works on them. Nothing is written anywhere: this only reads. */
+  function stkPicBytes(dataUrl) {
+    var b = atob(String(dataUrl).split(",")[1] || ""), out = new Uint8Array(b.length);
+    for (var i = 0; i < b.length; i++) out[i] = b.charCodeAt(i);
+    return out;
+  }
+  /* one small JPEG per distinct photo: the session's picture cache first, then Google directly,
+     then the Apps Script door the PDFs use; a picture that will not come stays blank */
+  function stkXlPic(url) {
+    var u200 = driveImg(url, 200);
+    if (!u200) return Promise.resolve(null);
+    var fromSrc = function (src) { return src ? shrinkPic(src, 96, 0.8, false).then(function (p) { return p && p.src && /^data:image\/jpeg/.test(p.src) ? p : null; }) : Promise.resolve(null); };
+    if (PIC_CACHE[u200]) return fromSrc(PIC_CACHE[u200]);
+    var direct = fetch(driveImg(url, 160), { mode: "cors" }).then(function (r) {
+      if (!r.ok) throw new Error("http " + r.status);
+      return r.blob();
+    }).then(function (b) {
+      if (!/^image\//.test(b.type || "")) return null;
+      var ou = URL.createObjectURL(b);
+      return fromSrc(ou).then(function (p) { try { URL.revokeObjectURL(ou); } catch (e) { } return p; });
+    });
+    var capped = Promise.race([direct, new Promise(function (res) { setTimeout(function () { res(null); }, 15000); })]);
+    return capped.then(function (p) { return p || loadPic(url).then(fromSrc); }, function () { return loadPic(url).then(fromSrc); })
+      .catch(function () { return null; });
+  }
+  var _stkXlBusy = false;
+  function stkLevelsXlsx() {
+    if (_stkXlBusy) { toast("The Excel is being made \u2014 one moment."); return; }
+    if (!STOCK_LOADED && !(S.stock && S.stock.length)) { toast("Stock is still loading \u2014 try again in a moment."); return; }
+    _stkXlBusy = true;
+    var ctx = stkCtx(), pos = ctx.pos, lvl = ctx.lvl;
+    var prods = Object.keys(ctx.pmap).map(function (k) { return ctx.pmap[k]; });
+    var fam = function (p) { return String(p.family || p.category || "").trim() || "Other"; };
+    var brand = function (p) { return String(p.brand || "").trim() || "Other"; };
+    prods.sort(function (a, b) {
+      return brand(a).toLowerCase().localeCompare(brand(b).toLowerCase()) || fam(a).toLowerCase().localeCompare(fam(b).toLowerCase()) ||
+        String(a.desc || "").localeCompare(String(b.desc || ""), undefined, { numeric: true }) || String(a.code).localeCompare(String(b.code));
+    });
+    /* the distinct photos, fetched six at a time */
+    var urls = [], seen = {};
+    prods.forEach(function (p) { var u = String(p.pic || "").trim(); if (u && !seen[u]) { seen[u] = 1; urls.push(u); } });
+    var got = {}, next = 0, done = 0, t0 = Date.now();
+    var say = function () { toast("Excel: pictures " + done + " of " + urls.length + "\u2026"); };
+    var lane = function () {
+      if (next >= urls.length) return Promise.resolve();
+      var u = urls[next++];
+      return stkXlPic(u).then(function (p) { if (p) got[u] = p; }, function () { }).then(function () { done++; if (done % 20 === 0) say(); return lane(); });
+    };
+    say();
+    var lanes = []; for (var i = 0; i < 6; i++) lanes.push(lane());
+    Promise.all(lanes).then(function () {
+      var HEAD = ["Picture", "Product", "Code", "Brand", "Category", "Unit", "Pack", "Class", "Out 90 days", "Out 12 months", "Average a month",
+        "In stock", "Free", "Status today", "Critical set", "Reorder set", "Max set", "Suggested critical", "Suggested reorder", "Suggested max",
+        "Why no suggestion", "Agreed critical", "Agreed reorder", "Agreed max", "Remarks"];
+      var NC = HEAD.length, win = Math.min(90, ctx.hist.span);
+      var out = [
+        [{ v: "Energy World \u00b7 Stock levels for the sales meeting \u00b7 " + fullDate(today()) + " \u00b7 " + prods.length + " products", s: XL.BOLD }],
+        [{ v: "Critical = never let free stock fall to this. Reorder = order when free stock reaches this. Max = order up to this. Free = in stock less challans made but not yet dispatched. " +
+          "Suggested levels come from the last " + win + " days of challans (lead time " + ctx.plan.leadDef + " days unless set for the brand; safety days A " + ctx.plan.safe.A + ", B " + ctx.plan.safe.B + ", C " + ctx.plan.safe.C + "; cover " + ctx.plan.cover + " days). " +
+          "Class: A = the lines that carry 80% of the value moved, B the next 15%, C the rest; Fast / Slow / Non-moving by how often it went out. Fill the yellow columns in the meeting.", s: XL.MID }],
+        HEAD.map(function (t) { return { v: t, s: XL.HEADW }; })
+      ];
+      var heights = { 0: 24, 1: 46, 2: 30 }, pics = [], media = [], mIdx = {}, lastGrp = "", merges = ["A2:" + xlCol(NC - 1) + "2"];
+      var ST = { "Critical": XL.C_LOST, "Reorder": XL.C_LIVE, "Over max": XL.C_NONE, "OK": XL.C_WON };
+      prods.forEach(function (p) {
+        var k = String(p.code).trim(), grp = brand(p) + " \u00b7 " + fam(p);
+        if (grp !== lastGrp) {
+          var n = prods.filter(function (q) { return brand(q) + " \u00b7 " + fam(q) === grp; }).length;
+          var band = [{ v: grp + "  (" + n + ")", s: XL.BAND }]; for (var c = 1; c < NC; c++) band.push({ v: "", s: XL.BAND });
+          merges.push("A" + (out.length + 1) + ":" + xlCol(NC - 1) + (out.length + 1)); heights[out.length] = 21;
+          out.push(band); lastGrp = grp;
+        }
+        var x = pos[k], L = lvl[k] || {}, h = ctx.hist.by[k], sg = stkSuggest(k, ctx), has = sg && sg.min !== undefined;
+        var counted = !!(x && x.counted), st = stkState(counted ? x.free : null, L);
+        var cl = (ctx.cls[k] || "-") + (ctx.fsn[k] ? " \u00b7 " + FSN_WORD[ctx.fsn[k]] : "");
+        var perMonth = h && win >= 14 ? Math.round(h.q90 / win * 30 * 10) / 10 : "";
+        var M = function (v) { return { v: v, s: XL.MID }; };
+        var r = out.length;
+        heights[r] = 20;   /* every row is given its height, so a picture can never be placed against a guessed one */
+        out.push([M(""), { v: p.desc || k, s: XL.MIDB }, M(k), M(brand(p)), M(fam(p)), M(stkUnit(k)), M(L.pack || ""), M(cl),
+          M(h ? h.q90 : 0), M(h ? h.q365 : 0), M(perMonth),
+          M(counted ? x.onhand : "not counted"), M(counted ? x.free : ""),
+          { v: st.w, s: ST[st.w] || XL.C_NR },
+          M(L.crit || ""), M(L.min || ""), M(L.max || ""),
+          M(has ? sg.ss : ""), M(has ? sg.min : ""), M(has ? sg.max : ""), M(has ? "" : (sg && sg.why) || ""),
+          { v: "", s: XL.INPUT }, { v: "", s: XL.INPUT }, { v: "", s: XL.INPUT }, { v: "", s: XL.INPUT }]);
+        var u = String(p.pic || "").trim(), g = u && got[u];
+        if (g) {
+          heights[r] = 54;   /* 72 px */
+          if (mIdx[u] === undefined) { mIdx[u] = media.length; media.push(stkPicBytes(g.src)); }
+          var sc = Math.min(64 / g.w, 64 / g.h, 1), w = Math.max(1, Math.round(g.w * sc)), hh = Math.max(1, Math.round(g.h * sc));
+          pics.push({ r: r, c: 0, m: mIdx[u], w: w, h: hh, x: Math.max(0, (82 - w) / 2), y: Math.max(0, (72 - hh) / 2) });
+        }
+      });
+      var cols = [11.5, 40, 15, 14, 20, 7, 7, 15, 10, 10, 10, 11, 8, 13, 10, 10, 9, 11, 11, 11, 30, 11, 11, 11, 28];
+      var name = "Stock_levels_for_sales_meeting_" + today() + ".xlsx";
+      dlXlsx(name, "Stock levels", out, cols, { heights: heights, freeze: { r: 3, c: 3 }, filter: "A3:" + xlCol(NC - 1) + "3", merges: merges, pics: pics, media: media });
+      var miss = urls.length - Object.keys(got).length;
+      toast("Downloaded " + name + " \u2014 " + prods.length + " products, " + media.length + " pictures" + (miss ? " (" + miss + " would not load and are left blank)" : "") + ", " + Math.round((Date.now() - t0) / 1000) + " s.");
+    }).catch(function (e) { toast("Could not make the Excel: " + ((e && e.message) || "error")); })
+      .then(function () { _stkXlBusy = false; });
   }
 
   /* ---- plan settings ---- */
@@ -43688,6 +43860,7 @@ function viewCatalogue() {
       return;
     }
     if (act === "stk-dead-xlsx") { stkDeadXlsx(); return; }
+    if (act === "stk-lv-xlsx") { stkLevelsXlsx(); return; }   /* 6.9.629 */
     if (act === "stk-count-go") {
       var _cl = stkCountDue(stkCtx(), 15).map(function (r) { return r.code; });
       if (!_cl.length) { toast("Nothing is due for counting today."); return; }
