@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.626";
+  var APP_VERSION = "6.9.627";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -1325,8 +1325,16 @@
         /* dropped ones left the list; the refused and failed ones are still in it, so skip them */
         var left = pendLoad(), stuck = 0;
         chunk.forEach(function (e) { if (left.some(function (x) { return x.pk === e.pk; })) stuck++; });
+        /* 6.9.627 - HIS REPORT, 26 Sep: Drivers "Satish Pal" and an Audit row, "timed out after
+           80s", still waiting 12 minutes later. MEASURED in the server's execution log: one
+           request that afternoon (4:23:50 PM) ran inside Google for the full six minutes and was
+           killed, while every other save that hour finished in 1-8 s. A fresh request would have
+           gone straight through - but this line moved the index PAST the stuck ones before
+           handing over to the one-by-one pass, so "finish one by one" finished at once and tried
+           nothing; the next try waited for the backoff. Now the one-by-one pass really does try
+           each of them again, alone, straight away. */
+        if (stuck === chunk.length) { return step(); }   /* nothing moved: i still points at them - one by one, now */
         i += stuck;
-        if (stuck === chunk.length) return step();   /* nothing moved: finish one by one, as before */
         stepMany();
       });
     };
