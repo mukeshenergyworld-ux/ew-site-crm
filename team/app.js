@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.641";
+  var APP_VERSION = "6.9.643";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -4484,14 +4484,10 @@ window.addEventListener("beforeunload", function (ev) {
     });
   }
   function rvTg(D) {
-    var rows;
-    try { rows = rvXlsxRows(D); } catch (e) { toast("Could not build the report on this device."); return; }
+    var set;
+    try { set = rsSet("review", D.ex || ""); } catch (e) { toast("Could not build the report on this device."); return; }
     toast("Sending to @" + RV_BOT + "…");
-    var who = D.ex ? rsOwners().concat([D.ex]) : rsOwners().concat(scExecs());
-    rsSendBuilt({ text: rvTgTable(D), rows: rows, cols: RV_COLS, opts: rvXlOpts(rows), file: rvFileName(D),
-      caption: "Detailed sheet – " + D.R.label + " (" + D.R.span + ")" + (D.ex ? " · " + D.ex : "") }, "Payments & quotations review", who)
-      .then(function () { toast("Sent to @" + RV_BOT + ": the table, the PDF and the Excel."); },
-        function (e) { toast("Not sent: " + rvTgWhy(e)); });
+    rsSendSet(set).then(function () { toast("Sent to @" + RV_BOT + "."); }, function (e) { toast("Not sent: " + rvTgWhy(e)); });
   }
   function rvBotCard() {
     if (!roleIs("admin")) return "";
@@ -4540,6 +4536,7 @@ window.addEventListener("beforeunload", function (ev) {
     { k: "review", t: "Payments & quotations review", when: "Monday and Thursday" },
     { k: "exec", t: "Executive scorecard", when: "every Monday" },
     { k: "client", t: "Client scorecard", when: "every Monday" },
+    { k: "pitch", t: "Weekly pitch reminder", when: "every Monday" },
     { k: "partner", t: "Plumber & architect scorecard", when: "the 1st and the 16th" }
   ];
   /* the latest slot of each report on or before today, if it is still fresh enough to send */
@@ -4549,7 +4546,7 @@ window.addEventListener("beforeunload", function (ev) {
     var rv = back(function (d) { var w = rvDow(d); return w === 1 || w === 4; }, 2);
     if (rv) out.push({ k: "review", slot: "review:" + rv, day: rv });
     var mon = back(function (d) { return rvDow(d) === 1; }, 3);
-    if (mon) { out.push({ k: "exec", slot: "exec:" + mon, day: mon }); out.push({ k: "client", slot: "client:" + mon, day: mon }); }
+    if (mon) { out.push({ k: "exec", slot: "exec:" + mon, day: mon }); out.push({ k: "client", slot: "client:" + mon, day: mon }); out.push({ k: "pitch", slot: "pitch:" + mon, day: mon }); }
     var half = back(function (d) { var n = Number(d.slice(8, 10)); return n === 1 || n === 16; }, 4);
     if (half) out.push({ k: "partner", slot: "partner:" + half, day: half });
     return out;
@@ -4604,13 +4601,13 @@ window.addEventListener("beforeunload", function (ev) {
     }
     if (k === "exec") return rsExecReport();
     if (k === "client") return rsClientReport();
+    if (k === "pitch") return rsPitchSheet();
     return rsPartnerReport();
   }
   function rsSend(k) {
-    if (k === "exec") return rsSendExec();   /* 6.9.640 - one card per executive */
-    var R;
-    try { R = rsBuild(k); } catch (e) { return Promise.reject(new Error("could not build the " + rsTitle(k) + " on this device")); }
-    return rsSendBuilt(R, rsTitle(k), rsOwners().concat(scExecs()));   /* 6.9.641 - table message, PDF, Excel */
+    var set;
+    try { set = rsSet(k); } catch (e) { return Promise.reject(new Error("could not build the " + rsTitle(k) + " on this device")); }
+    return rsSendSet(set);   /* 6.9.642 - a picture of the table, then the Excel; one pair per executive */
   }
   function rsXlsx(k) {
     var R; try { R = rsBuild(k); } catch (e) { toast("Could not build the " + rsTitle(k) + " on this device."); return; }
@@ -4761,7 +4758,7 @@ window.addEventListener("beforeunload", function (ev) {
     return list;
   }
   function rsGradeSt(g) { return g === "A" ? XL.G : g === "B" ? XL.TILE : g === "C" ? XL.O : g === "D" ? XL.R : XL.PLAIN; }
-  function rsClientReport() {
+  function rsClientReport(onlyEx) {
     var list = rsClientData(), W = 12, out = [];
     var M = function (n, st) { return { v: Math.round(Number(n) || 0), s: st || XL.MONEY }; };
     out.push(rsFill("Energy World – client scorecard", XL.TITLE, W));
@@ -4771,6 +4768,7 @@ window.addEventListener("beforeunload", function (ev) {
     var by = {}, execs = [];
     list.forEach(function (m) { var e = m.owner || "(no executive)"; if (!by[e]) { by[e] = []; execs.push(e); } by[e].push(m); });
     execs.sort(function (a, b) { return by[b].reduce(function (s, m) { return s + m.due; }, 0) - by[a].reduce(function (s, m) { return s + m.due; }, 0); });
+    if (onlyEx) { execs = execs.filter(function (e) { return e === onlyEx; }); list = by[onlyEx] || []; }   /* 6.9.642 - one man's own sheet */
     out.push([{ v: "By executive", s: XL.BOLD }]);
     out.push(rsHead(["Executive", "A", "B", "C", "D", "Clients", "Total due", "Overdue"]));
     var cnt = function (arr, g) { return arr.filter(function (m) { return m.grade === g; }).length; };
@@ -5043,26 +5041,7 @@ window.addEventListener("beforeunload", function (ev) {
     return doc;
   }
   /* the Monday send: the team message, then each man's PDF and Excel */
-  function rsSendExec() {
-    var X = rsExecData(), D = rvData("7", "");
-    var names = X.list.map(function (x) { return x.exec; });
-    var head = rsMentionLine(rsOwners().concat(names)) + "\n\n";
-    return loadLogo().then(function () { return rsTgText(head + rsExecTable(X) + "\nEach executive's own scorecard follows: a PDF and an Excel in his name."); }).then(function () {
-      var chain = Promise.resolve();
-      X.list.forEach(function (x) {
-        chain = chain.then(function () {
-          var C = rsExecCard(x, D);
-          var cap = rsMentionLine([x.exec].concat(rsOwners())) + "\n\u0001" + x.exec + " – scorecard\u0002\n" + rsExecManTable(x);
-          var pdf = new Uint8Array(rsExecPdf(C).output("arraybuffer"));
-          var sh = rsExecSheet(C);
-          return rsTgDoc(pdf, rsExecFile(x.exec, "pdf"), "application/pdf", cap).then(function () {
-            return rsTgDoc(xlBook(String(x.exec).slice(0, 31), sh.rows, sh.cols, sh.opts), rsExecFile(x.exec, "xlsx"), XLSX_MIME, "\u0001" + x.exec + "\u0002 – the same scorecard as an Excel, with his lists in full.");
-          });
-        });
-      });
-      return chain;
-    });
-  }
+  function rsSendExec() { return rsSendSet(rsSet("exec")); }   /* 6.9.642 */
   /* the owner types each man's Telegram username once */
   function rsHandlesCard() {
     if (!roleIs("admin")) return "";
@@ -5296,6 +5275,370 @@ window.addEventListener("beforeunload", function (ev) {
     }).then(function () {
       return rsTgDoc(xlBook(String(title).slice(0, 31), R.rows, R.cols, R.opts), R.file, XLSX_MIME, "\u0001" + title + "\u0002 – the same details as an Excel");
     });
+  }
+
+  /* ================= EVERY REPORT AS A PICTURE OF A TABLE  (6.9.642, 28 Sep 2026) =================
+     His words: "separate message with attached pdf for each executive ... in proper table format
+     with borders with color coding", then "attach on excel, avoid pdf". He chose the picture.
+
+     Telegram cannot colour text or draw a border, so the table is DRAWN - on a canvas, in the
+     same four colours as the sheets, with real borders - and sent as a photo (server V140 adds
+     sendPhoto). It shows full width in the chat. Under each picture, the Excel. No PDF.
+
+     The review, the executive scorecard and the client scorecard each go as:
+       the team picture (everyone @-mentioned) + the full Excel,
+       then for EACH executive: his picture (he and the owner @-mentioned) + his own Excel.
+     The plumber & architect scorecard goes as one picture and one Excel.
+
+     If the server is still V139 (no sendPhoto), the table goes as the fixed-width text of
+     6.9.641 instead - nothing is lost, it is only plainer. */
+  var RS_PX = { G: "#D9F2E1", A: "#F6E7B8", O: "#F8D9B8", R: "#F7C9C9", B: "#D6E4F9", T: "#D5F3EF", H: "#1E293B", TEAL: "#0F766E", NAVY: "#1E3A8A", LINE: "#B8C4D2", INK: "#11222D", ZEBRA: "#F8FAFC", GREY: "#64748B" };
+  function rsC(t, st, b) { return { t: t, st: st || "", b: !!b }; }
+  function rsInr(n) { return "₹" + rsNum(n); }
+  function rsAgeSt(d) { return d <= 30 ? "G" : d <= 60 ? "A" : d <= 90 ? "O" : "R"; }
+  function rsWaitSt(d) { return d <= 15 ? "G" : d <= 30 ? "A" : d <= 60 ? "O" : "R"; }
+  /* spec: { title, sub, blocks: [ {h}, {band}, {note}, {cols: [[label, weight, "l"|"r"|"c"]], rows: [[cell]]} ] } */
+  function rsPngDraw(spec, ctx, W, measureOnly) {
+    var P = 22, y = 0, TW = W - P * 2, RH = 38, HH = 40, LH = 25;
+    var font = function (b, px) { ctx.font = (b ? "700 " : "500 ") + px + "px system-ui, sans-serif"; };
+    var fit = function (t, w) { t = String(t == null ? "" : t); while (t.length > 1 && ctx.measureText(t).width > w) t = t.slice(0, -1); return t; };
+    /* 6.9.643 - a long list (the brands still to quote) wraps inside its cell */
+    var wrap = function (t, w) {
+      var words = String(t == null ? "" : t).split(" "), lines = [], cur = "";
+      words.forEach(function (wd) { var tr = cur ? cur + " " + wd : wd; if (ctx.measureText(tr).width > w && cur) { lines.push(cur); cur = wd; } else cur = tr; });
+      if (cur) lines.push(cur);
+      return lines.length ? lines : [""];
+    };
+    var rect = function (x, yy, w, h, fill) { if (!measureOnly) { ctx.fillStyle = fill; ctx.fillRect(x, yy, w, h); } };
+    var text = function (t, x, yy, color, align) { if (!measureOnly) { ctx.fillStyle = color; ctx.textAlign = align || "left"; ctx.textBaseline = "middle"; ctx.fillText(t, x, yy); } };
+    var stroke = function (x, yy, w, h) { if (!measureOnly) { ctx.strokeStyle = RS_PX.LINE; ctx.lineWidth = 1; ctx.strokeRect(x + 0.5, yy + 0.5, w, h); } };
+    rect(0, 0, W, 99999, "#FFFFFF");
+    rect(0, 0, W, 78, RS_PX.TEAL);
+    font(true, 30); text(fit(spec.title, W - 2 * P), P, 32, "#FFFFFF");
+    font(false, 19); text(fit(spec.sub || "", W - 2 * P), P, 60, "#CCFBF1");
+    y = 94;
+    (spec.blocks || []).forEach(function (b) {
+      if (b.h) { font(true, 22); text(fit(b.h, TW), P, y + 16, RS_PX.INK); y += 34; return; }
+      if (b.band) { rect(P, y, TW, 46, b.ink === "TEAL" ? RS_PX.TEAL : RS_PX.NAVY); font(true, 25); text(fit(b.band, TW - 24), P + 14, y + 24, "#FFFFFF"); y += 56; return; }
+      if (b.note) { font(false, 17); text(fit(b.note, TW), P, y + 12, RS_PX.GREY); y += 28; return; }
+      if (!b.cols) return;
+      var tot = b.cols.reduce(function (a, c) { return a + c[1]; }, 0), ws = b.cols.map(function (c) { return c[1] / tot * TW; });
+      var hasHead = b.cols.some(function (c) { return c[0]; });
+      if (hasHead) {
+        var x = P;
+        b.cols.forEach(function (c, i) {
+          rect(x, y, ws[i], HH, RS_PX.H); stroke(x, y, ws[i], HH);
+          font(true, 18); var al = c[2] === "r" ? "right" : c[2] === "c" ? "center" : "left";
+          text(fit(c[0], ws[i] - 14), al === "right" ? x + ws[i] - 8 : al === "center" ? x + ws[i] / 2 : x + 8, y + HH / 2, "#FFFFFF", al);
+          x += ws[i];
+        });
+        y += HH;
+      }
+      (b.rows || []).forEach(function (r, ri) {
+        var cells = r.map(function (c0) { return (c0 && typeof c0 === "object") ? c0 : { t: c0, st: "", b: false }; });
+        /* how tall this row must be: the most lines any wrapping cell needs */
+        var lines = cells.map(function (c, i) {
+          var col = b.cols[i] || [];
+          font(c.b || c.st === "R" || c.st === "B", 19);
+          return col[3] === "w" ? wrap(c.t, ws[i] - 16) : [fit(c.t, ws[i] - 14)];
+        });
+        var n = lines.reduce(function (a, l) { return Math.max(a, l.length); }, 1), h = n > 1 ? n * LH + 13 : RH;
+        var x = P;
+        cells.forEach(function (c, i) {
+          if (i >= ws.length) return;
+          rect(x, y, ws[i], h, c.st && RS_PX[c.st] ? RS_PX[c.st] : (ri % 2 ? RS_PX.ZEBRA : "#FFFFFF"));
+          stroke(x, y, ws[i], h);
+          var col = b.cols[i] || [];
+          var al = col[2] === "r" ? "right" : col[2] === "c" ? "center" : "left";
+          font(c.b || c.st === "R" || c.st === "B", 19);
+          var ls = lines[i], top = y + h / 2 - (ls.length - 1) * LH / 2;
+          ls.forEach(function (ln, k) {
+            text(ln, al === "right" ? x + ws[i] - 8 : al === "center" ? x + ws[i] / 2 : x + 8, top + k * LH, c.st === "B" ? RS_PX.NAVY : RS_PX.INK, al);
+          });
+          x += ws[i];
+        });
+        y += h;
+      });
+      y += 16;
+    });
+    /* the key, at the foot */
+    var kx = P;
+    (spec.key || [["Good", "G"], ["Watch", "A"], ["Chase", "O"], ["Act now", "R"]]).forEach(function (k) {
+      font(false, 16); var kw = Math.max(150, ctx.measureText(k[0]).width + 28);
+      rect(kx, y, kw, 30, RS_PX[k[1]]); stroke(kx, y, kw, 30); text(k[0], kx + kw / 2, y + 15, RS_PX.INK, "center"); kx += kw + 8;
+    });
+    font(false, 15); text("Energy World · " + fullDate(today()), W - P, y + 15, RS_PX.GREY, "right");
+    y += 44;
+    return y;
+  }
+  function rsPng(spec) {
+    return new Promise(function (res, rej) {
+      try {
+        var W = 1000, SC = 2, cv = document.createElement("canvas"), ctx = cv.getContext("2d");
+        var H = rsPngDraw(spec, ctx, W, true);
+        cv.width = W * SC; cv.height = Math.ceil(H * SC);
+        ctx = cv.getContext("2d"); ctx.scale(SC, SC);
+        rsPngDraw(spec, ctx, W, false);
+        cv.toBlob(function (bl) {
+          if (!bl) { rej(new Error("the picture could not be made on this device")); return; }
+          bl.arrayBuffer().then(function (ab) { res(new Uint8Array(ab)); }, rej);
+        }, "image/png");
+      } catch (e) { rej(e); }
+    });
+  }
+  /* does the server take photos yet? asked once per session */
+  var _rsPhotoOk = null;
+  function rsCanPhoto() {
+    if (_rsPhotoOk) return _rsPhotoOk;
+    _rsPhotoOk = api("srvProbe", {}, 20000).then(function (r) { return Number(String((r && r.srv) || "").replace(/\D/g, "")) >= 140; }, function () { return false; });
+    return _rsPhotoOk;
+  }
+  function rsTgPhoto(bytes, caption) {
+    return rsTgDoc(bytes, "table.png", "image/png", caption);
+  }
+  /* send a set: the team item, then each man's - each is the picture (or its text) and the Excel */
+  function rsSendSet(set) {
+    return loadLogo().then(rsCanPhoto).then(function (photo) {
+      var items = [set.team].concat(set.men || []), chain = Promise.resolve();
+      items.forEach(function (it) {
+        if (!it) return;
+        chain = chain.then(function () {
+          var cap = (it.who && it.who.length ? rsMentionLine(it.who) + "\n" : "") + "\u0001" + it.head + "\u0002" + (it.line ? "\n" + it.line : "");
+          /* 6.9.643 - HIS RULE: "no plain message require in this bot". Pictures only; if the server
+             cannot send a picture yet, nothing goes and the report is tried again later. */
+          if (!photo) throw new Error("the server needs its V140 update to send pictures");
+          var first = rsPng(it.spec).then(function (png) { return rsTgDoc(png, "table.png", "image/png", cap); });
+          return first.then(function () {
+            if (!it.xlsx) return null;
+            return rsTgDoc(xlBook(String(it.xlsx.sheet || "Report").slice(0, 31), it.xlsx.rows, it.xlsx.cols, it.xlsx.opts), it.xlsx.file, XLSX_MIME, "\u0001" + it.head + "\u0002 – Excel");
+          });
+        });
+      });
+      return chain;
+    });
+  }
+  function rsFileFor(name, what, ext) { return String(name).replace(/[^A-Za-z0-9 ._-]+/g, "").trim() + " - " + what + " " + d10(today()).replace(/\//g, "-") + "." + (ext || "xlsx"); }
+  function rsSet(k, onlyEx) {
+    if (k === "review") return rsSetReview(onlyEx);
+    if (k === "exec") return rsSetExec();
+    if (k === "client") return rsSetClient();
+    if (k === "pitch") return rsSetPitch();
+    return rsSetPartner();
+  }
+
+  /* ---- the review ---- */
+  function rsReviewMan(e) {
+    var D = rvData("since", e), R = D.R;
+    var dues = D.dues.filter(function (r) { return r.ag && r.ag.overdue > 0.5; }).sort(function (a, b) { return (b.b.d90 || 0) - (a.b.d90 || 0) || b.due - a.due; });
+    var blocks = [{ band: e }, { h: "Payments" }, { cols: [["", 46, "l"], ["Amount", 30, "r"], ["", 24, "l"]], rows: [
+      [rsC("Total due till date", "", true), rsC(rsInr(D.dueTot), "", true), plural(D.dues.length, "client")],
+      [rsC("0-30 days", "G"), rsC(rsInr(D.age.cur), "G"), rsC("fresh", "G")], [rsC("31-60 days", "A"), rsC(rsInr(D.age.d30), "A"), rsC("watch", "A")],
+      [rsC("61-90 days", "O"), rsC(rsInr(D.age.d60), "O"), rsC("chase", "O")], [rsC("90+ days", "R"), rsC(rsInr(D.age.d90), "R"), rsC("act now", "R")],
+      ["Dispatched", rsInr(D.dispTot), plural(D.disp.length, "delivery")],
+      [rsC("Collected", D.collTot > 0 ? "G" : "R"), rsC(rsInr(D.collTot), D.collTot > 0 ? "G" : "R"), plural(D.coll.length, "payment")]] }];
+    if (dues.length) blocks.push({ h: "Money to chase – 90+ first" }, { cols: [["Client", 40, "l"], ["Due", 20, "r"], ["90+ days", 20, "r"], ["Oldest (days)", 20, "r"]],
+      rows: dues.slice(0, 12).map(function (r) { var st = rsAgeSt(r.oldest); return [rsC(r.name, st), rsInr(r.due), rsC(rsInr(r.b.d90 || 0), (r.b.d90 || 0) > 0.5 ? "R" : ""), rsC(r.oldest, st)]; }) });
+    if (dues.length > 12) blocks.push({ note: "and " + (dues.length - 12) + " more in the Excel" });
+    if (D.wait.length) blocks.push({ h: "Quotes to follow – oldest first" }, { cols: [["Client", 40, "l"], ["Quote", 20, "l"], ["Value", 20, "r"], ["Days", 20, "r"]],
+      rows: D.wait.slice(0, 12).map(function (q) { var st = rsWaitSt(q.age || 0); return [rsC(q.name, st), q.no, rsInr(q.amt), rsC(q.age, st)]; }) });
+    if (D.wait.length > 12) blocks.push({ note: "and " + (D.wait.length - 12) + " more in the Excel" });
+    if (D.newCl.length) blocks.push({ h: "New clients" }, { cols: [["Client", 40, "l"], ["Area", 30, "l"], ["Plumber", 30, "l"]],
+      rows: D.newCl.slice(0, 10).map(function (c) { return [rsC(c.name, "G"), c.where, c.plumber]; }) });
+    var rows = rvXlsxRows(D);
+    return { who: [e].concat(rsOwners()), head: "Review – " + e,
+      line: "Due " + rsInr(D.dueTot) + " · 90+ " + rsInr(D.age.d90) + " · collected " + rsInr(D.collTot) + " · " + D.wait.length + " quotes to follow",
+      spec: { title: "Payments & quotations review", sub: e + " · " + R.label + " (" + R.span + ")", blocks: blocks },
+      text: rvTgTable(D), xlsx: { sheet: e, rows: rows, cols: RV_COLS, opts: rvXlOpts(rows), file: rsFileFor(e, "review") } };
+  }
+  function rsSetReview(onlyEx) {
+    if (onlyEx) return { team: null, men: [rsReviewMan(onlyEx)] };
+    var D = rvData("since", ""), R = D.R, be = rvByExec(D);
+    var oldW = D.wait.filter(function (q) { return (q.age || 0) > 60; }).length;
+    var blocks = [{ h: "Payments – all executives" }, { cols: [["", 46, "l"], ["Amount", 30, "r"], ["", 24, "l"]], rows: [
+      [rsC("Total due till date", "", true), rsC(rsInr(D.dueTot), "", true), plural(D.dues.length, "client")],
+      [rsC("0-30 days", "G"), rsC(rsInr(D.age.cur), "G"), rsC("fresh", "G")], [rsC("31-60 days", "A"), rsC(rsInr(D.age.d30), "A"), rsC("watch", "A")],
+      [rsC("61-90 days", "O"), rsC(rsInr(D.age.d60), "O"), rsC("chase", "O")], [rsC("90+ days", "R"), rsC(rsInr(D.age.d90), "R"), rsC("act now", "R")],
+      ["Dispatched", rsInr(D.dispTot), plural(D.disp.length, "delivery")],
+      [rsC("Collected", D.collTot > 0 ? "G" : "R"), rsC(rsInr(D.collTot), D.collTot > 0 ? "G" : "R"), plural(D.coll.length, "payment")]] },
+      { h: "Quotations" }, { cols: [["", 46, "l"], ["Count", 20, "r"], ["Value", 34, "r"]], rows: [
+      [rsC("New clients", D.newCl.length ? "G" : ""), rsC(D.newCl.length, D.newCl.length ? "G" : ""), ""],
+      [rsC("New quotes", D.newQ.length ? "G" : ""), rsC(D.newQ.length, D.newQ.length ? "G" : ""), rsInr(D.newQTot)],
+      [rsC("Quotes to follow", "A"), rsC(D.wait.length, "A"), rsC(rsInr(D.waitTot), "A")],
+      [rsC("of which waiting 60+ days", oldW ? "R" : ""), rsC(oldW, oldW ? "R" : ""), ""],
+      [rsC("Plumbers to call", D.plumb.length ? "O" : ""), rsC(D.plumb.length, D.plumb.length ? "O" : ""), ""]] }];
+    if (be.length) blocks.push({ h: "By executive" }, { cols: [["Executive", 22, "l"], ["Due", 17, "r"], ["90+ days", 15, "r"], ["Dispatched", 15, "r"], ["Collected", 15, "r"], ["To follow", 16, "r"]],
+      rows: be.map(function (x) { return [rsC(x.exec, "B"), rsC(rsInr(x.due), "", true), rsC(rsInr(x.d90), x.d90 > 0.5 ? "R" : "G"), rsInr(x.disp), rsC(rsInr(x.coll), x.coll > 0 ? "G" : "R"), rsC(x.wait, x.wait ? "A" : "")]; }) });
+    var rows = rvXlsxRows(D), names = be.map(function (x) { return x.exec; }).filter(function (n) { return n !== "(no executive)"; });
+    return { team: { who: rsOwners().concat(names), head: "Payments & quotations review",
+        line: R.label + " (" + R.span + ") · each executive's own table follows",
+        spec: { title: "Payments & quotations review", sub: "All executives · " + R.label + " (" + R.span + ")", blocks: blocks },
+        text: rvTgTable(D), xlsx: { sheet: "Review", rows: rows, cols: RV_COLS, opts: rvXlOpts(rows), file: rvFileName(D) } },
+      men: names.map(rsReviewMan) };
+  }
+
+  /* ---- the executive scorecard ---- */
+  function rsSetExec() {
+    var X = rsExecData(), D = rvData("7", ""), full = rsExecReport();
+    var ach = function (a) { return (a || {}).ach >= 0.9 ? "G" : (a || {}).ach >= 0.6 ? "A" : "R"; };
+    var scSt = function (x) { return x.score >= 75 ? "G" : x.score >= 60 ? "A" : "R"; };
+    var team = { who: rsOwners().concat(X.list.map(function (x) { return x.exec; })), head: "Executive scorecard",
+      line: scMonLabel(X.month) + " to date · week " + rvShort(X.from) + " – " + rvShort(X.to) + " · each executive's own card follows",
+      spec: { title: "Executive scorecard", sub: scMonLabel(X.month) + " to date · last 7 days", blocks: [
+        { h: "Ranking" }, { cols: [["#", 5, "c"], ["Executive", 21, "l"], ["Score", 10, "r"], ["Sales (month)", 18, "r"], ["Collections", 13, "r"], ["Overdue", 12, "r"], ["90+ days", 21, "r"]],
+          rows: X.list.map(function (x, i) { return [i + 1, rsC(x.exec, "B"), rsC(x.score, scSt(x), true), rsC(rsInr((x.a.sales || {}).actual), ach(x.a.sales)),
+            rsC(Math.round(((x.a.coll || {}).actual || 0) * 100) + "%", ach(x.a.coll)), rsC(Math.round(((x.a.over || {}).actual || 0) * 100) + "%", ach(x.a.over)), rsC(rsInr(x.d90), x.d90 > 0.5 ? "R" : "G")]; }) },
+        { h: "The last 7 days" }, { cols: [["Executive", 24, "l"], ["Dispatched", 19, "r"], ["Collected", 19, "r"], ["New clients", 13, "r"], ["New quotes", 13, "r"], ["Won / lost", 12, "c"]],
+          rows: X.list.map(function (x) { return [rsC(x.exec, "B"), rsInr(x.disp), rsC(rsInr(x.coll), x.coll > 0 ? "G" : "R"), rsC(x.newCl, x.newCl ? "G" : ""), x.newQ, rsC(x.won + " / " + x.lost, x.won ? "G" : x.lost ? "R" : "")]; }) }] },
+      text: rsExecTable(X), xlsx: { sheet: "Executive scorecard", rows: full.rows, cols: full.cols, opts: full.opts, file: full.file } };
+    var men = X.list.map(function (x) {
+      var C = rsExecCard(x, D), a = x.a, sh = rsExecSheet(C);
+      var AREA = [["sales", "Sales booked", "m"], ["coll", "Collections", "p"], ["over", "Overdue (lower is better)", "p"], ["new", "New clients", "n"], ["svc", "Service / AMC", "n"]];
+      var fmt = function (k, v) { return k === "m" ? rsInr(v) : k === "p" ? Math.round((Number(v) || 0) * 100) + "%" : String(Math.round(Number(v) || 0)); };
+      var blocks = [{ band: x.exec + "   ·   " + x.score + " / 100   ·   " + x.band },
+        { h: "This month against target" }, { cols: [["Area", 34, "l"], ["Target", 18, "r"], ["Actual", 18, "r"], ["Achieved", 15, "r"], ["Points", 15, "r"]],
+          rows: AREA.map(function (d) { var y = a[d[0]] || {}, st = ach(y); return [rsC(d[1], st), fmt(d[2], y.target), rsC(fmt(d[2], y.actual), st, true), rsC(Math.round(Math.min(9.99, y.ach || 0) * 100) + "%", st), (Math.round((y.score || 0) * 10) / 10) + " / " + (y.w || "")]; }) },
+        { h: "The last 7 days" }, { cols: [["", 28, "l"], ["", 22, "r"], ["", 28, "l"], ["", 22, "r"]], rows: [
+          ["Dispatched", rsC(rsInr(x.disp), "", true), "Collected", rsC(rsInr(x.coll), x.coll > 0 ? "G" : "R", true)],
+          ["New clients", rsC(x.newCl, x.newCl ? "G" : ""), "New quotes", x.newQ],
+          ["Won", rsC(x.won, x.won ? "G" : ""), "Lost", rsC(x.lost, x.lost ? "R" : "")],
+          ["Total due", rsC(rsInr(x.due), "", true), "90+ days", rsC(rsInr(x.d90), x.d90 > 0.5 ? "R" : "G", true)],
+          ["Quotes to follow", rsC(x.wait, x.wait ? "A" : ""), "Won value", rsInr(x.wonAmt)]] }];
+      if (C.dues.length) blocks.push({ h: "Money to chase – 90+ first" }, { cols: [["Client", 40, "l"], ["Due", 20, "r"], ["90+ days", 20, "r"], ["Oldest (days)", 20, "r"]],
+        rows: C.dues.slice(0, 12).map(function (r) { var st = rsAgeSt(r.oldest); return [rsC(r.name, st), rsInr(r.due), rsC(rsInr(r.b.d90 || 0), (r.b.d90 || 0) > 0.5 ? "R" : ""), rsC(r.oldest, st)]; }) });
+      if (C.wait.length) blocks.push({ h: "Quotes to follow – oldest first" }, { cols: [["Client", 40, "l"], ["Quote", 20, "l"], ["Value", 20, "r"], ["Days", 20, "r"]],
+        rows: C.wait.slice(0, 12).map(function (q) { var st = rsWaitSt(q.age || 0); return [rsC(q.name, st), q.no, rsInr(q.amt), rsC(q.age, st)]; }) });
+      return { who: [x.exec].concat(rsOwners()), head: x.exec + " – scorecard", line: x.score + " / 100 · " + x.band,
+        spec: { title: "Executive scorecard", sub: x.exec + " · " + scMonLabel(X.month) + " to date · last 7 days", blocks: blocks },
+        text: rsExecManTable(x), xlsx: { sheet: x.exec, rows: sh.rows, cols: sh.cols, opts: sh.opts, file: rsFileFor(x.exec, "scorecard") } };
+    });
+    return { team: team, men: men };
+  }
+
+  /* ---- the client scorecard ---- */
+  function rsSetClient() {
+    var list = rsClientData(), full = rsClientReport(), by = {}, execs = [];
+    list.forEach(function (m) { var e = m.owner || "(no executive)"; if (!by[e]) { by[e] = []; execs.push(e); } by[e].push(m); });
+    execs.sort(function (a, b) { return by[b].reduce(function (s2, m) { return s2 + m.due; }, 0) - by[a].reduce(function (s2, m) { return s2 + m.due; }, 0); });
+    var cnt = function (arr, g) { return arr.filter(function (m) { return m.grade === g; }).length; };
+    var gSt = function (g) { return g === "A" ? "G" : g === "B" ? "T" : g === "C" ? "O" : g === "D" ? "R" : ""; };
+    var gradeRow = function (lab, a, isEx) { return [rsC(lab, isEx ? "B" : "", !isEx), rsC(cnt(a, "A"), "G"), rsC(cnt(a, "B"), "T"), rsC(cnt(a, "C"), "O"), rsC(cnt(a, "D"), "R"), a.length,
+      rsC(rsInr(a.reduce(function (s2, m) { return s2 + m.overdue; }, 0)), "R")]; };
+    var gCols = [["Executive", 26, "l"], ["A", 9, "r"], ["B", 9, "r"], ["C", 9, "r"], ["D", 9, "r"], ["Clients", 12, "r"], ["Overdue", 26, "r"]];
+    var worst = list.filter(function (m) { return m.grade === "D"; }).sort(function (x, y) { return y.due - x.due; }).slice(0, 10);
+    var tBlocks = [{ h: "Grades by executive" }, { cols: gCols, rows: execs.map(function (e) { return gradeRow(e, by[e], true); }).concat([gradeRow("All", list, false)]) }];
+    if (worst.length) tBlocks.push({ h: "D – act now, largest dues" }, { cols: [["Client", 38, "l"], ["Executive", 22, "l"], ["Due", 20, "r"], ["Overdue", 20, "r"]],
+      rows: worst.map(function (m) { return [rsC(m.name, "R"), rsC(m.owner || "-", "B"), rsInr(m.due), rsC(rsInr(m.overdue), "R")]; }) });
+    tBlocks.push({ note: "A best (green) · B good (teal) · C chase (orange) · D act now (red). Buying 40, paying 45, returns 15." });
+    var team = { who: rsOwners().concat(execs.filter(function (e) { return e !== "(no executive)"; })), head: "Client scorecard",
+      line: list.length + " clients graded · each executive's own list follows",
+      spec: { title: "Client scorecard", sub: "All executives · " + list.length + " clients graded", blocks: tBlocks },
+      text: rsClientTable(list, by, execs), xlsx: { sheet: "Client scorecard", rows: full.rows, cols: full.cols, opts: full.opts, file: full.file } };
+    var ord = { D: 0, C: 1, B: 2, A: 3 };
+    var men = execs.filter(function (e) { return e !== "(no executive)"; }).map(function (e) {
+      var a = by[e].slice().sort(function (x, y) { return (ord[x.grade] == null ? 9 : ord[x.grade]) - (ord[y.grade] == null ? 9 : ord[y.grade]) || y.due - x.due; });
+      var mine = rsClientReport(e);
+      var blocks = [{ band: e }, { cols: gCols, rows: [gradeRow(e, by[e], true)] },
+        { h: "His clients – D and C first" }, { cols: [["Client", 30, "l"], ["Grade", 8, "c"], ["Score", 8, "r"], ["Due", 16, "r"], ["Overdue", 16, "r"], ["Since paid", 11, "r"], ["Trend", 11, "l"]],
+          rows: a.slice(0, 25).map(function (m) {
+            var gs = gSt(m.grade), ps = m.daysSincePay < 0 ? (m.due > 0.5 ? "R" : "") : rsAgeSt(m.daysSincePay);
+            var ts = m.trend === "Growing" || m.trend === "New this quarter" ? "G" : m.trend === "Shrinking" ? "O" : m.trend === "Gone quiet" ? "R" : "";
+            return [rsC(m.name, gs), rsC(m.grade, gs, true), rsC(m.score, gs), rsInr(m.due), rsC(rsInr(m.overdue), m.overdue > 500 ? "R" : ""), rsC(m.daysSincePay < 0 ? "never" : m.daysSincePay, ps), rsC(m.trend, ts)];
+          }) }];
+      if (a.length > 25) blocks.push({ note: "and " + (a.length - 25) + " more in the Excel" });
+      return { who: [e].concat(rsOwners()), head: e + " – client scorecard",
+        line: "A " + cnt(by[e], "A") + " · B " + cnt(by[e], "B") + " · C " + cnt(by[e], "C") + " · D " + cnt(by[e], "D"),
+        spec: { title: "Client scorecard", sub: e + " · " + plural(by[e].length, "client"), blocks: blocks },
+        text: rsClientTable(by[e], (function () { var o = {}; o[e] = by[e]; return o; })(), [e]),
+        xlsx: { sheet: e, rows: mine.rows, cols: mine.cols, opts: mine.opts, file: rsFileFor(e, "client scorecard") } };
+    });
+    return { team: team, men: men };
+  }
+
+  /* ---- the plumber & architect scorecard (one picture) ---- */
+  function rsSetPartner() {
+    var list = rsPartnerData(), full = rsPartnerReport(), blocks = [];
+    var dSt = function (d) { return d === null ? "R" : d <= 30 ? "G" : d <= 60 ? "A" : d <= 90 ? "O" : "R"; };
+    ["Plumber", "Architect"].forEach(function (role) {
+      var arr = list.filter(function (p) { return p.role === role; });
+      if (!arr.length) return;
+      var n = function (t2) { return arr.filter(function (p) { return p.tier === t2; }).length; };
+      var quiet = arr.filter(function (p) { return p.days === null || p.days > 30; }).length;
+      blocks.push({ band: role + "s – " + arr.length, ink: "TEAL" });
+      blocks.push({ cols: [["Tier A", 25, "c"], ["Tier B", 25, "c"], ["Tier C", 25, "c"], ["No contact 30+ days", 25, "c"]],
+        rows: [[rsC(n("A"), "G", true), rsC(n("B"), "A", true), rsC(n("C"), "", true), rsC(quiet, quiet ? "R" : "G", true)]] });
+      var top = arr.filter(function (p) { return p.billed > 0; }).slice(0, role === "Plumber" ? 12 : 8);
+      if (top.length) blocks.push({ cols: [[role, 30, "l"], ["Tier", 8, "c"], ["Revenue influenced", 20, "r"], ["Bought / linked", 16, "c"], ["Collections", 12, "r"], ["Days since contact", 14, "r"]],
+        rows: top.map(function (p) { var ts = p.tier === "A" ? "G" : p.tier === "B" ? "A" : "";
+          return [rsC(p.name, ts), rsC(p.tier, ts, true), rsInr(p.billed), p.converted + " / " + p.referred, rsC(Math.round(p.coll * 100) + "%", p.coll >= 0.8 ? "G" : p.coll >= 0.6 ? "A" : "R"), rsC(p.days === null ? "never" : p.days, dSt(p.days))]; }) });
+    });
+    return { team: { who: rsOwners().concat(scExecs()), head: "Plumber & architect scorecard", line: d10(today()),
+      spec: { title: "Plumber & architect scorecard", sub: "Top names by revenue influenced · all of them in the Excel", blocks: blocks },
+      text: rsPartnerTable(list), xlsx: { sheet: "Partners", rows: full.rows, cols: full.cols, opts: full.opts, file: full.file } }, men: [] };
+  }
+
+  /* ---- the weekly pitch reminder (6.9.643) ----
+     His words, on the server's text version: "all this we want in table format with proper color
+     coding, send it as a picture format, no plain message require in this bot". The sites closing
+     this week come from the Agent's own scan (agRemindGroups); each executive gets his picture -
+     site, client, stage, the brands still to quote (amber, wrapped in the cell) and the ones
+     quoted (green) - and one team picture counts them. The server's text version stops once the
+     reminder bot has a group (V140). */
+  function rsPitchRows() {
+    var out = [];
+    agRemindGroups().forEach(function (b) {
+      b.sites.forEach(function (g) {
+        var quoted = (g.brands || []).filter(function (x) { return x.st === "live" || x.st === "won"; }).map(function (x) { return x.brand; });
+        out.push({ exec: b.exec, site: String(g.siteName || "site"), client: String(g.client || ""), stage: String(g.stage || ""), stageNo: g.stageNo || "",
+          toQuote: (g.toQuote || []).slice(), quoted: quoted });
+      });
+    });
+    return out;
+  }
+  function rsPitchSheet() {
+    var rows = rsPitchRows(), W = 7, out = [];
+    out.push(rsFill("Energy World – weekly pitch reminder", XL.TITLE, W));
+    out.push([rsMadeLine("Sites closing this week, from the Agent's scan.")]);
+    out.push([{ v: "Key:", s: XL.BOLD }, { v: "To quote – pitch now", s: XL.A }, { v: "Quoted", s: XL.G }]);
+    out.push([]);
+    var ex = []; rows.forEach(function (r) { if (ex.indexOf(r.exec) < 0) ex.push(r.exec); });
+    ex.forEach(function (e) {
+      var mine = rows.filter(function (r) { return r.exec === e; });
+      out.push(rsFill("EXECUTIVE: " + e + "  –  " + plural(mine.length, "site") + " closing", XL.EXEC, W));
+      out.push(rsHead(["#", "Site", "Client", "Stage", "Stage no.", "To quote", "Quoted"]));
+      mine.forEach(function (r, i) {
+        out.push([i + 1, r.site, r.client, r.stage, r.stageNo ? r.stageNo + " of 13" : "", { v: r.toQuote.join(", "), s: r.toQuote.length ? XL.A : XL.PLAIN }, { v: r.quoted.join(", "), s: r.quoted.length ? XL.G : XL.PLAIN }]);
+      });
+      out.push([]);
+    });
+    if (!rows.length) out.push(["No site is closing this week."]);
+    return { text: "", rows: out, cols: [5, 30, 24, 26, 10, 50, 30], opts: rsOpts(out, W, 3), file: "Pitch_reminder_" + today() + ".xlsx", caption: "Weekly pitch reminder" };
+  }
+  function rsSetPitch() {
+    var rows = rsPitchRows(), ex = [];
+    rows.forEach(function (r) { if (ex.indexOf(r.exec) < 0) ex.push(r.exec); });
+    var full = rsPitchSheet(), key = [["To quote – pitch now", "A"], ["Quoted", "G"]];
+    var team = { who: rsOwners().concat(ex.filter(function (e) { return e !== "Unassigned"; })), head: "Weekly pitch reminder",
+      line: plural(rows.length, "site") + " closing this week · each executive's own list follows",
+      spec: { title: "Weekly pitch reminder", sub: "Sites closing this week · " + fullDate(today()), key: key, blocks: [
+        { h: "By executive" }, { cols: [["Executive", 34, "l"], ["Sites closing", 22, "r"], ["Brands to quote", 22, "r"], ["All quoted", 22, "r"]],
+          rows: ex.map(function (e) {
+            var m = rows.filter(function (r) { return r.exec === e; }), tq = m.reduce(function (a, r) { return a + r.toQuote.length; }, 0), done = m.filter(function (r) { return !r.toQuote.length; }).length;
+            return [rsC(e, "B"), rsC(m.length, "", true), rsC(tq, tq ? "A" : "G"), rsC(done, done ? "G" : "")];
+          }) }] },
+      text: "", xlsx: { sheet: "Pitch reminder", rows: full.rows, cols: full.cols, opts: full.opts, file: full.file } };
+    var men = ex.map(function (e) {
+      var m = rows.filter(function (r) { return r.exec === e; });
+      return { who: e === "Unassigned" ? rsOwners() : [e].concat(rsOwners()), head: e + " – pitch this week", line: plural(m.length, "site") + " closing",
+        spec: { title: "Weekly pitch reminder", sub: e + " · " + plural(m.length, "site") + " closing this week", key: key, blocks: [
+          { band: e }, { cols: [["#", 4, "c"], ["Site / client", 27, "l", "w"], ["Stage", 19, "l", "w"], ["To quote", 32, "l", "w"], ["Quoted", 18, "l", "w"]],
+            rows: m.map(function (r, i) {
+              var site = r.site + (r.client && r.client !== r.site ? " (" + r.client + ")" : "");
+              return [i + 1, rsC(site, "", true), rsC(r.stage + (r.stageNo ? " · " + r.stageNo + "/13" : ""), "T"),
+                rsC(r.toQuote.join(", ") || "all quoted", r.toQuote.length ? "A" : "G"), rsC(r.quoted.join(", "), r.quoted.length ? "G" : "")];
+            }) }] },
+        text: "", xlsx: null };
+    });
+    return { team: team, men: men };
   }
 
   /* the owner's view of the schedule, at the foot of the review */
