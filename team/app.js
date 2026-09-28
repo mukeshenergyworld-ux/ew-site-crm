@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.647";
+  var APP_VERSION = "6.9.648";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -382,6 +382,14 @@
      fancy symbol a product description carries (bullets, diamonds, arrows, the \u20B9 sign, smart
      quotes) would print as garbage like "\u00D8=\u00DD". pdfSafe maps the common ones to clean ASCII and
      drops anything else, so descriptions always read cleanly. */
+  /* CRM 6.9.648 / Challan 1.115.0 - THE CHALLAN PRINT'S WORDS, CLEANED. A price-list description
+     with emoji bullets printed as garbage and spaced-out letters - core Helvetica
+     draws only Latin-1. Each emoji becomes a small dot, then pdfSafe() does what it does for the
+     quote. Byte-identical in the CRM and the Challan app. */
+  function chPdfWords(s) {
+    return pdfSafe(String(s == null ? "" : s).replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, " \u00B7 "))
+      .replace(/(?:\u00B7\s*){2,}/g, "\u00B7 ").replace(/^\u00B7\s*/, "");
+  }
   function pdfSafe(s) {
     return String(s == null ? "" : s)
       .replace(/\u20B9/g, "Rs.")
@@ -20057,7 +20065,7 @@ function viewCatalogue() {
     var words = function (l) {
       var cd = isJobLine(l) ? "JOB WORK" : (isOtherLine(l) ? "" : String(l.code || "").trim());
       var ds = String(l.desc || l.code || "");
-      return ds + (cd && cd !== ds ? "  (" + cd + ")" : "");
+      return chPdfWords(ds + (cd && cd !== ds ? "  (" + cd + ")" : ""));   /* 6.9.648 / 1.115.0 */
     };
     /* CRM 6.9.633 / Challan 1.112.0 - a kit set to show its parts: one small grey line under it */
     var _kits = {}; try { _kits = stkBom(); } catch (e) { _kits = {}; }
@@ -20065,7 +20073,7 @@ function viewCatalogue() {
       var b = _kits[String((l && l.code) || "").trim()];
       if (!b || !b.show) return "";
       var q = num(l.qty) || 1;
-      return "Includes: " + b.parts.map(function (p) { return (p.qty * q) + " x " + (p.desc || p.code); }).join(", ");
+      return chPdfWords("Includes: " + b.parts.map(function (p) { return (p.qty * q) + " x " + (p.desc || p.code); }).join(", "));
     };
     var kitLines = function (l, s) { var t = kitWords(l); if (!t) return []; F(); doc.setFontSize(9 * s); var r = doc.splitTextToSize(t, dW(s)); F("bold"); doc.setFontSize(12 * s); return r; };
     var measure = function (s) {
