@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.649";
+  var APP_VERSION = "6.9.650";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -5436,7 +5436,12 @@ window.addEventListener("beforeunload", function (ev) {
   var _rsPhotoOk = null;
   function rsCanPhoto() {
     if (_rsPhotoOk) return _rsPhotoOk;
-    _rsPhotoOk = api("srvProbe", {}, 20000).then(function (r) { return Number(String((r && r.srv) || "").replace(/\D/g, "")) >= 140; }, function () { return false; });
+    /* 6.9.650 - an unanswered question is not a "no": say so, and ask again next time */
+    _rsPhotoOk = api("srvProbe", {}, 45000).then(function (r) {
+      var v = Number(String((r && r.srv) || "").replace(/\D/g, ""));
+      if (!v) { _rsPhotoOk = null; throw new Error("the server did not say which version it is - try again"); }
+      return v >= 140;
+    }, function (e) { _rsPhotoOk = null; throw new Error("could not reach the server from this device (" + apiWhy(e) + ")"); });
     return _rsPhotoOk;
   }
   function rsTgPhoto(bytes, caption) {
