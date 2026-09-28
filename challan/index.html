@@ -241,7 +241,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.115.0";
+  var APP_VERSION = "1.116.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -3143,7 +3143,8 @@ function discRowOn(client, brand, onYmd) {
     return '<div class="prow' + (have ? ' picked' : '') + '">' +
       (x.pic ? '<img src="' + esc(x.pic) + '" alt="" loading="lazy"/>' : '<div class="noimg">no<br>photo</div>') +
       '<div class="pinfo"><div class="pname">' + esc(x.desc) + '</div>' +
-      '<div class="pmeta">' + esc(x.code) + (x.unit ? ' · ' + esc(x.unit) : '') + ' · ' + money(x.price) + '</div></div>' +
+      '<div class="pmeta">' + esc(x.code) + (x.unit ? ' · ' + esc(x.unit) : '') + ' · ' + money(x.price) +
+        (S.pick && S.pick.into === "rt" ? '' : chStkTag(x.code, have)) + '</div></div>' +   /* 1.116.0 - stock in hand */
       '<div class="pqty">' +
         '<button class="stp" data-act="pk-minus" data-code="' + esc(x.code) + '">&minus;</button>' +
         '<input class="pk-qty" data-code="' + esc(x.code) + '" inputmode="decimal" value="' + (have || "") + '" placeholder="0"/>' +
@@ -4061,6 +4062,34 @@ function discRowOn(client, brand, onYmd) {
     });
     return m;
   }
+  /* ===== CRM 6.9.655 / Challan 1.116.0 - STOCK IN HAND WHILE A CHALLAN IS MADE =====
+     His words: "anyone making challan, should show stock in hand for that item to everyone". The
+     numbers are the Stock screen's own: on hand, and free = on hand less what other challans hold. */
+  function chStkMap(skipId) {
+    var cut = stkCutoff(), mv = stockMovementByCode().m, del = stockDeliveredByCode(), ret = stockReturnedByCode(), res = stkReserved(skipId), m = {};
+    Object.keys(cut).forEach(function (k) {
+      var onh = Math.round(((mv[k] || 0) - (del[k] || 0) + (ret[k] || 0)) * 100) / 100;
+      m[k] = { onhand: onh, free: Math.round((onh - (res[k] || 0)) * 100) / 100 };
+    });
+    return m;
+  }
+  var _chStkC = null, _chStkTry = 0;
+  function chStkTag(code, want) {
+    code = String(code || "").trim();
+    if (!code) return "";
+    var pill = function (txt, bg, ink) { return ' <span style="display:inline-block;padding:0 7px;border-radius:999px;font-size:12px;font-weight:700;white-space:nowrap;background:' + bg + ';color:' + ink + '">' + txt + '</span>'; };
+    if (!STOCK_LOADED) {
+      if (Date.now() - _chStkTry > 60000) { _chStkTry = Date.now(); try { ensureStock(); } catch (e) { } }
+      return pill("stock \u2026", "#f1f5f9", "#94a3b8");
+    }
+    var skip = String((S.ch && S.ch.id) || "");
+    if (!_chStkC || _chStkC.skip !== skip || Date.now() - _chStkC.at > 4000) _chStkC = { at: Date.now(), skip: skip, m: chStkMap(skip) };
+    var x = _chStkC.m[code];
+    if (!x) return pill("stock not counted", "#f1f5f9", "#64748b");
+    var w = Number(want) || 0, fr = x.free > 0 ? x.free : 0;
+    var st = x.free <= 0 ? ["#fee2e2", "#b91c1c"] : (w > x.free + 1e-9 ? ["#fef3c7", "#92400e"] : ["#dcfce7", "#166534"]);
+    return pill("In hand " + x.onhand + " \u00b7 free " + fr, st[0], st[1]);
+  }
   function stkOverLines(lines, skipId) {
     if (!S.stock || !S.stock.length) return [];
     var cut = stkCutoff(), mv = stockMovementByCode().m, del = stockDeliveredByCode(), ret = stockReturnedByCode(), res = stkReserved(skipId);
@@ -4242,7 +4271,8 @@ function discRowOn(client, brand, onYmd) {
             ? 'Job work / Labour charges'
             : (isOtherLine(l) ? 'Not in the price list · ' + esc(l.brand || "no brand") : esc(l.code)) +
               ' · ' + esc(l.unit || "") +
-              ' × ' + money(l.rate) + (d ? ' &minus;' + d + '%' : '')) + '</div></div>' +
+              ' × ' + money(l.rate) + (d ? ' &minus;' + d + '%' : '') +
+              (isOtherLine(l) ? '' : chStkTag(l.code, l.qty))) + '</div></div>' +   /* 1.116.0 - stock in hand */
           /* v1.52.0 - the quantity is a box on the line itself; it was words, and a change meant
              finding the product on its shelf again. A job is one job and keeps no box. */
           (isJobLine(l) ? '' :
