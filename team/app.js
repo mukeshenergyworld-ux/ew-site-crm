@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.643";
+  var APP_VERSION = "6.9.645";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -17063,6 +17063,8 @@ function viewCatalogue() {
   function shrinkPic(src, maxDim, q, trim) {
     return new Promise(function (res) {
       var im = new Image();
+      var web = /^https?:/i.test(String(src || ""));
+      if (web) im.crossOrigin = "anonymous";   /* 6.9.645 - a web picture must draw to the canvas untainted */
       im.onload = function () {
         var sc = Math.min(1, maxDim / Math.max(im.width, im.height));
         var w = Math.max(1, Math.round(im.width * sc)), h = Math.max(1, Math.round(im.height * sc));
@@ -17072,11 +17074,20 @@ function viewCatalogue() {
         cx.drawImage(im, 0, 0, w, h);
         if (trim) cv = trimWhite(cv);
         try { res({ src: cv.toDataURL("image/jpeg", q || 0.8), w: cv.width, h: cv.height }); }
-        catch (e) { res({ src: src, w: im.width, h: im.height }); }
+        catch (e) { res(web ? null : { src: src, w: im.width, h: im.height }); }   /* 6.9.645 - an address is not a picture */
       };
       im.onerror = function () { res(null); };
       im.src = src;
     });
+  }
+  /* 6.9.645 - STRAIGHT FROM GOOGLE. The picture, fetched by the phone itself, shrunk exactly as the
+     server route shrinks it. null when the site does not allow it or it takes longer than 8 s -
+     the caller then goes through the server as it always did. */
+  function picDirect(u, maxDim, q, trim) {
+    if (!/^https?:/i.test(String(u || ""))) return Promise.resolve(null);
+    var cap = new Promise(function (r) { setTimeout(function () { r(null); }, 8000); });
+    var got = shrinkPic(u, maxDim, q, trim).then(function (p) { return (p && /^data:image\//.test(p.src)) ? p : null; }, function () { return null; });
+    return Promise.race([got, cap]);
   }
 
   /* ---- ONE AT A TIME, TWO AT MOST  (v6.9.488) -------------------------------
@@ -17120,9 +17131,14 @@ function viewCatalogue() {
        export for that product returned the cached blank instantly - one flaky moment blanking a
        picture for the rest of the session. Only a real picture is remembered now. */
     var once = function () {
-      return api("imgB64", { url: url }).then(function (r) {
-        if (!r || !r.ok) return null;
-        return shrinkPic("data:" + r.mime + ";base64," + r.b64, trim ? 600 : 300, trim ? 0.85 : 0.75, trim).then(function (p) {
+      /* 6.9.645 - the phone asks Google itself first; the server only when that fails */
+      return picDirect(url, trim ? 600 : 300, trim ? 0.85 : 0.75, trim).then(function (d) {
+        if (d) return d;
+        return api("imgB64", { url: url }).then(function (r) {
+          if (!r || !r.ok) return null;
+          return shrinkPic("data:" + r.mime + ";base64," + r.b64, trim ? 600 : 300, trim ? 0.85 : 0.75, trim);
+        });
+      }).then(function (p) {
         /* v6.9.488 - hits only. v6.9.502 - and it survives the session now. */
         if (p && p.src) { PIC_CACHE[url] = p.src; PIC_USED[url] = Date.now(); savePicCacheSoon(); }
         var dim = p ? { w: p.w, h: p.h } : null;
@@ -17133,7 +17149,6 @@ function viewCatalogue() {
         PIC_DIM[url] = dim;
         PIC_DIM[raw] = dim;
         return (p && p.src) || null;
-        });
       }).catch(function () { return null; });                /* v6.9.488 - a miss is not cached */
     };
     /* ONE RETRY, AFTER A BREATH. A queued Apps Script call that lost its place comes back on the
@@ -17930,9 +17945,15 @@ function viewCatalogue() {
     var u = driveImg(raw, Math.round(maxPx * 1.4));
     if (!u) return Promise.resolve(null);
     if (PIC_BIG[key] !== undefined) return Promise.resolve(PIC_BIG[key]);
-    var fetched = api("imgB64", { url: u }).then(function (r) {
-      if (!r || !r.ok) { PIC_BIG[key] = null; return null; }
-      return shrinkPic("data:" + r.mime + ";base64," + r.b64, maxPx, quality || 0.78, false).then(function (pp) {
+    var fetched = picDirect(u, maxPx, quality || 0.78, false).then(function (d) {   /* 6.9.645 - direct first */
+      if (d) return d;
+      return api("imgB64", { url: u }).then(function (r) {
+        if (!r || !r.ok) return null;
+        return shrinkPic("data:" + r.mime + ";base64," + r.b64, maxPx, quality || 0.78, false);
+      });
+    }).then(function (pp) {
+      if (!pp) { PIC_BIG[key] = null; return null; }
+      return Promise.resolve(pp).then(function (pp) {
         PIC_BIG[key] = pp ? pp.src : null;
         PIC_BIG_DIM[key] = pp ? { w: pp.w, h: pp.h } : null;
         /* the product page looks its dimensions up by url alone */
@@ -44449,6 +44470,23 @@ function viewCatalogue() {
     return '<button data-act="tab" data-tab="' + k + '" class="nvb' + (S.tab === k ? ' on' : '') +
       '">' + label[k] + extra + '</button>';
   }
+  /* 6.9.644 - HOW TO USE. Every screen opens the guide at its own section. A screen the guide
+     does not describe on its own lands on the part that covers it; anything else lands on the
+     start. The keys are the screens' own keys, so a renamed LABEL cannot break the link. */
+  var HELP_AT = { agent: 1, leads: 1, clients: 1, pitch: 1, quotes: 1, followups: 1, brandfollow: 1, winloss: 1,
+    visits: 1, review: 1, discounts: 1, challans: 1, register: 1, returns: 1, freight: 1, billing: 1, payments: 1,
+    dues: 1, paidout: 1, service: 1, spares: 1, products: 1, pricelist: 1, stock: 1, catalogs: 1, brandstory: 1,
+    catalogue: 1, partners: 1, scorecard: 1, report: 1, commission: 1, payroll: 1, teampins: 1, dash: 1,
+    pending: 1, trouble: 1, dups: 1, health: 1, changelog: 1, tools: 1, brief: 1, rates: 1, rules: 1, booksweep: 1 };
+  var HELP_ALIAS = { deliveries: "challans", collections: "payments", pricing: "pricelist", payrollhub: "commission",
+    dossier: "clients", matrix: "pitch", sites: "pitch", customers: "clients" };
+  function helpHref(tab) {
+    var k = HELP_AT[tab] ? tab : (HELP_ALIAS[tab] || "");
+    return "../help/crm.html#t-" + (k || "start");
+  }
+  function helpBtn() {
+    return '<div class="nvhelp"><a href="' + helpHref(S.tab) + '" target="_blank" rel="noopener" data-help="' + esc(S.tab || "") + '">? How to use</a></div>';
+  }
   function navHtmlBuild(label) {
     var open = navOpenGrp();
     /* The eight, in the order the business runs - NOT alphabetical. v6.9.300 sorted the old
@@ -44474,7 +44512,7 @@ function viewCatalogue() {
         h += '<div class="nvitems">' + items.map(function (k) { return navBtn(k, label); }).join("") + '</div>';
       }
     }
-    return h;
+    return h + helpBtn();   /* 6.9.644 */
   }
   function ensureNavCss() {
     if (document.getElementById("ew_nav_css")) return;
@@ -44495,6 +44533,10 @@ function viewCatalogue() {
       "font-family:inherit;font-size:12.5px;font-weight:700;color:#334155;cursor:pointer;white-space:nowrap;line-height:1.35}" +
       "nav button.nvg:hover{border-color:#5eead4}" +
       "nav button.nvg.on{background:#0f766e;border-color:#0f766e;color:#fff}" +
+      /* 6.9.644 - the How to use link: its own line under the screens, a full tap target */
+      ".nvhelp{display:flex;justify-content:flex-end;width:100%;padding:4px 0 6px}" +
+      ".nvhelp a{display:inline-flex;align-items:center;min-height:44px;padding:0 14px;border-radius:999px;" +
+      "border:1px dashed #0f766e;color:#0f766e;background:#f0fdfa;font-size:13.5px;font-weight:700;text-decoration:none}" +
       /* v6.9.396 said "the eight are the one row that matters, so they are the bigger
          target" - and wrote that rule ABOVE the base rule of equal weight, which then
          overrode it line for line. Measured at 360: the chips were 33px tall at 12.5px,
