@@ -241,7 +241,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.112.0";
+  var APP_VERSION = "1.114.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -1861,7 +1861,11 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      stood one line above since v1.3. It is his call to make: at his size the storeman IS the
      office. The PIN is still asked, so a released load still carries a name. Byte-identical
      with the CRM's, because two apps must not disagree about who may release material. */
-  function canApprove() { return roleAny(["admin", "accounts", "godown"]); }
+  /* 1.114.0 - HIS WORDS, 28 Sep: "cancel that below 1 lac due client approval from godown .. they
+     are making many mistake". The godown no longer passes a challan, not even under a lakh; it
+     makes, edits before dispatch, cancels before dispatch, and asks after. Byte-identical with the
+     CRM's, because two apps must not disagree about who may release material. */
+  function canApprove() { return roleAny(["admin", "accounts"]); }
   /* 1.80.0 - his rule: "under a lakh and nothing older than 6 months - Ashish Jha or godown;
      all other - his executive or admin only". The CRM works it out (it has the money; this
      phone is sent none) and the server hands this app the STRICT names with the reason. */
@@ -2732,6 +2736,72 @@ function discRowOn(client, brand, onYmd) {
     return m;
   }
   function cancelInfo(tab, id) { return cancelMap()[String(tab) + "|" + String(id || "")] || null; }
+  /* ======= 1.114.0 - CANCEL BEFORE DISPATCH, ASK AFTER =======
+     Before the material leaves, nothing has moved - no stock out, no due, no trip - so the man
+     who made the challan may set it aside himself. After it has left, a cancel moves money and
+     stock, so it is a REQUEST: one audit row the owner reads in the CRM and answers. Both are the
+     CRM's own rows (rec:cancel / rec:cxask), so the CRM counts them without knowing this app. */
+  var _cxaCache = null;
+  var CX_REASONS = ["Raised by mistake", "Duplicate of another record", "Customer cancelled the order", "Wrong client / wrong site", "Wrong items or quantity", "Test / practice entry", "Order changed - a new one was raised", "Other"];
+  function cxAskMap() {
+    if (_cxaCache) return _cxaCache;
+    var m = {};
+    ((S.data && S.data.audit) || []).forEach(function (r) {
+      if (!r || String(r.action || "") !== "rec:cxask") return;
+      var d = {};
+      try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
+      var tab = String(d.tab || ""), rid = String(d.recId || "");
+      if (!tab || !rid || !CANCEL_TABS[tab]) return;
+      var k = tab + "|" + rid, prev = m[k];
+      /* newest wins, exactly as cancelMap does - withdrawn, refused and asked-again are all
+         just later rows, and every one of them stays on the sheet */
+      if (!prev || String(r.createdAt || "") >= String(prev.at || "")) {
+        m[k] = { state: String(d.state || "asked"), reason: String(d.reason || ""),
+                 note: String(d.note || ""), label: String(d.label || ""),
+                 at: r.createdAt || "", by: r.actor || "" };
+      }
+    });
+    _cxaCache = m;
+    return m;
+  }
+  function chCxAsk(id) { var a = cxAskMap()["challans|" + String(id || "")]; return (a && a.state === "asked") ? a : null; }
+  function chGone(c) { var st = chStatus(c); return !!(c && c.dispatchedAt) || (st !== "Draft" && st !== "Approved"); }
+  function chCxRow(c, action, reason, note, extra) {
+    var v = 0; try { v = Math.round(challanNet(c)) || 0; } catch (e) { v = 0; }
+    var d = Object.assign({ tab: "challans", recId: String(c.id), label: String(c.challanNo || c.id || ""),
+      sub: String(c.customerName || "") + (c.site ? " · " + c.site : "") + " · " + money(v),
+      reason: String(reason || ""), note: String(note || ""), value: v, client: String(c.customerName || "") }, extra || {});
+    return { id: "", createdAt: new Date().toISOString(), actor: S.user, action: action,
+      target: "Challan / " + d.label, detail: JSON.stringify(d), ip: "" };
+  }
+  /* the row goes up through the journal, and into this phone's own book at once, so the card
+     answers the tap without waiting for the next pull */
+  function chCxSave(row) { saveRow("audit", row); S.data.audit = ((S.data && S.data.audit) || []).concat([row]); }
+  function chCxBtns(c, held) {
+    if (!c || !c.id || held || !canMake() || isCancelled("challans", c.id)) return "";
+    if (!chGone(c) || roleIs("admin"))
+      return '<button class="btn sm gry" data-act="ch-cx" data-id="' + esc(c.id) + '" style="color:#b91c1c">Cancel challan</button>';
+    var a = chCxAsk(c.id);
+    if (a) return '<span class="pill amb" title="' + esc(a.reason || "") + '">Cancel asked · ' + esc(a.by || "?") + '</span>' +
+      (a.by === S.user ? ' <button class="btn sm gry" data-act="ch-cxoff" data-id="' + esc(c.id) + '">Withdraw</button>' : '');
+    return '<button class="btn sm gry" data-act="ch-cx" data-id="' + esc(c.id) + '" style="color:#b91c1c">Ask to cancel</button>';
+  }
+  function sheetCancelCh(c) {
+    var ask = chGone(c) && !roleIs("admin");
+    return '<h2>' + (ask ? 'Ask to cancel this challan?' : 'Cancel this challan?') + '</h2>' +
+      '<div class="muted" style="margin-bottom:8px"><b>' + esc(String(c.challanNo || "")) + '</b> — ' + esc(String(c.customerName || "")) + '</div>' +
+      '<div class="card" style="margin-top:0;border-color:' + (ask ? '#fed7aa;background:#fff7ed' : '#fecaca;background:#fef2f2') + '"><div class="muted">' +
+      (ask ? 'This material has <b>already left</b>. The owner reviews the request in the CRM and decides. <b>Nothing moves until he does</b>, and you can withdraw it before then.'
+           : 'It has <b>not been dispatched</b>, so nothing has moved. Nothing is deleted: it is set aside, the number stays used, and the owner can bring it back.') +
+      '</div></div>' +
+      '<label style="display:block;margin-top:10px;font-weight:700">Reason</label>' +
+      '<select id="cx_reason" style="width:100%;padding:10px;min-height:44px"><option value="">— pick one —</option>' +
+        CX_REASONS.map(function (r) { return '<option>' + esc(r) + '</option>'; }).join("") + '</select>' +
+      '<label style="display:block;margin-top:10px;font-weight:700">Note (optional)</label>' +
+      '<textarea id="cx_note" style="width:100%;min-height:60px" placeholder="e.g. same material entered twice, see ' + esc(String(c.challanNo || "")) + '"></textarea>' +
+      '<div class="acts" style="margin-top:12px"><button class="btn gry" data-act="close">Keep it</button><div class="grow"></div>' +
+      '<button class="btn" data-act="ch-cx-go" data-id="' + esc(c.id) + '" style="background:#b91c1c;border-color:#b91c1c">' + (ask ? 'Send the request' : 'Cancel it') + '</button></div>';
+  }
   function isCancelled(tab, id) { var c = cancelInfo(tab, id); return !!(c && c.on); }
   /* The CRM's, with two deliberate differences:
 
@@ -3281,6 +3351,13 @@ function discRowOn(client, brand, onYmd) {
     return '<span class="sync" style="font-weight:800;color:' +
       (a.tone === "bad" ? "#fecaca" : "#fde68a") + '">' + esc(a.txt) + '</span>' + tail + heldSay();
   }
+  /* 1.113.0 - HOW TO USE. The guide has one section per screen of this app; the key is the
+     screen's own, so a renamed label cannot break the link. */
+  var HELP_AT = { make: 1, "return": 1, approve: 1, receipt: 1, freight: 1, hisab: 1, score: 1 };
+  function helpHref() {
+    var t = (typeof sccOnly === "function" && sccOnly()) ? "score" : (S.tab || "make");
+    return "../help/challan.html#t-" + (HELP_AT[t] ? t : "start");
+  }
   function header() {
     /* 18 Aug: was toTimeString() with no date - see bookAge(). */
     return '<div class="top">' + newVerBar() + '<div class="t1">' +
@@ -3288,6 +3365,7 @@ function discRowOn(client, brand, onYmd) {
       '<div style="text-align:right"><div class="who">' + esc(S.user) + ' · ' + esc(S.role) +
         (canApprove() ? '' : ' · makes, does not approve') + '</div>' +
       '<div>' + bookAgeHtml(S.syncAt, S.busy) + '</div></div>' +
+      '<a class="btn sm ghost" href="' + helpHref() + '" target="_blank" rel="noopener" title="How to use this screen" aria-label="How to use this screen" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;font-weight:800">?</a>' +   /* 1.113.0 */
       '<button class="btn sm ghost" data-act="refresh" title="Pull the latest, and get the new version if one is up">&#8635;</button>' +
       '<button class="btn sm ghost" data-act="account" title="This phone">&#9776;</button>' +
       '</div></div>';
@@ -5230,6 +5308,7 @@ function discRowOn(client, brand, onYmd) {
 
         (canMake() && !held && (st === "Draft" || st === "Approved")
           ? '<button class="btn sm gry" data-act="ch-edit" data-id="' + esc(c.id) + '">Edit</button>' : '') +
+        chCxBtns(c, held) +   /* 1.114.0 */
 
       '</div></div>';
   }
@@ -8495,6 +8574,28 @@ function discRowOn(client, brand, onYmd) {
       if (!_ids.length) { toast("Tick the challans to pass first."); return; }
       if (!passPinHave()) { _passAsk = _ids.join("|"); _passAskAct = "ch-approve-many"; S.sheet = sheetPassPin(null, "ch-approve"); render(); return; }
       mpRun(_ids); return;
+    }
+    /* 1.114.0 - cancel before dispatch, ask after */
+    if (act === "ch-cx" || act === "ch-cx-go" || act === "ch-cxoff") {
+      var _xid = t.getAttribute("data-id") || "";
+      var _xc = (S.data.challans || []).filter(function (x) { return String(x.id) === String(_xid); })[0];
+      if (!_xc) { toast("Could not find that challan on this phone."); return; }
+      if (!canMake()) { toast("Cancelling is done by the godown or the office."); return; }
+      if (act === "ch-cx") { S.sheet = sheetCancelCh(_xc); render(); return; }
+      if (act === "ch-cxoff") {
+        chCxSave(chCxRow(_xc, "rec:cxask", "", "", { state: "withdrawn" }));
+        _cxaCache = null; bust(); render(); toast("Withdrawn. The owner will not see it any more."); return;
+      }
+      var _xr = String((el("cx_reason") || {}).value || ""), _xn = String((el("cx_note") || {}).value || "").trim().slice(0, 400);
+      if (!_xr) { toast("Pick a reason first."); return; }
+      if (chGone(_xc) && !roleIs("admin")) {
+        chCxSave(chCxRow(_xc, "rec:cxask", _xr, _xn, { state: "asked" }));
+        _cxaCache = null; S.sheet = null; bust(); render();
+        toast("Sent to the owner. Nothing has moved until he answers."); return;
+      }
+      chCxSave(chCxRow(_xc, "rec:cancel", _xr, _xn, { undo: false }));
+      S.sheet = null; bust(); try { splitCancelled(); } catch (e) { } render();
+      toast("Cancelled. It is set aside, not deleted - the owner can bring it back."); return;
     }
     if (act === "ch-edit") {
       if (!canMake()) { toast("Editing a challan is done by the godown or the office."); return; }
