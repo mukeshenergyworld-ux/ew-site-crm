@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.654";
+  var APP_VERSION = "6.9.655";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -41649,7 +41649,7 @@ function viewCatalogue() {
      only the drawing is shared. */
   var PICKERS = {
     ch: { pre: "ch", box: "ch_pick", qid: "ch_q", qcls: "ch-q", noun: "challan", offList: true,
-          meta: function (p) { return esc(p.code) + ' &middot; ' + esc(p.unit) + (p.brand ? ' &middot; ' + esc(realBrand(p) || p.brand) : ''); },
+          meta: function (p, ex) { return esc(p.code) + ' &middot; ' + esc(p.unit) + (p.brand ? ' &middot; ' + esc(realBrand(p) || p.brand) : '') + chStkTag(p.code, ex && ex.qty); },   /* 6.9.655 */
           /* the challan's three special line kinds on the picked table (v6.9.356): a job-work
              line, a line worked out by hand, a line not in the price list - each says what it is */
           fixedQty: function (i) { return isJobLine(i) || isManualLine(i); },
@@ -41665,7 +41665,7 @@ function viewCatalogue() {
                 : isOtherLine(i)
                   ? '<span class="pill" style="background:#fef3c7;color:#92400e;font-size:12px">not in the price list</span>' +
                     ' <span style="font-size:12px;color:#94a3b8">' + esc(i.brand || "no brand") + ' · ' + money(Number(i.rate) || 0) + ' each</span>'
-                  : '<span style="font-size:12px;color:#94a3b8">' + esc(i.code) + '</span>';
+                  : '<span style="font-size:12px;color:#94a3b8">' + esc(i.code) + '</span>' + chStkTag(i.code, i.qty);   /* 6.9.655 */
           } },
     rt: { pre: "rt", box: "rt_pick", qid: "rt_q", qcls: "rt-q", noun: "return",
           meta: function (p) { return esc(p.code) + ' &middot; ' + esc(p.unit) + (p.brand ? ' &middot; ' + esc(realBrand(p) || p.brand) : ''); } },
@@ -43699,6 +43699,34 @@ function viewCatalogue() {
       });
     });
     return m;
+  }
+  /* ===== CRM 6.9.655 / Challan 1.116.0 - STOCK IN HAND WHILE A CHALLAN IS MADE =====
+     His words: "anyone making challan, should show stock in hand for that item to everyone". The
+     numbers are the Stock screen's own: on hand, and free = on hand less what other challans hold. */
+  function chStkMap(skipId) {
+    var cut = stkCutoff(), mv = stockMovementByCode().m, del = stockDeliveredByCode(), ret = stockReturnedByCode(), res = stkReserved(skipId), m = {};
+    Object.keys(cut).forEach(function (k) {
+      var onh = Math.round(((mv[k] || 0) - (del[k] || 0) + (ret[k] || 0)) * 100) / 100;
+      m[k] = { onhand: onh, free: Math.round((onh - (res[k] || 0)) * 100) / 100 };
+    });
+    return m;
+  }
+  var _chStkC = null, _chStkTry = 0;
+  function chStkTag(code, want) {
+    code = String(code || "").trim();
+    if (!code) return "";
+    var pill = function (txt, bg, ink) { return ' <span style="display:inline-block;padding:0 7px;border-radius:999px;font-size:12px;font-weight:700;white-space:nowrap;background:' + bg + ';color:' + ink + '">' + txt + '</span>'; };
+    if (!STOCK_LOADED) {
+      if (Date.now() - _chStkTry > 60000) { _chStkTry = Date.now(); try { ensureStock(); } catch (e) { } }
+      return pill("stock \u2026", "#f1f5f9", "#94a3b8");
+    }
+    var skip = String((S.ch && S.ch.id) || "");
+    if (!_chStkC || _chStkC.skip !== skip || Date.now() - _chStkC.at > 4000) _chStkC = { at: Date.now(), skip: skip, m: chStkMap(skip) };
+    var x = _chStkC.m[code];
+    if (!x) return pill("stock not counted", "#f1f5f9", "#64748b");
+    var w = Number(want) || 0, fr = x.free > 0 ? x.free : 0;
+    var st = x.free <= 0 ? ["#fee2e2", "#b91c1c"] : (w > x.free + 1e-9 ? ["#fef3c7", "#92400e"] : ["#dcfce7", "#166534"]);
+    return pill("In hand " + x.onhand + " \u00b7 free " + fr, st[0], st[1]);
   }
   function stkOverLines(lines, skipId) {
     if (!S.stock || !S.stock.length) return [];
