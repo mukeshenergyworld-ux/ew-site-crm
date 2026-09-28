@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.640";
+  var APP_VERSION = "6.9.641";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -4479,16 +4479,18 @@ window.addEventListener("beforeunload", function (ev) {
   function rsTgPair(tgText, bytes, filename, caption) {
     var chk = function (r) { if (!r || r.ok === false) throw new Error((r && (r.error || r.description)) || ""); return r; };
     var b64 = rvB64(bytes);
-    return api("tgSend", { bot: "TG_REMIND", text: rvTgEsc(tgText).replace(/\u0001/g, "<b>").replace(/\u0002/g, "</b>") }, 60000).then(chk).then(function () {
-      return api("tgSend", { bot: "TG_REMIND", pdfBase64: b64, filename: filename, mime: XLSX_MIME, caption: rvTgEsc(caption) }, 120000).then(chk);
+    return api("tgSend", { bot: "TG_REMIND", text: rsTgHtml(tgText) }, 60000).then(chk).then(function () {
+      return api("tgSend", { bot: "TG_REMIND", pdfBase64: b64, filename: filename, mime: XLSX_MIME, caption: rsTgHtml(caption).slice(0, 1000) }, 120000).then(chk);
     });
   }
   function rvTg(D) {
-    var bytes;
-    try { bytes = rvXlBytes(D); } catch (e) { toast("Could not build the Excel on this device."); return; }
+    var rows;
+    try { rows = rvXlsxRows(D); } catch (e) { toast("Could not build the report on this device."); return; }
     toast("Sending to @" + RV_BOT + "…");
-    rsTgPair(rvText(D, "tg"), bytes, rvFileName(D), "Detailed sheet – " + D.R.label + " (" + D.R.span + ")" + (D.ex ? " · " + D.ex : ""))
-      .then(function () { toast("Sent to @" + RV_BOT + ": the message and the Excel."); },
+    var who = D.ex ? rsOwners().concat([D.ex]) : rsOwners().concat(scExecs());
+    rsSendBuilt({ text: rvTgTable(D), rows: rows, cols: RV_COLS, opts: rvXlOpts(rows), file: rvFileName(D),
+      caption: "Detailed sheet – " + D.R.label + " (" + D.R.span + ")" + (D.ex ? " · " + D.ex : "") }, "Payments & quotations review", who)
+      .then(function () { toast("Sent to @" + RV_BOT + ": the table, the PDF and the Excel."); },
         function (e) { toast("Not sent: " + rvTgWhy(e)); });
   }
   function rvBotCard() {
@@ -4597,7 +4599,7 @@ window.addEventListener("beforeunload", function (ev) {
     if (k === "review") {
       var D = rvData("since", "");
       var rows = rvXlsxRows(D);
-      return { text: rvText(D, "tg"), rows: rows, cols: RV_COLS, opts: rvXlOpts(rows), file: rvFileName(D),
+      return { text: rvTgTable(D), rows: rows, cols: RV_COLS, opts: rvXlOpts(rows), file: rvFileName(D),
         caption: "Detailed sheet – " + D.R.label + " (" + D.R.span + ")" };
     }
     if (k === "exec") return rsExecReport();
@@ -4608,8 +4610,7 @@ window.addEventListener("beforeunload", function (ev) {
     if (k === "exec") return rsSendExec();   /* 6.9.640 - one card per executive */
     var R;
     try { R = rsBuild(k); } catch (e) { return Promise.reject(new Error("could not build the " + rsTitle(k) + " on this device")); }
-    var who = rsOwners().concat(scExecs());   /* 6.9.640 - the owner and every executive, on the first line */
-    return rsTgPair(rsMentionLine(who) + "\n\n" + R.text, xlBook(rsTitle(k).slice(0, 31), R.rows, R.cols, R.opts), R.file, R.caption);
+    return rsSendBuilt(R, rsTitle(k), rsOwners().concat(scExecs()));   /* 6.9.641 - table message, PDF, Excel */
   }
   function rsXlsx(k) {
     var R; try { R = rsBuild(k); } catch (e) { toast("Could not build the " + rsTitle(k) + " on this device."); return; }
@@ -4791,22 +4792,7 @@ window.addEventListener("beforeunload", function (ev) {
       });
       out.push([]);
     });
-    var L = [], b = function (t) { return "\u0001" + t + "\u0002"; }, A = moneyAscii;
-    L.push(b("Energy World – client scorecard"));
-    L.push(d10(today()) + " · " + list.length + " clients graded");
-    L.push("A " + cnt(list, "A") + " | B " + cnt(list, "B") + " | C " + cnt(list, "C") + " | D " + cnt(list, "D"));
-    L.push("");
-    execs.forEach(function (e) {
-      var a = by[e];
-      L.push(b(e) + " – A " + cnt(a, "A") + ", B " + cnt(a, "B") + ", C " + cnt(a, "C") + ", D " + cnt(a, "D") + " | overdue " + A(a.reduce(function (s, m) { return s + m.overdue; }, 0)));
-    });
-    var worst = list.filter(function (m) { return m.grade === "D"; }).sort(function (x, y) { return y.due - x.due; }).slice(0, 10);
-    if (worst.length) {
-      L.push(""); L.push(b("D – act now (largest dues)"));
-      worst.forEach(function (m) { L.push("▪ " + m.name + " (" + (m.owner || "no executive") + ") – due " + A(m.due) + (m.overdue > 500 ? ", overdue " + A(m.overdue) : "")); });
-    }
-    L.push(""); L.push("Detailed sheet attached.");
-    return { text: L.join("\n"), rows: out, cols: [28, 7, 7, 16, 15, 16, 14, 14, 12, 10, 44, 40], opts: rsOpts(out, W, 3),
+    return { text: rsClientTable(list, by, execs), rows: out, cols: [28, 7, 7, 16, 15, 16, 14, 14, 12, 10, 44, 40], opts: rsOpts(out, W, 3),
       file: "Client_scorecard_" + today() + ".xlsx", caption: "Client scorecard – detailed sheet" };
   }
 
@@ -4849,21 +4835,7 @@ window.addEventListener("beforeunload", function (ev) {
       });
       out.push([]);
     });
-    var L = [], b = function (t) { return "\u0001" + t + "\u0002"; }, A = moneyAscii;
-    L.push(b("Energy World – plumber & architect scorecard"));
-    L.push(d10(today()));
-    ["Plumber", "Architect"].forEach(function (role) {
-      var arr = list.filter(function (p) { return p.role === role; });
-      if (!arr.length) return;
-      var n = function (t) { return arr.filter(function (p) { return p.tier === t; }).length; };
-      var cold = arr.filter(function (p) { return p.days === null || p.days > 30; }).length;
-      L.push(""); L.push(b(role + "s") + " – " + arr.length + " | A " + n("A") + ", B " + n("B") + ", C " + n("C") + " | no contact 30+ days: " + cold);
-      arr.filter(function (p) { return p.billed > 0; }).slice(0, role === "Plumber" ? 10 : 5).forEach(function (p, i) {
-        L.push((i + 1) + ". " + p.name + " (" + p.tier + ") – " + A(p.billed) + ", " + p.converted + " of " + p.referred + " clients bought" + (p.days === null ? ", never in touch" : p.days > 30 ? ", " + p.days + " days quiet" : ""));
-      });
-    });
-    L.push(""); L.push("Detailed sheet attached.");
-    return { text: L.join("\n"), rows: out, cols: [26, 6, 19, 14, 9, 14, 13, 14, 17, 14, 16], opts: rsOpts(out, W, 3),
+    return { text: rsPartnerTable(list), rows: out, cols: [26, 6, 19, 14, 9, 14, 13, 14, 17, 14, 16], opts: rsOpts(out, W, 3),
       file: "Plumber_architect_scorecard_" + today() + ".xlsx", caption: "Plumber & architect scorecard – detailed sheet" };
   }
   /* ================= ONE SCORECARD PER EXECUTIVE  (6.9.640, 28 Sep 2026) =================
@@ -4915,11 +4887,11 @@ window.addEventListener("beforeunload", function (ev) {
   function rsTgDoc(bytes, filename, mime, caption) {
     var chk = function (r) { if (!r || r.ok === false) throw new Error((r && (r.error || r.description)) || ""); return r; };
     return api("tgSend", { bot: "TG_REMIND", pdfBase64: rvB64(bytes), filename: filename, mime: mime,
-      caption: rvTgEsc(caption).replace(/\u0001/g, "<b>").replace(/\u0002/g, "</b>").slice(0, 1000) }, 120000).then(chk);
+      caption: rsTgHtml(caption).slice(0, 1000) }, 120000).then(chk);
   }
   function rsTgText(text) {
     var chk = function (r) { if (!r || r.ok === false) throw new Error((r && (r.error || r.description)) || ""); return r; };
-    return api("tgSend", { bot: "TG_REMIND", text: rvTgEsc(text).replace(/\u0001/g, "<b>").replace(/\u0002/g, "</b>") }, 60000).then(chk);
+    return api("tgSend", { bot: "TG_REMIND", text: rsTgHtml(text) }, 60000).then(chk);
   }
   /* everything one executive's card needs: his score row, and his own lists from the review */
   function rsExecCard(x, D) {
@@ -5072,18 +5044,15 @@ window.addEventListener("beforeunload", function (ev) {
   }
   /* the Monday send: the team message, then each man's PDF and Excel */
   function rsSendExec() {
-    var X = rsExecData(), D = rvData("7", ""), A = moneyAscii;
+    var X = rsExecData(), D = rvData("7", "");
     var names = X.list.map(function (x) { return x.exec; });
-    var L = [rsMentionLine(rsOwners().concat(names)), "", "\u0001Energy World – executive scorecard\u0002",
-      d10(today()) + " · score " + scMonLabel(X.month) + " to date · week " + rvShort(X.from) + " – " + rvShort(X.to), ""];
-    X.list.forEach(function (x, i) { L.push((i + 1) + ". \u0001" + x.exec + "\u0002 – " + x.score + " (" + x.band + ")"); });
-    L.push(""); L.push("Each executive's own scorecard follows: a PDF and an Excel in his name.");
-    return loadLogo().then(function () { return rsTgText(L.join("\n")); }).then(function () {
+    var head = rsMentionLine(rsOwners().concat(names)) + "\n\n";
+    return loadLogo().then(function () { return rsTgText(head + rsExecTable(X) + "\nEach executive's own scorecard follows: a PDF and an Excel in his name."); }).then(function () {
       var chain = Promise.resolve();
       X.list.forEach(function (x) {
         chain = chain.then(function () {
-          var C = rsExecCard(x, D), lines = rsExecLines(x, A);
-          var cap = rsMentionLine([x.exec].concat(rsOwners())) + "\n\u0001" + x.exec + " – scorecard\u0002\n" + lines.join("\n");
+          var C = rsExecCard(x, D);
+          var cap = rsMentionLine([x.exec].concat(rsOwners())) + "\n\u0001" + x.exec + " – scorecard\u0002\n" + rsExecManTable(x);
           var pdf = new Uint8Array(rsExecPdf(C).output("arraybuffer"));
           var sh = rsExecSheet(C);
           return rsTgDoc(pdf, rsExecFile(x.exec, "pdf"), "application/pdf", cap).then(function () {
@@ -5107,6 +5076,226 @@ window.addEventListener("beforeunload", function (ev) {
         '<input id="rs_h_' + i + '" data-n="' + esc(p.name) + '" value="' + esc(hs[dkey(p.name)] || "") + '" placeholder="@username" autocomplete="off" style="flex:1;min-width:140px;min-height:44px;font-size:16px"/></div>';
     });
     return h + '<div style="margin-top:8px">' + rvBtn("rs-h-save", "Save usernames") + '</div></div>';
+  }
+
+  /* ================= THE MESSAGE AS A TABLE, THE DETAILS AS A PDF  (6.9.641) =================
+     His words: "message summary also required (again in table format with color coding) /
+     attached file in pdf with details again with color coding".
+
+     A Telegram message cannot colour a cell. What it can do is set a block in fixed-width type,
+     so columns line up, and carry a coloured dot - so each summary is a small table in a <pre>
+     block with a dot at the start of every line that needs one, in the same four colours as the
+     sheets: green good, yellow watch, orange chase, red act now. Kept to about 32 characters a
+     line so it does not wrap on a phone.
+
+     And every report now arrives as three things: the table message, the details as a PDF in the
+     same colours (Telegram shows its first page in the chat), and the Excel. The PDF is drawn
+     from the very rows the Excel is made of (rsRowsPdf), so the two can never disagree. */
+  var RS_DOT = { G: "🟢", A: "🟡", O: "🟠", R: "🔴", B: "🔵", N: "⚪" };
+  function rsTgHtml(t) {
+    return rvTgEsc(t).replace(/\u0001/g, "<b>").replace(/\u0002/g, "</b>").replace(/\u0003/g, "<pre>").replace(/\u0004/g, "</pre>");
+  }
+  function rsNum(n) { return Math.round(Number(n) || 0).toLocaleString("en-IN"); }
+  function rsPadL(t, n) { t = String(t); return t.length >= n ? t.slice(0, n) : t + new Array(n - t.length + 1).join(" "); }
+  function rsPadR(t, n) { t = String(t); return t.length >= n ? t : new Array(n - t.length + 1).join(" ") + t; }
+  function rsShortName(n, w) { n = String(n || ""); if (n.length <= w) return n; var p = n.split(" "); var s2 = p[0] + (p[1] ? " " + p[1].charAt(0) + "." : ""); return s2.length <= w ? s2 : n.slice(0, w); }
+  function rsDotAge(d) { return d <= 30 ? RS_DOT.G : d <= 60 ? RS_DOT.A : d <= 90 ? RS_DOT.O : RS_DOT.R; }
+  function rsPre(lines) { return "\u0003" + lines.join("\n") + "\u0004"; }
+  /* the review, as tables */
+  function rvTgTable(D) {
+    var R = D.R, out = [];
+    out.push("\u0001Energy World – twice-weekly review\u0002");
+    out.push(d10(today()) + " · " + R.label + " (" + R.span + ")" + (D.ex ? " · \u0001" + D.ex + "\u0002" : ""));
+    out.push(""); out.push("\u0001PAYMENTS\u0002");
+    out.push(rsPre([
+      "   Total due      " + rsPadR(rsNum(D.dueTot), 12),
+      "   (" + D.dues.length + " clients)",
+      RS_DOT.G + " 0-30 days      " + rsPadR(rsNum(D.age.cur), 12),
+      RS_DOT.A + " 31-60 days     " + rsPadR(rsNum(D.age.d30), 12),
+      RS_DOT.O + " 61-90 days     " + rsPadR(rsNum(D.age.d60), 12),
+      RS_DOT.R + " 90+ days       " + rsPadR(rsNum(D.age.d90), 12),
+      "   Dispatched " + rsPadL("(" + D.disp.length + ")", 4) + rsPadR(rsNum(D.dispTot), 12),
+      (D.collTot > 0 ? RS_DOT.G : RS_DOT.R) + " Collected  " + rsPadL("(" + D.coll.length + ")", 4) + rsPadR(rsNum(D.collTot), 12)]));
+    out.push("\u0001QUOTATIONS\u0002");
+    var oldW = D.wait.filter(function (q) { return (q.age || 0) > 60; }).length;
+    out.push(rsPre([
+      (D.newCl.length ? RS_DOT.G : RS_DOT.N) + " New clients   " + rsPadR(D.newCl.length, 4),
+      (D.newQ.length ? RS_DOT.G : RS_DOT.N) + " New quotes    " + rsPadR(D.newQ.length, 4) + rsPadR(rsNum(D.newQTot), 11),
+      RS_DOT.A + " To follow     " + rsPadR(D.wait.length, 4) + rsPadR(rsNum(D.waitTot), 11),
+      RS_DOT.R + "  of which 60+ " + rsPadR(oldW, 4),
+      RS_DOT.O + " Plumbers call " + rsPadR(D.plumb.length, 4)]));
+    if (D.newCl.length) out.push("New: " + D.newCl.slice(0, 10).map(function (x) { return x.name; }).join(", ") + (D.newCl.length > 10 ? " and " + (D.newCl.length - 10) + " more" : ""));
+    if (!D.ex && seesAllClients()) {
+      var be = rvByExec(D);
+      if (be.length) {
+        out.push(""); out.push("\u0001BY EXECUTIVE\u0002");
+        var t = ["   " + rsPadL("Executive", 10) + rsPadR("Due", 10) + rsPadR("90+", 10)];
+        be.forEach(function (x) {
+          t.push((x.d90 > 0.5 ? RS_DOT.R : x.due > 0.5 ? RS_DOT.A : RS_DOT.G) + " " + rsPadL(rsShortName(x.exec, 9), 10) + rsPadR(rsNum(x.due), 10) + rsPadR(rsNum(x.d90), 10));
+        });
+        t.push("");
+        t.push("   " + rsPadL("Executive", 10) + rsPadR("Dispatch", 9) + rsPadR("Coll", 9) + rsPadR("Q", 3));
+        be.forEach(function (x) {
+          t.push((x.coll > 0 ? RS_DOT.G : RS_DOT.R) + " " + rsPadL(rsShortName(x.exec, 9), 10) + rsPadR(rsNum(x.disp), 9) + rsPadR(rsNum(x.coll), 9) + rsPadR(x.wait, 3));
+        });
+        out.push(rsPre(t));
+      }
+    }
+    out.push("Details attached – PDF and Excel.");
+    return out.join("\n");
+  }
+  /* the executive scorecard, as a table */
+  function rsExecTable(X) {
+    var out = ["\u0001Energy World – executive scorecard\u0002",
+      d10(today()) + " · score " + scMonLabel(X.month) + " to date · week " + rvShort(X.from) + " – " + rvShort(X.to), ""];
+    var t = ["   # " + rsPadL("Executive", 11) + rsPadR("Score", 6) + rsPadR("90+", 10)];
+    X.list.forEach(function (x, i) {
+      t.push((x.score >= 75 ? RS_DOT.G : x.score >= 60 ? RS_DOT.A : RS_DOT.R) + " " + (i + 1) + " " + rsPadL(rsShortName(x.exec, 10), 11) + rsPadR(x.score, 6) + rsPadR(rsNum(x.d90), 10));
+    });
+    t.push(""); t.push("   The week");
+    t.push("   " + rsPadL("Executive", 10) + rsPadR("Dispatch", 9) + rsPadR("Coll", 8) + rsPadR("W/L", 5));
+    X.list.forEach(function (x) {
+      t.push((x.coll > 0 ? RS_DOT.G : RS_DOT.R) + " " + rsPadL(rsShortName(x.exec, 9), 10) + rsPadR(rsNum(x.disp), 9) + rsPadR(rsNum(x.coll), 8) + rsPadR(x.won + "/" + x.lost, 5));
+    });
+    out.push(rsPre(t));
+    return out.join("\n");
+  }
+  function rsExecManTable(x) {
+    var a = x.a || {}, dotA = function (k) { var y = a[k] || {}; return (y.ach || 0) >= 0.9 ? RS_DOT.G : (y.ach || 0) >= 0.6 ? RS_DOT.A : RS_DOT.R; };
+    return rsPre([
+      (x.score >= 75 ? RS_DOT.G : x.score >= 60 ? RS_DOT.A : RS_DOT.R) + " Score         " + rsPadR(x.score + " / 100", 10),
+      dotA("sales") + " Sales (month) " + rsPadR(rsNum((a.sales || {}).actual), 10),
+      dotA("coll") + " Collections   " + rsPadR(Math.round(((a.coll || {}).actual || 0) * 100) + "%", 10),
+      dotA("over") + " Overdue       " + rsPadR(Math.round(((a.over || {}).actual || 0) * 100) + "%", 10),
+      "   Dispatched    " + rsPadR(rsNum(x.disp), 10),
+      (x.coll > 0 ? RS_DOT.G : RS_DOT.R) + " Collected     " + rsPadR(rsNum(x.coll), 10),
+      "   Total due     " + rsPadR(rsNum(x.due), 10),
+      (x.d90 > 0.5 ? RS_DOT.R : RS_DOT.G) + " 90+ days      " + rsPadR(rsNum(x.d90), 10),
+      (x.wait ? RS_DOT.A : RS_DOT.G) + " To follow     " + rsPadR(x.wait, 10),
+      "   Won / lost    " + rsPadR(x.won + " / " + x.lost, 10)]);
+  }
+  /* the client scorecard, as a table */
+  function rsClientTable(list, by, execs) {
+    var cnt = function (arr, g) { return arr.filter(function (m) { return m.grade === g; }).length; };
+    var out = ["\u0001Energy World – client scorecard\u0002", d10(today()) + " · " + list.length + " clients graded", ""];
+    var t = ["   " + rsPadL("Executive", 10) + " " + RS_DOT.G + "A " + RS_DOT.B + "B " + RS_DOT.O + "C " + RS_DOT.R + "D"];
+    var row = function (lab, a) { return "   " + rsPadL(rsShortName(lab, 9), 10) + rsPadR(cnt(a, "A"), 4) + rsPadR(cnt(a, "B"), 4) + rsPadR(cnt(a, "C"), 4) + rsPadR(cnt(a, "D"), 4); };
+    execs.forEach(function (e) { t.push(row(e, by[e])); });
+    t.push(row("All", list));
+    out.push(rsPre(t));
+    var worst = list.filter(function (m) { return m.grade === "D"; }).sort(function (x, y) { return y.due - x.due; }).slice(0, 10);
+    if (worst.length) {
+      out.push("\u0001" + RS_DOT.R + " D – act now, largest dues\u0002");
+      out.push(rsPre(worst.map(function (m) { return RS_DOT.R + " " + rsPadL(rsShortName(m.name, 16), 17) + rsPadR(rsNum(m.due), 11); })));
+    }
+    out.push("Details attached – PDF and Excel.");
+    return out.join("\n");
+  }
+  /* the plumber & architect scorecard, as a table */
+  function rsPartnerTable(list) {
+    var out = ["\u0001Energy World – plumber & architect scorecard\u0002", d10(today())];
+    ["Plumber", "Architect"].forEach(function (role) {
+      var arr = list.filter(function (p) { return p.role === role; });
+      if (!arr.length) return;
+      var n = function (t2) { return arr.filter(function (p) { return p.tier === t2; }).length; };
+      var cold = arr.filter(function (p) { return p.days === null || p.days > 30; }).length;
+      out.push(""); out.push("\u0001" + role + "s – " + arr.length + "\u0002");
+      var t = [RS_DOT.G + " Tier A " + rsPadR(n("A"), 4) + "   " + RS_DOT.A + " Tier B " + rsPadR(n("B"), 4),
+        RS_DOT.N + " Tier C " + rsPadR(n("C"), 4) + "   " + RS_DOT.R + " Quiet  " + rsPadR(cold, 4), ""];
+      arr.filter(function (p) { return p.billed > 0; }).slice(0, role === "Plumber" ? 10 : 5).forEach(function (p) {
+        var d = p.days === null ? RS_DOT.R : rsDotAge(p.days);
+        t.push(d + " " + rsPadL(rsShortName(p.name, 13), 14) + p.tier + rsPadR(rsNum(p.billed), 11));
+      });
+      out.push(rsPre(t));
+    });
+    out.push("Dot on a name: days since contact (green 30, yellow 60, orange 90, red beyond or never).");
+    out.push("Details attached – PDF and Excel.");
+    return out.join("\n");
+  }
+  /* any report's rows, drawn as a coloured PDF - the same rows the Excel is made of */
+  var RS_PDF_FILL = null;
+  function rsPdfStyle(st) {
+    if (!RS_PDF_FILL) {
+      RS_PDF_FILL = {};
+      var f = function (ids, fill, ink, bold) { ids.forEach(function (i) { RS_PDF_FILL[i] = { fill: fill, ink: ink || [17, 34, 45], bold: !!bold }; }); };
+      f([XL.HEAD, XL.HEADW], [30, 41, 59], [255, 255, 255], true);
+      f([XL.TITLE, XL.SECT], [15, 118, 110], [255, 255, 255], true);
+      f([XL.EXEC], [30, 58, 138], [255, 255, 255], true);
+      f([XL.EXECC, XL.EXEC_M], [214, 228, 249], [30, 58, 138], true);
+      f([XL.G, XL.G_M], [217, 242, 225]); f([XL.A, XL.A_M], [246, 231, 184]); f([XL.O, XL.O_M], [248, 217, 184]);
+      f([XL.R, XL.R_M], [247, 201, 201], null, true);
+      f([XL.TILE, XL.TILE_M], [213, 243, 239], null, true);
+      f([XL.BAND], [241, 245, 249], null, true); f([XL.INPUT], [249, 241, 196]);
+      f([XL.BOLD, XL.MONEYB, XL.MIDB], null, null, true);
+    }
+    return RS_PDF_FILL[st] || { fill: null, ink: [17, 34, 45], bold: false };
+  }
+  function rsIsMoney(st) { return [XL.MONEY, XL.MONEYB, XL.G_M, XL.A_M, XL.O_M, XL.R_M, XL.TILE_M, XL.EXEC_M].indexOf(st) >= 0; }
+  function rsRowsPdf(title, rows, cols) {
+    var doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4", orientation: "landscape" });
+    var F = function (b) { doc.setFont(ppEmbed(doc), b ? "bold" : "normal"); };
+    var W = 297, L = 8, R = W - 8, TW = R - L, BOTTOM = 200, y = 10, lastHead = null;
+    var n = Math.max(1, (cols || []).length), sum = (cols || []).reduce(function (a, b) { return a + b; }, 0) || n;
+    var ws = (cols && cols.length ? cols : [1]).map(function (c) { return (c / sum) * TW; });
+    var cellOf = function (c) { return (c && typeof c === "object") ? c : { v: c, s: XL.PLAIN }; };
+    var textOf = function (c) { var v = c.v; if (v == null) return ""; if (typeof v === "number" && rsIsMoney(c.s)) return rsNum(v); return String(v); };
+    var fit = function (t, w) { while (t.length > 1 && doc.getTextWidth(t) > w) t = t.slice(0, -1); return t; };
+    var band = function (c, h, size) {
+      var st = rsPdfStyle(c.s);
+      if (st.fill) { doc.setFillColor(st.fill[0], st.fill[1], st.fill[2]); doc.rect(L, y, TW, h, "F"); }
+      F(st.bold || !!st.fill); doc.setFontSize(size); doc.setTextColor(st.ink[0], st.ink[1], st.ink[2]);
+      doc.text(fit(textOf(c), TW - 4), L + 2, y + h * 0.68);
+      y += h;
+    };
+    var line = function (r, h) {
+      var x = L;
+      r.forEach(function (c0, i) {
+        if (i >= ws.length) return;
+        var c = cellOf(c0), st = rsPdfStyle(c.s), w = ws[i];
+        if (st.fill) { doc.setFillColor(st.fill[0], st.fill[1], st.fill[2]); doc.rect(x, y, w, h, "F"); }
+        var t = textOf(c);
+        if (t) {
+          F(st.bold); doc.setFontSize(7); doc.setTextColor(st.ink[0], st.ink[1], st.ink[2]);
+          var right = typeof c.v === "number";
+          doc.text(fit(t, w - 2.4), right ? x + w - 1.2 : x + 1.2, y + h * 0.7, { align: right ? "right" : "left" });
+        }
+        x += w;
+      });
+      doc.setDrawColor(226, 232, 240); doc.line(L, y + h, L + TW, y + h);
+      y += h;
+    };
+    var newPage = function () { doc.addPage(); y = 10; if (lastHead) line(lastHead, 6); };
+    rows.forEach(function (r, ri) {
+      r = r || [];
+      var first = cellOf(r[0]);
+      var filled = r.filter(function (c) { var t = textOf(cellOf(c)); return t !== ""; }).length;
+      if (!r.length) { y += 3; return; }
+      if (y > BOTTOM) newPage();
+      if (first.s === XL.TITLE) { band(first, 10, 13); y += 1; return; }
+      if (first.s === XL.SECT || first.s === XL.EXEC) { if (y > BOTTOM - 20) newPage(); y += 1; band(first, 7.5, 10); lastHead = null; return; }
+      if (filled === 1 && r.length === 1) { band(first, 6, first.s === XL.BOLD ? 8.5 : 7.5); return; }
+      var isHead = r.every(function (c) { return cellOf(c).s === XL.HEAD || cellOf(c).s === XL.HEADW; });
+      if (isHead) { if (y > BOTTOM - 12) newPage(); lastHead = r; line(r, 6); return; }
+      line(r, 5.4);
+    });
+    var pages = doc.getNumberOfPages();
+    for (var p = 1; p <= pages; p++) {
+      doc.setPage(p); F(false); doc.setFontSize(6.5); doc.setTextColor(120, 130, 145);
+      doc.text(String(title) + "  ·  " + fullDate(today()) + "  ·  page " + p + " of " + pages, L, 206);
+    }
+    try { pdfDlStamp(doc); } catch (e) { }
+    return doc;
+  }
+  /* the table message, the PDF, the Excel - in that order, so the chat reads top to bottom */
+  function rsSendBuilt(R, title, who) {
+    var head = who && who.length ? rsMentionLine(who) + "\n\n" : "";
+    var pdfName = String(R.file || "report.xlsx").replace(/\.xlsx$/i, ".pdf");
+    return loadLogo().then(function () { return rsTgText(head + R.text); }).then(function () {
+      var pdf = new Uint8Array(rsRowsPdf(title, R.rows, R.cols).output("arraybuffer"));
+      return rsTgDoc(pdf, pdfName, "application/pdf", "\u0001" + title + "\u0002 – details (PDF)");
+    }).then(function () {
+      return rsTgDoc(xlBook(String(title).slice(0, 31), R.rows, R.cols, R.opts), R.file, XLSX_MIME, "\u0001" + title + "\u0002 – the same details as an Excel");
+    });
   }
 
   /* the owner's view of the schedule, at the foot of the review */
