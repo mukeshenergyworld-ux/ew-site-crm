@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.646";
+  var APP_VERSION = "6.9.647";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -15863,6 +15863,11 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
        executive over who made it. About 780px: a laptop and a tablet in either direction show
        the whole row. Every heading still sorts - by date, client, status, total and executive. */
     var qSm = function (t) { return '<div style="font-size:12px;color:#64748b;font-weight:400;margin-top:1px">' + t + '</div>'; };
+    /* 6.9.647 - BY CLIENT (the default) or the flat sortable list */
+    var grp = S.qGroup !== "list";
+    h += '<div class="row" style="gap:6px;margin:4px 0 8px"><button class="btn sm ' + (grp ? "" : "ghost") + '" data-act="q-group" data-k="client">By client</button>' +
+      '<button class="btn sm ' + (grp ? "ghost" : "") + '" data-act="q-group" data-k="list">List</button></div>';
+    if (grp) return h + quotesByClientHtml(shown, stPill);
     h += xlTable("qlog", [
       { k: "date", t: "QUOTE", wrap: "170px" }, { k: "client", t: "CLIENT", wrap: "240px" },
       { k: "st", t: "STATUS" }, { k: "total", t: "INCL GST", n: 1, r: 1 }, { k: "exec", t: "WHO" }
@@ -15888,6 +15893,69 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         } };
     }), "");
     return h;
+  }
+
+  /* ================= 6.9.647 - EVERY QUOTE UNDER HIS NAME =================
+     One card per client, newest activity first. Inside it, one line per quotation; a quotation
+     that was revised shows every version as Revision 1, Revision 2, Revision 3 in the order they
+     were made (version 1 is Revision 1), and the newest is marked latest. A revision is found by
+     following parentId back to the first quote; a row with no parent but the same quote number
+     is the same family. The flat sortable sheet is still one tap away (List). */
+  function quoteFamilyKey(q, byId) {
+    var x = q, seen = {};
+    while (x && x.parentId && !seen[x.id] && byId[x.parentId]) { seen[x.id] = 1; x = byId[x.parentId]; }
+    var no = String((x && x.quoteNo) || "").trim().toLowerCase();
+    return no ? "no:" + no : "id:" + String((x && x.id) || q.id);
+  }
+  function quotesByClientHtml(list, stPill) {
+    var byId = {};
+    quoteAllList().forEach(function (q) { byId[q.id] = q; });
+    var clients = {}, order = [];
+    list.forEach(function (q) {
+      var ck = dkey(q.client || "") || "(no client)";
+      if (!clients[ck]) { clients[ck] = { name: String(q.client || "(no client)"), fams: {}, forder: [], newest: "" }; order.push(ck); }
+      var c = clients[ck], fk = quoteFamilyKey(q, byId);
+      if (!c.fams[fk]) { c.fams[fk] = []; c.forder.push(fk); }
+      c.fams[fk].push(q);
+      var d = String(q.createdAt || "");
+      if (d > c.newest) c.newest = d;
+    });
+    order.sort(function (a, b) { return clients[b].newest.localeCompare(clients[a].newest); });
+    var vOf = function (q) { return Number(q.version) || 1; };
+    return order.map(function (ck) {
+      var c = clients[ck], cl = clientByName(c.name) || {};
+      var exec = String(cl.ownedBy || cl.createdBy || "").trim() || "Unassigned";
+      var n = 0;
+      var fams = c.forder.map(function (fk) {
+        var f = c.fams[fk].slice().sort(function (a, b) { return vOf(a) - vOf(b) || String(a.createdAt || "").localeCompare(String(b.createdAt || "")); });
+        f.newest = f.reduce(function (m, q) { var d = String(q.createdAt || ""); return d > m ? d : m; }, "");
+        return f;
+      }).sort(function (a, b) { return b.newest.localeCompare(a.newest); });
+      var rows = fams.map(function (f) {
+        return f.map(function (q, i) {
+          n++;
+          var st = String(q.status || "Draft"), d = String(q.createdAt || "").slice(0, 10);
+          var rev = f.length > 1 ? '<b style="color:#0f766e">Revision ' + (i + 1) + '</b>' + (i === f.length - 1 ? ' <span class="pill teal" style="font-size:12px">latest</span>' : '') + '<br>' : '';
+          return '<div class="row" style="align-items:flex-start;gap:10px;margin:0;padding:8px 12px;border-top:1px solid #e2e8f0' +
+              (f.length > 1 && i < f.length - 1 ? ';background:#f8fafc' : '') + '">' +
+            '<div style="flex:1 1 200px;min-width:0">' + rev +
+              '<button class="btn sm ghost" data-act="q-card" data-id="' + esc(q.id) + '" style="padding:1px 8px;font-size:12.5px;font-weight:700;white-space:normal;word-break:break-all;text-align:left" title="Open this quote\u2019s card">' + esc(q.quoteNo || "open") + '</button>' +
+              '<div style="font-size:12px;color:#64748b;margin-top:2px">' + (esc(dmy(d)) || '<span style="color:#b45309">no date</span>') +
+                ' \u00b7 ' + esc(quoteBrands(q).join(", ") || q.brand || "\u2014") + '</div></div>' +
+            '<div style="flex:0 0 auto">' + stPill(q) + '<div style="margin-top:3px;white-space:nowrap">' +
+              (st !== "Won" ? '<button class="btn sm" data-act="q-win" data-id="' + esc(q.id) + '" style="padding:2px 8px;font-size:12px">Won</button> ' : "") +
+              (st !== "Lost" ? '<button class="btn sm ghost" data-act="q-lose" data-id="' + esc(q.id) + '" style="padding:2px 8px;font-size:12px">Lost</button> ' : "") +
+              '<button class="btn sm ghost" data-act="q-pdf" data-id="' + esc(q.id) + '" style="padding:2px 8px;font-size:12px">PDF</button></div></div>' +
+            '<div style="flex:0 0 110px;text-align:right"><b>' + money(q.total) + '</b><div style="font-size:12px;color:#64748b">net ' + money(q.net) + '</div></div>' +
+          '</div>';
+        }).join("");
+      }).join("");
+      return '<div class="card" style="padding:0;overflow:hidden;margin-bottom:10px">' +
+        '<div class="row" style="align-items:center;gap:8px;margin:0;padding:8px 12px;background:#f0fdfa;border-bottom:1px solid #99f6e4">' +
+          '<a href="#" data-act="cl-open" data-id="' + esc(cl.id || "") + '" style="font-weight:800;font-size:15px;color:#0b3b36;text-decoration:none">' + esc(c.name) + '</a>' +
+          '<span class="pill" style="font-size:12px">' + n + ' quote' + (n === 1 ? '' : 's') + '</span><div class="grow"></div>' + whoChip(exec) + '</div>' +
+        rows + '</div>';
+    }).join("") || '<div class="empty">Nothing here.</div>';
   }
 
   /* v6.9.410 - the band. Loud, because Rs 1.8 crore of priced work that nobody is chasing is
@@ -19398,7 +19466,10 @@ function viewCatalogue() {
      3. THE RECEIPT IS THE OFFICE'S JOB. The Challan app has had canProof() since v1.3; the CRM
         never had one at all, so a godown man opening the CRM could file the very paper that
         would settle an argument about his own delivery. Same words, same roles, both apps. */
-  function canApprove() { return roleAny(["admin", "accounts", "godown"]); }
+  /* 6.9.647 - HIS WORDS, 28 Sep: "cancel that below 1 lac due client approval from godown .. they
+     are making many mistake". The godown no longer passes a challan; accounts and the owner do
+     (and an executive his own client's, as before). Byte-identical with the Challan app's. */
+  function canApprove() { return roleAny(["admin", "accounts"]); }
   /* ===== WHO MAY PASS THIS ONE  (v6.9.553, his fourth list item 5, 20 Sep 2026) =====
      HIS WORDS: "Challan of a client whose payment pending is less than one lakh and no dues
      pending older than 6 month can be passed by Ashish Jha or godown person, all other by
@@ -46795,6 +46866,7 @@ function viewCatalogue() {
        The write is the same one the status select makes (qq.status + save), and Lost opens
        the reason sheet after saving, exactly as the select does. */
     if (act === "q-log") { S.qLog = t.getAttribute("data-k") || "all"; keepScroll = true; render(); return; }
+    if (act === "q-group") { S.qGroup = t.getAttribute("data-k") === "list" ? "list" : "client"; keepScroll = true; render(); return; }   /* 6.9.647 */
     if (act === "q-card") { S.qCard = t.getAttribute("data-id") || ""; keepScroll = true; render(); return; }
     if (act === "q-dates-clear") { S.qFrom = ""; S.qTo = ""; render(); return; }
     if (act === "q-win" || act === "q-lose") {
