@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.651";
+  var APP_VERSION = "6.9.652";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -4323,11 +4323,15 @@ window.addEventListener("beforeunload", function (ev) {
       out.push([{ v: "New clients", s: XL.EXECC }, { v: ncl.length, s: XL.EXECC }, { v: "New quotes", s: XL.EXECC }, { v: nq.length, s: XL.EXECC },
                 { v: "Quotes to follow", s: XL.EXECC }, { v: wait.length, s: XL.EXECC }, { v: "Plumbers to call", s: XL.EXECC }, { v: pl.length, s: XL.EXECC }]);
       if (dues.length) {
-        out.push([{ v: "Who owes – the name takes the colour of his oldest unpaid money", s: XL.BOLD }]);
+        /* 6.9.652 - the name and the total take the colour of HOW MUCH, as the review picture does
+           (6.9.646): over Rs 1 lakh red, Rs 50,000 - 1 lakh yellow, under Rs 50,000 blue-green.
+           The oldest-days cell keeps the colour of its age. */
+        out.push([{ v: "Who owes – red over ₹1 lakh · yellow ₹50,000 – ₹1 lakh · blue-green under ₹50,000; oldest days coloured by age", s: XL.BOLD }]);
         out.push(H(["Client", "Executive", "Total due", "0-30 days", "31-60 days", "61-90 days", "90+ days", "Oldest (days)"]));
         dues.forEach(function (r) {
-          var st = rvBand(r.oldest, 30, 60, 90);
-          out.push([{ v: r.name, s: st }, E(r.exec), M(r.due, XL.MONEYB), nz(r.b.cur, XL.G), nz(r.b.d30, XL.A), nz(r.b.d60, XL.O), nz(r.b.d90, XL.R), { v: r.oldest, s: st }]);
+          var st = rvBand(r.oldest, 30, 60, 90), amt = rsDueSt(r.due);
+          var nS = amt === "R" ? XL.R : amt === "A" ? XL.A : XL.TILE, mS = amt === "R" ? XL.R_M : amt === "A" ? XL.A_M : XL.TILE_M;
+          out.push([{ v: r.name, s: nS }, E(r.exec), M(r.due, mS), nz(r.b.cur, XL.G), nz(r.b.d30, XL.A), nz(r.b.d60, XL.O), nz(r.b.d90, XL.R), { v: r.oldest, s: st }]);
         });
       }
       if (disp.length) {
@@ -4584,6 +4588,7 @@ window.addEventListener("beforeunload", function (ev) {
     { k: "exec", t: "Executive scorecard", when: "every Monday" },
     { k: "client", t: "Client scorecard", when: "every Monday" },
     { k: "pitch", t: "Weekly pitch reminder", when: "every Monday" },
+    { k: "pulse", t: "Owner's weekly pulse", when: "every Monday" },   /* 6.9.652 */
     { k: "partner", t: "Plumber & architect scorecard", when: "the 1st and the 16th" }
   ];
   /* the latest slot of each report on or before today, if it is still fresh enough to send */
@@ -4593,7 +4598,7 @@ window.addEventListener("beforeunload", function (ev) {
     var rv = back(function (d) { var w = rvDow(d); return w === 1 || w === 4; }, 2);
     if (rv) out.push({ k: "review", slot: "review:" + rv, day: rv });
     var mon = back(function (d) { return rvDow(d) === 1; }, 3);
-    if (mon) { out.push({ k: "exec", slot: "exec:" + mon, day: mon }); out.push({ k: "client", slot: "client:" + mon, day: mon }); out.push({ k: "pitch", slot: "pitch:" + mon, day: mon }); }
+    if (mon) { out.push({ k: "exec", slot: "exec:" + mon, day: mon }); out.push({ k: "client", slot: "client:" + mon, day: mon }); out.push({ k: "pitch", slot: "pitch:" + mon, day: mon }); out.push({ k: "pulse", slot: "pulse:" + mon, day: mon }); }
     var half = back(function (d) { var n = Number(d.slice(8, 10)); return n === 1 || n === 16; }, 4);
     if (half) out.push({ k: "partner", slot: "partner:" + half, day: half });
     return out;
@@ -4649,6 +4654,7 @@ window.addEventListener("beforeunload", function (ev) {
     if (k === "exec") return rsExecReport();
     if (k === "client") return rsClientReport();
     if (k === "pitch") return rsPitchSheet();
+    if (k === "pulse") return rsPulseSheet();   /* 6.9.652 */
     return rsPartnerReport();
   }
   function rsSend(k) {
@@ -5499,6 +5505,7 @@ window.addEventListener("beforeunload", function (ev) {
     if (k === "exec") return rsSetExec();
     if (k === "client") return rsSetClient();
     if (k === "pitch") return rsSetPitch();
+    if (k === "pulse") return rsSetPulse();   /* 6.9.652 */
     return rsSetPartner();
   }
 
@@ -5715,6 +5722,88 @@ window.addEventListener("beforeunload", function (ev) {
         text: "", xlsx: null };
     });
     return { team: team, men: men };
+  }
+
+  /* ---- the owner's weekly pulse (6.9.652) ----
+     What the server's Monday text used to carry, now a picture for the owner. The same numbers
+     the screens use: rvData("7") for leads and money in, unbilledStats() for delivered-not-billed
+     (discount-aware, as the Deliveries banner), the pitch board for brands won. */
+  function rsPulseData() {
+    var W = rvData("7", ""), t = today();
+    var byEx = {}; W.newCl.forEach(function (c) { var e = c.exec || "Unassigned"; byEx[e] = (byEx[e] || 0) + 1; });
+    var wins = (S.data.pitch || []).filter(function (p) {
+      var d = dstr(p.updatedAt || p.createdAt);
+      return p && String(p.status) === "Won" && d && -daysTo(d) <= 7 && !isCancelled("pitch", p.id);
+    }).map(function (p) { return { name: String(p.clientName || (siteById(p.siteId) || {}).client || ""), brand: String(p.brand || "") }; });
+    var ub = unbilledStats();
+    var unb = ub.list.map(function (c) {
+      var d = dstr(c.receiptAt || c.dispatchedAt || c.createdAt);
+      return { no: String(c.challanNo || ""), name: String(c.customerName || ""), val: challanNet(c) + chFreight(c), days: d ? Math.max(0, -daysTo(d)) : 0 };
+    }).sort(function (a, b) { return b.days - a.days || b.val - a.val; });
+    var miss = (S.data.clients || []).filter(function (c) {
+      return c && String(c.name || "").trim() && !isCancelled("clients", c.id) &&
+        (!String(c.plumber || "").trim() || !String(c.architect || "").trim());
+    }).map(function (c) {
+      return { name: String(c.name), exec: String(c.ownedBy || c.createdBy || "").trim() || "Unassigned", noP: !String(c.plumber || "").trim(), noA: !String(c.architect || "").trim(), d: dstr(c.createdAt) };
+    }).sort(function (a, b) { return b.d.localeCompare(a.d); });
+    return { W: W, byEx: byEx, wins: wins, ub: ub, unb: unb, miss: miss, day: t };
+  }
+  function rsPulseSheet() {
+    var P = rsPulseData(), W = 5, out = [];
+    var M = function (n, st) { return { v: Math.round(Number(n) || 0), s: st || XL.MONEY }; };
+    out.push(rsFill("Energy World – owner's weekly pulse", XL.TITLE, W));
+    out.push([rsMadeLine("The last 7 days.")]);
+    out.push([]);
+    out.push([{ v: "Money in this week", s: XL.BOLD }, M(P.W.collTot, XL.G_M), plural(P.W.coll.length, "payment")]);
+    out.push([{ v: "Delivered, not billed", s: XL.BOLD }, M(P.ub.val, P.ub.count ? XL.A_M : XL.MONEY), plural(P.ub.count, "challan")]);
+    out.push([]);
+    out.push(rsFill("New leads this week", XL.SECT, W));
+    out.push(rsHead(["Executive", "New leads"]));
+    Object.keys(P.byEx).sort().forEach(function (e) { out.push([e, P.byEx[e]]); });
+    if (!Object.keys(P.byEx).length) out.push(["none"]);
+    out.push([]);
+    out.push(rsFill("Brands won this week", XL.SECT, W));
+    out.push(rsHead(["Client", "Brand"]));
+    P.wins.forEach(function (w) { out.push([{ v: w.name, s: XL.G }, w.brand]); });
+    if (!P.wins.length) out.push(["none"]);
+    out.push([]);
+    out.push(rsFill("Delivered, not billed – oldest first", XL.SECT, W));
+    out.push(rsHead(["Challan", "Client", "Value", "Days since delivery"]));
+    P.unb.forEach(function (r) { var st = rsAgeSt(r.days); out.push([r.no, r.name, M(r.val), { v: r.days, s: XL[st] }]); });
+    out.push([]);
+    out.push(rsFill("Plumber / architect name missing", XL.SECT, W));
+    out.push(rsHead(["Client", "Executive", "Plumber", "Architect", "Added"]));
+    P.miss.forEach(function (r) { out.push([r.name, r.exec, { v: r.noP ? "missing" : "", s: r.noP ? XL.A : XL.PLAIN }, { v: r.noA ? "missing" : "", s: r.noA ? XL.A : XL.PLAIN }, d10(r.d)]); });
+    return { text: "", rows: out, cols: [34, 30, 16, 16, 14], opts: rsOpts(out, W, 2), file: "Weekly_pulse_" + today() + ".xlsx", caption: "Owner's weekly pulse" };
+  }
+  function rsSetPulse() {
+    var P = rsPulseData(), full = rsPulseSheet(), ex = Object.keys(P.byEx).sort();
+    var blocks = [
+      { h: "This week" }, { cols: [["", 46, "l"], ["Amount", 30, "r"], ["", 24, "l"]], rows: [
+        [rsC("Money in", "", true), rsC(rsInr(P.W.collTot), P.W.collTot > 0.5 ? "G" : "R", true), plural(P.W.coll.length, "payment")],
+        [rsC("Delivered, not billed", "", true), rsC(rsInr(P.ub.val), P.ub.count ? "A" : "G", true), plural(P.ub.count, "challan")],
+        [rsC("New leads", "", true), rsC(P.W.newCl.length, P.W.newCl.length ? "G" : "", true), ""],
+        [rsC("Brands won", "", true), rsC(P.wins.length, P.wins.length ? "G" : "", true), ""],
+        [rsC("Plumber / architect name missing", "", true), rsC(P.miss.length, P.miss.length ? "A" : "G", true), P.miss.length === 1 ? "client" : "clients"]] }];
+    if (ex.length) blocks.push({ h: "New leads by executive" }, { cols: [["Executive", 60, "l"], ["New leads", 40, "r"]],
+      rows: ex.map(function (e) { return [rsC(e, "B"), rsC(P.byEx[e], "", true)]; }) });
+    if (P.wins.length) blocks.push({ h: "Brands won" }, { cols: [["Client", 60, "l", "w"], ["Brand", 40, "l", "w"]],
+      rows: P.wins.slice(0, 10).map(function (w) { return [rsC(w.name, "G", true), w.brand]; }) });
+    if (P.unb.length) {
+      blocks.push({ h: "Delivered, not billed – oldest first" }, { cols: [["Challan", 26, "l"], ["Client", 38, "l", "w"], ["Value", 20, "r"], ["Days", 16, "r"]],
+        rows: P.unb.slice(0, 10).map(function (r) { var st = rsAgeSt(r.days); return [r.no, rsC(r.name, "", true), rsInr(r.val), rsC(r.days, st, true)]; }) });
+      if (P.unb.length > 10) blocks.push({ note: "and " + (P.unb.length - 10) + " more in the Excel" });
+    }
+    if (P.miss.length) {
+      blocks.push({ h: "Plumber / architect name missing – newest first" }, { cols: [["Client", 40, "l", "w"], ["Executive", 26, "l"], ["Plumber", 17, "c"], ["Architect", 17, "c"]],
+        rows: P.miss.slice(0, 10).map(function (r) { return [rsC(r.name, "", true), rsC(r.exec, "B"), rsC(r.noP ? "missing" : "✓", r.noP ? "A" : "G"), rsC(r.noA ? "missing" : "✓", r.noA ? "A" : "G")]; }) });
+      if (P.miss.length > 10) blocks.push({ note: "and " + (P.miss.length - 10) + " more in the Excel" });
+    }
+    var team = { who: rsOwners(), head: "Owner's weekly pulse",
+      line: "Money in " + rsInr(P.W.collTot) + " · not billed " + rsInr(P.ub.val) + " · " + plural(P.W.newCl.length, "new lead"),
+      spec: { title: "Owner's weekly pulse", sub: "The last 7 days · " + fullDate(P.day), key: [["Good", "G"], ["Watch", "A"], ["Chase", "O"], ["Act now", "R"]], blocks: blocks },
+      text: "", xlsx: { sheet: "Weekly pulse", rows: full.rows, cols: full.cols, opts: full.opts, file: full.file } };
+    return { team: team, men: [] };
   }
 
   /* the owner's view of the schedule, at the foot of the review */
