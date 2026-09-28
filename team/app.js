@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.650";
+  var APP_VERSION = "6.9.651";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -1492,6 +1492,29 @@
      navigates to the blob URL and fails ("WebKitBlobResource error 1"). Copy (clipboard) + native
      Share (files where supported, else text) + on-screen select-all all work on a phone. Read-only:
      it never changes or clears the journal. */
+  /* 6.9.651 - read a pasted "Save a copy": only entries with a known tab and a row object */
+  function pendParseCopy(txt) {
+    var l = null;
+    try { l = JSON.parse(String(txt || "").trim()); } catch (e) { return { ok: false, why: "That is not a saved copy - paste the whole text from Save a copy, from [ to ]." }; }
+    if (!Array.isArray(l)) return { ok: false, why: "That is not a saved copy - it should start with [ and end with ]." };
+    var good = l.filter(function (x) { return x && typeof x.tab === "string" && /^[a-z]+$/i.test(x.tab) && x.row && typeof x.row === "object" && !Array.isArray(x.row); });
+    if (!good.length) return { ok: false, why: "Nothing in that copy can be uploaded." };
+    return { ok: true, list: good, skipped: l.length - good.length };
+  }
+  function pendAddCopy(list) {
+    list.forEach(function (x) {
+      var pk = "pk" + (++_pkSeq) + "_in_" + (x.row.id || x.row._lid || "x");
+      pendPut(pk, x.tab, x.row, x.chg || null);
+    });
+    return list.length;
+  }
+  function sheetPendPaste() {
+    return '<h2>Paste a saved copy</h2>' +
+      '<p class="sub">On the device that cannot upload, open <b>Today \u2192 Pending upload \u2192 Save a copy</b> and tap <b>Copy</b>. ' +
+      'Paste it here. The records are added to <b>this</b> device\u2019s queue and upload from here. Nothing is deleted on either device.</p>' +
+      '<textarea id="pend_paste" style="width:100%;height:34vh;font:12px monospace;padding:8px;border:1px solid #cbd5e1;border-radius:8px" placeholder="[ { &quot;tab&quot;: &quot;quotes&quot;, ... } ]"></textarea>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button><button class="btn" data-act="pend-paste-go">Add and upload</button></div>';
+  }
   function exportPending() {
     var raw = "[]";
     try { raw = localStorage.getItem("ew_pending_v1") || "[]"; } catch (e) { }
@@ -1657,7 +1680,8 @@
         '<div style="font-size:34px;line-height:1">✓</div>' +
         '<h3 style="margin:8px 0 4px;color:#0f766e">All work is uploaded</h3>' +
         '<div class="meta" style="font-size:13.5px">Nothing is waiting. Anything you save while offline shows up here and uploads automatically the moment you are back online.</div>' +
-        '<div class="acts" style="justify-content:center;margin-top:12px"><button class="btn sm ghost" data-act="pend-refresh">Check now</button></div></div>';
+        '<div class="acts" style="justify-content:center;margin-top:12px"><button class="btn sm ghost" data-act="pend-refresh">Check now</button>' +
+        '<button class="btn sm ghost" data-act="pend-paste">Paste a saved copy</button></div></div>';   /* 6.9.651 */
       return h;
     }
 
@@ -1666,7 +1690,8 @@
       '<div class="acts" style="margin-top:10px;flex-wrap:wrap;gap:8px">' +
       '<button class="btn" data-act="pend-retry">⬆ Upload all now</button>' +
       '<button class="btn ghost" data-act="pend-refresh">Check connection</button>' +
-      '<button class="btn ghost" data-act="pend-backup">Save a copy</button></div></div>';
+      '<button class="btn ghost" data-act="pend-backup">Save a copy</button>' +
+      '<button class="btn ghost" data-act="pend-paste">Paste a saved copy</button></div></div>';   /* 6.9.651 */
 
     list.forEach(function (e) {
       var row = e.row || {};
@@ -48064,6 +48089,16 @@ function viewCatalogue() {
     }
     if (act === "health-refresh") { toast("Re-scanning…"); refresh(); return; }
     if (act === "pend-backup") { exportPending(); return; }
+    /* 6.9.651 - take held work from another device */
+    if (act === "pend-paste") { S.modal = sheetPendPaste(); render(); return; }
+    if (act === "pend-paste-go") {
+      var _pc = pendParseCopy((document.getElementById("pend_paste") || {}).value);
+      if (!_pc.ok) { toast(_pc.why); return; }
+      var _pn = pendAddCopy(_pc.list);
+      S.modal = null; render();
+      toast(plural(_pn, "record") + " added" + (_pc.skipped ? " (" + _pc.skipped + " unreadable left out)" : "") + " \u2014 uploading from this device now.");
+      flushNow(); return;
+    }
     if (act === "disc-edit") { S.q = t.getAttribute("data-n"); render(); return; }
     /* ===== AND ITS TWIN, REMOVED THE SAME DAY =====
        `if (act === "disc-back") { S.q = ""; render(); return; }` - the version before the one
