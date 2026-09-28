@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.657";
+  var APP_VERSION = "6.9.658";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -44389,7 +44389,7 @@ function viewCatalogue() {
   /* 6.9.657 - "counted 48 · 25/09": the last physical count and its day, in words */
   function pcCountedSay(lr) {
     if (!lr) return "";
-    return "counted " + (Number(lr.qty) || 0) + " \u00b7 " + dmy(String(lr.asOn || "").slice(0, 10)).slice(0, 5);
+    return "last count " + dmy(String(lr.asOn || "").slice(0, 10)).slice(0, 5);   /* 6.9.658 - the day only; the number shown is today's stock */
   }
   function pcSay() {
     var pc = S.pc; if (!pc) return;
@@ -44489,9 +44489,9 @@ function viewCatalogue() {
           : '<div style="width:56px;height:56px;border-radius:8px;background:#f1f5f9;color:#94a3b8;font-size:12px;display:flex;align-items:center;justify-content:center;text-align:center">no picture</div>') + '</td>' +
         '<td style="padding:8px 6px"><div style="font-weight:700;color:#0f172a;word-break:break-word"><span style="color:#94a3b8;font-weight:600;font-size:12px">' + (i + 1) + '.</span> ' + esc(p.desc || p.code) + '</div>' +
           '<div style="font-size:12px;color:#64748b;margin-top:2px;word-break:break-word">' + esc(p.code) + (q && p.brand ? ' &middot; ' + esc(p.brand) : '') + (p.unit ? ' &middot; <b style="color:#475569">' + esc(p.unit) + '</b>' : '') + '</div>' + stkLevelLine(p.code, _lvPos, _lvL) + '</td>' +
-        '<td style="padding:6px 10px 6px 4px;text-align:right"><input class="pc-box" data-sec="' + (secP ? 'p' : 'd') + '" data-code="' + esc(p.code) + '" inputmode="decimal" enterkeyhint="next" autocomplete="off" aria-label="Counted ' + esc(p.desc || p.code) + '" value="' + esc(pc.v[p.code] != null ? pc.v[p.code] : "") + '" ' +
-          'placeholder="' + (lr && !f ? 'recount' : '') + '" ' +   /* 6.9.657 - the old count is named below, not shown as a second stock figure */
-          'style="width:84px;min-height:44px;padding:8px 8px;border:1px solid ' + (f ? '#86efac' : '#cbd5e1') + ';border-radius:8px;text-align:right;font-size:16px;font-weight:700"/>' +
+        '<td style="padding:6px 10px 6px 4px;text-align:right"><input class="pc-box" data-sec="' + (secP ? 'p' : 'd') + '" data-code="' + esc(p.code) + '" inputmode="decimal" enterkeyhint="next" autocomplete="off" aria-label="Counted ' + esc(p.desc || p.code) + '" value="' + esc(pcUnsaved(p.code, last) ? pc.v[p.code] : "") + '" ' +   /* 6.9.658 - a saved count is not shown again as a second number */
+          'placeholder="' + (_lvPos[p.code] && _lvPos[p.code].counted ? esc(String(_lvPos[p.code].onhand)) : '') + '" ' +   /* 6.9.658 - today's stock, the same as "In stock" on the left */
+          'style="width:84px;min-height:44px;padding:8px 8px;border:1px solid ' + (f && pcUnsaved(p.code, last) ? '#86efac' : '#cbd5e1') + ';border-radius:8px;text-align:right;font-size:16px;font-weight:700"/>' +
           (!secP ? '<div class="pc-st" data-code="' + esc(p.code) + '" style="font-size:12px;margin-top:3px;white-space:nowrap;color:' + (_pcQ.sending[p.code] ? '#0f766e' : pcUnsaved(p.code, last) ? '#b45309' : '#15803d') + '">' +
             (_pcQ.sending[p.code] ? 'saving\u2026' : pcUnsaved(p.code, last) ? 'not saved yet' : pcCountedSay(lr)) + '</div>' : '') + '</td></tr>';
     };
@@ -44500,7 +44500,8 @@ function viewCatalogue() {
         TH("PICTURE", "left", "64px") + TH("PRODUCT") + TH(secP ? "COUNT" : "ENTERED", "right", "96px") + '</tr></thead><tbody>' +
         list.map(function (p, i) { return rowOf(p, i, secP); }).join("") + '</tbody></table></div>';
     };
-    var h = '<div class="row"><button class="btn sm ghost" data-act="pc-cancel">&larr; Back to Stock</button></div>' +
+    var h = '<style>.pc-box::placeholder{color:#0f172a;opacity:1}</style>' +   /* 6.9.658 - no grey watermark: the stock figure reads as a figure */
+      '<div class="row"><button class="btn sm ghost" data-act="pc-cancel">&larr; Back to Stock</button></div>' +
       '<div class="card" style="padding:0;overflow:hidden">' +
       '<div style="display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;padding:12px 14px;background:#0b3b36;color:#fff">' +
         '<div style="flex:1 1 260px"><div style="font-size:18px;font-weight:800">Physical count</div>' +
