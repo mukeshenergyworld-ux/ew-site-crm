@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.639";
+  var APP_VERSION = "6.9.640";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -4451,7 +4451,7 @@ window.addEventListener("beforeunload", function (ev) {
           (x.mobile ? '<a class="btn sm ghost" style="min-height:44px;display:inline-flex;align-items:center;margin-right:6px" href="tel:' + esc(x.mobile) + '">Call</a>' : "") +
           rvBtn("rv-called", "Called", ' data-n="' + esc(x.name) + '"', true));
       }, "Every plumber has been in touch within " + COLD_PARTNER + " days.");
-    return h + '</div>' + rsCard() + rvBotCard();   /* 6.9.636, 6.9.639 */
+    return h + '</div>' + rsCard() + rsHandlesCard() + rvBotCard();   /* 6.9.636, 6.9.639, 6.9.640 */
   }
   /* ================= THE REMINDER BOT  (6.9.636, 27 Sep 2026) =================
      His words: "@ewreminder_bot , have to use this bot for reminders". Server V139 keeps it in
@@ -4605,9 +4605,11 @@ window.addEventListener("beforeunload", function (ev) {
     return rsPartnerReport();
   }
   function rsSend(k) {
+    if (k === "exec") return rsSendExec();   /* 6.9.640 - one card per executive */
     var R;
     try { R = rsBuild(k); } catch (e) { return Promise.reject(new Error("could not build the " + rsTitle(k) + " on this device")); }
-    return rsTgPair(R.text, xlBook(rsTitle(k).slice(0, 31), R.rows, R.cols, R.opts), R.file, R.caption);
+    var who = rsOwners().concat(scExecs());   /* 6.9.640 - the owner and every executive, on the first line */
+    return rsTgPair(rsMentionLine(who) + "\n\n" + R.text, xlBook(rsTitle(k).slice(0, 31), R.rows, R.cols, R.opts), R.file, R.caption);
   }
   function rsXlsx(k) {
     var R; try { R = rsBuild(k); } catch (e) { toast("Could not build the " + rsTitle(k) + " on this device."); return; }
@@ -4864,6 +4866,249 @@ window.addEventListener("beforeunload", function (ev) {
     return { text: L.join("\n"), rows: out, cols: [26, 6, 19, 14, 9, 14, 13, 14, 17, 14, 16], opts: rsOpts(out, W, 3),
       file: "Plumber_architect_scorecard_" + today() + ".xlsx", caption: "Plumber & architect scorecard – detailed sheet" };
   }
+  /* ================= ONE SCORECARD PER EXECUTIVE  (6.9.640, 28 Sep 2026) =================
+     His words, on the first automatic scorecard: "design in excel like format with color coding,
+     separate report for each executive, pdf / excel file name is executive name, in message on
+     top highlighted @Mukesh Verma, @Vivek".
+
+     The Monday executive scorecard now goes as:
+       1. one short team message - every executive and the owner @-mentioned on the first line,
+          the ranking under it;
+       2. for EACH executive, a one-page PDF laid out like his sheet, in the same four colours -
+          Telegram shows its first page in the chat - captioned with his @-mention and his lines;
+       3. and his Excel, named after him, with the same figures and his lists in full.
+
+     THE @-MENTION. Telegram only rings a man's phone for "@username". The CRM does not hold
+     Telegram usernames, so the owner types them once on the reminder-bot card; they are kept as
+     an audit row "tg:handles" (newest wins - nothing overwritten). A man with no username set is
+     still named at the top, in bold, as "@Name" - it reads the same, it just does not ring. */
+  function rsHandles() {
+    var best = null;
+    (S.data.audit || []).forEach(function (r) {
+      if (r && r.action === "tg:handles" && (!best || String(r.createdAt || "") > String(best.createdAt || ""))) best = r;
+    });
+    var m = {};
+    try { m = JSON.parse((best && best.detail) || "{}") || {}; } catch (e) { m = {}; }
+    try { var loc = JSON.parse(localStorage.getItem("ew_tg_handles") || "{}") || {}; if (!best) m = loc; } catch (e) { }
+    return m;
+  }
+  function rsHandleOk(h) { return /^@?[A-Za-z][A-Za-z0-9_]{4,31}$/.test(String(h || "").trim()); }
+  /* "@username" for a man with one, otherwise his name marked bold */
+  function rsAt(name) {
+    var h = String(rsHandles()[dkey(name)] || "").trim();
+    if (rsHandleOk(h)) return "@" + h.replace(/^@/, "");
+    return "\u0001@" + String(name) + "\u0002";
+  }
+  function rsOwners() {
+    return (S.data.team || []).filter(function (t2) { return /admin/i.test(String(t2.role || "")) && String(t2.active).toUpperCase() !== "N"; })
+      .map(function (t2) { return String(t2.name || "").trim(); }).filter(Boolean);
+  }
+  function rsTeamForHandles() {
+    return (S.data.team || []).filter(function (t2) { return String(t2.active).toUpperCase() !== "N" && /admin|accounts|sales/i.test(String(t2.role || "")); })
+      .map(function (t2) { return { name: String(t2.name || "").trim(), role: String(t2.role || "") }; }).filter(function (x) { return x.name; });
+  }
+  function rsMentionLine(names) {
+    var seen = {}, out = [];
+    names.forEach(function (n) { var k = dkey(n); if (n && !seen[k]) { seen[k] = 1; out.push(rsAt(n)); } });
+    return out.join(" ");
+  }
+  function rsTgDoc(bytes, filename, mime, caption) {
+    var chk = function (r) { if (!r || r.ok === false) throw new Error((r && (r.error || r.description)) || ""); return r; };
+    return api("tgSend", { bot: "TG_REMIND", pdfBase64: rvB64(bytes), filename: filename, mime: mime,
+      caption: rvTgEsc(caption).replace(/\u0001/g, "<b>").replace(/\u0002/g, "</b>").slice(0, 1000) }, 120000).then(chk);
+  }
+  function rsTgText(text) {
+    var chk = function (r) { if (!r || r.ok === false) throw new Error((r && (r.error || r.description)) || ""); return r; };
+    return api("tgSend", { bot: "TG_REMIND", text: rvTgEsc(text).replace(/\u0001/g, "<b>").replace(/\u0002/g, "</b>") }, 60000).then(chk);
+  }
+  /* everything one executive's card needs: his score row, and his own lists from the review */
+  function rsExecCard(x, D) {
+    var mine = function (r) { return (r.exec || "") === x.exec; };
+    return { x: x,
+      dues: D.dues.filter(mine).filter(function (r) { return r.ag && r.ag.overdue > 0.5; }).sort(function (a, b) { return (b.b.d90 || 0) - (a.b.d90 || 0) || b.due - a.due; }),
+      wait: D.wait.filter(mine), newCl: D.newCl.filter(mine) };
+  }
+  function rsExecFile(name, ext) { return String(name).replace(/[^A-Za-z0-9 ._-]+/g, "").trim() + " - scorecard " + d10(today()).replace(/\//g, "-") + "." + ext; }
+  function rsExecLines(x, A) {
+    return [x.score + " (" + x.band + ")",
+      "Week: dispatched " + A(x.disp) + " | collected " + A(x.coll) + " | " + x.newCl + " new clients | " + x.newQ + " new quotes | won " + x.won + ", lost " + x.lost,
+      "Due " + A(x.due) + (x.d90 > 0.5 ? " (90+ " + A(x.d90) + ")" : "") + " | " + x.wait + " quotes to follow"];
+  }
+  /* his Excel: the same colours as every other sheet */
+  function rsExecSheet(C) {
+    var x = C.x, W = 8, out = [];
+    var M = function (n, st) { return { v: Math.round(Number(n) || 0), s: st || XL.MONEY }; };
+    var bs = x.score >= 75 ? XL.G : x.score >= 60 ? XL.A : XL.R;
+    out.push(rsFill("Energy World – executive scorecard", XL.TITLE, W));
+    out.push([rsMadeLine("Month to date and the last 7 days.")]);
+    out.push(rsKey());
+    out.push(rsFill(x.exec + "   –   score " + x.score + " / 100   –   " + x.band, XL.EXEC, W));
+    out.push([]);
+    out.push([{ v: "This month against target", s: XL.BOLD }]);
+    out.push(rsHead(["Area", "Weight", "Target", "Actual", "Achieved %", "Points", "", ""]));
+    var AREA = [["sales", "Sales booked", true, false], ["coll", "Collections", false, true], ["over", "Overdue (lower is better)", false, true], ["new", "New clients", false, false], ["svc", "Service / AMC", false, false]];
+    AREA.forEach(function (d) {
+      var a = x.a[d[0]] || {}, st = rsAch(a.ach || 0);
+      var val = function (v) { return d[2] ? M(v) : d[3] ? Math.round((Number(v) || 0) * 100) + "%" : Math.round(Number(v) || 0); };
+      out.push([{ v: d[1], s: st }, a.w || "", val(a.target), d[2] ? M(a.actual, rvM(st)) : { v: val(a.actual), s: st },
+        { v: Math.round(Math.min(9.99, a.ach || 0) * 100), s: st }, Math.round((a.score || 0) * 10) / 10]);
+    });
+    out.push([{ v: "Score", s: bs }, 100, "", "", "", { v: x.score, s: bs }]);
+    out.push([]);
+    out.push([{ v: "The last 7 days", s: XL.BOLD }]);
+    out.push(rsHead(["Dispatched", "Collected", "New clients", "New quotes", "Won", "Lost", "Quotes to follow", "Won value"]));
+    out.push([M(x.disp), M(x.coll, x.coll > 0 ? XL.G_M : XL.MONEY), { v: x.newCl, s: x.newCl ? XL.G : XL.PLAIN }, x.newQ,
+      { v: x.won, s: x.won ? XL.G : XL.PLAIN }, { v: x.lost, s: x.lost ? XL.R : XL.PLAIN }, x.wait, M(x.wonAmt)]);
+    out.push([]);
+    out.push([{ v: "Money to chase – his clients past " + CREDIT_DAYS + " days, 90+ first", s: XL.BOLD }]);
+    out.push(rsHead(["Client", "Total due", "0-30 days", "31-60 days", "61-90 days", "90+ days", "Oldest (days)", "Overdue"]));
+    C.dues.forEach(function (r) {
+      var st = rvBand(r.oldest, 30, 60, 90), nz = function (n, s2) { return (Number(n) || 0) > 0.5 ? M(n, rvM(s2)) : M(0); };
+      out.push([{ v: r.name, s: st }, M(r.due, XL.MONEYB), nz(r.b.cur, XL.G), nz(r.b.d30, XL.A), nz(r.b.d60, XL.O), nz(r.b.d90, XL.R), { v: r.oldest, s: st }, M(r.ag.overdue, XL.R_M)]);
+    });
+    if (!C.dues.length) out.push(["Nothing overdue."]);
+    out.push([]);
+    out.push([{ v: "Quotes to follow – oldest first (0-15 days green, 16-30 amber, 31-60 orange, 60+ red)", s: XL.BOLD }]);
+    out.push(rsHead(["Date", "Quote", "Client", "Brands", "Value", "Days waiting", "Won / Lost", ""]));
+    C.wait.forEach(function (r) { var st = rvBand(r.age, 15, 30, 60); out.push([d10(r.d), r.no, { v: r.name, s: st }, r.brands, M(r.amt), { v: r.age, s: st }, { v: "", s: XL.INPUT }]); });
+    if (!C.wait.length) out.push(["No quote waiting."]);
+    return { rows: out, cols: [30, 14, 16, 16, 14, 14, 16, 14], opts: rsOpts(out, W, 5) };
+  }
+  /* his one-page PDF: laid out like the sheet, same four colours. Landscape A4. */
+  var RS_INK = { G: [217, 242, 225], A: [246, 231, 184], O: [248, 217, 184], R: [247, 201, 201], T: [15, 118, 110], B: [30, 58, 138], H: [30, 41, 59], P: [214, 228, 249] };
+  function rsInkOf(st) { return st === XL.G ? RS_INK.G : st === XL.A ? RS_INK.A : st === XL.O ? RS_INK.O : st === XL.R ? RS_INK.R : null; }
+  function rsExecPdf(C) {
+    var x = C.x, doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4", orientation: "landscape" });
+    var F = function (b) { doc.setFont(ppEmbed(doc), b ? "bold" : "normal"); };
+    var RS = function (n) { return "Rs. " + Math.round(nAmt(n)).toLocaleString("en-IN"); };
+    var W = 297, L = 10, R = W - 10, y = 0;
+    doc.setFillColor(RS_INK.T[0], RS_INK.T[1], RS_INK.T[2]); doc.rect(0, 0, W, 18, "F");
+    if (LOGO_B64) { try { doc.addImage(LOGO_B64, "JPEG", L, 3, 24, 12); } catch (e) { } }
+    F(true); doc.setFontSize(13); doc.setTextColor(255, 255, 255);
+    doc.text("EXECUTIVE SCORECARD", R, 9, { align: "right" });
+    F(false); doc.setFontSize(8); doc.text(scMonLabel(today().slice(0, 7)) + " to date  ·  last 7 days  ·  " + fullDate(today()), R, 14, { align: "right" });
+    y = 22;
+    doc.setFillColor(RS_INK.B[0], RS_INK.B[1], RS_INK.B[2]); doc.rect(L, y, R - L, 11, "F");
+    F(true); doc.setFontSize(14); doc.text(String(x.exec), L + 3, y + 7.6);
+    var bsInk = x.score >= 75 ? RS_INK.G : x.score >= 60 ? RS_INK.A : RS_INK.R;
+    doc.setFillColor(bsInk[0], bsInk[1], bsInk[2]); doc.rect(R - 62, y + 1.5, 60, 8, "F");
+    doc.setTextColor(17, 34, 45); doc.setFontSize(11); doc.text(x.score + " / 100  ·  " + x.band, R - 32, y + 7, { align: "center" });
+    y += 15;
+    /* a small table drawer: rows of {t, st} cells */
+    var table = function (x0, widths, head, rows, rowH) {
+      rowH = rowH || 6.2;
+      var xx = x0;
+      doc.setFillColor(RS_INK.H[0], RS_INK.H[1], RS_INK.H[2]); doc.rect(x0, y, widths.reduce(function (a, b) { return a + b; }, 0), rowH, "F");
+      F(true); doc.setFontSize(7.4); doc.setTextColor(255, 255, 255);
+      head.forEach(function (h, i) { doc.text(String(h), i === 0 ? xx + 1.5 : xx + widths[i] - 1.5, y + 4.2, { align: i === 0 ? "left" : "right" }); xx += widths[i]; });
+      y += rowH;
+      rows.forEach(function (r, ri) {
+        xx = x0;
+        r.forEach(function (c, i) {
+          var ink = rsInkOf(c && c.st);
+          if (ink) { doc.setFillColor(ink[0], ink[1], ink[2]); doc.rect(xx, y, widths[i], rowH, "F"); }
+          else if (ri % 2) { doc.setFillColor(248, 250, 252); doc.rect(xx, y, widths[i], rowH, "F"); }
+          F(!!(c && c.b)); doc.setFontSize(7.6); doc.setTextColor(17, 34, 45);
+          var tx = String(c && c.t != null ? c.t : c == null ? "" : c);
+          var maxW = widths[i] - 3; while (tx.length > 3 && doc.getTextWidth(tx) > maxW) tx = tx.slice(0, -2);
+          doc.text(tx, i === 0 ? xx + 1.5 : xx + widths[i] - 1.5, y + 4.2, { align: i === 0 ? "left" : "right" });
+          xx += widths[i];
+        });
+        y += rowH;
+      });
+    };
+    var top = y;
+    /* left: this month against target */
+    F(true); doc.setFontSize(9); doc.setTextColor(17, 34, 45); doc.text("This month against target", L, y + 3); y += 5;
+    var AREA = [["sales", "Sales booked", "m"], ["coll", "Collections", "p"], ["over", "Overdue (lower better)", "p"], ["new", "New clients", "n"], ["svc", "Service / AMC", "n"]];
+    var fmt = function (k, v) { return k === "m" ? RS(v) : k === "p" ? Math.round((Number(v) || 0) * 100) + "%" : String(Math.round(Number(v) || 0)); };
+    table(L, [44, 26, 26, 20, 14], ["Area", "Target", "Actual", "Achieved", "Points"], AREA.map(function (d) {
+      var a = x.a[d[0]] || {}, st = rsAch(a.ach || 0);
+      return [{ t: d[1], st: st }, fmt(d[2], a.target), { t: fmt(d[2], a.actual), st: st, b: 1 }, { t: Math.round(Math.min(9.99, a.ach || 0) * 100) + "%", st: st }, (Math.round((a.score || 0) * 10) / 10) + " / " + (a.w || "")];
+    }));
+    var leftEnd = y;
+    /* right: the last 7 days */
+    y = top;
+    var rx = L + 140;
+    F(true); doc.setFontSize(9); doc.text("The last 7 days", rx, y + 3); y += 5;
+    table(rx, [44, 30, 44, 29], ["", "", "", ""], [
+      ["Dispatched", { t: RS(x.disp), b: 1 }, "Collected", { t: RS(x.coll), st: x.coll > 0 ? XL.G : null, b: 1 }],
+      ["New clients", { t: x.newCl, st: x.newCl ? XL.G : null }, "New quotes", x.newQ],
+      ["Won", { t: x.won, st: x.won ? XL.G : null }, "Lost", { t: x.lost, st: x.lost ? XL.R : null }],
+      ["Total due", { t: RS(x.due), b: 1 }, "90+ days", { t: RS(x.d90), st: x.d90 > 0.5 ? XL.R : null, b: 1 }],
+      ["Quotes to follow", x.wait, "Won value", RS(x.wonAmt)]
+    ]);
+    y = Math.max(leftEnd, y) + 5;
+    top = y;
+    /* bottom left: money to chase */
+    F(true); doc.setFontSize(9); doc.text("Money to chase – 90+ first", L, y + 3); y += 5;
+    var dl = C.dues.slice(0, 14);
+    table(L, [52, 24, 24, 20, 12], ["Client", "Due", "90+ days", "Overdue", "Days"], dl.map(function (r) {
+      var st = rvBand(r.oldest, 30, 60, 90);
+      return [{ t: r.name, st: st }, RS(r.due), { t: RS(r.b.d90 || 0), st: (r.b.d90 || 0) > 0.5 ? XL.R : null }, RS(r.ag.overdue), { t: r.oldest, st: st }];
+    }));
+    if (!dl.length) { F(false); doc.setFontSize(8); doc.text("Nothing overdue.", L, y + 4); }
+    if (C.dues.length > dl.length) { F(false); doc.setFontSize(7); doc.setTextColor(100, 116, 139); doc.text("and " + (C.dues.length - dl.length) + " more in the Excel", L, y + 4); }
+    /* bottom right: quotes to follow */
+    y = top;
+    F(true); doc.setFontSize(9); doc.setTextColor(17, 34, 45); doc.text("Quotes to follow – oldest first", rx, y + 3); y += 5;
+    var wl = C.wait.slice(0, 14);
+    table(rx, [50, 26, 26, 22, 23], ["Client", "Quote", "Value", "Days", "Won / Lost"], wl.map(function (r) {
+      var st = rvBand(r.age, 15, 30, 60);
+      return [{ t: r.name, st: st }, r.no, RS(r.amt), { t: r.age, st: st }, ""];
+    }));
+    if (!wl.length) { F(false); doc.setFontSize(8); doc.text("No quote waiting.", rx, y + 4); }
+    if (C.wait.length > wl.length) { F(false); doc.setFontSize(7); doc.setTextColor(100, 116, 139); doc.text("and " + (C.wait.length - wl.length) + " more in the Excel", rx, y + 4); }
+    /* the key, at the foot */
+    var ky = 200, kx = L;
+    [["Good", RS_INK.G], ["Watch", RS_INK.A], ["Chase", RS_INK.O], ["Act now", RS_INK.R]].forEach(function (k) {
+      doc.setFillColor(k[1][0], k[1][1], k[1][2]); doc.rect(kx, ky, 16, 5, "F");
+      F(false); doc.setFontSize(7); doc.setTextColor(17, 34, 45); doc.text(k[0], kx + 8, ky + 3.5, { align: "center" }); kx += 18;
+    });
+    F(false); doc.setFontSize(7); doc.setTextColor(100, 116, 139);
+    doc.text("Score: sales 40, collections 25, overdue control 15, new clients 10, service 10 - against his targets on the Scorecard screen.", kx + 4, ky + 3.5);
+    try { pdfDlStamp(doc); } catch (e) { }
+    return doc;
+  }
+  /* the Monday send: the team message, then each man's PDF and Excel */
+  function rsSendExec() {
+    var X = rsExecData(), D = rvData("7", ""), A = moneyAscii;
+    var names = X.list.map(function (x) { return x.exec; });
+    var L = [rsMentionLine(rsOwners().concat(names)), "", "\u0001Energy World – executive scorecard\u0002",
+      d10(today()) + " · score " + scMonLabel(X.month) + " to date · week " + rvShort(X.from) + " – " + rvShort(X.to), ""];
+    X.list.forEach(function (x, i) { L.push((i + 1) + ". \u0001" + x.exec + "\u0002 – " + x.score + " (" + x.band + ")"); });
+    L.push(""); L.push("Each executive's own scorecard follows: a PDF and an Excel in his name.");
+    return loadLogo().then(function () { return rsTgText(L.join("\n")); }).then(function () {
+      var chain = Promise.resolve();
+      X.list.forEach(function (x) {
+        chain = chain.then(function () {
+          var C = rsExecCard(x, D), lines = rsExecLines(x, A);
+          var cap = rsMentionLine([x.exec].concat(rsOwners())) + "\n\u0001" + x.exec + " – scorecard\u0002\n" + lines.join("\n");
+          var pdf = new Uint8Array(rsExecPdf(C).output("arraybuffer"));
+          var sh = rsExecSheet(C);
+          return rsTgDoc(pdf, rsExecFile(x.exec, "pdf"), "application/pdf", cap).then(function () {
+            return rsTgDoc(xlBook(String(x.exec).slice(0, 31), sh.rows, sh.cols, sh.opts), rsExecFile(x.exec, "xlsx"), XLSX_MIME, "\u0001" + x.exec + "\u0002 – the same scorecard as an Excel, with his lists in full.");
+          });
+        });
+      });
+      return chain;
+    });
+  }
+  /* the owner types each man's Telegram username once */
+  function rsHandlesCard() {
+    if (!roleIs("admin")) return "";
+    var hs = rsHandles(), open = !!(S.rvBot || {}).handles;
+    var h = '<div class="card"><div style="display:flex;gap:8px;align-items:center"><div style="flex:1;font-weight:700">Telegram usernames – for the @-mention at the top of each report</div>' +
+      rvBtn("rs-h-open", open ? "Hide" : "Set", "", true) + '</div>' +
+      '<div style="font-size:13px;color:var(--muted)">Telegram rings a man’s phone only for his @username. Without one his name still shows at the top, in bold.</div>';
+    if (!open) return h + '</div>';
+    rsTeamForHandles().forEach(function (p, i) {
+      h += '<div style="display:flex;gap:8px;align-items:center;margin-top:6px"><div style="flex:1;min-width:120px">' + esc(p.name) + ' <span style="font-size:12px;color:var(--muted)">' + esc(p.role) + '</span></div>' +
+        '<input id="rs_h_' + i + '" data-n="' + esc(p.name) + '" value="' + esc(hs[dkey(p.name)] || "") + '" placeholder="@username" autocomplete="off" style="flex:1;min-width:140px;min-height:44px;font-size:16px"/></div>';
+    });
+    return h + '<div style="margin-top:8px">' + rvBtn("rs-h-save", "Save usernames") + '</div></div>';
+  }
+
   /* the owner's view of the schedule, at the foot of the review */
   function rsCard() {
     if (!roleAny(["admin", "accounts"])) return "";
@@ -45179,6 +45424,23 @@ function viewCatalogue() {
     if (act === "rv-xlsx") { rvXlsx(rvData(S.rvPer, S.rvExec)); return; }
     if (act === "rv-send") { rvSend(rvData(S.rvPer, S.rvExec)); return; }
     if (act === "rv-wa") { window.open("https://wa.me/?text=" + encodeURIComponent(rvText(rvData(S.rvPer, S.rvExec)).replace(/\nDetailed sheet attached\.$/, "")), "_blank"); return; }
+    /* 6.9.640 - the Telegram usernames for the @-mentions */
+    if (act === "rs-h-open") { S.rvBot = Object.assign({}, S.rvBot || {}, { handles: !(S.rvBot || {}).handles }); keepScroll = true; render(); return; }
+    if (act === "rs-h-save") {
+      if (!roleIs("admin")) return;
+      var _hm = {}, _bad = [];
+      document.querySelectorAll('input[id^="rs_h_"]').forEach(function (inp) {
+        var v = String(inp.value || "").trim(), n = inp.getAttribute("data-n") || "";
+        if (!v) return;
+        if (!rsHandleOk(v)) { _bad.push(n); return; }
+        _hm[dkey(n)] = "@" + v.replace(/^@/, "");
+      });
+      if (_bad.length) { toast("Not a Telegram username: " + _bad.join(", ") + " \u2013 5 to 32 letters, numbers or _."); return; }
+      try { localStorage.setItem("ew_tg_handles", JSON.stringify(_hm)); } catch (e) { }
+      save("audit", { id: "", createdAt: new Date().toISOString(), actor: S.user, action: "tg:handles", target: "team", detail: JSON.stringify(_hm), ip: "" });
+      toast("Saved. Every report from now on mentions them at the top.");
+      S.rvBot = Object.assign({}, S.rvBot || {}, { handles: false }); keepScroll = true; render(); return;
+    }
     /* 6.9.639 - a report sent by hand, or its Excel */
     if (act === "rs-send") {
       if (!roleAny(["admin", "accounts"])) return;
