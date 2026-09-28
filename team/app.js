@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.645";
+  var APP_VERSION = "6.9.646";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -5297,6 +5297,30 @@ window.addEventListener("beforeunload", function (ev) {
   function rsInr(n) { return "₹" + rsNum(n); }
   function rsAgeSt(d) { return d <= 30 ? "G" : d <= 60 ? "A" : d <= 90 ? "O" : "R"; }
   function rsWaitSt(d) { return d <= 15 ? "G" : d <= 30 ? "A" : d <= 60 ? "O" : "R"; }
+  /* 6.9.646 - money to chase takes the colour of HOW MUCH he owes: over Rs 1 lakh red, Rs 50,000 to
+     Rs 1 lakh yellow, under Rs 50,000 blue-green. */
+  function rsDueSt(n) { n = Number(n) || 0; return n > 100000 ? "R" : n >= 50000 ? "A" : "T"; }
+  var RS_DUE_NOTE = "Due: red over ₹1 lakh · yellow ₹50,000 – ₹1 lakh · blue-green under ₹50,000";
+  /* 6.9.646 - THE WEEK SCORECARD. What was added to his dues (material dispatched) against what came
+     in, for the review period and for the last 7 days side by side. Collected for every Rs 100
+     dispatched: green at 100 or more, yellow from 50, red under 50. */
+  function rsWeekCard(D, W) {
+    var net = function (X) { var n = X.dispTot - X.collTot; return rsC((n > 0.5 ? "▲ up " : n < -0.5 ? "▼ down " : "") + rsInr(Math.abs(n)), n > 0.5 ? "R" : n < -0.5 ? "G" : "", true); };
+    var per = function (X) {
+      if (X.dispTot < 0.5) return rsC(X.collTot > 0.5 ? "all collected, nothing added" : "nothing added", X.collTot > 0.5 ? "G" : "");
+      var p = Math.round(X.collTot / X.dispTot * 100);
+      return rsC("₹" + p, p >= 100 ? "G" : p >= 50 ? "A" : "R", true);
+    };
+    var col = function (X) { return X.collTot > 0.5 ? "G" : "R"; };
+    return [{ h: "Scorecard – added to dues vs collected" }, { cols: [["", 40, "l"], [D.R.label, 30, "r"], ["Last 7 days", 30, "r"]], rows: [
+      ["Dates", D.R.span, W.R.span],   /* the headings stay short enough to print whole */
+      [rsC("Material dispatched (added)", "", true), rsInr(D.dispTot), rsInr(W.dispTot)],
+      ["Deliveries", String(D.disp.length), String(W.disp.length)],
+      [rsC("Collected", "", true), rsC(rsInr(D.collTot), col(D), true), rsC(rsInr(W.collTot), col(W), true)],
+      ["Payments", String(D.coll.length), String(W.coll.length)],
+      [rsC("Dues moved", "", true), net(D), net(W)],
+      ["Collected per ₹100 dispatched", per(D), per(W)]] }];
+  }
   /* spec: { title, sub, blocks: [ {h}, {band}, {note}, {cols: [[label, weight, "l"|"r"|"c"]], rows: [[cell]]} ] } */
   function rsPngDraw(spec, ctx, W, measureOnly) {
     var P = 22, y = 0, TW = W - P * 2, RH = 38, HH = 40, LH = 25;
@@ -5428,17 +5452,17 @@ window.addEventListener("beforeunload", function (ev) {
 
   /* ---- the review ---- */
   function rsReviewMan(e) {
-    var D = rvData("since", e), R = D.R;
+    var D = rvData("since", e), R = D.R, W = rvData("7", e);   /* 6.9.646 - and the last 7 days */
     var dues = D.dues.filter(function (r) { return r.ag && r.ag.overdue > 0.5; }).sort(function (a, b) { return (b.b.d90 || 0) - (a.b.d90 || 0) || b.due - a.due; });
     var blocks = [{ band: e }, { h: "Payments" }, { cols: [["", 46, "l"], ["Amount", 30, "r"], ["", 24, "l"]], rows: [
       [rsC("Total due till date", "", true), rsC(rsInr(D.dueTot), "", true), plural(D.dues.length, "client")],
       [rsC("0-30 days", "G"), rsC(rsInr(D.age.cur), "G"), rsC("fresh", "G")], [rsC("31-60 days", "A"), rsC(rsInr(D.age.d30), "A"), rsC("watch", "A")],
       [rsC("61-90 days", "O"), rsC(rsInr(D.age.d60), "O"), rsC("chase", "O")], [rsC("90+ days", "R"), rsC(rsInr(D.age.d90), "R"), rsC("act now", "R")],
-      ["Dispatched", rsInr(D.dispTot), plural(D.disp.length, "delivery")],
-      [rsC("Collected", D.collTot > 0 ? "G" : "R"), rsC(rsInr(D.collTot), D.collTot > 0 ? "G" : "R"), plural(D.coll.length, "payment")]] }];
+      ]}];
+    blocks = blocks.concat(rsWeekCard(D, W));   /* 6.9.646 */
     if (dues.length) blocks.push({ h: "Money to chase – 90+ first" }, { cols: [["Client", 40, "l"], ["Due", 20, "r"], ["90+ days", 20, "r"], ["Oldest (days)", 20, "r"]],
-      rows: dues.slice(0, 12).map(function (r) { var st = rsAgeSt(r.oldest); return [rsC(r.name, st), rsInr(r.due), rsC(rsInr(r.b.d90 || 0), (r.b.d90 || 0) > 0.5 ? "R" : ""), rsC(r.oldest, st)]; }) });
-    if (dues.length > 12) blocks.push({ note: "and " + (dues.length - 12) + " more in the Excel" });
+      rows: dues.slice(0, 12).map(function (r) { var st = rsDueSt(r.due); return [rsC(r.name, st, true), rsC(rsInr(r.due), st, true), rsInr(r.b.d90 || 0), rsC(r.oldest, rsAgeSt(r.oldest))]; }) });   /* 6.9.646 - coloured by how much */
+    if (dues.length) blocks.push({ note: RS_DUE_NOTE + (dues.length > 12 ? " · and " + (dues.length - 12) + " more in the Excel" : "") });
     if (D.wait.length) blocks.push({ h: "Quotes to follow – oldest first" }, { cols: [["Client", 40, "l"], ["Quote", 20, "l"], ["Value", 20, "r"], ["Days", 20, "r"]],
       rows: D.wait.slice(0, 12).map(function (q) { var st = rsWaitSt(q.age || 0); return [rsC(q.name, st), q.no, rsInr(q.amt), rsC(q.age, st)]; }) });
     if (D.wait.length > 12) blocks.push({ note: "and " + (D.wait.length - 12) + " more in the Excel" });
@@ -5452,20 +5476,20 @@ window.addEventListener("beforeunload", function (ev) {
   }
   function rsSetReview(onlyEx) {
     if (onlyEx) return { team: null, men: [rsReviewMan(onlyEx)] };
-    var D = rvData("since", ""), R = D.R, be = rvByExec(D);
+    var D = rvData("since", ""), R = D.R, be = rvByExec(D), W = rvData("7", "");   /* 6.9.646 */
     var oldW = D.wait.filter(function (q) { return (q.age || 0) > 60; }).length;
     var blocks = [{ h: "Payments – all executives" }, { cols: [["", 46, "l"], ["Amount", 30, "r"], ["", 24, "l"]], rows: [
       [rsC("Total due till date", "", true), rsC(rsInr(D.dueTot), "", true), plural(D.dues.length, "client")],
       [rsC("0-30 days", "G"), rsC(rsInr(D.age.cur), "G"), rsC("fresh", "G")], [rsC("31-60 days", "A"), rsC(rsInr(D.age.d30), "A"), rsC("watch", "A")],
       [rsC("61-90 days", "O"), rsC(rsInr(D.age.d60), "O"), rsC("chase", "O")], [rsC("90+ days", "R"), rsC(rsInr(D.age.d90), "R"), rsC("act now", "R")],
-      ["Dispatched", rsInr(D.dispTot), plural(D.disp.length, "delivery")],
-      [rsC("Collected", D.collTot > 0 ? "G" : "R"), rsC(rsInr(D.collTot), D.collTot > 0 ? "G" : "R"), plural(D.coll.length, "payment")]] },
+      ]},
+      ].concat(rsWeekCard(D, W)).concat([   /* 6.9.646 - the scorecard, then the quotations */
       { h: "Quotations" }, { cols: [["", 46, "l"], ["Count", 20, "r"], ["Value", 34, "r"]], rows: [
       [rsC("New clients", D.newCl.length ? "G" : ""), rsC(D.newCl.length, D.newCl.length ? "G" : ""), ""],
       [rsC("New quotes", D.newQ.length ? "G" : ""), rsC(D.newQ.length, D.newQ.length ? "G" : ""), rsInr(D.newQTot)],
       [rsC("Quotes to follow", "A"), rsC(D.wait.length, "A"), rsC(rsInr(D.waitTot), "A")],
       [rsC("of which waiting 60+ days", oldW ? "R" : ""), rsC(oldW, oldW ? "R" : ""), ""],
-      [rsC("Plumbers to call", D.plumb.length ? "O" : ""), rsC(D.plumb.length, D.plumb.length ? "O" : ""), ""]] }];
+      [rsC("Plumbers to call", D.plumb.length ? "O" : ""), rsC(D.plumb.length, D.plumb.length ? "O" : ""), ""]] }]);
     if (be.length) blocks.push({ h: "By executive" }, { cols: [["Executive", 22, "l"], ["Due", 17, "r"], ["90+ days", 15, "r"], ["Dispatched", 15, "r"], ["Collected", 15, "r"], ["To follow", 16, "r"]],
       rows: be.map(function (x) { return [rsC(x.exec, "B"), rsC(rsInr(x.due), "", true), rsC(rsInr(x.d90), x.d90 > 0.5 ? "R" : "G"), rsInr(x.disp), rsC(rsInr(x.coll), x.coll > 0 ? "G" : "R"), rsC(x.wait, x.wait ? "A" : "")]; }) });
     var rows = rvXlsxRows(D), names = be.map(function (x) { return x.exec; }).filter(function (n) { return n !== "(no executive)"; });
