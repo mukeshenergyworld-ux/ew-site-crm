@@ -160,8 +160,10 @@ h2{font-size:13px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;
       <div class="who" id="hWho">...</div>
     </div>
     <div class="q" id="hQ"></div>
+    <a id="hHelp" href="../help/visit.html" target="_blank" rel="noopener" title="How to use this screen" aria-label="How to use this screen"
+      style="flex:0 0 auto;background:rgba(255,255,255,.18);color:#fff;border-radius:10px;min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:17px;text-decoration:none;margin-left:auto">?</a>
     <button id="hRef" onclick="ewRefresh()" title="Pull the latest, and get the new version if one is up"
-      style="margin-left:auto;flex:0 0 auto;background:rgba(255,255,255,.18);color:#fff;border:0;
+      style="margin-left:6px;flex:0 0 auto;background:rgba(255,255,255,.18);color:#fff;border:0;
              border-radius:10px;width:36px;height:36px;font-size:17px;line-height:1;cursor:pointer">&#8635;</button>
   </header>
   <main id="main"><div class="load">Opening...</div></main>
@@ -793,7 +795,7 @@ function ewRefresh(){
    Nothing you have typed or queued is touched. The sign-in and the
    offline queue live in localStorage and this never goes near them.
 --------------------------------------------------------------------- */
-var BUILD  = '2026.09.19-1';        /* which build of this file is running */
+var BUILD  = '2026.09.28-1';        /* which build of this file is running */
 var APPKEY = 'VISIT';
 var VKEY   = 'ew_visit_ver_v1';
 var VNEW   = '', VBUSY = false;

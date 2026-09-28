@@ -1,0 +1,47 @@
+/* The illustrated guides: numbered steps, each with the screen it happens on. */
+.find{position:sticky;top:0;z-index:5;background:#0f766e;padding:0 0 10px}
+.find .in{max-width:820px;margin:0 auto;padding:0 16px}
+.find input{width:100%;min-height:44px;border:0;border-radius:12px;padding:10px 14px;font-size:16px}
+.toc{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin:0 0 16px}
+.toc .tg{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:10px 12px}
+.toc .tgn{font-size:12.5px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.04em;margin:0 0 4px}
+.toc a{display:block;min-height:36px;line-height:36px;color:#0f766e;font-weight:700;text-decoration:none;font-size:15px}
+section.tab{scroll-margin-top:70px}
+section.tab.here{border:2px solid #0f766e;box-shadow:0 0 0 4px #ccfbf1}
+.sh{display:flex;flex-direction:column;gap:2px;margin:0 0 8px}
+.sh .grp{font-size:12.5px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.04em}
+.sh h2{margin:0;font-size:20px}
+.where{font-size:14.5px;color:#334155}
+.what{font-size:15.5px}
+h3{font-size:16px;color:#0f172a;margin:18px 0 8px;padding-top:10px;border-top:1px dashed #e2e8f0}
+ol.steps{list-style:none;counter-reset:st;padding:0;margin:0 0 10px}
+ol.steps>li{counter-increment:st;position:relative;padding:0 0 0 44px;margin:0 0 14px}
+ol.steps>li::before{content:counter(st);position:absolute;left:0;top:0;width:32px;height:32px;border-radius:50%;
+  background:#0f766e;color:#fff;font-weight:800;font-size:16px;line-height:32px;text-align:center}
+ol.steps .st{min-height:32px;padding-top:4px}
+figure{margin:8px 0 0;max-width:340px}
+figure img{display:block;width:100%;height:auto;border:1px solid #cbd5e1;border-radius:14px;box-shadow:0 2px 8px rgba(15,23,42,.08);background:#fff}
+.tip{background:#f0fdfa;border:1px solid #99f6e4;border-radius:12px;padding:10px 12px;margin:10px 0;font-size:14.5px;color:#115e59}
+a.totop{display:inline-block;min-height:44px;line-height:44px;font-size:14px;font-weight:700;color:#64748b;text-decoration:none}
+/* the flow picture */
+.flow{display:flex;flex-wrap:wrap;gap:6px;align-items:stretch;margin:6px 0 4px}
+.flow a{flex:1 1 130px;display:block;text-decoration:none;color:#0f172a;background:#fff;border:2px solid #cbd5e1;border-radius:12px;padding:8px 10px;position:relative}
+.flow a .k{display:inline-block;width:24px;height:24px;border-radius:50%;background:#0f766e;color:#fff;font-weight:800;font-size:13px;line-height:24px;text-align:center;margin-right:6px}
+.flow a b{font-size:15px}
+.flow a span.d{display:block;font-size:13px;color:#475569;margin-top:2px}
+.flow a.sell{border-color:#5eead4;background:#f0fdfa}
+.flow a.move{border-color:#fcd34d;background:#fffbeb}
+.flow a.money{border-color:#86efac;background:#f0fdf4}
+.legend{display:flex;flex-wrap:wrap;gap:12px;font-size:13px;color:#475569;margin:6px 0 0}
+.legend i{display:inline-block;width:14px;height:14px;border-radius:4px;vertical-align:-2px;margin-right:4px;border:2px solid}
+.roles td:first-child{font-weight:800;white-space:nowrap}
+@media(min-width:760px){
+  ol.steps>li{display:grid;grid-template-columns:1fr 340px;gap:14px;align-items:start}
+  figure{margin:0}
+}
+@media print{
+  .find,.toc,a.totop{display:none}
+  section.tab{page-break-before:always}
+  figure{max-width:260px}
+  ol.steps>li{page-break-inside:avoid}
+}

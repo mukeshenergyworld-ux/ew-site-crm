@@ -303,7 +303,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
    Nothing here deletes anything, ever. A visit is a row added.
    ========================================================================== */
 
-  var APP_VERSION = "1.16.0";
+  var APP_VERSION = "1.17.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_service_session";
 
@@ -2337,6 +2337,9 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
 
   /* ================= SCREENS ================= */
 
+  /* 1.17.0 - HOW TO USE. One section per screen of this app, keyed by the screen's own key. */
+  var HELP_AT = { today: 1, jobs: 1, labour: 1, history: 1, account: 1 };
+  function helpHref() { var t = S.tab || "today"; return "../help/service.html#t-" + (HELP_AT[t] ? t : "start"); }
   function header() {
     var age = bookAgeHtml(S.syncAt, S.busy);
     return '<div class="top">' +
@@ -2347,6 +2350,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
             (wireSay() ? ' &middot; <span class="wire">' + esc(wireSay()) + '</span>' : '') + '</div>' +
           '<div class="who">' + age + '</div>' +
         '</div>' +
+        '<a class="icon" href="' + helpHref() + '" target="_blank" rel="noopener" title="How to use this screen" aria-label="How to use this screen" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;font-weight:800;min-height:44px;min-width:44px;color:inherit">?</a>' +   /* 1.17.0 */
         '<button class="icon" data-act="refresh" title="Fetch the book again">&#8635;</button>' +
         '<button class="icon" data-act="menu" title="Menu">&#9776;</button>' +
       '</div></div>';
