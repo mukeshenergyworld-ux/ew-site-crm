@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.652";
+  var APP_VERSION = "6.9.654";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -15791,8 +15791,45 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
 
   /* The search NEVER widens what a man is allowed to see: it filters the list he already had.
      A sales exec searching a number that belongs to somebody else's client finds nothing. */
-  function quoteSearchList() {
-    var all = quoteAllList();
+  /* 6.9.654 - THE LOG IS EVERYONE'S. Every quote, whoever made it, so nobody quotes a man twice
+     without knowing. Changing one stays with its owner (qMineFn). */
+  function quoteLogAll() { return (S.data.quotes || []).slice().reverse().filter(function (q) { return q && !isCancelled("quotes", q.id); }); }
+  function qMineFn() {
+    if (seesAllClients()) return function () { return true; };
+    var me = dkey(S.user || ""), memo = {};
+    return function (q) {
+      if (dkey(q.createdBy || "") === me) return true;
+      var k = dkey(q.client || "");
+      if (memo[k] === undefined) memo[k] = !!isMineClient(q.client);
+      return memo[k];
+    };
+  }
+  /* 6.9.654 - one client, however his name was typed: his phone number when his record has one */
+  function qClientKeyFn() {
+    var ph = {};
+    (S.data.clients || []).forEach(function (c) {
+      if (!c || isCancelled("clients", c.id)) return;
+      var p = dupPhoneKey(c.mobile); if (p && !ph[dkey(c.name)]) ph[dkey(c.name)] = p;
+    });
+    return function (name) { var k = dkey(name || ""); return ph[k] ? "p:" + ph[k] : "n:" + (k || "(no client)"); };
+  }
+  /* 6.9.654 - the quotes that already carry this brand for this client (a revision of the same
+     quotation is not a duplicate) */
+  function qzBrandDups(client, brand, parentId) {
+    var key = qClientKeyFn(), ck = key(client), b = dkey(brand), byId = {};
+    (S.data.quotes || []).forEach(function (q) { if (q) byId[q.id] = q; });
+    var fam = parentId && byId[parentId] ? quoteFamilyKey(byId[parentId], byId) : "";
+    return (S.data.quotes || []).filter(function (q) {
+      if (!q || isCancelled("quotes", q.id) || key(q.client) !== ck) return false;
+      if (fam && quoteFamilyKey(q, byId) === fam) return false;
+      return quoteBrands(q).concat([String(q.brand || "")]).some(function (x) { return dkey(x) === b; });
+    }).sort(function (a, c) { return String(c.createdAt || "").localeCompare(String(a.createdAt || "")); });
+  }
+  function quoteSearchList(all) {
+    var all_ = all ? quoteLogAll() : quoteAllList();
+    return quoteSearchFilter(all_);
+  }
+  function quoteSearchFilter(all) {
     var qq = String(S.qq || "").replace(/^\s+|\s+$/g, "");
     if (!qq) return all;
     var txt = qq.toLowerCase(), dig = phDigits(qq);
@@ -15924,7 +15961,8 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
   /* The list alone, so typing repaints THIS and never the page - the caret and the phone
      keyboard stay exactly where they were. */
   function quotesBodyHtml() {
-    var list = quoteSearchList();
+    var list = quoteSearchList(true);   /* 6.9.654 - everyone's quotes */
+    var qMine = qMineFn();
     /* v6.9.410 - "Work through them" narrows the book to exactly the never-sent ones, oldest
        first, and each row carries the two taps. The search box still works on top of it. */
     if (S.qUnsent) {
@@ -15939,7 +15977,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     var h = "";
     if (qq) {
       /* a filtered book must never be mistaken for a shrunken one */
-      var tot = quoteAllList().length;
+      var tot = quoteLogAll().length;   /* 6.9.654 */
       h += '<div class="meta" style="margin:0 0 7px;font-size:12.5px">Showing <b>' + list.length +
         '</b> of ' + tot + ' quote' + (tot !== 1 ? "s" : "") + ' &middot; matching <b>' + esc(qq) + '</b></div>';
     }
@@ -16008,7 +16046,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     var grp = S.qGroup !== "list";
     h += '<div class="row" style="gap:6px;margin:4px 0 8px"><button class="btn sm ' + (grp ? "" : "ghost") + '" data-act="q-group" data-k="client">By client</button>' +
       '<button class="btn sm ' + (grp ? "ghost" : "") + '" data-act="q-group" data-k="list">List</button></div>';
-    if (grp) return h + quotesByClientHtml(shown, stPill);
+    if (grp) return h + quotesByClientHtml(shown, stPill, qMine);
     h += xlTable("qlog", [
       { k: "date", t: "QUOTE", wrap: "170px" }, { k: "client", t: "CLIENT", wrap: "240px" },
       { k: "st", t: "STATUS" }, { k: "total", t: "INCL GST", n: 1, r: 1 }, { k: "exec", t: "WHO" }
@@ -16020,14 +16058,15 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       var brands = quoteBrands(q);
       return { v: { date: d, no: q.quoteNo || "", client: q.client || "", brand: brands.join(", ") || q.brand || "", st: st, go: "", net: Number(q.net) || 0, total: Number(q.total) || 0, exec: exec, by: q.createdBy || "" },
         cells: {
-          date: '<button class="btn sm ghost" data-act="q-card" data-id="' + esc(q.id) + '" style="padding:1px 8px;font-size:12.5px;font-weight:700;white-space:normal;word-break:break-all;text-align:left" title="Open this quote’s card">' + esc(q.quoteNo || "open") + '</button>' +
+          date: (qMine(q) ? '<button class="btn sm ghost" data-act="q-card" data-id="' + esc(q.id) + '" style="padding:1px 8px;font-size:12.5px;font-weight:700;white-space:normal;word-break:break-all;text-align:left" title="Open this quote’s card">' + esc(q.quoteNo || "open") + '</button>'
+                : '<b style="font-size:12.5px;word-break:break-all">' + esc(q.quoteNo || "") + '</b>') +   /* 6.9.654 - another's: read-only */
               (Number(q.version) > 1 ? ' <span class="pill" style="font-size:12px">v' + esc(q.version) + '</span>' : "") +
               qSm(esc(dmy(d)) || '<span style="color:#b45309">no date</span>'),
           client: '<a href="#" data-act="cl-open" data-id="' + esc(cl.id || "") + '" style="font-weight:700;color:#0b3b36;text-decoration:none">' + esc(q.client || "") + '</a>' +
               qSm(esc(brands.join(", ") || q.brand || "—")),
           st: stPill(q) + '<div style="margin-top:3px;white-space:nowrap">' +
-              (st !== "Won" ? '<button class="btn sm" data-act="q-win" data-id="' + esc(q.id) + '" style="padding:2px 8px;font-size:12px">Won</button> ' : "") +
-              (st !== "Lost" ? '<button class="btn sm ghost" data-act="q-lose" data-id="' + esc(q.id) + '" style="padding:2px 8px;font-size:12px">Lost</button> ' : "") +
+              (qMine(q) && st !== "Won" ? '<button class="btn sm" data-act="q-win" data-id="' + esc(q.id) + '" style="padding:2px 8px;font-size:12px">Won</button> ' : "") +
+              (qMine(q) && st !== "Lost" ? '<button class="btn sm ghost" data-act="q-lose" data-id="' + esc(q.id) + '" style="padding:2px 8px;font-size:12px">Lost</button> ' : "") +
               '<button class="btn sm ghost" data-act="q-pdf" data-id="' + esc(q.id) + '" style="padding:2px 8px;font-size:12px">PDF</button></div>',
           total: '<b>' + money(q.total) + '</b>' + qSm('net ' + money(q.net)),
           exec: whoChip(exec) + (String(q.createdBy || "").trim() && String(q.createdBy).trim() !== exec ? qSm('made by ' + esc(q.createdBy)) : '')
@@ -16048,13 +16087,15 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     var no = String((x && x.quoteNo) || "").trim().toLowerCase();
     return no ? "no:" + no : "id:" + String((x && x.id) || q.id);
   }
-  function quotesByClientHtml(list, stPill) {
-    var byId = {};
-    quoteAllList().forEach(function (q) { byId[q.id] = q; });
+  function quotesByClientHtml(list, stPill, qMine) {
+    qMine = qMine || function () { return true; };
+    var byId = {}, ckOf = qClientKeyFn();   /* 6.9.654 - one card per man, however the name was typed */
+    (S.data.quotes || []).forEach(function (q) { if (q) byId[q.id] = q; });
     var clients = {}, order = [];
     list.forEach(function (q) {
-      var ck = dkey(q.client || "") || "(no client)";
-      if (!clients[ck]) { clients[ck] = { name: String(q.client || "(no client)"), fams: {}, forder: [], newest: "" }; order.push(ck); }
+      var ck = ckOf(q.client);
+      if (!clients[ck]) { clients[ck] = { name: String(q.client || "(no client)"), names: {}, fams: {}, forder: [], newest: "" }; order.push(ck); }
+      clients[ck].names[dkey(q.client || "")] = String(q.client || "").trim();
       var c = clients[ck], fk = quoteFamilyKey(q, byId);
       if (!c.fams[fk]) { c.fams[fk] = []; c.forder.push(fk); }
       c.fams[fk].push(q);
@@ -16080,12 +16121,15 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
           return '<div class="row" style="align-items:flex-start;gap:10px;margin:0;padding:8px 12px;border-top:1px solid #e2e8f0' +
               (f.length > 1 && i < f.length - 1 ? ';background:#f8fafc' : '') + '">' +
             '<div style="flex:1 1 200px;min-width:0">' + rev +
-              '<button class="btn sm ghost" data-act="q-card" data-id="' + esc(q.id) + '" style="padding:1px 8px;font-size:12.5px;font-weight:700;white-space:normal;word-break:break-all;text-align:left" title="Open this quote\u2019s card">' + esc(q.quoteNo || "open") + '</button>' +
+              (qMine(q) ? '<button class="btn sm ghost" data-act="q-card" data-id="' + esc(q.id) + '" style="padding:1px 8px;font-size:12.5px;font-weight:700;white-space:normal;word-break:break-all;text-align:left" title="Open this quote\u2019s card">' + esc(q.quoteNo || "open") + '</button>'
+                : '<b style="font-size:12.5px;word-break:break-all;padding:0 8px">' + esc(q.quoteNo || "") + '</b>') +
               '<div style="font-size:12px;color:#64748b;margin-top:2px">' + (esc(dmy(d)) || '<span style="color:#b45309">no date</span>') +
-                ' \u00b7 ' + esc(quoteBrands(q).join(", ") || q.brand || "\u2014") + '</div></div>' +
+                ' \u00b7 ' + esc(quoteBrands(q).join(", ") || q.brand || "\u2014") +
+                (String(q.createdBy || "").trim() ? ' \u00b7 by <b style="color:#1e3a8a">' + esc(regFirst(q.createdBy) || q.createdBy) + '</b>' : '') +   /* 6.9.654 */
+                (c.names && Object.keys(c.names).length > 1 ? ' \u00b7 as ' + esc(q.client || "") : '') + '</div></div>' +
             '<div style="flex:0 0 auto">' + stPill(q) + '<div style="margin-top:3px;white-space:nowrap">' +
-              (st !== "Won" ? '<button class="btn sm" data-act="q-win" data-id="' + esc(q.id) + '" style="padding:2px 8px;font-size:12px">Won</button> ' : "") +
-              (st !== "Lost" ? '<button class="btn sm ghost" data-act="q-lose" data-id="' + esc(q.id) + '" style="padding:2px 8px;font-size:12px">Lost</button> ' : "") +
+              (qMine(q) && st !== "Won" ? '<button class="btn sm" data-act="q-win" data-id="' + esc(q.id) + '" style="padding:2px 8px;font-size:12px">Won</button> ' : "") +
+              (qMine(q) && st !== "Lost" ? '<button class="btn sm ghost" data-act="q-lose" data-id="' + esc(q.id) + '" style="padding:2px 8px;font-size:12px">Lost</button> ' : "") +
               '<button class="btn sm ghost" data-act="q-pdf" data-id="' + esc(q.id) + '" style="padding:2px 8px;font-size:12px">PDF</button></div></div>' +
             '<div style="flex:0 0 110px;text-align:right"><b>' + money(q.total) + '</b><div style="font-size:12px;color:#64748b">net ' + money(q.net) + '</div></div>' +
           '</div>';
@@ -16094,7 +16138,9 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       return '<div class="card" style="padding:0;overflow:hidden;margin-bottom:10px">' +
         '<div class="row" style="align-items:center;gap:8px;margin:0;padding:8px 12px;background:#f0fdfa;border-bottom:1px solid #99f6e4">' +
           '<a href="#" data-act="cl-open" data-id="' + esc(cl.id || "") + '" style="font-weight:800;font-size:15px;color:#0b3b36;text-decoration:none">' + esc(c.name) + '</a>' +
-          '<span class="pill" style="font-size:12px">' + n + ' quote' + (n === 1 ? '' : 's') + '</span><div class="grow"></div>' + whoChip(exec) + '</div>' +
+          '<span class="pill" style="font-size:12px">' + n + ' quote' + (n === 1 ? '' : 's') + '</span>' +
+          (Object.keys(c.names).length > 1 ? '<span style="font-size:12px;color:#64748b">also as ' + esc(Object.keys(c.names).filter(function (x) { return x !== dkey(c.name); }).map(function (x) { return c.names[x]; }).join(", ")) + '</span>' : '') +   /* 6.9.654 */
+          '<div class="grow"></div>' + whoChip(exec) + '</div>' +
         rows + '</div>';
     }).join("") || '<div class="empty">Nothing here.</div>';
   }
@@ -33352,17 +33398,44 @@ function viewCatalogue() {
       if (opts.all || seesAllClients()) return true;
       return String(c.ownedBy || c.createdBy || "").trim().toLowerCase() === me;
     });
-    var parent = {}, byId = {};
+    var parent = {}, byId = {}, phones = {};
     function find(x) { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; }
-    function join(a, b) { a = find(a); b = find(b); if (a !== b) parent[a] = b; }
+    /* 6.9.653 - each group carries the phone numbers of its records */
+    function join(a, b) {
+      a = find(a); b = find(b); if (a === b) return;
+      parent[a] = b;
+      var pb = phones[b] = phones[b] || {}; Object.keys(phones[a] || {}).forEach(function (p) { pb[p] = 1; });
+    }
+    /* two groups that BOTH have phone numbers and share none are different people - a name alone
+       never joins them (his words: "mixing piyush gupta and vinay gupta, even though having
+       different contact no") */
+    function nameMayJoin(a, b) {
+      var pa = phones[find(a)] || {}, pb = phones[find(b)] || {}, ka = Object.keys(pa), kb = Object.keys(pb);
+      if (!ka.length || !kb.length) return true;
+      return ka.some(function (p) { return pb[p]; });
+    }
 
     var keyOwner = {}, whyOf = {};
     rows.forEach(function (c) {
       var id = c.id || ("nm:" + String(c.name).trim().toLowerCase());
       parent[id] = parent[id] || id; byId[id] = c;
-      dupRecKeys(c).forEach(function (kk) {
-        if (keyOwner[kk.k]) { join(id, keyOwner[kk.k]); (whyOf[find(id)] = whyOf[find(id)] || {})[kk.why] = 1; }
-        else keyOwner[kk.k] = id;
+      phones[id] = phones[id] || {};
+      [dupPhoneKey(c.mobile), dupPhoneKey(c.mobile2)].forEach(function (p) { if (p) phones[id][p] = 1; });
+    });
+    /* phone links first - the same number is the same man; then the name links, guarded */
+    ["p", "n"].forEach(function (pass) {
+      Object.keys(byId).forEach(function (id) {
+        dupRecKeys(byId[id]).forEach(function (kk) {
+          var isPhone = kk.k.indexOf("p:") === 0;
+          if ((pass === "p") !== isPhone) return;
+          var others = keyOwner[kk.k] = keyOwner[kk.k] || [];
+          others.forEach(function (other) {
+            if (find(id) === find(other)) return;
+            if (!isPhone && !nameMayJoin(id, other)) return;
+            join(id, other); (whyOf[find(id)] = whyOf[find(id)] || {})[kk.why] = 1;
+          });
+          others.push(id);
+        });
       });
     });
     /* v6.9.317 - AND NOW THE SPELLING MISTAKES. Bucket by "the name with one word left out",
@@ -33382,6 +33455,7 @@ function viewCatalogue() {
           if (g[a].w.length < 4 || g[b].w.length < 4) continue;
           if (!dupEdit1(g[a].w, g[b].w)) continue;
           if (find(g[a].id) === find(g[b].id)) continue;
+          if (!nameMayJoin(g[a].id, g[b].id)) continue;   /* 6.9.653 - different numbers, different men */
           join(g[a].id, g[b].id);
           var rt = find(g[a].id);
           (whyOf[rt] = whyOf[rt] || {})["one letter apart (" + g[a].w + " / " + g[b].w + ")"] = 1;
@@ -47013,6 +47087,8 @@ function viewCatalogue() {
     if (act === "q-win" || act === "q-lose") {
       var _qw = (S.data.quotes || []).filter(function (x) { return x.id === id; })[0];
       if (!_qw) return;
+      /* 6.9.654 - Won / Lost on another executive's quote stays with him and the office */
+      if (!qMineFn()(_qw)) { toast("This is " + (_qw.createdBy || "another executive") + "\u2019s quote \u2014 he or the office marks it."); return; }
       var _wasL = String(_qw.status) === "Lost";
       _qw.status = act === "q-win" ? "Won" : "Lost";
       save("quotes", _qw).then(function (r) { if (r) toast("Quote " + _qw.status + "."); });
@@ -48788,6 +48864,31 @@ function viewCatalogue() {
     }
     if (act === "qz-brand") {
       var bch = t.getAttribute("data-brand");
+      /* 6.9.654 - HIS WORDS: "if pentair quoted by mukesh and vivek is quoting same brand to same
+         client, he must got alert that quoting duplicate, one can ignore and quote again" */
+      S.qz.dupOk = S.qz.dupOk || {};
+      var _bd = S.qz.dupOk[dkey(bch)] ? [] : qzBrandDups(S.qz.client, bch, S.qz.parentId);
+      if (_bd.length) {
+        var _bq = S.qz, _bt = t;
+        askSheet({ title: bch + " is already quoted to " + esc(S.qz.client || "this client"), danger: true, yes: "Quote anyway", no: "Go back",
+          sub: "Check with whoever made it before a second price goes out:",
+          body: _bd.slice(0, 6).map(function (x) {
+            return '<div style="margin:0 0 8px"><b>' + esc(x.quoteNo || "") + '</b> \u00b7 ' + esc(String(x.status || "Draft").toLowerCase()) + '<br>' +
+              'by <b>' + esc(x.createdBy || "?") + '</b> on ' + esc(dmy(String(x.createdAt || "").slice(0, 10)) || "?") +
+              ' \u00b7 ' + money(x.total) + (dkey(x.client) !== dkey(_bq.client) ? '<br><span style="color:#64748b">under the name ' + esc(x.client) + '</span>' : '') + '</div>';
+          }).join("") + (_bd.length > 6 ? '<div class="meta">and ' + (_bd.length - 6) + ' more</div>' : '') })
+        .then(function (yes) {
+          if (!yes || S.qz !== _bq) return;
+          _bq.dupOk[dkey(bch)] = 1;
+          try { save("audit", { id: "", createdAt: new Date().toISOString(), actor: S.user, action: "quote:dupbrand", target: String(_bq.client || ""),
+            detail: JSON.stringify({ brand: bch, others: _bd.slice(0, 6).map(function (x) { return x.quoteNo; }) }), ip: "" }, true); } catch (e) { }
+          /* the same as the tap would have done */
+          _bq.brand = bch; _bq.brandDiscs = _bq.brandDiscs || {};
+          if (_bq.brandDiscs[bch] === undefined) _bq.brandDiscs[bch] = clientDiscount(_bq.client, bch);
+          _bq.family = ""; _bq.q = String(_bt.getAttribute("data-q") || ""); _bq.step = 3; render();
+        });
+        return;
+      }
       S.qz.brand = bch;
       S.qz.brandDiscs = S.qz.brandDiscs || {};
       if (S.qz.brandDiscs[bch] === undefined) S.qz.brandDiscs[bch] = clientDiscount(S.qz.client, bch);
