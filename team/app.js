@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.648";
+  var APP_VERSION = "6.9.649";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -1097,6 +1097,13 @@
       return new Promise(function (r) { setTimeout(r, 800); }).then(function () { return apiRaw(action, extra, ms); });
     });
   }
+  /* 6.9.649 - " after 0.3s · 38 KB up · 2 other calls open" (ms < 0: the timeout, no "after") */
+  function apiHow(opt, ms) {
+    var kb = Math.max(1, Math.round(String((opt && opt.body) || "").length / 1024));
+    var open = Math.max(0, (_wireSmall || 0) - 1) + (_wireBig ? 1 : 0);
+    return (ms >= 0 ? " after " + (Math.round(ms / 100) / 10) + "s" : "") + " \u00b7 " + kb + " KB up \u00b7 " +
+      (open ? open + " other call" + (open === 1 ? "" : "s") + " open" : "nothing else open");
+  }
   function apiRaw(action, extra, ms) {
     if (BATCH_ACTS[action] && !_multiOff && !(extra && extra._solo)) return batchPush(action, extra, ms);   /* v6.9.570 */
     if (extra && extra._solo) { extra = Object.assign({}, extra); delete extra._solo; }
@@ -1125,7 +1132,7 @@
       timer = setTimeout(function () {
         timer = null;
         try { if (ctl) ctl.abort(); } catch (e) {}
-        rej(new Error("timed out after " + Math.round(limit / 1000) + "s"));
+        rej(new Error("timed out after " + Math.round(limit / 1000) + "s" + apiHow(opt, -1)));   /* 6.9.649 */
       }, limit);
       /* v6.9.261 - READ IT AS TEXT, THEN PARSE.
          r.json() throws a bare SyntaxError when the reply is not JSON, and every catch
@@ -1160,7 +1167,14 @@
           });
         })
         .then(function (j) { done(); res(j); })
-        .catch(function (e) { done(); rej(e); });
+        .catch(function (e) {
+          /* 6.9.649 - a bare "Load failed" says nothing; say after how long, how big, how crowded */
+          var _how = apiHow(opt, Date.now() - _t0);
+          if (e && e.message && !/ after \d/.test(e.message) && /load failed|failed to fetch|networkerror/i.test(e.message)) {
+            try { e = new Error(String(e.message) + _how); } catch (x) { }
+          }
+          done(); rej(e);
+        });
     }); });
   }
 
