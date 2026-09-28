@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.655";
+  var APP_VERSION = "6.9.656";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -43201,7 +43201,10 @@ function viewCatalogue() {
     bits.push(L.max ? 'Max <b>' + esc(stkQ(L.max, code)) + '</b>' : 'Max \u2014');
     return '<div data-act="stock-item" data-code="' + esc(code) + '" title="Set the levels" style="display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;min-height:44px;margin-top:4px;padding:4px 8px;border:1px dashed #cbd5e1;border-radius:8px;font-size:12.5px;color:#334155;cursor:pointer">' +
       stkPill(st) + bits.map(function (b) { return '<span style="white-space:nowrap">' + b + '</span>'; }).join('') +
-      '<span style="margin-left:auto;color:#0f766e;font-weight:700;white-space:nowrap">Set levels \u203a</span></div>';
+      (roleAny(["admin", "accounts", "godown"])
+        ? '<button class="btn sm ghost" data-act="stk-adj" data-code="' + esc(code) + '" title="Add or remove stock for this product" style="margin-left:auto;min-height:44px;padding:4px 12px;font-weight:700">\u00b1 Adjust</button>' +
+          '<span style="color:#0f766e;font-weight:700;white-space:nowrap">Set levels \u203a</span>'   /* 6.9.656 */
+        : '<span style="margin-left:auto;color:#0f766e;font-weight:700;white-space:nowrap">Set levels \u203a</span>') + '</div>';
   }
   function stkRoundPack(q, pack) { q = Math.max(0, q); return pack > 0 ? Math.ceil(q / pack) * pack : Math.ceil(q); }
 
@@ -43926,18 +43929,25 @@ function viewCatalogue() {
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
       '<button class="btn" data-act="stock-landing-save">Save</button></div>';
   }
-  function modalStockAdd(type) {
+  function modalStockAdd(type, code) {
     var title = type === "opening" ? "Set opening stock" : (type === "adjust" ? "Stock adjustment" : "Goods received");
+    /* 6.9.656 - opened from a count row: the product is already chosen, and its stock is shown */
+    var _pp = code ? (PRODUCTS.filter(function (x) { return x.code === code; })[0] || { code: code }) : null;
+    var _px = code ? (stkPositions()[code] || null) : null;
     var lbl = 'style="font-size:12px;color:#475569;margin:8px 0 2px"';
     var inp = 'style="width:100%;padding:9px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px"';
     var opts = PRODUCTS.map(function (p) { return '<option value="' + esc(p.code) + '">' + esc(p.code) + ' &mdash; ' + esc(p.desc || "") + '</option>'; }).join("");
     return '<h2 style="margin:0 0 4px">' + title + '</h2>' +
       '<div class="meta" style="font-size:12.5px;margin-bottom:6px">' +
       (type === "adjust" ? 'Enter a <b>negative</b> quantity to reduce stock (damage / loss), positive to add.' : 'Adds to on-hand. Deliveries already deduct automatically from received challans.') + '</div>' +
-      '<div ' + lbl + '>Product (type code or name)</div>' +
-      '<input id="stk_code" list="stk_prods" placeholder="Start typing a code or name…" ' + inp + '/>' +
+      (_pp
+        ? '<div style="margin:8px 0 2px;padding:8px 10px;background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px"><b>' + esc(_pp.desc || _pp.code) + '</b>' +
+          '<div style="font-size:12px;color:#475569">' + esc(_pp.code) + (_px && _px.counted ? ' \u00b7 in stock now <b>' + esc(stkQ(_px.onhand, code)) + '</b>' : '') + '</div></div>' +
+          '<input id="stk_code" type="hidden" value="' + esc(code) + '"/>'
+        : '<div ' + lbl + '>Product (type code or name)</div>' +
+          '<input id="stk_code" list="stk_prods" placeholder="Start typing a code or name…" ' + inp + '/>') +
       '<datalist id="stk_prods">' + opts + '</datalist>' +
-      '<div class="row" style="margin-top:2px"><div style="flex:1"><div ' + lbl + '>Quantity</div><input id="stk_qty" inputmode="numeric" ' + inp + '/></div>' +
+      '<div class="row" style="margin-top:2px"><div style="flex:1"><div ' + lbl + '>' + (type === "adjust" ? 'Quantity (+ add, \u2212 remove)' : 'Quantity') + '</div><input id="stk_qty" inputmode="text" placeholder="' + (type === "adjust" ? 'e.g. 10 or -2' : '') + '" ' + inp + '/></div>' +
       '<div style="flex:1"><div ' + lbl + '>Ref (supplier / bill)</div><input id="stk_ref" ' + inp + '/></div></div>' +
       '<div ' + lbl + '>Notes</div><input id="stk_notes" ' + inp + '/>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
@@ -46222,6 +46232,13 @@ function viewCatalogue() {
       return;
     }
     if (act === "stock-add") { S.modal = modalStockAdd(t.getAttribute("data-type") || "in"); render(); return; }
+    /* 6.9.656 - the same adjustment, from the product's own row; typed count figures are kept */
+    if (act === "stk-adj") {
+      if (S.pc) pcKeep();
+      S.modal = modalStockAdd("adjust", t.getAttribute("data-code") || ""); render();
+      setTimeout(function () { var q = el("stk_qty"); if (q) q.focus(); }, 0);
+      return;
+    }
     if (act === "stock-refresh") { STOCK_LOADED = false; STOCK_LOADING = false; S.stock = []; ensureStock(); toast("Refreshing stock…"); return; }
     if (act === "stock-save") {
       var _stype = t.getAttribute("data-type") || "in";
