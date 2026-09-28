@@ -241,7 +241,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.114.0";
+  var APP_VERSION = "1.115.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -1759,6 +1759,27 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
   }
 
 
+  /* 1.115.0 - the CRM's pdfSafe, byte for byte */
+  function pdfSafe(s) {
+    return String(s == null ? "" : s)
+      .replace(/\u20B9/g, "Rs.")
+      .replace(/[\u2018\u2019\u201A\u201B\u2032]/g, "'")
+      .replace(/[\u201C\u201D\u201E\u201F\u2033]/g, '"')
+      .replace(/[\u2013\u2014\u2015]/g, "-")
+      .replace(/[\u2192\u21D2\u27A4\u27A2\u279C\u2794\u2799\u279E]/g, "->")
+      .replace(/[\u2022\u25CF\u25CB\u25C6\u25C7\u25A0\u25A1\u2219\u2023\u2043\u30FB\u00B7\u2666\u2756\u276F\u00BB]/g, " \u00B7 ")
+      .replace(/[\u2713\u2714\u2705\u2611]/g, "")
+      .replace(/[^\x20-\xFF]/g, " ")
+      .replace(/\s+/g, " ").trim();
+  }
+  /* CRM 6.9.648 / Challan 1.115.0 - THE CHALLAN PRINT'S WORDS, CLEANED. A price-list description
+     with emoji bullets printed as garbage and spaced-out letters - core Helvetica
+     draws only Latin-1. Each emoji becomes a small dot, then pdfSafe() does what it does for the
+     quote. Byte-identical in the CRM and the Challan app. */
+  function chPdfWords(s) {
+    return pdfSafe(String(s == null ? "" : s).replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, " \u00B7 "))
+      .replace(/(?:\u00B7\s*){2,}/g, "\u00B7 ").replace(/^\u00B7\s*/, "");
+  }
   function parseCatalog(rows) {
     var head = -1, i, r;
     for (i = 0; i < rows.length && i < 10; i++) {
@@ -5889,7 +5910,7 @@ function discRowOn(client, brand, onYmd) {
     var words = function (l) {
       var cd = isJobLine(l) ? "JOB WORK" : (isOtherLine(l) ? "" : String(l.code || "").trim());
       var ds = String(l.desc || l.code || "");
-      return ds + (cd && cd !== ds ? "  (" + cd + ")" : "");
+      return chPdfWords(ds + (cd && cd !== ds ? "  (" + cd + ")" : ""));   /* 6.9.648 / 1.115.0 */
     };
     /* CRM 6.9.633 / Challan 1.112.0 - a kit set to show its parts: one small grey line under it */
     var _kits = {}; try { _kits = stkBom(); } catch (e) { _kits = {}; }
@@ -5897,7 +5918,7 @@ function discRowOn(client, brand, onYmd) {
       var b = _kits[String((l && l.code) || "").trim()];
       if (!b || !b.show) return "";
       var q = num(l.qty) || 1;
-      return "Includes: " + b.parts.map(function (p) { return (p.qty * q) + " x " + (p.desc || p.code); }).join(", ");
+      return chPdfWords("Includes: " + b.parts.map(function (p) { return (p.qty * q) + " x " + (p.desc || p.code); }).join(", "));
     };
     var kitLines = function (l, s) { var t = kitWords(l); if (!t) return []; F(); doc.setFontSize(9 * s); var r = doc.splitTextToSize(t, dW(s)); F("bold"); doc.setFontSize(12 * s); return r; };
     var measure = function (s) {
