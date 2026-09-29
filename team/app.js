@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.658";
+  var APP_VERSION = "6.9.659";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -22726,6 +22726,131 @@ function viewCatalogue() {
       return !(Math.abs(v) > 0.5);
     });
   }
+  /* ===== 6.9.659 - THE CHALLAN LOG, CLIENT-WISE =====
+     His words: "make provision for client wise challan log also". One line per client, his
+     challans under him on a tap - the log's own rows, so nothing on them works differently. */
+  function regByClient() { return S.regBy === "client"; }
+  /* "Only" - receipt pending (the Receipts pending queue's own list) or yet to finalise */
+  var _regRcpt = {};
+  function regRcptMap() {
+    var m = {};
+    try { rcptAllWaiting().forEach(function (c) { if (c && c.id) m[c.id] = 1; }); } catch (e) { m = {}; }
+    return m;
+  }
+  function regOnlyPass(c) {
+    var o = S.regOnly || "";
+    if (o === "rcpt") return !!_regRcpt[(c || {}).id];
+    if (o === "fin") return !inHisab(c);
+    return true;
+  }
+  function regByBar() {
+    var b = function (v, label) {
+      var on = (v === "client") === regByClient();
+      return '<button class="btn sm ' + (on ? '' : 'ghost') + '" data-act="regx-by" data-v="' + v + '" style="min-height:44px">' + label + '</button>';
+    };
+    var cxId = {}, nR = 0, nF = 0;
+    (((S.cancelled || {}).challans) || []).forEach(function (c) { if (c && c.id) cxId[c.id] = 1; });
+    ((((S.data || {}).challans) || [])).forEach(function (c) {
+      if (!c || c._isReturn || cxId[c.id] || !regMine(c) || !regPass(c)) return;
+      if (_regRcpt[c.id]) nR++;
+      if (!inHisab(c)) nF++;
+    });
+    var o = S.regOnly || "";
+    var ob = function (v, label, n, ink) {
+      return '<button class="btn sm ' + (o === v ? '' : 'ghost') + '" data-act="regx-only" data-v="' + v + '" style="min-height:44px' +
+        (o !== v && n ? ';color:' + ink + ';border-color:' + ink : '') + '">' + label + (v ? ' (' + n + ')' : '') + '</button>';
+    };
+    return '<div class="row" style="gap:6px;flex-wrap:wrap;margin:0 0 6px;align-items:center">' +
+      '<span style="font-size:12.5px;font-weight:700;color:#475569;min-width:42px">Show</span>' +
+      b("num", "By challan number") + b("client", "By client") + '</div>' +
+      '<div class="row" style="gap:6px;flex-wrap:wrap;margin:0 0 8px;align-items:center">' +
+      '<span style="font-size:12.5px;font-weight:700;color:#475569;min-width:42px">Only</span>' +
+      ob("", "All", 0) + ob("rcpt", "Receipt pending", nR, "#b91c1c") + ob("fin", "Yet to finalise", nF, "#b45309") + '</div>';
+  }
+  function regClientGroups() {
+    var cxId = {};
+    (((S.cancelled || {}).challans) || []).forEach(function (c) { if (c && c.id) cxId[c.id] = 1; });
+    var m = {}, out = [];
+    ((((S.data || {}).challans) || [])).forEach(function (c) {
+      if (!c || c._isReturn || cxId[c.id]) return;
+      if (!regMine(c) || !regPass(c) || !regOnlyPass(c)) return;
+      var k = String(c.customerName || "").trim() || "(no client)";
+      var g = m[k];
+      if (!g) { g = m[k] = { name: k, chs: [], amt: 0, last: "", open: 0, rcpt: 0 }; out.push(g); }
+      g.chs.push(c);
+      g.amt += Number(chValue(c)) || 0;
+      var d = regDate(c); if (d > g.last) g.last = d;
+      if (!inHisab(c)) g.open++;
+      if (_regRcpt[c.id]) g.rcpt++;
+    });
+    out.forEach(function (g) {
+      g.chs.sort(function (a, b) {
+        var sa = regSerial(a), sb = regSerial(b);
+        if (sa !== null && sb !== null) return sb - sa;
+        if (sa !== null) return -1;
+        if (sb !== null) return 1;
+        return String(regDate(b)).localeCompare(String(regDate(a)));
+      });
+    });
+    var srt = S.regSort || "last";
+    out.sort(function (a, b) {
+      if (srt === "amt") return (b.amt - a.amt) || alpha(a.name, b.name);
+      if (srt === "az") return alpha(a.name, b.name);
+      return String(b.last).localeCompare(String(a.last)) || alpha(a.name, b.name);
+    });
+    return out;
+  }
+  function regClientCard() {
+    var G = regClientGroups(), open = S.regCl || {};
+    var nCh = 0, tot = 0;
+    G.forEach(function (g) { nCh += g.chs.length; tot += g.amt; });
+    var srt = S.regSort || "last";
+    var chip = function (v, label) {
+      return '<button class="btn sm ' + (srt === v ? '' : 'ghost') + '" data-act="regx-sort" data-v="' + v + '" style="min-height:44px">' + label + '</button>';
+    };
+    var TH = function (x, r) {
+      return '<th style="padding:5px 7px;font-weight:700;font-size:12px;color:#fff;white-space:nowrap;text-align:' + (r ? "right" : "left") + '">' + esc(x) + '</th>';
+    };
+    var h = '<div class="card" style="padding:8px 10px">' +
+      '<div style="font-weight:800;font-size:13.5px;margin-bottom:5px">Client-wise' +
+      ' <span style="font-weight:600;color:#64748b;font-size:12.5px">· ' + plural(G.length, "client") + ' · ' +
+      plural(nCh, "challan") + ' · ' + money(tot) + ' · tap a client to see his challans</span></div>' +
+      '<div class="row" style="gap:6px;flex-wrap:wrap;margin-bottom:6px;align-items:center">' +
+      '<span style="font-size:12.5px;color:#475569">Order</span>' +
+      chip("last", "Latest challan first") + chip("amt", "Most amount first") + chip("az", "A–Z") + '</div>';
+    if (!G.length) return h + '<div class="empty">No challan answers that filter.</div></div>';
+    h += regSwipe("the amount, what he owes now and his limit") +
+      '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table style="border-collapse:collapse;min-width:100%">' +
+      '<tr style="background:#0b3b36">' + TH("CLIENT") + TH("CHALLANS", 1) + TH("LAST") + TH("AMT", 1) + TH("OWES NOW", 1) + TH("LIMIT", 1) + TH("") + '</tr>';
+    G.forEach(function (g, i) {
+      var bal = regBalances(g.name), lim = Number(bal.terms.limit) || 0, isOpen = !!open[g.name];
+      var bg = isOpen ? "#f0fdfa" : (i % 2 ? "#f8fafc" : "#fff");
+      var notes = [];
+      if (g.open) notes.push('<span style="color:#b45309">' + g.open + ' not finalised</span>');
+      if (g.rcpt) notes.push('<span style="color:#b91c1c">' + g.rcpt + ' receipt pending</span>');
+      h += '<tr style="background:' + bg + '">' +
+        '<td style="' + regCell(";max-width:220px;overflow:hidden;text-overflow:ellipsis;line-height:1.35") + '">' +
+          '<a href="#" data-act="regx-cl" data-cl="' + esc(g.name) + '" style="font-weight:700;color:#0b3b36;text-decoration:none">' + esc(g.name) + '</a>' +
+          (notes.length ? '<div style="font-size:12px">' + notes.join(' · ') + '</div>' : '') + '</td>' +
+        '<td style="' + regCell(";text-align:right;font-weight:700") + '">' + g.chs.length + '</td>' +
+        '<td style="' + regCell() + '">' + esc(regDMY(g.last).replace(/\/(\d\d)(\d\d)$/, "/$2")) + '</td>' +
+        '<td style="' + regCell(";text-align:right;font-weight:700") + '">' + moneySgn(g.amt) + '</td>' +
+        '<td style="' + regCell(";text-align:right;font-weight:700;color:" + regBalColor(bal.due)) + '">' + moneySgn(bal.due) + '</td>' +
+        '<td style="' + regCell(";text-align:right;color:" + (lim > 0 && bal.due > lim + 0.5 ? "#b91c1c" : "#64748b")) + '">' +
+          (lim > 0 ? moneySgn(lim) : '<span style="font-size:12px">not set</span>') + '</td>' +
+        '<td style="' + regCell(";text-align:right") + '"><button class="btn sm ghost" data-act="regx-cl" data-cl="' + esc(g.name) + '" style="min-height:44px;padding:2px 10px">' +
+          (isOpen ? 'Hide ▴' : 'Challans ▾') + '</button></td></tr>';
+      if (isOpen) {
+        var body = "";
+        g.chs.forEach(function (c, j) { body += regRow(regSerial(c), c, (j % 2) === 1, false); });
+        h += '<tr style="background:#f0fdfa"><td colspan="7" style="padding:4px 6px 10px;border-top:0">' +
+          '<table style="border-collapse:collapse;min-width:100%;border:1px solid #99f6e4">' + regHead() + body + '</table>' +
+          '<div class="acts" style="margin-top:6px"><button class="btn sm ghost" data-act="ch-hisab" data-cl="' + esc(g.name) + '" style="min-height:44px">Open his HISAB</button></div>' +
+          '</td></tr>';
+      }
+    });
+    return h + '</table></div></div>';
+  }
   function viewRegister() {
     if (!canSeeRegister()) return '<div class="empty">The register is for the owner, accounts and the executive whose clients are on it.</div>';
     var R = regBuild();
@@ -22800,6 +22925,11 @@ function viewCatalogue() {
       '<div class="stat' + (R.gaps.length ? ' alert' : '') + '"><div class="n">' + R.gaps.length + '</div><div class="l">Numbers missing</div></div></div>';
 
     h += regFilterBar();
+    /* 6.9.659 - client-wise, on his ask; the number view below is unchanged */
+    _regRcpt = regRcptMap();
+    if (S.regOnly) filt = true;   /* a narrowed list hides the gap rows, like any filter */
+    h += regByBar();
+    if (regByClient()) return h + regClientCard();
 
     /* ---- the serial line ---- */
     var shown = 0, hidden = 0;
@@ -22815,7 +22945,7 @@ function viewCatalogue() {
       }
       var mine = row.chs.filter(regMine);
       if (!mine.length) { if (!filt) { body += regHiddenRow(row.n, row.chs[0]); hidden++; } return; }
-      var pass = mine.filter(regPass);
+      var pass = mine.filter(regPass).filter(regOnlyPass);
       if (!pass.length) return;
       var dup = row.chs.length > 1;
       pass.forEach(function (c) { body += regRow(row.n, c, (i++ % 2) === 1, dup); shown++; });
@@ -22826,6 +22956,7 @@ function viewCatalogue() {
       ' <span style="font-weight:600;color:#64748b;font-size:12.5px">· ' + shown + ' shown · ' +
       (REG_NEWEST_FIRST ? 'latest number first' : 'first number first') +
       (hidden ? ' · ' + hidden + ' belong to another executive' : '') +
+      (S.regOnly === "rcpt" ? ' · receipt pending only' : S.regOnly === "fin" ? ' · yet to finalise only' : '') +
       (filt ? ' · filtered, so gaps are hidden' : '') + '</span></div>' +
       (shown || (!filt && R.line.length)
         ? regSwipe("the amount, the balance and limit on a phone; a laptop shows the whole row") +
@@ -22835,7 +22966,7 @@ function viewCatalogue() {
 
     /* ---- and the old book, complete ---- */
     var ob = "", on = 0, j = 0;
-    R.old.filter(regMine).filter(regPass).forEach(function (c) { ob += regRow(null, c, (j++ % 2) === 1, false); on++; });
+    R.old.filter(regMine).filter(regPass).filter(regOnlyPass).forEach(function (c) { ob += regRow(null, c, (j++ % 2) === 1, false); on++; });
     h += '<div class="card" style="padding:8px 10px">' +
       '<div style="font-weight:800;font-size:13.5px;margin-bottom:2px">The old book' +
       ' <span style="font-weight:600;color:#64748b;font-size:12.5px">· ' + on + ' shown of ' + R.nOld + '</span></div>' +
@@ -46631,6 +46762,16 @@ function viewCatalogue() {
        regx- because reg-clear belongs to the BRAND register and has since 6.9.458; this handler
        sits earlier in the chain and would have eaten its taps. t_dead_taps caught it. */
     if (act === "regx-clear") { S.reg = {}; render(); return; }
+    /* 6.9.659 - the client-wise log: which view, which order, which clients are open */
+    if (act === "regx-by") { S.regBy = t.getAttribute("data-v") === "client" ? "client" : "num"; keepScroll = true; render(); return; }
+    if (act === "regx-only") { S.regOnly = t.getAttribute("data-v") || ""; keepScroll = true; render(); return; }
+    if (act === "regx-sort") { S.regSort = t.getAttribute("data-v") || "last"; keepScroll = true; render(); return; }
+    if (act === "regx-cl") {
+      if (e && e.preventDefault) e.preventDefault();
+      var _rk = t.getAttribute("data-cl") || "";
+      S.regCl = S.regCl || {}; if (S.regCl[_rk]) delete S.regCl[_rk]; else S.regCl[_rk] = 1;
+      keepScroll = true; render(); return;
+    }
     /* v6.9.481 - the same shape for the Payments screen's two sections. keepScroll, because
        6.9.475 made staying where he was the standard for every screen in this app.
 
