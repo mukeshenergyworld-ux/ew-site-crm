@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.663";
+  var APP_VERSION = "6.9.664";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -782,28 +782,18 @@
   window.EW_pdfChoose = pdfOutChoose;
   function pdfOut(doc, fname, title) {
     pdfDlStamp(doc);   /* 6.9.578 - who took it, and when */
-    /* 6.9.579 - where the app offers it (the CRM), the choice first: the file, or a link to paste */
-    if (typeof window !== "undefined" && window.EW_pdfChoose && doc && !doc._chosen) { doc._chosen = true; return window.EW_pdfChoose(doc, fname, title); }
+    /* 6.9.664 / 1.118.0 / 1.58.0 - HIS WORDS: "its not downloading pdf, its very time consuming,
+       change everywhere to download pdf". Every PDF downloads at once: no "Your PDF is ready"
+       choice and no share sheet (Safari on a Mac says it can share a file, so "Download" opened
+       the share sheet and no file came). WhatsApp and Telegram keep their own buttons. */
     var now = Date.now();
     if (now - _pdfOutAt < 2000) return Promise.resolve(false);   /* the same press twice */
     _pdfOutAt = now;
-    fname = String(fname || "document.pdf");
-    if (!canShareFile()) { doc.save(fname); return Promise.resolve(true); }
-    var file = null;
-    try { file = new File([doc.output("blob")], fname, { type: "application/pdf" }); } catch (e) { file = null; }
-    if (!file || !navigator.canShare({ files: [file] })) { doc.save(fname); return Promise.resolve(true); }
-    /* v6.9.563 - THE FILE AND NOTHING ELSE. A title rides along as a second item: "Copy" on the
-       share sheet put the PDF and a text on the clipboard, and a paste dropped both - "double file". */
-    return navigator.share({ files: [file] })
-      .then(function () { return true; })
-      .catch(function (e) {
-        /* his own Cancel on the sheet is not an error and gets no file; anything else downloads */
-        if (e && /abort/i.test(String(e.name))) return false;
-        doc.save(fname); return true;
-      });
+    doc.save(String(fname || "document.pdf"));
+    return Promise.resolve(true);
   }
-  /* the word on the button: what the tap will actually do on this device */
-  function pdfBtnLabel(base) { return canShareFile() ? "Print / share" : base; }
+  /* the word on the button: every PDF button downloads now (6.9.664) */
+  function pdfBtnLabel(base) { return base; }
   var UP_SAY = { pdfHost: "Uploading the document", tgSend: "Sending to Telegram" };
   /* ================= WHOSE TURN ON THE WIRE  (v6.9.557, 20 Sep 2026) =================
      One choked uplink, one rule: a document upload owns the line while it runs, and everything
