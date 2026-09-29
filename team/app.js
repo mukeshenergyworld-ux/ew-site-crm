@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.664";
+  var APP_VERSION = "6.9.665";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -27965,6 +27965,7 @@ function viewCatalogue() {
       hisabDayBand() + hisabNotStampedBand();
     if (cl && !isMineClient(cl)) return h + '<div class="empty"><b>' + esc(cl) + '</b> is assigned to another sales executive, so their hisab is not open to you. You can view and follow up on the clients assigned to you.</div>';
     if (!S.q) {
+      if (canSee("payments")) h += '<div class="acts" style="margin:8px 0">' + advNewBtn() + '</div>';   /* 6.9.665 */
       var outs = hisabOutstanding();
       if (!seesAllClients()) outs = outs.filter(function (r) { return isMineClient(r.name); });
       /* v6.9.463 - the age is worked out HERE, before the tag filter, because two of the tags
@@ -28091,6 +28092,15 @@ function viewCatalogue() {
       return h + oh;
     }
     if (!cl) {
+      /* 6.9.665 - a client on the book with nothing on his account yet: say so, and take his advance */
+      var _nc = clientByName(String(S.q).trim());
+      if (_nc && _nc.name && (seesAllClients() || isMineClient(_nc.name))) {
+        return h + '<div class="card"><h3 style="margin:0 0 4px">' + esc(_nc.name) + ' — nothing on his account yet</h3>' +
+          '<div class="meta" style="font-size:13px">No delivery, no old balance and no payment so far. Money he pays before the material goes in as an advance: it sits as credit and comes off his first delivery by itself.</div>' +
+          (canSee("payments") ? '<div class="acts" style="flex-wrap:wrap;gap:8px;margin-top:9px">' +
+            '<button class="btn sm" data-act="pay-in" data-n="' + esc(_nc.name) + '" data-k="advance" style="min-height:44px;background:#0f766e;border-color:#0f766e">+ Advance</button>' +
+            '<button class="btn sm ghost" data-act="pay-in" data-n="' + esc(_nc.name) + '" data-k="in" style="min-height:44px">+ Payment</button></div>' : '') + '</div>';
+      }
       var guess = billNames.filter(function (n) { return n.toLowerCase().indexOf(String(S.q).trim().toLowerCase()) >= 0; });
       return h + '<div class="empty">No received challans matching <b>' + esc(S.q) + '</b> yet.' +
         (guess.length > 1 ? ' Did you mean: ' + guess.map(function (n) { return '<b>' + esc(n) + '</b>'; }).join(", ") + '?' : ' A challan lands here automatically once its receipt is confirmed.') + '</div>';
@@ -31547,7 +31557,7 @@ function viewCatalogue() {
     h += '<div class="acts" style="margin-bottom:10px">' +
       '<button class="btn sm ' + (S.payHist ? '' : 'ghost') + '" data-act="pay-hist">' +
       (S.payHist ? 'Hide payment history' : 'Payment history \u2014 all clients') + '</button>' +
-      '<button class="btn sm ghost" data-act="pay-csv">Download all payments (CSV)</button></div>';
+      '<button class="btn sm ghost" data-act="pay-csv">Download all payments (CSV)</button>' + advNewBtn() + '</div>';   /* 6.9.665 */
     if (S.payHist) return h + payHistHtml();
 
     /* v6.9.224 COLLECTIONS SEARCH.
@@ -31794,6 +31804,24 @@ function viewCatalogue() {
     }).catch(function () { land(false); });
   }
 
+  /* ===== 6.9.665 - AN ADVANCE FROM A CLIENT WITH NOTHING ON HIS ACCOUNT YET =====
+     His words: "make a provision under paymetn and hisab, to register advance of a new client". */
+  function advNewBtn() {
+    if (!canSee("payments")) return "";
+    return '<button class="btn sm" data-act="adv-new" style="min-height:44px;background:#0f766e;border-color:#0f766e">+ Advance from a client</button>';
+  }
+  function advClientNames() {
+    return (S.data.clients || []).filter(function (c) { return c && c.name && String(c.active || "").toUpperCase() !== "N" && (seesAllClients() || isMineClient(c.name)); })
+      .map(function (c) { return String(c.name); }).sort(alpha);
+  }
+  function modalAdvPick(pre) {
+    return '<h2>Advance from a client</h2>' +
+      '<p class="sub">Money in before any material. Pick the client; the next step is the usual advance form.</p>' +
+      '<label>Client</label><input id="adv_cl" list="adv_cls" placeholder="Type the client’s name…" value="' + esc(pre || "") + '" style="min-height:44px"/>' +
+      '<datalist id="adv_cls">' + advClientNames().map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join("") + '</datalist>' +
+      '<div class="meta" style="font-size:12.5px;margin-top:6px">A new client? Add him under <b>Clients › + New client</b> first, then come back here — the advance must sit on his own account.</div>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button><button class="btn" data-act="adv-next">Next</button></div>';
+  }
   function modalPayIn(client, kind) {
     var _pk = String(kind || "in"), K = PAY_KINDS[_pk] || PAY_KINDS["in"];
     var l = clientLedger(client), sites = clientSiteList(client);
@@ -50822,6 +50850,14 @@ function viewCatalogue() {
     }
 
     if (act === "pay-in") { S.modal = modalPayIn(t.getAttribute("data-n"), t.getAttribute("data-k") || "in"); render(); return; }
+    /* 6.9.665 - an advance from a client with nothing on his account yet */
+    if (act === "adv-new") { S.modal = modalAdvPick(""); render(); setTimeout(function () { var x = el("adv_cl"); if (x) x.focus(); }, 0); return; }
+    if (act === "adv-next") {
+      var _at = String(val("adv_cl") || "").trim(), _ac = _at ? clientByName(_at) : null;
+      if (!_ac || !_ac.name) { toast(_at ? "“" + _at + "” is not a client yet — add him under Clients first." : "Pick the client first."); return; }
+      if (!(seesAllClients() || isMineClient(_ac.name))) { toast("That client is assigned to another executive."); return; }
+      S.modal = modalPayIn(String(_ac.name), "advance"); render(); return;
+    }
     /* v6.9.360 - switching kind re-opens the same form on the other tab. Nothing typed is carried
        across on purpose: an amount meant as money IN must never become money OUT by a mis-tap. */
     if (act === "pi-kind") { S.modal = modalPayIn(t.getAttribute("data-n"), t.getAttribute("data-k")); render(); return; }
