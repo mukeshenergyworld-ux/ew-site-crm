@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.661";
+  var APP_VERSION = "6.9.662";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -4589,7 +4589,8 @@ window.addEventListener("beforeunload", function (ev) {
     { k: "client", t: "Client scorecard", when: "every Monday" },
     { k: "pitch", t: "Weekly pitch reminder", when: "every Monday" },
     { k: "pulse", t: "Owner's weekly pulse", when: "every Monday" },   /* 6.9.652 */
-    { k: "partner", t: "Plumber & architect scorecard", when: "the 1st and the 16th" }
+    { k: "partner", t: "Plumber & architect scorecard", when: "the 1st and the 16th" },
+    { k: "money", t: "Money check", when: "every day" }   /* 6.9.662 */
   ];
   /* the latest slot of each report on or before today, if it is still fresh enough to send */
   function rsSlots(t) {
@@ -4601,6 +4602,7 @@ window.addEventListener("beforeunload", function (ev) {
     if (mon) { out.push({ k: "exec", slot: "exec:" + mon, day: mon }); out.push({ k: "client", slot: "client:" + mon, day: mon }); out.push({ k: "pitch", slot: "pitch:" + mon, day: mon }); out.push({ k: "pulse", slot: "pulse:" + mon, day: mon }); }
     var half = back(function (d) { var n = Number(d.slice(8, 10)); return n === 1 || n === 16; }, 4);
     if (half) out.push({ k: "partner", slot: "partner:" + half, day: half });
+    out.push({ k: "money", slot: "money:" + t, day: t });   /* 6.9.662 - every day */
     return out;
   }
   function rsLocal() { try { return JSON.parse(localStorage.getItem("ew_rs_sent") || "{}") || {}; } catch (e) { return {}; } }
@@ -4655,6 +4657,7 @@ window.addEventListener("beforeunload", function (ev) {
     if (k === "client") return rsClientReport();
     if (k === "pitch") return rsPitchSheet();
     if (k === "pulse") return rsPulseSheet();   /* 6.9.652 */
+    if (k === "money") return rsMoneySheet();   /* 6.9.662 */
     return rsPartnerReport();
   }
   function rsSend(k) {
@@ -5506,6 +5509,7 @@ window.addEventListener("beforeunload", function (ev) {
     if (k === "client") return rsSetClient();
     if (k === "pitch") return rsSetPitch();
     if (k === "pulse") return rsSetPulse();   /* 6.9.652 */
+    if (k === "money") return rsSetMoney();   /* 6.9.662 */
     return rsSetPartner();
   }
 
@@ -35816,11 +35820,8 @@ function viewCatalogue() {
       } finally { S.q = keepQ; S.tab = keepTab; _acctCards = keepCards; drawMs = Date.now() - d0; }
     }
     /* the Today tile and the HISAB total */
-    var tile = 0, tl = {};
-    (S.data.challans || []).forEach(function (c) { if (String(c.receiptReceived).toUpperCase() === "Y") tl[c.customerName] = 1; });
-    Object.keys(tl).forEach(function (n) { tile += clientLedger(n).due; });
-    var hTot = hisabOutstanding().reduce(function (a, r) { return a + r.due; }, 0);
-    if (Math.abs(tile - hTot) > 1) add("totals", "", tile - hTot, "The Today tile “Client outstanding” says " + money(tile) + "; the HISAB total of what clients owe is " + money(hTot) + ".");
+    var tile = todayOwed(), hTot = hisabOutstanding().reduce(function (a, r) { return a + r.due; }, 0);   /* 6.9.662 */
+    if (Math.abs(tile - sumPos) > 1) add("totals", "", tile - sumPos, "The Today tile “Client outstanding” says " + money(tile) + "; the clients' own balances add up to " + money(sumPos) + ".");
     /* a new version moved nobody's money */
     var prev = mcFpLoad(), moved = 0;
     if (prev && prev.c && prev.ver && prev.ver !== APP_VERSION) {
@@ -35865,6 +35866,169 @@ function viewCatalogue() {
     }
     return h + '</div>';
   }
+  /* ================= MATCH WITH TALLY  (6.9.662) =================
+     Tally is the legal book; the app is the working book. Once a month accounts exports Tally's
+     Sundry Debtors (Display > Account Books > Group Summary > Sundry Debtors, Export > Excel) and
+     uploads it here. Every client is compared with the app's balance ON THE SAME DATE. A Tally name
+     that is not a client's exact name is linked by hand once (an audit row, "tally:link"). */
+  function mtParse(rows) {
+    var txt = function (r, c) { return String(((rows[r] || [])[c]) == null ? "" : rows[r][c]).trim(); };
+    var hr = -1, cN = 0, cDr = -1, cCr = -1, cBal = -1, asOn = "";
+    for (var r = 0; r < Math.min(rows.length, 40) && hr < 0; r++)
+      for (var c = 0; c < (rows[r] || []).length; c++) if (/^(particulars|ledger( name)?|name of ledger|party( name)?)$/i.test(txt(r, c))) { hr = r; cN = c; break; }
+    if (hr < 0) return { kind: "unknown" };
+    for (var rr = hr; rr <= hr + 2; rr++) for (var c2 = 0; c2 < (rows[rr] || []).length; c2++) {
+      var t = txt(rr, c2);
+      if (/^debit/i.test(t) && cDr < 0) cDr = c2;
+      else if (/^credit/i.test(t) && cCr < 0) cCr = c2;
+      else if (/closing/i.test(t) && cBal < 0) cBal = c2;
+    }
+    for (var r3 = 0; r3 < hr; r3++) for (var c3 = 0; c3 < (rows[r3] || []).length; c3++) {
+      var m = txt(r3, c3).match(/(?:to|as on|as at)\s+(.+)$/i);
+      if (m) { var d = tallyDate(m[1].trim()); if (d) asOn = d; }
+      if (!asOn && rows[r3][c3] instanceof Date) asOn = tallyDate(rows[r3][c3]);
+    }
+    var out = [];
+    for (var r4 = hr + 1; r4 < rows.length; r4++) {
+      var nm = txt(r4, cN);
+      if (!nm || /^(grand )?total$|^sundry debtors$|^particulars$|^debit$|^credit$/i.test(nm)) continue;
+      var v, has = false;
+      if (cDr >= 0 || cCr >= 0) {
+        var dr = cDr >= 0 ? txt(r4, cDr) : "", cr = cCr >= 0 ? txt(r4, cCr) : "";
+        has = !!(dr || cr); v = tallyNum(dr) - tallyNum(cr);
+      } else if (cBal >= 0) {
+        var b = txt(r4, cBal); has = !!b; v = tallyNum(b) * (/cr/i.test(b) ? -1 : 1);
+      }
+      if (!has) continue;
+      out.push({ name: nm, val: Math.round(v * 100) / 100 });
+    }
+    return { kind: out.length ? "debtors" : "unknown", asOn: asOn, rows: out };
+  }
+  function mtLinks() {
+    var m = {};
+    (S.data.audit || []).slice().sort(function (a, b) { return String(a.createdAt || "").localeCompare(String(b.createdAt || "")); }).forEach(function (a) {
+      if (!a || a.action !== "tally:link") return;
+      var d = {}; try { d = JSON.parse(a.detail || "{}"); } catch (e) { return; }
+      if (d.tally) m[dgKey(d.tally)] = String(d.client || "");
+    });
+    return m;
+  }
+  function mtAppAsOn(nm, asOn) {
+    var L = clientLedger(nm), b = Number(L.opening) || 0;
+    (L.chs || []).forEach(function (c) { if (!asOn || dstr(c.createdAt) <= asOn) b += chValue(c); });
+    (L.pays || []).forEach(function (p) { if (!asOn || dstr(p.date || p.createdAt) <= asOn) b -= payAmt(p); });
+    (L.rets || []).forEach(function (r) { if (!asOn || dstr(r.receivedAt || r.createdAt) <= asOn) b -= returnNet(r); });
+    return Math.round(b * 100) / 100;
+  }
+  function mtRun(P) {
+    var names = hisabClientNames(), byKey = {}, links = mtLinks(), asOn = P.asOn || today();
+    names.forEach(function (n) { byKey[dgKey(n)] = n; });
+    (S.data.clients || []).forEach(function (c) { var k = dgKey(c.name); if (k && !byKey[k]) { var r = hisabResolve(c.name); if (r) byKey[k] = r; } });
+    var used = {}, pairs = [], tOnly = [];
+    P.rows.forEach(function (t) {
+      var nm = links[dgKey(t.name)] || byKey[dgKey(t.name)] || "";
+      if (nm && hisabResolve(nm)) nm = hisabResolve(nm);
+      if (!nm) { tOnly.push(t); return; }
+      if (used[nm]) { used[nm].tally += t.val; used[nm].tnames.push(t.name); return; }
+      var p = { client: nm, tally: t.val, tnames: [t.name] }; used[nm] = p; pairs.push(p);
+    });
+    pairs.forEach(function (p) { p.app = mtAppAsOn(p.client, asOn); p.diff = Math.round((p.app - p.tally) * 100) / 100; });
+    var aOnly = names.filter(function (n) { return !used[n]; }).map(function (n) { return { client: n, app: mtAppAsOn(n, asOn) }; })
+      .filter(function (x) { return Math.abs(x.app) > 0.5; });
+    pairs.sort(function (a, b) { return Math.abs(b.diff) - Math.abs(a.diff); });
+    var bad = pairs.filter(function (p) { return Math.abs(p.diff) > 1; });
+    return { asOn: asOn, file: P.file || "", pairs: pairs, tOnly: tOnly, aOnly: aOnly, bad: bad.length,
+      badAmt: Math.round(bad.reduce(function (a, p) { return a + Math.abs(p.diff); }, 0)),
+      tallyTot: Math.round(P.rows.reduce(function (a, t) { return a + t.val; }, 0)) };
+  }
+  function mtLast() { return auditNewest("tally:match", function () { return "x"; }, "x"); }
+  function mtReadFile(f) {
+    if (!f) return;
+    toast("Reading " + f.name + "…");
+    xlsxReady().then(function (X) {
+      if (!X) { toast("The Excel reader did not load — check the connection and pick the file again."); return; }
+      var rd = new FileReader();
+      rd.onload = function () {
+        var P;
+        try {
+          var wb = X.read(new Uint8Array(rd.result), { type: "array", cellDates: true });
+          P = mtParse(X.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: "", raw: true }));
+        } catch (e) { P = { kind: "unknown" }; }
+        if (P.kind !== "debtors") { toast(f.name + ": no ledger names with Debit / Credit found. Export Group Summary of Sundry Debtors from Tally as Excel."); return; }
+        P.file = f.name;
+        var dIn = (el("mt_date") || {}).value; if (dIn) P.asOn = dIn;
+        S.mt = { P: P, R: mtRun(P) };
+        auditFact("tally:match", P.file, { asOn: S.mt.R.asOn, file: P.file, clients: S.mt.R.pairs.length, differ: S.mt.R.bad, differAmt: S.mt.R.badAmt, tallyOnly: S.mt.R.tOnly.length, appOnly: S.mt.R.aOnly.length });
+        render();
+      };
+      rd.readAsArrayBuffer(f);
+    });
+  }
+  function mtCard() {
+    if (!roleAny(["admin", "accounts"])) return "";
+    var M = S.mt, R = M && M.R, last = mtLast();
+    var h = '<div class="card"><h3 style="margin:0">Match with Tally</h3>' +
+      '<div class="meta" style="font-size:12.5px;margin-top:4px">Once a month. In Tally: <b>Display › Account Books › Group Summary › Sundry Debtors</b>, set the period to the month end, then <b>Export › Excel</b>. Upload that file here: every client&rsquo;s Tally balance is set beside the app&rsquo;s balance on the same date, and the differences are listed. Nothing on the book is changed.</div>' +
+      '<div class="meta" style="font-size:12.5px;margin-top:4px">' + (last ? 'Last matched ' + esc(fullDate(last.at)) + ' (Tally as on ' + esc(d10(last.asOn)) + '): ' + (last.differ ? '<b style="color:#b91c1c">' + plural(last.differ, "client") + ' differ, ' + money(last.differAmt) + '</b>' : '<b style="color:#15803d">every matched client agrees</b>') : '<b style="color:#b45309">Not matched with Tally yet.</b>') + '</div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:8px">' +
+      '<label style="font-size:12px;font-weight:700;color:#475569;display:flex;flex-direction:column;gap:2px">As on (if the file does not say)<input id="mt_date" type="date" value="' + esc((M && M.P && M.P.asOn) || "") + '" style="min-height:44px"/></label>' +
+      '<label class="btn" style="min-height:44px;display:inline-flex;align-items:center;cursor:pointer">⇧ Upload the Tally Excel<input id="mt_file" type="file" accept=".xlsx,.xls" style="display:none"/></label></div>';
+    if (!R) return h + '</div>';
+    var TH = function (x, r) { return '<th style="padding:5px 7px;text-align:' + (r ? 'right' : 'left') + ';white-space:nowrap">' + x + '</th>'; };
+    var TD = function (x, st) { return '<td style="padding:5px 7px;border-top:1px solid #e2e8f0;' + (st || '') + '">' + x + '</td>'; };
+    h += '<div style="margin-top:10px;font-weight:800;color:' + (R.bad ? '#b91c1c' : '#15803d') + '">' +
+      (R.bad ? plural(R.bad, "client") + ' differ from Tally · ' + money(R.badAmt) + ' in all' : '✓ Every matched client agrees with Tally') + '</div>' +
+      '<div class="meta" style="font-size:12.5px">' + esc(R.file) + ' · as on ' + esc(d10(R.asOn)) + ' · ' + plural(R.pairs.length, "client") + ' matched · ' + R.tOnly.length + ' Tally names not linked · ' + R.aOnly.length + ' app clients not in Tally · Tally total ' + money(R.tallyTot) + '</div>';
+    if (R.bad) h += '<div style="overflow-x:auto;margin-top:6px"><table style="border-collapse:collapse;min-width:100%;font-size:12.5px"><tr style="background:#0b3b36;color:#fff">' +
+      TH("CLIENT") + TH("TALLY NAME") + TH("TALLY", 1) + TH("APP", 1) + TH("DIFFERENCE", 1) + '</tr>' +
+      R.pairs.filter(function (p) { return Math.abs(p.diff) > 1; }).map(function (p) {
+        return '<tr>' + TD('<a href="#" data-act="ch-hisab" data-cl="' + esc(p.client) + '" style="font-weight:700;color:#0b3b36">' + esc(p.client) + '</a>') + TD(esc(p.tnames.join(", ")), 'color:#64748b') +
+          TD(money(p.tally), 'text-align:right') + TD(money(p.app), 'text-align:right') + TD('<b>' + money(p.diff) + '</b>', 'text-align:right;color:#b91c1c') + '</tr>';
+      }).join("") + '</table></div>';
+    if (R.tOnly.length) {
+      var opts = hisabClientNames().map(function (n) { return '<option value="' + esc(n) + '">' + esc(n) + '</option>'; }).join("");
+      h += '<div style="margin-top:10px;font-weight:700">In Tally, not linked to a client (' + R.tOnly.length + ')</div>' +
+        '<div class="meta" style="font-size:12px">Pick the client each Tally name belongs to, once. The link is remembered for every month after.</div>' +
+        R.tOnly.slice(0, 40).map(function (t, i) {
+          return '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px"><div style="flex:1 1 200px;font-size:13px"><b>' + esc(t.name) + '</b> · ' + money(t.val) + '</div>' +
+            '<select id="mt_l' + i + '" style="min-height:44px;max-width:260px"><option value="">— which client? —</option>' + opts + '</select>' +
+            '<button class="btn sm ghost" data-act="mt-link" data-i="' + i + '" style="min-height:44px">Link</button></div>';
+        }).join("") + (R.tOnly.length > 40 ? '<div class="meta">and ' + (R.tOnly.length - 40) + ' more</div>' : '');
+    }
+    if (R.aOnly.length) h += '<div style="margin-top:10px;font-weight:700">In the app with a balance, not in Tally (' + R.aOnly.length + ')</div>' +
+      '<div class="meta" style="font-size:12.5px">' + R.aOnly.slice(0, 30).map(function (x) { return esc(x.client) + ' ' + money(x.app); }).join(" · ") + (R.aOnly.length > 30 ? ' · and ' + (R.aOnly.length - 30) + ' more' : '') + '</div>';
+    return h + '</div>';
+  }
+
+  /* ---- THE MONEY CHECK, EVERY DAY (6.9.662) ----
+     Sent every day, all-clear included: a day with no message is a day something is wrong. */
+  function rsSetMoney() {
+    var r = mcRun(), last = mtLast();
+    var tly = last ? "Tally matched " + fullDate(last.at) + ": " + (last.differ ? last.differ + " differ, " + rsInr(last.differAmt) : "all agree")
+                   : "Not matched with Tally yet – accounts: Health check › Match with Tally";
+    var stale = !last || (Date.now() - Date.parse(last.at || 0)) > 35 * 86400000;
+    var blocks = [{ h: r.iss.length ? plural(r.iss.length, "problem") + " found" : "All clear" }, { cols: [["Check", 60, "l"], ["Result", 40, "l"]], rows: [
+      [rsC("Every screen shows the same balance", "", true), rsC(r.iss.some(function (x) { return x.k === "screens"; }) ? "NO" : "yes", r.iss.some(function (x) { return x.k === "screens"; }) ? "R" : "G", true)],
+      [rsC("Every rupee counted once", "", true), rsC(r.iss.some(function (x) { return /dropped|double|twice-no/.test(x.k); }) ? "NO" : "yes", r.iss.some(function (x) { return /dropped|double|twice-no/.test(x.k); }) ? "R" : "G", true)],
+      [rsC("Every HISAB page shows everything", "", true), rsC(r.iss.some(function (x) { return /hidden|draw/.test(x.k); }) ? "NO" : "yes", r.iss.some(function (x) { return /hidden|draw/.test(x.k); }) ? "R" : "G", true)],
+      [rsC("Totals agree", "", true), rsC(r.iss.some(function (x) { return x.k === "totals"; }) ? "NO" : "yes", r.iss.some(function (x) { return x.k === "totals"; }) ? "R" : "G", true)],
+      [rsC("No money moved by an app update", "", true), rsC(r.moved ? r.moved + " moved" : (r.since ? "yes (since " + r.since + ")" : "baseline kept"), r.moved ? "R" : "G", true)],
+      [rsC("Match with Tally", "", true), rsC(last ? (last.differ ? last.differ + " differ" : "agrees") : "not done", !last || last.differ || stale ? "A" : "G", true)]] }];
+    if (r.iss.length) blocks.push({ h: "What to look at" }, { cols: [["What", 26, "l"], ["Client", 30, "l", "w"], ["Amount", 18, "r"], ["", 26, "l", "w"]],
+      rows: r.iss.slice(0, 12).map(function (x) { return [rsC(MC_KIND[x.k] || x.k, "R", true), rsC(x.cl || "—", "", true), rsInr(x.amt), x.say.slice(0, 90)]; }) });
+    blocks.push({ note: r.clients + " clients · clients owe " + rsInr(r.hTot) + " · " + tly + (stale ? " · due this month" : "") });
+    var rows = [[{ v: "Energy World – money check", s: XL.TITLE }], [rsMadeLine(r.clients + " clients, " + r.counted.ch + " finalised deliveries, " + r.counted.pay + " payments, " + r.counted.ret + " returns booked in.")], [],
+      rsHead(["What", "Client", "Amount", "Detail"])];
+    if (!r.iss.length) rows.push([{ v: "All clear", s: XL.G }, "", "", "Every screen agrees on every client, every rupee is counted once, every HISAB page shows everything."]);
+    r.iss.forEach(function (x) { rows.push([{ v: MC_KIND[x.k] || x.k, s: XL.R }, x.cl || "", { v: x.amt, s: XL.MONEY }, x.say]); });
+    var team = { who: rsOwners(), head: r.iss.length ? "Money check – " + plural(r.iss.length, "problem") : "Money check – all clear",
+      line: r.clients + " clients · owe " + rsInr(r.hTot) + " · " + tly,
+      spec: { title: "Money check", sub: fullDate(today()) + " · version " + APP_VERSION, key: [["Good", "G"], ["Watch", "A"], ["Act now", "R"]], blocks: blocks },
+      text: "", xlsx: { sheet: "Money check", rows: rows, cols: [22, 30, 14, 90], opts: { freeze: { r: 4, c: 0 } }, file: rsFileFor("Energy World", "money check") } };
+    return { team: team, men: [] };
+  }
+  function rsMoneySheet() { var t = rsSetMoney().team.xlsx; return { rows: t.rows, cols: t.cols, opts: t.opts, file: t.file, text: "", caption: "" }; }
+
   function viewHealth() {
     var s = healthScan();
     var h = '<div class="card" style="' + (s.total ? 'border-color:#fed7aa;background:#fff7ed' : 'border-color:#99f6e4;background:#f0fdfa') + '">' +
@@ -35875,6 +36039,7 @@ function viewCatalogue() {
       '<div class="acts" style="margin-top:8px"><button class="btn sm ghost" data-act="health-refresh">Re-scan</button></div></div>';
 
     h += mcCard();   /* 6.9.661 */
+    h += mtCard();   /* 6.9.662 */
     h += lineTestCard();
     h += tgMirrorCard();
     h += tabUseCard();
@@ -36031,10 +36196,14 @@ function viewCatalogue() {
       ' ' + waConsentCount() + ' ' + plural(waConsentCount(), "client") + ' agreed to WhatsApp updates (the box on the client card).</div>';
     return h;
   }
+  /* 6.9.662 - "Client outstanding" is the HISAB total of what clients owe - the same figure as the
+     HISAB list, the review and every report. It used to add only names with a signed-for delivery:
+     measured on his book, Rs 29,32,577 short (old-balance-only clients left out, credits netted in). */
+  function todayOwed() { return hisabOutstanding().reduce(function (a, r) { return a + r.due; }, 0); }
   function viewOwner() {
     var clients = {};
     S.data.challans.forEach(function (c) { if (String(c.receiptReceived).toUpperCase() === "Y") clients[c.customerName] = 1; });
-    var due = Object.keys(clients).reduce(function (a, n) { return a + clientLedger(n).due; }, 0);
+    var due = todayOwed();
 
     var incPend = 0;
     S.data.associates.forEach(function (a) { incPend += partnerBook(a.name).pending; });
@@ -45999,6 +46168,8 @@ function viewCatalogue() {
     }
 
     /* Stock import: read an uploaded Tally CSV export and jump straight to the review step. */
+    var mtf = el("mt_file");   /* 6.9.662 - Tally's Sundry Debtors */
+    if (mtf) mtf.addEventListener("change", function (e) { mtReadFile(e.target.files && e.target.files[0]); });
     var impf = el("imp_file");
     if (impf) {
       impf.addEventListener("change", function (e) { stkReadFiles(e.target.files); });   /* v6.9.605 - Tally bills and registers */
@@ -46911,6 +47082,15 @@ function viewCatalogue() {
        regx- because reg-clear belongs to the BRAND register and has since 6.9.458; this handler
        sits earlier in the chain and would have eaten its taps. t_dead_taps caught it. */
     if (act === "regx-clear") { S.reg = {}; render(); return; }
+    /* 6.9.662 - link a Tally ledger name to a client, once */
+    if (act === "mt-link") {
+      var _mi = Number(t.getAttribute("data-i")), _mt = S.mt && S.mt.R && S.mt.R.tOnly[_mi], _mc = (el("mt_l" + _mi) || {}).value || "";
+      if (!_mt || !_mc) { toast("Pick the client first."); return; }
+      auditFact("tally:link", _mt.name, { tally: _mt.name, client: _mc }).then(function () {
+        S.mt.R = mtRun(S.mt.P); toast(_mt.name + " is " + _mc + " from now on."); render();
+      }, function () { toast("The link was not saved — try again."); });
+      return;
+    }
     /* 6.9.661 - the money check, by hand */
     if (act === "mc-run") {
       toast("Checking every client…");
