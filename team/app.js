@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.660";
+  var APP_VERSION = "6.9.661";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -35726,6 +35726,145 @@ function viewCatalogue() {
     var n = 0; try { n = bkFind().length; } catch (e) { n = 0; }
     return '<div class="meta" style="font-size:12px;margin:8px 0"><a href="#" data-act="tab" data-tab="booksweep" style="color:#0f766e;font-weight:700">Book numbers typed into the site box</a> \u00b7 ' + n + (n === 1 ? ' row' : ' rows') + '</div>';
   }
+  /* ======================= THE MONEY CHECK  (6.9.661, 29 Sep 2026) =======================
+     His words: "its money ralated matter, mistakes can cost me in lacs, how can i trust this whole
+     app ecosystem?" - then "do all". It READS the book and writes nothing. */
+  function mcHash(str) {
+    var h = 5381; str = String(str);
+    for (var i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0;
+    return (h >>> 0).toString(36);
+  }
+  /* the rows behind one client's balance, as text - if this is unchanged, only code can move it */
+  function mcRowsKey(nm, L) {
+    var fr = famRow(nm);
+    var ch = (L.chs || []).map(function (c) { var st = hisabStamp(c) || {}; return [c.id, c.updatedAt, c.itemsJson, c.freight, c.freightTo, c.status, c.receiptReceived, st.at || "", JSON.stringify(st.d || st.detail || "")].join("|"); }).sort();
+    var py = (L.pays || []).map(function (p) { return [p.id, p.amount, p.date, p.kind || "", p.mode || ""].join("|"); }).sort();
+    var rt = (L.rets || []).map(function (r) { return [r.id, r.updatedAt, r.itemsJson, r.status].join("|"); }).sort();
+    var ds = ((S.data && S.data.discounts) || []).filter(function (d) { return d && fr.has(d.client); }).map(function (d) { return JSON.stringify(d); }).sort();
+    return mcHash([L.opening, ch.join("~"), py.join("~"), rt.join("~"), ds.join("~")].join("#"));
+  }
+  function mcFpLoad() { try { return JSON.parse(localStorage.getItem("ew_mc_fp") || "null"); } catch (e) { return null; } }
+  function mcFpSave(o) { try { localStorage.setItem("ew_mc_fp", JSON.stringify(o)); } catch (e) { } }
+  function mcRun(opt) {
+    opt = opt || {};
+    var t0 = Date.now(), iss = [], R1 = function (v) { return Math.round((Number(v) || 0) * 100) / 100; };
+    var add = function (k, cl, amt, say) { iss.push({ k: k, cl: cl || "", amt: Math.round(Number(amt) || 0), say: say }); };
+    var names = hisabClientNames();
+    var ov = {};
+    hisabOutstanding().forEach(function (r) { ov[r.name] = r.due; });
+    hisabCredits().forEach(function (r) { ov[r.name] = r.due; });
+    var seenCh = {}, seenPay = {}, seenRet = {}, fp = {}, sumPos = 0, sumAll = 0;
+    names.forEach(function (nm) {
+      var L = clientLedger(nm), due = R1(L.due), M = NaN, G = NaN;
+      try { M = R1(hisabMiniRows(nm).bal); } catch (e) { M = NaN; }
+      try { G = R1(regBalances(nm).due); } catch (e) { G = NaN; }
+      var O = ov[nm] !== undefined ? R1(ov[nm]) : (Math.abs(due) <= 0.5 ? due : NaN);
+      var bad = [];
+      if (!(Math.abs(M - due) <= 1)) bad.push("his account table says " + money(M));
+      if (!(Math.abs(O - due) <= 1)) bad.push("the HISAB list says " + (isNaN(O) ? "nothing" : money(O)));
+      if (!(Math.abs(G - due) <= 1)) bad.push("the challan log says " + money(G));
+      if (bad.length) add("screens", nm, due, "Balance " + money(due) + ", but " + bad.join("; ") + ".");
+      if (due > 0.5) sumPos += due;
+      sumAll += due;
+      (L.chs || []).forEach(function (c) { (seenCh[c.id] = seenCh[c.id] || []).push(nm); });
+      (L.pays || []).forEach(function (p) { (seenPay[p.id || (p.client + p.date + p.amount)] = seenPay[p.id || (p.client + p.date + p.amount)] || []).push(nm); });
+      (L.rets || []).forEach(function (r) { (seenRet[r.id] = seenRet[r.id] || []).push(nm); });
+      fp[nm] = [mcRowsKey(nm, L), Math.round(due)];
+    });
+    /* every counted delivery, payment and booked-in return - in one balance, exactly once */
+    var owed = (S.data.challans || []).filter(function (c) { return c && !c._isReturn && hisabOwed(c); });
+    var byNo = {};
+    owed.forEach(function (c) { var k = String(c.challanNo || c.id); (byNo[k] = byNo[k] || []).push(c); });
+    owed.forEach(function (c) {
+      var who = seenCh[c.id] || [], same = byNo[String(c.challanNo || c.id)] || [];
+      if (!who.length) {
+        if (same.length > 1) add("twice-no", c.customerName, chValue(c), "Challan " + (c.challanNo || "(no number)") + " is on the book " + same.length + " times; only one of them is counted. Check which one is real.");
+        else add("dropped", c.customerName, chValue(c), "Delivery " + (c.challanNo || "(no number)") + " (" + money(chValue(c)) + ") is finalised but is in NOBODY's balance.");
+      } else if (who.length > 1) add("double", c.customerName, chValue(c), "Delivery " + (c.challanNo || "") + " is counted in " + who.length + " balances: " + who.join(", ") + ".");
+    });
+    (S.data.payments || []).forEach(function (p) {
+      if (!p) return;
+      var who = seenPay[p.id || (p.client + p.date + p.amount)] || [];
+      if (!who.length) add("dropped", p.client, payAmt(p), "A payment of " + money(payAmt(p)) + " on " + d10(p.date || p.createdAt) + " from " + (p.client || "(no name)") + " is in NOBODY's balance.");
+      else if (who.length > 1) add("double", p.client, payAmt(p), "A payment of " + money(payAmt(p)) + " from " + p.client + " is counted in " + who.length + " balances: " + who.join(", ") + ".");
+    });
+    (S.data.returns || []).forEach(function (r) {
+      if (!r || String(r.status || "").trim().toLowerCase() !== "received") return;
+      var who = seenRet[r.id] || [];
+      if (!who.length) add("dropped", r.customerName, returnNet(r), "Return " + (r.returnNo || "") + " (" + money(returnNet(r)) + ") is booked in but is in NOBODY's balance.");
+      else if (who.length > 1) add("double", r.customerName, returnNet(r), "Return " + (r.returnNo || "") + " is counted in " + who.length + " balances.");
+    });
+    /* everything shows on his HISAB page, drawn exactly as the app draws it */
+    var drawn = 0, drawMs = 0;
+    if (opt.draw !== false) {
+      var keepQ = S.q, keepTab = S.tab, keepCards = _acctCards, d0 = Date.now();
+      try {
+        names.forEach(function (nm) {
+          if (Date.now() - d0 > (opt.drawBudget || 60000)) return;
+          var L = clientLedger(nm), pend = clientReturnsPending(nm);
+          var want = [];
+          (L.chs || []).forEach(function (c) { if (c.challanNo) want.push(["delivery", c.challanNo]); });
+          (L.rets || []).forEach(function (r) { if (r.returnNo) want.push(["return", r.returnNo]); });
+          pend.forEach(function (r) { if (r.returnNo) want.push(["raised return", r.returnNo]); });
+          if (!want.length) return;
+          S.q = nm; var html = "";
+          try { html = viewBilling(); } catch (e) { add("draw", nm, L.due, "His HISAB page could not be drawn: " + String(e && e.message || e)); return; }
+          drawn++;
+          var miss = want.filter(function (w) { return html.indexOf(esc(w[1])) < 0; });
+          if (miss.length) add("hidden", nm, L.due, "His HISAB page does not show " + miss.map(function (w) { return w[0] + " " + w[1]; }).join(", ") + ".");
+        });
+      } finally { S.q = keepQ; S.tab = keepTab; _acctCards = keepCards; drawMs = Date.now() - d0; }
+    }
+    /* the Today tile and the HISAB total */
+    var tile = 0, tl = {};
+    (S.data.challans || []).forEach(function (c) { if (String(c.receiptReceived).toUpperCase() === "Y") tl[c.customerName] = 1; });
+    Object.keys(tl).forEach(function (n) { tile += clientLedger(n).due; });
+    var hTot = hisabOutstanding().reduce(function (a, r) { return a + r.due; }, 0);
+    if (Math.abs(tile - hTot) > 1) add("totals", "", tile - hTot, "The Today tile “Client outstanding” says " + money(tile) + "; the HISAB total of what clients owe is " + money(hTot) + ".");
+    /* a new version moved nobody's money */
+    var prev = mcFpLoad(), moved = 0;
+    if (prev && prev.c && prev.ver && prev.ver !== APP_VERSION) {
+      Object.keys(fp).forEach(function (nm) {
+        var a = prev.c[nm], b = fp[nm];
+        if (a && a[0] === b[0] && Math.abs(a[1] - b[1]) > 0.5) { moved++; add("code", nm, b[1] - a[1], "Nothing on his account changed, but his balance moved from " + money(a[1]) + " (version " + prev.ver + ") to " + money(b[1]) + " (version " + APP_VERSION + ")."); }
+      });
+    }
+    if (opt.keep !== false) mcFpSave({ ver: APP_VERSION, at: new Date().toISOString(), c: fp, was: prev && prev.ver !== APP_VERSION ? prev.ver : (prev && prev.was) || "" });
+    var notFin = (S.data.challans || []).filter(function (c) { return c && !c._isReturn && hisabCounts(c) && !hisabOwed(c); });
+    return { at: new Date().toISOString(), ver: APP_VERSION, clients: names.length, drawn: drawn, drawMs: drawMs, ms: Date.now() - t0, iss: iss,
+      sumPos: Math.round(sumPos), sumAll: Math.round(sumAll), tile: Math.round(tile), hTot: Math.round(hTot),
+      counted: { ch: owed.length, pay: (S.data.payments || []).length, ret: Object.keys(seenRet).length },
+      notFin: { n: notFin.length, amt: Math.round(notFin.reduce(function (a, c) { return a + chValue(c); }, 0)) },
+      since: prev ? (prev.ver !== APP_VERSION ? prev.ver : (prev.was || "")) : "", moved: moved };
+  }
+  var MC_KIND = { screens: "Screens disagree", dropped: "In nobody's balance", double: "Counted twice", "twice-no": "Same number twice",
+    hidden: "Not shown on his HISAB", draw: "HISAB would not open", totals: "Totals disagree", code: "Moved by a code change" };
+  function mcCard() {
+    if (!roleAny(["admin", "accounts"])) return "";
+    var r = S.mc;
+    var h = '<div class="card" style="border-color:' + (!r ? '#cbd5e1' : r.iss.length ? '#fca5a5' : '#86efac') + ';background:' + (!r ? '#fff' : r.iss.length ? '#fef2f2' : '#f0fdf4') + '">' +
+      '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><h3 style="margin:0;flex:1">Money check</h3>' +
+      '<button class="btn sm" data-act="mc-run" style="min-height:44px">' + (r ? 'Check again' : 'Check the money now') + '</button></div>' +
+      '<div class="meta" style="font-size:12.5px;margin-top:4px">For every client: do all screens show the same balance; is every delivery, payment and return counted once, not dropped and not twice; does his HISAB page show all of it; and has a new version of the app moved anybody&rsquo;s money. It only reads &mdash; nothing is changed.</div>';
+    if (!r) return h + '</div>';
+    h += '<div style="margin-top:8px;font-weight:800;font-size:14px;color:' + (r.iss.length ? '#b91c1c' : '#15803d') + '">' +
+      (r.iss.length ? plural(r.iss.length, "problem") + ' found' : '✓ All ' + r.clients + ' clients agree on every screen') + '</div>' +
+      '<div class="meta" style="font-size:12.5px;margin-top:2px">' + r.clients + ' clients · ' + r.counted.ch + ' finalised deliveries · ' + r.counted.pay + ' payments · ' + r.counted.ret + ' returns booked in · ' +
+      r.drawn + ' HISAB pages drawn · clients owe ' + money(r.hTot) + ' · checked in ' + (Math.round(r.ms / 100) / 10) + ' s' +
+      (r.since ? ' · compared with version ' + esc(r.since) : ' · first run on this device: balances remembered for the next version') + '</div>' +
+      (r.notFin.n ? '<div class="meta" style="font-size:12.5px;margin-top:2px">Not counted yet, by design: ' + plural(r.notFin.n, "delivery") + ' signed for but not finalised, ' + money(r.notFin.amt) + '.</div>' : '');
+    if (r.iss.length) {
+      h += '<div style="overflow-x:auto;margin-top:8px"><table style="border-collapse:collapse;min-width:100%;font-size:12.5px">' +
+        '<tr style="background:#7f1d1d;color:#fff"><th style="padding:5px 7px;text-align:left">WHAT</th><th style="padding:5px 7px;text-align:left">CLIENT</th><th style="padding:5px 7px;text-align:right">AMOUNT</th><th style="padding:5px 7px;text-align:left">DETAIL</th></tr>' +
+        r.iss.map(function (x, i) {
+          return '<tr style="background:' + (i % 2 ? '#fff5f5' : '#fff') + '"><td style="padding:5px 7px;border-top:1px solid #fecaca;white-space:nowrap;font-weight:700;color:#b91c1c">' + esc(MC_KIND[x.k] || x.k) + '</td>' +
+            '<td style="padding:5px 7px;border-top:1px solid #fecaca">' + (x.cl ? '<a href="#" data-act="ch-hisab" data-cl="' + esc(x.cl) + '" style="font-weight:700;color:#0b3b36">' + esc(x.cl) + '</a>' : '—') + '</td>' +
+            '<td style="padding:5px 7px;border-top:1px solid #fecaca;text-align:right;white-space:nowrap">' + money(x.amt) + '</td>' +
+            '<td style="padding:5px 7px;border-top:1px solid #fecaca;min-width:260px">' + esc(x.say) + '</td></tr>';
+        }).join("") + '</table></div>';
+    }
+    return h + '</div>';
+  }
   function viewHealth() {
     var s = healthScan();
     var h = '<div class="card" style="' + (s.total ? 'border-color:#fed7aa;background:#fff7ed' : 'border-color:#99f6e4;background:#f0fdfa') + '">' +
@@ -35735,6 +35874,7 @@ function viewCatalogue() {
                : '<div style="margin-top:8px;font-weight:700;color:#0f766e">✓ All clear — nothing unusual found.</div>') +
       '<div class="acts" style="margin-top:8px"><button class="btn sm ghost" data-act="health-refresh">Re-scan</button></div></div>';
 
+    h += mcCard();   /* 6.9.661 */
     h += lineTestCard();
     h += tgMirrorCard();
     h += tabUseCard();
@@ -46771,6 +46911,15 @@ function viewCatalogue() {
        regx- because reg-clear belongs to the BRAND register and has since 6.9.458; this handler
        sits earlier in the chain and would have eaten its taps. t_dead_taps caught it. */
     if (act === "regx-clear") { S.reg = {}; render(); return; }
+    /* 6.9.661 - the money check, by hand */
+    if (act === "mc-run") {
+      toast("Checking every client…");
+      setTimeout(function () {
+        try { S.mc = mcRun(); } catch (e) { toast("The check could not finish: " + String(e && e.message || e)); return; }
+        render();
+      }, 30);
+      return;
+    }
     /* 6.9.659 - the client-wise log: which view, which order, which clients are open */
     if (act === "regx-by") { S.regBy = t.getAttribute("data-v") === "client" ? "client" : "num"; keepScroll = true; render(); return; }
     if (act === "regx-only") { S.regOnly = t.getAttribute("data-v") || ""; keepScroll = true; render(); return; }
