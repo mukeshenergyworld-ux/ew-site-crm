@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.659";
+  var APP_VERSION = "6.9.660";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -27903,6 +27903,61 @@ function viewCatalogue() {
       if (open[k] && !_acctCards[k]) delete open[k];
     });
   }
+  /* 6.9.660 - the returns he has raised that are not back in the godown yet, as cards. One function,
+     drawn on a client with deliveries AND on one with none (Ajit Dawer: an old balance and a
+     return from an old delivery - the branch that used to draw nothing). */
+  function hisabRetPendingHtml(cl) {
+    var _ph = "";
+    clientReturnsPending(cl).forEach(function (r) {
+      var rl = returnLines(r);
+      var rSub = returnNet(r);                 /* v6.9.599 - less the delivery's discount share */
+      var st = String(r.status || "Raised");
+      _ph += '<div class="card" style="border:1px dashed #fdba74;background:#fffbeb;padding:9px 12px">' +
+        '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start">' +
+        '<div style="flex:1 1 300px;min-width:0">' +
+        '<h3 style="margin:0 0 5px;line-height:1.5">' + esc(r.returnNo || "Return") +
+        ' <span class="pill" style="background:#fed7aa;color:#7c2d12">' + esc(st) + '</span>' +
+        ' <span class="pill teal">' + esc(d10(r.createdAt)) + '</span>' + retEstPill(r) +
+        (r.challanNo ? ' <span style="font-size:12px;color:#64748b">vs ' + esc(r.challanNo) + '</span>' : '') +
+        '</h3>' +
+        '<div class="meta" style="font-size:12.5px;color:#92400e">' +
+        '<b>Not on his account yet.</b> A return credits the client when the material is counted ' +
+        'back in at the godown &mdash; not when it is written down. ' + esc(rl.length) + ' item' +
+        (rl.length === 1 ? '' : 's') + ', worth ' + money(rSub) + ' when it lands.</div>' +
+        '<div class="acts" style="align-items:center;margin:7px 0 0;flex-wrap:wrap;gap:6px">' +
+        '<button class="btn sm ghost" data-act="ch-detail" data-id="' + esc(r.id) + '" ' +
+          'style="border-color:#fdba74;color:#92400e">' +
+          ((S.chExp && S.chExp[r.id]) ? '&#9662; Hide items' : '&#9656; Show ' + plural(rl.length, "item") + '') + '</button>' +
+        (canSee("returns")
+          ? '<button class="btn sm" data-act="rt-move" data-id="' + esc(r.id) + '" data-to="Received" ' +
+            'style="background:#b45309;border-color:#b45309" ' +
+            'title="Count this material back in at the godown. That is what puts the credit on his account.">' +
+            'Received at godown</button>'
+          : '') +
+        /* v6.9.371 - and the way to kill it, on the client's own ledger. This return has not
+           credited anybody yet, so cancelling it moves nothing at all - it is the cheapest one
+           in the whole app to get rid of, and it had no button on this screen. */
+        cxCardBtn("returns", r.id) +
+        '</div></div>' +
+        '<div style="flex:0 0 auto;text-align:right;font-size:12px;color:#92400e">Will credit<br>' +
+        '<b>&minus;' + money(rSub) + '</b></div></div>' +
+        (!(S.chExp && S.chExp[r.id]) ? '' :
+        '<div style="overflow-x:auto;margin-top:7px"><table style="width:100%;border-collapse:collapse;font-size:12px;border:1px solid #fed7aa">' +
+        '<thead><tr style="background:#7c2d12;color:#fff">' +
+        '<th style="padding:6px;text-align:left;width:26px">#</th><th style="padding:6px;text-align:left">Product returned</th>' +
+        '<th style="padding:6px;text-align:center;width:40px">Qty</th>' +
+        '<th style="padding:6px;text-align:right;width:82px">Amount</th></tr></thead><tbody>' +
+        rl.map(function (x, idx) {
+          return '<tr style="border-bottom:1px solid #fed7aa;background:' + (idx % 2 ? '#fffbeb' : '#fff') + '">' +
+            '<td style="padding:5px 6px;color:#64748b">' + (idx + 1) + '</td>' +
+            '<td style="padding:5px 6px">' + esc(x.desc) + '</td>' +
+            '<td style="padding:5px 6px;text-align:center">' + x.qty + '</td>' +
+            '<td style="padding:5px 6px;text-align:right;font-weight:700;color:#92400e">' + money(x.amt) + '</td></tr>';
+        }).join("") + '</tbody></table></div>') +
+        '</div>';
+    });
+    return _ph;
+  }
   function viewBilling() {
     if (!S.billSel) S.billSel = {};
     var cl = hisabResolve(S.q);
@@ -28101,7 +28156,8 @@ function viewCatalogue() {
          there was nothing at all for him. There is: a dead one, and the question he is ringing
          up about. */
       var _dead0 = deadChallans(cl);
-      if (!_l0.opening && !_pending.length && !(_l0.rets || []).length && !_dead0.length) {
+      var _rp0 = hisabRetPendingHtml(cl);   /* 6.9.660 - a raised return is something to show */
+      if (!_l0.opening && !_pending.length && !(_l0.rets || []).length && !_dead0.length && !_rp0) {
         return h + '<div class="empty">No received challans for <b>' + esc(cl) + '</b> yet. A challan lands here automatically once its receipt is confirmed.</div>';
       }
       var _oh = '<div class="card" style="border-color:#99f6e4;background:#f0fdfa"><h3 style="margin:0 0 4px">Payments &amp; the statement &mdash; ' + esc(cl) + '</h3>' +
@@ -28146,7 +28202,7 @@ function viewCatalogue() {
       _oh += serviceLedgerCard(cl);
       _oh += cxClientBand(cl);   /* v6.9.462 - last, and every kind, not only the challans */
       acctSheetSync();      /* v6.9.451 - no cards here; an open sheet closes with its entry */
-      return h + _oh;
+      return h + _rp0 + _oh;
     }
     var admin = roleIs("admin");
     /* v6.9.403 - the v6.9.364 fold card ("N deliveries are paid for ... Tap to see them") is
@@ -28359,54 +28415,7 @@ function viewCatalogue() {
        counted ones, because the whole point is that they are the ones needing a hand. They add
        nothing to retTotal and nothing to any document: they are not on his account yet, and
        saying otherwise on a screen he reads money off is the one thing this must not do. */
-    clientReturnsPending(cl).forEach(function (r) {
-      var rl = returnLines(r);
-      var rSub = returnNet(r);                 /* v6.9.599 - less the delivery's discount share */
-      var st = String(r.status || "Raised");
-      h += '<div class="card" style="border:1px dashed #fdba74;background:#fffbeb;padding:9px 12px">' +
-        '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start">' +
-        '<div style="flex:1 1 300px;min-width:0">' +
-        '<h3 style="margin:0 0 5px;line-height:1.5">' + esc(r.returnNo || "Return") +
-        ' <span class="pill" style="background:#fed7aa;color:#7c2d12">' + esc(st) + '</span>' +
-        ' <span class="pill teal">' + esc(d10(r.createdAt)) + '</span>' + retEstPill(r) +
-        (r.challanNo ? ' <span style="font-size:12px;color:#64748b">vs ' + esc(r.challanNo) + '</span>' : '') +
-        '</h3>' +
-        '<div class="meta" style="font-size:12.5px;color:#92400e">' +
-        '<b>Not on his account yet.</b> A return credits the client when the material is counted ' +
-        'back in at the godown &mdash; not when it is written down. ' + esc(rl.length) + ' item' +
-        (rl.length === 1 ? '' : 's') + ', worth ' + money(rSub) + ' when it lands.</div>' +
-        '<div class="acts" style="align-items:center;margin:7px 0 0;flex-wrap:wrap;gap:6px">' +
-        '<button class="btn sm ghost" data-act="ch-detail" data-id="' + esc(r.id) + '" ' +
-          'style="border-color:#fdba74;color:#92400e">' +
-          ((S.chExp && S.chExp[r.id]) ? '&#9662; Hide items' : '&#9656; Show ' + plural(rl.length, "item") + '') + '</button>' +
-        (canSee("returns")
-          ? '<button class="btn sm" data-act="rt-move" data-id="' + esc(r.id) + '" data-to="Received" ' +
-            'style="background:#b45309;border-color:#b45309" ' +
-            'title="Count this material back in at the godown. That is what puts the credit on his account.">' +
-            'Received at godown</button>'
-          : '') +
-        /* v6.9.371 - and the way to kill it, on the client's own ledger. This return has not
-           credited anybody yet, so cancelling it moves nothing at all - it is the cheapest one
-           in the whole app to get rid of, and it had no button on this screen. */
-        cxCardBtn("returns", r.id) +
-        '</div></div>' +
-        '<div style="flex:0 0 auto;text-align:right;font-size:12px;color:#92400e">Will credit<br>' +
-        '<b>&minus;' + money(rSub) + '</b></div></div>' +
-        (!(S.chExp && S.chExp[r.id]) ? '' :
-        '<div style="overflow-x:auto;margin-top:7px"><table style="width:100%;border-collapse:collapse;font-size:12px;border:1px solid #fed7aa">' +
-        '<thead><tr style="background:#7c2d12;color:#fff">' +
-        '<th style="padding:6px;text-align:left;width:26px">#</th><th style="padding:6px;text-align:left">Product returned</th>' +
-        '<th style="padding:6px;text-align:center;width:40px">Qty</th>' +
-        '<th style="padding:6px;text-align:right;width:82px">Amount</th></tr></thead><tbody>' +
-        rl.map(function (x, idx) {
-          return '<tr style="border-bottom:1px solid #fed7aa;background:' + (idx % 2 ? '#fffbeb' : '#fff') + '">' +
-            '<td style="padding:5px 6px;color:#64748b">' + (idx + 1) + '</td>' +
-            '<td style="padding:5px 6px">' + esc(x.desc) + '</td>' +
-            '<td style="padding:5px 6px;text-align:center">' + x.qty + '</td>' +
-            '<td style="padding:5px 6px;text-align:right;font-weight:700;color:#92400e">' + money(x.amt) + '</td></tr>';
-        }).join("") + '</tbody></table></div>') +
-        '</div>';
-    });
+    h += hisabRetPendingHtml(cl);   /* 6.9.660 */
     var rets = famRets(cl);                 /* v6.9.598 - the family's returns, as the ledger reads them */
     var retTotal = 0, retSelN = 0, retSelAmt = 0;
     /* v6.9.367 - and the returns with them. Leaving these oldest-first while the deliveries
