@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.662";
+  var APP_VERSION = "6.9.663";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -35839,7 +35839,7 @@ function viewCatalogue() {
       since: prev ? (prev.ver !== APP_VERSION ? prev.ver : (prev.was || "")) : "", moved: moved };
   }
   var MC_KIND = { screens: "Screens disagree", dropped: "In nobody's balance", double: "Counted twice", "twice-no": "Same number twice",
-    hidden: "Not shown on his HISAB", draw: "HISAB would not open", totals: "Totals disagree", code: "Moved by a code change" };
+    hidden: "Not on his HISAB", draw: "HISAB would not open", totals: "Totals disagree", code: "Moved by a code change" };
   function mcCard() {
     if (!roleAny(["admin", "accounts"])) return "";
     var r = S.mc;
@@ -36014,9 +36014,11 @@ function viewCatalogue() {
       [rsC("Totals agree", "", true), rsC(r.iss.some(function (x) { return x.k === "totals"; }) ? "NO" : "yes", r.iss.some(function (x) { return x.k === "totals"; }) ? "R" : "G", true)],
       [rsC("No money moved by an app update", "", true), rsC(r.moved ? r.moved + " moved" : (r.since ? "yes (since " + r.since + ")" : "baseline kept"), r.moved ? "R" : "G", true)],
       [rsC("Match with Tally", "", true), rsC(last ? (last.differ ? last.differ + " differ" : "agrees") : "not done", !last || last.differ || stale ? "A" : "G", true)]] }];
-    if (r.iss.length) blocks.push({ h: "What to look at" }, { cols: [["What", 26, "l"], ["Client", 30, "l", "w"], ["Amount", 18, "r"], ["", 26, "l", "w"]],
-      rows: r.iss.slice(0, 12).map(function (x) { return [rsC(MC_KIND[x.k] || x.k, "R", true), rsC(x.cl || "—", "", true), rsInr(x.amt), x.say.slice(0, 90)]; }) });
-    blocks.push({ note: r.clients + " clients · clients owe " + rsInr(r.hTot) + " · " + tly + (stale ? " · due this month" : "") });
+    if (r.iss.length) blocks.push({ h: "What to look at" }, { cols: [["What", 28, "l", "w"], ["Client", 24, "l", "w"], ["Amount", 16, "r"], ["", 32, "l", "w"]],
+      rows: r.iss.slice(0, 12).map(function (x) { return [rsC(MC_KIND[x.k] || x.k, "R", true), rsC(x.cl || "—", "", true), (x.amt < 0 ? "−" : "") + rsInr(Math.abs(x.amt)), x.say.slice(0, 110)]; }) });
+    if (r.iss.length > 12) blocks.push({ note: "and " + (r.iss.length - 12) + " more in the Excel" });
+    blocks.push({ note: r.clients + " clients · clients owe " + rsInr(r.hTot) });
+    blocks.push({ note: last ? tly : "Tally: not matched yet – accounts, Health check › Match with Tally" });
     var rows = [[{ v: "Energy World – money check", s: XL.TITLE }], [rsMadeLine(r.clients + " clients, " + r.counted.ch + " finalised deliveries, " + r.counted.pay + " payments, " + r.counted.ret + " returns booked in.")], [],
       rsHead(["What", "Client", "Amount", "Detail"])];
     if (!r.iss.length) rows.push([{ v: "All clear", s: XL.G }, "", "", "Every screen agrees on every client, every rupee is counted once, every HISAB page shows everything."]);
