@@ -241,7 +241,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.120.0";
+  var APP_VERSION = "1.121.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -2238,6 +2238,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
   function siteFromChallan(cObj, name) {
     var nm = String(name || "").trim(), who = String((cObj && cObj.name) || "").trim();
     if (!nm || !who) return null;
+    if (!roleIs("admin")) return null;   /* 1.121.0 - the server lets the godown and accounts write no site rows; a refused one would sit on the phone for ever */
     var k = lower(nm).replace(/\s+/g, " ");
     if (sitesFor(who).some(function (x) { return lower(x.name).replace(/\s+/g, " ") === k; })) return null;
     var row = { id: "", createdBy: S.user || "", name: nm, client: who,
@@ -9142,43 +9143,11 @@ function discRowOn(client, brand, onYmd) {
       var z = S.ch || {};
       var cObj = clientByName(z.client);
       if (!cObj) { toast("Pick the client first \u2014 district, then area, then his name."); return; }
-      /* v1.11.0 - see isClientC(). Refused here, and the message names the step and the
-         people who can take it, rather than leaving a man guessing at the counter. */
-      if (!isClientC(cObj.name)) {
-        /* ====== v1.28.0 - A REFUSAL THAT MIGHT BE AN IGNORANCE IS NOT A REFUSAL ======
-           isClientC() says "no" in two completely different situations: this man is genuinely
-           not a client, and the two tabs that would prove he is - challans and pitch - are not
-           on this phone yet. Those were the same thing while the book came down in one piece.
-           They are not any more. The history half lands second now, so on a phone that has
-           never held this book there is a window in which a customer of ten years would be
-           told, at the counter, with the material on the trolley, that he "is not a client
-           yet". That is the app asserting something it cannot know, which is the one thing
-           this estate keeps being bitten by.
-
-           It also fixes a fault that predates the split. If the history on this phone is from
-           yesterday and the office marked the brand Won this morning, the old code refused
-           flatly and named nobody's copy. Now a refusal that has not been checked against the
-           server THIS session goes and checks. */
-        if (!S.restAt) {
-          toast(cObj.name + " is not marked a client in the copy on this phone" +
-                (S.syncAt ? " (" + bookAge(S.syncAt).txt + ")" : "") +
-                " \u2014 checking with the office now. Press Create again in a moment.");
-          try { pull(true); } catch (e) {}
-          return;
-        }
-        /* v1.29.0 - the Won list came down empty. Say that, rather than reading it as a no. */
-        if (cantTellClient()) {
-          toast("This phone was not sent the brand-Won list, so it cannot tell whether " +
-                cObj.name + " is a client \u2014 that is not the same as him not being one. " +
-                "Ring the office and ask them to check his card, or write this challan from " +
-                "a phone that has the full book.");
-          return;
-        }
-        toast(cObj.name + " is not a client yet \u2014 no delivery has ever gone to him and no " +
-              "brand is marked Won. The office marks a brand Won in the CRM, then this challan " +
-              "can be written.");
-        return;
-      }
+      /* 1.121.0 - THE "NOT A CLIENT YET" DOOR IS GONE. HIS WORDS, 30 Sep 2026, over a godown screenshot refusing Tagra Sanitary Store: "when making first
+     challan for a client, its assumed that he is client now, allow to make challan, after first challan a
+     client automatically becomes client and challan brand auto marked won for that client".
+         A name on the book may take his first challan at the counter. That challan is what makes him a
+         client (isClientC counts any delivery), and the CRM reads its brands as Won from it. */
       var lines = (z.items || []);
       /* v1.37.0 - "product" was right until job work existed. A challan for labour alone is a
          real thing and this message would have turned it away. */
