@@ -46,8 +46,8 @@ a{color:#0f766e}
 /* v1.11.3 - the 40px floor. Measured at 360: 33 of this app's 70 taps were under it -
    the tab bar at 36, the chips at 29, the small buttons at 36, and the two header icons
    at 21px tall because <button class="icon"> had no rule at all. */
-.btn.sm{padding:7px 11px;font-size:13px;border-radius:9px;min-height:40px;min-width:40px}
-button.icon{min-height:40px;min-width:40px;border:0;background:transparent;color:inherit;font-size:18px;cursor:pointer;border-radius:10px}
+.btn.sm{padding:7px 11px;font-size:13px;border-radius:9px;min-height:44px;min-width:44px}
+button.icon{min-height:44px;min-width:44px;border:0;background:transparent;color:inherit;font-size:18px;cursor:pointer;border-radius:10px}
 .btn.gry{background:#fff;border-color:#cbd5e1;color:#334155}
 .btn.red{background:#b91c1c;border-color:#b91c1c;color:#fff}
 .btn.amb{background:#b45309;border-color:#b45309;color:#fff}
@@ -116,7 +116,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
    and `.nav` further down; a second, older answer to the same question is how this happens. */
 .nav button.on{color:#0f766e}
 .nav button b{display:block;font-size:17px;line-height:1.25}
-.nav button .cnt{display:inline-block;background:#b91c1c;color:#fff;border-radius:999px;padding:0 6px;font-size:10px;margin-left:3px}
+.nav button .cnt{display:inline-block;background:#b91c1c;color:#fff;border-radius:999px;padding:0 6px;font-size:12px;margin-left:3px}
 /* the picker: brand, then category, then product - one level at a time */
 .crumb{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
 .crumb .c{background:#ccfbf1;color:#0f766e;border-radius:999px;padding:5px 11px;font-size:12.5px;font-weight:700;cursor:pointer}
@@ -211,13 +211,13 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
 .kvr{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid #f1f5f9;font-size:13px}
 .kvr:last-child{border-bottom:0}.kvr span{color:#64748b}.kvr b{text-align:right}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 2px}
-.chip{border:1px solid #cbd5e1;background:#fff;border-radius:999px;padding:6px 12px;font-size:13px;font-weight:600;color:#334155;min-height:40px}
+.chip{border:1px solid #cbd5e1;background:#fff;border-radius:999px;padding:6px 12px;font-size:13px;font-weight:600;color:#334155;min-height:44px}
 .chip.on{background:#0f766e;border-color:#0f766e;color:#fff}
 .parts{background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden}
 .prow{display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid #f1f5f9}
 .prow:last-child{border-bottom:0}
-.prow .qty{width:58px;text-align:center;padding:6px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px}
-.prow .x{border:0;background:transparent;color:#b91c1c;font-size:19px;line-height:1;padding:0 4px}
+.prow .qty{width:58px;text-align:center;padding:6px;min-height:44px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px}
+.prow .x{border:0;background:transparent;color:#b91c1c;font-size:19px;line-height:1;padding:0 4px;min-height:44px;min-width:44px}
 /* v1.4.4 - `.tot` WAS THE OLD TEAL TOTAL STRIP, from before the bill was written line by
    line. Nothing has worn it alone since v1.4.0 - the only two elements in this file are
    `class="bill tot"` - but it was still standing, and `.bill.tot` overrode its background and
@@ -303,7 +303,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
    Nothing here deletes anything, ever. A visit is a row added.
    ========================================================================== */
 
-  var APP_VERSION = "1.17.0";
+  var APP_VERSION = "1.18.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_service_session";
 
@@ -906,7 +906,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       var held = 0; try { held = jrnCount(); } catch (e) {}
       try {
         el("root").innerHTML =
-          '<div class="login"><h1>Energy World</h1><p>Challan &amp; material return</p>' +
+          '<div class="login"><h1>Energy World</h1><p>Service</p>' +
           '<div class="loginmsg">This app could not draw its screen. Nothing has been lost — ' +
           (held ? 'the ' + held + (held === 1 ? ' record' : ' records') + ' held on this phone are still here, and still go up.'
                 : 'nothing was waiting to go up.') +
@@ -1157,7 +1157,9 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     }
 
   function usableBook(r) {
-      return !!(r && r.ok && (Array.isArray(r.clients) || Array.isArray(r.challans)));
+      /* 1.18.0 - a reply that carries ANY tab is usable: the rest-half ask returns only audit, and
+         judging it unusable pulled the whole book every five minutes */
+      return !!(r && r.ok && Object.keys(r).some(function (k) { return Array.isArray(r[k]); }));
     }
 
   function bookSay(r) {
@@ -1730,7 +1732,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
   function notForYou(name, role) {
       return (name ? name + ", you are signed in as " : "You are signed in as ") +
         "\u201c" + (role || "no role set") + "\u201d. " +
-        "The Challan app is for admin, accounts and godown only. Ask the owner to change your " +
+        "The Service app is for admin, accounts and service only. Ask the owner to change your " +
         "role in the team sheet \u2014 nothing else controls it.";
     }
 
@@ -1961,6 +1963,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
         if (items.length) {
           PRODUCTS = items;
           try { bigSet(CAT_KEY, JSON.stringify({ v: CAT_V, at: Date.now(), items: items })); } catch (e) {}
+          try { if (S.parts) S.sheet = sheetParts(); } catch (e) {}   /* 1.18.0 - the open picker shows the list that just landed */
           try { render(); } catch (e) {}
         }
         _catP = null;
@@ -2107,7 +2110,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      NOTE, deliberately not fixed inside a Service release: both would be better using this
      estate's own num(), which reads "500/-" out of a spreadsheet cell where Number() reads
      zero. Changing the CRM's money arithmetic is its own decision, not a rider on a new app. */
-  function visitTotal(v) { return (Number(v.visitCharge) || 0) + (Number(v.saltAmt) || 0) + (Number(v.partsAmt) || 0); }
+  function visitTotal(v) { return num(v.visitCharge) + num(v.saltAmt) + num(v.partsAmt); }   /* 1.18.0 - num, as visitDue: "1,200/-" is 1,200 */
   /* ---- THE RATES LIVE IN THE PRICE LIST, NOT IN THIS FILE (v1.4.2, 20 Aug 2026) ----
      "Rs 600 per visit, salt cost as spares as per actual, currently its Rs 45 per kg."
 
@@ -2346,8 +2349,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       '<div class="row" style="align-items:flex-start">' +
         '<div class="grow">' +
           '<div class="brand">Service</div>' +
-          '<div class="who">' + esc(S.user) + ' &middot; ' + esc(S.role) +
-            (wireSay() ? ' &middot; <span class="wire">' + esc(wireSay()) + '</span>' : '') + '</div>' +
+          '<div class="who">' + esc(S.user) + ' &middot; ' + esc(S.role) + '</div>' +   /* 1.18.0 - the wire note is on the age line already */
           '<div class="who">' + age + '</div>' +
         '</div>' +
         '<a class="icon" href="' + helpHref() + '" target="_blank" rel="noopener" title="How to use this screen" aria-label="How to use this screen" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;font-weight:800;min-height:44px;min-width:44px;color:inherit">?</a>' +   /* 1.17.0 */
@@ -2378,7 +2380,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     var cls = band === "over" ? "over" : band === "soon" ? "soon" : band === "unset" ? "unset" : "";
     /* v1.12.0 - the same phone under another name, said on the row: the other record may be
        the one that was serviced last week, and this one\u2019s "overdue" may be false */
-    var dg = null; try { dg = svcDupPhones().byInst[ins.id] || null; } catch (e) { dg = null; }
+    var dg = null; try { dg = svcDupPaint().byInst[ins.id] || null; } catch (e) { dg = null; }   /* 1.18.0 - once per paint */
     return '<div class="card ' + cls + '" data-act="job" data-id="' + esc(ins.id) + '"' + (dg ? ' style="border-color:#fecaca"' : '') + '>' +
       '<div class="row"><div class="grow">' +
         '<div class="ttl">' + esc(ins.client || "(no name)") + '</div>' +
@@ -3068,6 +3070,8 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     /* nothing chargeable means nothing taken - the form does not even ask, so a stale value
        left in the object must not become a rupee the customer never handed over */
     var got = due > 0 ? num(v.collected) : 0;
+    /* 1.18.0 - more taken than is due is a mistake or an advance, never a balance of nought */
+    if (got > due + 0.5) throw new Error("MORE_THAN_DUE");
     var total = due;
     return {
       id: v.id || mintId("SV"),
@@ -3090,7 +3094,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       partsAmt: pTot,
       total: total,
       collected: got,
-      balance: Math.max(0, total - got),
+      balance: total - got,   /* 1.18.0 - never clamped: a minus would be his credit */
       notes: String(v.notes || ""),
       updatedAt: new Date().toISOString()
     };
@@ -3123,7 +3127,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     if (cyc > 0) {
       var d = new Date(row.date + "T00:00:00");
       d.setDate(d.getDate() + cyc);
-      out.nextService = d.toISOString().slice(0, 10);
+      out.nextService = ymdLocal(d);   /* 1.18.0 - the local day, as the CRM's addDays; UTC was a day early at IST midnight */
     }
     out.updatedAt = new Date().toISOString();
     return out;
@@ -3357,7 +3361,9 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     if (!v.type) { toast("Say what was done first."); return; }
     if (!ins && !v.client) { toast("Pick the customer this job was for."); return; }
 
-    var row = visitRowFrom(v, ins);
+    var row;
+    try { row = visitRowFrom(v, ins); }
+    catch (e) { if (String(e && e.message) === "MORE_THAN_DUE") { toast("More taken than is due \u2014 check the amount."); return; } throw e; }
     if (!row.total && !row.notes && !row.partsUsed) {
       toast("Nothing to record — add a charge, a part, or a note about what you did.");
       return;
@@ -3428,8 +3434,10 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     }).catch(function () { /* the journal has it; jrnPaint says so on screen */ });
   }
 
+  var _dupPaint = null;
+  function svcDupPaint() { return _dupPaint || (_dupPaint = svcDupPhones()); }   /* 1.18.0 */
   function bust() {
-    _cxCache = null; _bookCl = null; }
+    _cxCache = null; _bookCl = null; _dupPaint = null; }
 
 
   /* ================= THE SHELL ================= */
@@ -3486,7 +3494,11 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
   }
 
   function render() {
+    try { renderCore(); } catch (e) { crashHandle("render", e); }   /* 1.18.0 - the net the Challan app has */
+  }
+  function renderCore() {
     var r = el("root"); if (!r) return;
+    _dupPaint = null;   /* 1.18.0 - fresh per paint */
     /* v1.4.4 - THE WORD "undefined" ON EVERY SCREEN, seen in his own screenshot.
        jrnPaint() paints the sync banner into a node OUTSIDE #root and returns nothing. It was
        being concatenated into this string, so every render printed the literal word
@@ -3498,6 +3510,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
          `.wrap` to keep the sync banner off the bottom of the list, and had been finding
          nothing at all. One missing class, two faults. */
       '<div class="body wrap">' + bodyHtml() + '</div>' +
+      '<div id="ew_sync_banner" style="display:none"></div>' +   /* 1.18.0 - the held-record bar jrnPaint() draws */
       (S.sheet ? '' : '<div class="tabs">' + NAV.map(navBtn).join("") + '</div>');
     placePut(_place, S.sheet, S.tab);
     jrnPaint();
@@ -3855,7 +3868,9 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
   (function () {
     var sess = null;
     try { sess = JSON.parse(localStorage.getItem(STORE) || "null"); } catch (e) { sess = null; }
-    crashHandle();
+    /* 1.18.0 - the crash net: a fault in a paint shows the crash screen, never a frozen tab */
+    window.addEventListener("error", function (ev) { crashHandle("error", (ev && ev.error) || new Error((ev && ev.message) || "unknown")); });
+    window.addEventListener("unhandledrejection", function (ev) { crashHandle("promise", (ev && ev.reason) || new Error("unknown")); });
     regSW();
     if (!sess || !sess.user || !sess.pin) { renderLogin(""); return; }
     S.user = sess.user; S.pin = sess.pin;
@@ -3963,8 +3978,5 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
   setTimeout(show, 2500);
 })();
 </script>
-</body>
-</html>
-
 </body>
 </html>
