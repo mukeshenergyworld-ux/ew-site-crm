@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.669";
+  var APP_VERSION = "6.9.670";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -9874,7 +9874,8 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     var set = {}, t = String(name || "").trim().toLowerCase();
     (S.data.challans || []).forEach(function (c) {
       if (String(c.customerName || "").trim().toLowerCase() !== t) return;
-      if (String(c.receiptReceived).toUpperCase() !== "Y") return;
+      /* 6.9.670 - any delivery on the book (cancelled ones are held out of S.data), not only one
+         with the signed paper in: his first challan marks its brands Won, as he asked */
       if (c.brand) String(c.brand).split(/,\s*/).forEach(function (b) { b = b.trim(); if (b) set[b] = 1; });
       var lines = []; try { lines = JSON.parse(c.itemsJson || "[]"); } catch (e) { lines = []; }
       (lines || []).forEach(function (i) {
@@ -9888,8 +9889,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
   function clientDelivered(name) {
     var t = String(name || "").trim().toLowerCase();
     return (S.data.challans || []).some(function (c) {
-      return String(c.customerName || "").trim().toLowerCase() === t &&
-        String(c.receiptReceived).toUpperCase() === "Y";
+      return String(c.customerName || "").trim().toLowerCase() === t;   /* 6.9.670 - his first challan makes him a client */
     });
   }
   /* ---- 6.9.373: ASKED ONCE PER CLIENT, NOT ONCE PER BRAND ----
@@ -15251,6 +15251,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
   function siteFromChallan(clientName, name) {
     var nm = String(name || "").trim(), c = clientByName(clientName) || {}, who = c.name || String(clientName || "").trim();
     if (!nm || !who || nm === SITE_NEW) return null;
+    if (!roleAny(["admin", "sales"])) return null;   /* 6.9.670 - the server lets only these write sites */
     if (sitesOfClient(who).some(function (x) { return dkey(x.name) === dkey(nm); })) return null;
     try {
       return save("sites", {
@@ -53263,7 +53264,11 @@ function viewCatalogue() {
       /* v6.9.289 - and being ON the book is not the same as being a client. See
          modalNotYetClient(). Anyone already delivered to passes this by the second half of
          isClient(), so no existing customer is stopped. */
-      if (!isClient(cn)) { S.modal = modalNotYetClient(cn); render(); return; }
+      /* 6.9.670 - NO LONGER A DOOR. HIS WORDS, 30 Sep 2026, over a godown screenshot refusing Tagra Sanitary Store: "when making first
+     challan for a client, its assumed that he is client now, allow to make challan, after first challan a
+     client automatically becomes client and challan brand auto marked won for that client".
+         A registered name may take his first challan; the challan itself makes him a client and
+         its brands Won (challanWonBrands / clientDelivered below count any delivery on the book). */
       var lines = (S.ch && S.ch.items) || [];
       if (!lines.length) { toast("Add at least one line \u2014 material, job work, or an item not in the price list."); return; }
       /* v6.9.366 - the fare, asked for once. See chFreightBar(). This sits ahead of
