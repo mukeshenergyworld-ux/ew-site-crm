@@ -170,19 +170,19 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
 .plist .prow:last-child{border-bottom:0}
 .plist .prow.picked{background:#f0fdfa}
 .plist .prow img,.plist .prow .noimg{width:54px;height:54px;min-width:54px;max-width:54px;object-fit:contain;border-radius:8px;background:#f8fafc;flex:0 0 54px;border:1px solid #e2e8f0}
-.noimg{display:flex;align-items:center;justify-content:center;text-align:center;font-size:9px;line-height:1.15;font-weight:600;color:#cbd5e1}
+.noimg{display:flex;align-items:center;justify-content:center;text-align:center;font-size:12px;line-height:1.15;font-weight:600;color:#cbd5e1}
 .plist .prow .pinfo{flex:1 1 auto;min-width:0}
 .plist .prow .pname{font-size:13.5px;font-weight:600;line-height:1.25}
 .plist .prow .pmeta{font-size:12px;color:#94a3b8}
 .plist .prow .pqty{flex:0 0 auto;display:flex;align-items:center;gap:6px}
-.plist .prow .pqty .stp{width:36px;height:36px;border:1px solid #e2e8f0;background:#fff;border-radius:8px;font-size:17px;font-weight:700;color:#0f766e;cursor:pointer;line-height:1;padding:0}
-.plist .prow .pqty input{width:56px;text-align:center;padding:7px 2px;font-size:14px;font-weight:700}
+.plist .prow .pqty .stp{width:44px;height:44px;border:1px solid #e2e8f0;background:#fff;border-radius:8px;font-size:17px;font-weight:700;color:#0f766e;cursor:pointer;line-height:1;padding:0}
+.plist .prow .pqty input{width:56px;text-align:center;padding:7px 2px;font-size:14px;font-weight:700;min-height:44px}
 .pcard{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:8px 9px}
 .pcard .pn{font-weight:800;font-size:13px;line-height:1.25}
 .pcard .pm{font-size:12px;color:#64748b;font-weight:600;margin-top:2px}
 .pcard img{width:100%;height:62px;object-fit:contain;border-radius:8px;background:#f8fafc;display:block}
 .pcard .step button{width:32px;height:34px;font-size:17px;border-radius:8px}
-.pcard .step input{width:100%;text-align:center;font-weight:800;padding:6px 2px}
+.pcard .step input{width:100%;text-align:center;font-weight:800;padding:6px 2px;min-height:44px}
 .pcard .step{gap:5px;margin-top:7px}
 .step{display:flex;align-items:center;gap:8px}
 .step button{width:42px;height:42px;border-radius:10px;border:1px solid #cbd5e1;background:#fff;font-size:20px;font-weight:800;cursor:pointer}
@@ -198,7 +198,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
 /* 16px, not 14. Below 16px iOS zooms the whole page on focus and never zooms back out,
    and this is the one field the godown types by hand on every single challan. */
 .bookno input{width:104px;flex:0 0 auto;text-align:center;font-size:16px;font-weight:800;
-  letter-spacing:.03em;padding:8px;border:1px solid #fca5a5;border-radius:8px}
+  letter-spacing:.03em;padding:8px;min-height:44px;border:1px solid #fca5a5;border-radius:8px}
 .bookno input.has{border-color:#86efac;background:#f0fdf4}
 .bookno span{width:14px;font-size:12px;color:#15803d}
 /* executive bands: a solid teal strip per man, tap to open or shut */
@@ -241,7 +241,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.118.0";
+  var APP_VERSION = "1.119.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -767,7 +767,18 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     var d = new Date();
     return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
   }
-  function d10(v) { return String(v == null ? "" : v).slice(0,10); }
+  /* ===== 6.9.666 / 1.119.0 / 1.59.0 - THE DAY A ROW WAS MADE, ON THIS SIDE OF MIDNIGHT =====
+     createdAt is a UTC instant. Its first ten characters are the UTC day, and between 00:00 and
+     05:30 IST that is YESTERDAY. The server numbers a challan on Asia/Kolkata; every reader of
+     "the day" must agree with it. A bare date ("2026-09-30") is already a day and is left alone. */
+  function localDay(v) {
+    var s = String(v == null ? "" : v).trim();
+    if (s.indexOf("T") < 0) return s.slice(0, 10);
+    var t = Date.parse(s); if (!t) return s.slice(0, 10);
+    var x = new Date(t);
+    return x.getFullYear() + "-" + String(x.getMonth() + 1).padStart(2, "0") + "-" + String(x.getDate()).padStart(2, "0");
+  }
+  function d10(v) { return localDay(v); }   /* 1.119.0 - an ISO instant reads as the local day */
   var MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   function dstr(ymd) {
     if (!ymd) return "";
@@ -2941,7 +2952,7 @@ function discRowOn(client, brand, onYmd) {
          agreeing with the account. Measured before shipping: not one of those lines has a dated
          rate that started after its delivery, so no figure moves today; this is what stops them
          moving tomorrow. */
-      var disc = (i.disc != null && i.disc !== "") ? Number(i.disc) : clientDiscountOn(cl, bBrand, String((c && c.createdAt) || "").slice(0, 10));
+      var disc = (i.disc != null && i.disc !== "") ? Number(i.disc) : clientDiscountOn(cl, bBrand, localDay(c && c.createdAt));   /* 6.9.666 - the local day */
       var dr = Math.round(rate * (1 - disc / 100));
       return { desc: i.desc || i.code || "", code: i.code, brand: bBrand, qty: qty, rate: rate, disc: disc, dr: dr,
                amt: qty * dr, job: isJobLine(i), ix: ix };   /* v6.9.565 - ix: which saved line */
@@ -3156,7 +3167,7 @@ function discRowOn(client, brand, onYmd) {
     var qs = String(p.q || "");
     var box = '<div style="margin:9px 0 4px"><input id="pk_q" value="' + esc(qs) + '" autocomplete="off" ' +
       'placeholder="Search a product by name, code or brand…" ' +
-      'style="width:100%;box-sizing:border-box;padding:9px 11px;font-size:14px;border:1px solid #cbd5e1;border-radius:8px"/></div>';
+      'style="width:100%;box-sizing:border-box;padding:9px 11px;min-height:44px;font-size:14px;border:1px solid #cbd5e1;border-radius:8px"/></div>';
     if (qs.trim().length >= 2) {
       var hits = prodsMatching(qs);
       if (!hits.length) {
@@ -3385,7 +3396,7 @@ function discRowOn(client, brand, onYmd) {
     return '<div class="top">' + newVerBar() + '<div class="t1">' +
       '<h1>Challan</h1>' +
       '<div style="text-align:right"><div class="who">' + esc(S.user) + ' · ' + esc(S.role) +
-        (canApprove() ? '' : ' · makes, does not approve') + '</div>' +
+        (canApprove() ? '' : (canMake() ? ' · makes, does not approve' : ' · scorecard only')) + '</div>' +   /* 1.119.0 */
       '<div>' + bookAgeHtml(S.syncAt, S.busy) + '</div></div>' +
       '<a class="btn sm ghost" href="' + helpHref() + '" target="_blank" rel="noopener" title="How to use this screen" aria-label="How to use this screen" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;font-weight:800">?</a>' +   /* 1.113.0 */
       '<button class="btn sm ghost" data-act="refresh" title="Pull the latest, and get the new version if one is up">&#8635;</button>' +
@@ -4277,7 +4288,7 @@ function discRowOn(client, brand, onYmd) {
              finding the product on its shelf again. A job is one job and keeps no box. */
           (isJobLine(l) ? '' :
             '<input class="ln-qty" data-i="' + i + '" inputmode="decimal" value="' + esc(num(l.qty)) + '" ' +
-            'aria-label="Quantity" style="width:58px;flex:0 0 58px;text-align:center;font-weight:800;padding:8px 4px"/>') +
+            'aria-label="Quantity" style="width:58px;flex:0 0 58px;text-align:center;font-weight:800;padding:8px 4px;min-height:44px"/>') +
           '<div style="font-weight:800;white-space:nowrap;min-width:64px;text-align:right">' + money(net) + '</div>' +
           '<button class="btn sm gry" data-act="ln-del" data-i="' + i + '">&times;</button></div>';
       }).join("");
@@ -4461,7 +4472,7 @@ function discRowOn(client, brand, onYmd) {
       '<div class="row" style="align-items:center;gap:7px">' +
         '<button class="btn sm gry" data-act="day-prev" title="the day before">&#8592;</button>' +
         '<input type="date" id="dayPick" value="' + esc(day) + '" ' +
-          'style="flex:1;min-width:0;font-size:14px;padding:8px 9px;border:1.5px solid #e2e8f0;border-radius:10px">' +
+          'style="flex:1;min-width:0;font-size:14px;padding:8px 9px;min-height:44px;border:1.5px solid #e2e8f0;border-radius:10px">' +
         '<button class="btn sm gry" data-act="day-next" title="the day after">&#8594;</button>' +
       '</div>' +
       '<div class="muted" style="font-weight:700;margin:8px 2px 6px">' +
@@ -4760,7 +4771,7 @@ function discRowOn(client, brand, onYmd) {
   }
 
   function regDate(c) {
-    var d = String(((c || {}).createdAt) || "").slice(0, 10);
+    var d = localDay(((c || {}).createdAt) || "");   /* 6.9.666 - the local day */
     return /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : (chNoDate(c) || "");
   }
 
@@ -4770,7 +4781,11 @@ function discRowOn(client, brand, onYmd) {
   }
 
   function regBuild() {
-    if (_regCache) return _regCache;
+    /* 1.119.0 / 6.9.666 - keyed on the book, not dropped on every paint: the same rows give the
+       same register. Measured on a 784-challan book: 293-597 ms a paint, on every chip and keystroke. */
+    var _rk = String((((S.data || {}).challans) || []).length) + "|" + String((((S.cancelled || {}).challans) || []).length) + "|" +
+              String((((S.data || {}).audit) || []).length) + "|" + String((S.data || {}).stamp || "");
+    if (_regCache && _regCache._key === _rk) return _regCache;
     /* ======== A CANCELLED CHALLAN IS NOT A MISSING NUMBER  (v6.9.490) ========
        HIS WORDS: "show details of these type of challans also, who created and who cancells in
        single line again", after spotting 106 and 103 reported as holes.
@@ -4831,7 +4846,7 @@ function discRowOn(client, brand, onYmd) {
       var x = String(regDate(a)), y = String(regDate(b));
       return REG_NEWEST_FIRST ? y.localeCompare(x) : x.localeCompare(y);
     });
-    return (_regCache = { line: line, old: old, gaps: gaps, dups: dups, cxs: cxs, lo: lo, hi: hi,
+    return (_regCache = { _key: _rk, line: line, old: old, gaps: gaps, dups: dups, cxs: cxs, lo: lo, hi: hi,
       total: all.length, nSer: all.length - old.length, nOld: old.length });
   }
 
@@ -4903,7 +4918,7 @@ function discRowOn(client, brand, onYmd) {
     if (!real.length && !cur) return "";
     return '<label style="display:inline-flex;flex-direction:column;gap:2px;font-size:12px;font-weight:700;color:#475569">' +
       esc(label) +
-      '<select id="reg_' + id + '" style="font-size:12.5px;padding:4px 6px;border:1px solid ' +
+      '<select id="reg_' + id + '" style="font-size:12.5px;padding:4px 6px;min-height:44px;border:1px solid ' +
       (cur ? '#0b3b36' : '#cbd5e1') + ';border-radius:7px;background:' + (cur ? '#f0fdfa' : '#fff') +
       ';max-width:150px">' +
       '<option value="">All</option>' +
@@ -4941,7 +4956,7 @@ function discRowOn(client, brand, onYmd) {
       '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">' +
       '<label style="display:inline-flex;flex-direction:column;gap:2px;font-size:12px;font-weight:700;color:#475569">Find' +
       '<input id="reg_q" type="search" value="' + esc(regF("q")) + '" placeholder="challan no, client, mobile" ' +
-      'style="font-size:12.5px;padding:4px 7px;border:1px solid #cbd5e1;border-radius:7px;min-width:170px"/></label>' +
+      'style="font-size:12.5px;padding:4px 7px;min-height:44px;border:1px solid #cbd5e1;border-radius:7px;min-width:170px"/></label>' +
       regSelect("exec", "Executive", regOpts("ownedBy", "(unassigned)")) +
       regSelect("location", "Town", regOpts("location", "(no town)")) +
       regSelect("area", "Area", regOpts("area", "(no area)")) +
@@ -5516,7 +5531,7 @@ function discRowOn(client, brand, onYmd) {
           '<div class="muted">' + esc(l.code) + ' · ' + esc(l.unit || "") + ' × ' + money(l.rate) + '</div></div>' +
           /* v1.52.0 - the quantity is a box on the line, as on the challan */
           '<input class="rln-qty" data-i="' + i + '" inputmode="decimal" value="' + esc(num(l.qty)) + '" ' +
-            'aria-label="Quantity" style="width:58px;flex:0 0 58px;text-align:center;font-weight:800;padding:8px 4px"/>' +
+            'aria-label="Quantity" style="width:58px;flex:0 0 58px;text-align:center;font-weight:800;padding:8px 4px;min-height:44px"/>' +
           '<div style="font-weight:800;white-space:nowrap;min-width:64px;text-align:right">' + money(num(l.qty) * num(l.rate)) + '</div>' +
           '<button class="btn sm gry" data-act="rln-del" data-i="' + i + '">&times;</button></div>';
       }).join("");
@@ -6961,7 +6976,7 @@ function discRowOn(client, brand, onYmd) {
      ceiling at the goods value in challanNet / chFurtherOff still holds for the two together. */
   function hisabExtra(c) {
     var st = hisabStamp(c);
-    return (st ? (Number(st.extra) || 0) : 0) + Math.max(0, Number(c && c.discAmt) || 0);
+    return (st ? (Number(st.extra) || 0) : 0) + Math.max(0, nAmt(c && c.discAmt));   /* 6.9.666 - "1,500" is 1500, not 0 */
   }
   function incRate(client, brand, role, onYmd) {
     var d = discRow(client, brand, onYmd); if (!d) return 0;
@@ -7014,8 +7029,8 @@ function discRowOn(client, brand, onYmd) {
   }
   function hisabStamp(c) { return (c && c.id) ? (hisabStampMap()[c.id] || null) : null; }
   function hisabPreExisting(c) {
-    var at = String((c && c.createdAt) || "");
-    return !!at && at.slice(0, 10) < HISAB_STAMP_FROM;
+    var at = localDay((c && c.createdAt) || "");   /* 6.9.666 - the local day, not the UTC day */
+    return !!at && at < HISAB_STAMP_FROM;
   }
   function inHisab(c) { return !!hisabStamp(c) || hisabPreExisting(c); }
   /* v6.9.259's lesson, carried over with it: a stamp is not the same thing as being counted,
@@ -7193,7 +7208,8 @@ function discRowOn(client, brand, onYmd) {
       (g.held > 0 ? '<div class="frnote amb">' + esc(money(g.held)) + ' more is held for ' +
         g.heldN + ' missing receipt' + (g.heldN === 1 ? '' : 's') + ' and is NOT in the figure above.</div>' : '') +
       '<label for="dp_amt">Amount paid</label>' +
-      '<input id="dp_amt" inputmode="numeric" value="' + (dpKnown && owed > 0 ? esc(String(Math.round(owed))) : "") + '" placeholder="0"/>' +
+      '<input id="dp_amt" inputmode="numeric" value="" placeholder="0"/>' +   /* 1.119.0 - typed, never pre-filled: one tap paid the whole balance */
+      (dpKnown && owed > 0 ? '<div class="acts" style="margin:6px 0 0"><button class="btn sm gry" data-act="dp-full" data-v="' + esc(String(Math.round(owed))) + '">Full ' + esc(money(Math.round(owed))) + '</button></div>' : '') +
       '<label for="dp_mode">How</label>' +
       '<select id="dp_mode">' + ["Cash","Bank transfer","UPI","Cheque","Adjusted"]
         .map(function (m) { return '<option>' + m + '</option>'; }).join("") + '</select>' +
@@ -7682,7 +7698,7 @@ function discRowOn(client, brand, onYmd) {
     var freight = String(c.freightTo) === "Client" ? num(c.freight) : 0;
     return net + freight;
   }
-  function hisabExtraOf(c) { return ((c && c.id) ? (Number(hisabExtraMap()[c.id]) || 0) : 0) + Math.max(0, Number(c && c.discAmt) || 0); }
+  function hisabExtraOf(c) { return ((c && c.id) ? (Number(hisabExtraMap()[c.id]) || 0) : 0) + Math.max(0, nAmt(c && c.discAmt)); }   /* 1.119.0 - "1,500" is 1500 */
   function hisabExtraMap() {
     if (_hxCache) return _hxCache;
     var m = {}, seen = {};
@@ -8136,7 +8152,7 @@ function discRowOn(client, brand, onYmd) {
        splitCancelled(), which is ITS first look at the book; this app has no such step, and
        renderBody is the one place every screen passes through. */
     if (S.data) { try { chDatesIn(); } catch (e) { } }
-    try { regBust(); } catch (e) { }                 /* 1.63.0 */
+    /* 1.119.0 - regBust() no longer runs here: regBuild keys its cache on the book */
     var p = S.data ? pendingApproval().length : 0;
     var m = S.data ? missingReceipts().filter(recent).length : 0;   /* agrees with the list it opens */
     /* the badge counts DELIVERIES HOLDING FREIGHT BACK, not drivers - a driver with four
@@ -9219,6 +9235,9 @@ function discRowOn(client, brand, onYmd) {
            approval, which was about the money, still holds. */
         if (_editRow && chMoneySame(_editRow, ch) && ["Approved", "Dispatched", "Received", "Billed"].indexOf(String(_editRow.status || "")) >= 0) {
           ch.status = _editRow.status;
+        } else if (_editRow && ch.status === "Draft") {
+          /* 1.119.0 - set DOWN to Draft: the old pass no longer stands, so its name and time go too */
+          ch.approvedBy = ""; ch.approvedAt = "";
         }
         return saveRow("challans", ch, { noFor: _editRow ? "" : _noFor }).then(function (r) {
           var saved = r.row || ch;
@@ -9337,6 +9356,7 @@ function discRowOn(client, brand, onYmd) {
         var _rHeld = !!(n && n._held);
         if (!rno && !_rHeld) { rreset(); toast("The server did not give a return number. Nothing was saved \u2014 try again."); return; }
         if (rno) S.rt.mintNo = rno;
+        var _agCh = rz.against ? chFind(rz.against) : null, _agLines = _agCh ? chLines(_agCh) : [];   /* 1.119.0 */
         var row = {
           id: _rMintId, createdBy: S.user, returnNo: rno,
           customerId: rc.id || "", customerName: rc.name,
@@ -9348,6 +9368,13 @@ function discRowOn(client, brand, onYmd) {
                the CRM's Rs 7,648 on SANJEEVBAT/230926/R01) and a later change of rate would have moved
                every old return. The client's rate for that brand, on the day it came back. */
             var _dn = new Date(), _dy = _dn.getFullYear() + "-" + String(_dn.getMonth() + 1).padStart(2, "0") + "-" + String(_dn.getDate()).padStart(2, "0");
+            /* 1.119.0 - AGAINST A DELIVERY, AT THAT DELIVERY'S PRICE. A return booked against a
+               challan credited the line at today's catalogue price and the client's standing rate:
+               delivered at 500 less 30% (350), credited at 650 less 20% (520). The delivery's own
+               line wins when the code is on it; anything not on it falls back as before. */
+            var _src = (_agLines || []).filter(function (x) { return x && String(x.code) === String(l.code); })[0];
+            if (_src) return { code:l.code, desc:l.desc, unit:l.unit, qty:num(l.qty), rate:num(_src.rate), brand:_src.brand || l.brand,
+                               disc: (_src.disc != null && _src.disc !== "") ? num(_src.disc) : clientDiscountOn(rc.name, _src.brand || l.brand || "", localDay(_agCh && _agCh.createdAt) || _dy) };
             return { code:l.code, desc:l.desc, unit:l.unit, qty:num(l.qty), rate:num(l.rate), brand:l.brand,
                      disc: (l.disc != null && l.disc !== "") ? num(l.disc) : clientDiscountOn(rc.name, l.brand || "", _dy) };
           })),
@@ -9390,6 +9417,7 @@ function discRowOn(client, brand, onYmd) {
       if (!roleAny(["admin","accounts"])) { toast("Recording a payout is the owner or accounts."); return; }
       S.sheet = sheetPayout(t.getAttribute("data-k") || ""); render(); return;
     }
+    if (act === "dp-full") { var _dq = el("dp_amt"); if (_dq) { _dq.value = t.getAttribute("data-v") || ""; _dq.focus(); } return; }   /* 1.119.0 */
     if (act === "dp-save") {
       if (!roleAny(["admin","accounts"])) { toast("Recording a payout is the owner or accounts."); return; }
       var dk = t.getAttribute("data-k") || "";
