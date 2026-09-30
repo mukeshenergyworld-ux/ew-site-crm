@@ -241,7 +241,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.121.0";
+  var APP_VERSION = "1.122.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -1849,6 +1849,8 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
         cat: String(row[4] || "").trim(), unit: String(row[5] || "").trim(),
         price: num(row[6]), brand: String(row[8] || "").trim(),
         pic: driveImg(row[10]), specs: String(row[11] || "").trim(),
+        /* 1.122.0 - column M, "Old Codes": what this product was called before Tally's code */
+        was: String(row[12] || "").split(/\s*[,;]\s*/).map(function (x) { return x.trim(); }).filter(Boolean),
         label: (code ? code + " - " : "") + desc
       });
     }
@@ -3996,10 +3998,74 @@ function discRowOn(client, brand, onYmd) {
     _stkLoading = true;
     api("stockList", {}, 30000).then(function (r) {
       _stkLoading = false;
-      if (r && r.ok && Array.isArray(r.rows)) { S.stock = r.rows; STOCK_LOADED = true; if (then) then(); render(); }
+      if (r && r.ok && Array.isArray(r.rows)) { S.stock = r.rows; try { codesIn(); } catch (e) { } STOCK_LOADED = true; if (then) then(); render(); }
     }).catch(function () { _stkLoading = false; });
   }
   function chItems(ch) { try { return JSON.parse(ch.itemsJson || "[]"); } catch (e) { return []; } }
+  /* ===== 6.9.671 / 1.122.0 - A PRODUCT'S OLD CODES  (Tally is the master for item codes) =====
+     HIS WORDS, 30 Sep 2026: "tally billing upload - 1. monthly billing summary will be uploaded, fetch
+     purchase bill no from that summary; 2. individual bills will be uploaded again in excel or pdf format,
+     match bill item code and brand with tally bills, if code not found ask admin to match it with crm
+     item code, once matched crm code will be changed according to tally, we have to go as per tally as
+     that is primary for tax invoice, also give option to create new item code and also new brand if not
+     listed in crm, like this over the time we have to maintain item codes as per tally codes".
+     When the owner matches a Tally bill line to a product, the product's code in the catalogue
+     BECOMES Tally's (server V142, catalogCode) and the code it had is written to column M, "Old
+     Codes". Nothing already on the book is rewritten: a challan, return, quote or stock row made
+     under the old code is read under the new one, here, as it is loaded. So stock, levels, kits
+     and every screen keep adding up one product, not two. */
+  var CODE_WAS = {}, _codesSeen = (typeof WeakMap === "function") ? new WeakMap() : null, _codesVer = "";
+  function codeWasBuild() {
+    var m = {};
+    (PRODUCTS || []).forEach(function (p) {
+      var to = String((p && p.code) || "").trim(); if (!to) return;
+      (p.was || []).forEach(function (o) { o = String(o || "").trim(); if (o && o !== to) m[o] = to; });
+    });
+    CODE_WAS = m; _codesVer = JSON.stringify(m); return m;
+  }
+  function codeNow(c) {
+    var k = String(c == null ? "" : c).trim(), n = 0;
+    if (!CODE_WAS[k]) return c;
+    while (CODE_WAS[k] && n++ < 8) k = CODE_WAS[k];
+    return k;
+  }
+  function codesInItems(js, key) {
+    if (!js || typeof js !== "string") return js;
+    var a; try { a = JSON.parse(js); } catch (e) { return js; }
+    if (!Array.isArray(a)) return js;
+    var ch = false;
+    a.forEach(function (l) { if (l && l[key] != null && l[key] !== "") { var n = codeNow(l[key]); if (n !== l[key]) { l[key] = n; ch = true; } } });
+    return ch ? JSON.stringify(a) : js;
+  }
+  function codesIn() {
+    codeWasBuild();
+    if (!Object.keys(CODE_WAS).length) return 0;
+    var n = 0;
+    /* the Challan app runs this on every paint: a row already read under today's codes, and not
+       changed since, is not parsed again */
+    var fix = function (o, f, key) {
+      var v = o[f], seen = _codesSeen && _codesSeen.get(o);
+      if (seen && seen.v === _codesVer && seen[f] === v) return;
+      var w = codesInItems(v, key); if (w !== v) { o[f] = w; n++; }
+      if (_codesSeen) { if (!seen || seen.v !== _codesVer) { seen = { v: _codesVer }; _codesSeen.set(o, seen); } seen[f] = w; }
+    };
+    [S.data || {}, S.cancelled || {}].forEach(function (D) {
+      ["challans", "returns"].forEach(function (t) { (D[t] || []).forEach(function (r) { if (r) fix(r, "itemsJson", "code"); }); });
+      (D.quotes || []).forEach(function (q) { if (q) fix(q, "items", "code"); });
+    });
+    (S.stock || []).forEach(function (r) {
+      if (!r) return;
+      var c = codeNow(r.code); if (c !== r.code) { r.code = c; n++; }
+      if (String(r.type) === "bill") fix(r, "desc", "c");
+      if (String(r.type) === "bom" && r.notes) {
+        try {
+          var o = JSON.parse(r.notes), p0 = JSON.stringify(o.parts || []), p1 = codesInItems(p0, "c");
+          if (p1 !== p0) { o.parts = JSON.parse(p1); r.notes = JSON.stringify(o); n++; }
+        } catch (e) { }
+      }
+    });
+    return n;
+  }
   function stkCutoff() {
     var m = {};
     (S.stock || []).forEach(function (r) {
@@ -4115,8 +4181,8 @@ function discRowOn(client, brand, onYmd) {
       if (ty === "in" && _bref[String(row.ref || "").trim().toLowerCase()]) return;   /* that bill is already counted from Tally */
       var _k0 = String(row.code || "").trim();
       if (ty === "opening" && _olast[_k0] !== row) return;   /* only the latest count - 6.9.608: and only its last save */
-      if (ty !== "opening" && ty !== "reorder" && ty !== "rate" && ty !== "landing" && ty !== "register" && ty !== "alias" && ty !== "plan" && ty !== "bom" && !stkCounts(_k0, row.asOn, cut)) return;
-      if (ty === "reorder" || ty === "rate" || ty === "landing" || ty === "register" || ty === "alias" || ty === "plan" || ty === "bom") return;   /* bom: a kit's parts list (6.9.633 / 1.112.0) */   /* settings rows, not movements (register/alias: v6.9.605; plan: 6.9.621) */
+      if (ty !== "opening" && ty !== "reorder" && ty !== "rate" && ty !== "landing" && ty !== "register" && ty !== "alias" && ty !== "plan" && ty !== "bom" && ty !== "billwait" && !stkCounts(_k0, row.asOn, cut)) return;
+      if (ty === "reorder" || ty === "rate" || ty === "landing" || ty === "register" || ty === "alias" || ty === "plan" || ty === "bom" || ty === "billwait") return;   /* bom: a kit's parts list (6.9.633 / 1.112.0) */   /* settings rows, not movements (register/alias: v6.9.605; plan: 6.9.621) */
       var k = String(row.code || "").trim(); if (!k) return;
       m[k] = (m[k] || 0) + (Number(row.qty) || 0);
       if (row.desc && !desc[k]) desc[k] = row.desc;
@@ -4815,6 +4881,9 @@ function discRowOn(client, brand, onYmd) {
       c.createdAt = d + "T12:00:00.000Z";
       c.__dFrom = src;
     });
+    /* 6.9.671 / 1.122.0 - and a line made under a product's old code reads as Tally's code.
+       Here, not in splitCancelled: that one is pinned byte for byte to its Apps Script twin. */
+    try { codesIn(); } catch (e) { }
   }
   function chDateLost(c) { return String((c && c.__dFrom) || ""); }
   function chDatePill(c) {
