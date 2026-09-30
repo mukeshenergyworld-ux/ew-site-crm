@@ -23,7 +23,7 @@ a{color:#0f766e}
 .top h1{margin:0;font-size:16px;font-weight:800;letter-spacing:.02em;flex:1}
 .top .who{font-size:12px;color:#fecaca}
 .btn{appearance:none;border:1px solid #7f1d1d;background:#7f1d1d;color:#fff;border-radius:9px;
-  padding:9px 13px;font-size:13.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+  padding:9px 13px;font-size:13.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;min-height:44px}   /* 1.59.0 - the 44px floor .btn.sm already had */
 .btn:active{transform:translateY(1px)}
 .btn.ghost{background:#fff;color:#7f1d1d}
 /* v1.31.2 - a 40px floor under every small button and filter chip, and 12px under every
@@ -47,7 +47,7 @@ a{color:#0f766e}
   padding:7px 13px;font-size:12.5px;font-weight:700;cursor:pointer;flex:0 0 auto;min-height:44px}
 .chip.on{background:#7f1d1d;border-color:#7f1d1d;color:#fff}
 .chip .c{opacity:.7;font-weight:600}
-input,select,textarea{width:100%;padding:11px 12px;border:1px solid #cbd5e1;border-radius:9px;
+input,select,textarea{width:100%;padding:11px 12px;border:1px solid #cbd5e1;border-radius:9px;min-height:44px;
   font-size:16px;font-family:inherit;background:#fff;color:#0f172a}
 /* ==== A TICK BOX IS NOT A TEXT FIELD (23 Aug 2026) ====
    The rule above is right for every field in this app and wrong for the two that are not
@@ -146,7 +146,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.58.0";
+  var APP_VERSION = "1.59.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_collect_session";
 
@@ -1567,7 +1567,18 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
     var n = Number(t);
     return isFinite(n) ? n : 0;
   }
-  function d10(v) { return String(v == null ? "" : v).slice(0, 10); }
+  /* ===== 6.9.666 / 1.119.0 / 1.59.0 - THE DAY A ROW WAS MADE, ON THIS SIDE OF MIDNIGHT =====
+     createdAt is a UTC instant. Its first ten characters are the UTC day, and between 00:00 and
+     05:30 IST that is YESTERDAY. The server numbers a challan on Asia/Kolkata; every reader of
+     "the day" must agree with it. A bare date ("2026-09-30") is already a day and is left alone. */
+  function localDay(v) {
+    var s = String(v == null ? "" : v).trim();
+    if (s.indexOf("T") < 0) return s.slice(0, 10);
+    var t = Date.parse(s); if (!t) return s.slice(0, 10);
+    var x = new Date(t);
+    return x.getFullYear() + "-" + String(x.getMonth() + 1).padStart(2, "0") + "-" + String(x.getDate()).padStart(2, "0");
+  }
+  function d10(v) { return localDay(v); }   /* 1.59.0 - an ISO instant reads as the local day */
   /* v1.31.0 - ONE READER FOR A PAYMENT AMOUNT, the same text as the CRM's.
      This app was already tolerant here - it has read payments through num()/EWnum() since it
      shipped - so no figure on this screen moves today. It is converted anyway, because the
@@ -1618,7 +1629,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
   }
   /* 1.52.0 - and the discount typed on the whole challan, which his decision of 24 Sep makes
      reduce the total (the CRM's hisabExtra, the same sum) */
-  function hisabExtraOf(c) { return ((c && c.id) ? (Number(hisabExtraMap()[c.id]) || 0) : 0) + Math.max(0, Number(c && c.discAmt) || 0); }
+  function hisabExtraOf(c) { return ((c && c.id) ? (Number(hisabExtraMap()[c.id]) || 0) : 0) + Math.max(0, nAmt(c && c.discAmt)); }   /* 1.59.0 - "1,500" is 1500 */
 
   /* Net (post-discount) goods value of a challan, from the discount frozen on each
      line when it was created.
@@ -1970,7 +1981,7 @@ function cancelMap() {
          agreeing with the account. Measured before shipping: not one of those lines has a dated
          rate that started after its delivery, so no figure moves today; this is what stops them
          moving tomorrow. */
-      var disc = (i.disc != null && i.disc !== "") ? Number(i.disc) : clientDiscountOn(cl, bBrand, String((c && c.createdAt) || "").slice(0, 10));
+      var disc = (i.disc != null && i.disc !== "") ? Number(i.disc) : clientDiscountOn(cl, bBrand, localDay(c && c.createdAt));   /* 6.9.666 - the local day */
       var dr = Math.round(rate * (1 - disc / 100));
       return { desc: i.desc || i.code || "", code: i.code, brand: bBrand, qty: qty, rate: rate, disc: disc, dr: dr,
                amt: qty * dr, job: isJobLine(i), ix: ix };   /* v6.9.565 - ix: which saved line */
@@ -2221,8 +2232,8 @@ function cancelMap() {
   }
   function hisabStamp(c) { return (c && c.id) ? (hisabStampMap()[c.id] || null) : null; }
   function hisabPreExisting(c) {
-    var at = String((c && c.createdAt) || "");
-    return !!at && at.slice(0, 10) < HISAB_STAMP_FROM;
+    var at = localDay((c && c.createdAt) || "");   /* 6.9.666 - the local day, not the UTC day */
+    return !!at && at < HISAB_STAMP_FROM;
   }
   function inHisab(c) { return !!hisabStamp(c) || hisabPreExisting(c); }
   function hisabCounts(c) {
@@ -3009,7 +3020,7 @@ function cancelMap() {
     return '<div class="top">' + newVerBar() + '<div class="t1">' +
       '<h1>Payment</h1>' +
       '<div style="text-align:right"><div class="who">' + esc(S.user) + ' · ' + esc(S.role) +
-        (canWrite() ? '' : ' · view only') + '</div>' +
+        (canWrite() ? '' : (canPay() ? ' · records payments' : ' · view only')) + '</div>' +   /* 1.59.0 */
       '<div>' + bookAgeHtml(S.syncAt, S.busy) + '</div></div>' +
       '<a class="btn sm ghost" href="' + helpHref() + '" target="_blank" rel="noopener" title="How to use this screen" aria-label="How to use this screen" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;font-weight:800">?</a>' +   /* 1.57.0 */
       '<button class="btn sm ghost" data-act="refresh" title="Pull the latest, and get the new version if one is up">&#8635;</button>' +
@@ -3097,7 +3108,7 @@ function cancelMap() {
   function expRow(name, k, label, sub) {
     var on = expOn(name, k);
     return '<div class="row" data-act="exp" data-n="' + esc(name) + '" data-k="' + esc(k) + '" ' +
-      'style="cursor:pointer;user-select:none;padding:7px 10px;background:#fff;' +
+      'style="cursor:pointer;user-select:none;padding:7px 10px;min-height:44px;background:#fff;' +   /* 1.59.0 - 44px */
       'border:1px solid #e2e8f0;border-radius:10px;align-items:center;gap:8px">' +
       '<span style="color:#94a3b8;width:12px;flex:0 0 auto">' + (on ? '&#9662;' : '&#9656;') + '</span>' +
       '<div class="grow" style="font-weight:700;font-size:13px">' + esc(label) + '</div>' +
@@ -3248,7 +3259,7 @@ function cancelMap() {
     h += r.mobile
       ? '<div style="margin-bottom:9px"><a href="tel:' + esc(r.mobile) + '" ' +
         'style="display:inline-flex;align-items:center;gap:8px;background:#ecfdf5;border:1px solid #99f6e4;' +
-        'border-radius:10px;padding:8px 12px;text-decoration:none;color:#0f766e;font-weight:800;font-size:16px;letter-spacing:.04em">' +
+        'border-radius:10px;padding:8px 12px;min-height:44px;text-decoration:none;color:#0f766e;font-weight:800;font-size:16px;letter-spacing:.04em">' +
         '&#9742; ' + esc(r.mobile.length === 10 ? r.mobile.slice(0,5) + " " + r.mobile.slice(5) : r.mobile) + '</a></div>'
       : '<div style="margin-bottom:9px"><span class="pill red">No mobile number on his record \u2014 he cannot be rung or sent anything</span>' +
         (canWrite() ? ' <button class="btn sm" data-act="mb-ask" data-n="' + esc(r.name) + '" style="margin-left:6px">Add his mobile</button>' : '') +
@@ -3617,7 +3628,7 @@ function cancelMap() {
     return '<h2>Log the call</h2>' +
       '<div class="muted" style="margin-bottom:10px">' + esc(name) + ' · owes <b>' + money(r.due) + '</b>' +
       (p && p.date ? ' · last said <b>' + esc(dstr(p.date)) + '</b>' : '') + '</div>' +
-      '<label>How did it go?</label><select id="fu_out">' +
+      '<label>How did it go?</label><select id="fu_out"><option value="">— pick —</option>' +   /* 1.59.0 - nothing is chosen for him */
         ["Promised a date", "Asked to call back", "No answer", "Disputes the amount", "Refused", "Part payment agreed"]
           .map(function (m) { return '<option>' + m + '</option>'; }).join("") + '</select>' +
       '<label>When will he pay — or when should we ring again?</label>' +
@@ -4210,7 +4221,7 @@ function cancelMap() {
     var on = !!bioSaved();
     return '<h2>This phone</h2>' +
       '<div class="muted" style="margin-bottom:10px">Signed in as <b>' + esc(S.user) + '</b> · ' + esc(S.role) +
-        (canWrite() ? '' : ' · view only') + '</div>' +
+        (canWrite() ? '' : (canPay() ? ' · records payments' : ' · view only')) + '</div>' +   /* 1.59.0 */
       '<div class="card" style="margin-top:0">' +
         '<div style="font-weight:700">Stays signed in</div>' +
         '<div class="muted">This phone remembers you, so the app opens straight onto today\'s calls. Sign out below if the phone is shared or you are handing it over.</div>' +
@@ -4705,10 +4716,11 @@ function cancelMap() {
       if (!canWrite()) { toast("Recording this is done by the office."); return; }
       var obn = t.getAttribute("data-n");
       t.disabled = true; t.textContent = "Saving…";
-      saveOldBook(obn, val("ob_state"), EWnum(val("ob_amt")), val("ob_note")).then(function (r) {
+      var _obSt = val("ob_state");   /* 1.59.0 - read before render() takes the sheet away */
+      saveOldBook(obn, _obSt, EWnum(val("ob_amt")), val("ob_note")).then(function (r) {
         (S.data.audit = S.data.audit || []).push(r.row);
         bust(); S.sheet = null; render();
-        toast(obn + " — " + obLabel(val("ob_state")) + "." +
+        toast(obn + " — " + obLabel(_obSt) + "." +
               (r.held ? " Held on this phone until there is signal." : ""));
       }).catch(function () {
         t.disabled = false; t.textContent = "Save";
@@ -4883,6 +4895,7 @@ function cancelMap() {
       var cn = t.getAttribute("data-n");
       var pd = val("fu_date");
       if (pd && pd < today()) { toast("A promised date cannot be in the past."); return; }
+      if (!val("fu_out") && !pd && !String(val("fu_note") || "").trim()) { toast("Say how the call went, or give a date or a note."); return; }   /* 1.59.0 */
       t.disabled = true; t.textContent = "Saving…";
       saveFollow(cn, pd, val("fu_note"), val("fu_out")).then(function (r) {
         (S.data.audit = S.data.audit || []).push(r.row);
