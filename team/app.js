@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.665";
+  var APP_VERSION = "6.9.668";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -294,12 +294,24 @@
      Storage/compare stay ISO (today()/dstr); this is only for showing to a human. */
   function d10(v) {
     var s = String(v || "").trim(); if (!s) return "";
+    if (s.indexOf("T") > 0) s = localDay(s);   /* 6.9.666 - the day on THIS side of midnight */
     var m = s.slice(0, 10).match(/^(\d{4})-(\d{2})-(\d{2})/);
     if (m) return m[3] + "/" + m[2] + "/" + m[1];
     var d = new Date(s); if (isNaN(d.getTime())) return s;
     return String(d.getDate()).padStart(2, "0") + "/" + String(d.getMonth() + 1).padStart(2, "0") + "/" + d.getFullYear();
   }
-  function dstr(d) { return d ? String(d).slice(0, 10) : ""; }
+  /* ===== 6.9.666 / 1.119.0 / 1.59.0 - THE DAY A ROW WAS MADE, ON THIS SIDE OF MIDNIGHT =====
+     createdAt is a UTC instant. Its first ten characters are the UTC day, and between 00:00 and
+     05:30 IST that is YESTERDAY. The server numbers a challan on Asia/Kolkata; every reader of
+     "the day" must agree with it. A bare date ("2026-09-30") is already a day and is left alone. */
+  function localDay(v) {
+    var s = String(v == null ? "" : v).trim();
+    if (s.indexOf("T") < 0) return s.slice(0, 10);
+    var t = Date.parse(s); if (!t) return s.slice(0, 10);
+    var x = new Date(t);
+    return x.getFullYear() + "-" + String(x.getMonth() + 1).padStart(2, "0") + "-" + String(x.getDate()).padStart(2, "0");
+  }
+  function dstr(d) { return d ? localDay(d) : ""; }   /* 6.9.666 - an ISO instant reads as the local day */
   /* Incentive is a division (amount / 1.18 * rate), so it lands on fractions of a paisa.
      Nobody pays a plumber 84.7 paise - round to the rupee everywhere money is shown. */
   /* ---------------------------------------------------------------------------
@@ -557,10 +569,10 @@
   }
 
   var ROLE_TABS = {
-    admin:    ["dash","review","agent","report","scorecard","returns","tools","rates","clients","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","register","freight","payments","paidout","billing","discounts","commission","service","spares","dues","payroll","products","catalogs","brandstory","pricelist","catalogue","rules","teampins","health","trouble","changelog","booksweep","dups","stock","brief"],
-    accounts: ["dash","review","agent","returns","tools","clients","partners","followups","challans","register","freight","payments","billing","service","spares","dues","products","catalogs","rates","pricelist","dups","stock","trouble"],
+    admin:    ["dash","review","agent","report","scorecard","returns","tools","rates","clients","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","register","paylog","freight","payments","paidout","billing","discounts","commission","service","spares","dues","payroll","products","catalogs","brandstory","pricelist","catalogue","rules","teampins","health","trouble","changelog","booksweep","dups","stock","brief"],
+    accounts: ["dash","review","agent","returns","tools","clients","partners","followups","challans","register","paylog","freight","payments","billing","service","spares","dues","products","catalogs","rates","pricelist","dups","stock","trouble"],
     godown:   ["dash","agent","returns","tools","challans","freight","products","stock","trouble"],
-    sales:    ["dash","review","agent","report","returns","tools","clients","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","register","freight","billing","payments","products","catalogs","dups","brief","trouble"],
+    sales:    ["dash","review","agent","report","returns","tools","clients","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","register","paylog","freight","billing","payments","products","catalogs","dups","brief","trouble"],
     service:  ["dash","agent","tools","service","spares","dues","followups","products","catalogs","trouble"]
   };
   /* v6.9.320 - EVERY SCREEN EITHER OF HIS ROLES OPENS.
@@ -2433,6 +2445,24 @@ window.addEventListener("beforeunload", function (ev) {
   }
   /* background re-sync, at most once every 20s, never blocks the screen */
   var syncAt = 0, syncing = false;
+  /* 6.9.666 - every per-paint cache in one place. renderCore drops them on each paint; a
+     background pull that lands while a sheet is open does NOT paint (renderBg), so the ledger was
+     re-read against the new book with the OLD stamp map and OLD discount index until the sheet
+     closed. Now the pull drops them too. */
+  function bustCaches() {
+    _clDueCache = null; _clStageCache = null; _aliasCache = null; _prfCache = null; _mnoCache = null; _pfxCache = null; _pcCache = null; _admTkCache = null; _colCache = null; _baseCache = null; _amcCache = null; _lossCache = null; _cxCache = null; _hdCache = null; _hsbCache = null; _rtStampCache = null; _dtCache = null; _dlCache = null; _qbCache = null; _amcRateCache = null; _twinCache = null; _cxaCache = null; _alcCache = null; _stlCache = null; _opnCache = null; _agrCache = null; _pvCache = null;
+    _pitchIdx = null; _cbgCache = null; _lsnCache = null; _pcbCache = null; _plcCache = null;
+    _rpgCache = null;      /* v6.9.489 - the preset gap is money; a stale count is the worst of them */
+    /* v6.9.373 - the three new per-paint indexes. A cache that is not dropped here shows
+       yesterday's money, which is the worst thing this app can do. */
+    _ledCache = null; _cqCache = null; _cwbCache = null; _dscIdx = null; _whoIx = null;
+    /* v6.9.485 - the register's four are per-PAINT indexes, busted here with the ledger's. That
+       is the whole job: renderCore runs on every render and every caller of splitCancelled
+       renders straight afterwards, so a second bust inside splitCancelled bought nothing - and
+       splitCancelled is one of the fifty functions kept byte-identical with the backend, which
+       t_v108_ledger noticed the moment I edited it. */
+    _regCache = null; _regBal = null; _regScore = null; _regAge = null;
+  }
   function quietSync() {
     if (syncing || Date.now() - syncAt < 20000) return;
     if (S.pending) return;              /* v6.9.207: never pull while a save is still in flight */
@@ -2441,7 +2471,7 @@ window.addEventListener("beforeunload", function (ev) {
     teamGetD().then(function (r) {
       syncing = false; syncAt = Date.now();
       beatMark(r && r.stamp);          /* v6.9.314 - the stamp AS AT this book */
-      if (r && r.ok) { S.data = r; reconcilePending(); applyPending(); applyConfirmed(); applyMoves(); applyRtMoves(); splitCancelled(); snapSave(); renderBg(); }
+      if (r && r.ok) { S.data = r; reconcilePending(); applyPending(); applyConfirmed(); applyMoves(); applyRtMoves(); splitCancelled(); bustCaches(); snapSave(); renderBg(); }
       if (pendCount()) retryPending();
     }).catch(function () { syncing = false; });
   }
@@ -3072,7 +3102,8 @@ window.addEventListener("beforeunload", function (ev) {
      Only reg_q: everything else on that bar is a <select>. */
   document.addEventListener("input", function (ev) {
     var t = ev && ev.target;
-    if (!t || t.id !== "reg_q") return;
+    if (!t || (t.id !== "reg_q" && t.id !== "plg_q")) return;
+    if (t.id === "plg_q") { S.plg = S.plg || {}; S.plg.q = t.value; keepScroll = true; render(); return; }   /* 6.9.667 */
     S.reg = S.reg || {}; S.reg.q = t.value;
     keepScroll = true; render();
   });
@@ -3095,6 +3126,10 @@ window.addEventListener("beforeunload", function (ev) {
     if (t && String(t.id || "").indexOf("reg_") === 0) {
       S.reg = S.reg || {};
       S.reg[String(t.id).slice(4)] = t.value;
+      keepScroll = true; render(); return;
+    }
+    if (t && String(t.id || "").indexOf("plg_") === 0) {   /* 6.9.667 - the payment log's boxes */
+      S.plg = S.plg || {}; S.plg[String(t.id).slice(4)] = t.value;
       keepScroll = true; render(); return;
     }
     if (!t || t.id !== "hsb_noextra") return;
@@ -11883,8 +11918,8 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
      from a migration: no row is written, nothing is touched, and the old book is simply
      the old book. */
   function hisabPreExisting(c) {
-    var at = String((c && c.createdAt) || "");
-    return !!at && at.slice(0, 10) < HISAB_STAMP_FROM;
+    var at = localDay((c && c.createdAt) || "");   /* 6.9.666 - the local day, not the UTC day */
+    return !!at && at < HISAB_STAMP_FROM;
   }
   function inHisab(c) { return !!hisabStamp(c) || hisabPreExisting(c); }
   /* v6.9.259 - DOES THIS DELIVERY ACTUALLY COUNT IN HISAB?
@@ -12435,7 +12470,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
      ceiling at the goods value in challanNet / chFurtherOff still holds for the two together. */
   function hisabExtra(c) {
     var st = hisabStamp(c);
-    return (st ? (Number(st.extra) || 0) : 0) + Math.max(0, Number(c && c.discAmt) || 0);
+    return (st ? (Number(st.extra) || 0) : 0) + Math.max(0, nAmt(c && c.discAmt));   /* 6.9.666 - "1,500" is 1500, not 0 */
   }
   /* what the line under the goods is called, so the paper says which concession it is */
   function chOffLabel(c) {
@@ -20862,7 +20897,7 @@ function viewCatalogue() {
       h += '<div title="' + p.iso + ' - ' + plural(p.total, "visit") + '" style="flex:1;min-width:9px;display:flex;flex-direction:column;justify-content:flex-end;height:100%;' +
         (p.sunday ? "background:#fef2f2;" : "") + '">' + stack + '</div>';
     });
-    h += '</div><div style="display:flex;gap:2px;font-size:8px;color:#94a3b8">' +
+    h += '</div><div style="display:flex;gap:2px;font-size:12px;color:#94a3b8">' +
       r.perDay.map(function (p) {
         return '<div style="flex:1;min-width:9px;text-align:center;' + (p.sunday ? "color:#dc2626;font-weight:700" : "") + '">' + p.day + '</div>';
       }).join("") + '</div>' +
@@ -21698,7 +21733,7 @@ function viewCatalogue() {
      challan number itself - chDatesIn() has written that back since 6.9.483, and chDatePill
      marks the row amber so nobody mistakes a recovered date for a recorded one. */
   function regDate(c) {
-    var d = String(((c || {}).createdAt) || "").slice(0, 10);
+    var d = localDay(((c || {}).createdAt) || "");   /* 6.9.666 - the local day */
     return /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : (chNoDate(c) || "");
   }
   function regDMY(d) {
@@ -21707,7 +21742,11 @@ function viewCatalogue() {
   }
 
   function regBuild() {
-    if (_regCache) return _regCache;
+    /* 1.119.0 / 6.9.666 - keyed on the book, not dropped on every paint: the same rows give the
+       same register. Measured on a 784-challan book: 293-597 ms a paint, on every chip and keystroke. */
+    var _rk = String((((S.data || {}).challans) || []).length) + "|" + String((((S.cancelled || {}).challans) || []).length) + "|" +
+              String((((S.data || {}).audit) || []).length) + "|" + String((S.data || {}).stamp || "");
+    if (_regCache && _regCache._key === _rk) return _regCache;
     /* ======== A CANCELLED CHALLAN IS NOT A MISSING NUMBER  (v6.9.490) ========
        HIS WORDS: "show details of these type of challans also, who created and who cancells in
        single line again", after spotting 106 and 103 reported as holes.
@@ -21768,7 +21807,7 @@ function viewCatalogue() {
       var x = String(regDate(a)), y = String(regDate(b));
       return REG_NEWEST_FIRST ? y.localeCompare(x) : x.localeCompare(y);
     });
-    return (_regCache = { line: line, old: old, gaps: gaps, dups: dups, cxs: cxs, lo: lo, hi: hi,
+    return (_regCache = { _key: _rk, line: line, old: old, gaps: gaps, dups: dups, cxs: cxs, lo: lo, hi: hi,
       total: all.length, nSer: all.length - old.length, nOld: old.length });
   }
 
@@ -21868,7 +21907,7 @@ function viewCatalogue() {
     if (!real.length && !cur) return "";
     return '<label style="display:inline-flex;flex-direction:column;gap:2px;font-size:12px;font-weight:700;color:#475569">' +
       esc(label) +
-      '<select id="reg_' + id + '" style="font-size:12.5px;padding:4px 6px;border:1px solid ' +
+      '<select id="reg_' + id + '" style="font-size:12.5px;padding:4px 6px;min-height:44px;border:1px solid ' +
       (cur ? '#0b3b36' : '#cbd5e1') + ';border-radius:7px;background:' + (cur ? '#f0fdfa' : '#fff') +
       ';max-width:150px">' +
       '<option value="">All</option>' +
@@ -21883,7 +21922,7 @@ function viewCatalogue() {
       '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">' +
       '<label style="display:inline-flex;flex-direction:column;gap:2px;font-size:12px;font-weight:700;color:#475569">Find' +
       '<input id="reg_q" type="search" value="' + esc(regF("q")) + '" placeholder="challan no, client, mobile" ' +
-      'style="font-size:12.5px;padding:4px 7px;border:1px solid #cbd5e1;border-radius:7px;min-width:170px"/></label>' +
+      'style="font-size:12.5px;padding:4px 7px;min-height:44px;border:1px solid #cbd5e1;border-radius:7px;min-width:170px"/></label>' +
       regSelect("exec", "Executive", regOpts("ownedBy", "(unassigned)")) +
       regSelect("area", "Area", regOpts("area", "(no area)")) +
       /* v6.9.486 - TOWN. Measured: location is filled on 171 of his 172 clients and area on 147,
@@ -23269,7 +23308,7 @@ function viewCatalogue() {
         /* No "PIN set / not set" line here: the server deliberately never sends
            pinSet to a browser, so the app cannot know it and must not guess. */
         '</div>' +
-        (u.id ? '<div style="display:flex;gap:6px;flex:0 0 auto;flex-wrap:wrap;justify-content:flex-end">' +
+        (u.id ? '<div style="display:flex;gap:6px;flex:0 1 auto;min-width:0;max-width:100%;flex-wrap:wrap;justify-content:flex-end">' +   /* 6.9.666 - wraps on a phone instead of running off the right */
           /* v6.9.231 - the owner sets every PIN and therefore knows every PIN.
              Nobody can change their own, so nothing is ever chosen behind his back. */
           '<button class="btn sm" data-act="tp-setpin" data-id="' + esc(u.id) + '">Set PIN</button>' +
@@ -24136,16 +24175,16 @@ function viewCatalogue() {
         /* frozen on the return itself (newer rows) */
         rate = Number(it.rate) || 0;
         /* v6.9.598 - the rate in force on the day of the return, not today's */
-        disc = (it.disc != null && it.disc !== "") ? Number(it.disc) : clientDiscountOn(cl, brand, String(r.createdAt || "").slice(0, 10));
+        disc = (it.disc != null && it.disc !== "") ? Number(it.disc) : clientDiscountOn(cl, brand, localDay(r.createdAt));
       } else {
         var src = retSourceLine(r, it.code);
         if (src) {
           rate = Number(src.rate) || 0;
-          disc = (src.disc != null && src.disc !== "") ? Number(src.disc) : clientDiscountOn(cl, src.brand || brand, String(r.createdAt || "").slice(0, 10));
+          disc = (src.disc != null && src.disc !== "") ? Number(src.disc) : clientDiscountOn(cl, src.brand || brand, localDay(r.createdAt));
           if (!job && !brand) brand = src.brand || brand;
         } else {
           rate = Number(p.price) || 0;
-          disc = clientDiscountOn(cl, brand, String(r.createdAt || "").slice(0, 10));
+          disc = clientDiscountOn(cl, brand, localDay(r.createdAt));
           est = true;
         }
       }
@@ -24260,7 +24299,7 @@ function viewCatalogue() {
   /* v6.9.350 - ON THE DAY OF THE DELIVERY, not today. The challan is already in hand; taking
      its date costs nothing and is the whole point of dating a rate. A delivery with no date -
      there are none, but the book is old - asks for today's, which is what it always did. */
-  function rateDayOf(c) { return dstr(c && (c.createdAt || c.date)) || today(); }
+  function rateDayOf(c) { return localDay(c && (c.createdAt || c.date)) || today(); }   /* 6.9.666 */
   function partnerBookRate(cl, br, c, nmLower) {
     /* The stamped line-up wins where there is one. "exec" is dropped here on purpose: a man who
        is both this client's plumber and its executive is paid once as each, by the two books,
@@ -24271,6 +24310,23 @@ function viewCatalogue() {
     var day = rateDayOf(c), rate = 0;
     roles.forEach(function (role) { var r = incRate(cl.name, br, role, day); if (r > rate) rate = r; });
     return rate;
+  }
+  /* 6.9.668 - the PARTNERS' rates on one line of one delivery, added up: every partner role on
+     the delivery's line-up (or on the client record when it has none), at that client-and-brand
+     rate on the delivery's day. The executive earns on what is left after these. */
+  function partnersRateOn(cl, br, c) {
+    var day = rateDayOf(c), total = 0, stamp = chIncStamp(c), seen = {};
+    if (stamp) {
+      stamp.forEach(function (x) {
+        if (!x || x.on === false) return;
+        var role = String(x.role || "").toLowerCase(), key = role + "|" + dkey(x.name);
+        if (role === "exec" || !dkey(x.name) || seen[key]) return;
+        seen[key] = 1; total += incRate(cl.name, br, role, day);
+      });
+    } else {
+      INC_ROLES.forEach(function (role) { if (String(cl[role] || "").trim()) total += incRate(cl.name, br, role, day); });
+    }
+    return Math.max(0, Math.min(100, total));
   }
   function execBookRate(cl, br, c, nmLower) {
     /* v6.9.325 - three-way. null: no line-up on this delivery, behave as before. A line-up
@@ -24290,7 +24346,7 @@ function viewCatalogue() {
     if (!nm) return null;
     return incentiveBook([cl], (kind === "exec")
       ? function (c2, br, c) { return execBookRate(c2, br, c, nm); }
-      : function (c2, br, c) { return partnerBookRate(c2, br, c, nm); }, nm);
+      : function (c2, br, c) { return partnerBookRate(c2, br, c, nm); }, nm, kind === "exec" ? partnersRateOn : null);   /* 6.9.668 */
   }
   /* ================= THE OWNER'S OWN CORNER  (v6.9.344, 23 August 2026) =================
      HIS WORDS: "for admin only ... show client discount structure for all brand, ask to add
@@ -25039,7 +25095,7 @@ function viewCatalogue() {
       '<button class="btn" data-act="adm-save" data-cl="' + esc(cl) + '">Save rates</button></div>';
   }
 
-  function incentiveBook(myClients, rateFor, payeeLower) {
+  function incentiveBook(myClients, rateFor, payeeLower, deductFor) {
     var billed = 0, earned = 0, returned = 0, reversed = 0, rows = [], clientNames = {};
     /* v6.9.266 - ONE CLIENT, ONE PASS.
        myClients is a list of client RECORDS, but the challans below are fetched by NAME. The
@@ -25083,7 +25139,9 @@ function viewCatalogue() {
              brand. That is the whole of the partner-change fix: a delivery that carries its own
              line-up answers for itself, and one that does not falls back to the client record
              exactly as it always has. */
-          inc += x.amt * rateFor(cl, x.brand || c.brand || "", c) / 100;
+          /* 6.9.668 - the executive's base is the line LESS the partners' incentive on it */
+          var _pd = deductFor ? deductFor(cl, x.brand || c.brand || "", c) : 0;
+          inc += x.amt * (1 - _pd / 100) * rateFor(cl, x.brand || c.brand || "", c) / 100;
         });
         /* v6.9.609 - REVIEW A9, HIS DECISION 25 Sep 2026: "after further discount". The further
            discount at hisab time and the discount on the whole challan (hisabExtra) come off the
@@ -25123,7 +25181,8 @@ function viewCatalogue() {
              RETURNED value, because the client is credited for it, and reverses nobody's
              incentive, because nobody earned one on it. Same flag, same rule, both directions. */
           if (x.job) return;
-          rInc += x.amt * rateFor(cl, x.brand, rCh) / 100;
+          var _rpd = deductFor ? deductFor(cl, x.brand, rCh) : 0;   /* 6.9.668 - the mirror */
+          rInc += x.amt * (1 - _rpd / 100) * rateFor(cl, x.brand, rCh) / 100;
           if (x.brand) rBrands[x.brand] = 1;
         });
         /* v6.9.609 - A9: a return carries the same share of its delivery's discount as the credit
@@ -25236,7 +25295,7 @@ function viewCatalogue() {
     });
     var bk = incentiveBook(myClients, function (cl, br, c) {
       return execBookRate(cl, br, c, nm);
-    }, nm);
+    }, nm, partnersRateOn);   /* 6.9.668 - after the partners' incentive */
     var mine = {};
     myClients.forEach(function (cl) { mine[String(cl.name || "").trim().toLowerCase()] = 1; });
     bk.sites = S.data.sites.filter(function (st) { return mine[String(st.client || "").trim().toLowerCase()]; });
@@ -25436,6 +25495,7 @@ function viewCatalogue() {
       'Billed ' + money(b.billed) + ' &middot; collected ' + money(b.collected) +
       ' (' + Math.round(b.ratio * 100) + '% in)' +
       (b.reversed > 0 ? '<br><span style="color:#dc2626">Returns: ' + money(b.returned) + ' came back &middot; ' + money(b.reversed) + ' incentive reversed</span>' : "") +
+      (isX ? '<br><i>The executive\u2019s % is taken on each delivery <b>after</b> the plumber\u2019s, architect\u2019s, builder\u2019s and PMC\u2019s incentive on it, where there is any (his decision, 30 Sep 2026).</i>' : '') +   /* 6.9.668 */
       '<br><i>Incentive becomes payable only in proportion to what the client has actually paid. Booked-in material returns reverse the incentive on the goods that came back, at the same rate that earned it.</i></div>' +
       '<div class="acts"><button class="btn sm" data-act="pay-out" data-k="' + kind + '" data-n="' + esc(name) + '">Record payout</button></div></div>';
 
@@ -26085,7 +26145,7 @@ function viewCatalogue() {
          agreeing with the account. Measured before shipping: not one of those lines has a dated
          rate that started after its delivery, so no figure moves today; this is what stops them
          moving tomorrow. */
-      var disc = (i.disc != null && i.disc !== "") ? Number(i.disc) : clientDiscountOn(cl, bBrand, String((c && c.createdAt) || "").slice(0, 10));
+      var disc = (i.disc != null && i.disc !== "") ? Number(i.disc) : clientDiscountOn(cl, bBrand, localDay(c && c.createdAt));   /* 6.9.666 - the local day */
       var dr = Math.round(rate * (1 - disc / 100));
       return { desc: i.desc || i.code || "", code: i.code, brand: bBrand, qty: qty, rate: rate, disc: disc, dr: dr,
                amt: qty * dr, job: isJobLine(i), ix: ix };   /* v6.9.565 - ix: which saved line */
@@ -26468,7 +26528,7 @@ function viewCatalogue() {
      client list, hisabOutstanding, and the statement PDF - so the Payments screen and the HISAB
      screen disagreed by the whole opening balance, and the statement the customer was SENT was
      the one that had lost it. There is one reader now and every site uses it. */
-  function clientOpening(name) { return nAmt((clientByName(name) || {}).openingAmt); }
+  function clientOpening(name) { return famOpening(famRow(name)); }   /* 6.9.666 - the family's, as the ledger */
   /* ================= THE OLD BOOK'S NUMBER, AND BOTH GSTINs  (v6.9.445) =================
      HIS WORDS: "show old book no and gst no here also, for all clients". Three facts, three
      homes, one rule each. See patch_gstin_oldbook.py for why none of them is a new column. */
@@ -26643,17 +26703,25 @@ function viewCatalogue() {
   function clientAging(name) {
     var chs = famChallansIn(name);                          /* v6.9.461 */
     var cl = clientByName(name) || {};
-    var items = [], opening = nAmt(cl.openingAmt);
+    /* 6.9.666 - the FAMILY's opening balance, as the ledger reads it (famOpening): an alias merged
+       into this man carried an old-book balance that was never aged, so never overdue and never
+       counted against his credit limit. */
+    var items = [], opening = famOpening(famRow(name)), negCr = 0;
     if (opening > 0) items.push({ age: 99999, amt: opening });      // brought-forward = oldest
     /* v6.9.209: a NEGATIVE opening is money he paid us in advance. It used to be thrown away here,
        so the ageing tiles disagreed with DUE AMT and his credit headroom read lower than it is -
        which can wrongly block a dispatch. It is a credit, so it goes in with the other credits. */
     chs.forEach(function (c) {
       var amt = challanNet(c) + chFreight(c);
-      if (amt > 0) items.push({ age: Math.max(0, -daysTo(String(c.createdAt || "").slice(0, 10))), amt: amt });
+      if (amt > 0) items.push({ age: Math.max(0, -daysTo(localDay(c.createdAt || ""))), amt: amt });
+      /* 6.9.666 - a hand-worked CREDIT NOTE (a delivery whose lines are minus) is a credit, like a
+         payment. It was dropped from both sides, so 27/08/2026/034 Ashish Goyal (-70,256) left him
+         "owing" 53,215 on the ageing, the credit stop and the chase list while his balance line
+         read IN CREDIT 17,041. */
+      else if (amt < 0) negCr += -amt;
     });
     items.sort(function (a, b) { return b.age - a.age; });          // oldest first
-    var led = clientLedger(name), credit = (led.paid || 0) + (led.returned || 0) + (opening < 0 ? -opening : 0);
+    var led = clientLedger(name), credit = (led.paid || 0) + (led.returned || 0) + (opening < 0 ? -opening : 0) + negCr;
     items.forEach(function (it) { if (credit > 0) { var u = Math.min(credit, it.amt); it.amt -= u; credit -= u; } });
     /* ---- ONE RECORD, ONE SET OF TERMS  (v6.9.377, 30 Aug 2026) ----
        The client card has a "Credit days" box. creditTerms() reads it - and only the credit
@@ -30476,7 +30544,7 @@ function viewCatalogue() {
     var latest = "", _fh = famHas(name);                    /* v6.9.461 */
     S.data.challans.forEach(function (c) {
       if (_fh(c.customerName) && String(c.receiptReceived).toUpperCase() === "Y") {
-        var d = String(c.createdAt || "").slice(0, 10);
+        var d = localDay(c.createdAt || "");   /* 6.9.666 */
         if (d > latest) latest = d;
       }
     });
@@ -31512,6 +31580,157 @@ function viewCatalogue() {
     return h + '</div>';
   }
 
+  /* ===================== THE PAYMENT LOG  (6.9.667, 30 Sep 2026) =====================
+     His words: "Just like challan log, make provision of payment log date wise and client wise
+     both, also click to change mode with pin, verification by accounts just like finalize in
+     hisab section". The same rows as Payment history (payHistRows), the same audit rows as the
+     Verification screen (payment:verify) and the mode correction (payment:mode). */
+  function plF(k) { return String(((S || {}).plg || {})[k] || ""); }
+  function plAny() { return ["q", "exec", "mode", "chk", "from", "to"].some(function (k) { return !!plF(k); }); }
+  function plRows() {
+    var q = plF("q").trim().toLowerCase(), ex = plF("exec"), md = plF("mode"), ck = plF("chk"), f = plF("from"), t = plF("to");
+    return payHistRows("").filter(function (r) {
+      var p = r.p, cl = clientByName(p.client) || {};
+      if (q && (String(p.client || "") + " " + receiptNo(p) + " " + String(p.ref || "") + " " + String(p.notes || "") + " " + String(cl.mobile || "")).toLowerCase().indexOf(q) < 0) return false;
+      if (ex && (String(cl.ownedBy || "").trim() || "(unassigned)") !== ex) return false;
+      if (md && dkey(p.mode) !== dkey(md)) return false;
+      if (ck === "no" && (payVerified(p) || (r.cx && r.cx.on))) return false;
+      if (ck === "yes" && !payVerified(p)) return false;
+      var d = String(p.date || "").slice(0, 10);
+      if (f && d < f) return false;
+      if (t && d > t) return false;
+      return true;
+    });
+  }
+  function plBar() {
+    var sel = function (id, label, list, blank) {
+      var cur = plF(id);
+      return '<label style="display:inline-flex;flex-direction:column;gap:2px;font-size:12px;font-weight:700;color:#475569">' + esc(label) +
+        '<select id="plg_' + id + '" style="font-size:12.5px;padding:4px 6px;min-height:44px;border:1px solid ' + (cur ? '#0b3b36' : '#cbd5e1') + ';border-radius:7px;background:' + (cur ? '#f0fdfa' : '#fff') + ';max-width:170px">' +
+        '<option value="">' + esc(blank || "All") + '</option>' + list.map(function (o) { var v = o instanceof Array ? o[0] : o, t = o instanceof Array ? o[1] : o; return '<option value="' + esc(v) + '"' + (cur === v ? ' selected' : '') + '>' + esc(t) + '</option>'; }).join("") + '</select></label>';
+    };
+    var dt = function (id, label) {
+      return '<label style="display:inline-flex;flex-direction:column;gap:2px;font-size:12px;font-weight:700;color:#475569">' + label +
+        '<input id="plg_' + id + '" type="date" value="' + esc(plF(id)) + '" style="font-size:12.5px;padding:4px 7px;min-height:44px;border:1px solid #cbd5e1;border-radius:7px"/></label>';
+    };
+    return '<div class="card" style="padding:9px 11px"><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">' +
+      '<label style="display:inline-flex;flex-direction:column;gap:2px;font-size:12px;font-weight:700;color:#475569">Find' +
+      '<input id="plg_q" type="search" value="' + esc(plF("q")) + '" placeholder="client, receipt no, reference, mobile" style="font-size:12.5px;padding:4px 7px;min-height:44px;border:1px solid #cbd5e1;border-radius:7px;min-width:190px"/></label>' +
+      (seesAllClients() ? sel("exec", "Executive", regOpts("ownedBy", "(unassigned)")) : "") +
+      sel("mode", "Mode", PAY_MODES) +
+      sel("chk", "Checked", [["no", "Not checked"], ["yes", "Checked"]]) +
+      dt("from", "From") + dt("to", "To") +
+      (plAny() ? '<button class="btn sm ghost" data-act="plg-clear" style="margin-bottom:1px">Clear</button>' : '') + '</div></div>';
+  }
+  function plModeBtn(p, dead) {
+    var can = roleAny(["admin", "accounts"]) && !dead;
+    return '<button class="btn sm ' + (can ? 'ghost' : 'ghost') + '" data-act="' + (can ? 'plg-mode' : 'pay-row') + '" data-p="' + esc(p.id || "") + '" title="' + esc(can ? "Change how it came in (your PIN is asked)" : String(p.mode || "")) + '" style="min-height:44px;padding:2px 10px;font-weight:700' + (can ? '' : ';border-color:transparent') + '">' + esc(p.mode || "\u2014") + (can ? ' \u270e' : '') + '</button>';
+  }
+  function plCheckCell(p, dead) {
+    if (dead) return '<span class="pill due">Cancelled</span>';
+    if (payVerifyPre(p)) return '<span class="pill" title="From before checking began">old book</span>';
+    var r = payVerifyRow(p);
+    if (r && !r.off) return '<span class="pill Won" title="Checked by ' + esc(r.by || "accounts") + (r.at ? " on " + esc(fullDate(r.at)) : "") + '">\u2713 ' + esc(regFirst(r.by || "accounts")) + '</span>' + regDay(r.at) +
+      (roleIs("admin") ? ' <button class="btn sm ghost" data-act="pay-unverify" data-p="' + esc(p.id) + '" style="min-height:44px;padding:2px 8px;font-size:12px">undo</button>' : '');
+    return canVerifyPay()
+      ? '<button class="btn sm" data-act="pay-verify" data-p="' + esc(p.id) + '" style="min-height:44px;padding:2px 10px;background:#b45309;border-color:#b45309">Check \u2713</button>'
+      : '<span class="pill due">not checked</span>';
+  }
+  function plRow(r, i, withClient) {
+    var p = r.p, dead = !!(r.cx && r.cx.on), cl = clientByName(p.client) || {};
+    var cell = regCell() + (dead ? ';text-decoration:line-through;color:#b91c1c' : '');
+    return '<tr style="background:' + (dead ? '#fef2f2' : (i % 2 ? '#f8fafc' : '#fff')) + '">' +
+      '<td style="' + cell + '">' + esc(regDMY(String(p.date || "").slice(0, 10)).replace(/\/(\d\d)(\d\d)$/, "/$2")) + '</td>' +
+      '<td style="' + cell + '"><button class="btn sm ghost" data-act="pay-row" data-p="' + esc(p.id || "") + '" style="min-height:44px;padding:2px 8px;font-weight:700">' + esc(receiptNo(p)) + '</button></td>' +
+      (withClient ? '<td style="' + cell + ';max-width:170px;overflow:hidden;text-overflow:ellipsis"><a href="#" data-act="ch-hisab" data-cl="' + esc(p.client || "") + '" style="font-weight:700;color:#0b3b36;text-decoration:none">' + esc(p.client || "\u2014") + '</a>' +
+        (cl.ownedBy ? '<div style="font-size:12px;color:#64748b">' + esc(regFirst(cl.ownedBy)) + '</div>' : '') + '</td>' : '') +
+      '<td style="' + cell + '">' + plModeBtn(p, dead) + '</td>' +
+      '<td style="' + cell + ';text-align:right;font-weight:700;color:' + (payAmt(p) < 0 ? '#b91c1c' : '#0f766e') + '">' + moneySgn(payAmt(p)) + (payKindOf(p) === "advance" ? '<div style="font-size:12px;color:#0f766e;font-weight:600">advance</div>' : payKindOf(p) === "refund" ? '<div style="font-size:12px;color:#b91c1c;font-weight:600">refund</div>' : '') + '</td>' +
+      '<td style="' + cell + '"><div style="max-width:min(220px,38vw);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(p.ref || p.notes || "") + '">' + esc(p.ref || p.notes || "") + '</div></td>' +
+      '<td style="' + cell + '">' + whoChip(p.createdBy) + '</td>' +
+      '<td style="' + cell + '">' + plCheckCell(p, dead) + '</td></tr>';
+  }
+  function plHead(withClient) {
+    var TH = function (x, r) { return '<th style="padding:5px 7px;font-weight:700;font-size:12px;color:#fff;white-space:nowrap;text-align:' + (r ? "right" : "left") + '">' + esc(x) + '</th>'; };
+    return '<tr style="background:#0b3b36">' + TH("DATE") + TH("RECEIPT") + (withClient ? TH("CLIENT") : "") + TH("MODE") + TH("AMOUNT", 1) + TH("REFERENCE / REMARK") + TH("ENTERED BY") + TH("CHECKED") + '</tr>';
+  }
+  function viewPayLog() {
+    if (!canSee("payments")) return '<div class="empty">The payment log is for the owner, accounts and the executive whose clients are on it.</div>';
+    var rows = plRows(), live = rows.filter(function (r) { return !(r.cx && r.cx.on); });
+    var tot = live.reduce(function (a, r) { return a + payAmt(r.p); }, 0);
+    var unchk = live.filter(function (r) { return !payVerified(r.p); }).length;
+    var mon = today().slice(0, 7), monTot = live.filter(function (r) { return String(r.p.date || "").slice(0, 7) === mon; }).reduce(function (a, r) { return a + payAmt(r.p); }, 0);
+    var h = '<div class="card"><h3 style="margin:0 0 2px">The payment log</h3>' +
+      '<div class="meta">Every payment on the book, one line each, like the challan log. Tap a receipt to open it, a client to open his HISAB, the mode to correct how it came in (your PIN is asked), and <b>Check \u2713</b> to say accounts has seen it \u2014 the same tick as the Verification screen.</div></div>' +
+      '<div class="cards">' +
+      '<div class="stat"><div class="n">' + money(tot) + '</div><div class="l">' + plural(live.length, "payment") + (plAny() ? ' \u00b7 filtered' : '') + '</div></div>' +
+      '<div class="stat"><div class="n">' + money(monTot) + '</div><div class="l">This month</div></div>' +
+      '<div class="stat' + (unchk ? ' alert' : '') + '"><div class="n">' + unchk + '</div><div class="l">Not checked by accounts</div></div></div>';
+    h += plBar();
+    var by = S.plBy === "client" ? "client" : "date";
+    var b = function (v, label) { return '<button class="btn sm ' + (by === v ? '' : 'ghost') + '" data-act="plg-by" data-v="' + v + '" style="min-height:44px">' + label + '</button>'; };
+    h += '<div class="row" style="gap:6px;flex-wrap:wrap;margin:0 0 8px;align-items:center"><span style="font-size:12.5px;font-weight:700;color:#475569;min-width:42px">Show</span>' + b("date", "By date") + b("client", "By client") +
+      '<span style="flex:1"></span><button class="btn sm ghost" data-act="pay-csv" style="min-height:44px">Download (CSV)</button></div>';
+    if (!rows.length) return h + '<div class="empty">No payment answers that filter.</div>';
+    if (by === "date") {
+      var body = "", i = 0, lastD = "";
+      rows.slice(0, 400).forEach(function (r) {
+        var d = String(r.p.date || "").slice(0, 10);
+        if (d !== lastD) { lastD = d; body += '<tr><td colspan="8" style="padding:6px 7px;background:#e2e8f0;font-weight:800;font-size:12.5px;color:#0f172a">' + esc(fullDate(d)) + '</td></tr>'; }
+        body += plRow(r, i++, true);
+      });
+      return h + '<div class="card" style="padding:8px 10px">' +
+        '<div style="font-weight:800;font-size:13.5px;margin-bottom:5px">By date <span style="font-weight:600;color:#64748b;font-size:12.5px">\u00b7 ' + Math.min(rows.length, 400) + ' shown \u00b7 newest first</span></div>' +
+        regSwipe("the amount, the reference and who checked it") +
+        '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table style="border-collapse:collapse;min-width:100%">' + plHead(true) + body + '</table></div></div>';
+    }
+    /* by client */
+    var m = {}, G = [];
+    rows.forEach(function (r) {
+      var k = String(r.p.client || "").trim() || "(no client)", g = m[k];
+      if (!g) { g = m[k] = { name: k, rows: [], amt: 0, last: "", unchk: 0 }; G.push(g); }
+      g.rows.push(r);
+      if (!(r.cx && r.cx.on)) { g.amt += payAmt(r.p); if (!payVerified(r.p)) g.unchk++; }
+      var d = String(r.p.date || "").slice(0, 10); if (d > g.last) g.last = d;
+    });
+    G.sort(function (a, b) { return String(b.last).localeCompare(String(a.last)) || alpha(a.name, b.name); });
+    var open = S.plCl || {}, TH = function (x, r) { return '<th style="padding:5px 7px;font-weight:700;font-size:12px;color:#fff;white-space:nowrap;text-align:' + (r ? "right" : "left") + '">' + esc(x) + '</th>'; };
+    var hb = '<tr style="background:#0b3b36">' + TH("CLIENT") + TH("PAYMENTS", 1) + TH("LAST") + TH("RECEIVED", 1) + TH("OWES NOW", 1) + TH("NOT CHECKED", 1) + TH("") + '</tr>';
+    G.forEach(function (g, i) {
+      var isOpen = !!open[g.name], due = 0; try { due = (clientLedger(g.name) || {}).due || 0; } catch (e) { due = 0; }
+      hb += '<tr style="background:' + (isOpen ? '#f0fdfa' : (i % 2 ? '#f8fafc' : '#fff')) + '">' +
+        '<td style="' + regCell(";max-width:220px;overflow:hidden;text-overflow:ellipsis") + '"><a href="#" data-act="plg-cl" data-cl="' + esc(g.name) + '" style="font-weight:700;color:#0b3b36;text-decoration:none">' + esc(g.name) + '</a></td>' +
+        '<td style="' + regCell(";text-align:right;font-weight:700") + '">' + g.rows.length + '</td>' +
+        '<td style="' + regCell() + '">' + esc(regDMY(g.last).replace(/\/(\d\d)(\d\d)$/, "/$2")) + '</td>' +
+        '<td style="' + regCell(";text-align:right;font-weight:700;color:#0f766e") + '">' + moneySgn(g.amt) + '</td>' +
+        '<td style="' + regCell(";text-align:right;font-weight:700;color:" + regBalColor(due)) + '">' + moneySgn(due) + '</td>' +
+        '<td style="' + regCell(";text-align:right;color:" + (g.unchk ? "#b45309" : "#64748b")) + '">' + (g.unchk || "\u2014") + '</td>' +
+        '<td style="' + regCell(";text-align:right") + '"><button class="btn sm ghost" data-act="plg-cl" data-cl="' + esc(g.name) + '" style="min-height:44px;padding:2px 10px">' + (isOpen ? 'Hide \u25b4' : 'Payments \u25be') + '</button></td></tr>';
+      if (isOpen) {
+        var body2 = ""; g.rows.forEach(function (r, j) { body2 += plRow(r, j, false); });
+        hb += '<tr style="background:#f0fdfa"><td colspan="7" style="padding:4px 6px 10px;border-top:0"><table style="border-collapse:collapse;min-width:100%;border:1px solid #99f6e4">' + plHead(false) + body2 + '</table>' +
+          '<div class="acts" style="margin-top:6px"><button class="btn sm ghost" data-act="ch-hisab" data-cl="' + esc(g.name) + '" style="min-height:44px">Open his HISAB</button></div></td></tr>';
+      }
+    });
+    return h + '<div class="card" style="padding:8px 10px">' +
+      '<div style="font-weight:800;font-size:13.5px;margin-bottom:5px">By client <span style="font-weight:600;color:#64748b;font-size:12.5px">\u00b7 ' + plural(G.length, "client") + ' \u00b7 latest payment first \u00b7 tap a client to see his payments</span></div>' +
+      regSwipe("the amounts and what he owes now") +
+      '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table style="border-collapse:collapse;min-width:100%">' + hb + '</table></div></div>';
+  }
+  /* the mode correction, behind the PIN: he types it, the server checks it (teamAuth, his own row) */
+  function modalPayModePin(id) {
+    var p = (S.data.payments || []).filter(function (x) { return x.id === id; })[0];
+    if (!p || !roleAny(["admin", "accounts"])) return '<h2>Not found</h2><div class="foot"><button class="btn" data-act="close">Close</button></div>';
+    return '<h2>Change how it came in</h2>' +
+      '<p class="sub">Receipt ' + esc(receiptNo(p)) + ' \u00b7 ' + esc(p.client || "") + ' \u00b7 <b>' + money(p.amount) + '</b> on ' + esc(fullDate(p.date)) + '</p>' +
+      '<div class="grid2"><div><label>Now</label><div style="font-weight:800;min-height:44px;display:flex;align-items:center">' + esc(p.mode || "(blank)") + '</div></div>' +
+      '<div><label>Change to</label><select id="pm_mode"><option value="">\u2014 pick \u2014</option>' + opts(PAY_MODES, "") + '</select></div></div>' +
+      '<label>Reference (cheque / UTR)</label><input id="pm_ref" value="' + esc(p.ref || "") + '"/>' +
+      '<label>Your PIN</label><input id="pm_pin" type="password" inputmode="numeric" autocomplete="off" placeholder="Typed here, checked by the server, never stored"/>' +
+      '<div id="pm_pin_note" class="meta" style="font-size:12.5px;color:#b91c1c"></div>' +
+      '<div class="meta" style="font-size:12.5px;margin-top:6px">Only <b>how</b> the money came in changes. The amount, the date, the client and the receipt number stay; what it was and what it became goes to the audit trail with your name.</div>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button><button class="btn" data-act="pm-go" data-p="' + esc(p.id) + '">Change it</button></div>';
+  }
   function viewPayments() {
     /* v6.9.481 - the verification section is its own screen now. Drawn FIRST and returned, so
        the collection radar and the whole payment history are not built for a man who came here
@@ -31681,6 +31900,7 @@ function viewCatalogue() {
     var K = PAY_KINDS[String(kind || "in")] || PAY_KINDS["in"];
     /* nAmt keeps the minus sign.  Stripping it turned a typed "-500" into a receipt for
        Rs 500 RECEIVED - money that never came in.  Now it is simply refused. */
+    if (!String(val("pi_mode") || "").trim()) return { err: "Pick how the money came in first \u2014 cash, bank, cheque or UPI." };   /* 6.9.667 */
     var amt = Math.round(nAmt(val("pi_amt")));
     if (amt <= 0) return { err: K.sign < 0 ? "Enter the amount going back to the client." : "Enter the amount received." };
     var d = String(val("pi_date") || "");
@@ -31849,15 +32069,18 @@ function viewCatalogue() {
       '<div class="card"><div class="meta">Billed ' + money(l.billed) + (l.freight ? ' + freight ' + money(l.freight) : "") +
       '<br>Received so far ' + money(l.paid) + '<br><b>Due ' + money(l.due) + '</b></div></div>' +
       /* v6.9.583 - "Date Mode amt received in single line, all some colors to highlight" */
+      /* 6.9.667 - HIS ORDER: "MODE, DATE, AMT ... make mandatory to select mode first". The mode is
+         blank until he picks it (cash was being filed as cheque because cheque was the default). */
       '<div style="display:flex;gap:6px;align-items:flex-end;flex-wrap:wrap">' +
+      '<div style="flex:0.9 1 110px;min-width:0"><label style="color:#b45309">Mode</label><select id="pi_mode"' +
+        ' style="font-size:15px;min-height:44px;background:#fffbeb;border-color:#fcd34d;color:#78350f;font-weight:600">' +
+        '<option value="">\u2014 pick \u2014</option>' + opts(PAY_MODES, "") + '</select></div>' +
+      '<div style="flex:1 1 125px;min-width:0"><label style="color:#1d4ed8">Date</label><input id="pi_date" type="date" max="' + today() + '" value="' + today() + '"' +
+        ' style="font-size:15px;min-height:44px;background:#eff6ff;border-color:#93c5fd;color:#1e3a8a;font-weight:600"/></div>' +
       '<div style="flex:1.3 1 130px;min-width:0"><label style="color:' + (K.sign < 0 ? '#b91c1c' : '#047857') + '">' + (K.sign < 0 ? 'Amount going back' : 'Amount received') + '</label>' +
       '<input id="pi_amt" inputmode="numeric" style="font-size:18px;font-weight:800;min-height:44px;' +
         (K.sign < 0 ? 'background:#fef2f2;border-color:#fca5a5;color:#991b1b' : 'background:#ecfdf5;border-color:#6ee7b7;color:#065f46') + '" value="' +
-        (_pk === "in" ? Math.round(l.due > 0 ? l.due : 0) : (K.sign < 0 && l.due < -0.5 ? Math.round(-l.due) : "")) + '"/></div>' +
-      '<div style="flex:1 1 125px;min-width:0"><label style="color:#1d4ed8">Date</label><input id="pi_date" type="date" max="' + today() + '" value="' + today() + '"' +
-        ' style="font-size:15px;min-height:44px;background:#eff6ff;border-color:#93c5fd;color:#1e3a8a;font-weight:600"/></div>' +
-      '<div style="flex:0.9 1 110px;min-width:0"><label style="color:#b45309">Mode</label><select id="pi_mode"' +
-        ' style="font-size:15px;min-height:44px;background:#fffbeb;border-color:#fcd34d;color:#78350f;font-weight:600">' + opts(PAY_MODES, "Bank transfer") + '</select></div></div>';
+        (_pk === "in" ? Math.round(l.due > 0 ? l.due : 0) : (K.sign < 0 && l.due < -0.5 ? Math.round(-l.due) : "")) + '"/></div></div>';
     /* Only asked when there is a real choice to make - one site needs no question. */
     if (sites.length > 1) {
       h += '<label>Against which site</label><select id="pi_site"><option value="">Not tied to one site</option>' +
@@ -34921,7 +35144,7 @@ function viewCatalogue() {
      nothing else could reach it - so the usage counter would have had to keep a second copy
      of the same forty-two names, and a second copy is how the two quietly stop agreeing.
      Hoisted, not duplicated. render() still reads exactly this. */
-  var TAB_TABS = [["search", "Search"], ["dash", "Today"], ["review", "Twice-weekly review"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["register", "Challan log"], ["freight", "Drivers & freight"], ["deliveries", "Deliveries"], ["collections", "Payments"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Service dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["paidout", "Paid out"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["catalogs", "Brand catalogues"], ["brandstory", "Brand stories"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["trouble", "Troubleshoot"], ["changelog", "Change log"], ["booksweep", "Book numbers"], ["dups", "Duplicate check"], ["stock", "Stock"], ["brief", "The brief"]];
+  var TAB_TABS = [["search", "Search"], ["dash", "Today"], ["review", "Twice-weekly review"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["register", "Challan log"], ["paylog", "Payment log"], ["freight", "Drivers & freight"], ["deliveries", "Deliveries"], ["collections", "Payments"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Service dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["paidout", "Paid out"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["catalogs", "Brand catalogues"], ["brandstory", "Brand stories"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["trouble", "Troubleshoot"], ["changelog", "Change log"], ["booksweep", "Book numbers"], ["dups", "Duplicate check"], ["stock", "Stock"], ["brief", "The brief"]];
   var TAB_LABEL = (function () {
     var m = {}; TAB_TABS.forEach(function (t) { m[t[0]] = t[1]; }); return m;
   })();
@@ -36941,7 +37164,7 @@ function viewCatalogue() {
     s.id = "ew_cv_css";
     s.textContent =
       ".cv-seg{display:inline-flex;border:1px solid #cbd5e1;border-radius:999px;overflow:hidden;background:#fff}" +
-      ".cv-seg button{border:0;background:#fff;color:#475569;font-size:12.5px;font-weight:700;padding:8px 16px;cursor:pointer;min-height:40px;line-height:1}" +
+      ".cv-seg button{border:0;background:#fff;color:#475569;font-size:12.5px;font-weight:700;padding:8px 16px;cursor:pointer;min-height:44px;line-height:1}" +
       ".cv-seg button.on{background:#0f766e;color:#fff}" +
       ".cv-exec{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;color:#fff;border-radius:12px;padding:9px 13px;margin:14px 0 8px;font-weight:700;font-size:13.5px}" +
       ".cv-en{flex:1 1 120px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}" +
@@ -36967,7 +37190,7 @@ function viewCatalogue() {
       /* v6.9.211 - the client name is the most-tapped control on this line and it was an 18px
          bare text button. The row is already ~24px because of the dues pill, so 4px of padding
          makes it a proper thumb target and costs about 2px of row height. */
-      ".cv-nm{flex:1 1 130px;min-width:0;text-align:left;border:0;background:none;padding:4px 0;font-size:13.5px;font-weight:700;color:#0f172a;cursor:pointer;line-height:1.3}" +
+      ".cv-nm{flex:1 1 130px;min-width:0;text-align:left;border:0;background:none;padding:4px 0;min-height:44px;font-size:13.5px;font-weight:700;color:#0f172a;cursor:pointer;line-height:1.3}" +
       ".cv-due{background:#fee2e2;color:#b91c1c;border-radius:999px;padding:3px 10px;font-size:12px;font-weight:800;white-space:nowrap}" +
       ".cv-ok{background:#dcfce7;color:#166534;border-radius:999px;padding:3px 10px;font-size:12px;font-weight:700;white-space:nowrap}" +
       ".cv-bs{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}" +
@@ -39776,8 +39999,8 @@ function viewCatalogue() {
     var h = '<div class="card" style="border-color:#fca5a5;background:#fef2f2">' +
       '<div class="meta" style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#b91c1c"><b>Billed above the rate on file</b></div>' +
       '<h3 style="font-size:16px;margin:4px 0 2px">' + rows.length + ' deliver' + (rows.length === 1 ? 'y' : 'ies') +
-        ' carr' + (rows.length === 1 ? 'ies' : 'y') + ' a line priced below the client\'s rate &middot; ' + esc(money(tot)) + ' over</h3>' +
-      '<div class="meta" style="font-size:13px">Each has a line stored at 0% while a rate was on file for that client and the line\'s own brand on the day it was written. ' +
+        ' ' + (rows.length === 1 ? 'has' : 'have') + ' a line with less discount than was agreed &middot; the client' + (rows.length === 1 ? '' : 's') + ' charged ' + esc(money(tot)) + ' more</h3>' +   /* 6.9.668 - said plainly ("what meaning of this") */
+      '<div class="meta" style="font-size:13px">Each has a line at 0% discount while a discount was agreed for that client and that brand on the day it was written, so the client was charged more than agreed. ' +
         'Finalise puts it right by itself &mdash; the line takes the rate on file and the audit trail says so; or open it and press <b>Do it now</b>. ' +
         (open < rows.length ? '<b>' + (rows.length - open) + '</b> ' + (rows.length - open === 1 ? 'is' : 'are') + ' already finalised and need' + (rows.length - open === 1 ? 's' : '') + ' a credit note instead. ' : '') +
         'The check runs on every open, over the whole book, with the same reading finalise uses.</div>';
@@ -41990,7 +42213,7 @@ function viewCatalogue() {
       ".plist .prow{display:flex!important;align-items:center;gap:10px;padding:6px 2px;border-bottom:1px solid #eef2f7}" +
       ".plist .prow img,.plist .prow .noimg{width:54px!important;height:54px!important;min-width:54px;max-width:54px;object-fit:contain;border-radius:8px;background:#f8fafc;flex:0 0 54px}" +
       /* v6.9.296 - the placeholder has to be able to SAY which of the two it is */
-      ".noimg{display:flex!important;align-items:center;justify-content:center;text-align:center;font-size:9px;line-height:1.15;font-weight:600;color:#cbd5e1;letter-spacing:.01em}" +
+      ".noimg{display:flex!important;align-items:center;justify-content:center;text-align:center;font-size:12px;line-height:1.15;font-weight:600;color:#cbd5e1;letter-spacing:.01em}" +
       ".noimg.bad{color:#b45309;background:#fffbeb;border:1px solid #fde68a}" +
       ".plist .prow .pinfo{flex:1 1 auto;min-width:0}" +
       ".plist .prow .pname{font-size:13.5px;font-weight:600;line-height:1.25}" +
@@ -45167,7 +45390,7 @@ function viewCatalogue() {
     /* v6.9.526 - "where is dedicated challan log under hisab". The register had no door: it was
        a sub-tab of the old Deliveries hub ("deliveries"), which no group names. It is a tab now,
        in both places a man would look. */
-    ["HISAB",      ["billing", "register", "payments", "paidout", "dues", "review"]],   /* 6.9.635 - the twice-weekly review, in both places */
+    ["HISAB",      ["billing", "register", "paylog", "payments", "paidout", "dues", "review"]],   /* 6.9.667 - the Payment log beside the Challan log */   /* 6.9.635 - the twice-weekly review, in both places */
     ["Deliveries", ["challans", "register", "freight", "returns"]],
     /* v6.9.533 - his third list, item 13: "merge Leads and Clients into one tab with sub-tabs",
        and item 16: "remove Leads tab from header". One group; the lead board is its second
@@ -45302,7 +45525,7 @@ function viewCatalogue() {
     catalogue: 1, partners: 1, scorecard: 1, report: 1, commission: 1, payroll: 1, teampins: 1, dash: 1,
     pending: 1, trouble: 1, dups: 1, health: 1, changelog: 1, tools: 1, brief: 1, rates: 1, rules: 1, booksweep: 1 };
   var HELP_ALIAS = { deliveries: "challans", collections: "payments", pricing: "pricelist", payrollhub: "commission",
-    dossier: "clients", matrix: "pitch", sites: "pitch", customers: "clients" };
+    dossier: "clients", matrix: "pitch", sites: "pitch", customers: "clients", paylog: "payments" };   /* 6.9.667 */
   function helpHref(tab) {
     var k = HELP_AT[tab] ? tab : (HELP_ALIAS[tab] || "");
     return "../help/crm.html#t-" + (k || "start");
@@ -45367,8 +45590,8 @@ function viewCatalogue() {
          Same fault as the Service app's wide-screen block: written, correct, and silent.
          v6.9.401 - it lives BELOW the base rule now, and both kinds of chip carry a 40px
          floor: 921 of the CRM's 1,060 taps were under 40px, and 436 of them were these. */
-      "nav button.nvg{font-size:13.5px;padding:0 14px;border-radius:10px;min-height:40px}" +
-      "nav button.nvb{min-height:40px;padding:0 12px}" +
+      "nav button.nvg{font-size:13.5px;padding:0 14px;border-radius:10px;min-height:44px}" +   /* 6.9.666 - 44 */
+      "nav button.nvb{min-height:44px;padding:0 12px}" +
       ".nvdot{position:absolute;top:3px;right:4px;width:7px;height:7px;border-radius:50%;background:#dc2626;" +
       "box-shadow:0 0 0 2px #fff}" +
       /* a phone: slightly tighter, still no sideways swipe */
@@ -45409,7 +45632,7 @@ function viewCatalogue() {
       ".top .who>div{margin-top:0!important;flex-wrap:wrap}" +
       /* v6.9.401 - 26px tall and 11.5px: the four buttons a thumb uses most, the smallest
          on the screen. 40px and 12px now, and they wrap to a row of their own. */
-      ".top .who .btn.sm{padding:5px 10px;font-size:12px;min-height:40px}" +
+      ".top .who .btn.sm{padding:5px 10px;font-size:12px;min-height:44px}" +
       "nav{top:0}" +
       "}";
     document.head.appendChild(s);
@@ -45439,17 +45662,18 @@ function viewCatalogue() {
          popup's Close 27px, the compact/expand switch 36px, the amber "Set district"
          chip 24px, the group headline in the client book 35px. One breakpoint - 639px,
          the header's - so the Mac keeps its denser rows. Measured by probe_taps.mjs. */
+      /* 6.9.666 - 44px, his rule; the 40px floor of 6.9.401 was measured at 4,774 of 6,066 taps under 44 on a phone */
       "@media(max-width:639px){" +
-      ".btn.sm{min-height:40px;min-width:40px}" +
-      ".modalx .btn{min-height:40px;padding:5px 14px}" +
-      ".cv-seg button{min-height:40px}.cv-set{min-height:40px}" +
-      ".ch-exec{min-height:40px}" +
-      ".bkno{min-height:40px;padding:0 10px!important}" +
+      ".btn.sm{min-height:44px;min-width:44px}" +
+      ".modalx .btn{min-height:44px;padding:5px 14px}" +
+      ".cv-seg button{min-height:44px}.cv-set{min-height:44px}" +
+      ".ch-exec{min-height:44px}" +
+      ".bkno{min-height:44px;padding:0 10px!important}" +
       /* second measurement: what the first pass left, by rule */
-      ".btn{min-height:40px}" +
-      "main input:not([type=checkbox]):not([type=radio]):not([type=file]),main select{min-height:40px}" +
+      ".btn{min-height:44px}" +
+      "main input:not([type=checkbox]):not([type=radio]):not([type=file]),main select{min-height:44px}" +
       "tr[data-act]>td{padding-top:13px!important;padding-bottom:13px!important}" +
-      ".ch-client{min-height:40px}.chip{min-height:40px}" +
+      ".ch-client{min-height:44px}.chip{min-height:44px}" +
       "}" +
       /* v6.9.181 DUE AMT pill - one look for owed money across every tab */
       ".due-amt{display:inline-flex;align-items:center;gap:5px;background:#fee2e2;border:1px solid #fca5a5;border-radius:999px;padding:2px 9px 2px 3px;white-space:nowrap;vertical-align:middle;line-height:1.3}" +
@@ -45474,7 +45698,7 @@ function viewCatalogue() {
       ".pv-n{font-size:12px;line-height:1.25;font-weight:600;color:#0f172a;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}" +
       ".pv-c{font-size:12px;color:#94a3b8}" +
       ".pv-p{margin-top:auto;padding-top:2px;font-size:12px;font-weight:700;color:#0f766e;white-space:nowrap}" +
-      ".pv-p i{font-size:8.5px;font-weight:400;color:#94a3b8;font-style:normal}" +
+      ".pv-p i{font-size:12px;font-weight:400;color:#94a3b8;font-style:normal}" +
       "@media(max-width:560px){.pv-grid{grid-template-columns:repeat(auto-fill,minmax(112px,1fr))}" +
       ".pv-n{font-size:12px}.pv-c{font-size:12px}.pv-p{font-size:12.5px}.pv-p i{font-size:12px}" +
       ".pv-b{padding:6px 7px 8px}}";
@@ -45498,18 +45722,7 @@ function viewCatalogue() {
     try { ensureQuoteCss(); } catch (e) { }
     /* one fresh money + stage pass per paint, then cached for the rest of it: the compact tree
        and the quote banner both ask for a client's due, and neither should re-walk HISAB. */
-    _clDueCache = null; _clStageCache = null; _aliasCache = null; _prfCache = null; _mnoCache = null; _pfxCache = null; _pcCache = null; _admTkCache = null; _colCache = null; _baseCache = null; _amcCache = null; _lossCache = null; _cxCache = null; _hdCache = null; _hsbCache = null; _rtStampCache = null; _dtCache = null; _dlCache = null; _qbCache = null; _amcRateCache = null; _twinCache = null; _cxaCache = null; _alcCache = null; _stlCache = null; _opnCache = null; _agrCache = null; _pvCache = null;
-    _pitchIdx = null; _cbgCache = null; _lsnCache = null; _pcbCache = null; _plcCache = null;
-    _rpgCache = null;      /* v6.9.489 - the preset gap is money; a stale count is the worst of them */
-    /* v6.9.373 - the three new per-paint indexes. A cache that is not dropped here shows
-       yesterday's money, which is the worst thing this app can do. */
-    _ledCache = null; _cqCache = null; _cwbCache = null; _dscIdx = null; _whoIx = null;
-    /* v6.9.485 - the register's four are per-PAINT indexes, busted here with the ledger's. That
-       is the whole job: renderCore runs on every render and every caller of splitCancelled
-       renders straight afterwards, so a second bust inside splitCancelled bought nothing - and
-       splitCancelled is one of the fifty functions kept byte-identical with the backend, which
-       t_v108_ledger noticed the moment I edited it. */
-    _regCache = null; _regBal = null; _regScore = null; _regAge = null;
+    bustCaches();   /* 6.9.666 - one list, also dropped when a background pull lands under an open sheet */
     /* v6.9.263 - warming the logo cache is for the NEXT quote PDF, never for this paint;
        nothing on screen waits on it. Started from the paint it competed with teamAuth and
        teamGet for the same connections. Four seconds later the boot is done and the line is
@@ -45520,7 +45733,7 @@ function viewCatalogue() {
       setTimeout(function () { try { preloadLogos(); } catch (e) { } }, 4000);
     }
     if (!S.pin) { renderLogin(); return; }
-    var views = { agent: viewAgent, search: viewSearch, dossier: viewDossier, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, payments: viewPayments, paidout: viewPaidOut, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, catalogs: viewCatalogues, brandstory: viewBrandStories, clients: viewClients, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, register: viewRegister, freight: viewFreight, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, trouble: viewTrouble, changelog: viewChangeLog, booksweep: viewBookSweep, dups: viewDups, stock: viewStock, brief: viewBrief, review: viewReview };
+    var views = { agent: viewAgent, search: viewSearch, dossier: viewDossier, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, payments: viewPayments, paidout: viewPaidOut, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, catalogs: viewCatalogues, brandstory: viewBrandStories, clients: viewClients, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, register: viewRegister, paylog: viewPayLog, freight: viewFreight, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, trouble: viewTrouble, changelog: viewChangeLog, booksweep: viewBookSweep, dups: viewDups, stock: viewStock, brief: viewBrief, review: viewReview };
     var tabs = TAB_TABS;
 
     var h = '<div class="top">' +
@@ -50179,13 +50392,13 @@ function viewCatalogue() {
         var rt = Number(row.querySelector(".sv-r").value) || 0;
         if (d) { parts.push(d + " x" + q); partsAmt += q * rt; }
       });
-      var bags = Number(val("v_salt")) || 0;
-      var saltRate = Number(val("v_saltrate")) || 0;
+      var bags = nAmt(val("v_salt"));
+      var saltRate = nAmt(val("v_saltrate"));   /* 6.9.666 - "1,200" is 1200, not 0 */
       var saltAmt = bags * saltRate;
-      var charge = Number(val("v_charge")) || 0;
+      var charge = nAmt(val("v_charge"));
       if (charge < MIN_VISIT) { toast("Minimum visit charge is Rs " + MIN_VISIT + "."); return; }
       var total = charge + saltAmt + partsAmt;
-      var coll = Number(val("v_coll")) || 0;
+      var coll = nAmt(val("v_coll"));   /* 6.9.666 */
       var vdate = val("v_date");
       var veng = val("v_eng");
       /* v6.9.397 - TWO round trips, one after the other, with the form held open through both:
@@ -51142,6 +51355,43 @@ function viewCatalogue() {
       keepScroll = true; render(); return;
     }
     if (act === "pay-hist") { S.payHist = !S.payHist; S.modal = null; render(); return; }
+    /* 6.9.667 - the payment log */
+    if (act === "plg-clear") { S.plg = {}; render(); return; }
+    if (act === "plg-by") { S.plBy = t.getAttribute("data-v") === "client" ? "client" : "date"; keepScroll = true; render(); return; }
+    if (act === "plg-cl") {
+      if (e && e.preventDefault) e.preventDefault();
+      var _pk2 = t.getAttribute("data-cl") || ""; S.plCl = S.plCl || {}; if (S.plCl[_pk2]) delete S.plCl[_pk2]; else S.plCl[_pk2] = 1;
+      keepScroll = true; render(); return;
+    }
+    if (act === "plg-mode") {
+      if (!roleAny(["admin", "accounts"])) { toast("Correcting a receipt is the owner\u2019s or accounts\u2019."); return; }
+      S.modal = modalPayModePin(t.getAttribute("data-p") || ""); render();
+      setTimeout(function () { var x = el("pm_mode"); if (x) x.focus(); }, 0); return;
+    }
+    if (act === "pm-go") {
+      if (!roleAny(["admin", "accounts"])) { toast("Correcting a receipt is the owner\u2019s or accounts\u2019."); return; }
+      var pmId = t.getAttribute("data-p") || "", pmRow = (S.data.payments || []).filter(function (x) { return x.id === pmId; })[0];
+      if (!pmRow) { toast("That receipt is not on this device \u2014 pull down to refresh."); return; }
+      var pmMode = String(val("pm_mode") || "").trim(), pmRef = String(val("pm_ref") || "").trim(), pmPin = String(val("pm_pin") || "").trim();
+      if (!pmMode) { pinNote("pm_pin", "Pick what it should change to."); return; }
+      if (pmMode === String(pmRow.mode || "") && pmRef === String(pmRow.ref || "")) { toast("Nothing changed."); return; }
+      if (!pmPin) { pinNote("pm_pin", "Type your PIN first. Nothing was changed."); return; }
+      var pmBtn = t; pmBtn.disabled = true; pmBtn.textContent = "Checking\u2026";
+      api("teamAuth", { pin: pmPin, ua: navigator.userAgent }).then(function (r) {
+        if (!r || !r.ok) { pmBtn.disabled = false; pmBtn.textContent = "Change it"; pinNote("pm_pin", (r && r.error) || "Wrong PIN. Nothing was changed."); return; }
+        var sRole = String((r.user && r.user.role) || "").toLowerCase();
+        if (sRole.indexOf("admin") < 0 && sRole.indexOf("accounts") < 0) { pmBtn.disabled = false; pmBtn.textContent = "Change it"; pinNote("pm_pin", "The server says this sign-in is not the owner\u2019s or accounts\u2019. Nothing was changed."); return; }
+        var wasMode = String(pmRow.mode || ""), wasRef = String(pmRow.ref || "");
+        save("payments", { id: pmId, mode: pmMode, ref: pmRef });
+        save("audit", { id: mintId("PF"), createdAt: new Date().toISOString(), actor: S.user || "", action: "payment:mode",
+          target: receiptNo(pmRow) + " / " + String(pmRow.client || ""),
+          detail: JSON.stringify({ pid: pmId, fromMode: wasMode, toMode: pmMode, fromRef: wasRef, toRef: pmRef, pin: true }) });
+        _pfxCache = null; S.modal = null;
+        toast("Receipt " + receiptNo(pmRow) + ": " + (wasMode || "(blank)") + " \u2192 " + pmMode + ". The amount and the receipt number are unchanged.");
+        setTimeout(render, 120);
+      }).catch(function () { pmBtn.disabled = false; pmBtn.textContent = "Change it"; pinNote("pm_pin", "Could not reach the server. Nothing was changed."); });
+      return;
+    }
     if (act === "pay-csv") { payCsv(t.getAttribute("data-n") || ""); return; }
     if (act === "rc-list") { S.modal = modalReceipts(t.getAttribute("data-n")); render(); return; }
     if (act === "rc-pdf" || act === "rc-wa") {
@@ -51630,7 +51880,7 @@ function viewCatalogue() {
          moment of passing the delivery they were carried on. There is no old rate to protect
          and nothing to move. So the effective date is the DELIVERY'S OWN DATE - which is more
          truthful than today, and is the answer a prompt would have been fishing for anyway. */
-      var hFrom = dstr(hc.createdAt) || today();
+      var hFrom = localDay(hc.createdAt) || today();   /* 6.9.666 */
       var hset = [], hign = [];
       hmiss.forEach(function (b, i) {
         var v = hnon[b] ? 0 : (Number(hpct[b]) || 0);
@@ -52638,7 +52888,7 @@ function viewCatalogue() {
         if (dd2 < 0) return;
         S.ch.items.push({ code: pcode, desc: prod.desc || pcode, unit: prod.unit || "No's", qty: 1, rate: prod.price || 0 });
       } else {
-        row.qty = Math.max(0, Math.round((Number(row.qty) || 0) + dd2) * 1000 / 1000);   /* v6.9.303 */
+        row.qty = Math.max(0, Math.round(((Number(row.qty) || 0) + dd2) * 1000) / 1000);   /* v6.9.303; 6.9.666 - 1.5 + 1 is 2.5, not 3 */
         if (row.qty <= 0) S.ch.items = S.ch.items.filter(function (i) { return i.code !== pcode; });
       }
       /* keep the form fields the user already typed - a redraw would wipe them */
@@ -52798,7 +53048,7 @@ function viewCatalogue() {
       var manualV = String(val("m_manual") || "").trim();
       var brandV = val("m_brand") || (S.ch && S.ch.brand) || "";
       var locV = val("m_loc"), freightV = val("m_freight") || 0, ftoV = val("m_fto");
-      var discV = val("m_disc") || 0, discnoteV = val("m_discnote");
+      var discV = Math.max(0, Math.round(nAmt(val("m_disc")))), discnoteV = val("m_discnote");   /* 6.9.666 - saved as a number */
       /* v6.9.402 - the salt question, read here with everything else */
       var saltBagsV = chSaltBags(lines), svcCallV = (S.ch && S.ch.svcCall) || "yes";
 
