@@ -303,7 +303,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
    Nothing here deletes anything, ever. A visit is a row added.
    ========================================================================== */
 
-  var APP_VERSION = "1.19.0";
+  var APP_VERSION = "1.20.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_service_session";
 
@@ -2011,6 +2011,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
            appears on the Products screen and on every future quote. Blank is
            fine - a product with no specs simply prints without the block. */
         specs: String(row[11] || "").trim(),
+        was: String(row[12] || "").split(/\s*[,;]\s*/).map(function (x) { return x.trim(); }).filter(Boolean),   /* old codes (CRM 6.9.671) - kept so the shared catalogue copy keeps them */
         label: (code ? code + " - " : "") + desc
       });
     }
