@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.670";
+  var APP_VERSION = "6.9.671";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -3335,6 +3335,8 @@ window.addEventListener("beforeunload", function (ev) {
            appears on the Products screen and on every future quote. Blank is
            fine - a product with no specs simply prints without the block. */
         specs: String(row[11] || "").trim(),
+        /* 6.9.671 - column M, "Old Codes": what this product was called before Tally's code */
+        was: String(row[12] || "").split(/\s*[,;]\s*/).map(function (x) { return x.trim(); }).filter(Boolean),
         label: (code ? code + " - " : "") + desc
       });
     }
@@ -3380,6 +3382,7 @@ window.addEventListener("beforeunload", function (ev) {
                     (Date.now() - _shelf.at < 86400000) && _shelf.items && _shelf.items.length);
     if (_fresh) {
       PRODUCTS = _shelf.items;
+      try { codesIn(); } catch (e) { }   /* 6.9.671 */
       if (!force) {
         _catAt = _shelf.at;               /* so the 5-minute guard above works on the NEXT call too */
         PRODLIST_HTML = null;
@@ -3408,6 +3411,7 @@ window.addEventListener("beforeunload", function (ev) {
              so a half-typed challan survives it. */
           var _wasEmpty = !PRODUCTS.length;
           PRODUCTS = items;
+          try { codesIn(); } catch (e) { }   /* 6.9.671 */
           PRODLIST_HTML = null;
           _pcbCache = null; _plcCache = null;   /* v6.9.373 - the brand map is derived from PRODUCTS */
           _catAt = Date.now();
@@ -3448,6 +3452,7 @@ window.addEventListener("beforeunload", function (ev) {
       pic: driveImg(f.pic),
       /* 6.9.623 - the form sends specs now; an older caller that does not keeps what is there */
       specs: f.specs !== undefined ? String(f.specs || "").trim() : (hit >= 0 ? (PRODUCTS[hit].specs || "") : ""),
+      was: hit >= 0 ? (PRODUCTS[hit].was || []) : [],   /* 6.9.671 - the old codes stay with it */
       label: (String(f.code || "").trim() ? String(f.code).trim() + " - " : "") + String(f.desc || "").trim()
     };
     if (hit >= 0) PRODUCTS[hit] = item; else PRODUCTS.push(item);
@@ -3470,7 +3475,74 @@ window.addEventListener("beforeunload", function (ev) {
     if (!t) return null;
     for (i = 0; i < PRODUCTS.length; i++) if (PRODUCTS[i].label.toLowerCase() === t) return PRODUCTS[i];
     for (i = 0; i < PRODUCTS.length; i++) if (PRODUCTS[i].code.toLowerCase() === t) return PRODUCTS[i];
+    var _now = String(codeNow(String(text || "").trim()));   /* 6.9.671 - a code it had before Tally's */
+    if (_now !== String(text || "").trim()) for (i = 0; i < PRODUCTS.length; i++) if (String(PRODUCTS[i].code) === _now) return PRODUCTS[i];
     return null;
+  }
+
+  /* ===== 6.9.671 / 1.122.0 - A PRODUCT'S OLD CODES  (Tally is the master for item codes) =====
+     HIS WORDS, 30 Sep 2026: "tally billing upload - 1. monthly billing summary will be uploaded, fetch
+     purchase bill no from that summary; 2. individual bills will be uploaded again in excel or pdf format,
+     match bill item code and brand with tally bills, if code not found ask admin to match it with crm
+     item code, once matched crm code will be changed according to tally, we have to go as per tally as
+     that is primary for tax invoice, also give option to create new item code and also new brand if not
+     listed in crm, like this over the time we have to maintain item codes as per tally codes".
+     When the owner matches a Tally bill line to a product, the product's code in the catalogue
+     BECOMES Tally's (server V142, catalogCode) and the code it had is written to column M, "Old
+     Codes". Nothing already on the book is rewritten: a challan, return, quote or stock row made
+     under the old code is read under the new one, here, as it is loaded. So stock, levels, kits
+     and every screen keep adding up one product, not two. */
+  var CODE_WAS = {}, _codesSeen = (typeof WeakMap === "function") ? new WeakMap() : null, _codesVer = "";
+  function codeWasBuild() {
+    var m = {};
+    (PRODUCTS || []).forEach(function (p) {
+      var to = String((p && p.code) || "").trim(); if (!to) return;
+      (p.was || []).forEach(function (o) { o = String(o || "").trim(); if (o && o !== to) m[o] = to; });
+    });
+    CODE_WAS = m; _codesVer = JSON.stringify(m); return m;
+  }
+  function codeNow(c) {
+    var k = String(c == null ? "" : c).trim(), n = 0;
+    if (!CODE_WAS[k]) return c;
+    while (CODE_WAS[k] && n++ < 8) k = CODE_WAS[k];
+    return k;
+  }
+  function codesInItems(js, key) {
+    if (!js || typeof js !== "string") return js;
+    var a; try { a = JSON.parse(js); } catch (e) { return js; }
+    if (!Array.isArray(a)) return js;
+    var ch = false;
+    a.forEach(function (l) { if (l && l[key] != null && l[key] !== "") { var n = codeNow(l[key]); if (n !== l[key]) { l[key] = n; ch = true; } } });
+    return ch ? JSON.stringify(a) : js;
+  }
+  function codesIn() {
+    codeWasBuild();
+    if (!Object.keys(CODE_WAS).length) return 0;
+    var n = 0;
+    /* the Challan app runs this on every paint: a row already read under today's codes, and not
+       changed since, is not parsed again */
+    var fix = function (o, f, key) {
+      var v = o[f], seen = _codesSeen && _codesSeen.get(o);
+      if (seen && seen.v === _codesVer && seen[f] === v) return;
+      var w = codesInItems(v, key); if (w !== v) { o[f] = w; n++; }
+      if (_codesSeen) { if (!seen || seen.v !== _codesVer) { seen = { v: _codesVer }; _codesSeen.set(o, seen); } seen[f] = w; }
+    };
+    [S.data || {}, S.cancelled || {}].forEach(function (D) {
+      ["challans", "returns"].forEach(function (t) { (D[t] || []).forEach(function (r) { if (r) fix(r, "itemsJson", "code"); }); });
+      (D.quotes || []).forEach(function (q) { if (q) fix(q, "items", "code"); });
+    });
+    (S.stock || []).forEach(function (r) {
+      if (!r) return;
+      var c = codeNow(r.code); if (c !== r.code) { r.code = c; n++; }
+      if (String(r.type) === "bill") fix(r, "desc", "c");
+      if (String(r.type) === "bom" && r.notes) {
+        try {
+          var o = JSON.parse(r.notes), p0 = JSON.stringify(o.parts || []), p1 = codesInItems(p0, "c");
+          if (p1 !== p0) { o.parts = JSON.parse(p1); r.notes = JSON.stringify(o); n++; }
+        } catch (e) { }
+      }
+    });
+    return n;
   }
 
   var PRODLIST_HTML = null;
@@ -6409,6 +6481,9 @@ window.addEventListener("beforeunload", function (ev) {
       c.createdAt = d + "T12:00:00.000Z";
       c.__dFrom = src;
     });
+    /* 6.9.671 / 1.122.0 - and a line made under a product's old code reads as Tally's code.
+       Here, not in splitCancelled: that one is pinned byte for byte to its Apps Script twin. */
+    try { codesIn(); } catch (e) { }
   }
   function chDateLost(c) { return String((c && c.__dFrom) || ""); }
   /* The mark on the card. Amber, tiny, and it names its source - so a man checking a delivery
@@ -43610,6 +43685,7 @@ function viewCatalogue() {
     api("stockList").then(function (r) {
       STOCK_LOADING = false; STOCK_LOADED = true;
       S.stock = (r && r.ok && r.rows) ? r.rows : [];
+      try { codesIn(); } catch (e) { }   /* 6.9.671 - a stock row made under an old code */
       /* 6.9.618 - his screenshot: the search popup said "Stock: loading..." and stayed. Stock had
          arrived; renderBg() does not repaint under an open popup (so a form is never wiped), and
          the search results are a popup. The stock lines are now filled in where they stand. */
@@ -43631,7 +43707,7 @@ function viewCatalogue() {
     if (!miss.length) return;
     var amt = miss.reduce(function (a, b) { return a + b.amount; }, 0);
     S.modal = '<h2>' + plural(miss.length, "purchase bill") + ' not uploaded</h2>' +
-      '<p class="sub">These are on the Purchase Register from Tally but their bills are not in the CRM yet, so their goods are <b>not in stock</b>. Download each bill from Tally as Excel and upload it.</p>' +
+      '<p class="sub">These are on the Purchase Register from Tally but their bills are not in the CRM yet, so their goods are <b>not in stock</b>. Download each bill from Tally as Excel or PDF and upload it.</p>' +
       '<div style="overflow-x:auto;max-height:45vh"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="background:#e2e8f0">' +
       '<th style="padding:5px 7px;text-align:left">DATE</th><th style="padding:5px 7px;text-align:left">SUPPLIER</th><th style="padding:5px 7px;text-align:left">BILL NO</th><th style="padding:5px 7px;text-align:right">AMOUNT</th></tr></thead><tbody>' +
       miss.map(function (b) {
@@ -43762,8 +43838,8 @@ function viewCatalogue() {
       if (ty === "in" && _bref[String(row.ref || "").trim().toLowerCase()]) return;   /* that bill is already counted from Tally */
       var _k0 = String(row.code || "").trim();
       if (ty === "opening" && _olast[_k0] !== row) return;   /* only the latest count - 6.9.608: and only its last save */
-      if (ty !== "opening" && ty !== "reorder" && ty !== "rate" && ty !== "landing" && ty !== "register" && ty !== "alias" && ty !== "plan" && ty !== "bom" && !stkCounts(_k0, row.asOn, cut)) return;
-      if (ty === "reorder" || ty === "rate" || ty === "landing" || ty === "register" || ty === "alias" || ty === "plan" || ty === "bom") return;   /* bom: a kit's parts list (6.9.633 / 1.112.0) */   /* settings rows, not movements (register/alias: v6.9.605; plan: 6.9.621) */
+      if (ty !== "opening" && ty !== "reorder" && ty !== "rate" && ty !== "landing" && ty !== "register" && ty !== "alias" && ty !== "plan" && ty !== "bom" && ty !== "billwait" && !stkCounts(_k0, row.asOn, cut)) return;
+      if (ty === "reorder" || ty === "rate" || ty === "landing" || ty === "register" || ty === "alias" || ty === "plan" || ty === "bom" || ty === "billwait") return;   /* bom: a kit's parts list (6.9.633 / 1.112.0) */   /* settings rows, not movements (register/alias: v6.9.605; plan: 6.9.621) */
       var k = String(row.code || "").trim(); if (!k) return;
       m[k] = (m[k] || 0) + (Number(row.qty) || 0);
       if (row.desc && !desc[k]) desc[k] = row.desc;
@@ -43954,6 +44030,7 @@ function viewCatalogue() {
               '<td style="padding:5px 7px">' + (bil ? '<span class="pill teal" style="font-size:12px">uploaded</span>' : '<span class="pill due" style="font-size:12px">to upload</span>') + (inS && !bil ? ' <span style="font-size:12px;color:#64748b">(old lorry entry)</span>' : '') + '</td></tr>';
           }).join("") + '</tbody></table></div>' : '') + '</div>';
     }
+    h += stkTallyCard();   /* 6.9.671 - bills waiting for the owner, codes still not Tally's */
     var mv = stockMovementByCode(), del = stockDeliveredByCode(), ret = stockReturnedByCode();
     var reo = reorderByCode(), rate = rateByCode();
     var codes = {};
@@ -45077,22 +45154,307 @@ function viewCatalogue() {
     }
     /* ---- the invoice ---- */
     var ph = find(/^Part No\.?$/i), dh = find(/^Description of Goods$/i);
-    if (!ph || !dh || ph.r !== dh.r) return { kind: "unknown" };
-    var h = rows[ph.r].map(function (x) { return String(x || "").trim().toLowerCase(); });
+    /* 6.9.671 - a bill printed without the Part No. column is read too; its lines are matched by name */
+    if (!dh || (ph && ph.r !== dh.r)) return { kind: "unknown" };
+    var h = rows[dh.r].map(function (x) { return String(x || "").trim().toLowerCase(); });
     var col = function (re) { for (var i = 0; i < h.length; i++) if (re.test(h[i])) return i; return -1; };
-    var cQ = col(/^quantity$/), cR = col(/^rate$/), cU = col(/^per$/), cDi = col(/^disc/), cA = col(/^amount$/), cS = 0;
+    var cQ = col(/^quantity$/), cR = col(/^rate$/), cU = col(/^per$/), cDi = col(/^disc/), cA = col(/^amount$/), cS = 0, cH = col(/^hsn/);
     var inv = find(/^Invoice No\.?$/i), dt = find(/^Dated$/), sup = find(/^Supplier \(Bill from\)$/i);
     var lines = [], total = 0;
-    for (var r2 = ph.r + 1; r2 < rows.length; r2++) {
+    for (var r2 = dh.r + 1; r2 < rows.length; r2++) {
       var sl = cell(r2, cS), desc = txt(r2, dh.c);
       if (/^total$/i.test(desc) || /^total$/i.test(txt(r2, 1))) { total = tallyNum(cell(r2, cA)); break; }
       if (!(typeof sl === "number" || /^\d+$/.test(String(sl).trim())) || !desc) continue;
-      lines.push({ sl: Number(sl), desc: desc, partNo: txt(r2, ph.c), qty: tallyNum(cell(r2, cQ)), rate: tallyNum(cell(r2, cR)),
+      lines.push({ sl: Number(sl), desc: desc, partNo: ph ? txt(r2, ph.c) : "", hsn: cH >= 0 ? txt(r2, cH) : "", qty: tallyNum(cell(r2, cQ)), rate: tallyNum(cell(r2, cR)),
                    unit: cU >= 0 ? txt(r2, cU) : "", disc: cDi >= 0 ? tallyNum(cell(r2, cDi)) : 0, amount: tallyNum(cell(r2, cA)) });
     }
     return { kind: "bill",
              billNo: inv ? txt(inv.r + 1, inv.c) : "", date: dt ? tallyDate(cell(dt.r + 1, dt.c)) : "",
              supplier: sup ? txt(sup.r + 1, sup.c) : "", total: total, lines: lines };
+  }
+
+
+  /* ===== 6.9.671 - A TALLY BILL OR REGISTER AS A PDF =====
+     HIS WORDS, 30 Sep 2026: "tally billing upload - 1. monthly billing summary will be uploaded, fetch
+     purchase bill no from that summary; 2. individual bills will be uploaded again in excel or pdf format,
+     match bill item code and brand with tally bills, if code not found ask admin to match it with crm
+     item code, once matched crm code will be changed according to tally, we have to go as per tally as
+     that is primary for tax invoice, also give option to create new item code and also new brand if not
+     listed in crm, like this over the time we have to maintain item codes as per tally codes".
+     A PDF has no cells: pdf.js hands back pieces of text and where each one sits. The heading
+     line (Description of Goods ... Amount, or Date ... Vch No.) says where each column is; every
+     piece below it goes to the column it sits under. What comes out is the same rows an Excel
+     download gives, so tallyParse reads both, and one set of checks covers both.
+     Two things a PDF does that Excel does not: "300 Mtr" is one piece (the unit rides with the
+     quantity), and a long bill runs on to a second page with its heading printed again. A scanned
+     bill is a picture with no text at all - that is said plainly rather than guessed at. */
+  var TPDF_BILL = [["Sl", /^sl(\s*no\.?)?$/i], ["Description of Goods", /^description( of goods)?$/i], ["HSN/SAC", /^hsn(\s*\/\s*sac)?$/i],
+    ["Part No.", /^part\s*no\.?$/i], ["Quantity", /^(quantity|qty\.?)$/i], ["Rate", /^rate$/i], ["per", /^per$/i],
+    ["Disc. %", /^disc\.?\s*%?$/i], ["Amount", /^amount$/i]];
+  var TPDF_REG = [["Date", /^date$/i], ["Particulars", /^particulars$/i], ["Vch Type", /^vch\.?\s*type$/i], ["Vch No.", /^vch\.?\s*no\.?$/i],
+    ["Debit", /^debit$/i], ["Credit", /^credit$/i]];
+  function tpdfLines(items) {
+    var its = (items || []).filter(function (i) { return i && String(i.s || "").trim(); })
+      .map(function (i) { return { s: String(i.s).replace(/\s+/g, " ").trim(), x: +i.x || 0, y: +i.y || 0, w: +i.w || 0 }; });
+    /* pdf.js joins neighbouring runs into one piece ("97.65 Mtr" across Rate and per, "Rate per" in
+       the heading), so every piece is cut into its words, each placed by its share of the width */
+    var words = [];
+    its.forEach(function (it) {
+      if (it.s.indexOf(" ") < 0 || !it.w) { words.push(it); return; }
+      var re = /\S+/g, m, n = it.s.length;
+      while ((m = re.exec(it.s))) words.push({ s: m[0], x: it.x + it.w * m.index / n, y: it.y, w: it.w * m[0].length / n });
+    });
+    its = words.sort(function (a, b) { return a.y - b.y || a.x - b.x; });
+    var lines = [];
+    its.forEach(function (it) { var L = lines[lines.length - 1]; if (L && Math.abs(L.y - it.y) <= 2.5) L.items.push(it); else lines.push({ y: it.y, items: [it] }); });
+    lines.forEach(function (L) { L.items.sort(function (a, b) { return a.x - b.x; }); L.text = L.items.map(function (i) { return i.s; }).join(" "); });
+    return lines;
+  }
+  /* the columns of a heading line: runs of up to four neighbouring pieces that spell a heading */
+  function tpdfHead(L, defs) {
+    var cols = [], its = L.items, i = 0;
+    while (i < its.length) {
+      var hit = null;
+      for (var n = Math.min(4, its.length - i); n >= 1 && !hit; n--) {
+        var t = its.slice(i, i + n).map(function (x) { return x.s; }).join(" ").replace(/\s+/g, " ").trim();
+        for (var d = 0; d < defs.length && !hit; d++) {
+          if (defs[d][1].test(t) && !cols.some(function (c) { return c.k === d; })) hit = { k: d, name: defs[d][0], x0: its[i].x, x1: its[i + n - 1].x + its[i + n - 1].w, n: n };
+        }
+      }
+      if (hit) { cols.push(hit); i += hit.n; } else i++;
+    }
+    return cols;
+  }
+  /* a piece goes to the heading it sits under; a piece under no heading follows the word before
+     it when it is that word's neighbour (a long name), otherwise the nearest heading */
+  function tpdfCells(L, cols) {
+    var cells = cols.map(function () { return []; }), prev = null;
+    L.items.forEach(function (it) {
+      var a = it.x, b = it.x + it.w, best = -1, bo = 0;
+      cols.forEach(function (c, k) { var o = Math.min(b, c.x1) - Math.max(a, c.x0); if (o > bo) { bo = o; best = k; } });
+      if (best < 0 && prev && a - (prev.x + prev.w) < 6) best = prev.k;
+      if (best < 0) {
+        var bd = 1e9;
+        cols.forEach(function (c, k) { var d = a > c.x1 ? a - c.x1 : (c.x0 > b ? c.x0 - b : 0); if (d < bd) { bd = d; best = k; } });
+      }
+      cells[best].push(it.s); prev = { x: it.x, w: it.w, k: best };
+    });
+    return cells.map(function (c) { return c.join(" ").replace(/\s+/g, " ").trim(); });
+  }
+  /* the value printed under a label ("Invoice No." / "13981") */
+  function tpdfBelow(lines, re, not) {
+    for (var i = 0; i < lines.length; i++) {
+      var its = lines[i].items;
+      for (var a = 0; a < its.length; a++) for (var n = 1; n <= 5 && a + n <= its.length; n++) {
+        var t = its.slice(a, a + n).map(function (x) { return x.s; }).join(" ").replace(/\s+/g, " ").trim();
+        if (!re.test(t) || (not && a > 0 && not.test(its[a - 1].s))) continue;
+        var x0 = its[a].x;
+        for (var j = i + 1; j < Math.min(lines.length, i + 4); j++) {
+          var got = lines[j].items.filter(function (x) { return x.x >= x0 - 12 && x.x < x0 + 90; });
+          if (!got.length) continue;
+          var run = [got[0]], all = lines[j].items, k = all.indexOf(got[0]);
+          while (k + 1 < all.length && all[k + 1].x - (all[k].x + all[k].w) < 6) { run.push(all[k + 1]); k++; }
+          return run.map(function (x) { return x.s; }).join(" ").replace(/\s+/g, " ").trim();
+        }
+      }
+    }
+    return "";
+  }
+  /* pages: [[{s, x, y, w}]] (y down the page) -> rows as the Excel download has them */
+  function tallyPdfRows(pages) {
+    var all = (pages || []).map(tpdfLines), flat = [].concat.apply([], all);
+    if (!flat.length) return { rows: [], empty: true };
+    var isReg = flat.some(function (L) { return tpdfHead(L, TPDF_REG).some(function (c) { return c.name === "Vch No."; }); });
+    var defs = isReg ? TPDF_REG : TPDF_BILL, rows = [];
+    if (isReg) {
+      rows.push(["Purchase Register"]);
+      var per = null;
+      flat.some(function (L) { var m = L.text.match(/\d{1,2}-[A-Za-z]{3}-\d{2,4}\s+to\s+\d{1,2}-[A-Za-z]{3}-\d{2,4}/); if (m) per = m[0]; return !!m; });
+      if (per) rows.push([per]);
+    } else {
+      var p1 = all[0] || [];
+      rows.push(["Invoice No.", "Dated"],
+        [tpdfBelow(p1, /^(invoice|voucher|vch\.?|bill)\s*no\.?$/i, /supplier/i), tpdfBelow(p1, /^dated?$/i)],
+        ["Supplier (Bill from)"], [tpdfBelow(p1, /^supplier\s*\(bill from\)$/i) || tpdfBelow(p1, /^party(\s*a\/c)?(\s*name)?\s*:?$/i)]);
+    }
+    var cols = null, headDone = false, stop = false;
+    all.forEach(function (lines) {
+      if (stop) return;
+      var hi = -1;
+      for (var i = 0; i < lines.length; i++) {
+        var c = tpdfHead(lines[i], defs), nm = c.map(function (x) { return x.name; });
+        if (isReg ? nm.indexOf("Vch No.") >= 0 : (nm.indexOf("Description of Goods") >= 0 && nm.indexOf("Amount") >= 0)) { hi = i; cols = c; break; }
+      }
+      if (!cols) return;
+      if (!headDone) { rows.push(defs.map(function (d) { return d[0]; })); headDone = true; }
+      for (var j = hi + 1; j < lines.length && !stop; j++) {
+        var cells = tpdfCells(lines[j], cols), row = defs.map(function () { return ""; });
+        cols.forEach(function (c, k) { row[c.k] = cells[k]; });
+        if (!isReg) {
+          if (/^total\b/i.test(lines[j].text) || cells.some(function (x) { return /^total$/i.test(x); })) { row[1] = "Total"; rows.push(row); stop = true; break; }
+          var qm = String(row[4]).match(/^(-?[\d,]*\.?\d+)\s*([A-Za-z].*)$/);
+          if (qm) { row[4] = qm[1]; if (!row[6]) row[6] = qm[2]; }
+          if (/^\d+$/.test(row[0])) row[0] = Number(row[0]);
+        }
+        rows.push(row);
+      }
+    });
+    return { rows: rows, empty: false };
+  }
+  function tallyPdfRead(buf) {
+    return pdfjsReady().then(function (lib) {
+      if (!lib) return null;
+      return lib.getDocument({ data: buf }).promise.then(function (doc) {
+        var pages = [], ch = Promise.resolve();
+        for (var i = 1; i <= Math.min(doc.numPages, 40); i++) (function (n) {
+          ch = ch.then(function () { return doc.getPage(n); }).then(function (pg) {
+            var vp = pg.getViewport({ scale: 1 });
+            return pg.getTextContent().then(function (tc) {
+              pages.push((tc.items || []).filter(function (it) { return it && it.str && it.str.trim(); }).map(function (it) {
+                return { s: it.str, x: it.transform[4], y: vp.height - it.transform[5], w: it.width || 0 };
+              }));
+            });
+          });
+        })(i);
+        return ch.then(function () { return pages; });
+      });
+    });
+  }
+
+  /* ===== 6.9.671 - MATCHING A TALLY LINE TO A PRODUCT =====
+     ok     - Tally's part number IS a catalogue code.
+     close  - found once Tally's dots and "-C" are ignored, or by a match made earlier: the owner's
+              save changes the catalogue code to Tally's.
+     pick   - two products answer to it (two brands): the owner says which, by brand.
+     none   - not in the catalogue: the owner picks the product (its code becomes Tally's) or
+              adds it as a new product, under a brand already on the book or a new one.
+     A line with no part number is matched by its Tally name, once the owner has matched it. */
+  function stkMatchIdx() {
+    var ix = { exact: {}, norm: {}, alias: {} };
+    PRODUCTS.forEach(function (p) {
+      var c = String(p.code == null ? "" : p.code).trim(); if (!c) return;
+      ix.exact[c] = 1;
+      var k = tallyNorm(c); ix.norm[k] = ix.norm[k] || []; if (ix.norm[k].indexOf(c) < 0) ix.norm[k].push(c);
+    });
+    (S.stock || []).forEach(function (r) {
+      if (String(r.type) !== "alias" || !r.ref || !r.code) return;
+      var ref = String(r.ref), c = String(codeNow(r.code)).trim();
+      if (!ix.exact[c]) return;
+      if (/^NAME:/.test(ref)) ix.alias["N:" + tallyNorm(ref.slice(5))] = c; else ix.alias[tallyNorm(ref)] = c;
+    });
+    return ix;
+  }
+  function stkMatchLine(l, ix) {
+    var pn = String(l.partNo == null ? "" : l.partNo).trim(), k = tallyNorm(pn);
+    l.code = ""; l.state = "none"; l.cands = [];
+    if (pn) {
+      if (ix.exact[pn]) { l.code = pn; l.state = "ok"; return l; }
+      var n = ix.alias[k] ? [ix.alias[k]] : (ix.norm[k] || []);
+      if (n.length === 1) { l.code = n[0]; l.state = "close"; return l; }
+      if (n.length > 1) { l.cands = n.slice(); l.state = "pick"; }
+      return l;
+    }
+    var a = ix.alias["N:" + tallyNorm(l.desc)];
+    if (a) { l.code = a; l.state = "ok"; }
+    return l;
+  }
+  function stkTallyOpen(bills) {
+    var ix = stkMatchIdx(), bil = stkBilledRefs();
+    return bills.map(function (b) {
+      b.key = stkBillKey(b.supplier, b.billNo);
+      b.done = !!bil[b.key.toLowerCase()];
+      (b.lines || []).forEach(function (l) {
+        stkMatchLine(l, ix);
+        l.net = Math.round((Number(l.rate) || 0) * (1 - (Number(l.disc) || 0) / 100) * 100) / 100;
+      });
+      return b;
+    });
+  }
+  /* bills accounts sent to the owner, not yet in stock (the last one sent for a bill wins) */
+  function stkWaiting() {
+    var bil = stkBilledRefs(), by = {};
+    (S.stock || []).forEach(function (r) {
+      if (String(r.type) !== "billwait" || !r.ref) return;
+      var k = String(r.ref).trim().toLowerCase(); if (bil[k]) return;
+      var o = null; try { o = JSON.parse(r.desc || "null"); } catch (e) { o = null; }
+      if (o && Array.isArray(o.lines) && o.lines.length) by[k] = o;
+    });
+    return Object.keys(by).map(function (k) { return by[k]; });
+  }
+  /* catalogue codes still not Tally's, off the bills already in stock */
+  function stkDrift() {
+    var have = {}, out = [], seen = {}, taken = {};
+    PRODUCTS.forEach(function (p) { have[String(p.code == null ? "" : p.code).trim()] = p; });
+    (S.stock || []).forEach(function (r) {
+      if (String(r.type) !== "bill") return;
+      var ls = []; try { ls = JSON.parse(r.desc || "[]") || []; } catch (e) { ls = []; }
+      ls.forEach(function (l) {
+        var c = String(codeNow((l && l.c) || "")).trim(), p = String((l && l.p) || "").trim();
+        if (!c || !p || c === p || !have[c] || have[p] || seen[c] || taken[p]) return;
+        if (tallyNorm(c) !== tallyNorm(p) && !stkAliasOf(p, c)) return;
+        seen[c] = 1; taken[p] = 1;
+        out.push({ from: c, to: p, desc: have[c].desc || "", brand: have[c].brand || "" });
+      });
+    });
+    return out;
+  }
+  function stkAliasOf(p, c) {
+    return (S.stock || []).some(function (r) { return String(r.type) === "alias" && String(codeNow(r.code)).trim() === c && tallyNorm(r.ref) === tallyNorm(p); });
+  }
+  /* what the server changed, put into this device's catalogue at once */
+  function stkCodesApply(results) {
+    var n = 0;
+    (results || []).forEach(function (x) {
+      if (!x || !x.ok) return;
+      if (x.op === "rename") {
+        for (var i = 0; i < PRODUCTS.length; i++) {
+          if (String(PRODUCTS[i].code).trim() !== String(x.from)) continue;
+          var p = Object.assign({}, PRODUCTS[i]);
+          p.was = (p.was || []).concat([String(x.from)]).filter(function (v, j, a) { return a.indexOf(v) === j; });
+          p.code = String(x.to); p.label = p.code + " - " + (p.desc || "");
+          PRODUCTS[i] = p; n++; break;
+        }
+      }
+      if (x.op === "add" && x.product) {
+        var f = x.product;
+        PRODUCTS.push({ code: String(f.code), family: "", desc: String(f.desc || ""), cat: "", unit: String(f.unit || ""), price: Number(f.price) || 0,
+          brand: String(f.masterBrand || ""), pic: "", specs: "", was: [], label: String(f.code) + " - " + String(f.desc || "") });
+        n++;
+      }
+    });
+    if (!n) return 0;
+    var at = 0;
+    try { at = (JSON.parse(bigGet(CAT_KEY) || "null") || {}).at || 0; } catch (e) { }
+    PRODLIST_HTML = null; _pcbCache = null; _plcCache = null;
+    try { bigSet(CAT_KEY, JSON.stringify({ v: CAT_V, at: at || Date.now(), items: PRODUCTS })); } catch (e) { }
+    try { codesIn(); } catch (e) { }
+    return n;
+  }
+  function stkTallyCard() {
+    var w = stkWaiting(), adm = roleIs("admin"), d = adm ? stkDrift() : [];
+    if (!w.length && !d.length) return "";
+    var codesW = w.reduce(function (a, b) { return a + b.lines.length; }, 0);
+    return '<div class="card" style="border-color:#fdba74;background:#fffbeb"><h3 style="margin:0 0 4px">Item codes from Tally</h3>' +
+      (w.length ? '<div style="font-size:13px;margin-top:2px"><b>' + plural(w.length, "bill") + '</b> wait' + (w.length === 1 ? 's' : '') + ' for ' + (adm ? 'you' : 'the owner') +
+        ' to match item codes before ' + (w.length === 1 ? 'it goes' : 'they go') + ' into stock: ' +
+        w.map(function (b) { return esc(b.supplier) + ' ' + esc(b.billNo); }).join(", ") + ' <span style="color:#64748b">(' + plural(codesW, "line") + ')</span></div>' : '') +
+      (d.length ? '<div style="font-size:13px;margin-top:4px"><b>' + plural(d.length, "catalogue code") + '</b> still differ' + (d.length === 1 ? 's' : '') + ' from Tally&rsquo;s, e.g. ' +
+        d.slice(0, 3).map(function (x) { return esc(x.from) + ' &rarr; <b>' + esc(x.to) + '</b>'; }).join(", ") + '</div>' : '') +
+      '<div class="acts" style="margin-top:6px;flex-wrap:wrap;gap:6px">' +
+      (adm && w.length ? '<button class="btn sm" data-act="tb-wait">Match them now</button>' : '') +
+      (d.length ? '<button class="btn sm ghost" data-act="tb-drift">Change ' + plural(d.length, "code") + ' to Tally&rsquo;s</button>' : '') + '</div></div>';
+  }
+  function tbKeep() {
+    var im = S.imp; if (!im || im.step !== "tally") return;
+    (im.bills || []).forEach(function (b, bi) {
+      (b.lines || []).forEach(function (l, li) {
+        var pk = el("tb_" + bi + "_" + li); if (pk) l.pick = String(pk.value || "").trim();
+        if (l.mode === "new") {
+          l.nb = l.nb || {};
+          ["code", "desc", "brand", "unit", "price"].forEach(function (f) { var x = el("tbn_" + f + "_" + bi + "_" + li); if (x) l.nb[f] = String(x.value || "").trim(); });
+        }
+      });
+    });
   }
 
   /* SheetJS reads the .xlsx Tally writes. Kept in the repo (assets/xlsx), loaded the first time a
@@ -45151,16 +45513,33 @@ function viewCatalogue() {
   function stkReadFiles(files) {
     var list = [].slice.call(files || []);
     if (!list.length) return;
+    var _isP = function (f) { return /\.pdf$/i.test(f.name) || f.type === "application/pdf"; };   /* 6.9.671 */
+    var pdfs = list.filter(_isP);
     var xl = list.filter(function (f) { return /\.xlsx?$/i.test(f.name); });
-    var other = list.filter(function (f) { return !/\.xlsx?$/i.test(f.name); });
-    if (other.length && !xl.length) {
+    var other = list.filter(function (f) { return !/\.xlsx?$/i.test(f.name) && !_isP(f); });
+    if (other.length && !xl.length && !pdfs.length) {
       var rd0 = new FileReader();
       rd0.onload = function () { try { stockImportFromFile(String(rd0.result || ""), other[0].name); } catch (err) { toast("Couldn't read that file."); } };
       rd0.readAsText(other[0]); return;
     }
-    toast("Reading " + plural(xl.length, "file") + "…");
-    xlsxReady().then(function (X) {
+    toast("Reading " + plural(xl.length + pdfs.length, "file") + "…");
+    (xl.length ? xlsxReady() : Promise.resolve(true)).then(function (X) {
       if (!X) { toast("The Excel reader did not load — check the connection and pick the files again."); return; }
+      var _pdfJobs = pdfs.map(function (f) {   /* 6.9.671 - a bill or register printed from Tally as PDF */
+        return new Promise(function (res) {
+          var rd = new FileReader();
+          rd.onload = function () {
+            tallyPdfRead(new Uint8Array(rd.result)).then(function (pages) {
+              if (!pages) { res({ kind: "nopdf", file: f.name }); return; }
+              var o = tallyPdfRows(pages);
+              if (o.empty) { res({ kind: "picture", file: f.name }); return; }
+              var t = tallyParse(o.rows); t.file = f.name; t.src = "pdf"; res(t);
+            }, function () { res({ kind: "unknown", file: f.name }); });
+          };
+          rd.onerror = function () { res({ kind: "unknown", file: f.name }); };
+          rd.readAsArrayBuffer(f);
+        });
+      });
       return Promise.all(xl.map(function (f) {
         return new Promise(function (res) {
           var rd = new FileReader();
@@ -45175,10 +45554,13 @@ function viewCatalogue() {
           rd.onerror = function () { res({ kind: "unknown", file: f.name }); };
           rd.readAsArrayBuffer(f);
         });
-      })).then(function (parsed) {
+      }).concat(_pdfJobs)).then(function (parsed) {
         var regs = parsed.filter(function (o) { return o.kind === "register" && o.bills.length; });
         var bills = parsed.filter(function (o) { return o.kind === "bill" && o.lines.length; });
-        var bad = parsed.filter(function (o) { return o.kind !== "register" && o.kind !== "bill"; });
+        var pics = parsed.filter(function (o) { return o.kind === "picture"; });
+        if (pics.length) toast(pics.map(function (o) { return o.file; }).join(", ") + ": a scanned picture, not text — print the bill from Tally as PDF, or download it as Excel.");
+        if (parsed.some(function (o) { return o.kind === "nopdf"; })) toast("The PDF reader did not load — check the connection and pick the files again.");
+        var bad = parsed.filter(function (o) { return o.kind !== "register" && o.kind !== "bill" && o.kind !== "picture" && o.kind !== "nopdf"; });
         regs.forEach(function (o) {
           var row = { id: "S-" + Date.now() + "-" + Math.floor(Math.random() * 1000000) + "-reg", type: "register", code: "*REG",
             desc: JSON.stringify(o.bills.map(function (b) { return { d: b.date, s: b.supplier, n: b.billNo, a: b.amount }; })),
@@ -45189,60 +45571,100 @@ function viewCatalogue() {
           });
         });
         if (bad.length) toast(bad.map(function (o) { return o.file; }).join(", ") + ": not a Tally purchase bill or register.");
-        if (bills.length) {
-          var cm = stkCodeMap(), done = stkImportedRefs();
-          S.imp = { step: "tally", bills: bills.map(function (b) {
-            b.key = stkBillKey(b.supplier, b.billNo);
-            b.done = !!stkBilledRefs()[b.key.toLowerCase()];
-            b.lines.forEach(function (l) { l.code = cm[tallyNorm(l.partNo)] || ""; l.net = Math.round(l.rate * (1 - (l.disc || 0) / 100) * 100) / 100; });
-            return b;
-          }) };
-        }
+        if (bills.length) S.imp = { step: "tally", bills: stkTallyOpen(bills) };   /* 6.9.671 */
         render();
       });
     });
   }
   function viewTallyReview() {
-    var im = S.imp || {}, reg = {};
+    /* 6.9.671 - rebuilt. HIS WORDS, 30 Sep 2026: "tally billing upload - 1. monthly billing summary will be uploaded, fetch
+     purchase bill no from that summary; 2. individual bills will be uploaded again in excel or pdf format,
+     match bill item code and brand with tally bills, if code not found ask admin to match it with crm
+     item code, once matched crm code will be changed according to tally, we have to go as per tally as
+     that is primary for tax invoice, also give option to create new item code and also new brand if not
+     listed in crm, like this over the time we have to maintain item codes as per tally codes".
+       Each line shows what it is in Tally and what it is in the CRM, and what saving will do:
+       change the CRM code to Tally's, pick the product, or add it as a new product (and brand).
+       Only the owner changes the catalogue. Anyone else's save puts the bills whose every line
+       is matched into stock, and sends the rest to the owner, who finds them on the Stock screen. */
+    var im = S.imp || {}, reg = {}, adm = roleIs("admin");
     stkRegister().forEach(function (b) { reg[b.key.toLowerCase()] = b; });
-    var pmap = {}; PRODUCTS.forEach(function (p) { pmap[p.code] = p; });
-    var opts = PRODUCTS.map(function (p) { return '<option value="' + esc(p.code) + '">' + esc(p.code) + ' — ' + esc(p.desc || "") + '</option>'; }).join("");
+    var pmap = {}; PRODUCTS.forEach(function (p) { pmap[String(p.code).trim()] = p; });
+    var opts = PRODUCTS.map(function (p) { return '<option value="' + esc(p.code) + '">' + esc(p.code) + ' — ' + esc(p.desc || "") + (p.brand ? ' · ' + esc(p.brand) : '') + '</option>'; }).join("");
+    var bset = {}; PRODUCTS.forEach(function (p) { if (p.brand) bset[p.brand] = 1; });
     var h = '<div class="row"><button class="btn sm ghost" data-act="imp-cancel">&larr; Back to Stock</button></div>' +
       '<div class="card"><h2 style="margin:0">Purchase bills from Tally &mdash; review</h2>' +
-      '<div class="meta" style="font-size:12.5px">Each line is matched to your catalogue by its Part No. A line that is not found needs its product picked once &mdash; after that the part number is remembered. <b>Saving a bill puts its quantities into stock</b>, on the bill&rsquo;s date. A bill already uploaded is skipped, so nothing is counted twice.</div></div>' +
-      '<datalist id="tb_prods">' + opts + '</datalist>';
-    var nNew = 0;
+      '<div class="meta" style="font-size:13px">Tally is the master for item codes. A line is matched by Tally&rsquo;s Part No.; ' +
+      (adm ? 'where the CRM has the product under another code, <b>saving changes the CRM code to Tally&rsquo;s</b> (the old code keeps working on old challans and quotes). A line not in the CRM: pick the product, or add it as a new product.'
+           : 'a line not in the CRM is matched by the owner &mdash; that bill is sent to him and goes into stock once he has.') +
+      ' <b>Saving a bill puts its quantities into stock</b>, on the bill&rsquo;s date. A bill already uploaded is skipped.</div></div>' +
+      '<datalist id="tb_prods">' + opts + '</datalist><datalist id="tb_brands">' + Object.keys(bset).sort().map(function (x) { return '<option value="' + esc(x) + '">'; }).join("") + '</datalist>';
+    var nSave = 0, nWait = 0, nRen = 0, nNew = 0;
+    var inp = 'style="width:100%;min-height:44px;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px"';
     im.bills.forEach(function (b, bi) {
       var rg = reg[b.key.toLowerCase()];
       var totOk = rg ? Math.abs(rg.amount - b.total) < 1 : null;
-      var unm = b.lines.filter(function (l) { return !l.code; }).length;
+      var open = b.lines.filter(function (l) { return l.state !== "ok" && l.state !== "close" && !(adm && (l.mode === "new" || l.pick)); }).length;
       var rcv = stkReceivedFor(b.key), anyRcv = Object.keys(rcv).length > 0;
-      if (!b.done) nNew++;
+      var brands = {}; b.lines.forEach(function (l) { var p = pmap[l.code]; if (p && p.brand) brands[p.brand] = (brands[p.brand] || 0) + 1; });
+      b.hint = Object.keys(brands).sort(function (x, y) { return brands[y] - brands[x]; })[0] || "";
+      if (!b.done) { if (open) nWait++; else nSave++; }
       h += '<div class="card" style="' + (b.done ? 'opacity:.6;' : '') + 'padding:0;overflow:hidden">' +
         '<div style="display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;padding:8px 10px;background:#0b3b36;color:#fff">' +
-        '<b style="flex:1 1 220px">' + esc(b.supplier) + ' &middot; bill ' + esc(b.billNo) + '</b>' +
-        '<span>' + esc(dmy(b.date)) + '</span><b>' + money(b.total) + '</b></div>' +
-        '<div style="padding:6px 10px;font-size:12.5px;background:#f8fafc;border-bottom:1px solid #e2e8f0">' +
+        '<b style="flex:1 1 220px">' + esc(b.supplier || "Supplier not read") + ' &middot; bill ' + esc(b.billNo || "?") + '</b>' +
+        '<span>' + esc(dmy(b.date)) + '</span><b>' + money(b.total) + '</b>' + (b.src === "pdf" ? '<span style="font-size:12px;opacity:.8">from PDF</span>' : '') + '</div>' +
+        '<div style="padding:6px 10px;font-size:13px;background:#f8fafc;border-bottom:1px solid #e2e8f0">' +
         (b.done ? '<b style="color:#b45309">Already uploaded &mdash; this bill will be skipped.</b>'
-                : plural(b.lines.length, "line") + ' &middot; ' + (unm ? '<b style="color:#b45309">' + unm + ' to match</b>' : '<b style="color:#0f766e">all matched</b>')) +
+                : plural(b.lines.length, "line") + ' &middot; ' + (open ? '<b style="color:#b45309">' + open + ' to match' + (adm ? '' : ' by the owner') + '</b>' : '<b style="color:#0f766e">all matched</b>')) +
         (anyRcv ? ' &middot; <span style="color:#64748b">an old lorry entry exists for it &mdash; the bill replaces it</span>' : '') +
         (rg ? ' &middot; ' + (totOk ? '<span style="color:#0f766e">total agrees with the Purchase Register</span>' : '<b style="color:#b91c1c">register says ' + money(rg.amount) + '</b>')
             : ' &middot; <span style="color:#64748b">not on an uploaded Purchase Register</span>') + '</div>' +
-        '<div style="overflow-x:auto"><table style="width:100%;min-width:640px;border-collapse:collapse;font-size:12.5px"><thead><tr style="background:#e2e8f0">' +
-        '<th style="padding:5px 7px;text-align:left">#</th><th style="padding:5px 7px;text-align:left">ON THE BILL</th><th style="padding:5px 7px;text-align:left">PRODUCT IN CRM</th>' +
+        '<div style="overflow-x:auto"><table style="width:100%;min-width:680px;border-collapse:collapse;font-size:13px"><thead><tr style="background:#e2e8f0">' +
+        '<th style="padding:5px 7px;text-align:left">#</th><th style="padding:5px 7px;text-align:left">IN TALLY</th><th style="padding:5px 7px;text-align:left">IN THE CRM</th>' +
         '<th style="padding:5px 7px;text-align:right">INTO STOCK</th><th style="padding:5px 7px;text-align:right">RATE</th></tr></thead><tbody>' +
         b.lines.map(function (l, li) {
-          var p = pmap[l.code];
-          return '<tr style="border-top:1px solid #e2e8f0">' +
+          var p = pmap[l.code], pn = String(l.partNo || "").trim(), cell = "", id = bi + '_' + li;
+          var prodTxt = function (q) { return '<b style="color:#0f766e">' + esc(q.desc) + '</b><div style="font-size:12px;color:#64748b">' + esc(q.code) + (q.brand ? ' &middot; ' + esc(q.brand) : '') + '</div>'; };
+          if (b.done) cell = p ? prodTxt(p) : '<span style="color:#94a3b8">—</span>';
+          else if (l.state === "ok" && p) cell = prodTxt(p);
+          else if (l.state === "close" && p) {
+            cell = prodTxt(p) + '<div style="font-size:12px;margin-top:2px;color:#b45309">' + (adm ? 'CRM code <b>' + esc(p.code) + '</b> becomes Tally&rsquo;s <b>' + esc(pn) + '</b>' : 'CRM code ' + esc(p.code) + ' &mdash; the owner brings it in line with Tally&rsquo;s ' + esc(pn)) + '</div>' +
+              (adm ? '<button class="btn sm ghost" style="margin-top:4px" data-act="tb-not" data-b="' + bi + '" data-l="' + li + '">Not this product</button>' : '');
+            if (adm) nRen++;
+          } else if (!adm) cell = '<span style="color:#b45309">' + (l.state === "pick" ? 'Two products answer to this code &mdash; ' : 'Not in the CRM &mdash; ') + 'the owner matches it</span>';
+          else if (l.mode === "new") {
+            var nb = l.nb || {};
+            nNew++;
+            cell = '<div style="font-size:12px;font-weight:700;color:#0b3b36;margin-bottom:4px">New product</div>' +
+              (pn ? '<div style="font-size:12px;color:#64748b">Code: <b>' + esc(pn) + '</b> (Tally&rsquo;s)</div>' : '<input id="tbn_code_' + id + '" placeholder="Item code (as in Tally)" value="' + esc(nb.code || "") + '" ' + inp + '/>') +
+              '<input id="tbn_desc_' + id + '" placeholder="Name" value="' + esc(nb.desc != null ? nb.desc : l.desc) + '" ' + inp + '/>' +
+              '<input id="tbn_brand_' + id + '" list="tb_brands" placeholder="Brand (type a new one to add it)" value="' + esc(nb.brand != null ? nb.brand : b.hint) + '" ' + inp + '/>' +
+              '<div class="row" style="gap:6px"><input id="tbn_unit_' + id + '" placeholder="Unit" value="' + esc(nb.unit != null ? nb.unit : l.unit) + '" ' + inp + '/>' +
+              '<input id="tbn_price_' + id + '" inputmode="decimal" placeholder="List price (optional)" value="' + esc(nb.price || "") + '" ' + inp + '/></div>' +
+              '<button class="btn sm ghost" data-act="tb-not" data-b="' + bi + '" data-l="' + li + '">Pick a product instead</button>';
+          } else {
+            var cands = (l.cands || []).map(function (c) { return pmap[c]; }).filter(Boolean);
+            cell = (cands.length ? '<div style="font-size:12px;color:#b45309;margin-bottom:4px">Two products answer to this code &mdash; which brand?</div>' +
+                cands.map(function (q) { return '<button class="btn sm ghost" style="margin:0 6px 6px 0" data-act="tb-cand" data-b="' + bi + '" data-l="' + li + '" data-c="' + esc(q.code) + '">' + esc(q.code) + ' &middot; ' + esc(q.brand || "no brand") + '</button>'; }).join("") : '') +
+              '<input id="tb_' + id + '" list="tb_prods" placeholder="Pick the product" value="' + esc(l.pick || "") + '" style="width:100%;min-height:44px;padding:8px;border:1px solid #fdba74;border-radius:8px;font-size:13px"/>' +
+              (pn ? '<div style="font-size:12px;color:#64748b;margin-top:2px">its CRM code becomes Tally&rsquo;s <b>' + esc(pn) + '</b></div>' : '') +
+              '<button class="btn sm ghost" style="margin-top:4px" data-act="tb-new" data-b="' + bi + '" data-l="' + li + '">+ New product</button>';
+          }
+          return '<tr style="border-top:1px solid #e2e8f0;vertical-align:top">' +
             '<td style="padding:5px 7px;color:#64748b">' + l.sl + '</td>' +
-            '<td style="padding:5px 7px">' + esc(l.desc) + '<div style="font-size:12px;color:#64748b">' + esc(l.partNo || "no part no") + '</div></td>' +
-            '<td style="padding:5px 7px">' + (p ? '<b style="color:#0f766e">' + esc(p.desc) + '</b><div style="font-size:12px;color:#64748b">' + esc(p.code) + '</div>'
-              : (b.done ? '<span style="color:#94a3b8">—</span>' : '<input id="tb_' + bi + '_' + li + '" list="tb_prods" placeholder="Pick the product" style="width:100%;padding:6px;border:1px solid #fdba74;border-radius:6px;font-size:12.5px"/>')) + '</td>' +
+            '<td style="padding:5px 7px">' + esc(l.desc) + '<div style="font-size:12px;color:#64748b">' + (pn ? 'Part No. <b>' + esc(pn) + '</b>' : 'no part no') + (l.hsn ? ' &middot; HSN ' + esc(l.hsn) : '') + '</div></td>' +
+            '<td style="padding:5px 7px;min-width:240px">' + cell + '</td>' +
             '<td style="padding:5px 7px;text-align:right;white-space:nowrap"><b>' + l.qty + '</b> ' + esc(l.unit) + '</td>' +
             '<td style="padding:5px 7px;text-align:right;white-space:nowrap">' + money(l.net) + (l.disc ? '<div style="font-size:12px;color:#64748b">' + l.disc + '% off ' + money(l.rate) + '</div>' : '') + '</td></tr>';
         }).join("") + '</tbody></table></div></div>';
     });
-    h += '<div class="acts"><button class="btn" data-act="tb-submit"' + (nNew ? '' : ' disabled') + '>Save ' + plural(nNew, "bill") + ' into stock</button>' +
+    var say = [];
+    if (nSave) say.push(plural(nSave, "bill") + ' into stock');
+    if (nWait) say.push(plural(nWait, "bill") + (adm ? ' kept for later (lines not matched yet)' : ' to the owner to match'));
+    if (adm && nRen) say.push(plural(nRen, "code") + ' changed to Tally&rsquo;s');
+    if (adm && nNew) say.push(plural(nNew, "new product"));
+    h += (say.length ? '<div class="card" style="font-size:13px">Saving: ' + say.join(' &middot; ') + (adm ? ' <span style="color:#64748b">(a product picked below also takes Tally&rsquo;s code)</span>' : '') + '</div>' : '') +
+      '<div class="acts"><button class="btn" data-act="tb-submit"' + (nSave + nWait ? '' : ' disabled') + '>Save</button>' +
       '<button class="btn ghost" data-act="imp-cancel">Cancel</button></div>';
     return h;
   }
@@ -45608,8 +46030,8 @@ function viewCatalogue() {
       '<div class="acts" style="gap:6px;margin-bottom:4px">' +
       '<button class="btn sm ' + (im.type === "opening" ? "" : "ghost") + '" data-act="imp-type" data-t="opening">Opening stock</button>' +
       '<button class="btn sm ' + (im.type !== "opening" ? "" : "ghost") + '" data-act="imp-type" data-t="in">Goods received (purchase)</button></div>' +
-      '<div ' + lbl + '>Upload from Tally: <b>purchase bills</b> (.xlsx, several at once) and the month&rsquo;s <b>Purchase Register</b> (.xlsx) &mdash; or a CSV of code + qty</div>' +
-      '<input type="file" id="imp_file" multiple accept=".xlsx,.xls,.csv,.txt" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;background:#fff"/>' +
+      '<div ' + lbl + '>Upload from Tally: <b>purchase bills</b> (Excel or PDF, several at once) and the month&rsquo;s <b>Purchase Register</b> (Excel or PDF) &mdash; or a CSV of code + qty</div>' +
+      '<input type="file" id="imp_file" multiple accept=".xlsx,.xls,.pdf,.csv,.txt" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;background:#fff"/>' +
       '<div style="text-align:center;color:#94a3b8;font-size:12px;margin:6px 0">— or paste rows —</div>' +
       '<div ' + lbl + '>Paste rows (code &nbsp;&lt;tab&gt;&nbsp; qty)</div>' +
       '<textarea id="imp_paste" rows="12" placeholder="HUL-32MM\t50&#10;STL-1IN-ELB\t200&#10;…" style="width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font:13px monospace">' + esc(im.paste || "") + '</textarea>' +
@@ -47540,46 +47962,167 @@ function viewCatalogue() {
       pcKeep(); _pcQ.fail = 0; pcAutoSave();
       toast("Saving in the background \u2014 keep counting."); return;
     }
+    if (act === "tb-not" || act === "tb-new" || act === "tb-cand") {   /* 6.9.671 */
+      tbKeep();
+      var _bl = (((S.imp || {}).bills || [])[Number(t.getAttribute("data-b"))] || {}).lines || [], _ln = _bl[Number(t.getAttribute("data-l"))];
+      if (!_ln) return;
+      if (act === "tb-new") { _ln.mode = "new"; _ln.nb = _ln.nb || {}; }
+      if (act === "tb-not") { _ln.mode = ""; _ln.pick = ""; if (_ln.state === "close" || _ln.state === "ok") { _ln.state = "none"; _ln.code = ""; } }
+      if (act === "tb-cand") { _ln.mode = ""; _ln.pick = String(t.getAttribute("data-c") || ""); }
+      render(); return;
+    }
+    if (act === "tb-wait") {   /* 6.9.671 - the bills accounts sent up */
+      var _w = stkWaiting().map(function (o) { return { billNo: o.billNo, date: o.date, supplier: o.supplier, total: Number(o.total) || 0, file: o.file || "", src: o.src || "", lines: o.lines }; });
+      if (!_w.length) { toast("Nothing is waiting."); return; }
+      S.grn = null; S.pc = null; S.imp = { step: "tally", bills: stkTallyOpen(_w) }; S.tab = "stock"; render(); window.scrollTo(0, 0); return;
+    }
+    if (act === "tb-drift") {
+      if (!roleIs("admin")) { toast("The owner changes catalogue codes."); return; }
+      var _dr = stkDrift();
+      if (!_dr.length) { toast("Every code on the bills in stock is Tally's already."); return; }
+      S.modal = '<h2>Change ' + plural(_dr.length, "catalogue code") + ' to Tally&rsquo;s</h2>' +
+        '<p class="sub">These products came in on Tally bills under Tally&rsquo;s code, but the catalogue still has its own. After this the catalogue code is Tally&rsquo;s; the old code is kept beside it, so old challans, quotes and stock still find the product.</p>' +
+        '<div style="overflow-x:auto;max-height:45vh"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="background:#e2e8f0">' +
+        '<th style="padding:5px 7px;text-align:left">PRODUCT</th><th style="padding:5px 7px;text-align:left">NOW</th><th style="padding:5px 7px;text-align:left">TALLY&rsquo;S</th></tr></thead><tbody>' +
+        _dr.map(function (x) { return '<tr style="border-top:1px solid #e2e8f0"><td style="padding:5px 7px">' + esc(x.desc) + '<div style="font-size:12px;color:#64748b">' + esc(x.brand) + '</div></td><td style="padding:5px 7px">' + esc(x.from) + '</td><td style="padding:5px 7px"><b>' + esc(x.to) + '</b></td></tr>'; }).join("") +
+        '</tbody></table></div><div class="foot"><button class="btn" data-act="tb-drift-go">Change them</button><button class="btn ghost" data-act="close">Not now</button></div>';
+      render(); return;
+    }
+    if (act === "tb-drift-go") {
+      var _dr2 = stkDrift();
+      t.disabled = true; t.textContent = "Changing…";
+      api("catalogCode", { ops: _dr2.map(function (x) { return { op: "rename", from: x.from, to: x.to }; }) }, 60000).then(function (r) {
+        S.modal = null;
+        if (!(r && r.ok)) { toast("Codes not changed: " + ((r && r.error) || "no answer") + "."); render(); return; }
+        var _ok = (r.results || []).filter(function (x) { return x.ok; }).length, _no = (r.results || []).filter(function (x) { return !x.ok; });
+        stkCodesApply(r.results);
+        toast(plural(_ok, "code") + " changed to Tally's." + (_no.length ? " Not changed: " + _no.map(function (x) { return x.from + " (" + x.error + ")"; }).join("; ") : ""));
+        render();
+      }, function () { S.modal = null; toast("No answer from the server - refresh and look before trying again."); render(); });
+      return;
+    }
     if (act === "tb-submit") {
-      var _tb = S.imp || {}, _cmK = stkCodeMap(), _aliases = [], _bad = "";
-      (_tb.bills || []).forEach(function (b, bi) {
-        if (b.done) return;
-        b.lines.forEach(function (l, li) {
-          if (l.code) return;
-          var v = String((el("tb_" + bi + "_" + li) || {}).value || "").trim();
-          var ok = PRODUCTS.some(function (p) { return p.code === v; });
-          if (ok) { l.code = v; if (l.partNo) _aliases.push({ code: v, ref: l.partNo, desc: l.desc }); }
-          else if (!_bad) _bad = "Bill " + b.billNo + ", line " + l.sl + " (" + l.desc + "): pick its product from the list.";
+      /* 6.9.671 - HIS WORDS, 30 Sep 2026: "tally billing upload - 1. monthly billing summary will be uploaded, fetch
+         purchase bill no from that summary; 2. individual bills will be uploaded again in excel or pdf format,
+         match bill item code and brand with tally bills, if code not found ask admin to match it with crm
+         item code, once matched crm code will be changed according to tally, we have to go as per tally as
+         that is primary for tax invoice, also give option to create new item code and also new brand if not
+         listed in crm, like this over the time we have to maintain item codes as per tally codes".
+         1. the owner's changes to the catalogue go up first, in ONE call (new brands just before);
+         2. every bill whose lines all have a product goes into stock, line by line, as before;
+         3. a bill with a line still open is kept (type "billwait") for the owner, not lost.
+         If the server cannot change codes yet (before V142), the bills still go in under the CRM
+         code, and the part number is remembered as before - nothing waits on the server. */
+      tbKeep();
+      var _tb = S.imp || {}, _adm = roleIs("admin"), _err = "";
+      var _todo = (_tb.bills || []).filter(function (b) { return !b.done; });
+      var _bset = {}; PRODUCTS.forEach(function (p) { if (p.brand) _bset[String(p.brand).toLowerCase()] = p.brand; });
+      var _newB = {}, _ren = {}, _add = {};
+      var _have = {}; PRODUCTS.forEach(function (p) { _have[String(p.code).trim()] = p; });
+      _todo.forEach(function (b) {
+        b.lines.forEach(function (l) {
+          l.fin = ""; l.op = null; l.aka = false;
+          var pn = String(l.partNo || "").trim();
+          if (l.state === "ok") { l.fin = l.code; return; }
+          if (l.state === "close") { l.fin = l.code; if (_adm && pn) l.op = { op: "rename", from: l.code, to: pn }; return; }
+          if (!_adm) return;
+          if (l.mode === "new") {
+            var nb = l.nb || {}, code = pn || String(nb.code || "").trim();
+            if (!code || !nb.desc || !nb.brand) { _err = _err || ("Bill " + b.billNo + ", line " + l.sl + ": a new product needs its code, name and brand."); return; }
+            if (_have[code]) { _err = _err || ("Bill " + b.billNo + ", line " + l.sl + ": " + code + " is already in the catalogue (" + (_have[code].desc || "") + ") - pick it instead."); return; }
+            var bk = _bset[nb.brand.toLowerCase()]; if (bk) nb.brand = bk; else _newB[nb.brand] = 1;
+            l.op = { op: "add", product: { code: code, desc: nb.desc, unit: nb.unit || l.unit || "", price: nb.price || "", masterBrand: nb.brand, hsn: l.hsn || "" } };
+            return;
+          }
+          var v = String(l.pick || "").trim(); if (!v) return;
+          var q = _have[v] || findProduct(v);
+          if (!q) { _err = _err || ("Bill " + b.billNo + ", line " + l.sl + ": “" + v + "” is not in the catalogue - pick it from the list, or add it as a new product."); return; }
+          l.fin = String(q.code).trim(); l.aka = true;
+          if (pn && pn !== l.fin) {
+            if (_have[pn]) { _err = _err || ("Bill " + b.billNo + ", line " + l.sl + ": Tally's code " + pn + " is already " + (_have[pn].desc || "another product") + " in the catalogue - pick that one."); return; }
+            l.op = { op: "rename", from: l.fin, to: pn };
+          }
         });
       });
-      if (_bad) { toast(_bad); return; }
-      var _todo = (_tb.bills || []).filter(function (b) { return !b.done; });
+      if (_err) { toast(_err); return; }
+      _todo.forEach(function (b) {
+        b.lines.forEach(function (l) {
+          if (!l.op) return;
+          if (l.op.op === "rename") {
+            if (_ren[l.op.from] && _ren[l.op.from] !== l.op.to) _err = _err || ("Two Tally codes (" + _ren[l.op.from] + ", " + l.op.to + ") point at one product, " + l.op.from + " - pick again for one of them.");
+            _ren[l.op.from] = l.op.to;
+          } else _add[l.op.product.code] = l.op.product;
+        });
+      });
+      var _tos = {}; Object.keys(_ren).forEach(function (f) { var to = _ren[f]; if (_tos[to]) _err = _err || ("Two products would both become " + to + " - pick again."); _tos[to] = 1; });
+      if (_err) { toast(_err); return; }
+      var _ops = Object.keys(_ren).map(function (f) { return { op: "rename", from: f, to: _ren[f] }; })
+        .concat(Object.keys(_add).map(function (c) { return { op: "add", product: _add[c] }; }));
       t.disabled = true; t.textContent = "Saving…";
       var _sv = function (row) { S.stock = (S.stock || []).concat([row]); return api("stockSave", { row: row }); };
-      var _chain = Promise.resolve(), _okN = 0, _fail = [];
-      _aliases.forEach(function (a) {
-        _chain = _chain.then(function () { return _sv({ id: "S-" + Date.now() + "-" + Math.floor(Math.random() * 1000000) + "-alias", type: "alias", code: a.code, desc: a.desc, qty: 0, ref: a.ref, asOn: today(), notes: "Tally part no" }); });
+      var _sid = function (k) { return "S-" + Date.now() + "-" + Math.floor(Math.random() * 1000000) + "-" + k; };
+      var _chain = Promise.resolve(), _okN = 0, _fail = [], _msg = [], _got = {}, _waitN = 0, _renN = 0, _addN = 0;
+      Object.keys(_newB).forEach(function (bn) {
+        _chain = _chain.then(function () { return save("brands", { id: "", brand: bn, active: "Y" }); })
+          .then(function () { return save("brandmap", { id: "", catalogValue: bn, brand: bn, count: "" }); });
+      });
+      if (_ops.length) _chain = _chain.then(function () { return api("catalogCode", { ops: _ops }, 60000); }).then(function (r) {
+        if (r && r.ok && Array.isArray(r.results)) {
+          r.results.forEach(function (x, i) {
+            if (!x.ok) { _msg.push((x.from || x.code || "") + ": " + (x.error || "not changed")); return; }
+            if (x.op === "rename") { _got["r:" + x.from] = x.to; _renN++; }
+            if (x.op === "add") { x.product = _ops[i].product; _got["a:" + x.code] = 1; _addN++; }
+          });
+          stkCodesApply(r.results);
+        } else _msg.push("the catalogue was not changed (" + ((r && r.error) || "no answer") + ")");
+      }, function () { _msg.push("the catalogue was not changed (no answer)"); });
+      _chain = _chain.then(function () {
+        var _als = [];
+        _todo.forEach(function (b) {
+          b.lines.forEach(function (l) {
+            var pn = String(l.partNo || "").trim();
+            if (l.op && l.op.op === "rename") {
+              if (_got["r:" + l.op.from]) l.fin = l.op.to;
+              else if (l.aka && pn) _als.push({ code: l.fin, ref: pn, desc: l.desc });
+            }
+            if (l.op && l.op.op === "add") l.fin = _got["a:" + l.op.product.code] ? l.op.product.code : "";
+            if (!pn && l.fin && l.state !== "ok") _als.push({ code: l.fin, ref: "NAME:" + l.desc, desc: l.desc });
+          });
+        });
+        var c2 = Promise.resolve();
+        _als.forEach(function (x) { c2 = c2.then(function () { return _sv({ id: _sid("alias"), type: "alias", code: x.code, desc: x.desc, qty: 0, ref: x.ref, asOn: today(), notes: "Tally part no" }); }); });
+        return c2;
       });
       _todo.forEach(function (b) {
         _chain = _chain.then(function () {
-          var rows = {}, ord = [];
-          b.lines.forEach(function (l) { if (!rows[l.code]) { rows[l.code] = { code: l.code, qty: 0, desc: (PRODUCTS.filter(function (p) { return p.code === l.code; })[0] || {}).desc || l.desc }; ord.push(l.code); } rows[l.code].qty += l.qty; });
-          var _brow = { id: "S-" + Date.now() + "-" + Math.floor(Math.random() * 1000000) + "-bill", type: "bill", code: "*BILL", qty: b.total, ref: b.key, asOn: b.date || today(),
-            notes: b.supplier, desc: JSON.stringify(b.lines.map(function (l) { return { c: l.code, q: l.qty, n: l.net, u: l.unit, p: l.partNo }; })) };
+          var ready = b.lines.every(function (l) { return !!l.fin; });
+          if (!ready) {
+            _waitN++;
+            return _sv({ id: _sid("wait"), type: "billwait", code: "*WAIT", qty: 0, ref: b.key, asOn: b.date || today(), notes: b.supplier,
+              desc: JSON.stringify({ billNo: b.billNo, date: b.date, supplier: b.supplier, total: b.total, file: b.file || "", src: b.src || "",
+                lines: b.lines.map(function (l) { return { sl: l.sl, desc: l.desc, partNo: l.partNo, hsn: l.hsn || "", qty: l.qty, rate: l.rate, unit: l.unit, disc: l.disc, amount: l.amount }; }) }) })
+              .then(function (r) { if (!(r && r.ok)) _fail.push(b.billNo + ": " + ((r && r.error) || "not kept")); }, function () { _fail.push(b.billNo + ": no answer"); });
+          }
+          var _brow = { id: _sid("bill"), type: "bill", code: "*BILL", qty: b.total, ref: b.key, asOn: b.date || today(),
+            notes: b.supplier, desc: JSON.stringify(b.lines.map(function (l) { return { c: l.fin, q: l.qty, n: l.net, u: l.unit, p: l.partNo }; })) };
           return _sv(_brow)
             .then(function (r) {
               if (!(r && r.ok)) { _fail.push(b.billNo + ": " + ((r && r.error) || "refused")); return; }
               _okN++;
               /* the latest purchase rate per product, off this bill, for stock value and quote margin */
               var rch = Promise.resolve();
-              b.lines.forEach(function (l) { if (l.net > 0) rch = rch.then(function () { return _sv({ id: "S-" + Date.now() + "-" + Math.floor(Math.random() * 1000000) + "-rate", type: "rate", code: l.code, desc: "", qty: l.net, ref: b.key, asOn: b.date || today(), notes: "" }); }); });
+              b.lines.forEach(function (l) { if (l.net > 0) rch = rch.then(function () { return _sv({ id: _sid("rate"), type: "rate", code: l.fin, desc: "", qty: l.net, ref: b.key, asOn: b.date || today(), notes: "" }); }); });
               return rch;
             }, function () { _fail.push(b.billNo + ": no answer - it MAY have been saved; refresh before trying again"); });
         });
       });
       _chain.then(function () {
         S.imp = null; STOCK_LOADED = false; S.stock = []; ensureStock(); S.tab = "stock"; render();
-        toast(_okN + " of " + plural(_todo.length, "bill") + " saved into stock." + (_fail.length ? " Not saved: " + _fail.join("; ") : ""));
+        var say = [plural(_okN, "bill") + " saved into stock"];
+        if (_waitN) say.push(plural(_waitN, "bill") + (_adm ? " kept for you to finish" : " sent to the owner to match codes"));
+        if (_renN) say.push(plural(_renN, "code") + " changed to Tally's");
+        if (_addN) say.push(plural(_addN, "new product") + " added");
+        toast(say.join(" · ") + "." + (_msg.length ? " Not changed: " + _msg.join("; ") + "." : "") + (_fail.length ? " Not saved: " + _fail.join("; ") : ""));
       });
       return;
     }
