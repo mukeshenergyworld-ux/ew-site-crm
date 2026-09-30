@@ -13,7 +13,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<!-- 6.9.669 - jsPDF from the repo, so a PDF can be drawn with no signal; the CDN only if this did not load -->
+<script src="../assets/jspdf/jspdf.umd.min.js"></script>
+<script>if (!window.jspdf) document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"><\/script>');</script>
 <style>
   :root{
     --teal:#14b8a6; --teal-d:#0f766e; --ink:#0f172a; --muted:#64748b;

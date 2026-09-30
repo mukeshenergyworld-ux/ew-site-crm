@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.668";
+  var APP_VERSION = "6.9.669";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -955,12 +955,39 @@
     pad();
     try { if (window.addEventListener) window.addEventListener("resize", pad); } catch (e) {}
   }
+  /* ===== 6.9.669 - A NEW VERSION ON THE OPEN IT ARRIVES, NOT THE ONE AFTER =====
+     The app opens from the copy on the phone (instant) and fetches the new build behind it, so a
+     change reached him on his SECOND open, after a banner he had to tap. Now, when the new build
+     lands within the first 25 seconds of an open and he has not started anything - nothing typed,
+     no sheet open, no save on the wire - the app moves itself to it once, straight away. Any other
+     time the banner is still the way. A second move within two minutes never happens, so a fault
+     can never become a loop; and a save not yet sent is safe in the journal whatever happens. */
+  var _nbT0 = Date.now(), _nbTyped = false;
+  try { document.addEventListener("input", function () { _nbTyped = true; }, true); } catch (e) {}
+  function nbAutoOk() {
+    try {
+      if (Date.now() - _nbT0 > 25000 || _nbTyped) return false;
+      if (typeof S !== "undefined" && S && (S.modal || S.pending > 0)) return false;
+      var ae = document.activeElement, tg = ae && ae.tagName ? String(ae.tagName).toLowerCase() : "";
+      if (tg === "input" || tg === "textarea" || tg === "select") return false;
+      var last = Number(sessionStorage.getItem("ew_nb_auto") || 0);
+      if (last && Date.now() - last < 120000) return false;
+      return true;
+    } catch (e) { return false; }
+  }
+  function nbAuto() {
+    try { sessionStorage.setItem("ew_nb_auto", String(Date.now())); } catch (e) {}
+    try { if (typeof toast === "function") toast("Moving to the new version\u2026"); } catch (e) {}
+    /* a moment for the worker to finish putting the new build on the shelf */
+    setTimeout(function () { location.replace(location.pathname + "?u=" + Date.now()); }, 1500);
+  }
   try {
     if (navigator.serviceWorker) {
       navigator.serviceWorker.addEventListener("message", function (e) {
         if (!e || !e.data || e.data.ew !== "new-build") return;
         if (String(e.data.url || "").indexOf("app.js") < 0) return;
         _newBuild = true;
+        if (nbAutoOk()) { nbAuto(); return; }   /* 6.9.669 - the new version on THIS open */
         try { nbPaint(); } catch (x) {}
       });
     }
@@ -1086,12 +1113,48 @@
      re-sent from here; it fails out loud and the journal that already guards every save keeps it. */
   var API_READS = { teamAuth: 1, teamGet: 1, teamStamp: 1, search: 1, waStatus: 1, botChats: 1, driverPayList: 1 };   /* 6.9.626 */
   function apiDropped(e) { return /answered a different question/i.test(String((e && e.message) || "")); }
+  /* ===== THE SAVED SIGN-IN KEEPS A TOKEN, NOT THE PIN  (B9 - CRM 6.9.669 / Challan 1.120.0 /
+     Payment 1.60.0 / Service 1.19.0, 30 Sep 2026) =====
+     "Stay signed in" kept the PIN itself in this browser - {user, pin} in plain text, and again in
+     the Face ID record - where any script on the origin (all the apps share one) could read it.
+     The PIN is also what passes a challan, so a copied PIN is a copied signature.
+     From server V142 a sign-in with the PIN is answered with a token: a long random key, kept by
+     the server only as a fingerprint, that runs out after 60 days unused, dies when his PIN is
+     changed, and is thrown away on Sign out. The saved sign-in keeps THAT. The PIN he types stays
+     in memory for the session (it is still asked again to pass a challan), and is never written
+     down again. On a server older than V142 no token comes back and nothing changes. */
+  function credPut(key, o) {
+    var x = Object.assign({}, o || {});
+    if (S.tok) { delete x.pin; x.tok = S.tok; }
+    try { localStorage.setItem(key, JSON.stringify(x)); } catch (e) {}
+  }
+  function credTook(r) {
+    try {
+      if (!(r && r.ok && r.tok)) return;
+      var was = S.tok; S.tok = String(r.tok);
+      if (was === S.tok) return;
+      /* a sign-in saved before V142 still holds the PIN: swap it for the token, here, once */
+      [STORE, BIO_KEY].forEach(function (k) {
+        var o = null; try { o = JSON.parse(localStorage.getItem(k) || "null"); } catch (e) { o = null; }
+        if (!o || typeof o !== "object") return;
+        if (o.user && S.user && String(o.user).toLowerCase() !== String(S.user).toLowerCase()) return;
+        if (!o.pin && o.tok === S.tok) return;
+        credPut(k, o);
+      });
+    } catch (e) {}
+  }
+  function credDrop() {
+    /* the server forgets the token too, so a copy of it left anywhere is dead */
+    try { if (S.tok && S.user) api("teamLogout", {}).catch(function () {}); } catch (e) {}
+    S.tok = "";
+  }
   function api(action, extra, ms) {
     var p = apiRaw(action, extra, ms);
     /* v6.9.589 - V138 hands a signed Cloudflare read pass on every sign-in check. Kept in memory
        only: it is not a secret (it names this person and runs out in 12 hours), but nothing needs
        it after the tab closes. */
     if (action === "teamAuth") p = p.then(function (r) { try { if (r && r.ok && r.cf && r.cf.tok) S.cf = r.cf; } catch (e) { } return r; });
+    if (action === "teamAuth") p = p.then(function (r) { credTook(r); return r; });   /* 6.9.669 - B9 */
     if (!API_READS[action]) return p;
     return p.catch(function (e) {
       if (!apiDropped(e)) throw e;
@@ -1106,6 +1169,43 @@
     return (ms >= 0 ? " after " + (Math.round(ms / 100) / 10) + "s" : "") + " \u00b7 " + kb + " KB up \u00b7 " +
       (open ? open + " other call" + (open === 1 ? "" : "s") + " open" : "nothing else open");
   }
+  /* ===== 6.9.669 - A SAVE IN SMALL PIECES, WHERE A BROWSER CANNOT SEND A BIG ONE =====
+     MEASURED 28 Sep 2026 on his Mac: the Safari web app on the phone hotspot could DOWNLOAD the
+     whole 2.7 MB book in 7 s, but every upload of 2 KB or more failed ("Load failed after 9.7s ·
+     2 KB up"); calls of a few hundred bytes went through; Chrome on the same Mac, same line, sent
+     300 KB in 3.5 s. Settings (Private Relay, MTU 1400) changed nothing. The pattern is a path
+     that drops a request spread over several packets - so the request is cut into pieces that each
+     fit in one, and server V142 (callPart) puts them back together and runs the call as one.
+     It switches itself on the first time a save over 1.2 KB fails that way on this device, and
+     off again if the server does not know it. Every piece is a small call of its own, so a 3 KB
+     save costs six round trips - slower, but it arrives. Health check > Troubleshoot shows it. */
+  var PIECE_CHARS = 450, PIECE_OVER = 1200, PIECE_KEY = "ew_wire_pieces";
+  function piecesOn() { try { return localStorage.getItem(PIECE_KEY) === "1"; } catch (e) { return false; } }
+  function piecesSet(on) { try { if (on) localStorage.setItem(PIECE_KEY, "1"); else localStorage.removeItem(PIECE_KEY); } catch (e) {} }
+  function piecesBrowser() {
+    var ua = ""; try { ua = String(navigator.userAgent || ""); } catch (e) { ua = ""; }
+    return /Safari\//.test(ua) && !/Chrome|Chromium|CriOS|Edg|OPR|Firefox|FxiOS/.test(ua);
+  }
+  function apiPieces(action, body, ms) {
+    var str = JSON.stringify(body), n = Math.ceil(str.length / PIECE_CHARS), i = 0;
+    var pid = "P" + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+    var one = function (k) {
+      return apiRaw("callPart", { pid: pid, i: k, n: n, part: str.slice(k * PIECE_CHARS, (k + 1) * PIECE_CHARS), _solo: 1, _nopieces: 1 }, Math.max(20000, ms || 0))
+        .then(function (r) {
+          if (r && r.error === "unknown action") { piecesSet(false); throw new Error("this server cannot take a save in pieces yet (it needs V142) - sent whole next time"); }
+          return r;
+        });
+    };
+    var next = function (last) {
+      if (i >= n) return Promise.resolve(last);
+      var k = i++;
+      return one(k).then(function (r) {
+        if (k < n - 1 && !(r && r.ok)) throw new Error("piece " + (k + 1) + " of " + n + ": " + ((r && r.error) || "no answer"));
+        return next(r);
+      });
+    };
+    return next(null);
+  }
   function apiRaw(action, extra, ms) {
     if (BATCH_ACTS[action] && !_multiOff && !(extra && extra._solo)) return batchPush(action, extra, ms);   /* v6.9.570 */
     if (extra && extra._solo) { extra = Object.assign({}, extra); delete extra._solo; }
@@ -1113,6 +1213,11 @@
     if (extra && extra._whole) { extra = Object.assign({}, extra); delete extra._whole; }
     var _t0 = Date.now();
     var body = Object.assign({ action: action, user: S.user, pin: S.pin }, extra || {});
+    if (S.tok) body.tok = S.tok;   /* B9 - the saved sign-in's token (server V142) */
+    if (action === "teamAuth" && !(extra && Object.prototype.hasOwnProperty.call(extra, "pin"))) body.keep = 1;   /* a sign-in, not a PIN re-check: ask for a token */
+    /* 6.9.669 - in pieces, on a device where a big request does not get through */
+    if (body._nopieces) delete body._nopieces;
+    else if (action !== "callPart" && !(extra && extra.pdfBase64) && piecesOn() && JSON.stringify(body).length > PIECE_OVER) return apiPieces(action, body, ms);
     /* v20.08.2026 - a call carrying a file is an upload, and an upload gets said out loud */
     var _upKb = (extra && extra.pdfBase64) ? Math.round(String(extra.pdfBase64).length / 1024) : 0;
     var _upOn = false;   /* v6.9.557 - set when the call actually goes, after its turn */
@@ -1172,6 +1277,12 @@
         .catch(function (e) {
           /* 6.9.649 - a bare "Load failed" says nothing; say after how long, how big, how crowded */
           var _how = apiHow(opt, Date.now() - _t0);
+          /* 6.9.669 - the Mac/Safari/hotspot fault, recognised: next time in pieces */
+          try {
+            if (e && /load failed/i.test(String(e.message || "")) && String(opt.body || "").length > PIECE_OVER && action !== "callPart" && piecesBrowser() && !piecesOn()) {
+              piecesSet(true); console.log("[EW wire] " + action + " - " + Math.round(String(opt.body).length / 1024) + " KB would not go up whole; this device now sends saves in pieces");
+            }
+          } catch (x) { }
           if (e && e.message && !/ after \d/.test(e.message) && /load failed|failed to fetch|networkerror/i.test(e.message)) {
             try { e = new Error(String(e.message) + _how); } catch (x) { }
           }
@@ -1311,13 +1422,23 @@
       if (!found) arr.push(e.row);
     });
   }
+  /* 6.9.669 - A SAVE STILL ON THE WIRE IS NOT RETRIED. save() journals before it sends, and the
+     45-second tick read the journal and sent every entry - including one whose first request was
+     still open (teamSave's deadline is 60 s). The server upserts by id, so nothing doubled, but the
+     change log got the same edit twice and the server did the write twice. Marked here while its
+     own request is open; the mark lapses after 90 s whatever happens, so nothing can be stuck by it. */
+  var _inFlight = {};
+  function pendIdle() {
+    var now = Date.now();
+    return pendLoad().filter(function (e) { var t = _inFlight[e.pk]; return !(t && now - t < 90000); });
+  }
   function retryPending() {
     /* Try EVERY journaled record, one after another, skipping past any the server refuses — one
        stuck record must never block the queue behind it (it did once: the first refused save
        stopped the loop, and 15 good records sat behind it looking "unsavable"). Refused records
        stay in the journal with the server's reason shown on the banner. */
     if (_retrying) return;
-    if (!pendLoad().length) return;
+    if (!pendIdle().length) return;
     _retrying = true;
     /* v6.9.260 - a watchdog on the flag itself. Before the deadline above, a single hung
        call left _retrying stuck true and NOTHING in the queue was ever tried again for the
@@ -1331,7 +1452,7 @@
        stuck records cost one wait in front of the server instead of ten. Each keeps its own
        answer, its own refusal and its own reason on the banner, exactly as before. */
     var stepMany = function () {
-      var l2 = pendLoad();
+      var l2 = pendIdle();
       if (i >= l2.length) return step();
       var chunk = l2.slice(i, i + 10);
       if (chunk.length < 2) return step();
@@ -1347,7 +1468,7 @@
         });
       })).then(function () {
         /* dropped ones left the list; the refused and failed ones are still in it, so skip them */
-        var left = pendLoad(), stuck = 0;
+        var left = pendIdle(), stuck = 0;
         chunk.forEach(function (e) { if (left.some(function (x) { return x.pk === e.pk; })) stuck++; });
         /* 6.9.627 - HIS REPORT, 26 Sep: Drivers "Satish Pal" and an Audit row, "timed out after
            80s", still waiting 12 minutes later. MEASURED in the server's execution log: one
@@ -1363,7 +1484,7 @@
       });
     };
     var step = function () {
-      var l2 = pendLoad();
+      var l2 = pendIdle();
       if (i >= l2.length) {
         _retrying = false;
         if (_retryDog) { clearTimeout(_retryDog); _retryDog = null; }
@@ -2162,12 +2283,13 @@
     S.pending = (S.pending || 0) + 1;
     var pk = "pk" + (++_pkSeq) + "_" + (row.id || row._lid || "x");
     pendPut(pk, tab, fullRow, _chg);  // journal the FULL row so an offline retry is safe too
+    _inFlight[pk] = Date.now();   /* 6.9.669 - the tick leaves it alone while this request is open */
     /* A "quiet" save (used by the discount / incentive editor) skips the repaint so the field being
        typed in is never torn down mid-edit and focus can never jump to the search box. The row is
        already in memory and journaled, so nothing is lost. */
     if (!quiet) renderBg();
     var payload = Object.assign({}, fullRow); delete payload._lid;   // local-only key never leaves the device
-    var done = function () { S.pending = Math.max(0, (S.pending || 1) - 1); };
+    var done = function () { S.pending = Math.max(0, (S.pending || 1) - 1); delete _inFlight[pk]; };
     return api("teamSave", _chg ? { tab: tab, row: payload, chg: _chg } : { tab: tab, row: payload }).then(function (r) {
       if (!r || !r.ok) {
         done(); pendMark(pk, (r && r.error) || "server refused it");
@@ -2323,6 +2445,42 @@ window.addEventListener("beforeunload", function (ev) {
   }
   try { appTag().then(function (t) { if (t) _appTag = t; }); } catch (e) { }
   function rawReset() { RAW = { u: String(S.user || ""), t: {}, h: null }; }
+  /* ===== 6.9.669 - A FRESH OPEN PULLS ONLY WHAT CHANGED =====
+     MEASURED 30 Sep 2026 in his own Chrome: every open of the CRM read the whole book - "6.9s ·
+     2972 KB" - although the phone already held it. The server has answered with only the new rows
+     since V137 (teamDelta_), but the base it compares with (RAW: Google's own text of each tab and
+     its fingerprints) lived in memory only, so every open started from nothing and asked for all.
+     It is now kept in IndexedDB (never localStorage: 3 MB there would crowd out the journal of
+     unsaved work), per person, written a few seconds after a pull that changed something, and read
+     back before the first pull of an open. Nothing is trusted blind: the server checks the
+     fingerprints it is shown against its own rows, sends a whole tab wherever they differ, and the
+     app still checks every count and falls back to one full pull - exactly as within a session. */
+  var RAW_KEY = "ew_raw_", _rawDirty = false, _rawTimer = null;
+  function rawKeep() {
+    _rawDirty = true;
+    if (_rawTimer) return;
+    _rawTimer = setTimeout(function () {
+      _rawTimer = null;
+      if (!_rawDirty || !RAW.u || !RAW.h) return;
+      _rawDirty = false;
+      try { idbSet(RAW_KEY + RAW.u, { v: 1, u: RAW.u, h: RAW.h, t: RAW.t, at: Date.now() }); } catch (e) {}
+    }, 5000);
+  }
+  function rawLoad(user) {
+    user = String(user || "");
+    if (!user || RAW.h) return Promise.resolve(false);
+    var t0 = Date.now();
+    return Promise.race([
+      idbGet(RAW_KEY + user).then(function (o) {
+        if (!o || o.v !== 1 || o.u !== user || !o.h || !o.t || RAW.h) return false;
+        RAW = { u: user, t: o.t, h: o.h };
+        try { console.log("[EW wire] book base read back from this device in " + (Date.now() - t0) + " ms - this open asks only for what changed"); } catch (e) {}
+        return true;
+      }).catch(function () { return false; }),
+      new Promise(function (r) { setTimeout(function () { r(false); }, 2500); })
+    ]);
+  }
+  function rawForget(user) { try { idbDel(RAW_KEY + String(user || "")); } catch (e) {} }
   function teamGetD(again) {
     if (RAW.u !== String(S.user || "")) rawReset();
     return api("teamGet", { have: RAW.h || {} }).then(function (r) {
@@ -2341,12 +2499,15 @@ window.addEventListener("beforeunload", function (ev) {
         rawReset();
         return again ? r : teamGetD(true);      /* one full pull, never a loop */
       }
+      var _chg = false;   /* 6.9.669 */
       Object.keys(r).forEach(function (k) {
         if (!Array.isArray(r[k])) return;
         if (dl && dl[k] && !(dl[k] || []).length) return;   /* unchanged - the text is already right */
-        RAW.t[k] = JSON.stringify(r[k]);
+        RAW.t[k] = JSON.stringify(r[k]); _chg = true;
       });
+      if (JSON.stringify(RAW.h || null) !== JSON.stringify(hh || null)) _chg = true;
       RAW.h = hh;
+      if (_chg) rawKeep();   /* 6.9.669 - for the next open */
       try { setTimeout(function () { cfShadow(false); }, 4000); } catch (e) { }   /* v6.9.589 */
       return r;
     });
@@ -4686,6 +4847,12 @@ window.addEventListener("beforeunload", function (ev) {
     return rsPartnerReport();
   }
   function rsSend(k) {
+    /* 6.9.669 - the daily money check asks the Payment, Challan and Service apps first, so the
+       picture says whether they agree too. A failure to ask is itself a line on it, never a lost send. */
+    if (k === "money" && !rsSend._asked) {
+      return mcAppsRun().catch(function (e) { return { at: "", ms: 0, apps: [{ app: "", label: "The other apps", ver: "", err: String((e && e.message) || e), n: 0, bad: [] }] }; })
+        .then(function (a) { S.mcApps = a; rsSend._asked = true; try { return rsSend(k); } finally { rsSend._asked = false; } });
+    }
     var set;
     try { set = rsSet(k); } catch (e) { return Promise.reject(new Error("could not build the " + rsTitle(k) + " on this device")); }
     return rsSendSet(set);   /* 6.9.642 - a picture of the table, then the Excel; one pair per executive */
@@ -15077,6 +15244,24 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       '<button class="btn" data-act="dn-save">Add him</button></div>';
   }
 
+  /* 6.9.669 - A SITE TYPED ON A CHALLAN BECOMES HIS SITE (as the Challan app 1.120.0). "+ A new
+     site" filed the name on the challan only, so the next challan for the same project had no entry
+     in his list and the name was typed again. Same row shape as newSiteUnder. Only when the name is
+     not already one of HIS sites; never holds up the challan. */
+  function siteFromChallan(clientName, name) {
+    var nm = String(name || "").trim(), c = clientByName(clientName) || {}, who = c.name || String(clientName || "").trim();
+    if (!nm || !who || nm === SITE_NEW) return null;
+    if (sitesOfClient(who).some(function (x) { return dkey(x.name) === dkey(nm); })) return null;
+    try {
+      return save("sites", {
+        id: "", createdBy: S.user, name: nm, client: who,
+        mobile: c.mobile || "", city: c.location || "", stage: "", type: "Bungalow",
+        architect: c.architect || "", plumber: c.plumber || "", builder: c.builder || "",
+        owner: c.ownedBy || c.createdBy || S.user, status: "Active",
+        notes: "Added from a challan as another site for " + who
+      }, true).catch(function () { return null; });
+    } catch (e) { return null; }
+  }
   function sitesOfClient(name) {
     var t = dkey(name);
     if (!t) return [];
@@ -35909,8 +36094,18 @@ function viewCatalogue() {
     return L.join("\n");
   }
 
+  function piecesCard() {
+    var on = piecesOn();
+    if (!on && !piecesBrowser()) return "";
+    return '<div class="card" style="border-color:' + (on ? '#fcd34d' : '#e2e8f0') + ';background:' + (on ? '#fffbeb' : '#fff') + '">' +
+      '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><div style="flex:1 1 260px;min-width:0"><b>Saves in small pieces: ' + (on ? 'ON' : 'off') + '</b>' +
+      '<div class="meta" style="font-size:12.5px">' + (on
+        ? 'This browser could not send a bigger save in one go (Safari on a phone hotspot does this), so saves go up in small pieces. Slower, but they arrive. Chrome on the same computer does not need it.'
+        : 'Only for Safari on a line that drops bigger uploads. It turns itself on when that happens.') + '</div></div>' +
+      '<button class="btn sm ghost" data-act="pieces-tog" style="min-height:44px">' + (on ? 'Turn off' : 'Turn on') + '</button></div></div>';
+  }
   function viewTrouble() {
-    var h = cfCard() + '<div class="card" style="border-color:#bfdbfe;background:#eff6ff">' +
+    var h = cfCard() + piecesCard() + '<div class="card" style="border-color:#bfdbfe;background:#eff6ff">' +
       '<h2 style="margin:0">Troubleshooter</h2>' +
       /* v6.9.510 - TWO LINES. Rendered at 390px the old ten-line note pushed both red cards
          below the fold, on a screen whose whole job is to say what is wrong first. */
@@ -36081,6 +36276,88 @@ function viewCatalogue() {
   }
   var MC_KIND = { screens: "Screens disagree", dropped: "In nobody's balance", double: "Counted twice", "twice-no": "Same number twice",
     hidden: "Not on his HISAB", draw: "HISAB would not open", totals: "Totals disagree", code: "Moved by a code change" };
+  /* ===== 6.9.669 - THE OTHER THREE APPS, ON HIS REAL BOOK =====
+     mcRun proves the CRM's own screens agree. The Payment app, the Challan app and the Service app
+     each work a balance with their own copy of the code; until today they were held to the CRM only
+     by the tests, on made-up books. Here each is opened in a hidden frame (?probe=ledger), handed a
+     COPY of this book, and asked for every figure it would show - the Payment app's due per client,
+     the Challan app's scorecard due, the Service app's pending per visit. Nothing is signed in, sent
+     or written by them (see ewProbe in each). Every difference over a rupee is named. */
+  var MC_APPS = [["collect", "Payment app"], ["challan", "Challan app"], ["service", "Service app"]];
+  function mcAppsRun() {
+    var book = null;
+    try { book = JSON.stringify(S.data); } catch (e) { book = null; }
+    if (!book) return Promise.resolve(null);
+    var waits = {}, frames = [];
+    window.__ewProbeBook = function () { return JSON.parse(book); };
+    window.__ewProbeAnswer = function (app, ver, out, err) { if (waits[app]) waits[app]({ ver: ver, out: out, err: err }); };
+    var one = function (app) {
+      return new Promise(function (res) {
+        var done = false, fin = function (x) { if (done) return; done = true; delete waits[app]; res(x); };
+        waits[app] = fin;
+        var f = document.createElement("iframe");
+        f.setAttribute("aria-hidden", "true"); f.tabIndex = -1;
+        f.style.cssText = "position:absolute;width:1px;height:1px;left:-9999px;top:0;border:0;visibility:hidden";
+        f.src = "../" + app + "/index.html?probe=ledger&t=" + Date.now();
+        document.body.appendChild(f); frames.push(f);
+        setTimeout(function () { fin({ ver: "", out: null, err: "did not answer in 60 seconds" }); }, 60000);
+      });
+    };
+    var t0 = Date.now();
+    return Promise.all(MC_APPS.map(function (a) { return one(a[0]); })).then(function (ans) {
+      frames.forEach(function (f) { try { f.parentNode.removeChild(f); } catch (e) {} });
+      try { delete window.__ewProbeBook; delete window.__ewProbeAnswer; } catch (e) {}
+      var res = { at: new Date().toISOString(), ms: Date.now() - t0, apps: [] };
+      ans.forEach(function (x, i) { res.apps.push(mcAppsCompare(MC_APPS[i][0], MC_APPS[i][1], x)); });
+      return res;
+    });
+  }
+  function mcAppsCompare(app, label, x) {
+    var r = { app: app, label: label, ver: (x && x.ver) || "", err: (x && x.err) || "", n: 0, bad: [] };
+    if (!x || !x.out) { if (!r.err) r.err = "no figures came back"; return r; }
+    var out = x.out, bad = r.bad;
+    if (app === "service") {
+      (S.data.visits || []).forEach(function (v) {
+        if (isCancelled("visits", v.id)) return;
+        var mine = Math.round(visitPending(v, installById(v.installId) || null)), got = out[String(v.id)];
+        r.n++;
+        if (!got) { if (mine > 1) bad.push({ cl: v.client || "", crm: mine, app: null, say: "Visit on " + d10(v.date) + " (" + money(mine) + " pending) is not on the Service app." }); return; }
+        if (Math.abs(got[1] - mine) > 1) bad.push({ cl: v.client || "", crm: mine, app: got[1], say: "Visit on " + d10(v.date) + ": the CRM says " + money(mine) + " pending, the Service app " + money(got[1]) + "." });
+      });
+      return r;
+    }
+    var seen = {};
+    hisabClientNames().forEach(function (nm) {
+      var k = dkey(nm); if (seen[k]) return; seen[k] = 1;
+      var mine = Math.round((clientLedger(nm) || {}).due || 0), got = out[k];
+      r.n++;
+      if (!got) { if (Math.abs(mine) > 1) bad.push({ cl: nm, crm: mine, app: null, say: "Owes " + money(mine) + " on the CRM; the " + label + " has no card for him." }); return; }
+      if (got[1] === null) { bad.push({ cl: nm, crm: mine, app: null, say: "The " + label + " could not work his balance: " + (got[2] || "an error") + "." }); return; }
+      if (Math.abs(got[1] - mine) > 1) bad.push({ cl: nm, crm: mine, app: got[1], say: "The CRM says " + money(mine) + ", the " + label + " " + money(got[1]) + " (" + (got[1] > mine ? "+" : "") + money(got[1] - mine) + ")." });
+    });
+    Object.keys(out).forEach(function (k) {
+      if (seen[k]) return;
+      var got = out[k];
+      if (got[1] !== null && Math.abs(got[1]) > 1) bad.push({ cl: got[0], crm: 0, app: got[1], say: "The " + label + " shows " + money(got[1]) + "; the CRM has no balance for this name." });
+    });
+    return r;
+  }
+  function mcAppsHtml(a) {
+    if (!a) return "";
+    var h = '<div style="margin-top:10px;border-top:1px solid #e2e8f0;padding-top:8px"><div style="font-weight:800;font-size:13.5px">The other apps, on this book</div>';
+    a.apps.forEach(function (x) {
+      var ok = !x.err && !x.bad.length;
+      h += '<div style="margin-top:5px;font-size:13px;color:' + (x.err ? '#b45309' : ok ? '#15803d' : '#b91c1c') + ';font-weight:700">' +
+        (ok ? '✓ ' : '✗ ') + esc(x.label) + (x.ver ? ' ' + esc(x.ver) : '') + ' &mdash; ' +
+        (x.err ? 'could not be asked: ' + esc(x.err) :
+         ok ? (x.app === "service" ? 'all ' + x.n + ' visits' : 'all ' + x.n + ' clients') + ' show the same figure' :
+         x.bad.length + (x.app === "service" ? (x.bad.length === 1 ? " visit differs" : " visits differ") : (x.bad.length === 1 ? " client differs" : " clients differ"))) + '</div>';
+      if (x.bad.length) h += '<div class="meta" style="font-size:12.5px;margin:2px 0 0 14px">' + x.bad.slice(0, 12).map(function (b) {
+        return '<div>' + (b.cl ? '<a href="#" data-act="ch-hisab" data-cl="' + esc(b.cl) + '" style="font-weight:700;color:#0b3b36">' + esc(b.cl) + '</a> &mdash; ' : '') + esc(b.say) + '</div>'; }).join("") +
+        (x.bad.length > 12 ? '<div>and ' + (x.bad.length - 12) + ' more</div>' : '') + '</div>';
+    });
+    return h + '<div class="meta" style="font-size:12px;margin-top:4px">Each app worked its own figures from a copy of this book in ' + (a.ms / 1000).toFixed(1) + ' s. Nothing was sent or saved.</div></div>';
+  }
   function mcCard() {
     if (!roleAny(["admin", "accounts"])) return "";
     var r = S.mc;
@@ -36095,6 +36372,7 @@ function viewCatalogue() {
       r.drawn + ' HISAB pages drawn · clients owe ' + money(r.hTot) + ' · checked in ' + (Math.round(r.ms / 100) / 10) + ' s' +
       (r.since ? ' · compared with version ' + esc(r.since) : ' · first run on this device: balances remembered for the next version') + '</div>' +
       (r.notFin.n ? '<div class="meta" style="font-size:12.5px;margin-top:2px">Not counted yet, by design: ' + plural(r.notFin.n, "delivery") + ' signed for but not finalised, ' + money(r.notFin.amt) + '.</div>' : '');
+    h += S.mcApps ? mcAppsHtml(S.mcApps) : (S.mcAppsBusy ? '<div class="meta" style="margin-top:8px;font-size:12.5px">Asking the Payment, Challan and Service apps&hellip;</div>' : '');   /* 6.9.669 */
     if (r.iss.length) {
       h += '<div style="overflow-x:auto;margin-top:8px"><table style="border-collapse:collapse;min-width:100%;font-size:12.5px">' +
         '<tr style="background:#7f1d1d;color:#fff"><th style="padding:5px 7px;text-align:left">WHAT</th><th style="padding:5px 7px;text-align:left">CLIENT</th><th style="padding:5px 7px;text-align:right">AMOUNT</th><th style="padding:5px 7px;text-align:left">DETAIL</th></tr>' +
@@ -36248,13 +36526,18 @@ function viewCatalogue() {
     var tly = last ? "Tally matched " + fullDate(last.at) + ": " + (last.differ ? last.differ + " differ, " + rsInr(last.differAmt) : "all agree")
                    : "Not matched with Tally yet – accounts: Health check › Match with Tally";
     var stale = !last || (Date.now() - Date.parse(last.at || 0)) > 35 * 86400000;
-    var blocks = [{ h: r.iss.length ? plural(r.iss.length, "problem") + " found" : "All clear" }, { cols: [["Check", 60, "l"], ["Result", 40, "l"]], rows: [
+    var _appBad = ((S.mcApps && S.mcApps.apps) || []).reduce(function (a, x) { return a + x.bad.length; }, 0), _nProb = r.iss.length + _appBad;   /* 6.9.669 */
+    var blocks = [{ h: _nProb ? plural(_nProb, "problem") + " found" : "All clear" }, { cols: [["Check", 60, "l"], ["Result", 40, "l"]], rows: [
       [rsC("Every screen shows the same balance", "", true), rsC(r.iss.some(function (x) { return x.k === "screens"; }) ? "NO" : "yes", r.iss.some(function (x) { return x.k === "screens"; }) ? "R" : "G", true)],
       [rsC("Every rupee counted once", "", true), rsC(r.iss.some(function (x) { return /dropped|double|twice-no/.test(x.k); }) ? "NO" : "yes", r.iss.some(function (x) { return /dropped|double|twice-no/.test(x.k); }) ? "R" : "G", true)],
       [rsC("Every HISAB page shows everything", "", true), rsC(r.iss.some(function (x) { return /hidden|draw/.test(x.k); }) ? "NO" : "yes", r.iss.some(function (x) { return /hidden|draw/.test(x.k); }) ? "R" : "G", true)],
       [rsC("Totals agree", "", true), rsC(r.iss.some(function (x) { return x.k === "totals"; }) ? "NO" : "yes", r.iss.some(function (x) { return x.k === "totals"; }) ? "R" : "G", true)],
       [rsC("No money moved by an app update", "", true), rsC(r.moved ? r.moved + " moved" : (r.since ? "yes (since " + r.since + ")" : "baseline kept"), r.moved ? "R" : "G", true)],
-      [rsC("Match with Tally", "", true), rsC(last ? (last.differ ? last.differ + " differ" : "agrees") : "not done", !last || last.differ || stale ? "A" : "G", true)]] }];
+      [rsC("Match with Tally", "", true), rsC(last ? (last.differ ? last.differ + " differ" : "agrees") : "not done", !last || last.differ || stale ? "A" : "G", true)]].concat(
+      /* 6.9.669 - one line per app, when they were asked */
+      ((S.mcApps && S.mcApps.apps) || []).map(function (x) {
+        return [rsC(x.label + " shows the same figures", "", true), rsC(x.err ? "not asked" : x.bad.length ? x.bad.length + " differ" : "yes", x.err ? "A" : x.bad.length ? "R" : "G", true)];
+      })) }];
     if (r.iss.length) blocks.push({ h: "What to look at" }, { cols: [["What", 28, "l", "w"], ["Client", 24, "l", "w"], ["Amount", 16, "r"], ["", 32, "l", "w"]],
       rows: r.iss.slice(0, 12).map(function (x) { return [rsC(MC_KIND[x.k] || x.k, "R", true), rsC(x.cl || "—", "", true), (x.amt < 0 ? "−" : "") + rsInr(Math.abs(x.amt)), x.say.slice(0, 110)]; }) });
     if (r.iss.length > 12) blocks.push({ note: "and " + (r.iss.length - 12) + " more in the Excel" });
@@ -36262,9 +36545,13 @@ function viewCatalogue() {
     blocks.push({ note: last ? tly : "Tally: not matched yet – accounts, Health check › Match with Tally" });
     var rows = [[{ v: "Energy World – money check", s: XL.TITLE }], [rsMadeLine(r.clients + " clients, " + r.counted.ch + " finalised deliveries, " + r.counted.pay + " payments, " + r.counted.ret + " returns booked in.")], [],
       rsHead(["What", "Client", "Amount", "Detail"])];
-    if (!r.iss.length) rows.push([{ v: "All clear", s: XL.G }, "", "", "Every screen agrees on every client, every rupee is counted once, every HISAB page shows everything."]);
+    if (!_nProb) rows.push([{ v: "All clear", s: XL.G }, "", "", "Every screen agrees on every client, every rupee is counted once, every HISAB page shows everything" + (S.mcApps ? ", and the Payment, Challan and Service apps show the same figures." : ".")]);
     r.iss.forEach(function (x) { rows.push([{ v: MC_KIND[x.k] || x.k, s: XL.R }, x.cl || "", { v: x.amt, s: XL.MONEY }, x.say]); });
-    var team = { who: rsOwners(), head: r.iss.length ? "Money check – " + plural(r.iss.length, "problem") : "Money check – all clear",
+    ((S.mcApps && S.mcApps.apps) || []).forEach(function (x) {   /* 6.9.669 */
+      if (x.err) rows.push([{ v: x.label, s: XL.A }, "", "", "Could not be asked: " + x.err]);
+      x.bad.forEach(function (b) { rows.push([{ v: x.label + " differs", s: XL.R }, b.cl || "", { v: (b.app == null ? 0 : b.app) - b.crm, s: XL.MONEY }, b.say]); });
+    });
+    var team = { who: rsOwners(), head: _nProb ? "Money check – " + plural(_nProb, "problem") : "Money check – all clear",
       line: r.clients + " clients · owe " + rsInr(r.hTot) + " · " + tly,
       spec: { title: "Money check", sub: fullDate(today()) + " · version " + APP_VERSION, key: [["Good", "G"], ["Watch", "A"], ["Act now", "R"]], blocks: blocks },
       text: "", xlsx: { sheet: "Money check", rows: rows, cols: [22, 30, 14, 90], opts: { freeze: { r: 4, c: 0 } }, file: rsFileFor("Energy World", "money check") } };
@@ -36583,7 +36870,7 @@ function viewCatalogue() {
         timeout: 60000, attestation: "none"
       }
     }).then(function (cred) {
-      localStorage.setItem(BIO_KEY, JSON.stringify({ id: b64u(cred.rawId), user: S.user, pin: S.pin }));
+      credPut(BIO_KEY, { id: b64u(cred.rawId), user: S.user, pin: S.pin });
       toast("Face ID / fingerprint enabled on this device.");
       if (S.modal && modalKey(S.modal) === "This phone") S.modal = modalAccount();   /* v6.9.447 */
       render();
@@ -36600,7 +36887,7 @@ function viewCatalogue() {
         userVerification: "required", timeout: 60000
       }
     }).then(function () {
-      S.user = saved.user; S.pin = saved.pin;
+      S.user = saved.user; S.pin = saved.pin || ""; S.tok = saved.tok || "";   /* B9 */
       api("teamAuth", { ua: navigator.userAgent }).then(function (r) {
         if (!r || !r.ok) { localStorage.removeItem(BIO_KEY);
       try { bigDel(snapKey()); } catch (e) { } S.pin = ""; renderLogin("Saved sign-in no longer valid."); return; }
@@ -38950,7 +39237,7 @@ function viewCatalogue() {
       S.user = r.user.name; S.role = r.user.role; S.pinSet = r.user.pinSet;
         try { beatStart(); } catch (e) {}          /* v6.9.314 - from here it asks on its own */
         try { waProbe(); } catch (e) {}            /* v6.9.548 - and asks once whether WhatsApp is on the server */
-      try { localStorage.setItem(STORE, JSON.stringify({ pin: pin, user: S.user, role: S.role, pinSet: S.pinSet })); } catch (e) {}
+      try { credPut(STORE, { pin: pin, user: S.user, role: S.role, pinSet: S.pinSet }); } catch (e) {}
       if (String(S.pinSet).toUpperCase() !== "Y") { renderPinChange(); return; }
       S.tab = myTabs()[0];
       loadCatalog();
@@ -39853,6 +40140,8 @@ function viewCatalogue() {
   }
 
   function logout() {
+    credDrop();   /* B9 */
+    rawForget(S.user); rawReset();   /* 6.9.669 - the book's base goes with the book */
     var held = 0, photos = 0;
     try { held = pendCount(); } catch (e) {}
     try { photos = (JSON.parse(bigGet("ew_proof_v1") || "[]") || []).length; } catch (e) {}
@@ -45732,7 +46021,7 @@ function viewCatalogue() {
       LOGO_PRE = 1;
       setTimeout(function () { try { preloadLogos(); } catch (e) { } }, 4000);
     }
-    if (!S.pin) { renderLogin(); return; }
+    if (!S.pin && !S.tok) { renderLogin(); return; }
     var views = { agent: viewAgent, search: viewSearch, dossier: viewDossier, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, payments: viewPayments, paidout: viewPaidOut, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, catalogs: viewCatalogues, brandstory: viewBrandStories, clients: viewClients, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, register: viewRegister, paylog: viewPayLog, freight: viewFreight, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, trouble: viewTrouble, changelog: viewChangeLog, booksweep: viewBookSweep, dups: viewDups, stock: viewStock, brief: viewBrief, review: viewReview };
     var tabs = TAB_TABS;
 
@@ -46483,7 +46772,9 @@ function viewCatalogue() {
       api("teamSetPin", { newPin: p1 }).then(function (r) {
         if (!r || !r.ok) { renderPinChange((r && r.error) || "Could not set PIN."); return; }
         S.pin = p1; S.pinSet = "Y";
-        try { localStorage.setItem(STORE, JSON.stringify({ pin: p1, user: S.user })); } catch (e) {}
+        S.tok = "";   /* B9 - a new PIN kills the old token on the server; a fresh one is asked for below */
+        try { credPut(STORE, { pin: p1, user: S.user }); } catch (e) {}
+        try { api("teamAuth", { ua: navigator.userAgent }).catch(function () {}); } catch (e) {}
         toast("PIN updated.");
         S.tab = myTabs()[0];
         loadCatalog(); refresh();
@@ -46710,10 +47001,15 @@ function viewCatalogue() {
       if (!dpd) { S.modal = null; render(); return; }
       var dpin = el("disc_pin") ? String(el("disc_pin").value || "").trim() : "";
       if (!dpin) { pinNote("disc_pin", "Type your PIN first. The discount is unchanged."); return; }
-      if (String(dpin) !== String(S.pin)) { pinNote("disc_pin", "PIN incorrect — discount not changed."); return; }
-      S.discPinAt = Date.now();
-      S.discPend = null; S.modal = null;
-      discLineApply(dpd.chId, dpd.code, dpd.value);
+      var _dpGo = function () { S.discPinAt = Date.now(); S.discPend = null; S.modal = null; discLineApply(dpd.chId, dpd.code, dpd.value); };
+      if (S.pin) {
+        if (String(dpin) !== String(S.pin)) { pinNote("disc_pin", "PIN incorrect — discount not changed."); return; }
+        _dpGo(); return;
+      }
+      /* B9 - signed in from the saved token, so the PIN is not in memory: the server checks it */
+      api("teamAuth", { pin: dpin }).then(function (r) {
+        if (r && r.ok) { S.pin = dpin; _dpGo(); } else pinNote("disc_pin", "PIN incorrect — discount not changed.");
+      }).catch(function () { pinNote("disc_pin", "Could not reach the server — the discount is unchanged."); });
       return;
     }
     /* Clicking the dimmed background no longer closes a popup - a stray click while making a
@@ -47325,11 +47621,16 @@ function viewCatalogue() {
       return;
     }
     /* 6.9.661 - the money check, by hand */
+    if (act === "pieces-tog") { piecesSet(!piecesOn()); toast(piecesOn() ? "Saves from this browser now go up in small pieces." : "Saves go up whole again."); render(); return; }   /* 6.9.669 */
     if (act === "mc-run") {
       toast("Checking every client…");
       setTimeout(function () {
         try { S.mc = mcRun(); } catch (e) { toast("The check could not finish: " + String(e && e.message || e)); return; }
+        /* 6.9.669 - and the other three apps, on the same book */
+        S.mcApps = null; S.mcAppsBusy = true;
         render();
+        mcAppsRun().then(function (a) { S.mcApps = a; S.mcAppsBusy = false; render(); })
+          .catch(function (e) { S.mcAppsBusy = false; S.mcApps = { at: "", ms: 0, apps: [{ app: "", label: "The other apps", ver: "", err: String(e && e.message || e), n: 0, bad: [] }] }; render(); });
       }, 30);
       return;
     }
@@ -53110,6 +53411,7 @@ function viewCatalogue() {
           if (wasApproved) { ch.status = "Draft"; ch.approvedBy = ""; }
           return save("challans", ch).then(function (r) {
             if (!r) return;
+            try { siteFromChallan(cn, siteName); } catch (eSf) {}   /* 6.9.669 */
             /* only when it actually changed - an unchanged edit must not add a row every time */
             if (manualV !== String(manualNoFor({ id: editId, challanNo: editNo }) || "")) {
               saveManualNo(editNo, editId, manualV, cn);
@@ -53197,6 +53499,7 @@ function viewCatalogue() {
         return save("challans", ch).then(function (r) {
           chSaved = true;
           if (!r) return;
+          try { siteFromChallan(cn, siteName); } catch (eSf) {}   /* 6.9.669 */
           /* v6.9.237 - the paper book's number, filed beside the challan. Written after the
              challan itself, never before: the delivery is the thing that matters and it must
              never be held up by a second write. */
@@ -54366,13 +54669,14 @@ function viewCatalogue() {
       /* v6.9.405 - and the receipts, for the same reason and at the same moment: read any
          earlier and IndexedDB is not open yet, which is the v6.9.263 regression above. */
       try { rcptRestore(); } catch (e) { }
-      boot2(sess);
+      /* 6.9.669 - and the book's base, so the first pull asks only for what changed */
+      (sess && sess.user ? rawLoad(sess.user) : Promise.resolve(false)).then(function () { boot2(sess); }, function () { boot2(sess); });
     });
   })();
   function boot2(sess) {
     try { startFlushTicker(); } catch (e) {}
-    if (sess && sess.pin && sess.user) {
-      S.pin = sess.pin; S.user = sess.user;
+    if (sess && (sess.pin || sess.tok) && sess.user) {
+      S.pin = sess.pin || ""; S.tok = sess.tok || ""; S.user = sess.user;   /* B9 */
     // Warm start: the data is already on this device and was role-filtered by the
     // server when it was cached. Paint it now; verify the PIN in the background.
     // If the check fails we wipe and show the login screen.
@@ -54474,6 +54778,7 @@ function viewCatalogue() {
           S.pin = ""; S.data = null; S.warmStart = false;
           try { localStorage.removeItem(STORE); } catch (e) {}
           try { bigDel(snapKey()); } catch (e) {}
+          rawForget(S.user);   /* 6.9.669 */
           renderLogin("Sign in again.");
           return null;
         }

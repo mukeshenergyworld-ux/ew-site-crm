@@ -205,7 +205,7 @@ function ewWantsNetwork(req) {
   catch (e) { return true; }
 }
 
-var SHELL = ["./icon-192.png", "./icon-512.png", "../assets/logo.jpg"];
+var SHELL = ["./icon-192.png", "./icon-512.png", "../assets/logo.jpg", "../assets/jspdf/jspdf.umd.min.js"];   /* 30 Sep 2026 - jsPDF, so a PDF is drawn with no signal */
 
 self.addEventListener("install", function (e) {
   self.skipWaiting();
