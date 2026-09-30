@@ -165,7 +165,7 @@ function ewWantsNetwork(req) {
   catch (e) { return true; }
 }
 
-var SHELL = ["./", "./index.html", "./manifest.webmanifest"];
+var SHELL = ["./", "./index.html", "./manifest.webmanifest", "../assets/jspdf/jspdf.umd.min.js"];   /* 30 Sep 2026 - jsPDF, so a PDF is drawn with no signal */
 
 self.addEventListener("install", function (e) {
   self.skipWaiting();

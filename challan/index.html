@@ -241,7 +241,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.119.0";
+  var APP_VERSION = "1.120.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -1112,8 +1112,44 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      and only the server's own plain "no" signs a device out. */
   var API_READS = { teamAuth: 1, teamGet: 1, teamStamp: 1, search: 1, waStatus: 1, driverPayList: 1 };   /* 1.110.0 */
   function apiDropped(e) { return /answered a different question/i.test(String((e && e.message) || "")); }
+  /* ===== THE SAVED SIGN-IN KEEPS A TOKEN, NOT THE PIN  (B9 - CRM 6.9.669 / Challan 1.120.0 /
+     Payment 1.60.0 / Service 1.19.0, 30 Sep 2026) =====
+     "Stay signed in" kept the PIN itself in this browser - {user, pin} in plain text, and again in
+     the Face ID record - where any script on the origin (all the apps share one) could read it.
+     The PIN is also what passes a challan, so a copied PIN is a copied signature.
+     From server V142 a sign-in with the PIN is answered with a token: a long random key, kept by
+     the server only as a fingerprint, that runs out after 60 days unused, dies when his PIN is
+     changed, and is thrown away on Sign out. The saved sign-in keeps THAT. The PIN he types stays
+     in memory for the session (it is still asked again to pass a challan), and is never written
+     down again. On a server older than V142 no token comes back and nothing changes. */
+  function credPut(key, o) {
+    var x = Object.assign({}, o || {});
+    if (S.tok) { delete x.pin; x.tok = S.tok; }
+    try { localStorage.setItem(key, JSON.stringify(x)); } catch (e) {}
+  }
+  function credTook(r) {
+    try {
+      if (!(r && r.ok && r.tok)) return;
+      var was = S.tok; S.tok = String(r.tok);
+      if (was === S.tok) return;
+      /* a sign-in saved before V142 still holds the PIN: swap it for the token, here, once */
+      [STORE, BIO_KEY].forEach(function (k) {
+        var o = null; try { o = JSON.parse(localStorage.getItem(k) || "null"); } catch (e) { o = null; }
+        if (!o || typeof o !== "object") return;
+        if (o.user && S.user && String(o.user).toLowerCase() !== String(S.user).toLowerCase()) return;
+        if (!o.pin && o.tok === S.tok) return;
+        credPut(k, o);
+      });
+    } catch (e) {}
+  }
+  function credDrop() {
+    /* the server forgets the token too, so a copy of it left anywhere is dead */
+    try { if (S.tok && S.user) api("teamLogout", {}).catch(function () {}); } catch (e) {}
+    S.tok = "";
+  }
   function api(action, extra, ms) {
     var p = apiRaw(action, extra, ms);
+    if (action === "teamAuth") p = p.then(function (r) { credTook(r); return r; });   /* B9 */
     if (!API_READS[action]) return p;
     return p.catch(function (e) {
       if (!apiDropped(e)) throw e;
@@ -1125,6 +1161,8 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     if (extra && extra._whole) { extra = Object.assign({}, extra); delete extra._whole; }
     var _t0 = Date.now();
     var body = Object.assign({ action: action, user: S.user, pin: S.pin }, extra || {});
+    if (S.tok) body.tok = S.tok;   /* B9 - the saved sign-in's token (server V142) */
+    if (action === "teamAuth" && !(extra && Object.prototype.hasOwnProperty.call(extra, "pin"))) body.keep = 1;   /* a sign-in, not a PIN re-check: ask for a token */
     /* v20.08.2026 - a call carrying a file is an upload, and an upload gets said out loud */
     var _upKb = (extra && extra.pdfBase64) ? Math.round(String(extra.pdfBase64).length / 1024) : 0;
     var _upOn = _upKb ? upStart(action, _upKb) : false;
@@ -1472,7 +1510,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     host.innerHTML =
       '<div style="display:flex;align-items:center;gap:8px">' +
         '<div style="flex:1;min-width:0">' +
-          '<div style="font-weight:800">' + l.length + ' ' + (l.length === 1 ? "record is" : "records are") +
+          '<div style="font-weight:800">' + esc(jrnSay(l)) +   /* 1.120.0 */
             ' held on this phone' + (S.jrnDurable === false ? ' <span style="opacity:.85">(and this phone will not keep them)</span>' : '') + '</div>' +
           '<div style="opacity:.9;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' +
             esc(err || "They will go up by themselves when there is signal.") + '</div>' +
@@ -1753,19 +1791,21 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
 
   /* ---------- the PDF builder, only when a challan is actually printed ---------- */
   var _pdfP = null;
+  /* 1.120.0 / 1.60.0 - the repo's own copy first (the service worker keeps it on the phone, so a
+     challan or receipt PDF is drawn in a basement with no signal); cdnjs only if that fails. */
+  var PDF_SRCS = ["../assets/jspdf/jspdf.umd.min.js", "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"];
+  function pdfTry(i, res, rej) {
+    if (i >= PDF_SRCS.length) { _pdfP = null; rej(new Error("jspdf failed")); return; }
+    var s = document.createElement("script");
+    s.src = PDF_SRCS[i]; s.async = true;
+    s.onload = function () { if (window.jspdf && window.jspdf.jsPDF) res(true); else pdfTry(i + 1, res, rej); };
+    s.onerror = function () { pdfTry(i + 1, res, rej); };
+    document.head.appendChild(s);
+  }
   function ensurePdf() {
     if (window.jspdf && window.jspdf.jsPDF) return Promise.resolve(true);
     if (_pdfP) return _pdfP;
-    _pdfP = new Promise(function (res, rej) {
-      var s = document.createElement("script");
-      s.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
-      s.async = true;
-      s.onload = function () {
-        if (window.jspdf && window.jspdf.jsPDF) res(true); else { _pdfP = null; rej(new Error("empty")); }
-      };
-      s.onerror = function () { _pdfP = null; rej(new Error("failed")); };
-      document.head.appendChild(s);
-    });
+    _pdfP = new Promise(function (res, rej) { pdfTry(0, res, rej); });
     return _pdfP;
   }
 
@@ -2190,6 +2230,28 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     return ((S.data && S.data.drivers) || []).filter(function (d) { return lower(d.name) === t; })[0] || null;
   }
 
+  /* 1.120.0 - A SITE TYPED ON A CHALLAN BECOMES HIS SITE. "+ A new site" filed the name on the
+     challan and nowhere else, so the next challan for the same project had no button for it and the
+     name was typed again - "Ansal", "ansal plots", "Ansal I Blk". The row is the CRM's own shape
+     (newSiteUnder), so a site added here and one added there are the same thing afterwards.
+     Only when the name is not already one of HIS sites; never blocks the challan. */
+  function siteFromChallan(cObj, name) {
+    var nm = String(name || "").trim(), who = String((cObj && cObj.name) || "").trim();
+    if (!nm || !who) return null;
+    var k = lower(nm).replace(/\s+/g, " ");
+    if (sitesFor(who).some(function (x) { return lower(x.name).replace(/\s+/g, " ") === k; })) return null;
+    var row = { id: "", createdBy: S.user || "", name: nm, client: who,
+      mobile: cObj.mobile || "", city: cObj.location || "", stage: "", type: "Bungalow",
+      architect: cObj.architect || "", plumber: cObj.plumber || "", builder: cObj.builder || "",
+      owner: cObj.ownedBy || cObj.createdBy || S.user || "", status: "Active",
+      notes: "Added from a challan as another site for " + who };
+    var list = (S.data.sites = S.data.sites || []);
+    list.push(row);                                   /* a button on his next challan at once */
+    try {
+      return saveRow("sites", row).then(function (r) { if (r && r.row) Object.assign(row, r.row); return r; })
+        .catch(function () { return null; });
+    } catch (e) { return null; }
+  }
   function sitesFor(n) {
     var k = lower(n);
     return ((S.data && S.data.sites) || []).filter(function (s) { return lower(s.client) === k; });
@@ -3364,11 +3426,33 @@ function discRowOn(client, brand, onYmd) {
 
      So it sits in the freshness line at the top, next to how old the book is, which is the
      one place he already reads when he wonders whether what he is looking at is real. */
+  /* 1.120.0 - HELD RECORDS COUNTED AS HE COUNTS THEM. One challan written with no signal read
+     "2 not uploaded yet" / "2 records are held on this phone": the challan and the note that files
+     its book number. He wrote one thing. The notes that ride with a record are named after it, and
+     named alone only when nothing else is held. */
+  var JRN_ONE = { challans: ["challan", "challans"], returns: ["return", "returns"], payments: ["payment", "payments"],
+    followups: ["follow-up", "follow-ups"], clients: ["client", "clients"], receipts: ["receipt", "receipts"],
+    sites: ["site", "sites"], drivers: ["driver", "drivers"], visits: ["service visit", "service visits"],
+    move: ["pass or dispatch", "passes or dispatches"] };
+  function jrnSay(l) {
+    l = l || []; var c = {}, order = [], notes = 0;
+    l.forEach(function (e) {
+      var k = e.kind === "move" ? "move" : String(e.tab || "");
+      if (k === "audit") { notes++; return; }
+      if (!c[k]) { c[k] = 0; order.push(k); }
+      c[k]++;
+    });
+    var bits = order.map(function (k) { var w = JRN_ONE[k] || ["record", "records"]; return c[k] + " " + (c[k] === 1 ? w[0] : w[1]); });
+    var noteW = notes + (notes === 1 ? " note" : " notes");
+    if (!bits.length) return notes ? noteW : "";
+    var say = bits.length === 1 ? bits[0] : bits.slice(0, -1).join(", ") + " and " + bits[bits.length - 1];
+    return say + (notes ? " (+ " + noteW + ")" : "");
+  }
   function heldSay() {
-    var n = 0;
-    try { n = jrnCount(); } catch (e) { n = 0; }
-    if (!n) return "";
-    return '<span class="sync" style="font-weight:800;color:#fecaca"> · ' + n +
+    var say = "";
+    try { say = jrnSay(jrnLoad()); } catch (e) { say = ""; }
+    if (!say) return "";
+    return '<span class="sync" style="font-weight:800;color:#fecaca"> · ' + esc(say) +
       ' not uploaded yet</span>';
   }
 
@@ -5618,10 +5702,11 @@ function discRowOn(client, brand, onYmd) {
   }
   function mpRun(ids) {
     var pin = passPinGet(), done = 0;
+    _mpBatch = { at: Date.now(), ids: {}, got: {}, why: "", timer: null };   /* 1.120.0 */
     var go = function (i) {
       if (i >= ids.length) { S.mp = {}; render(); toast(done + (done === 1 ? ' challan' : ' challans') + ' passed and dispatched. Any the server refuses goes back, and says why.'); return; }
       var c = chFind(ids[i]);
-      if (c && String(c.status || "") === "Draft" && !chHeld(c) && passGate(c).ok) { doPass(c, pin); done++; }
+      if (c && String(c.status || "") === "Draft" && !chHeld(c) && passGate(c).ok) { _mpBatch.at = Date.now(); _mpBatch.ids[c.id] = 1; doPass(c, pin); done++; }
       setTimeout(function () { go(i + 1); }, 900);   /* one at a time, so the server is never asked twice at once */
     };
     go(0);
@@ -5635,7 +5720,7 @@ function discRowOn(client, brand, onYmd) {
   var JRN_WHAT = { payments: "Payment", challans: "Challan", returns: "Return", followups: "Follow-up", clients: "Client", audit: "Note", receipts: "Receipt" };
   function sheetHeld() {
     var l = jrnLoad();
-    var h = '<h2>' + l.length + ' held on this phone</h2>' +
+    var h = '<h2>' + (l.length ? esc(jrnSay(l)) : 'Nothing') + ' held on this phone</h2>' +   /* Challan 1.120.0 / Payment 1.60.0 */
       '<div class="muted" style="margin-bottom:8px">Each goes to the server by itself when there is signal. Nothing here is lost or deleted — a record leaves this list only when the server has it.</div>';
     if (!l.length) return h + '<div class="empty">Nothing is held. Everything is on the server.</div>' +
       '<div class="acts" style="margin-top:12px"><button class="btn gry" data-act="close">Close</button></div>';
@@ -5677,6 +5762,40 @@ function discRowOn(client, brand, onYmd) {
      Two copies of a path that releases material is two chances for them to disagree about what
      "passed" means - and the sheet exists precisely so that the second, third and tenth pass
      never touch the first branch again. */
+  /* 1.120.0 - "PASS & DISPATCH N" SPEAKS ONCE. Each pass toasted for itself, and the Telegram
+     answers arrive up to a minute later, so after a batch of eight the screen kept being covered by
+     "Dispatched. The dispatch bot did not answer..." eight times over, on whatever he had moved on
+     to. In a batch the good news is the one summary line mpRun gives; anything that went wrong is
+     gathered for four seconds and said once, with the challan numbers. A single pass is unchanged. */
+  var _mpBatch = null;
+  function mpN(n) { return n + (n === 1 ? " challan" : " challans"); }
+  var MP_SAY = {
+    back:   function (n, l, m) { return mpN(n) + " went back to Draft (" + l + ")" + (m ? " — the server said: " + m : "") + "."; },
+    half:   function (n, l) { return mpN(n) + " passed but NOT dispatched (" + l + ") — press Dispatch on " + (n === 1 ? "it" : "them") + "."; },
+    unsure: function (n, l) { return mpN(n) + " got no answer (" + l + ") — may already be done; do NOT press again, the next refresh shows the truth."; },
+    tg:     function (n, l) { return "The dispatch bot did not answer for " + mpN(n) + " (" + l + ") — use Send to Telegram on the strip."; }
+  };
+  function passSay(c, kind, msg) {
+    var b = _mpBatch;
+    if (!b || !c || !b.ids[c.id] || Date.now() - b.at > 180000) { toast(msg); return; }   /* a pass not in the batch speaks for itself */
+    if (kind === "ok") return;
+    var k = MP_SAY[kind] ? kind : "back";
+    (b.got[k] = b.got[k] || []).push(String((c && c.challanNo) || "?"));
+    if (k === "back" && !b.why) b.why = String(msg || "");
+    if (b.timer) clearTimeout(b.timer);
+    b.timer = setTimeout(mpSayNow, 4000);
+  }
+  function mpSayNow() {
+    var b = _mpBatch; if (!b) return;
+    b.timer = null;
+    var out = [];
+    ["back", "half", "unsure", "tg"].forEach(function (k) {
+      var l = b.got[k]; if (!l || !l.length) return;
+      out.push(MP_SAY[k](l.length, l.slice(0, 6).join(", ") + (l.length > 6 ? " and " + (l.length - 6) + " more" : ""), k === "back" ? b.why : ""));
+    });
+    b.got = {}; b.why = "";
+    if (out.length) toast(out.join(" "));
+  }
   function doPass(c2, pin2) {
     /* ---- PAINT FIRST, CONFIRM BEHIND  (v1.49.0) ----
        "make it fast and effective". It cannot be made fast: this backend's CHEAPEST call is
@@ -5692,20 +5811,21 @@ function discRowOn(client, brand, onYmd) {
     chMoveRemember(c2.id, "Dispatched", S.user);
     _moving++;
     var pDone = function () { if (_moving > 0) _moving--; };
+    var say = function (kind, msg) { passSay(c2, kind, msg); };   /* 1.120.0 - one line for a batch, not one per challan */
     var pBack = function (msg) {
       c2.status = pPrev; c2.approvedBy = pPrevBy; chMoveForget(c2.id);
       /* v1.51.0 - if it was the PIN the server refused, the held one is wrong and every later
          tap would fail against it in silence. Forget it, so the next tap asks again. */
       if (/pin/i.test(String(msg || ""))) passPinClear();
-      pDone(); bust(); render(); toast(msg || "The server refused it — nothing changed.");
+      pDone(); bust(); render(); say("back", msg || "The server refused it — nothing changed.");
     };
     var pHalf = function (msg) {
       /* the pass landed, the dispatch did not. Say the truth: Approved, with its own door. */
       c2.status = "Approved"; chMoveRemember(c2.id, "Approved", S.user);
       pDone(); bust(); render();
-      toast(msg || (String(c2.challanNo || "It") + " is passed but NOT dispatched. Press Dispatch on it."));
+      say("half", msg || (String(c2.challanNo || "It") + " is passed but NOT dispatched. Press Dispatch on it."));
     };
-    bust(); render(); toast(String(c2.challanNo || "The challan") + " passed and dispatched.");
+    bust(); render(); say("ok", String(c2.challanNo || "The challan") + " passed and dispatched.");
 
     /* ---- ONE ROUND TRIP WHERE THERE WERE TWO ----
        `andDispatch` asks the server to stamp the approval AND release it in the same call.
@@ -5721,7 +5841,7 @@ function discRowOn(client, brand, onYmd) {
         if (!S.dispatchSent[c2.id]) {
           S.dispatchSent[c2.id] = true;
           tgChallan(c2, "TG_DISPATCH", tgCaption(c2)).catch(function () {
-            toast("Dispatched. The dispatch bot did not answer — use Send to Telegram on the strip.");
+            say("tg", "Dispatched. The dispatch bot did not answer — use Send to Telegram on the strip.");
           });
         }
         /* 1.58.0 - THE SECOND SEND IS GONE. See the note on the other one below. */
@@ -5751,14 +5871,14 @@ function discRowOn(client, brand, onYmd) {
         if (!S.dispatchSent[c2.id]) {
           S.dispatchSent[c2.id] = true;
           tgChallan(c2, "TG_DISPATCH", tgCaption(c2)).catch(function () {
-            toast("Dispatched. The dispatch bot did not answer \u2014 use Send to Telegram on the strip.");
+            say("tg", "Dispatched. The dispatch bot did not answer \u2014 use Send to Telegram on the strip.");
           });
         }
       }).catch(function () {
         /* No answer at all. The row STAYS moved and he is told plainly not to do it twice: a
            deadline is a fact about how long WE waited, not about what the server did. */
         pDone();
-        toast(String(c2.challanNo || "It") + " is passed. The dispatch did not get an answer — " +
+        say("unsure", String(c2.challanNo || "It") + " is passed. The dispatch did not get an answer — " +
               "it may already be done. Do NOT press it again; the next refresh shows the truth.");
       });
       /* ---- AND NOW IT GOES TO TELEGRAM (v1.32.0) ----
@@ -5797,7 +5917,7 @@ function discRowOn(client, brand, onYmd) {
       /* v1.49.0 - the row stays moved, for the same reason as above: the server may well
          have done it. The memory holds it for five minutes and the next pull tells the truth. */
       pDone();
-      toast("Sent, but the server did not answer in time. It may already be done — do NOT " +
+      say("unsure", "Sent, but the server did not answer in time. It may already be done — do NOT " +
             "do it again. The next refresh will show the truth.");
     });
   }
@@ -6551,7 +6671,7 @@ function discRowOn(client, brand, onYmd) {
   }
   function bioEnrol() {
     if (!bioAvailable()) { toast("This phone has no Face ID or fingerprint the browser can use."); return; }
-    if (!S.user || !S.pin) { toast("Sign in first, then turn it on."); return; }
+    if (!S.user || (!S.pin && !S.tok)) { toast("Sign in first, then turn it on."); return; }
     navigator.credentials.create({
       publicKey: {
         challenge: randBytes(32), rp: { name: "Energy World Challan" },
@@ -6561,7 +6681,7 @@ function discRowOn(client, brand, onYmd) {
         timeout: 60000, attestation: "none"
       }
     }).then(function (cred) {
-      localStorage.setItem(BIO_KEY, JSON.stringify({ id: b64u(cred.rawId), user: S.user, pin: S.pin }));
+      credPut(BIO_KEY, { id: b64u(cred.rawId), user: S.user, pin: S.pin });
       toast("Face ID / fingerprint enabled on this phone.");
       S.sheet = sheetAccount(); render();
     }).catch(function () { toast("Could not enable it. Your PIN still works."); });
@@ -6573,7 +6693,7 @@ function discRowOn(client, brand, onYmd) {
       publicKey: { challenge: randBytes(32), allowCredentials: [{ type: "public-key", id: fromB64u(saved.id) }],
                    userVerification: "required", timeout: 60000 }
     }).then(function () {
-      S.user = saved.user; S.pin = saved.pin;
+      S.user = saved.user; S.pin = saved.pin || ""; S.tok = saved.tok || "";   /* B9 */
       /* v1.13.0 - this api call used to fall through to the outer catch, so a dropped packet
          told the man his fingerprint did not match. It matched. Give it its own catch. */
       return authOnce(1).catch(function (e) {
@@ -6586,7 +6706,7 @@ function discRowOn(client, brand, onYmd) {
         }
         S.user = r.user.name; S.role = String(r.user.role || "").toLowerCase();
         if (!roleAny(ALLOWED)) { S.pin = ""; renderLogin(notForYou(S.user, S.role)); S.role = ""; return; }
-        try { localStorage.setItem(STORE, JSON.stringify({ user: S.user, pin: saved.pin, role: S.role })); } catch (e) {}
+        try { credPut(STORE, { user: S.user, pin: saved.pin, role: S.role }); } catch (e) {}
         stockApply();                     /* v1.53.0 */
         startFlushTicker();
         pull(false);
@@ -6612,6 +6732,7 @@ function discRowOn(client, brand, onYmd) {
   }
 
   function signOut() {
+    credDrop();   /* B9 */
     try { localStorage.removeItem(STORE); } catch (e) {}
     try { localStorage.removeItem(BIO_KEY); } catch (e) {}
     try { bigDel(SNAP + "_" + S.user); } catch (e) {}
@@ -8242,21 +8363,34 @@ function discRowOn(client, brand, onYmd) {
      a wall in front of those would be worse than the gap. It also asks BEFORE the challan
      number is drawn from the server: a number taken and then abandoned is a hole in the paper
      series, and the series is the one thing the app and the book must agree about. */
+  /* 1.120.0 - ONE CARD BEFORE THE SAVE. A challan could take four presses of the same button:
+     the fare question, then "NO rate on file ... Press Save again", then "Stock is short ... press
+     save again" - each a toast that vanished, each found only by pressing again. Now the first press
+     looks at all three and puts them on one card, beside the button he is looking at, and one tap
+     saves it as it stands. The card is tied to what it looked at: change a line or the fare and the
+     next press checks again, so nothing is waved through that was not on the card. */
+  function chCheckSig(z) {
+    z = z || {};
+    return JSON.stringify([(z.items || []).map(function (l) { return [l.code, num(l.qty), l.brand || "", l.disc == null ? "" : l.disc]; }), num(z.freight), z.client || ""]);
+  }
   function chFreightBar() {
-    if (!(S.ch && S.ch.frAsked)) return "";
+    var k = S.ch && S.ch.chk;
+    if (!k) return "";
+    var pts = [];
+    if (k.fr) pts.push('<b>No freight.</b> The fare box is empty. If a tempo was paid for, put the amount in &mdash; ' +
+      '<b>Freight borne by: Client</b> adds it to his bill. If the customer took it himself, or it went on our own vehicle, it can go as it is.');
+    if (k.nr && k.nr.length) pts.push('<b>No rate on file</b> for ' + esc(k.name || "this client") + ' on ' + esc(k.nr.join(", ")) +
+      ' &mdash; these lines bill at <b>full list</b> until the office sets a rate.');
+    if (k.ov && k.ov.length) pts.push('<b>Stock is short:</b> ' + k.ov.map(function (x) {
+      return esc(x.desc) + ' &mdash; asked ' + esc(x.want) + ', free ' + esc(x.free > 0 ? x.free : 0); }).join("; ") + '.');
+    if (!pts.length) return "";
     return '<div class="card" style="border:1px solid #fbbf24;background:#fffbeb">' +
-      '<div style="font-weight:700;font-size:14px;color:#92400e;margin-bottom:3px">No freight on this one?</div>' +
-      /* English, like every other word in this app. Saathi is the Hinglish one, and it is
-         Hinglish because it is for partners outside the business - this screen is the godown
-         and the office. */
-      '<div class="muted" style="color:#92400e">The fare box is empty. If a tempo was paid for, ' +
-      'put the amount in &mdash; <b>Freight borne by: Client</b> means it is added to his bill. ' +
-      'If the customer took it himself, or it went on our own vehicle, say so and it saves.</div>' +
+      '<div style="font-weight:700;font-size:14px;color:#92400e;margin-bottom:5px">Before it is saved' + (pts.length > 1 ? ' &mdash; ' + pts.length + ' things' : '') + '</div>' +
+      pts.map(function (x) { return '<div class="muted" style="color:#92400e;margin-top:4px">&bull; ' + x + '</div>'; }).join("") +
       '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:9px">' +
-      '<button class="btn" data-act="ch-fr-add" style="background:#b45309;border-color:#b45309">' +
-        'Put the fare in</button>' +
+      (k.fr ? '<button class="btn" data-act="ch-fr-add" style="background:#b45309;border-color:#b45309">Put the fare in</button>' : '') +
       '<button class="btn ghost" data-act="ch-fr-no" style="border-color:#fbbf24;color:#92400e">' +
-        'No freight &mdash; save it</button>' +
+        (pts.length === 1 && k.fr ? 'No freight &mdash; save it' : 'Save it as it stands') + '</button>' +
       '</div></div>';
   }
   /* 1.63.0 - the register's filters. Every one is a <select> or a search box whose id starts
@@ -8994,7 +9128,11 @@ function discRowOn(client, brand, onYmd) {
     if (act === "ch-fr-no") {
       /* Straight back into the same Save, on the SAME screen - no repaint between the two
          taps. frAsked is already set, so the ask cannot fire twice and this can never loop. */
-      if (S.ch) S.ch.frAsked = true;
+      if (S.ch) {
+        S.ch.frAsked = true;
+        /* 1.120.0 - confirms what the card showed, and only if the challan is still what it looked at */
+        if (S.ch.chk && S.ch.chk.sig === chCheckSig(S.ch)) { S.ch.noRateOk = true; S.ch.stkWarned = true; }
+      }
       var _sv = document.querySelector('[data-act="ch-save"]');
       if (_sv) _sv.click(); else toast("Tap Create the challan again — it will save with no freight.");
       return;
@@ -9051,11 +9189,10 @@ function discRowOn(client, brand, onYmd) {
          ahead of the disabled button, and a long way ahead of the challanNo call - so nothing
          has been taken when it stops, and nothing is lost if he walks away from it. The typed
          fields all live on S.ch already (see wireInputs), so the repaint cannot lose any. */
-      if (!(S.ch && S.ch.frAsked) && num(z.freight) <= 0) {
-        if (S.ch) S.ch.frAsked = true;
-        render();
-        return;
-      }
+      /* 1.120.0 - a second press on the same challan, with the card showing, is his "yes" to it,
+         as "press Save again" always was. Changed since the card? Then it looks again. */
+      if (S.ch && S.ch.chk && S.ch.chk.sig === chCheckSig(S.ch)) { S.ch.frAsked = true; S.ch.noRateOk = true; S.ch.stkWarned = true; }
+      var _frNeed = !(S.ch && S.ch.frAsked) && num(z.freight) <= 0;   /* 1.120.0 - asked on the one card below */
       var _noRate = [];
       lines = lines.map(function (l) {
         if (isJobLine(l)) {
@@ -9072,12 +9209,7 @@ function discRowOn(client, brand, onYmd) {
         if (!_pr && d === "" && l.brand && _noRate.indexOf(l.brand) < 0) _noRate.push(l.brand);
         return { code:l.code, desc:l.desc, unit:l.unit, qty:num(l.qty), rate:num(l.rate), brand:l.brand, disc:d };
       });
-      if (_noRate.length && !(S.ch && S.ch.noRateOk)) {
-        S.ch.noRateOk = true;
-        toast(cObj.name + " has NO rate on file for " + _noRate.join(", ") + " \u2014 these lines will bill at " +
-              "FULL LIST until the office sets a rate. Press Save again to write it as it stands.");
-        return;
-      }
+      var _nrNeed = !!(_noRate.length && !(S.ch && S.ch.noRateOk));   /* 1.120.0 - on the one card */
       /* ============ ONE MEANING PER COLUMN (v1.24.0) ============
          These two columns meant DIFFERENT THINGS depending on which app wrote the row, and
          one screen reads both:
@@ -9110,7 +9242,15 @@ function discRowOn(client, brand, onYmd) {
       })[0] || {};
       /* 1.99.0 - more than is free in stock: said once, and a second press saves it */
       var _ovr = stkOverLines(lines, z.editId);
-      if (_ovr.length && !z.stkWarned) { z.stkWarned = true; toast(stkOverSay(_ovr)); return; }
+      var _ovNeed = !!(_ovr.length && !z.stkWarned);
+      /* 1.120.0 - ONE STOP, ONE CARD: the fare, the missing rate and the short stock together */
+      if (_frNeed || _nrNeed || _ovNeed) {
+        if (S.ch) S.ch.chk = { fr: _frNeed, nr: _nrNeed ? _noRate : [], ov: _ovNeed ? _ovr : [], name: cObj.name, sig: chCheckSig(S.ch) };
+        render();
+        setTimeout(function () { var _cd = document.querySelector('[data-act="ch-fr-no"]'); if (_cd && _cd.scrollIntoView) { try { _cd.scrollIntoView({ block: "center" }); } catch (e) {} } }, 0);
+        return;
+      }
+      if (S.ch) S.ch.chk = null;
       t.disabled = true; t.textContent = "Creating…";
       var reset = function () { t.disabled = false; t.textContent = "Create the challan"; };
 
@@ -9241,6 +9381,7 @@ function discRowOn(client, brand, onYmd) {
         }
         return saveRow("challans", ch, { noFor: _editRow ? "" : _noFor }).then(function (r) {
           var saved = r.row || ch;
+          if (z.siteNew) { try { siteFromChallan(cObj, z.site); } catch (eSf) {} }   /* 1.120.0 */
           var _list = (S.data.challans = S.data.challans || []);
           if (_editRow) {
             /* replace in place. Pushing would put two rows with the same challanNo in the
@@ -9664,7 +9805,7 @@ function discRowOn(client, brand, onYmd) {
         S.pin = ""; renderLogin(notForYou(S.user, S.role)); S.role = "";
         return;
       }
-      try { localStorage.setItem(STORE, JSON.stringify({ user: S.user, pin: pin, role: S.role })); } catch (e) {}
+      try { credPut(STORE, { user: S.user, pin: pin, role: S.role }); } catch (e) {}
       stockApply();                       /* v1.53.0 */
       startFlushTicker();
       pull(false);
@@ -9990,12 +10131,46 @@ function discRowOn(client, brand, onYmd) {
   }
   stockRead();
 
+  /* ===== THE CRM'S MONEY CHECK ASKS THIS APP  (CRM 6.9.669 / Challan 1.120.0 / Payment 1.60.0 /
+     Service 1.19.0, 30 Sep 2026) =====
+     The daily money check proved the CRM's screens agree with each other. Whether THIS app shows a
+     client the same balance was proved only in the tests, on made-up books. Now the CRM's Health
+     check opens this page in a hidden frame as ?probe=ledger, hands it a COPY of its own book, and
+     this app works every figure with its own code - the code the man at the counter is looking at -
+     and hands them back. It signs nobody in, sends nothing, writes nothing, keeps no journal and
+     registers no worker. Opened any other way (a man typing the link, no CRM behind it) the parent
+     has no __ewProbeBook and the app starts as normal. */
+  function ewProbe() {
+    var P = null;
+    try {
+      if (String(location.search || "").indexOf("probe=ledger") < 0) return false;
+      P = (window.parent && window.parent !== window) ? window.parent : null;
+      if (!P || typeof P.__ewProbeBook !== "function" || typeof P.__ewProbeAnswer !== "function") return false;
+    } catch (e) { return false; }
+    var book = null; try { book = P.__ewProbeBook(); } catch (e) { book = null; }
+    if (!book) return false;
+    var answer = function (out, err) { try { P.__ewProbeAnswer("challan", APP_VERSION, out, err || ""); } catch (e) {} };
+    S.user = String((book.user && book.user.name) || "Money check"); S.role = "admin";
+    try { document.title = "Money check"; } catch (e) {}
+    bigPreload([CAT_KEY]).then(function () {
+      try {
+        S.data = null;
+        mergeBook(book, KEEP_FAST); mergeBook(book, KEEP_REST);
+        mergeBook(book, ["payments", "challans", "returns", "clients", "discounts", "brandmap", "audit"]);
+        S.restAt = Date.now();
+        loadCatalog(); bust(); try { splitCancelled(); } catch (e) {}
+        answer((function () { var o = {}; ((S.data && S.data.clients) || []).forEach(function (c) { if (!String(c.name || "").trim() || dupIsAlias(c.name)) return; try { var m = sccFor(c); o[dkey(c.name)] = [c.name, Math.round(m.due)]; } catch (e) { o[dkey(c.name)] = [c.name, null, String((e && e.message) || e)]; } }); return o; })());
+      } catch (e) { answer(null, String((e && e.message) || e)); }
+    }).catch(function (e) { answer(null, "could not start: " + String((e && e.message) || e)); });
+    return true;
+  }
   (function boot() {
     var sess = null;
     try { sess = JSON.parse(localStorage.getItem(STORE) || "null"); } catch (e) {}
-    if (!(sess && sess.user && sess.pin)) { renderLogin(); regSW(); return; }
+    if (ewProbe()) return;   /* the CRM's money check, see above */
+    if (!(sess && sess.user && (sess.pin || sess.tok))) { renderLogin(); regSW(); return; }
 
-    S.user = sess.user; S.pin = sess.pin; S.role = sess.role || "";
+    S.user = sess.user; S.pin = sess.pin || ""; S.tok = sess.tok || ""; S.role = sess.role || "";   /* B9 */
     /* v1.7 - the offline copy lives in the big store now, so it has to be in memory before
        the warm paint or the app would open on a holding screen instead of the book. A local
        read of tens of milliseconds against a boot that already waits on two network calls,
@@ -10037,7 +10212,7 @@ function discRowOn(client, brand, onYmd) {
         refused = true; S.pin = ""; forgetBook();
         renderLogin(notForYou(S.user, S.role)); S.role = ""; return;
       }
-      try { localStorage.setItem(STORE, JSON.stringify({ user: S.user, pin: sess.pin, role: S.role })); } catch (e) {}
+      try { credPut(STORE, { user: S.user, pin: sess.pin, role: S.role }); } catch (e) {}
       stockApply();                       /* v1.53.0 - an order from the group, if the link brought him */
       if (S.data) render();
     }).catch(function () {});
