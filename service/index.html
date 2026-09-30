@@ -303,7 +303,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
    Nothing here deletes anything, ever. A visit is a row added.
    ========================================================================== */
 
-  var APP_VERSION = "1.18.0";
+  var APP_VERSION = "1.19.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_service_session";
 
@@ -1109,9 +1109,46 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     if (txt) txt.textContent = upSay(_upNow);
   }
 
+  /* ===== THE SAVED SIGN-IN KEEPS A TOKEN, NOT THE PIN  (B9 - CRM 6.9.669 / Challan 1.120.0 /
+     Payment 1.60.0 / Service 1.19.0, 30 Sep 2026) =====
+     "Stay signed in" kept the PIN itself in this browser - {user, pin} in plain text, and again in
+     the Face ID record - where any script on the origin (all the apps share one) could read it.
+     The PIN is also what passes a challan, so a copied PIN is a copied signature.
+     From server V142 a sign-in with the PIN is answered with a token: a long random key, kept by
+     the server only as a fingerprint, that runs out after 60 days unused, dies when his PIN is
+     changed, and is thrown away on Sign out. The saved sign-in keeps THAT. The PIN he types stays
+     in memory for the session (it is still asked again to pass a challan), and is never written
+     down again. On a server older than V142 no token comes back and nothing changes. */
+  function credPut(key, o) {
+    var x = Object.assign({}, o || {});
+    if (S.tok) { delete x.pin; x.tok = S.tok; }
+    try { localStorage.setItem(key, JSON.stringify(x)); } catch (e) {}
+  }
+  function credTook(r) {
+    try {
+      if (!(r && r.ok && r.tok)) return;
+      var was = S.tok; S.tok = String(r.tok);
+      if (was === S.tok) return;
+      /* a sign-in saved before V142 still holds the PIN: swap it for the token, here, once */
+      [STORE, BIO_KEY].forEach(function (k) {
+        var o = null; try { o = JSON.parse(localStorage.getItem(k) || "null"); } catch (e) { o = null; }
+        if (!o || typeof o !== "object") return;
+        if (o.user && S.user && String(o.user).toLowerCase() !== String(S.user).toLowerCase()) return;
+        if (!o.pin && o.tok === S.tok) return;
+        credPut(k, o);
+      });
+    } catch (e) {}
+  }
+  function credDrop() {
+    /* the server forgets the token too, so a copy of it left anywhere is dead */
+    try { if (S.tok && S.user) api("teamLogout", {}).catch(function () {}); } catch (e) {}
+    S.tok = "";
+  }
   function api(action, extra, ms) {
       var _t0 = Date.now();
       var body = Object.assign({ action: action, user: S.user, pin: S.pin }, extra || {});
+      if (S.tok) body.tok = S.tok;   /* B9 - the saved sign-in's token (server V142) */
+      if (action === "teamAuth" && !(extra && Object.prototype.hasOwnProperty.call(extra, "pin"))) body.keep = 1;   /* a sign-in, not a PIN re-check: ask for a token */
     /* v20.08.2026 - a call carrying a file is an upload, and an upload gets said out loud */
     var _upKb = (extra && extra.pdfBase64) ? Math.round(String(extra.pdfBase64).length / 1024) : 0;
     var _upOn = _upKb ? upStart(action, _upKb) : false;
@@ -1144,7 +1181,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
                               (head ? ", starts: " + head : "") + ")");
             });
           })
-          .then(function (j) { done(); res(j); })
+          .then(function (j) { done(); if (action === "teamAuth") credTook(j); res(j); })   /* B9 */
           .catch(function (e) {
             done();
             var msg = (e && e.message) ? String(e.message) : "";
@@ -1252,11 +1289,33 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
 
      So it sits in the freshness line at the top, next to how old the book is, which is the
      one place he already reads when he wonders whether what he is looking at is real. */
+  /* 1.120.0 - HELD RECORDS COUNTED AS HE COUNTS THEM. One challan written with no signal read
+     "2 not uploaded yet" / "2 records are held on this phone": the challan and the note that files
+     its book number. He wrote one thing. The notes that ride with a record are named after it, and
+     named alone only when nothing else is held. */
+  var JRN_ONE = { challans: ["challan", "challans"], returns: ["return", "returns"], payments: ["payment", "payments"],
+    followups: ["follow-up", "follow-ups"], clients: ["client", "clients"], receipts: ["receipt", "receipts"],
+    sites: ["site", "sites"], drivers: ["driver", "drivers"], visits: ["service visit", "service visits"],
+    move: ["pass or dispatch", "passes or dispatches"] };
+  function jrnSay(l) {
+    l = l || []; var c = {}, order = [], notes = 0;
+    l.forEach(function (e) {
+      var k = e.kind === "move" ? "move" : String(e.tab || "");
+      if (k === "audit") { notes++; return; }
+      if (!c[k]) { c[k] = 0; order.push(k); }
+      c[k]++;
+    });
+    var bits = order.map(function (k) { var w = JRN_ONE[k] || ["record", "records"]; return c[k] + " " + (c[k] === 1 ? w[0] : w[1]); });
+    var noteW = notes + (notes === 1 ? " note" : " notes");
+    if (!bits.length) return notes ? noteW : "";
+    var say = bits.length === 1 ? bits[0] : bits.slice(0, -1).join(", ") + " and " + bits[bits.length - 1];
+    return say + (notes ? " (+ " + noteW + ")" : "");
+  }
   function heldSay() {
-    var n = 0;
-    try { n = jrnCount(); } catch (e) { n = 0; }
-    if (!n) return "";
-    return '<span class="sync" style="font-weight:800;color:#fecaca"> · ' + n +
+    var say = "";
+    try { say = jrnSay(jrnLoad()); } catch (e) { say = ""; }
+    if (!say) return "";
+    return '<span class="sync" style="font-weight:800;color:#fecaca"> · ' + esc(say) +
       ' not uploaded yet</span>';
   }
 
@@ -1390,6 +1449,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       bust();
     }
 
+  var _jrnBusy = {};   /* 1.19.0 - a save still on the wire is not sent again by the retry (the Challan app's 1.102.0 B5 guard) */
   function jrnSend(e) {
       if (e.kind === "move") return api("challanMove", { id: e.id, to: e.to });
       var pre = Promise.resolve(null);
@@ -1436,6 +1496,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
         var l = jrnLoad();
         if (i >= l.length) { stop(); return; }
         var e = l[i];
+        if (_jrnBusy[e.pk] && Date.now() - _jrnBusy[e.pk] < 90000) { i++; step(); return; }   /* 1.19.0 */
         jrnSend(e).then(function (r) {
           if (r && r.ok) {
             if (e.kind === "row") {
@@ -1513,7 +1574,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       host.innerHTML =
         '<div style="display:flex;align-items:center;gap:8px">' +
           '<div style="flex:1;min-width:0">' +
-            '<div style="font-weight:800">' + l.length + ' ' + (l.length === 1 ? "record is" : "records are") +
+            '<div style="font-weight:800">' + esc(jrnSay(l)) +   /* 1.19.0 */
               ' held on this phone' + (S.jrnDurable === false ? ' <span style="opacity:.85">(and this phone will not keep them)</span>' : '') + '</div>' +
             '<div style="opacity:.9;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' +
               esc(err || "They will go up by themselves when there is signal.") + '</div>' +
@@ -1658,11 +1719,14 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     } catch (e) { _chg = null; }
       var e = jrnPut({ pk: "P-" + Date.now() + "-" + (++_jrnSeq), kind: "row", tab: tab, row: r2,
                        chg: _chg, noFor: opts.noFor || "", by: S.user || "", at: Date.now(), err: "", tries: 0 });
+      _jrnBusy[e.pk] = Date.now();   /* 1.19.0 */
       return jrnSend(e).then(function (r) {
+        delete _jrnBusy[e.pk];
         if (r && r.ok) { jrnDrop(e.pk); return { ok: true, row: r.row || r2, held: false }; }
         jrnMark(e.pk, (r && r.error) || "the server refused it");
         return { ok: true, row: e.row, held: true, err: (r && r.error) || "the server refused it" };
       }).catch(function (err) {
+        delete _jrnBusy[e.pk];
         jrnMark(e.pk, (err && err.message) ? err.message : "no answer from the server");
         return { ok: true, row: e.row, held: true, err: (err && err.message) || "no answer from the server" };
       });
@@ -1766,6 +1830,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     }
 
   function signOut() {
+      credDrop();   /* B9 */
       try { localStorage.removeItem(STORE); } catch (e) {}
       try { localStorage.removeItem(BIO_KEY); } catch (e) {}
       try { bigDel(SNAP + "_" + S.user); } catch (e) {}
@@ -1838,10 +1903,11 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      cancelMap, cancelInfo and isCancelled are byte-identical to the CRM's, and CANCEL_TABS with
      them, so t_apps_agree holds them to one meaning.
 
-     WHAT AN ENGINEER SEES, honestly: the backend sends a service phone only service:photo audit
-     rows, so a rec:cancel row does not reach it and a set-aside visit still shows there. Admin
-     and accounts get the whole tab and see it correctly today. One line in the server's audit
-     filter closes that, and it is on the V108 list. */
+     WHAT AN ENGINEER SEES: since server V108 a service phone is sent the service:photo rows AND
+     the rec:cancel rows (teamFilterOne_, Code_V141.gs - "V108 - AND rec:cancel"), full pull and
+     delta alike, so a visit or a machine set aside in the CRM leaves his list too. This note said
+     otherwise until 1.19.0, and the 30 Sep audit took the note at its word; the server was read
+     and it already does it. Admin and accounts get the whole tab, as before. */
   var CANCEL_TABS = { challans: "Challan", clients: "Client / lead", sites: "Site (lead)", returns: "Material return", payments: "Payment received", quotes: "Quote", pitch: "Brand record", visits: "Service visit", installs: "Installation" };
   var _cxCache = null;
   function cancelMap() {
@@ -3777,7 +3843,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       S.user = r.user.name; S.role = String(r.user.role || "").toLowerCase();
       try { beatStart(); } catch (e) {}
       if (!roleAny(ALLOWED)) { renderLogin(notForYou(S.user, S.role)); S.role = ""; return; }
-      try { localStorage.setItem(STORE, JSON.stringify({ user: S.user, pin: S.pin })); } catch (e) {}
+      try { credPut(STORE, { user: S.user, pin: S.pin }); } catch (e) {}
       S.busy = true; render(); pull(false);
     }).catch(function (e) { renderLogin((e && e.message) ? String(e.message) : "Could not reach the server."); });
   }
@@ -3865,15 +3931,48 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
   }
 
   /* ================= START ================= */
+  /* ===== THE CRM'S MONEY CHECK ASKS THIS APP  (CRM 6.9.669 / Challan 1.120.0 / Payment 1.60.0 /
+     Service 1.19.0, 30 Sep 2026) =====
+     The daily money check proved the CRM's screens agree with each other. Whether THIS app shows a
+     client the same balance was proved only in the tests, on made-up books. Now the CRM's Health
+     check opens this page in a hidden frame as ?probe=ledger, hands it a COPY of its own book, and
+     this app works every figure with its own code - the code the man at the counter is looking at -
+     and hands them back. It signs nobody in, sends nothing, writes nothing, keeps no journal and
+     registers no worker. Opened any other way (a man typing the link, no CRM behind it) the parent
+     has no __ewProbeBook and the app starts as normal. */
+  function ewProbe() {
+    var P = null;
+    try {
+      if (String(location.search || "").indexOf("probe=ledger") < 0) return false;
+      P = (window.parent && window.parent !== window) ? window.parent : null;
+      if (!P || typeof P.__ewProbeBook !== "function" || typeof P.__ewProbeAnswer !== "function") return false;
+    } catch (e) { return false; }
+    var book = null; try { book = P.__ewProbeBook(); } catch (e) { book = null; }
+    if (!book) return false;
+    var answer = function (out, err) { try { P.__ewProbeAnswer("service", APP_VERSION, out, err || ""); } catch (e) {} };
+    S.user = String((book.user && book.user.name) || "Money check"); S.role = "admin";
+    try { document.title = "Money check"; } catch (e) {}
+    bigPreload([CAT_KEY]).then(function () {
+      try {
+        S.data = null;
+        mergeBook(book, KEEP_FAST); mergeBook(book, KEEP_REST);
+        mergeBook(book, ["installs", "visits", "clients", "audit"]);
+        catFromShelf(); bust();
+        answer((function () { var o = {}; visits().forEach(function (v) { o[String(v.id)] = [String(v.client || ""), Math.round(visitPending(v, v.installId ? installById(v.installId) : null))]; }); return o; })());
+      } catch (e) { answer(null, String((e && e.message) || e)); }
+    }).catch(function (e) { answer(null, "could not start: " + String((e && e.message) || e)); });
+    return true;
+  }
   (function () {
     var sess = null;
     try { sess = JSON.parse(localStorage.getItem(STORE) || "null"); } catch (e) { sess = null; }
+    if (ewProbe()) return;   /* the CRM's money check, see above */
     /* 1.18.0 - the crash net: a fault in a paint shows the crash screen, never a frozen tab */
     window.addEventListener("error", function (ev) { crashHandle("error", (ev && ev.error) || new Error((ev && ev.message) || "unknown")); });
     window.addEventListener("unhandledrejection", function (ev) { crashHandle("promise", (ev && ev.reason) || new Error("unknown")); });
     regSW();
-    if (!sess || !sess.user || !sess.pin) { renderLogin(""); return; }
-    S.user = sess.user; S.pin = sess.pin;
+    if (!sess || !sess.user || !(sess.pin || sess.tok)) { renderLogin(""); return; }
+    S.user = sess.user; S.pin = sess.pin || ""; S.tok = sess.tok || "";   /* B9 */
     bigPreload([SNAP + "_" + S.user, JRN_KEY, CAT_KEY]).then(function () { catFromShelf(); verWatch(); boot2(sess); });
   })();
 
