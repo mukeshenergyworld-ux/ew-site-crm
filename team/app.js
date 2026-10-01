@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.671";
+  var APP_VERSION = "6.9.672";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -12740,6 +12740,34 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
      Job work is its own row and earns nobody anything - a partner earns on the goods he brought
      us, not on our labour. incPreview has excluded it since v6.9.324 and this must agree, so it
      reads the same `x.job` flag rather than a second rule that could drift from it. */
+  /* 6.9.672 - the brands on this delivery where man #mi has no rate and should have one. Only a
+     brand with a discount row can carry a rate (the rate lives on that row), so a brand whose
+     discount is not set yet is listed as such, to be set first. Accessories / net-price lines
+     are not brands and never carry one. */
+  function hsbRateGaps(bs, mi) {
+    var out = [];
+    (bs.rows || []).forEach(function (r) {
+      var p = (r.per || [])[mi];
+      if (!p || p.rated || !p.earns || !r.real) return;
+      out.push({ brand: r.brand, value: r.value, canSet: r.disc !== null });
+    });
+    return out;
+  }
+  function hsbRatePanel(c, cl, m, mi, gaps) {
+    return '<div id="hsbrp_' + mi + '" style="display:none;margin:6px 0 2px 28px;padding:9px 10px;border:1px solid #99f6e4;border-radius:10px;background:#f0fdfa">' +
+      '<div class="meta" style="font-size:12.5px;color:#0f766e">' + esc(incRoleLabel(m.role)) + ' &middot; <b>' + esc(m.name) + '</b> on ' + esc(cl) +
+        ' &mdash; the percent of the net he earns on each brand. Saved as this client&rsquo;s preset: this delivery and every later one earn at it.</div>' +
+      gaps.map(function (g) {
+        return '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px">' +
+          '<span style="flex:1 1 140px;font-weight:600;font-size:13.5px">' + esc(g.brand) + ' <span style="color:#64748b;font-weight:500;font-size:12.5px">&middot; ' + money(g.value) + ' here</span></span>' +
+          (g.canSet
+            ? '<input class="hsb-rate" data-i="' + mi + '" data-brand="' + esc(g.brand) + '" inputmode="decimal" placeholder="Rate %" style="flex:0 1 120px;min-width:100px;min-height:44px"/>'
+            : '<span style="font-size:12.5px;color:#b45309">set this brand&rsquo;s discount first (below)</span>') + '</div>';
+      }).join("") +
+      '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px">' +
+        '<button class="btn sm" data-act="hsb-rate-save" data-i="' + mi + '" data-id="' + esc(c.id) + '" data-role="' + esc(m.role) + '" data-name="' + esc(m.name) + '" style="min-height:44px">Save as preset</button>' +
+        '<button class="btn sm ghost" data-act="hsb-rate-open" data-i="' + mi + '" style="min-height:44px">Cancel</button></div></div>';
+  }
   function hisabBrandRows(cl, priced, lineup) {
     var byBrand = {}, order = [], job = 0;
     (priced || []).forEach(function (x) {
@@ -12901,6 +12929,25 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       '<div class="meta" style="font-size:12px;margin-top:5px">Automatic &mdash; nothing to type. It is written to the audit trail with your name.' +
       (roleIs("admin") ? ' <button class="btn sm ghost" data-act="reprice-one" data-id="' + esc(c.id) + '" style="padding:2px 8px;font-size:12px">Do it now</button>' : '') +
       '</div></div>';
+  }
+  /* 6.9.672 - what he has typed on the add-to-hisab sheet, kept across a question sheet and put back */
+  function hsbKeep() {
+    var v = {}, ck = {};
+    ["hsb_extra", "hsb_extrapc", "hsb_noproof", "hsb_extranote"].forEach(function (k) { var e = document.getElementById(k); if (e) v[k] = e.value; });
+    var nx = document.getElementById("hsb_noextra"); if (nx) ck.nx = nx.checked;
+    var inc = Array.prototype.map.call(document.querySelectorAll("input.hsb-inc"), function (e) { return [e.getAttribute("data-role") + "|" + e.getAttribute("data-name"), e.checked]; });
+    var cls = function (sel) { return Array.prototype.map.call(document.querySelectorAll(sel), function (e) { return [e.getAttribute("data-brand"), e.type === "checkbox" ? e.checked : e.value]; }); };
+    var pct = cls("input.hsb-pct"), non = cls("input.hsb-non"), bd = Array.prototype.map.call(document.querySelectorAll("[data-bdisc]"), function (e) { return [e.getAttribute("data-bdisc"), e.value]; });
+    return function () {
+      Object.keys(v).forEach(function (k) { var e = document.getElementById(k); if (e) e.value = v[k]; });
+      var n2 = document.getElementById("hsb_noextra"); if (n2 && ck.nx != null) n2.checked = ck.nx;
+      inc.forEach(function (p) { Array.prototype.forEach.call(document.querySelectorAll("input.hsb-inc"), function (e) { if (e.getAttribute("data-role") + "|" + e.getAttribute("data-name") === p[0]) e.checked = p[1]; }); });
+      var put = function (sel, list) { list.forEach(function (p) { Array.prototype.forEach.call(document.querySelectorAll(sel), function (e) { if (e.getAttribute("data-brand") === p[0]) { if (e.type === "checkbox") e.checked = p[1]; else e.value = p[1]; } }); }); };
+      put("input.hsb-pct", pct); put("input.hsb-non", non);
+      bd.forEach(function (p) { var e = document.querySelector('[data-bdisc="' + p[0] + '"]'); if (e) e.value = p[1]; });
+      try { hsbDiscPaint(); } catch (e) { }
+      try { if (document.getElementById("hsb_extra")) hsbExtraPaint(); } catch (e) { }
+    };
   }
   function modalAddToHisab(id) {
     var c = (S.data.challans || []).filter(function (x) { return x.id === id; })[0];
@@ -13067,7 +13114,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
             ' no discount set</b> &mdash; decide it below. ' : '') +
           ((own && bs.noRate) ? '<b>' + bs.noRate + ' rate' + (bs.noRate > 1 ? 's are' : ' is') +
             ' missing</b> in the box' + (bs.noRate > 1 ? 'es' : '') + ' above: that man earns nothing on that ' +
-            'brand. Set it in <b>Discounts</b> if he should. This does not stop the stamp.' : '') +
+            'brand until it is set. Tap <b>Set rate</b> beside him under Who earns. This does not stop the stamp.' : '') +
           '</div>';
       } else if (own && lineup.length) {
         h += '<div class="meta" style="margin-top:8px;font-size:12.5px;color:#0f766e">' +
@@ -13167,15 +13214,27 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         'this delivery &mdash; a plumber who has left the site, a partner the client has changed. It applies to ' +
         '<b>this delivery only</b>, and whoever is ticked here is fixed to it for good: changing this client&rsquo;s ' +
         'partner later will not move a rupee of it.</div>';
-      lineup.forEach(function (m) {
-        h += '<label style="display:flex;align-items:center;gap:9px;margin:0;padding:8px 0 0;cursor:pointer">' +
+      lineup.forEach(function (m, mi) {
+        /* 6.9.672 - HIS WORDS, 1 Oct 2026, over "PLUMBER · PREM  NO RATE SET — EARNS NOTHING" three
+           times on Anil Garg - Jyoti Foam: "make provision to click to set rates and once set it will
+           be as preset". The screen named the omission and then sent him to another screen to fix
+           it. Now a man with a brand on this delivery that has no rate for him gets a Set rate
+           button; the panel under him lists those brands, and Save writes the rate onto this
+           client's own preset (the discount row for that brand, the same place Discounts writes
+           it) - so this delivery earns at it, and every later one does without being asked. */
+        var _un = hsbRateGaps(bs, mi);
+        h += '<div style="display:flex;align-items:center;gap:9px;padding:8px 0 0;flex-wrap:wrap">' +
+          '<label style="display:flex;align-items:center;gap:9px;margin:0;cursor:pointer;flex:1 1 220px;min-height:44px">' +
           '<input type="checkbox" class="hsb-inc" checked data-role="' + esc(m.role) + '" data-name="' + esc(m.name) +
             '" style="width:19px;height:19px;flex:0 0 auto"/>' +
           '<span style="flex:1 1 auto;font-weight:600;color:#0f172a">' + esc(incRoleLabel(m.role)) +
-            ' <span style="color:#475569;font-weight:500">&middot; ' + esc(m.name) + '</span></span>' +
+            ' <span style="color:#475569;font-weight:500">&middot; ' + esc(m.name) + '</span></span></label>' +
           '<span style="font-size:12.5px;color:' + (m.rated ? '#0f766e' : '#94a3b8') + ';white-space:nowrap">' +
             (m.rated ? (m.mixed ? 'mixed rates' : m.pct + '%') + ' &middot; <b>' + money(m.amt) + '</b>'
-                     : 'no rate set &mdash; earns nothing') + '</span></label>';
+                     : (_un.length ? 'no rate set' : 'no rate set &mdash; earns nothing')) + '</span>' +
+          (_un.length ? '<button class="btn sm" data-act="hsb-rate-open" data-i="' + mi + '" style="min-height:44px">' +
+            (m.rated ? 'Set the missing rate' + (_un.length > 1 ? 's' : '') : 'Set rate') + '</button>' : '') +
+          '</div>' + (_un.length ? hsbRatePanel(c, cl, m, mi, _un) : '');
       });
     }
     /* v6.9.338 - AND NAME ONE NOW IF NOBODY IS NAMED.
@@ -50079,6 +50138,50 @@ function viewCatalogue() {
     /* v6.9.565 - HIS DISCOUNT, CHANGED ON THE FINALISE SHEET. Owner only; nothing is written
        until he says yes to a sheet naming each line and the rupee difference; then the same write
        the re-price makes - the challan's own lines and an audit row with his name. */
+    if (act === "hsb-rate-open") {   /* 6.9.672 - open / close the Set rate panel, nothing redrawn */
+      var _rp = document.getElementById("hsbrp_" + t.getAttribute("data-i"));
+      if (_rp) { var _op = _rp.style.display === "none"; _rp.style.display = _op ? "block" : "none";
+        if (_op) { var _f = _rp.querySelector("input.hsb-rate"); if (_f) { _rp.scrollIntoView({ block: "nearest" }); _f.focus(); } } }
+      return;
+    }
+    if (act === "hsb-rate-save") {   /* 6.9.672 - the rate goes onto the client's preset (its discount row) */
+      if (!roleIs("admin")) { toast("Setting an incentive rate is the owner\u2019s."); return; }
+      var _rc = (S.data.challans || []).filter(function (x) { return x.id === id; })[0];
+      if (!_rc) return;
+      var _rcl = _rc.customerName || "", _rrole = String(t.getAttribute("data-role") || ""), _rname = t.getAttribute("data-name") || "";
+      var _rv = [], _rbad = "";
+      Array.prototype.forEach.call(document.querySelectorAll('input.hsb-rate[data-i="' + t.getAttribute("data-i") + '"]'), function (inp) {
+        var raw = String(inp.value || "").trim(); if (!raw) return;
+        var v = Number(raw);
+        if (!/^[0-9]+(\.[0-9]+)?$/.test(raw) || !(v > 0) || v > 50) { _rbad = _rbad || inp.getAttribute("data-brand"); return; }
+        _rv.push({ brand: inp.getAttribute("data-brand"), pct: v });
+      });
+      if (_rbad) { toast(_rbad + ": a rate is a percent above 0 and up to 50."); return; }
+      if (!_rv.length) { toast("Type a rate for at least one brand."); return; }
+      var _rkeep = hsbKeep();
+      askSheet({
+        title: "Set " + esc(_rname) + "\u2019s rate?",
+        sub: esc(incRoleLabel(_rrole)) + " \u00b7 " + esc(_rcl),
+        body: _rv.map(function (x) { return '<div><b>' + esc(x.brand) + '</b> &middot; <b>' + x.pct + '%</b> of the net</div>'; }).join("") +
+          '<div class="meta" style="margin-top:8px">It becomes ' + esc(_rcl) + '&rsquo;s preset for ' + (_rv.length > 1 ? 'these brands' : 'this brand') +
+          ': this delivery and every later one earn at it. Change it any time under Discounts.</div>',
+        yes: "Save as preset", no: "Not now"
+      }).then(function (yes) {
+        if (yes) {
+          var _done = 0;
+          _rv.forEach(function (x) {
+            var exd = discRow(_rcl, x.brand); if (!exd) return;
+            var notes = incMap(exd);
+            if (_rrole === "exec") { notes.exec = x.pct; notes.execOn = 1; } else notes[_rrole.toLowerCase()] = x.pct;
+            save("discounts", { id: exd.id, client: exd.client, brand: exd.brand, pct: exd.pct, notes: JSON.stringify(notes) }, true);
+            _done++;
+          });
+          toast(_done ? (_rname + "\u2019s rate saved on " + _done + " brand" + (_done > 1 ? "s" : "") + " \u2014 it is this client\u2019s preset now.") : "Nothing saved.");
+        }
+        S.modal = modalAddToHisab(_rc.id); render(); _rkeep();
+      });
+      return;
+    }
     if (act === "hsb-disc-save") {
       if (!roleIs("admin")) { toast("Changing a discount on a delivery is the owner\u2019s."); return; }
       var _dc = (S.data.challans || []).filter(function (x) { return x.id === id; })[0];
