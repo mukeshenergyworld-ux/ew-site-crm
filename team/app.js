@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.677";
+  var APP_VERSION = "6.9.678";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -14918,7 +14918,12 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     var totOp = rows.reduce(function (a, r) { return a + r.opening; }, 0);
     var totDue = rows.reduce(function (a, r) { return a + r.due; }, 0);
     /* v6.9.529 - his third list, item 1: "must be in single line compact". Three lines per
-       client became one; the mobile and the area are columns. */
+       client became one; the mobile and the area are columns.
+       6.9.678 - 2 Oct 2026, over the same list: "earlier all these in single line, make it compact
+       one". It had grown back to 99px a row (measured, 1440 wide): Attach and Hisab stacked one above the other (each a
+       44px phone tap), and "as on 25/07/2026" broke under its figure. Now the two buttons sit side by
+       side, the date stays with its figure, and on a laptop with a mouse the buttons are 28px - the
+       same "regtbl" rule the register got in 6.9.675. A phone keeps its 44px taps. Measured after: 37px a row at 1440 and 1280, 39px at 1046, no sideways scroll on a laptop; 55px on a phone (was 99). */
     return '<div class="card" style="border-color:#fde68a;background:#fffbeb">' +
       '<h3 style="margin:0 0 2px;font-size:13px">' + rows.length + ' old client' + (rows.length === 1 ? '' : 's') + ' owe' + (rows.length === 1 ? 's' : '') + ' money with no old hisab attached</h3>' +
       '<div class="meta" style="margin-bottom:6px">' + money(totOp) + ' came over from the old books; ' +
@@ -14928,7 +14933,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       '<div class="acts" style="margin:0 0 6px"><button class="btn sm ghost" data-act="hdmiss-xlsx" ' +
       'title="The same list as an Excel file, in the same order">↓ Excel</button>' +
       '<span class="meta" style="align-self:center;font-size:12px">biggest old balance first</span></div>' +
-      xlTable("hdmiss", [
+      '<div class="regtbl">' + xlTable("hdmiss", [
         { k: "name", t: "CLIENT", w: "140px" }, { k: "mobile", t: "MOBILE" }, { k: "where", t: "AREA" }, { k: "exec", t: "EXECUTIVE" },
         { k: "opening", t: "CAME OVER WITH", n: 1, r: 1 }, { k: "due", t: "OWES NOW", n: 1, r: 1 }, { k: "share", t: "OLD BOOK", n: 1, r: 1 }, { k: "go", t: "" }
       ], rows.map(function (r) {
@@ -14937,12 +14942,12 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
             name: '<b data-act="bill-open" data-n="' + esc(r.name) + '" style="cursor:pointer;color:#92400e">' + esc(r.name) + '</b>',
             mobile: r.mobile ? '<a href="tel:' + esc(r.mobile) + '">' + esc(r.mobile) + '</a>' : '<span style="color:#94a3b8">—</span>',
             where: esc(r.where || "—"), exec: r.exec ? whoChip(r.exec) : '<span style="color:#94a3b8">—</span>',
-            opening: money(r.opening) + (r.asOn ? ' <span style="color:#94a3b8;font-size:12px">as on ' + esc(d10(r.asOn)) + '</span>' : ''),
+            opening: '<span style="white-space:nowrap">' + money(r.opening) + (r.asOn ? ' <span style="color:#94a3b8;font-size:12px">as on ' + esc(d10(r.asOn)) + '</span>' : '') + '</span>',
             due: '<b style="color:#b91c1c">' + money(r.due) + '</b>', share: r.share + '%',
-            go: '<button class="btn sm" data-act="hd-open" data-id="' + esc(r.id) + '" style="padding:2px 8px;font-size:12px;background:#0d9488;border-color:#0d9488">Attach</button> ' +
-                '<button class="btn sm ghost" data-act="bill-open" data-n="' + esc(r.name) + '" style="padding:2px 8px;font-size:12px">Hisab</button>'
+            go: '<span style="display:inline-flex;gap:6px;white-space:nowrap"><button class="btn sm" data-act="hd-open" data-id="' + esc(r.id) + '" style="padding:2px 8px;font-size:12px;background:#0d9488;border-color:#0d9488">Attach</button>' +
+                '<button class="btn sm ghost" data-act="bill-open" data-n="' + esc(r.name) + '" style="padding:2px 8px;font-size:12px">Hisab</button></span>'
           } };
-      }), "the executive, the figures and Attach") + '</div>';
+      }), "the executive, the figures and Attach") + '</div></div>';
   }
   function hdMissXlsx() {
     var rows = hdMissRows();
@@ -46628,7 +46633,7 @@ function viewCatalogue() {
       "border-bottom:1px solid #e2e8f0;border-radius:18px 18px 0 0}" +
       ".modalx .btn{padding:5px 12px;font-size:12.5px}" +
       /* 6.9.675 - the register on a laptop: one line a row (his ask); a phone keeps 44px taps */
-      "@media(min-width:640px) and (pointer:fine){.regtbl .btn.sm{min-height:28px;min-width:0;padding:2px 9px}.regtbl td{padding-top:4px!important;padding-bottom:4px!important}}" +
+      "@media(min-width:640px) and (pointer:fine){.regtbl .btn.sm{min-height:28px;min-width:0;padding:2px 9px}.regtbl td{padding-top:4px!important;padding-bottom:4px!important;vertical-align:middle!important}}" +
       /* v6.9.401 THE 40px FLOOR. On a phone, anything a thumb taps is at least 40px tall
          and 40px wide: .btn.sm was 29-31px (about 170 of them across the app), the
          popup's Close 27px, the compact/expand switch 36px, the amber "Set district"
