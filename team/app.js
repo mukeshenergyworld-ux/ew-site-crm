@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.676";
+  var APP_VERSION = "6.9.677";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -45542,12 +45542,68 @@ function viewCatalogue() {
     if (a) { l.code = a; l.state = "ok"; }
     return l;
   }
+  /* ===== 6.9.677 - A NEW PRODUCT OFF A TALLY BILL IN ONE STEP =====
+     HIS WORDS, 2 Oct 2026, over a Fima bill (FJ-766, 8 lines, none in the CRM): "on clicking a new
+     product, its automatically fill tally data and ask for item pic url only, just want to make it
+     simple and fast".
+     Fima's bill has no Part No. column - the code is the first word of Tally's item name
+     ("F194CS Angle Stop Cock 15MM"). So the code is read off the name, and is matched like a Part
+     No. (a product already in the CRM under it is found, not added twice). "+ New product" then fills
+     code, name, brand, unit and HSN from the bill and asks only for the picture link; "Edit details"
+     opens the full form for the odd line Tally got wrong. */
+  function tallyCodeInName(desc) {
+    var m = /^\s*([A-Za-z0-9][A-Za-z0-9\/\-.]{2,24})\s+(\S.*)$/.exec(String(desc || ""));
+    if (!m) return null;
+    var c = m[1].replace(/[.\-\/]+$/, "");
+    if (c.length < 4 || !/[0-9]/.test(c) || !/[A-Za-z]/.test(c)) return null;
+    if (/^\d+(\.\d+)?(mm|cm|mtr|m|inch|in|ft|kg|g|ltr|l|w|kw|hp|v|sqft|nos|pcs|x\d+)$/i.test(c)) return null;   /* "15MM Angle Valve" - a size, not a code */
+    if (c !== c.toUpperCase()) return null;   /* Tally's codes are written in capitals; "Mix3r" is a word */
+    return { code: c, name: m[2].trim() };
+  }
+  function tallyBrandGuess(b) {
+    if (b.hint) return b.hint;
+    for (var i = 0; i < (b.lines || []).length; i++) { var x = b.lines[i]; if (x.mode === "new" && x.nb && x.nb.brand) return x.nb.brand; }
+    var sup = String(b.supplier || ""), sk = sup.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim(), best = "";
+    var seen = {};
+    PRODUCTS.forEach(function (p) {
+      var br = String(p.brand || "").trim(); if (!br || seen[br]) return; seen[br] = 1;
+      var bk = br.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+      if (bk.length < 3) return;
+      if ((" " + sk + " ").indexOf(" " + bk + " ") >= 0 || sk.indexOf(bk + " ") === 0 || sk.split(" ")[0] === bk.split(" ")[0]) { if (bk.length > best.length) best = br; }
+    });
+    if (best) return best;
+    return sup.replace(/\b(private|pvt\.?|limited|ltd\.?|llp|\(p\))\s*/ig, " ").replace(/[.,\s]+$/, "").replace(/\s+/g, " ").trim();
+  }
+  /* his second message, same day: "ask for both item pic URL, Brand name select (create new if not in
+     list) & product family to select (or add new if not in list), once created, add all to master
+     price list". The family is guessed from the CRM product of that brand whose name shares most
+     words with this one (an Angle Stop Cock goes where the brand's other angle cocks are); he picks
+     or types over it. All of it goes into the Product Catalog sheet - the master price list. */
+  function tallyFamilyGuess(name, brand) {
+    var w = function (x) { return String(x || "").toLowerCase().split(/[^a-z]+/).filter(function (t) { return t.length >= 3; }); };
+    var mine = w(name), best = "", score = 0, bl = String(brand || "").toLowerCase();
+    if (!mine.length) return "";
+    PRODUCTS.forEach(function (p) {
+      if (!p.family) return;
+      var pw = w(p.desc), n = 0;
+      mine.forEach(function (t) { if (pw.indexOf(t) >= 0) n++; });
+      var same = String(p.brand || "").toLowerCase() === bl, sc = n * 2 + (same ? 1 : 0);
+      if ((same ? n >= 1 : n >= 2) && sc > score) { score = sc; best = String(p.family); }
+    });
+    return best;
+  }
+  function tallyNewDefaults(b, l) {
+    var nm = l.fromName ? (tallyCodeInName(l.desc) || {}).name : "", br = tallyBrandGuess(b), d = nm || l.desc || "";
+    return { code: String(l.partNo || "").trim(), desc: d, brand: br, family: tallyFamilyGuess(d, br), unit: l.unit || "", price: "", pic: "", edit: false };
+  }
   function stkTallyOpen(bills) {
     var ix = stkMatchIdx(), bil = stkBilledRefs();
     return bills.map(function (b) {
       b.key = stkBillKey(b.supplier, b.billNo);
       b.done = !!bil[b.key.toLowerCase()];
       (b.lines || []).forEach(function (l) {
+        var cn = tallyCodeInName(l.desc), pn0 = String(l.partNo == null ? "" : l.partNo).trim();   /* 6.9.677 - a code at the head of the name */
+        if (cn && (!pn0 || pn0 === cn.code)) { l.partNo = cn.code; l.fromName = true; }
         stkMatchLine(l, ix);
         l.net = Math.round((Number(l.rate) || 0) * (1 - (Number(l.disc) || 0) / 100) * 100) / 100;
       });
@@ -45601,8 +45657,8 @@ function viewCatalogue() {
       }
       if (x.op === "add" && x.product) {
         var f = x.product;
-        PRODUCTS.push({ code: String(f.code), family: "", desc: String(f.desc || ""), cat: "", unit: String(f.unit || ""), price: Number(f.price) || 0,
-          brand: String(f.masterBrand || ""), pic: "", specs: "", was: [], label: String(f.code) + " - " + String(f.desc || "") });
+        PRODUCTS.push({ code: String(f.code), family: String(f.family || ""), desc: String(f.desc || ""), cat: "", unit: String(f.unit || ""), price: Number(f.price) || 0,
+          brand: String(f.masterBrand || ""), pic: f.pic ? driveImg(f.pic) : "", specs: "", was: [], label: String(f.code) + " - " + String(f.desc || "") });
         n++;
       }
     });
@@ -45635,7 +45691,7 @@ function viewCatalogue() {
         var pk = el("tb_" + bi + "_" + li); if (pk) l.pick = String(pk.value || "").trim();
         if (l.mode === "new") {
           l.nb = l.nb || {};
-          ["code", "desc", "brand", "unit", "price"].forEach(function (f) { var x = el("tbn_" + f + "_" + bi + "_" + li); if (x) l.nb[f] = String(x.value || "").trim(); });
+          ["code", "desc", "brand", "family", "unit", "price", "pic"].forEach(function (f) { var x = el("tbn_" + f + "_" + bi + "_" + li); if (x) l.nb[f] = String(x.value || "").trim(); });
         }
       });
     });
@@ -45776,13 +45832,15 @@ function viewCatalogue() {
     var pmap = {}; PRODUCTS.forEach(function (p) { pmap[String(p.code).trim()] = p; });
     var opts = PRODUCTS.map(function (p) { return '<option value="' + esc(p.code) + '">' + esc(p.code) + ' — ' + esc(p.desc || "") + (p.brand ? ' · ' + esc(p.brand) : '') + '</option>'; }).join("");
     var bset = {}; PRODUCTS.forEach(function (p) { if (p.brand) bset[p.brand] = 1; });
+    var fset = {}; PRODUCTS.forEach(function (q) { var f = String(q.family || "").trim(); if (f) fset[f.toLowerCase()] = fset[f.toLowerCase()] || f; });   /* 6.9.677 - families, for the picker */
     var h = '<div class="row"><button class="btn sm ghost" data-act="imp-cancel">&larr; Back to Stock</button></div>' +
       '<div class="card"><h2 style="margin:0">Purchase bills from Tally &mdash; review</h2>' +
       '<div class="meta" style="font-size:13px">Tally is the master for item codes. A line is matched by Tally&rsquo;s Part No.; ' +
       (adm ? 'where the CRM has the product under another code, <b>saving changes the CRM code to Tally&rsquo;s</b> (the old code keeps working on old challans and quotes). A line not in the CRM: pick the product, or add it as a new product.'
            : 'a line not in the CRM is matched by the owner &mdash; that bill is sent to him and goes into stock once he has.') +
       ' <b>Saving a bill puts its quantities into stock</b>, on the bill&rsquo;s date. A bill already uploaded is skipped.</div></div>' +
-      '<datalist id="tb_prods">' + opts + '</datalist><datalist id="tb_brands">' + Object.keys(bset).sort().map(function (x) { return '<option value="' + esc(x) + '">'; }).join("") + '</datalist>';
+      '<datalist id="tb_prods">' + opts + '</datalist><datalist id="tb_brands">' + Object.keys(bset).sort().map(function (x) { return '<option value="' + esc(x) + '">'; }).join("") + '</datalist>' +
+      '<datalist id="tb_fams">' + Object.keys(fset).map(function (k) { return fset[k]; }).sort().map(function (x) { return '<option value="' + esc(x) + '">'; }).join("") + '</datalist>';
     var nSave = 0, nWait = 0, nRen = 0, nNew = 0;
     var inp = 'style="width:100%;min-height:44px;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px"';
     im.bills.forEach(function (b, bi) {
@@ -45816,15 +45874,31 @@ function viewCatalogue() {
               (adm ? '<button class="btn sm ghost" style="margin-top:4px" data-act="tb-not" data-b="' + bi + '" data-l="' + li + '">Not this product</button>' : '');
             if (adm) nRen++;
           } else if (!adm) cell = '<span style="color:#b45309">' + (l.state === "pick" ? 'Two products answer to this code &mdash; ' : 'Not in the CRM &mdash; ') + 'the owner matches it</span>';
+          else if (l.mode === "new" && !(l.nb || {}).edit && (pn || (l.nb || {}).code)) {   /* 6.9.677 - filled from the bill */
+            var lab = function (x) { return '<div style="font-size:12px;color:#475569;margin:4px 0 1px">' + x + '</div>'; };
+            var nq = l.nb, newBr = !bset[nq.brand] && !Object.keys(bset).some(function (x) { return x.toLowerCase() === String(nq.brand).toLowerCase(); });
+            nNew++;
+            cell = '<div style="font-size:12px;font-weight:700;color:#0b3b36">New product &mdash; from the bill</div>' +
+              '<div style="font-size:13px;margin:2px 0"><b>' + esc(pn || nq.code) + '</b> &middot; ' + esc(nq.desc) + '</div>' +
+              lab('Picture link') + '<input id="tbn_pic_' + id + '" type="url" inputmode="url" placeholder="Google Drive or image link" value="' + esc(nq.pic || "") + '" ' + inp + '/>' +
+              lab('Brand') + '<input id="tbn_brand_' + id + '" list="tb_brands" placeholder="Pick, or type a new one" value="' + esc(nq.brand || "") + '" ' + inp + '/>' +
+              (nq.brand && newBr ? '<div style="font-size:12px;color:#b45309">' + esc(nq.brand) + ' is a new brand - it is added with the product</div>' : '') +
+              lab('Product family') + '<input id="tbn_family_' + id + '" list="tb_fams" placeholder="Pick, or type a new one" value="' + esc(nq.family || "") + '" ' + inp + '/>' +
+              (nq.family && !fset[String(nq.family).toLowerCase()] ? '<div style="font-size:12px;color:#b45309">' + esc(nq.family) + ' is a new family</div>' : '') +
+              '<div style="margin-top:4px"><button class="btn sm ghost" data-act="tb-edit" data-b="' + bi + '" data-l="' + li + '">Edit details</button> ' +
+              '<button class="btn sm ghost" data-act="tb-not" data-b="' + bi + '" data-l="' + li + '">Pick a product instead</button></div>';
+          }
           else if (l.mode === "new") {
             var nb = l.nb || {};
             nNew++;
             cell = '<div style="font-size:12px;font-weight:700;color:#0b3b36;margin-bottom:4px">New product</div>' +
-              (pn ? '<div style="font-size:12px;color:#64748b">Code: <b>' + esc(pn) + '</b> (Tally&rsquo;s)</div>' : '<input id="tbn_code_' + id + '" placeholder="Item code (as in Tally)" value="' + esc(nb.code || "") + '" ' + inp + '/>') +
+              (pn && !l.fromName ? '<div style="font-size:12px;color:#64748b">Code: <b>' + esc(pn) + '</b> (Tally&rsquo;s)</div>' : '<input id="tbn_code_' + id + '" placeholder="Item code (as in Tally)" value="' + esc(nb.code || pn || "") + '" ' + inp + '/>') +
               '<input id="tbn_desc_' + id + '" placeholder="Name" value="' + esc(nb.desc != null ? nb.desc : l.desc) + '" ' + inp + '/>' +
               '<input id="tbn_brand_' + id + '" list="tb_brands" placeholder="Brand (type a new one to add it)" value="' + esc(nb.brand != null ? nb.brand : b.hint) + '" ' + inp + '/>' +
+              '<input id="tbn_family_' + id + '" list="tb_fams" placeholder="Product family (type a new one to add it)" value="' + esc(nb.family || "") + '" ' + inp + '/>' +
               '<div class="row" style="gap:6px"><input id="tbn_unit_' + id + '" placeholder="Unit" value="' + esc(nb.unit != null ? nb.unit : l.unit) + '" ' + inp + '/>' +
               '<input id="tbn_price_' + id + '" inputmode="decimal" placeholder="List price (optional)" value="' + esc(nb.price || "") + '" ' + inp + '/></div>' +
+              '<input id="tbn_pic_' + id + '" type="url" inputmode="url" placeholder="Picture link (Google Drive or image URL)" value="' + esc(nb.pic || "") + '" ' + inp + '/>' +
               '<button class="btn sm ghost" data-act="tb-not" data-b="' + bi + '" data-l="' + li + '">Pick a product instead</button>';
           } else {
             var cands = (l.cands || []).map(function (c) { return pmap[c]; }).filter(Boolean);
@@ -45836,7 +45910,7 @@ function viewCatalogue() {
           }
           return '<tr style="border-top:1px solid #e2e8f0;vertical-align:top">' +
             '<td style="padding:5px 7px;color:#64748b">' + l.sl + '</td>' +
-            '<td style="padding:5px 7px">' + esc(l.desc) + '<div style="font-size:12px;color:#64748b">' + (pn ? 'Part No. <b>' + esc(pn) + '</b>' : 'no part no') + (l.hsn ? ' &middot; HSN ' + esc(l.hsn) : '') + '</div></td>' +
+            '<td style="padding:5px 7px">' + esc(l.desc) + '<div style="font-size:12px;color:#64748b">' + (pn ? (l.fromName ? 'code <b>' + esc(pn) + '</b> (from the name)' : 'Part No. <b>' + esc(pn) + '</b>') : 'no part no') + (l.hsn ? ' &middot; HSN ' + esc(l.hsn) : '') + '</div></td>' +
             '<td style="padding:5px 7px;min-width:240px">' + cell + '</td>' +
             '<td style="padding:5px 7px;text-align:right;white-space:nowrap"><b>' + l.qty + '</b> ' + esc(l.unit) + '</td>' +
             '<td style="padding:5px 7px;text-align:right;white-space:nowrap">' + money(l.net) + (l.disc ? '<div style="font-size:12px;color:#64748b">' + l.disc + '% off ' + money(l.rate) + '</div>' : '') + '</td></tr>';
@@ -48148,11 +48222,12 @@ function viewCatalogue() {
       pcKeep(); _pcQ.fail = 0; pcAutoSave();
       toast("Saving in the background \u2014 keep counting."); return;
     }
-    if (act === "tb-not" || act === "tb-new" || act === "tb-cand") {   /* 6.9.671 */
+    if (act === "tb-not" || act === "tb-new" || act === "tb-cand" || act === "tb-edit") {   /* 6.9.671 */
       tbKeep();
-      var _bl = (((S.imp || {}).bills || [])[Number(t.getAttribute("data-b"))] || {}).lines || [], _ln = _bl[Number(t.getAttribute("data-l"))];
+      var _bb = ((S.imp || {}).bills || [])[Number(t.getAttribute("data-b"))] || {}, _bl = _bb.lines || [], _ln = _bl[Number(t.getAttribute("data-l"))];
       if (!_ln) return;
-      if (act === "tb-new") { _ln.mode = "new"; _ln.nb = _ln.nb || {}; }
+      if (act === "tb-new") { _ln.mode = "new"; if (!_ln.nb || !_ln.nb.desc) _ln.nb = tallyNewDefaults(_bb, _ln); }   /* 6.9.677 - filled from the bill */
+      if (act === "tb-edit") { _ln.nb = _ln.nb || tallyNewDefaults(_bb, _ln); _ln.nb.edit = true; }
       if (act === "tb-not") { _ln.mode = ""; _ln.pick = ""; if (_ln.state === "close" || _ln.state === "ok") { _ln.state = "none"; _ln.code = ""; } }
       if (act === "tb-cand") { _ln.mode = ""; _ln.pick = String(t.getAttribute("data-c") || ""); }
       render(); return;
@@ -48213,11 +48288,11 @@ function viewCatalogue() {
           if (l.state === "close") { l.fin = l.code; if (_adm && pn) l.op = { op: "rename", from: l.code, to: pn }; return; }
           if (!_adm) return;
           if (l.mode === "new") {
-            var nb = l.nb || {}, code = pn || String(nb.code || "").trim();
-            if (!code || !nb.desc || !nb.brand) { _err = _err || ("Bill " + b.billNo + ", line " + l.sl + ": a new product needs its code, name and brand."); return; }
+            var nb = l.nb || {}, code = (l.fromName ? String(nb.code || "").trim() : "") || pn || String(nb.code || "").trim();
+            if (!code || !nb.desc || !nb.brand || !nb.family) { _err = _err || ("Bill " + b.billNo + ", line " + l.sl + ": a new product needs its code, name, brand and family."); return; }
             if (_have[code]) { _err = _err || ("Bill " + b.billNo + ", line " + l.sl + ": " + code + " is already in the catalogue (" + (_have[code].desc || "") + ") - pick it instead."); return; }
             var bk = _bset[nb.brand.toLowerCase()]; if (bk) nb.brand = bk; else _newB[nb.brand] = 1;
-            l.op = { op: "add", product: { code: code, desc: nb.desc, unit: nb.unit || l.unit || "", price: nb.price || "", masterBrand: nb.brand, hsn: l.hsn || "" } };
+            l.op = { op: "add", product: { code: code, desc: nb.desc, unit: nb.unit || l.unit || "", price: nb.price || "", masterBrand: nb.brand, family: nb.family || "", hsn: l.hsn || "", pic: nb.pic || "" } };
             return;
           }
           var v = String(l.pick || "").trim(); if (!v) return;
