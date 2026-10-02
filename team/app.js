@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.674";
+  var APP_VERSION = "6.9.675";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -22430,24 +22430,36 @@ function viewCatalogue() {
         'style="padding:1px 8px;font-size:12.5px;font-weight:700">' + esc(c.challanNo || "no number") +
         ' ' + (open ? "▴" : "▾") + '</button>' +
       /* v6.9.496 - two digits of the year; the full date is on the row's own card */
-        '<div style="font-size:12px;color:#64748b;margin-top:1px;padding-left:2px">' + esc(regDMY(regDate(c)).replace(/\/(\d\d)(\d\d)$/, "/$2")) + chDatePill(c) + '</div></td>' +
-      '<td style="' + regCell(";max-width:170px;overflow:hidden;text-overflow:ellipsis") + '">' +
+      /* 6.9.675 - HIS WORDS, 2 Oct 2026, over the register: "earlier its in single line, now consuming
+         lots of extra space, compact it, if possible in single liner". Measured: 102px a row. The
+         buttons had grown to 44px everywhere (index.html), and each cell stacked two things - the
+         number over its date, the maker over the passer, the receipt over the finalise. Now each
+         pair sits side by side, and on a laptop (a mouse, not a thumb) these buttons are 28px. */
+        /* the date beside it only when the number does not already say it (an old-book number, or a
+           challan dated other than its number) - the room the one line needed */
+        (function () { var _d = regDMY(regDate(c)), _n = String(c.challanNo || "");
+          return (_n.indexOf(_d) === 0 && !chDatePill(c)) ? '' :
+            ' <span style="font-size:12px;color:#64748b;margin-left:4px">' + esc(_d.replace(/\/(\d\d)(\d\d)$/, "/$2")) + chDatePill(c) + '</span>'; })() + '</td>' +
+      '<td style="' + regCell(";max-width:160px;overflow:hidden;text-overflow:ellipsis") + '">' +
         '<a href="#" data-act="ch-hisab" data-cl="' + esc(c.customerName || "") + '" ' +
         'style="font-weight:700;color:#0b3b36;text-decoration:none;white-space:nowrap" title="' +
         (cl.mobile ? esc(cl.mobile) + ' · ' : '') + 'Open this client’s full HISAB, where the complete statement downloads">' +
         esc(c.customerName || "—") + '</a>' +
         '</td>' +
-      '<td style="' + regCell(";line-height:1.6") + '">' + sk(whoChip(c.createdBy)) + regDay(c.createdAt) + '<br>' +
-        (String(c.approvedBy || "").trim() ? sk(whoChip(c.approvedBy)) + regDay(c.approvedAt) : '<span style="color:#b91c1c;font-size:12px">not passed</span>') + '</td>' +
-      '<td style="' + regCell(";line-height:1.6") + '">' +
+      /* one line where the screen has room; on a narrower laptop these two cells wrap instead of the
+         table scrolling sideways (his 6.9.596 rule: no scrolling left or right on a laptop) */
+      '<td style="' + regCell(";line-height:1.6;white-space:normal") + '">' + sk(whoChip(c.createdBy)) + regDay(c.createdAt) + ' <span style="color:#cbd5e1">&middot;</span> ' +
+        /* 6.9.675 - the passing day only when it is not the making day: one line has to fit a laptop */
+        (String(c.approvedBy || "").trim() ? sk(whoChip(c.approvedBy)) + (String(c.approvedAt || "").slice(0, 10) === String(c.createdAt || "").slice(0, 10) ? "" : regDay(c.approvedAt)) : '<span style="color:#b91c1c;font-size:12px">not passed</span>') + '</td>' +
+      '<td style="' + regCell(";line-height:1.6;white-space:normal") + '">' +
         (pf ? sk('✓ <span style="font-size:12px;color:#64748b">' + esc(regFirst(pf.actor || pf.by)) + '</span>') + regDay(pf.at || c.receiptAt)
             : (canAttachProof()
                 ? '<button class="btn sm" data-act="ch-proof" data-id="' + esc(c.id) + '" ' +
                   'style="padding:1px 8px;font-size:12px;font-weight:700;background:#fff;color:#b45309;border:1px solid #b45309;border-radius:6px">Attach</button>'
-                : '<span style="color:#b45309">none</span>')) + '<div style="margin-top:3px">' +
+                : '<span style="color:#b45309">none</span>')) + '<span style="margin-left:8px">' +
       /* v6.9.566 - the one Finalise button while not finalised; once finalised, the stamp and day */
         (inHisab(c) ? sk(hisabStampPill(c)) + regDay((hisabStamp(c) || {}).at) :
-        (hisabAddBtn(c) || '<span style="color:#b45309;font-size:12px">not finalised</span>')) + '</div></td>' +
+        (hisabAddBtn(c) || '<span style="color:#b45309;font-size:12px">not finalised</span>')) + '</span></td>' +
       '<td style="' + regCell(";text-align:right;font-weight:700") + '">' + moneySgn(chValue(c)) + '</td>' +
       '<td style="' + regCell(";text-align:right;color:" + regBalColor(after === undefined ? bal.due : after)) + '">' +
         (after === undefined
@@ -23340,7 +23352,7 @@ function viewCatalogue() {
       (filt ? ' · filtered, so gaps are hidden' : '') + '</span></div>' +
       (shown || (!filt && R.line.length)
         ? regSwipe("the amount, the balance and limit on a phone; a laptop shows the whole row") +
-          '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table style="border-collapse:collapse;min-width:100%">' +
+          '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table class="regtbl" style="border-collapse:collapse;min-width:100%">' +
           regHead() + body + '</table></div>'
         : '<div class="empty">Nothing on the series answers that filter.</div>') + '</div>';
 
@@ -23354,7 +23366,7 @@ function viewCatalogue() {
       '<b>client code / date / count</b>, like ATUL4000/200726/001 &mdash; so they carry no place on the ' +
       'running series and no gap can be read from them. They are every bit as real; they are just ' +
       'a different book. Newest first.</div>' +
-      (on ? regSwipe("the amount, the balance and limit on a phone; a laptop shows the whole row") + '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table style="border-collapse:collapse;min-width:100%">' +
+      (on ? regSwipe("the amount, the balance and limit on a phone; a laptop shows the whole row") + '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table class="regtbl" style="border-collapse:collapse;min-width:100%">' +
             regHead() + ob + '</table></div>'
           : '<div class="empty">Nothing in the old book answers that filter.</div>') + '</div>';
 
@@ -29701,11 +29713,15 @@ function viewCatalogue() {
     var _measure = sheets.map(function (e) { return e.row; });
     return Promise.all([
       perPage ? thumbSizes(_measure) : Promise.resolve({}),
+      /* 6.9.675 - HIS WORDS, 2 Oct 2026, over the brand names at the foot: "show actual logo with
+         name, not only name". The strip printed logos only if they happened to be cached already, so
+         a cold phone printed names. Now it waits for them (up to 8 s, then names as before). */
+      Promise.race([Promise.resolve(logosReady()).catch(function () { }), new Promise(function (r) { setTimeout(r, 8000); })]),
       perPage ? receiptImages(_measure, function (d, tt) {
         if (d < tt) toast("Fetching receipt " + d + " of " + tt + "…");
       }) : Promise.resolve({})
     ]).then(function (_pre) {
-      var TSZ = _pre[0], RIMG = _pre[1];
+      var TSZ = _pre[0], RIMG = _pre[2];
       var doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4", orientation: "landscape" });
       /* 6.9.674 - HIS WORDS, 2 Oct 2026: "this font is not clearly visible in printout, suggest any other best
        font and also font size" (the quote), then "inspect challan and client hisab pdf also and do
@@ -29859,7 +29875,7 @@ function viewCatalogue() {
          and the mini PDF draw - over the TICKED lists, starting from the brought-forward figure
          above, which already folds the off-statement items in. Not a rupee moves. */
       var cP = L + 24, cBl = R - 1;
-      var LIMIT1 = H - 24, LIMITN = FOOT - 4;        /* page one keeps room for the letterhead strip */
+      var LIMIT1 = H - 27, LIMITN = FOOT - 4;   /* 6.9.675 - the logo strip is 8 mm now */        /* page one keeps room for the letterhead strip */
       var lim = LIMIT1;
       var need = function (h) {
         if (y + h > lim) { y = pageMark("the account, continued"); lim = LIMITN; }
@@ -29903,9 +29919,9 @@ function viewCatalogue() {
       logosReady();
       var slots = PDF_LOGO_ORDER.map(function (n) { return logoFor(n); }).filter(function (s) { return s && s.src; });
       F("bold"); doc.setFontSize(5); ink([120, 130, 140]);
-      doc.text("AUTHORISED DISTRIBUTOR FOR", L, H - 20);
+      doc.text("AUTHORISED DISTRIBUTOR FOR", L, H - 21.6);
       if (slots.length >= 6) {
-        var GP = 1.2, BH = 6, y0 = H - 18.6, BW = (R - L - GP * (slots.length - 1)) / slots.length;
+        var GP = 1.6, BH = 8, y0 = H - 20, BW = (R - L - GP * (slots.length - 1)) / slots.length;   /* 6.9.675 - 8mm, was 6 */
         slots.forEach(function (lg, i) {
           var bx0 = L + i * (BW + GP);
           doc.setDrawColor(216, 216, 216); doc.setLineWidth(0.18); doc.rect(bx0, y0, BW, BH, "S");
@@ -46476,6 +46492,8 @@ function viewCatalogue() {
       "backdrop-filter:saturate(180%) blur(6px);-webkit-backdrop-filter:saturate(180%) blur(6px);" +
       "border-bottom:1px solid #e2e8f0;border-radius:18px 18px 0 0}" +
       ".modalx .btn{padding:5px 12px;font-size:12.5px}" +
+      /* 6.9.675 - the register on a laptop: one line a row (his ask); a phone keeps 44px taps */
+      "@media(min-width:640px) and (pointer:fine){.regtbl .btn.sm{min-height:28px;min-width:0;padding:2px 9px}.regtbl td{padding-top:4px!important;padding-bottom:4px!important}}" +
       /* v6.9.401 THE 40px FLOOR. On a phone, anything a thumb taps is at least 40px tall
          and 40px wide: .btn.sm was 29-31px (about 170 of them across the app), the
          popup's Close 27px, the compact/expand switch 36px, the amber "Set district"
