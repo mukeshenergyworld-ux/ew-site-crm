@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.675";
+  var APP_VERSION = "6.9.676";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -22951,8 +22951,62 @@ function viewCatalogue() {
              mobile: (reg && reg.mobile) || (g && g.mobile) || "", vehicle: (reg && reg.vehicle) || (g && g.vehicle) || "",
              vtype: reg ? driverType(reg) : "" };
   }
+  /* ===== 6.9.676 - A DRIVER'S STATEMENT FOR A PERIOD =====
+     HIS WORDS, 2 Oct 2026, over the Drivers table: "if someone want to check a driver statement payout
+     and total of a particular period then make provision for that also".
+     The ledger stays the one running account it always was; a period is a window on it. What came
+     before the window is carried in as one OPENING BALANCE line (proved freight less payouts up to the
+     day before), the window's own trips and payouts are listed, and the CLOSING BALANCE is the running
+     balance on its last day - so a September statement and an October statement join up exactly. A
+     trip still waiting on its receipt is shown in the window it was dispatched in, and as always is not
+     in the balance. */
+  function dlPeriod(key) {
+    var p = S.dlPer || {};
+    return (p.key === key) ? p : { key: key, from: "", to: "", tag: "all" };
+  }
+  function dlMonth(back) {
+    var t = today(), y = Number(t.slice(0, 4)), m = Number(t.slice(5, 7)) - back;
+    while (m < 1) { m += 12; y--; }
+    var last = new Date(y, m, 0).getDate();
+    var mm = String(m).padStart(2, "0");
+    return { from: y + "-" + mm + "-01", to: y + "-" + mm + "-" + String(last).padStart(2, "0") };
+  }
+  function driverLedgerWindow(key) {
+    var L0 = driverLedgerData(key), per = dlPeriod(key);
+    var from = per.from || "", to = per.to || "";
+    if (!from && !to) return { L0: L0, ev: L0.ev, T: L0.T, open: 0, close: L0.bal, from: "", to: "", on: false };
+    var open = 0, T = { proved: 0, provedN: 0, paid: 0, paidN: 0, held: 0, heldN: 0, wait: 0, waitN: 0 }, ev = [];
+    L0.ev.forEach(function (e) {
+      if (from && e.d < from) { open = e.bal; return; }
+      if (to && e.d > to) return;
+      ev.push(e);
+      if (e.kind === "pay") { T.paid += e.amt; T.paidN++; }
+      else if (e.state === "ready") { T.proved += e.amt; T.provedN++; }
+      else if (e.state === "held") { T.held += e.amt; T.heldN++; }
+      else { T.wait += e.amt; T.waitN++; }
+    });
+    return { L0: L0, ev: ev, T: T, open: open, close: open + T.proved - T.paid, from: from, to: to, on: true };
+  }
+  function dlPeriodWords(W) {
+    return W.from && W.to ? dmy(W.from) + " to " + dmy(W.to) : W.from ? "from " + dmy(W.from) : "up to " + dmy(W.to);
+  }
+  function dlPeriodBar(key) {
+    var per = dlPeriod(key), tag = per.tag || "all";
+    var chip = function (t, label) {
+      return '<button class="btn sm ' + (tag === t ? '' : 'ghost') + '" data-act="dl-per" data-k="' + esc(key) + '" data-p="' + t + '" style="padding:2px 10px">' + label + '</button>';
+    };
+    var inp = 'style="padding:6px 8px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;min-height:44px;width:158px;max-width:44vw;flex:0 0 auto"';   /* the app gives inputs width:100% - a period bar keeps them date-sized */
+    return '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:7px 10px;border-bottom:1px solid #cbd5e1;background:#fff">' +
+      '<b style="font-size:12.5px;color:#334155;margin-right:2px">Period</b>' +
+      chip("all", "Whole ledger") + chip("this", "This month") + chip("last", "Last month") +
+      '<span style="font-size:12.5px;color:#64748b;margin-left:6px">or from</span>' +
+      '<input type="date" id="dlf_' + esc(key) + '" value="' + esc(per.from || "") + '" ' + inp + '/>' +
+      '<span style="font-size:12.5px;color:#64748b">to</span>' +
+      '<input type="date" id="dlt_' + esc(key) + '" value="' + esc(per.to || "") + '" ' + inp + '/>' +
+      '<button class="btn sm" data-act="dl-per" data-k="' + esc(key) + '" data-p="custom" style="padding:2px 12px">Show</button></div>';
+  }
   function driverLedgerPanel(key) {
-    var L0 = driverLedgerData(key), T = L0.T, bal = L0.bal;
+    var W = driverLedgerWindow(key), L0 = W.L0, T = W.T, bal = W.close;   /* 6.9.676 - a period, or the whole ledger */
     var TH = function (x, r) { return '<th style="padding:6px 8px;text-align:' + (r ? 'right' : 'left') + ';font-size:12px;font-weight:700;color:#0f172a;background:#e2e8f0;border:1px solid #cbd5e1;white-space:nowrap">' + x + '</th>'; };
     var TD = function (x, st) { return '<td style="padding:5px 8px;border:1px solid #e2e8f0;font-size:12.5px;vertical-align:top;' + (st || '') + '">' + x + '</td>'; };
     var fig = function (label, v, n, tone) {
@@ -22963,25 +23017,30 @@ function viewCatalogue() {
     var h = '<div style="margin:0 6px 0 6px;border:1px solid #0b3b36;border-top:0;border-radius:0 0 8px 8px;background:#fff">';
     /* the title bar */
     h += '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 10px;background:#0b3b36;color:#fff">' +
-      '<div style="flex:1 1 260px;min-width:0"><b style="font-size:14px">Driver ledger &mdash; ' + esc(L0.name) + '</b>' +
+      '<div style="flex:1 1 260px;min-width:0"><b style="font-size:14px">Driver ledger &mdash; ' + esc(L0.name) + (W.on ? ' &middot; ' + esc(dlPeriodWords(W)) : '') + '</b>' +
       '<div style="font-size:12px;opacity:.85">' + esc([L0.mobile, L0.vtype, L0.vehicle].filter(Boolean).join(" · ") || "no details") +
       (L0.reg ? '' : ' &middot; not on the register') + '</div></div>' +
       (roleAny(["admin", "accounts"]) && L0.g ? '<button class="btn sm" data-act="dp-open" data-k="' + esc(key) + '" style="background:#fff;color:#0b3b36;border-color:#fff">Record a payment</button>' : '') +
       '<button class="btn sm ghost" data-act="dl-xlsx" data-k="' + esc(key) + '" style="background:transparent;color:#fff;border-color:#99f6e4;min-height:44px">&#8681; Excel</button>' +
       '<button class="btn sm ghost" data-act="dl-open" data-k="' + esc(key) + '" style="background:transparent;color:#fff;border-color:#99f6e4;min-height:44px">Close &#9652;</button></div>';
     /* the figures, one line */
+    h += dlPeriodBar(key);
     h += '<div style="display:flex;flex-wrap:wrap;border-bottom:1px solid #cbd5e1;background:#f8fafc">' +
+      (W.on && W.from ? fig("Opening balance", W.open < -0.5 ? money(-W.open) + " advance" : money(W.open), null, "#334155") : '') +
       fig("Freight proved", money(T.proved), plural(T.provedN, "trip")) +
       fig("Paid to him", money(T.paid), plural(T.paidN, "payment"), "#0f766e") +
-      fig("Balance due", bal < -0.5 ? money(-bal) + " advance" : money(bal), null, bal > 0.5 ? "#b91c1c" : "#0f766e") +
+      fig(W.on ? "Closing balance" : "Balance due", bal < -0.5 ? money(-bal) + " advance" : money(bal), null, bal > 0.5 ? "#b91c1c" : "#0f766e") +
       fig("Receipt pending", money(T.held), plural(T.heldN, "trip"), T.held > 0.5 ? "#b45309" : "#0f172a") +
       (T.waitN ? fig("Not dispatched", money(T.wait), plural(T.waitN, "trip"), "#64748b") : '') + '</div>';
     if (!S.dp) h += '<div style="padding:6px 10px;font-size:12.5px;color:#b91c1c">Payouts are still loading &mdash; the Paid and Balance figures are not complete yet.</div>';
     /* the sheet */
     h += '<div style="overflow-x:auto;padding:8px 10px"><table style="width:100%;min-width:760px;border-collapse:collapse"><thead><tr>' +
       TH("DATE") + TH("VOUCHER") + TH("PARTICULARS") + TH("STATUS") + TH("FREIGHT", 1) + TH("PAID", 1) + TH("BALANCE", 1) + '</tr></thead><tbody>';
-    if (!L0.ev.length) h += '<tr>' + TD('No trip and no payout yet.', 'color:#64748b" colspan="7') + '</tr>';
-    L0.ev.forEach(function (e, i) {
+    if (W.on && W.from) h += '<tr style="background:#f1f5f9">' + TD(esc(dmy(W.from)), 'white-space:nowrap') + TD('<b>Opening</b>') +
+      TD('Balance brought forward &mdash; proved freight less payouts before ' + esc(dmy(W.from))) + TD('') + TD('') + TD('') +
+      TD(W.open < -0.5 ? money(-W.open) + ' adv.' : money(W.open), 'text-align:right;white-space:nowrap;font-weight:700') + '</tr>';
+    if (!W.ev.length) h += '<tr>' + TD(W.on ? 'No trip and no payout in this period.' : 'No trip and no payout yet.', 'color:#64748b" colspan="7') + '</tr>';
+    W.ev.forEach(function (e, i) {
       var bg = 'background:' + (i % 2 ? '#f8fafc' : '#fff') + ';';
       if (e.kind === "pay") {
         h += '<tr>' + TD(esc(dmy(e.d)), bg + 'white-space:nowrap') +
@@ -23008,7 +23067,7 @@ function viewCatalogue() {
         TD(counted ? money(e.bal) : '<span style="color:#94a3b8">' + money(e.bal) + '</span>', bg + 'text-align:right;white-space:nowrap;' + (counted ? 'font-weight:700' : '')) + '</tr>';
     });
     h += '</tbody><tfoot><tr style="background:#0b3b36;color:#fff">' +
-      '<td colspan="4" style="padding:6px 8px;font-weight:800;font-size:12.5px">Total &mdash; proved trips and payments</td>' +
+      '<td colspan="4" style="padding:6px 8px;font-weight:800;font-size:12.5px">' + (W.on ? 'Total for ' + esc(dlPeriodWords(W)) + ' &mdash; closing balance' : 'Total &mdash; proved trips and payments') + '</td>' +
       '<td style="padding:6px 8px;text-align:right;font-weight:800;white-space:nowrap">' + money(T.proved) + '</td>' +
       '<td style="padding:6px 8px;text-align:right;font-weight:800;white-space:nowrap">' + money(T.paid) + '</td>' +
       '<td style="padding:6px 8px;text-align:right;font-weight:800;white-space:nowrap">' + (bal < -0.5 ? money(-bal) + ' adv.' : money(bal)) + '</td></tr>' +
@@ -23031,21 +23090,23 @@ function viewCatalogue() {
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button><button class="btn" data-act="rt-freight-save" data-id="' + esc(r.id) + '">Save</button></div>';
   }
   function driverLedgerXlsx(key) {
-    var L0 = driverLedgerData(key);
-    var out = [[{ v: "Driver ledger — " + L0.name, s: XL.BOLD }], [[L0.mobile, L0.vtype, L0.vehicle].filter(Boolean).join(" · ")], []];
+    var W = driverLedgerWindow(key), L0 = W.L0;   /* 6.9.676 - the period on screen is the period in the file */
+    var out = [[{ v: "Driver ledger — " + L0.name + (W.on ? " — " + dlPeriodWords(W) : ""), s: XL.BOLD }], [[L0.mobile, L0.vtype, L0.vehicle].filter(Boolean).join(" · ")], []];
     out.push(["Date", "Voucher", "Particulars", "Status", "Freight", "Paid", "Balance"].map(function (t) { return { v: t, s: XL.HEAD }; }));
-    L0.ev.forEach(function (e) {
+    if (W.on && W.from) out.push([dmy(W.from), "Opening", "Balance brought forward", "", "", "", Math.round(W.open)]);
+    W.ev.forEach(function (e) {
       if (e.kind === "pay") out.push([dmy(e.d), "Payment", [e.p.mode, e.p.ref, e.p.note].filter(Boolean).join(" · "), "paid", "", Math.round(e.amt), Math.round(e.bal)]);
       else out.push([dmy(e.d), e.t.r.challanNo || e.t.r.returnNo || "", String(e.t.r.customerName || "") + (e.t.kind === "return" ? " (return trip)" : ""),
                      e.state === "ready" ? "proved" : e.state === "held" ? "receipt pending - not counted" : "not dispatched - not counted",
                      Math.round(e.amt), "", Math.round(e.bal)]);
     });
     out.push([]);
-    out.push([{ v: "Freight proved", s: XL.BOLD }, "", "", "", Math.round(L0.T.proved)]);
-    out.push([{ v: "Paid", s: XL.BOLD }, "", "", "", "", Math.round(L0.T.paid)]);
-    out.push([{ v: "Balance due", s: XL.BAND }, "", "", "", "", "", { v: Math.round(L0.bal), s: XL.BAND }]);
-    out.push([{ v: "Receipt pending (not in balance)", s: XL.BOLD }, "", "", "", Math.round(L0.T.held)]);
-    dlXlsx("Driver_ledger_" + String(L0.name).replace(/[^\w.-]/g, "_") + "_" + today() + ".xlsx", String(L0.name).slice(0, 28), out, [12, 22, 34, 26, 12, 12, 12]);
+    if (W.on && W.from) out.push([{ v: "Opening balance", s: XL.BOLD }, "", "", "", "", "", Math.round(W.open)]);
+    out.push([{ v: "Freight proved", s: XL.BOLD }, "", "", "", Math.round(W.T.proved)]);
+    out.push([{ v: "Paid", s: XL.BOLD }, "", "", "", "", Math.round(W.T.paid)]);
+    out.push([{ v: W.on ? "Closing balance" : "Balance due", s: XL.BAND }, "", "", "", "", "", { v: Math.round(W.close), s: XL.BAND }]);
+    out.push([{ v: "Receipt pending (not in balance)", s: XL.BOLD }, "", "", "", Math.round(W.T.held)]);
+    dlXlsx("Driver_ledger_" + String(L0.name).replace(/[^\w.-]/g, "_") + (W.on ? "_" + (W.from || "start") + "_to_" + (W.to || today()) : "") + "_" + today() + ".xlsx", String(L0.name).slice(0, 28), out, [12, 22, 34, 26, 12, 12, 12]);
   }
   /* v6.9.600 - link a driver typed on a delivery to the man on the register, or put him on it */
   function modalDriverLink(key) {
@@ -51707,6 +51768,18 @@ function viewCatalogue() {
       return;
     }
     if (act === "dl-xlsx") { driverLedgerXlsx(t.getAttribute("data-k") || ""); return; }
+    if (act === "dl-per") {   /* 6.9.676 - a period on one driver's ledger */
+      var _pk = t.getAttribute("data-k") || "", _pp = t.getAttribute("data-p") || "all", _pr;
+      if (_pp === "this") { _pr = dlMonth(0); }
+      else if (_pp === "last") { _pr = dlMonth(1); }
+      else if (_pp === "custom") {
+        _pr = { from: String((document.getElementById("dlf_" + _pk) || {}).value || ""), to: String((document.getElementById("dlt_" + _pk) || {}).value || "") };
+        if (!_pr.from && !_pr.to) { toast("Pick a from date, a to date, or both."); return; }
+        if (_pr.from && _pr.to && _pr.from > _pr.to) { toast("The from date is after the to date."); return; }
+      } else _pr = { from: "", to: "" };
+      S.dlPer = { key: _pk, from: _pr.from, to: _pr.to, tag: _pp };
+      keepScroll = true; render(); return;
+    }
     if (act === "dp-retry") {
       S.dp = null; S.dpErr = ""; _dpTried = true; render();
       dpPull().then(function () { render(); }); return;
