@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.686";
+  var APP_VERSION = "6.9.687";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -8667,8 +8667,9 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       if (st === "Raised" || st === "Assigned") h += '<label>Engineer</label><select id="cmp_eng">' + '<option value="">— pick —</option>' + cmpEngineers().map(function (x) { return opt(x, t.eng); }).join("") + '</select>';
       if (st !== "Resolved" && st !== "Paid") {
         var chs = []; if (c) chs = (S.data.challans || []).filter(function (x) { return dkey(x.customerName) === dkey(c.name) && String(x.createdAt) >= String(t.at).slice(0, 10); });
-        h += '<label>How it was settled</label><select id="cmp_out"><option value="">— not yet —</option>' + CMP_OUT.map(function (x) { return opt(x, t.outcome); }).join("") + '</select>' +
-          '<div class="grid2"><div><label>Service charge (₹)</label><input id="cmp_chg" inputmode="decimal" placeholder="0 if free"/></div>' +
+        h += '<label>How it was settled</label><select id="cmp_out"><option value="">— not yet —</option>' + CMP_OUT.map(function (x) { return opt(x, t.outcome || cmpOutDefault(t)); }).join("") + '</select>' +
+          cmpChargeHtml(t) +   /* 6.9.687 */
+          '<div class="grid2"><div><label>Service charge (₹)</label><input id="cmp_chg" inputmode="decimal" placeholder="0 if free" value="' + esc(String(cmpChargeFor(t))) + '"/></div>' +
           '<div><label>Challan raised</label><select id="cmp_ch"><option value="">— none —</option>' + chs.map(function (x) { return '<option value="' + esc(x.challanNo || x.id) + '">' + esc((x.challanNo || "no number") + " · " + dmy(x.createdAt) + " · " + money(chValue(x))) + '</option>'; }).join("") + '</select></div></div>';
       }
       if (st === "Resolved" && t.charge > t.collected + 0.5) h += '<div class="grid2"><div><label>Collected (₹)</label><input id="cmp_col" inputmode="decimal" value="' + Math.round(t.charge - t.collected) + '"/></div>' +
@@ -8703,6 +8704,67 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       if (S.tab === "complaints") render();
     }, function (e) { _cmpWebBusy = false; _cmpWebErr = apiWhy(e); if (S.tab === "complaints") render(); });
   }
+  /* ===== 6.9.687 - THE SERVICE CHARGE DECIDES ITSELF =====
+     HIS WORDS, 3 Oct 2026: "if product is under warranty then no service charge, if outside warranty
+     show client applicable service charge to be preset by admin for every job".
+     THE RATE CARD. One price per kind of job, set by the admin on Complaints > Service charges and
+     kept as an audit row (cmp:rates) - the latest one is the card; an old card is never lost.
+     THE RULE. A ticket's product is looked up as it stands TODAY (the warranty or AMC date runs
+     out while a complaint sits open). In warranty or under AMC: the charge is Rs 0 and the outcome
+     says so; only the admin can put a charge on it (a misuse visit). Out of warranty, or no
+     product picked: the card's rate for the job picked fills the box; he can still change it. */
+  var CMP_JOBS = ["Visit / inspection", "Repair", "Installation", "Uninstall / reinstall", "Cleaning / servicing", "Filter / media change", "Other"];
+  function cmpRates() {
+    var best = null;
+    (S.data.audit || []).forEach(function (a) { if (a.action === "cmp:rates" && (!best || String(a.createdAt) > String(best.createdAt))) best = a; });
+    var d = best ? cmpJ(best.detail) : {};
+    return { r: d.rates || {}, at: best ? best.createdAt : "", by: best ? best.actor : "" };
+  }
+  /* is the complaint's product covered today? */
+  function cmpCover(t) {
+    var ps = t.products || [];
+    for (var i = 0; i < ps.length; i++) {
+      var w = cmpWarr(ps[i]);
+      if (w.ok) return { ok: 1, txt: w.t, amc: ps[i].kind === "install", p: ps[i] };
+    }
+    return ps.length ? { ok: 0, txt: cmpWarr(ps[0]).t, p: ps[0] } : { ok: 0, txt: "no product picked on the ticket" };
+  }
+  function cmpChargeFor(t, job) {
+    var cv = cmpCover(t);
+    if (cv.ok) return 0;
+    var r = cmpRates().r[job || t.job || CMP_JOBS[0]];
+    return r != null && r !== "" ? Number(r) || 0 : "";
+  }
+  function cmpChargeHtml(t) {
+    var cv = cmpCover(t), job = t.job || CMP_JOBS[0], R = cmpRates().r;
+    var opt = function (v) { return '<option value="' + esc(v) + '"' + (v === job ? ' selected' : '') + '>' + esc(v) + (R[v] != null && R[v] !== "" ? ' — ' + money(R[v]) : '') + '</option>'; };
+    return '<label>Job done</label><select id="cmp_job" data-cover="' + (cv.ok ? 1 : 0) + '">' + CMP_JOBS.map(opt).join("") + '</select>' +
+      '<div style="margin-top:6px;padding:7px 10px;border-radius:8px;font-size:12.5px;font-weight:700;' +
+        (cv.ok ? 'background:#f0fdfa;color:#0f766e">' + esc(cv.txt) + ' &mdash; no service charge' + (roleIs("admin") ? ' (you may still charge a misuse visit)' : '')
+               : 'background:#fffbeb;color:#92400e">' + (cv.p ? 'Out of warranty (' + esc(cv.txt) + ')' : 'No product on the ticket') + ' &mdash; the rate card&rsquo;s charge for the job applies' +
+                 (Object.keys(R).length ? '' : '. <span style="font-weight:500">No rates set yet: the admin sets them under Complaints &rsaquo; Service charges.</span>')) + '</div>';
+  }
+  function cmpOutDefault(t) { var cv = cmpCover(t); return cv.ok ? (cv.amc ? "Free under AMC" : "Free under warranty") : ""; }
+  function modalCmpRates() {
+    var R = cmpRates();
+    return '<h2>Service charges</h2><p class="sub">One rate per job. A product in warranty or under AMC is never charged; out of warranty, this rate fills the charge by itself.</p>' +
+      CMP_JOBS.map(function (j, i) {
+        return '<div style="display:flex;gap:10px;align-items:center;padding:6px 0;border-top:1px solid #e2e8f0"><span style="flex:1;font-size:14px">' + esc(j) + '</span>' +
+          '<span style="font-size:14px;color:#64748b">₹</span><input id="cmpr_' + i + '" inputmode="numeric" value="' + esc(R.r[j] != null ? R.r[j] : "") + '" placeholder="0" style="width:110px;min-height:44px;text-align:right"/></div>';
+      }).join("") +
+      (R.at ? '<div class="meta" style="font-size:12px;margin-top:6px">Last set by ' + esc(R.by || "") + ' on ' + esc(dmy(R.at)) + '</div>' : '') +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button><button class="btn" data-act="cmp-rates-save">Save rates</button></div>';
+  }
+  try {
+    document.addEventListener("change", function (e) {
+      var t = e.target; if (!t || t.id !== "cmp_job" || t.getAttribute("data-cover") === "1") return;
+      var r = cmpRates().r[t.value], b = document.getElementById("cmp_chg");
+      if (b) b.value = (r != null && r !== "") ? String(Number(r) || 0) : "";
+      var o = document.getElementById("cmp_out");
+      if (o && !o.value && Number(b && b.value) > 0) o.value = "Service charge";
+    });
+  } catch (e) { }
+
   function viewComplaints() {
     if (_cmpWeb === null && !_cmpWebBusy) cmpWebLoad();
     var all = cmpAll(), tab = S.cmpTab || "pending";
@@ -8719,6 +8781,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     var tabs = [["raised", "Raised"], ["pending", "Pending"], ["done", "Completed"], ["paid", "Payment collected"], ["all", "All"]];
     var h = '<div class="card" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">' +
       '<b style="flex:1 1 220px;font-size:15px">Complaints' + (lateN ? ' <span class="pill" style="background:#fee2e2;color:#b91c1c">' + lateN + ' past the promise</span>' : '') + '</b>' +
+      (roleIs("admin") ? '<button class="btn ghost" data-act="cmp-rates">Service charges</button>' : '') +   /* 6.9.687 */
       '<button class="btn" data-act="cmp-new">+ Register complaint</button></div>';
     if (inbox.length) {
       h += '<div class="card" style="border-color:#fed7aa;background:#fff7ed"><b>' + plural(inbox.length, "complaint") + ' from the website, not taken in yet</b>' +
@@ -29213,7 +29276,9 @@ function viewCatalogue() {
     var h = '<div class="row">' +
       (S.q ? '<button class="btn sm ghost" data-act="bill-clear">\u2190 All clients</button>' : '') +
       '<input class="grow" id="q" placeholder="Type a client to bill (then Enter)..." list="billclients" value="' + esc(S.q) + '"/><button class="btn" data-act="bill-go">Show</button></div>' +
-      '<datalist id="billclients">' + billNames.map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join("") + '</datalist>' +
+      '<datalist id="billclients">' + billNames.concat((S.data.clients || []).filter(function (c) {   /* 6.9.687 - every client on the book can be found */
+        return c && c.name && billNames.indexOf(c.name) < 0 && !dupIsAlias(c.name) && (seesAllClients() || isMineClient(c.name)); }).map(function (c) { return c.name; }))
+        .map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join("") + '</datalist>' +
       hisabDayBand() + hisabNotStampedBand();
     if (cl && !isMineClient(cl)) return h + '<div class="empty"><b>' + esc(cl) + '</b> is assigned to another sales executive, so their hisab is not open to you. You can view and follow up on the clients assigned to you.</div>';
     if (!S.q) {
@@ -29347,7 +29412,11 @@ function viewCatalogue() {
       /* 6.9.665 - a client on the book with nothing on his account yet: say so, and take his advance */
       var _nc = clientByName(String(S.q).trim());
       if (_nc && _nc.name && (seesAllClients() || isMineClient(_nc.name))) {
-        return h + '<div class="card"><h3 style="margin:0 0 4px">' + esc(_nc.name) + ' — nothing on his account yet</h3>' +
+        /* 6.9.687 - HIS WORDS: "Space Constructions - Gurpreet Ji not showing in hisab, i want to add
+           below it 3 sites". A builder who takes no material himself has no account of his own, so
+           this card was all HISAB showed - with no way to put his sites under him. The master card
+           goes here too: + Add a site, and once he has sites, their total and the combined statement. */
+        return h + mstCard(_nc.name) + '<div class="card"><h3 style="margin:0 0 4px">' + esc(_nc.name) + (mstSites(_nc.name).length ? ' — nothing on his own account' : ' — nothing on his account yet') + '</h3>' +
           '<div class="meta" style="font-size:13px">No delivery, no old balance and no payment so far. Money he pays before the material goes in as an advance: it sits as credit and comes off his first delivery by itself.</div>' +
           (canSee("payments") ? '<div class="acts" style="flex-wrap:wrap;gap:8px;margin-top:9px">' +
             '<button class="btn sm" data-act="pay-in" data-n="' + esc(_nc.name) + '" data-k="advance" style="min-height:44px;background:#0f766e;border-color:#0f766e">+ Advance</button>' +
@@ -54309,6 +54378,15 @@ function viewCatalogue() {
     /* 6.9.684 - complaints */
     if (act === "cmp-tab") { S.cmpTab = t.getAttribute("data-t") || "pending"; render(); return; }
     if (act === "cmp-new") { S.cmpNew = null; S.modal = modalCmpNew(); render(); return; }
+    if (act === "cmp-rates") { if (!roleIs("admin")) return; S.modal = modalCmpRates(); render(); return; }   /* 6.9.687 */
+    if (act === "cmp-rates-save") {
+      if (!roleIs("admin")) return;
+      var _rt = {}, _bad = "";
+      CMP_JOBS.forEach(function (j, i) { var v = String(val("cmpr_" + i) || "").replace(/[,\s]/g, ""); if (v === "") return; if (!/^[0-9]+$/.test(v)) _bad = j; else _rt[j] = Number(v); });
+      if (_bad) { toast("The rate for " + _bad + " is not a whole number."); return; }
+      save("audit", { action: "cmp:rates", actor: S.user, recId: "rates", createdAt: new Date().toISOString(), detail: JSON.stringify({ rates: _rt }) }, true);
+      S.modal = null; render(); toast("Service charges saved \u2014 out-of-warranty jobs now fill these in."); return;
+    }
     if (act === "cmp-cancel") { S.cmpNew = null; S.modal = null; render(); return; }
     if (act === "cmp-open") { S.cmpOpen = t.getAttribute("data-id"); S.modal = modalCmp(S.cmpOpen); render(); return; }
     if (act === "cmp-take") {
@@ -54358,6 +54436,10 @@ function viewCatalogue() {
         var _cg = String(val("cmp_chg") || "").trim(); if (_cg && !/^[0-9]+(\.[0-9]+)?$/.test(_cg)) { toast("Service charge is a number."); return; }
         _d.charge = Number(_cg) || 0; var _chn = String(val("cmp_ch") || "").trim(); if (_chn) _d.challanNo = _chn;
         if (_d.outcome === "Service charge" && !_d.charge) { toast("Put the service charge."); return; }
+        _d.job = String(val("cmp_job") || "").trim();   /* 6.9.687 */
+        var _cv = cmpCover(_tk);
+        if (_cv.ok && _d.charge > 0 && !roleIs("admin")) { toast(_cv.txt + " \u2014 no service charge. Only the admin can charge a misuse visit."); return; }
+        if (_cv.ok) _d.cover = _cv.txt;
       }
       if (_to === "Paid") { var _cl = Number(String(val("cmp_col") || "").trim()) || 0; if (!(_cl > 0)) { toast("How much was collected?"); return; } _d.collected = _cl; _d.mode = val("cmp_mode") || "Cash"; }
       if (_to === "Cancelled" && _note.length < 4) { toast("Say why in the note — duplicate of which, or why it is not ours."); return; }
