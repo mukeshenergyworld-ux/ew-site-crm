@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.680";
+  var APP_VERSION = "6.9.681";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -12942,6 +12942,29 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       '</div></div>';
   }
   /* 6.9.672 - what he has typed on the add-to-hisab sheet, kept across a question sheet and put back */
+  /* 6.9.681 - HIS WORDS, 3 Oct 2026, over the same sheet after 6.9.680: "entering discount and saving as
+     preset also to be effective in current challan, as requested in previous prompt". 6.9.680 saved the
+     preset and the brand summary read 50%, but the lines of THIS challan still said 0% and the total was
+     still list - they only took the rate at Finalise. Now the moment the preset is saved, this challan's
+     stored-0% lines take it, exactly as Finalise's auto re-price does (chDiscGap / chRepriced, the same
+     two functions, so the sheet and Finalise can never disagree), the challan is saved and an audit row
+     names every line and the difference. A % he typed on a line himself is his decision and is left. */
+  function hsbApplyPresetNow(c, why) {
+    bustCaches();
+    var g = chDiscGap(c);
+    if (!g || !g.n) return null;
+    var nw = chRepriced(c);
+    c.itemsJson = JSON.stringify(nw);
+    c.amount = nw.reduce(function (a, l) { return a + (Number(l.qty) || 0) * (Number(l.rate) || 0); }, 0);
+    save("challans", Object.assign({}, c), true);
+    try {
+      save("audit", { action: "challan:auto-reprice", actor: S.user, recId: c.id,
+        detail: JSON.stringify({ chId: c.id, no: c.challanNo, was: g.was, now: g.now, diff: g.diff, n: g.n, why: why,
+          lines: g.lines.map(function (l) { return { code: l.code, from: l.frozen, to: l.preset }; }) }) }, true);
+    } catch (e) { }
+    bustCaches();
+    return g;
+  }
   function hsbKeep() {
     var v = {}, ck = {};
     ["hsb_extra", "hsb_extrapc", "hsb_noproof", "hsb_extranote"].forEach(function (k) { var e = document.getElementById(k); if (e) v[k] = e.value; });
@@ -12949,13 +12972,13 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     var inc = Array.prototype.map.call(document.querySelectorAll("input.hsb-inc"), function (e) { return [e.getAttribute("data-role") + "|" + e.getAttribute("data-name"), e.checked]; });
     var cls = function (sel) { return Array.prototype.map.call(document.querySelectorAll(sel), function (e) { return [e.getAttribute("data-brand"), e.type === "checkbox" ? e.checked : e.value]; }); };
     var pct = cls("input.hsb-pct"), non = cls("input.hsb-non"), bd = Array.prototype.map.call(document.querySelectorAll("[data-bdisc]"), function (e) { return [e.getAttribute("data-bdisc"), e.value]; });
-    return function () {
+    return function (skipBd) {   /* 6.9.681 - skipBd: the brand boxes are left showing the preset just applied */
       Object.keys(v).forEach(function (k) { var e = document.getElementById(k); if (e) e.value = v[k]; });
       var n2 = document.getElementById("hsb_noextra"); if (n2 && ck.nx != null) n2.checked = ck.nx;
       inc.forEach(function (p) { Array.prototype.forEach.call(document.querySelectorAll("input.hsb-inc"), function (e) { if (e.getAttribute("data-role") + "|" + e.getAttribute("data-name") === p[0]) e.checked = p[1]; }); });
       var put = function (sel, list) { list.forEach(function (p) { Array.prototype.forEach.call(document.querySelectorAll(sel), function (e) { if (e.getAttribute("data-brand") === p[0]) { if (e.type === "checkbox") e.checked = p[1]; else e.value = p[1]; } }); }); };
       put("input.hsb-pct", pct); put("input.hsb-non", non);
-      bd.forEach(function (p) { var e = document.querySelector('[data-bdisc="' + p[0] + '"]'); if (e) e.value = p[1]; });
+      if (!skipBd) bd.forEach(function (p) { var e = document.querySelector('[data-bdisc="' + p[0] + '"]'); if (e) e.value = p[1]; });
       try { hsbDiscPaint(); } catch (e) { }
       try { if (document.getElementById("hsb_extra")) hsbExtraPaint(); } catch (e) { }
     };
@@ -13181,7 +13204,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
            under Who earns open at once. */
         '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;align-items:center">' +
           '<button class="btn sm" data-act="hsb-disc-preset" data-id="' + esc(c.id) + '" style="min-height:44px">Save as preset</button>' +
-          '<span class="meta" style="font-size:12.5px;color:#7c2d12">For this delivery and every later one to ' + esc(cl) + '. Then set who earns on it below.</span></div>' +
+          '<span class="meta" style="font-size:12.5px;color:#7c2d12">Applied to this challan&rsquo;s lines at once, and to every later one to ' + esc(cl) + '. Then set who earns on it below.</span></div>' +
         '</div>';
     }
 
@@ -50404,10 +50427,10 @@ function viewCatalogue() {
       _pset.forEach(function (x) {
         save("discounts", { id: mintId("D"), client: _pcl, brand: x.brand, pct: x.pct, notes: JSON.stringify({ from: _pfrom }) }, true);
       });
-      bustCaches();   /* the sheet is rebuilt before the paint that would drop the discount index */
+      var _pg = hsbApplyPresetNow(_pc, "preset saved on the add-to-hisab sheet - this delivery takes it now");   /* 6.9.681 */
       toast("Preset for " + _pcl + ": " + _pset.map(function (x) { return x.brand + " " + (x.pct ? x.pct + "%" : "no discount"); }).join(", ") +
-        ". This delivery is priced at it when finalised.");
-      S.modal = modalAddToHisab(_pc.id); render(); _pkeep();
+        "." + (_pg ? " This challan too: " + _pg.n + " line" + (_pg.n === 1 ? "" : "s") + " now at it, " + money(_pg.diff) + " off." : ""));
+      S.modal = modalAddToHisab(_pc.id); render(); _pkeep(!!_pg);
       return;
     }
     if (act === "hsb-rate-save") {   /* 6.9.672 - the rate goes onto the client's preset (its discount row) */
@@ -50445,14 +50468,14 @@ function viewCatalogue() {
         yes: "Save as preset", no: "Not now"
       }).then(function (yes) {
         if (yes) {
-          var _done = 0;
+          var _done = 0, _rnew = false;
           _rv.forEach(function (x) {
             var exd = discRow(_rcl, x.brand);
             if (!exd && x.disc != null) {   /* 6.9.680 - discount and rate written as one new row */
               var nn = { from: localDay(_rc.createdAt) || today() };
               if (_rrole === "exec") { nn.exec = x.pct; nn.execOn = 1; } else nn[_rrole.toLowerCase()] = x.pct;
               save("discounts", { id: mintId("D"), client: _rcl, brand: x.brand, pct: x.disc, notes: JSON.stringify(nn) }, true);
-              _done++; return;
+              _done++; _rnew = true; return;
             }
             if (!exd) return;
             var notes = incMap(exd);
@@ -50461,9 +50484,10 @@ function viewCatalogue() {
             _done++;
           });
           bustCaches();
+          if (_rnew) hsbApplyPresetNow(_rc, "discount saved with a rate on the add-to-hisab sheet - this delivery takes it now");   /* 6.9.681 */
           toast(_done ? (_rname + "\u2019s rate saved on " + _done + " brand" + (_done > 1 ? "s" : "") + " \u2014 it is this client\u2019s preset now.") : "Nothing saved.");
         }
-        S.modal = modalAddToHisab(_rc.id); render(); _rkeep();
+        S.modal = modalAddToHisab(_rc.id); render(); _rkeep(typeof _rnew !== "undefined" && _rnew);
       });
       return;
     }
