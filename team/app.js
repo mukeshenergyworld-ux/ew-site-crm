@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.687";
+  var APP_VERSION = "6.9.688";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -28353,6 +28353,100 @@ function viewCatalogue() {
     }, function (e) { _mstSrv = null; throw new Error("could not reach the server (" + apiWhy(e) + ")"); });
     return _mstSrv;
   }
+  /* ===== 6.9.688 - THE BUILDER'S PAGE SHOWS THE WHOLE ACCOUNT =====
+     HIS WORDS, 3 Oct 2026, over Space Constructions - Gurpreet Ji's master card: "show combined
+     statement also, partner incentive ... show everything". His picks: the combined statement on
+     the screen, and the partners' incentive across all the sites.
+     THE STATEMENT is every site's own statement lines (hisabMiniRows - the builder the screen,
+     the Excel and the PDF already share, whose closing line is asserted to equal the ledger),
+     merged by date into one, with a SITE column and ONE running balance that starts from all
+     their brought-forward balances together. Its last balance is therefore the TOTAL the card
+     above prints. The latest 25 lines show; one tap shows them all.
+     THE INCENTIVE is each partner named on any of the sites, worked out through the payout engine
+     itself (admEarnedOnClient - the same call the owner's corner uses), site by site and in total:
+     what he has earned, and how much of it the builder's payments have released so far. Admin
+     only, as the owner's corner is: an incentive is never shown to a customer. */
+  function mstStmtRows(master) {
+    var names = [master].concat(mstSites(master)), bf = 0, ev = [];
+    names.forEach(function (n, gi) {
+      var rs = []; try { rs = (hisabMiniRows(n) || {}).rows || []; } catch (e) { rs = []; }
+      rs.forEach(function (r, i) {
+        if (r.kind === "bf") { bf += Number(r.bal) || 0; return; }
+        ev.push({ site: n, gi: gi, i: i, r: r, ord: r.kind === "ch" ? 1 : r.kind === "ret" ? 2 : 3 });
+      });
+    });
+    var ymd = function (d) { var m = String(d || '').match(/^(\d{2})\/(\d{2})\/(\d{4})/); return m ? m[3] + m[2] + m[1] : String(d || ''); };   /* the rows carry dd/mm/yyyy */
+    ev.sort(function (a, b) { return ymd(a.r.date).localeCompare(ymd(b.r.date)) || (a.ord - b.ord) || (a.gi - b.gi) || (a.i - b.i); });
+    var run = bf;
+    ev.forEach(function (e) { run += (Number(e.r.debit) || 0) - (Number(e.r.credit) || 0); e.bal = run; });
+    return { bf: bf, ev: ev, close: run };
+  }
+  function mstStmtHtml(master) {
+    var R = mstStmtRows(master), all = !!(S.mstStmtAll && S.mstStmtAll[mstKey(master)]);
+    var show = all ? R.ev : R.ev.slice(-25), cut = R.ev.length - show.length;
+    var td = 'padding:5px 7px;border-top:1px solid #e0e7ff;', num = td + 'text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;';
+    var h = '<div class="card" style="border-color:#c7d2fe">' +
+      '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center"><b style="flex:1 1 240px;font-size:14px;color:#312e81">Combined statement &middot; ' + esc(master) + ' &middot; all sites</b>' +
+      '<button class="btn sm" data-act="mst-pdf" data-n="' + esc(master) + '">PDF</button>' +
+      (R.ev.length > 25 ? '<button class="btn sm ghost" data-act="mst-stmt-all" data-n="' + esc(master) + '">' + (all ? 'Latest 25 only' : 'Show all ' + R.ev.length + ' lines') + '</button>' : '') + '</div>' +
+      '<div style="overflow-x:auto;margin-top:8px"><table style="width:100%;border-collapse:collapse;font-size:12.5px"><thead><tr style="background:#312e81;color:#fff">' +
+      [['DATE', 0], ['SITE', 0], ['CHALLAN / REF', 0], ['DETAILS', 0], ['TYPE', 0], ['DEBIT', 1], ['CREDIT', 1], ['BALANCE', 1]].map(function (x) {
+        return '<th style="padding:5px 7px;white-space:nowrap;text-align:' + (x[1] ? 'right' : 'left') + '">' + x[0] + '</th>'; }).join("") + '</tr></thead><tbody>' +
+      '<tr style="background:#f5f7ff"><td style="' + td + '" colspan="7"><b>' + (cut ? 'Balance before the lines below (' + cut + ' earlier lines)' : 'Balance brought forward, all sites') + '</b></td>' +
+        '<td style="' + num + 'font-weight:700">' + money(cut ? show[0].bal - (Number(show[0].r.debit) || 0) + (Number(show[0].r.credit) || 0) : R.bf) + '</td></tr>';
+    show.forEach(function (e, i) {
+      var r = e.r, site = e.site === master ? 'his own' : e.site;
+      h += '<tr style="background:' + (i % 2 ? '#f8faff' : '#fff') + '">' +
+        '<td style="' + td + 'white-space:nowrap">' + esc(r.date || '') + '</td>' +
+        '<td style="' + td + 'max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(e.site) + '">' + esc(site) + '</td>' +
+        '<td style="' + td + 'white-space:nowrap">' + esc(r.no || '') + '</td>' +
+        '<td style="' + td + 'color:#475569;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(r.ptrs || '') + '">' + esc(r.ptrs || '') + '</td>' +
+        '<td style="' + td + 'white-space:nowrap">' + esc(r.type || '') + '</td>' +
+        '<td style="' + num + '">' + (r.debit != null ? money(r.debit) : '') + '</td>' +
+        '<td style="' + num + 'color:#0f766e">' + (r.credit != null ? money(r.credit) : '') + '</td>' +
+        '<td style="' + num + 'font-weight:700;color:' + (e.bal > 0.5 ? '#b91c1c' : '#0f766e') + '">' + money(e.bal) + '</td></tr>';
+    });
+    h += '<tr style="background:#312e81;color:#fff;font-weight:800"><td style="padding:6px 7px" colspan="7">CLOSING &middot; ' + esc(master) + ' owes</td>' +
+      '<td style="padding:6px 7px;text-align:right;white-space:nowrap">' + money(R.close) + '</td></tr></tbody></table></div></div>';
+    return h;
+  }
+  function mstIncRows(master) {
+    var names = [master].concat(mstSites(master)), by = {}, order = [];
+    names.forEach(function (n) {
+      admLineup(n).forEach(function (m) {
+        if (m.role === "exec") return;
+        var k = m.role + "|" + dkey(m.name);
+        if (!by[k]) { by[k] = { role: m.role, name: m.name, sites: [], earned: 0, released: 0 }; order.push(k); }
+        var bk = null; try { bk = admEarnedOnClient(n, m.name, "partner"); } catch (e) { bk = null; }
+        var er = bk ? (bk.earned || 0) : 0, rl = bk ? (bk.payable || 0) : 0;
+        by[k].sites.push({ site: n, earned: er, released: rl });
+        by[k].earned += er; by[k].released += rl;
+      });
+    });
+    return order.map(function (k) { return by[k]; });
+  }
+  function mstIncHtml(master) {
+    if (!roleIs("admin")) return "";
+    var rows = mstIncRows(master);
+    var h = '<div class="card" style="border-color:#c7d2fe"><b style="font-size:14px;color:#312e81">Partner incentive &middot; all ' + esc(master) + '&rsquo;s sites</b>' +
+      '<div class="meta" style="font-size:12.5px;margin-top:2px">For you only &mdash; never on a statement. Earned on the goods delivered; released as the money for them comes in.</div>';
+    if (!rows.length) return h + '<div class="meta" style="font-size:13px;margin-top:8px">No plumber, architect, builder or PMC is named on any of these sites.</div></div>';
+    var td = 'padding:5px 7px;border-top:1px solid #e0e7ff;', num = td + 'text-align:right;white-space:nowrap;';
+    h += '<div style="overflow-x:auto;margin-top:8px"><table style="width:100%;border-collapse:collapse;font-size:12.5px"><thead><tr style="background:#312e81;color:#fff">' +
+      [['PARTNER', 0], ['SITES', 0], ['EARNED', 1], ['RELEASED SO FAR', 1]].map(function (x) { return '<th style="padding:5px 7px;white-space:nowrap;text-align:' + (x[1] ? 'right' : 'left') + '">' + x[0] + '</th>'; }).join("") + '</tr></thead><tbody>';
+    var tE = 0, tR = 0;
+    rows.forEach(function (p, i) {
+      tE += p.earned; tR += p.released;
+      h += '<tr style="background:' + (i % 2 ? '#f8faff' : '#fff') + ';vertical-align:top">' +
+        '<td style="' + td + '"><b>' + esc(p.name) + '</b><div style="font-size:12px;color:#64748b">' + esc(incRoleLabel(p.role)) + '</div></td>' +
+        '<td style="' + td + 'font-size:12px;color:#475569">' + (p.sites.filter(function (s) { return Math.abs(s.earned) >= 0.5; }).map(function (s) { return esc(s.site === master ? 'his own' : s.site) + ' &middot; ' + money(Math.round(s.earned)); }).join('<br>') || '<span style="color:#94a3b8">nothing earned yet &mdash; on ' + p.sites.map(function (s) { return esc(s.site === master ? 'his own' : s.site); }).join(', ') + '</span>') + '</td>' +
+        '<td style="' + num + 'font-weight:700">' + money(Math.round(p.earned)) + '</td>' +
+        '<td style="' + num + 'color:#0f766e;font-weight:700">' + money(Math.round(p.released)) + '</td></tr>';
+    });
+    return h + '<tr style="background:#312e81;color:#fff;font-weight:800"><td style="padding:6px 7px" colspan="2">TOTAL</td>' +
+      '<td style="padding:6px 7px;text-align:right;white-space:nowrap">' + money(Math.round(tE)) + '</td><td style="padding:6px 7px;text-align:right;white-space:nowrap">' + money(Math.round(tR)) + '</td></tr></tbody></table></div></div>';
+  }
+
   function mstCard(cl) {
     var own = roleIs("admin"), sites = mstSites(cl), up = mstOf(cl);
     var link = function (act, n, label) { return '<button class="btn sm ghost" data-act="' + act + '" data-n="' + esc(n) + '">' + label + '</button>'; };
@@ -28380,7 +28474,7 @@ function viewCatalogue() {
         '<td style="padding:6px 7px;text-align:right;white-space:nowrap">' + money(M.tot.billed) + '</td><td style="padding:6px 7px;text-align:right;white-space:nowrap">' + money(M.tot.paid + M.tot.returned) + '</td>' +
         '<td style="padding:6px 7px;text-align:right;white-space:nowrap">' + money(M.tot.due) + '</td><td style="padding:6px 7px;text-align:right">' + (M.tot.oldest ? M.tot.oldest + 'd' : '') + '</td><td></td></tr>' +
         '</tbody></table></div></div>';
-      return h;
+      return h + mstStmtHtml(cl) + mstIncHtml(cl);   /* 6.9.688 */
     }
     if (up) {
       return '<div class="card" style="border-color:#c7d2fe;background:#f8faff;padding:9px 12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">' +
@@ -54476,6 +54570,7 @@ function viewCatalogue() {
         .then(function (y) { if (!y) return; mstWrite(_offN, "").then(function (ok) { if (ok) { bustCaches(); render(); toast(_offN + " is no longer under " + _offM + "."); } }); });
       return;
     }
+    if (act === "mst-stmt-all") { var _mk = mstKey(t.getAttribute("data-n")); S.mstStmtAll = S.mstStmtAll || {}; S.mstStmtAll[_mk] = !S.mstStmtAll[_mk]; keepScroll = true; render(); return; }   /* 6.9.688 */
     if (act === "mst-pdf") {
       var _pm = t.getAttribute("data-n") || "";
       toast("Building the combined statement for " + _pm + "\u2026");
