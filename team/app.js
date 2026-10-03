@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.684";
+  var APP_VERSION = "6.9.685";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -11946,7 +11946,10 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     /* Client search. Deliberately NOT the shared #q box: #q on this tab already holds the area
        filter, and the two must work together (pick Panipat, then type a name inside it). */
     h += '<div class="row"><input class="grow" id="cl_q" placeholder="Search ' + all.length + ' clients — name, phone, area, plumber..." value="' + esc(S.clq || "") + '"/>' +
-      (S.clq ? '<button class="btn sm ghost" data-act="cl-qclear">Clear</button>' : '') + '</div>';
+      (S.clq ? '<button class="btn sm ghost" data-act="cl-qclear">Clear</button>' : '') +
+      /* 6.9.685 - his question: "where is option to create new lead, client or builder?" It was only
+         under Leads. The same form, from the screen where he looks for a client. */
+      '<button class="btn sm" data-act="cl-new" style="white-space:nowrap">+ New client / builder</button></div>';
     /* ---- v6.9.450 - THE REGISTER. HIS WORDS: "List of client generation from database, we can
        complete all details if pending there only like client address etc, that will auto update
        everywhere, need client list data area wise." One line per client, city -> area, the blanks
@@ -15574,6 +15577,182 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     });
   }
 
+  /* ===== 6.9.685 - ONE RULE FOR EVERY BOX YOU TYPE A NAME IN =====
+     HIS WORDS, 3 Oct 2026, over the new-client form with "Space Constructions" typed in it:
+     "typing everywhere should show available options, if not then go for new entry - make rule
+     for everywhere". Space Construction was already on the book; the form said nothing.
+     THE RULE. Any box fed by a list (every <input list=...> in the estate - 20-odd of them:
+     clients, partners, products, brands, families, spares, suppliers) and every box that NAMES a
+     new record (client, partner, brand) gets the same panel under it as he types:
+       - what is already there, best match first, matched on word starts so "Space Constructions"
+         finds "Space Construction" and "constr" finds both;
+       - on a NEW record's name box, each match says "Open" - the record that exists, instead of a
+         second one beside it;
+       - the last line is always "+ New: <what he typed>", so a name that is not there is one tap
+         (or just keep typing) - the panel never blocks him.
+     The browser's own datalist pop-up is switched off for the box while ours is up (two lists on
+     top of each other is worse than none); iPhone Safari barely shows it anyway. Nothing is
+     written by the panel: a pick fills the box and fires input + change, exactly as the
+     datalist did, so every handler behind these boxes works unchanged. */
+  var _ta = { box: null, inp: null, items: [], hi: -1, hideT: 0 };
+  function taNorm(s) { return String(s == null ? "" : s).toLowerCase().replace(/[^a-z0-9ऀ-ॿ]+/g, " ").trim(); }
+  /* score: 0 = no match. Every word he typed must start a word of the name (a plural or a
+     missing last letter or two still counts), or the whole thing must sit inside the name. */
+  function taScore(q, name) {
+    var nq = taNorm(q), nn = taNorm(name);
+    if (!nq || !nn) return 0;
+    if (nn === nq) return 100;
+    if (nn.indexOf(nq) === 0) return 80;
+    var qt = nq.split(" "), nt = nn.split(" "), all = true;
+    qt.forEach(function (w) {
+      var stem = w.length >= 5 ? w.slice(0, w.length - 2) : w;
+      if (!nt.some(function (x) { return x.indexOf(w) === 0 || (w.length >= 5 && x.indexOf(stem) === 0 && x.length <= w.length + 2); })) all = false;
+    });
+    if (all) return 60 - Math.min(20, Math.abs(nn.length - nq.length) / 2);
+    if (nq.length >= 3 && nn.indexOf(nq) > 0) return 30;
+    return 0;
+  }
+  function taRank(q, items, max) {
+    var out = [];
+    items.forEach(function (it) { var s = taScore(q, it.v); if (s) out.push({ it: it, s: s }); });
+    out.sort(function (a, b) { return b.s - a.s || alpha(a.it.v, b.it.v); });
+    return out.slice(0, max || 8).map(function (x) { return x.it; });
+  }
+  /* what a box offers: its datalist, or the book it names a record in */
+  function taItems(inp) {
+    var src = inp.getAttribute("data-ta");
+    if (src === "client") return (S.data.clients || []).filter(function (c) { return c.name; }).map(function (c) {
+      return { v: String(c.name).trim(), sub: [c.type, c.area, c.location].filter(Boolean).join(" · "), id: c.id, act: "cl-open" }; });
+    if (src === "partner") return (S.data.associates || []).filter(function (a) { return a.name; }).map(function (a) {
+      return { v: String(a.name).trim(), sub: [a.role, a.location, a.mobile].filter(Boolean).join(" · "), id: a.id, act: "as-open" }; });
+    if (src === "brand") return (S.data.brands || []).filter(function (b) { return b.brand; }).map(function (b) {
+      return { v: String(b.brand).trim(), sub: b.notes || "", id: b.id, act: "br-open" }; });
+    var lid = inp.getAttribute("data-ta-list") || inp.getAttribute("list"), dl = lid && document.getElementById(lid);
+    if (!dl) return [];
+    var seen = {}, out = [];
+    Array.prototype.forEach.call(dl.options || [], function (o) {
+      var v = String(o.value || "").trim(); if (!v || seen[v]) return; seen[v] = 1;
+      out.push({ v: v, sub: (o.label && o.label !== o.value) ? o.label : (o.textContent && o.textContent !== o.value ? o.textContent : "") });
+    });
+    return out;
+  }
+  function taHide() {
+    clearTimeout(_ta.hideT);
+    if (_ta.box) _ta.box.style.display = "none";
+    _ta.items = []; _ta.hi = -1;
+  }
+  function taBox() {
+    if (_ta.box && document.body.contains(_ta.box)) return _ta.box;
+    var b = document.createElement("div");
+    b.id = "ta_panel";
+    b.style.cssText = "position:fixed;z-index:99990;display:none;background:#fff;border:1px solid #94a3b8;border-radius:10px;" +
+      "box-shadow:0 10px 28px rgba(15,23,42,.22);max-height:300px;overflow:auto;font:14px/1.3 system-ui,-apple-system,'Noto Sans',sans-serif;color:#0f172a";
+    /* keep the focus in the box while he taps the panel */
+    b.addEventListener("pointerdown", function (e) { e.preventDefault(); });
+    b.addEventListener("mousedown", function (e) { e.preventDefault(); });
+    b.addEventListener("click", function (e) {
+      var r = e.target.closest("[data-ta-i]"); if (!r) return;
+      e.preventDefault(); taPick(Number(r.getAttribute("data-ta-i")));
+    });
+    document.body.appendChild(b);
+    _ta.box = b; return b;
+  }
+  function taHl(s, q) {
+    var e = esc(s), nq = taNorm(q).split(" ")[0];
+    if (!nq) return e;
+    var i = String(s).toLowerCase().indexOf(nq);
+    return i < 0 ? e : esc(String(s).slice(0, i)) + '<b>' + esc(String(s).slice(i, i + nq.length)) + '</b>' + esc(String(s).slice(i + nq.length));
+  }
+  function taShow(inp, opening) {
+    var q = String(inp.value || "").trim(), isNew = inp.getAttribute("data-ta-new") === "1";
+    var all = taItems(inp);
+    if (!all.length && !isNew) { taHide(); return; }
+    if (!q && (isNew || !opening)) { taHide(); return; }
+    var list = q ? taRank(q, all, 8) : all.slice(0, 8);
+    var exact = q && all.some(function (it) { return taNorm(it.v) === taNorm(q); });
+    var tap = window.matchMedia && matchMedia("(pointer:coarse)").matches ? 44 : 34;
+    var row = function (inner, i, extra) {
+      return '<div ' + (i != null ? 'data-ta-i="' + i + '" ' : '') + 'style="display:flex;gap:8px;align-items:center;min-height:' + tap + 'px;padding:4px 12px;border-top:1px solid #f1f5f9;cursor:pointer;' + (extra || "") + '">' + inner + '</div>';
+    };
+    var h = "";
+    if (isNew && list.length) h += '<div style="padding:7px 12px;font-size:12.5px;font-weight:700;color:' + (exact ? '#b91c1c' : '#b45309') + ';background:' + (exact ? '#fef2f2' : '#fffbeb') + '">' +
+      (exact ? 'Already on the book — open it instead of making a second one' : 'Is it one of these? Open it instead of making a second one') + '</div>';
+    list.forEach(function (it, i) {
+      h += row('<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + taHl(it.v, q) +
+        (it.sub ? ' <span style="color:#64748b;font-size:12px">' + esc(it.sub) + '</span>' : '') + '</span>' +
+        (isNew && it.act && it.id ? '<button class="btn sm" data-act="' + it.act + '" data-id="' + esc(it.id) + '" style="flex:0 0 auto">Open</button>' : ''), isNew ? null : i, i === _ta.hi ? 'background:#e0f2fe' : '');
+    });
+    if (!q && all.length > list.length) h += '<div style="padding:6px 12px;font-size:12px;color:#64748b">' + (all.length - list.length) + ' more — type to narrow</div>';
+    if (q && !exact) {
+      h += row('<span style="color:#0f766e;font-weight:700">+ New: “' + esc(q) + '”</span>' +
+        (list.length ? '' : ' <span style="color:#64748b;font-size:12px">not on the list — it will be a new entry</span>'), list.length, 'border-top:1px solid #cbd5e1');
+    }
+    var b = taBox();
+    b.innerHTML = h;
+    var r = inp.getBoundingClientRect(), vh = window.innerHeight || 700, vw = window.innerWidth || 400;
+    var w = Math.min(Math.max(r.width, 260), vw - 16), left = Math.max(8, Math.min(r.left, vw - w - 8));
+    b.style.left = left + "px"; b.style.width = w + "px";
+    b.style.display = "block";
+    var below = vh - r.bottom - 8, above = r.top - 8;
+    if (below < 160 && above > below) { b.style.top = ""; b.style.bottom = (vh - r.top + 4) + "px"; b.style.maxHeight = Math.min(300, above) + "px"; }
+    else { b.style.bottom = ""; b.style.top = (r.bottom + 4) + "px"; b.style.maxHeight = Math.max(120, Math.min(300, below)) + "px"; }
+    _ta.inp = inp; _ta.items = isNew ? [] : list.concat(q && !exact ? [{ v: q, isNew: 1 }] : []);
+  }
+  function taPick(i) {
+    var inp = _ta.inp, it = _ta.items[i];
+    if (!inp || !it) { taHide(); return; }
+    if (!it.isNew) {
+      var d = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(inp), "value");
+      if (d && d.set) d.set.call(inp, it.v); else inp.value = it.v;
+    }
+    taHide();
+    _ta.skip = true;
+    try { inp.dispatchEvent(new Event("input", { bubbles: true })); } catch (e) { }
+    try { inp.dispatchEvent(new Event("change", { bubbles: true })); } catch (e) { }
+    _ta.skip = false;
+  }
+  function taWants(t) {
+    return t && t.tagName === "INPUT" && (t.hasAttribute("list") || t.hasAttribute("data-ta-list") || t.hasAttribute("data-ta"));
+  }
+  try {
+    document.addEventListener("focusin", function (e) {
+      var t = e.target;
+      if (!taWants(t)) return;
+      if (t.hasAttribute("list")) { t.setAttribute("data-ta-list", t.getAttribute("list")); t.removeAttribute("list"); }
+      t.setAttribute("autocomplete", "off");
+      _ta.hi = -1; taShow(t, true);
+    }, true);
+    document.addEventListener("input", function (e) {
+      if (_ta.skip || !taWants(e.target)) return;
+      _ta.hi = -1; taShow(e.target, false);
+    }, true);
+    document.addEventListener("focusout", function (e) {
+      if (!taWants(e.target)) return;
+      clearTimeout(_ta.hideT); _ta.hideT = setTimeout(taHide, 180);
+    }, true);
+    document.addEventListener("keydown", function (e) {
+      if (!_ta.box || _ta.box.style.display === "none" || e.target !== _ta.inp || !_ta.items.length) {
+        if (e.key === "ArrowDown" && taWants(e.target)) taShow(e.target, true);
+        return;
+      }
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        _ta.hi = (_ta.hi + (e.key === "ArrowDown" ? 1 : -1) + _ta.items.length) % _ta.items.length;
+        taShow(_ta.inp, true);
+      } else if (e.key === "Enter" && _ta.hi >= 0) { e.preventDefault(); e.stopPropagation(); taPick(_ta.hi); }
+      else if (e.key === "Escape") taHide();
+    }, true);
+    /* the page moves under the box (a phone keyboard opening scrolls it): follow the box, do not vanish */
+    var _taFollow = function (e) {
+      if (!_ta.box || _ta.box.style.display === "none" || !_ta.inp) return;
+      if (e && e.target === _ta.box) return;
+      if (!document.body.contains(_ta.inp) || document.activeElement !== _ta.inp) { taHide(); return; }
+      taShow(_ta.inp, true);
+    };
+    window.addEventListener("scroll", _taFollow, true);
+    window.addEventListener("resize", _taFollow);
+  } catch (e) { }
+
   function clientField(id, value, label) {
     var list = (S.data.clients || []).map(function (c) { return c.name; });
     return '<label>' + (label || "Client") + '</label>' +
@@ -16143,7 +16322,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       '<p class="sub">Enter a new lead — or an old client. Partners named here flow into every quote, challan and incentive. Mark his brands on the board afterwards.</p>' +
       /* v6.9.213 - first question on the form, and the only one in colour. */
       ownerBanner("c_owner", c.ownedBy || c.createdBy, !c.id) +
-      '<label>Client name</label><input id="c_name" value="' + esc(c.name) + '"/>' +
+      '<label>Client name</label><input id="c_name" data-ta="client"' + (c.id ? '' : ' data-ta-new="1"') + ' autocomplete="off" value="' + esc(c.name) + '"/>' +   /* 6.9.685 */
       /* v6.9.186: DISTRICT and AREA are one answer, so they are asked as one row, directly
          under the name. They used to be five fields apart - District (labelled "Location", a
          word that appears nowhere else in the app) at the top, Area down beside Short name -
@@ -17776,7 +17955,7 @@ function viewCatalogue() {
   function modalBrand(b) {
     b = b || {};
     return '<h2>' + (b.id ? "Edit brand" : "Add brand") + '</h2>' +
-      '<label>Brand name</label><input id="b_name" value="' + esc(b.brand) + '"/>' +
+      '<label>Brand name</label><input id="b_name" data-ta="brand"' + (b.id ? '' : ' data-ta-new="1"') + ' autocomplete="off" value="' + esc(b.brand) + '"/>' +   /* 6.9.685 */
       '<label>What it is</label><input id="b_notes" value="' + esc(b.notes) + '"/>' +
       '<label>Active</label><select id="b_active">' + opts(["Y", "N"], b.active || "Y") + '</select>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
@@ -38960,7 +39139,7 @@ function viewCatalogue() {
       '<p class="sub">Plumbers, architects, builders and PMCs. Incentive % is set per client &amp; brand on the Discounts screen — a partner earns only where you set a rate there.</p>' +
       /* v6.9.586 - who looks after him, asked first, as on the client form */
       ownerBanner("m_aowner", a.ownedBy, !a.id) +
-      '<label>Name</label><input id="m_aname" value="' + esc(a.name) + '"/>' +
+      '<label>Name</label><input id="m_aname" data-ta="partner"' + (a.id ? '' : ' data-ta-new="1"') + ' autocomplete="off" value="' + esc(a.name) + '"/>' +   /* 6.9.685 */
       '<div class="grid2">' +
       '<div><label>Role</label><select id="m_arole">' + opts(["Architect", "Plumber", "Builder", "PMC", "Contractor", "Dealer", "Other"], a.role || "Plumber") + '</select></div>' +
       '<div><label>Mobile</label><input id="m_amobile" inputmode="numeric" value="' + esc(a.mobile) + '"/></div>' +
