@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.681";
+  var APP_VERSION = "6.9.682";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -7246,7 +7246,7 @@ window.addEventListener("beforeunload", function (ev) {
       '<div class="grid2"><div><label>City</label><input id="s_city" value="' + esc(x.city) + '"/></div>' +
       '<div><label>Type</label><select id="s_type">' + opts(["Bungalow","Apartment","Villa Project","Commercial","Hotel","Hospital","Other"], x.type || "Bungalow") + '</select></div></div>' +
       '<div class="grid2"><div><label>Architect</label>' + partnerSelect("s_arch", "architect", x.architect, true) + '</div>' +
-      '<div><label>Plumber</label>' + partnerSelect("s_plumb", "plumber", x.plumber, true) + '</div></div>' +
+      '<div><label>Plumber</label>' + partnerSelect("s_plumb", "plumber", x.plumber, true, x.location) + '</div></div>' +
       '<div class="meta" style="font-size:12px;color:#94a3b8;margin:-4px 0 6px">Pick from registered partners. A new man? Add him first (Partners tab or the client card) &mdash; mobile required.</div>' +
       '<div class="grid2"><div><label>Builder</label>' + partnerSelect("s_build", "builder", x.builder, false) + '</div>' +
       '<div><label>Owner (sales exec)</label>' + ownerField("s_owner", x.owner || x.createdBy, !x.id) + '</div></div>' +
@@ -12971,13 +12971,14 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     var nx = document.getElementById("hsb_noextra"); if (nx) ck.nx = nx.checked;
     var inc = Array.prototype.map.call(document.querySelectorAll("input.hsb-inc"), function (e) { return [e.getAttribute("data-role") + "|" + e.getAttribute("data-name"), e.checked]; });
     var cls = function (sel) { return Array.prototype.map.call(document.querySelectorAll(sel), function (e) { return [e.getAttribute("data-brand"), e.type === "checkbox" ? e.checked : e.value]; }); };
+    var _pks = ppkSnap();   /* 6.9.682 */
     var pct = cls("input.hsb-pct"), non = cls("input.hsb-non"), bd = Array.prototype.map.call(document.querySelectorAll("[data-bdisc]"), function (e) { return [e.getAttribute("data-bdisc"), e.value]; });
     return function (skipBd) {   /* 6.9.681 - skipBd: the brand boxes are left showing the preset just applied */
       Object.keys(v).forEach(function (k) { var e = document.getElementById(k); if (e) e.value = v[k]; });
       var n2 = document.getElementById("hsb_noextra"); if (n2 && ck.nx != null) n2.checked = ck.nx;
       inc.forEach(function (p) { Array.prototype.forEach.call(document.querySelectorAll("input.hsb-inc"), function (e) { if (e.getAttribute("data-role") + "|" + e.getAttribute("data-name") === p[0]) e.checked = p[1]; }); });
       var put = function (sel, list) { list.forEach(function (p) { Array.prototype.forEach.call(document.querySelectorAll(sel), function (e) { if (e.getAttribute("data-brand") === p[0]) { if (e.type === "checkbox") e.checked = p[1]; else e.value = p[1]; } }); }); };
-      put("input.hsb-pct", pct); put("input.hsb-non", non);
+      put("input.hsb-pct", pct); put("input.hsb-non", non); ppkPut(_pks);
       if (!skipBd) bd.forEach(function (p) { var e = document.querySelector('[data-bdisc="' + p[0] + '"]'); if (e) e.value = p[1]; });
       try { hsbDiscPaint(); } catch (e) { }
       try { if (document.getElementById("hsb_extra")) hsbExtraPaint(); } catch (e) { }
@@ -13307,10 +13308,13 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         var list = (r === "exec") ? execs : assoc;
         h += '<div class="row" style="gap:9px;align-items:center;margin:8px 0 0">' +
           '<span style="flex:0 0 92px;font-weight:600;color:#0f172a">' + esc(incRoleLabel(r)) + '</span>' +
-          '<select class="hsb-pick" data-role="' + esc(r) + '" style="flex:1 1 160px;min-width:150px">' +
-            '<option value="">&mdash; nobody &mdash;</option>' +
-            list.map(function (n) { return '<option value="' + esc(n) + '">' + esc(n) + '</option>'; }).join("") +
-          '</select></div>';
+          (r === "exec"
+            ? '<select class="hsb-pick" data-role="' + esc(r) + '" style="flex:1 1 160px;min-width:150px">' +
+                '<option value="">&mdash; nobody &mdash;</option>' +
+                list.map(function (n) { return '<option value="' + esc(n) + '">' + esc(n) + '</option>'; }).join("") +
+              '</select>'
+            /* 6.9.682 - district first (his client's own), then the partner, then add new */
+            : ppkHtml({ id: "hsbpk_" + r, cls: "hsb-pick", role: r, district: (clientByName(cl) || {}).location || "", add: true, empty: "\u2014 nobody \u2014" })) + '</div>';
       });
       h += '</div>';
     }
@@ -15649,7 +15653,83 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     return r === "architect" ? "Architects" : r === "plumber" ? "Plumbers"
       : r === "builder" ? "Builders" : r === "pmc" ? "PMCs" : "Partners";
   }
-  function partnerSelect(id, role, cur, noAdd) {
+  /* ===== 6.9.682 - A PARTNER IS PICKED DISTRICT FIRST =====
+     HIS WORDS, 3 Oct 2026, over "Nobody is named as plumber, architect, builder, pmc on Sachin Bansal"
+     with four plain dropdowns: "partner selection should be like, select district, and then select
+     partner from dropdown, if not in list show option to add new". One flat list of every partner
+     in every town is how a plumber gets picked from the wrong Sachin's town. So every partner picker
+     is two boxes: the district (it opens on the client's own district), then the partners registered
+     in it - his trade first, then anyone else there - and "+ Add new partner" at the bottom, which
+     opens the partner form already set to that trade and district and comes back with him picked.
+     The partner box keeps its id, class and data-role, so whatever reads it is unchanged. */
+  function ppkLoc(a) { return String((a && a.location) || "").trim(); }
+  function ppkOptions(role, d, cur, add, empty, mode) {
+    role = String(role || "").toLowerCase(); cur = String(cur || "").trim(); d = String(d || "");
+    var seen = {}, mine = [], other = [];
+    (S.data.associates || []).forEach(function (a) {
+      var n = String(a.name || "").trim(); if (!n || seen[n.toLowerCase()]) return; seen[n.toLowerCase()] = 1;
+      if (d && ppkLoc(a) !== d) return;
+      (String(a.role || "").trim().toLowerCase() === role ? mine : other).push(n);
+    });
+    mine.sort(alpha); other.sort(alpha);
+    var named = [];
+    if (mode === "client") { var pn = partnerNames(role); named = pn.named.concat(pn.unknown).filter(function (n) { return !seen[String(n).toLowerCase()]; }); }
+    var shown = mine.concat(other, named);
+    var opt = function (n) { return '<option value="' + esc(n) + '"' + (n === cur ? " selected" : "") + '>' + esc(n) + '</option>'; };
+    var grp = function (label, list) { return list.length ? '<optgroup label="' + esc(label) + '">' + list.map(opt).join("") + '</optgroup>' : ""; };
+    return '<option value="">' + esc(empty || "— select —") + '</option>' +
+      (cur && shown.indexOf(cur) < 0 ? grp("On this record", [cur]) : "") +
+      grp(partnerLabel(role) + (d ? " in " + d : " — all districts"), mine) +
+      grp(d ? "Other partners in " + d : "Other partners", other) +
+      grp("Named on leads & sites, not registered", named) +
+      (!mine.length && !other.length && d ? '<option value="" disabled>Nobody registered in ' + esc(d) + ' yet</option>' : "") +
+      (add ? '<option value="__new__">+ Add new partner (not in list)</option>' : "");
+  }
+  /* o: id, cls, role, cur, district, add, empty, mode, style */
+  function ppkHtml(o) {
+    var ds = locations(), d = String(o.district || "");
+    if (d && ds.indexOf(d) < 0) d = "";
+    var dsel = '<select class="ppk-d" data-for="' + esc(o.id) + '" title="District" style="flex:0 1 150px;min-width:120px">' +
+      '<option value=""' + (d ? "" : " selected") + '>All districts</option>' +
+      ds.map(function (x) { return '<option value="' + esc(x) + '"' + (x === d ? " selected" : "") + '>' + esc(x) + '</option>'; }).join("") + '</select>';
+    var psel = '<select id="' + esc(o.id) + '"' + (o.cls ? ' class="' + esc(o.cls) + '"' : '') + ' data-role="' + esc(o.role) + '" data-ppk-role="' + esc(o.role) + '"' +
+      ' data-ppk-add="' + (o.add ? 1 : 0) + '" data-ppk-empty="' + esc(o.empty || "") + '" data-ppk-mode="' + esc(o.mode || "") + '"' +
+      ' style="flex:1 1 170px;min-width:150px' + (o.style ? ';' + o.style : '') + '">' + ppkOptions(o.role, d, o.cur, o.add, o.empty, o.mode) + '</select>';
+    return '<div class="ppk" style="display:flex;gap:8px;flex-wrap:wrap;flex:1 1 300px;min-width:0">' + dsel + psel + '</div>';
+  }
+  /* the district box changed: the partner box below it is rebuilt from that district */
+  function ppkRefill(dsel) {
+    var t = el(dsel.getAttribute("data-for")); if (!t) return;
+    var cur = t.value === "__new__" ? "" : t.value;
+    t.innerHTML = ppkOptions(t.getAttribute("data-ppk-role"), dsel.value, cur, t.getAttribute("data-ppk-add") === "1", t.getAttribute("data-ppk-empty"), t.getAttribute("data-ppk-mode"));
+  }
+  /* put a partner into a picker - its district switched to his - after he has just been added */
+  function ppkSelect(id, name, loc) {
+    var t = el(id); if (!t) return;
+    var d = document.querySelector('.ppk-d[data-for="' + id + '"]');
+    if (d) { d.value = locations().indexOf(loc) >= 0 ? loc : ""; ppkRefill(d); }
+    if (!Array.prototype.some.call(t.options, function (o) { return o.value === name; })) {
+      var op = document.createElement("option"); op.value = name; op.textContent = name; t.insertBefore(op, t.options[1] || null);
+    }
+    t.value = name;
+  }
+  /* what is picked on a sheet, kept across the partner form */
+  function ppkSnap() {
+    return Array.prototype.map.call(document.querySelectorAll("select.ppk-d"), function (d) {
+      var t = el(d.getAttribute("data-for")); return [d.getAttribute("data-for"), d.value, t ? t.value : ""];
+    });
+  }
+  function ppkPut(snap) {
+    (snap || []).forEach(function (x) {
+      var d = document.querySelector('.ppk-d[data-for="' + x[0] + '"]'), t = el(x[0]); if (!d || !t) return;
+      d.value = x[1]; ppkRefill(d); if (x[2] && x[2] !== "__new__") t.value = x[2];
+    });
+  }
+  function partnerSelect(id, role, cur, noAdd, district) {
+    /* 6.9.682 - district first; the old flat list stays below for reference only */
+    return ppkHtml({ id: id, role: role, cur: cur, district: district || "", add: !noAdd, empty: "\u2014 select \u2014", mode: "client" });
+  }
+  function partnerSelectFlat(id, role, cur, noAdd) {
     var p = partnerNames(role);
     cur = String(cur || "").trim();
     var have = p.primary.indexOf(cur) >= 0 || p.named.indexOf(cur) >= 0 || p.unknown.indexOf(cur) >= 0;
@@ -15828,7 +15908,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       '<div class="grid2"><div><label>Short name (challan no.)</label><input id="c_short" value="' + esc(c.shortName) + '" placeholder="SHARMA"/></div>' +
       '<div><label>Address</label><input id="c_addr" value="' + esc(c.address) + '"/></div></div>' +
       '<div class="grid2"><div><label>Architect</label>' + partnerSelect("c_arch", "architect", c.architect) + '</div>' +
-      '<div><label>Plumber</label>' + partnerSelect("c_plumb", "plumber", c.plumber) + '</div></div>' +
+      '<div><label>Plumber</label>' + partnerSelect("c_plumb", "plumber", c.plumber, false, c.location) + '</div></div>' +
       '<div class="meta" style="font-size:12px;color:#94a3b8;margin:-4px 0 6px">Pick from the list. If he isn’t on it, choose <b>+ Add new</b> &mdash; his mobile number is required.</div>' +
       '<div class="grid2"><div><label>Builder</label><input id="c_build" list="dl_build" value="' + esc(c.builder) + '"/></div>' +
       '<div><label>PMC</label><input id="c_pmc" list="dl_pmc" value="' + esc(c.pmc) + '"/></div></div>' +
@@ -20499,7 +20579,7 @@ function viewCatalogue() {
     gaps.forEach(function (f) {
       h += '<label>' + esc(f.label) + ' <span style="font-weight:500;color:#94a3b8">— ' + esc(f.why) + '</span></label>';
       if (f.k === "mobile") h += '<input id="gp_mobile" inputmode="numeric" placeholder="10 digits" value=""/>';
-      else h += partnerSelect("gp_" + f.k, f.k, "", false);
+      else h += partnerSelect("gp_" + f.k, f.k, "", false, c.location);
     });
     h += '<div class="meta" style="margin-top:9px">Saved against him and copied onto his site ' +
       'records too, so nothing has to be typed twice.</div>' +
@@ -25384,10 +25464,12 @@ function viewCatalogue() {
         var list = (r === "exec") ? execs : assoc;
         h += '<div class="row" style="gap:8px;align-items:center;margin:7px 0 0">' +
           '<span style="flex:0 0 84px;font-weight:600;font-size:12px">' + esc(incRoleLabel(r)) + '</span>' +
-          '<select class="admpick" data-role="' + esc(r) + '" style="flex:1 1 150px;min-width:140px;font-size:12px;padding:4px 6px">' +
-          '<option value="">\u2014 nobody \u2014</option>' +
-          list.map(function (n) { return '<option value="' + esc(n) + '">' + esc(n) + '</option>'; }).join("") +
-          '</select></div>';
+          (r === "exec"
+            ? '<select class="admpick" data-role="' + esc(r) + '" style="flex:1 1 150px;min-width:140px;font-size:12px;padding:4px 6px">' +
+              '<option value="">\u2014 nobody \u2014</option>' +
+              list.map(function (n) { return '<option value="' + esc(n) + '">' + esc(n) + '</option>'; }).join("") +
+              '</select>'
+            : ppkHtml({ id: "admpk_" + r, cls: "admpick", role: r, district: (clientByName(cl) || {}).location || "", add: true, empty: "\u2014 nobody \u2014", style: "font-size:12px;padding:4px 6px" })) + '</div>';
       });
       h += '<div class="acts" style="margin-top:7px;gap:6px"><div class="grow"></div>' +
         '<button class="btn sm ghost" data-act="adm-name" data-cl="' + esc(cl) + '">Name them</button></div></div>';
@@ -38398,6 +38480,19 @@ function viewCatalogue() {
     return out;
   }
 
+  /* 6.9.682 - the sheet that sent him to the partner form, put back as it was, with the new man picked */
+  function asComeBack(name, loc) {
+    var R2 = S.asReturn; S.asReturn = null; if (!R2) { S.modal = null; render(); return; }
+    S.modal = R2.modal; render();
+    var box = document.querySelector(".modal");
+    if (box && R2.vals) Array.prototype.forEach.call(box.querySelectorAll("input,select,textarea"), function (x, i) {
+      if (i >= R2.vals.length || x.type === "file") return;
+      if (x.type === "checkbox" || x.type === "radio") x.checked = !!R2.vals[i]; else if (R2.vals[i] !== "__new__") x.value = R2.vals[i];
+    });
+    ppkPut(R2.picks);
+    try { if (document.getElementById("hsb_extra")) hsbExtraPaint(); } catch (e) { }
+    if (name) ppkSelect(R2.field, name, loc);
+  }
   function modalAssociate(a) {
     a = a || {};
     var loc = a.location || locations()[0];
@@ -38423,7 +38518,7 @@ function viewCatalogue() {
       '<div><label>Anniversary</label><input id="m_aanniv" type="date" value="' + esc(dstr(a.anniversary)) + '"/></div>' +
       '</div>' +
       '<label>Notes</label><textarea id="m_anotes">' + esc(a.notes) + '</textarea>' +
-      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
+      '<div class="foot"><button class="btn ghost" data-act="' + (S.asReturn ? 'as-back' : 'close') + '">' + (S.asReturn ? 'Back' : 'Cancel') + '</button>' +
       '<button class="btn" data-act="as-save" data-id="' + esc(a.id || "") + '">Save partner</button></div>';
   }
 
@@ -47775,6 +47870,7 @@ function viewCatalogue() {
     if (act === "close") {
       /* v6.9.448 - a question closed any way but Yes is a "no", and the caller is told */
       if (_ask) { askDone(false); return; }
+      if (S.asReturn && !_ask) { var _cbk = S.asReturn; if (String(S.modal || "").indexOf('data-act="as-save"') >= 0) { asComeBack("", ""); return; } S.asReturn = null; }   /* 6.9.682 - x on the partner form goes back to the sheet */
       /* v6.9.452 - a prompt closed any way but OK is null - "write nothing", as Cancel was */
       if (_prm) { promptDone(null); return; }
       /* v6.9.457 - and a chooser closed without a choice is null: send nothing, do nothing */
@@ -53161,6 +53257,16 @@ function viewCatalogue() {
         }, true);
         if (v > 0) hset.push(b + " " + v + "%"); else hign.push(b);
       });
+      /* 6.9.682 - HIS WORDS, 3 Oct 2026: "presetting brand discount while finalizing challan is still not
+         auto effecting in current challan, fix that also properly". Measured: Finalise ran its auto
+         re-price (chDiscGap above) BEFORE these brand rows were written - so a brand being decided here
+         had no rate on file at that moment, the gap was empty, and the delivery went into hisab at list.
+         Now the rows are written first and the same re-price runs again here, so the % he typed on the
+         sheet is the % this delivery is finalised at. */
+      if (hmiss.length) {
+        var hG2 = hsbApplyPresetNow(hc, "brand discount decided at Finalise - this delivery takes it");
+        if (hG2 && hG2.n) hAuto += " " + hG2.n + " line" + (hG2.n === 1 ? "" : "s") + " took the discount just set \u2014 " + money(hG2.diff) + " off.";
+      }
       hisabStampSave(hc, hset, hign, {
         inc: hInc, extra: hxAmt, noProof: hNoProof,
         extraNote: (el("hsb_extranote") && el("hsb_extranote").value) || ""
@@ -53385,10 +53491,12 @@ function viewCatalogue() {
             sel.insertBefore(o, sel.firstChild); sel.value = an;
           }
           toast("Partner saved — " + an + " selected. Finish the client and Save.");
-        } else { S.modal = null; toast("Partner saved."); render(); }
+        } else if (S.asReturn) { asComeBack(an, val("m_aloc")); toast("Partner saved \u2014 " + an + " picked."); }   /* 6.9.682 */
+        else { S.modal = null; toast("Partner saved."); render(); }
       });
       return;
     }
+    if (act === "as-back") { asComeBack("", ""); return; }   /* 6.9.682 - Cancel on the partner form goes back to the sheet */
 
     if (act === "ch-new") { chDraftOpen(); return; }   /* v6.9.554 - the unfinished one comes back first */
     if (act === "ch-draft-go") { chDraftOpen(); return; }
@@ -55061,6 +55169,22 @@ function viewCatalogue() {
 
   document.addEventListener("change", function (e) {
     var t = e.target;
+    /* 6.9.682 - the district box of a partner picker refills the partner box under it */
+    if (t && t.classList && t.classList.contains("ppk-d")) { ppkRefill(t); return; }
+    /* 6.9.682 - "+ Add new partner" from any picker that has no flow of its own (the add-to-hisab sheet,
+       the client's who-earns panel, the missing-details sheet): the sheet is held exactly as it is, the
+       partner form opens set to that trade and district, and Save brings the sheet back with him picked */
+    if (t && t.getAttribute && t.getAttribute("data-ppk-role") && t.value === "__new__" && !/^(c_arch|c_plumb|s_build)$/.test(t.id || "")) {
+      var _pr = String(t.getAttribute("data-ppk-role") || "").toLowerCase();
+      var _pd = document.querySelector('.ppk-d[data-for="' + t.id + '"]');
+      var _box = document.querySelector(".modal");
+      S.asReturn = { field: t.id, modal: S.modal || null,
+        vals: _box ? Array.prototype.map.call(_box.querySelectorAll("input,select,textarea"), function (x) { return x.type === "checkbox" || x.type === "radio" ? x.checked : x.value; }) : null,
+        picks: ppkSnap() };
+      t.value = "";
+      S.modal = modalAssociate({ role: _pr === "pmc" ? "PMC" : _pr.charAt(0).toUpperCase() + _pr.slice(1), location: (_pd && _pd.value) || "" });
+      render(); return;
+    }
     /* v6.9.402 - a receipt photographed on the screen after a visit is saved goes up at once */
     if (t && t.classList && t.classList.contains("rc-pic") && S.rcp) {
       var rf = t.files && t.files[0], rk = t.getAttribute("data-kind") || "";
