@@ -1,6 +1,6 @@
 {
-  "name": "EW Service",
-  "short_name": "EW Service",
+  "name": "EW Complaint",
+  "short_name": "EW Complaint",
   "description": "Register a complaint - for customers, no sign-in",
   "start_url": "./",
   "scope": "./",
