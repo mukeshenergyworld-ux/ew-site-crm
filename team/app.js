@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.688";
+  var APP_VERSION = "6.9.689";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -28083,6 +28083,11 @@ function viewCatalogue() {
       } else {
         var p = e.row, pa = payAmt(p), pk = payKindOf(p);
         var tail = [p.mode ? String(p.mode).trim() : "", p.ref ? String(p.ref).trim() : ""].filter(Boolean).join(" · ");
+        /* 6.9.689 - HIS WORDS: "if you are splitting payment then show in narration that out of 2 lac on
+           date like this, so that to remind while cross checking". A part of a builder's payment (6.9.686)
+           says so on every statement line it makes - screen, Excel and PDF all read this field. */
+        var _mr = String(p.notes || "").match(/Part of \D*([\d,]+) from .*? on (\d{2}\/\d{2}\/\d{4}) \((MR-[\w-]+)\)/);
+        if (_mr) tail = [tail, "out of " + money(Number(_mr[1].replace(/,/g, ""))) + " received " + _mr[2] + " (" + _mr[3] + ")"].filter(Boolean).join(" · ");
         run -= pa;
         out.push({ kind: "pay", date: d10(p.date || p.createdAt), no: "",
           ptrs: tail || "", type: pk === "refund" ? "Refund" : (pk === "advance" ? "Advance" : "Payment"),
@@ -28447,12 +28452,110 @@ function viewCatalogue() {
       '<td style="padding:6px 7px;text-align:right;white-space:nowrap">' + money(Math.round(tE)) + '</td><td style="padding:6px 7px;text-align:right;white-space:nowrap">' + money(Math.round(tR)) + '</td></tr></tbody></table></div></div>';
   }
 
+  /* ===== 6.9.689 - ONE PRESET FOR ALL A BUILDER'S SITES, AND HIS SITES ONE TAP APART =====
+     HIS WORDS, 3 Oct 2026: "ok do all" - the two he had not picked on the builder's page: one brand
+     discount preset set on the builder for every site under him, and each site's hisab reachable
+     without leaving the builder.
+     THE PRESET. A discount lives on the client, row by row, dated (discRowOn). Setting it "on the
+     builder" therefore writes the same dated row on every site (and on the builder himself, for any
+     delivery of his own), carrying forward the partners' incentive rates already on that site's row
+     - a discount row also holds them, and a bare row would quietly stop a plumber's incentive. The
+     row starts from the oldest delivery not yet finalised on that site, so those deliveries take it
+     too: their 0% lines are re-priced at once through hsbApplyPresetNow, the same call the hisab
+     sheet uses. A delivery already finalised keeps the price it was finalised at. The preset is
+     also kept as an audit row (mst:preset), and a site put under the builder later takes it.
+     THE SITES. A strip of chips - the builder, then each site with what it owes - on the builder's
+     page and on every site's page: one tap to any of them, the current one lit. */
+  function mstPreset(master) {
+    var best = null;
+    (S.data.audit || []).forEach(function (a) {
+      if (a.action !== "mst:preset") return; var d = cmpJ(a.detail);
+      if (mstKey(d.master) === mstKey(master) && (!best || String(a.createdAt) > String(best.at))) best = { at: a.createdAt, by: a.actor, rates: d.rates || {} };
+    });
+    return best;
+  }
+  function mstBrands(master) {
+    var names = [master].concat(mstSites(master)), seen = {}, out = [];
+    var add = function (b) { b = String(b || "").trim(); if (b && !seen[dkey(b)]) { seen[dkey(b)] = 1; out.push(b); } };
+    names.forEach(function (n) {
+      var chs = []; try { chs = famChallansIn(n) || []; } catch (e) { chs = []; }
+      chs.forEach(function (c) { chItems(c).forEach(function (i) { add(i.brand || c.brand); }); });
+      (S.data.discounts || []).forEach(function (d) { if (dkey(d.client) === dkey(n)) add(d.brand); });
+    });
+    var pp = mstPreset(master); if (pp) Object.keys(pp.rates).forEach(add);
+    ((S.mstPPextra || {})[mstKey(master)] || []).forEach(add);
+    return out.sort(alpha);
+  }
+  function mstPPHtml(master) {
+    if (!roleIs("admin")) return "";
+    var sites = mstSites(master), brands = mstBrands(master), pp = mstPreset(master);
+    var pct = function (n, b) { var d = discRow(n, b); return d && d.pct !== "" && d.pct != null ? Number(d.pct) || 0 : null; };
+    var td = 'padding:5px 7px;border-top:1px solid #e0e7ff;', short = function (n) { var s = String(n); var k = s.lastIndexOf(" - "); return k > 0 ? s.slice(k + 3) : s; };
+    var all = (S.data.brands || []).map(function (b) { return String(b.brand || "").trim(); }).filter(function (b) { return b && brands.map(dkey).indexOf(dkey(b)) < 0; }).sort(alpha);
+    var h = '<div class="card" style="border-color:#c7d2fe"><b style="font-size:14px;color:#312e81">Brand discounts &middot; one preset for all ' + plural(sites.length, "site") + '</b>' +
+      '<div class="meta" style="font-size:12.5px;margin-top:2px">Type a % in ALL SITES and press Set: every site (and ' + esc(master) + ' himself) takes it, and deliveries not yet finalised are re-priced now. Blank = leave that brand as it is.' +
+      (pp ? ' Last set by ' + esc(pp.by || "") + ' on ' + esc(dmy(pp.at)) + '.' : '') + '</div>' +
+      '<div style="overflow-x:auto;margin-top:8px"><table style="width:100%;border-collapse:collapse;font-size:12.5px"><thead><tr style="background:#312e81;color:#fff">' +
+      '<th style="padding:5px 7px;text-align:left">BRAND</th>' + sites.map(function (s) { return '<th style="padding:5px 7px;text-align:right;white-space:nowrap" title="' + esc(s) + '">' + esc(short(s)) + '</th>'; }).join("") +
+      '<th style="padding:5px 7px;text-align:right;white-space:nowrap">ALL SITES %</th></tr></thead><tbody>';
+    if (!brands.length) h += '<tr><td style="' + td + '" colspan="' + (sites.length + 2) + '">No brand delivered to these sites yet &mdash; add one below.</td></tr>';
+    brands.forEach(function (b, i) {
+      var vals = sites.map(function (s) { return pct(s, b); }), same = vals.every(function (v) { return v === vals[0]; });
+      h += '<tr style="background:' + (i % 2 ? '#f8faff' : '#fff') + '"><td style="' + td + 'font-weight:700">' + esc(b) + '</td>' +
+        vals.map(function (v) { return '<td style="' + td + 'text-align:right;color:' + (v == null ? '#94a3b8' : '#0f172a') + '">' + (v == null ? 'not set' : v + '%') + '</td>'; }).join("") +
+        '<td style="' + td + 'text-align:right"><input class="mst-pp" data-brand="' + esc(b) + '" inputmode="decimal" placeholder="' + (same && vals[0] != null ? vals[0] : '') + '" style="width:80px;min-height:40px;text-align:right;font-size:13px;padding:4px 6px"/></td></tr>';
+    });
+    h += '</tbody></table></div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px">' +
+      (all.length ? '<select id="mst_pp_add" data-n="' + esc(master) + '" style="flex:0 1 220px;min-height:44px"><option value="">+ Add a brand&hellip;</option>' + all.map(function (b) { return '<option value="' + esc(b) + '">' + esc(b) + '</option>'; }).join("") + '</select>' : '') +
+      '<span style="flex:1"></span><button class="btn" data-act="mst-pp-save" data-n="' + esc(master) + '">Set for all ' + plural(sites.length, "site") + '</button></div></div>';
+    return h;
+  }
+  /* write a preset: one dated row per account, incentive rates carried, then re-price */
+  function mstPPApply(master, rates, onlyNames) {
+    var names = onlyNames || [master].concat(mstSites(master)), rows = 0, lines = 0, diff = 0;
+    names.forEach(function (n) {
+      var open = []; try { open = (famChallansIn(n) || []).filter(function (c) { return !inHisab(c) && !/cancel/i.test(String(c.status || "")); }); } catch (e) { open = []; }
+      var from = today();
+      open.forEach(function (c) { var d = localDay(c.createdAt); if (d && d < from) from = d; });
+      Object.keys(rates).forEach(function (b) {
+        var cur = discRow(n, b), keep = incMap(cur), nn = {};
+        Object.keys(keep).forEach(function (k) { if (k !== "from" && k !== "via") nn[k] = keep[k]; });
+        nn.from = from; nn.via = "builder preset: " + master;
+        save("discounts", { id: mintId("D"), client: n, brand: b, pct: rates[b], notes: JSON.stringify(nn) }, true);
+        rows++;
+      });
+      bustCaches();
+      open.forEach(function (c) { var g = hsbApplyPresetNow(c, "builder preset set on " + master + " - applies to every site"); if (g) { lines += g.n; diff += g.diff; } });
+    });
+    return { rows: rows, lines: lines, diff: diff };
+  }
+  function mstSwitch(cl) {
+    var m = mstSites(cl).length ? cl : mstOf(cl); if (!m) return "";
+    var sites = mstSites(m); if (!sites.length) return "";
+    var chip = function (n, label, on) {
+      return '<button class="btn sm' + (on ? '' : ' ghost') + '" data-act="bill-open" data-n="' + esc(n) + '" style="white-space:nowrap">' + label + '</button>';
+    };
+    return '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 8px">' +
+      chip(m, '&#127970; ' + esc(m) + ' &middot; all sites', mstKey(cl) === mstKey(m)) +
+      sites.map(function (s) { var d = (clientLedger(s) || {}).due || 0; return chip(s, '↳ ' + esc(s) + (d > 0.5 ? ' &middot; ' + money(d) : ''), mstKey(cl) === mstKey(s)); }).join("") + '</div>';
+  }
+
+  try {
+    document.addEventListener("change", function (e) {
+      var t = e.target; if (!t || t.id !== "mst_pp_add" || !t.value) return;
+      var k = mstKey(t.getAttribute("data-n")); S.mstPPextra = S.mstPPextra || {};
+      (S.mstPPextra[k] = S.mstPPextra[k] || []).push(t.value);
+      keepScroll = true; render();
+    });
+  } catch (e) { }
+
   function mstCard(cl) {
     var own = roleIs("admin"), sites = mstSites(cl), up = mstOf(cl);
     var link = function (act, n, label) { return '<button class="btn sm ghost" data-act="' + act + '" data-n="' + esc(n) + '">' + label + '</button>'; };
     if (sites.length) {
       var M = mstRows(cl);
-      var h = '<div class="card" style="border-color:#c7d2fe;background:#f8faff">' +
+      var h = mstSwitch(cl) + '<div class="card" style="border-color:#c7d2fe;background:#f8faff">' +   /* 6.9.689 - the strip */
         '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center"><b style="flex:1 1 240px;font-size:14px;color:#312e81">' + esc(cl) + ' &mdash; master account &middot; ' + plural(sites.length, "site") + ' billed through it</b>' +
         '<button class="btn sm" data-act="mst-pdf" data-n="' + esc(cl) + '">Combined statement (PDF)</button>' +
         (own ? link("mst-add", cl, "+ Add a site") : '') + '</div>' +
@@ -28474,10 +28577,10 @@ function viewCatalogue() {
         '<td style="padding:6px 7px;text-align:right;white-space:nowrap">' + money(M.tot.billed) + '</td><td style="padding:6px 7px;text-align:right;white-space:nowrap">' + money(M.tot.paid + M.tot.returned) + '</td>' +
         '<td style="padding:6px 7px;text-align:right;white-space:nowrap">' + money(M.tot.due) + '</td><td style="padding:6px 7px;text-align:right">' + (M.tot.oldest ? M.tot.oldest + 'd' : '') + '</td><td></td></tr>' +
         '</tbody></table></div></div>';
-      return h + mstStmtHtml(cl) + mstIncHtml(cl);   /* 6.9.688 */
+      return h + mstStmtHtml(cl) + mstPPHtml(cl) + mstIncHtml(cl);   /* 6.9.688; 6.9.689 the preset */
     }
     if (up) {
-      return '<div class="card" style="border-color:#c7d2fe;background:#f8faff;padding:9px 12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">' +
+      return mstSwitch(cl) + '<div class="card" style="border-color:#c7d2fe;background:#f8faff;padding:9px 12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">' +
         '<span style="flex:1 1 240px;font-size:13px">Billed through <b>' + esc(up) + '</b> &mdash; ' + esc(up) + ' owes for this site, and it is on ' + esc(up) + '&rsquo;s combined statement. This site&rsquo;s own statement is below as always.</span>' +
         '<button class="btn sm" data-act="bill-open" data-n="' + esc(up) + '">Open ' + esc(up) + '</button>' +
         (own ? link("mst-under", cl, "Change") : '') + '</div>';
@@ -54558,8 +54661,11 @@ function viewCatalogue() {
       t.disabled = true;
       mstWrite(_site, _mas).then(function (ok) {
         t.disabled = false; if (!ok) return;
-        S.modal = null; bustCaches(); render();
-        toast(_mas ? _site + " is now billed through " + _mas + "." : _site + " is no longer under a builder or dealer.");
+        S.modal = null; bustCaches();
+        var _ppm = _mas ? mstPreset(_mas) : null, _ppr = null;   /* 6.9.689 - a new site takes the builder's preset */
+        if (_ppm && Object.keys(_ppm.rates).length) _ppr = mstPPApply(_mas, _ppm.rates, [_site]);
+        render();
+        toast(_mas ? _site + " is now billed through " + _mas + "." + (_ppr ? " It took his brand preset (" + Object.keys(_ppm.rates).length + " brands)" + (_ppr.lines ? ", " + _ppr.lines + " lines re-priced, " + money(_ppr.diff) + " off" : "") + "." : "") : _site + " is no longer under a builder or dealer.");
       });
       return;
     }
@@ -54568,6 +54674,24 @@ function viewCatalogue() {
       var _offN = t.getAttribute("data-n") || "", _offM = mstOf(_offN);
       askSheet({ title: "Take " + esc(_offN) + " out?", sub: "from under " + esc(_offM), body: '<div>Its own hisab and statement are not touched. It just leaves ' + esc(_offM) + '&rsquo;s combined account.</div>', yes: "Take it out", no: "Keep it" })
         .then(function (y) { if (!y) return; mstWrite(_offN, "").then(function (ok) { if (ok) { bustCaches(); render(); toast(_offN + " is no longer under " + _offM + "."); } }); });
+      return;
+    }
+    if (act === "mst-pp-save") {   /* 6.9.689 */
+      if (!roleIs("admin")) return;
+      var _pm = t.getAttribute("data-n") || "", _pr = {}, _pbad2 = "";
+      Array.prototype.forEach.call(document.querySelectorAll("input.mst-pp"), function (e) {
+        var v = String(e.value || "").trim(); if (v === "") return;
+        if (!/^[0-9]+(\.[0-9]+)?$/.test(v) || Number(v) > 100) { _pbad2 = _pbad2 || e.getAttribute("data-brand"); return; }
+        _pr[e.getAttribute("data-brand")] = Number(v);
+      });
+      if (_pbad2) { toast(_pbad2 + ": a discount is a number from 0 to 100."); return; }
+      if (!Object.keys(_pr).length) { toast("Type a % in ALL SITES for at least one brand."); return; }
+      var _old = mstPreset(_pm), _all = Object.assign({}, _old ? _old.rates : {}, _pr);
+      save("audit", { action: "mst:preset", actor: S.user, recId: mstKey(_pm), createdAt: new Date().toISOString(), detail: JSON.stringify({ master: _pm, rates: _all, set: _pr }) }, true);
+      var _res = mstPPApply(_pm, _pr);
+      keepScroll = true; render();
+      toast("Preset set on " + _pm + " and " + plural(mstSites(_pm).length, "site") + ": " + Object.keys(_pr).map(function (b) { return b + " " + _pr[b] + "%"; }).join(", ") + "." +
+        (_res.lines ? " " + _res.lines + " line" + (_res.lines === 1 ? "" : "s") + " not yet finalised re-priced, " + money(_res.diff) + " off." : ""));
       return;
     }
     if (act === "mst-stmt-all") { var _mk = mstKey(t.getAttribute("data-n")); S.mstStmtAll = S.mstStmtAll || {}; S.mstStmtAll[_mk] = !S.mstStmtAll[_mk]; keepScroll = true; render(); return; }   /* 6.9.688 */
