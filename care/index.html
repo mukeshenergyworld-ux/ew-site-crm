@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0d5c56">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Energy World">
+<meta name="robots" content="noindex, nofollow">
+<title>My Energy World</title>
+<!-- care 1.0.0 - 3 Oct 2026. The customer's own page, opened from his personal link.
+     NO MANIFEST, ON PURPOSE: a manifest's start_url would drop the ?t= token, and a phone saving
+     the page to its home screen would then open a page that knows nobody. Without one, iPhone and
+     Android both save the address as it stands - token and all. -->
+<link rel="apple-touch-icon" href="../complaint/icon-180.png">
+<link rel="icon" href="../complaint/icon-192.png">
+<style>
+:root{--teal-900:#08423e;--teal-800:#0d5c56;--teal-700:#12756c;--teal-50:#e8f3f1;--ink:#132420;--ink-60:#516560;--line:#dde6e3;--paper:#f6f8f7;--white:#fff;--amber:#b45309;--danger:#b3402f;--ok:#0d8a5f;--r:14px;}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Noto Sans',sans-serif;color:var(--ink);background:var(--paper);line-height:1.45;font-size:15px;-webkit-font-smoothing:antialiased;min-height:100vh}
+.top{background:linear-gradient(135deg,var(--teal-900),var(--teal-700));color:#eafaf7;padding:calc(16px + env(safe-area-inset-top,0)) 16px 16px}
+.brand{display:flex;align-items:center;gap:12px;max-width:640px;margin:0 auto}
+.mark{width:46px;height:46px;border-radius:12px;background:#fff;display:grid;place-items:center;padding:5px;flex:0 0 auto}
+.mark img{width:100%;height:100%;object-fit:contain}
+.brand h1{font-size:17px;margin:0;font-weight:700}
+.brand p{font-size:12.5px;margin:2px 0 0;color:#a9e0d8}
+.wrap{max-width:640px;margin:0 auto;padding:16px 16px 48px}
+.card{background:var(--white);border:1px solid var(--line);border-radius:var(--r);padding:14px 14px;margin:0 0 12px;box-shadow:0 1px 2px rgba(8,66,62,.05)}
+h2{font-size:20px;margin:4px 0 4px;color:var(--teal-900)}
+h3{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--teal-700);margin:0 0 8px}
+.muted{color:var(--ink-60);font-size:13px}
+.prod{padding:10px 0;border-top:1px solid var(--line)}
+.prod:first-of-type{border-top:0}
+.prod b{font-size:15px}
+.pill{display:inline-block;font-size:12.5px;font-weight:700;border-radius:999px;padding:3px 10px;margin-top:4px}
+.ok{background:#dcfce7;color:#166534}.bad{background:#fee2e2;color:#991b1b}.warn{background:#fef3c7;color:#92400e}.grey{background:#eef2f1;color:#475569}
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:50px;border:0;border-radius:12px;background:var(--teal-800);color:#fff;font-size:16px;font-weight:700;font-family:inherit;cursor:pointer;text-decoration:none}
+.btn.ghost{background:#fff;color:var(--teal-800);border:1.5px solid var(--teal-700)}
+.btn:disabled{opacity:.6}
+.row2{display:flex;gap:10px}.row2>*{flex:1}
+label{display:block;font-size:13px;font-weight:700;color:var(--ink-60);margin:12px 0 5px}
+select,textarea,input{width:100%;font:inherit;font-size:16px;padding:11px 12px;border:1.5px solid var(--line);border-radius:10px;background:#fff;color:var(--ink);min-height:48px}
+textarea{min-height:110px;resize:vertical}
+.seg{display:flex;gap:8px}.seg button{flex:1;min-height:48px;border-radius:10px;border:1.5px solid var(--line);background:#fff;font:inherit;font-size:14px;font-weight:700;color:var(--ink-60);cursor:pointer}
+.seg button.on{border-color:var(--teal-700);background:var(--teal-50);color:var(--teal-900)}
+.tk{padding:10px 0;border-top:1px solid var(--line);display:flex;gap:10px;align-items:flex-start}
+.tk:first-of-type{border-top:0}
+.tk .g{flex:1;min-width:0}
+details summary{cursor:pointer;min-height:44px;display:flex;align-items:center;font-weight:700;color:var(--teal-700);font-size:14px}
+.save{background:#fffbeb;border-color:#fde68a}
+.err{color:var(--danger);font-weight:600}
+.done{background:#ecfdf5;border-color:#a7f3d0}
+.foot{text-align:center;font-size:12.5px;color:var(--ink-60);margin-top:18px}
+</style>
+</head>
+<body>
+<div class="top"><div class="brand"><div class="mark"><img src="../assets/logo.jpg" alt="Energy World"></div>
+  <div><h1>Energy World</h1><p>Your products &middot; warranty &middot; service</p></div></div></div>
+<div class="wrap" id="root"><div class="card muted">Opening your page&hellip;</div></div>
+<script>
+(function () {
+  "use strict";
+  var VER = "1.0.0";
+  var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
+  var OFFICE = "+919466600611";
+  var CATS = ["Product defect", "Not working / no water", "Leakage", "Installation", "Service / AMC", "Billing", "Other"];
+  var PROMISE = { High: 24, Normal: 48, Low: 72 };
+  var S = { tok: "", data: null, err: "", form: false, pri: "Normal", sent: null, busy: false };
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+  function dmy(v) { var m = String(v || "").match(/^(\d{4})-(\d{2})-(\d{2})/); if (m) return m[3] + "/" + m[2] + "/" + m[1]; var d = new Date(v); return isNaN(d) ? String(v || "") : ("0" + d.getDate()).slice(-2) + "/" + ("0" + (d.getMonth() + 1)).slice(-2) + "/" + d.getFullYear(); }
+  function days(v) { var t = Date.parse(String(v || "").slice(0, 10)); return isFinite(t) ? Math.floor((t - Date.now()) / 86400000) : null; }
+  /* the token: from the link, else what this phone kept from the last time it was opened */
+  try {
+    var q = new URLSearchParams(location.search).get("t") || "";
+    if (/^[0-9a-f]{64}$/.test(q)) { S.tok = q; try { localStorage.setItem("ew_care_t", q); } catch (e) {} }
+    else { try { S.tok = localStorage.getItem("ew_care_t") || ""; } catch (e) {} }
+  } catch (e) {}
+  function api(body, ms) {
+    var ctl = ("AbortController" in window) ? new AbortController() : null;
+    var tm = setTimeout(function () { if (ctl) ctl.abort(); }, ms || 30000);
+    return fetch(GAS, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(body), signal: ctl ? ctl.signal : undefined, redirect: "follow" })
+      .then(function (r) { clearTimeout(tm); return r.json(); });
+  }
+  function warr(p) {
+    if (p.kind === "install") {
+      if (!p.amcType || /^none$/i.test(p.amcType)) return { t: "No AMC", c: "grey" };
+      var a = p.amcEnd ? days(p.amcEnd) : 1;
+      return a >= 0 ? { t: p.amcType + (p.amcEnd ? " till " + dmy(p.amcEnd) : ""), c: "ok", ok: 1 } : { t: "AMC ended " + dmy(p.amcEnd), c: "bad" };
+    }
+    if (p.kind === "comm") {
+      if (!p.date) return { t: "Not commissioned yet", c: "warn" };
+      if (!p.till) return { t: "Commissioned " + dmy(p.date), c: "grey" };
+      var w = days(p.till);
+      return w >= 0 ? { t: "In warranty till " + dmy(p.till), c: "ok", ok: 1 } : { t: "Warranty over " + dmy(p.till), c: "bad" };
+    }
+    return { t: "Delivered " + dmy(p.date), c: "grey" };
+  }
+  function prodName(p) { return p.desc + (p.sn ? " (S/N " + p.sn + ")" : ""); }
+  function render() {
+    var R = document.getElementById("root"), h = "";
+    if (!S.tok) { R.innerHTML = '<div class="card"><h2>This page needs your own link</h2><p class="muted">Please open the link Energy World sent you on WhatsApp. If you do not have it, call us and we will send it again.</p><a class="btn" href="tel:' + OFFICE + '">&#128222; Call Energy World</a></div>'; return; }
+    if (S.err) { R.innerHTML = '<div class="card"><h2>Could not open your page</h2><p class="err">' + esc(S.err) + '</p><div class="row2"><button class="btn ghost" data-a="retry">Try again</button><a class="btn" href="tel:' + OFFICE + '">&#128222; Call us</a></div></div>'; return; }
+    if (!S.data) { R.innerHTML = '<div class="card muted">Opening your page&hellip;</div>'; return; }
+    var D = S.data, c = D.client || {}, ps = D.products || [];
+    var main = ps.filter(function (p) { return p.kind !== "item"; }), rest = ps.filter(function (p) { return p.kind === "item"; });
+    h += '<h2>Hello, ' + esc(c.name) + '</h2><p class="muted" style="margin:0 0 12px">' + esc([c.area, c.location].filter(Boolean).join(", ")) + '</p>';
+    if (S.sent) h += '<div class="card done"><b>Complaint registered &mdash; ' + esc(S.sent.ref) + '</b><div class="muted" style="margin-top:4px">We will reach you within ' + PROMISE[S.sent.pri] + ' hours. You can see its progress below.</div></div>';
+    if (!S.form) h += '<button class="btn" data-a="form" style="margin:0 0 12px">&#128295; Register a complaint</button>';
+    else h += formHtml(main.concat(rest));
+    h += '<div class="card"><h3>Your products</h3>' + (main.length ? main.map(function (p) {
+      var w = warr(p);
+      return '<div class="prod"><b>' + esc(p.desc) + '</b>' + (p.brand ? ' <span class="muted">' + esc(p.brand) + '</span>' : '') +
+        '<div class="muted">' + [p.sn ? "S/N " + esc(p.sn) : "", p.kind === "install" && p.date ? "installed " + esc(dmy(p.date)) : "", p.nextService ? "next service " + esc(dmy(p.nextService)) : ""].filter(Boolean).join(" &middot; ") + '</div>' +
+        '<span class="pill ' + w.c + '">' + esc(w.t) + '</span></div>';
+    }).join("") : '<p class="muted">No machine with a warranty or AMC is recorded for you yet.</p>') +
+      (rest.length ? '<details><summary>Other things we delivered (' + rest.length + ')</summary>' + rest.map(function (p) {
+        return '<div class="prod"><b style="font-size:14px">' + esc(p.desc) + '</b><div class="muted">' + esc((p.brand ? p.brand + " · " : "") + "delivered " + dmy(p.date)) + '</div></div>'; }).join("") + '</details>' : '') + '</div>';
+    var tk = D.tickets || [];
+    h += '<div class="card"><h3>Your complaints</h3>' + (tk.length ? tk.map(function (t) {
+      var cl = /closed|resolved/i.test(t.status) ? "ok" : /assigned|visited/i.test(t.status) ? "warn" : "grey";
+      return '<div class="tk"><div class="g"><b>' + esc(t.ref) + '</b> <span class="muted">' + esc(dmy(t.at)) + '</span><div class="muted">' + esc(t.cat || "") + (t.eng ? ' &middot; engineer ' + esc(t.eng) : '') + '</div></div><span class="pill ' + cl + '">' + esc(t.status) + '</span></div>';
+    }).join("") : '<p class="muted">None so far.</p>') + '</div>';
+    var hide = false; try { hide = localStorage.getItem("ew_care_saved") === "1"; } catch (e) {}
+    var standalone = (window.navigator.standalone === true) || (window.matchMedia && matchMedia("(display-mode: standalone)").matches);
+    if (!hide && !standalone) {
+      var ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
+      h += '<div class="card save"><h3 style="color:#92400e">Keep this page on your phone</h3><div style="font-size:14px">' +
+        (ios ? 'Tap <b>Share</b> <span aria-hidden="true">&#x2191;&#xFE0E;</span> at the bottom of Safari, then <b>Add to Home Screen</b>.' : 'Tap the <b>&#8942;</b> menu at the top of Chrome, then <b>Add to Home screen</b> (or <b>Install app</b>).') +
+        ' It opens straight to your products next time.</div><button class="btn ghost" data-a="saved" style="margin-top:10px;min-height:44px">Done &mdash; hide this</button></div>';
+    }
+    h += '<div class="row2"><a class="btn ghost" href="tel:' + OFFICE + '">&#128222; Call us</a><a class="btn ghost" href="https://wa.me/' + OFFICE.replace(/\D/g, "") + '" target="_blank" rel="noopener">WhatsApp</a></div>' +
+      '<div class="foot">Energy World, Panipat &middot; this link is yours alone &middot; v' + VER + '</div>';
+    R.innerHTML = h;
+  }
+  function formHtml(ps) {
+    var f = S.f || (S.f = {});
+    return '<div class="card"><h3>New complaint</h3>' +
+      '<label for="f_p">Which product?</label><select id="f_p"><option value="">&mdash; pick &mdash;</option>' +
+      ps.map(function (p, i) { return '<option value="' + i + '"' + (String(f.p) === String(i) ? ' selected' : '') + '>' + esc(prodName(p)) + '</option>'; }).join("") +
+      '<option value="x"' + (f.p === "x" ? ' selected' : '') + '>Something else</option></select>' +
+      '<label for="f_c">What is wrong?</label><select id="f_c"><option value="">&mdash; pick &mdash;</option>' + CATS.map(function (x) { return '<option' + (f.c === x ? ' selected' : '') + '>' + esc(x) + '</option>'; }).join("") + '</select>' +
+      '<label>How urgent?</label><div class="seg">' + ["Low", "Normal", "High"].map(function (x) { return '<button type="button" data-a="pri" data-v="' + x + '" class="' + (S.pri === x ? 'on' : '') + '">' + x + '<br><span style="font-weight:500;font-size:12px">within ' + PROMISE[x] + ' h</span></button>'; }).join("") + '</div>' +
+      '<label for="f_d">Tell us in a line or two</label><textarea id="f_d" placeholder="e.g. the pump starts and stops again and again">' + esc(f.d || "") + '</textarea>' +
+      (S.ferr ? '<p class="err">' + esc(S.ferr) + '</p>' : '') +
+      '<div class="row2" style="margin-top:12px"><button class="btn ghost" data-a="cancel">Cancel</button><button class="btn" data-a="send"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? 'Sending&hellip;' : 'Send') + '</button></div></div>';
+  }
+  function keep() { S.f = S.f || {}; var e; if ((e = document.getElementById("f_p"))) S.f.p = e.value; if ((e = document.getElementById("f_c"))) S.f.c = e.value; if ((e = document.getElementById("f_d"))) S.f.d = e.value; }
+  function load() {
+    S.err = ""; render();
+    api({ action: "custView", tok: S.tok }, 30000).then(function (r) {
+      if (!r || !r.ok) { S.err = (r && r.error) || "No answer from Energy World."; if (r && /not valid/i.test(r.error || "")) { try { localStorage.removeItem("ew_care_t"); } catch (e) {} } }
+      else S.data = r;
+      render();
+    }).catch(function () { S.err = "No connection. Check the internet and try again."; render(); });
+  }
+  document.addEventListener("click", function (e) {
+    var t = e.target.closest("[data-a]"); if (!t) return;
+    var a = t.getAttribute("data-a");
+    if (a === "retry") { load(); return; }
+    if (a === "form") { S.form = true; S.sent = null; S.ferr = ""; render(); var el = document.getElementById("f_p"); if (el) el.scrollIntoView({ block: "center" }); return; }
+    if (a === "cancel") { S.form = false; S.f = {}; render(); return; }
+    if (a === "pri") { keep(); S.pri = t.getAttribute("data-v"); render(); return; }
+    if (a === "saved") { try { localStorage.setItem("ew_care_saved", "1"); } catch (e2) {} render(); return; }
+    if (a === "send") {
+      keep(); var f = S.f || {};
+      var ps = ((S.data && S.data.products) || []).filter(function (p) { return p.kind !== "item"; }).concat(((S.data && S.data.products) || []).filter(function (p) { return p.kind === "item"; }));
+      if (!f.p) { S.ferr = "Pick the product (or Something else)."; render(); return; }
+      if (!f.c) { S.ferr = "Pick what is wrong."; render(); return; }
+      if (String(f.d || "").trim().length < 4) { S.ferr = "Write in a line what is wrong."; render(); return; }
+      var p = f.p === "x" ? null : ps[Number(f.p)];
+      S.busy = true; S.ferr = ""; render();
+      api({ action: "custComplaint", tok: S.tok, category: f.c, urgency: S.pri, description: String(f.d).trim(),
+        product: p ? prodName(p) + " - " + warr(p).t : "Something else", products: p ? [Object.assign({ key: "cust:" + f.p }, p)] : [] }, 40000)
+        .then(function (r) {
+          S.busy = false;
+          if (!r || !r.ok) { S.ferr = (r && r.error) || "It did not go through. Please try again, or call us."; render(); return; }
+          S.sent = { ref: r.ref, pri: S.pri }; S.form = false; S.f = {}; S.pri = "Normal";
+          load(); window.scrollTo(0, 0);
+        }).catch(function () { S.busy = false; S.ferr = "No connection - nothing was sent. Try again when you have signal."; render(); });
+    }
+  });
+  load();
+})();
+</script>
+</body>
+</html>
