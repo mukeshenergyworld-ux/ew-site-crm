@@ -146,7 +146,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.61.0";
+  var APP_VERSION = "1.62.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_collect_session";
 
@@ -2622,10 +2622,58 @@ function cancelMap() {
        10,000 of 10,300 was told "your account is now clear", and a man owing Rs 1-500 or in
        credit could not be found by search at all. */
     _rowsAll = out.slice();
+    out = bldFold(out, d);   /* 1.62.0 - a builder and his sites: one card to chase */
     out = out.filter(function (r) { return r.due > 500 || r.svcDue > 0.5; });
     out.sort(function (a, b) { return b.score - a.score || b.due - a.due; });
     _rowsCache = out;
     return out;
+  }
+  /* ===== 1.62.0 - CHASE THE BUILDER, NOT EACH SITE =====
+     HIS WORDS, 3 Oct 2026: "in the Payments and Collections lists, the sites would sit under
+     National Hardware with one total to chase" - and of Space Constructions - Gurpreet Ji and his
+     three sites: "its must show in collection app". In the CRM a site carries billedThrough = the
+     builder's name (server V142). Here, a site whose builder is also on this phone's list leaves
+     the chase list and sits inside the builder's card: one total (goods + service, overdue, old
+     book), his oldest bill, the worst of their chase scores. Each site's own figures are kept as
+     they were - the receipt and the look-up still read the site itself (_rowsAll is untouched). */
+  function bldFold(list, d) {
+    var mOf = {};
+    ((d && d.clients) || []).forEach(function (c) {
+      var m = String(c.billedThrough || "").trim();
+      if (m && lower(m) !== lower(c.name)) mOf[lower(c.name)] = m;
+    });
+    var by = {}; list.forEach(function (r) { by[lower(r.name)] = r; });
+    var groups = {}, under = {};
+    list.forEach(function (r) {
+      var m = mOf[lower(r.name)]; if (!m || !by[lower(m)]) return;
+      under[lower(r.name)] = 1; (groups[lower(m)] = groups[lower(m)] || []).push(r);
+    });
+    return list.filter(function (r) { return !under[lower(r.name)]; }).map(function (r) {
+      var g = groups[lower(r.name)]; if (!g) return r;
+      var M = Object.assign({}, r, { own: r, sites: g.slice().sort(function (a, b) { return b.toCollect - a.toCollect; }) });
+      g.forEach(function (x) {
+        M.due += x.due; M.svcDue += x.svcDue; M.toCollect += x.toCollect; M.overdue += x.overdue; M.oldBook += x.oldBook;
+        if (x.score > M.score) { M.score = x.score; M.bucket = x.bucket; }
+        if ((x.ageDays || 0) > (M.ageDays || 0)) { M.ageDays = x.ageDays; M.oldestUnpaid = x.oldestUnpaid; }
+        if (x.lastPay && (!M.lastPay || x.lastPay > M.lastPay)) M.lastPay = x.lastPay;
+      });
+      return M;
+    });
+  }
+  function bldLines(r) {
+    return '<div style="margin-top:4px">' + r.sites.map(function (x) {
+      return '<div class="muted" style="font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">\u21b3 ' + esc(x.name) + ' &middot; ' +
+        (x.toCollect > 0.5 ? '<b style="color:#b91c1c">' + money(x.toCollect) + '</b>' : 'clear') +
+        (x.toCollect > 0.5 && x.oldestUnpaid ? ' &middot; ' + esc(ageWords(x.ageDays)) : '') + '</div>';
+    }).join("") + '</div>';
+  }
+  function bldBody(r, t) {
+    var o = r.own, h = '';
+    if (o && (Math.abs(o.billed + o.opening) > 0.5 || Math.abs(o.paid) > 0.5 || o.svcDue > 0.5)) h += '<div style="padding:8px 13px;font-weight:800;border-top:1px solid #e2e8f0;background:#eef2ff">' + esc(o.name) + ' &mdash; his own account &middot; ' + money(o.toCollect) + '</div>' + clientBody(o, t);
+    r.sites.forEach(function (x) {
+      h += '<div style="padding:8px 13px;font-weight:800;border-top:1px solid #e2e8f0;background:#eef2ff">\u21b3 ' + esc(x.name) + ' &middot; ' + money(x.toCollect) + '</div>' + clientBody(x, t);
+    });
+    return h;
   }
   /* v1.31.0 - EWnum is a THIRD copy of the same six lines, 760 lines from the second, and
      neither knew the other existed. It stays a copy, for the reason written beside num() - and
@@ -2854,6 +2902,7 @@ function cancelMap() {
     else if (f && f !== "all") list = list.filter(function (r) { return r.bucket === f; });
     if (q) list = list.filter(function (r) {
       if (String(r.name).toLowerCase().indexOf(q) >= 0) return true;
+      if (r.sites && r.sites.some(function (x) { return String(x.name).toLowerCase().indexOf(q) >= 0; })) return true;   /* 1.62.0 */
       var rec = ((S.data && S.data.clients) || []).filter(function (c) {
         return String(c.name || "").trim().toLowerCase() === String(r.name || "").trim().toLowerCase();
       })[0];
@@ -3139,7 +3188,8 @@ function cancelMap() {
     return '<div class="card" style="padding:0;overflow:hidden">' +
       '<div data-act="open" data-n="' + esc(r.name) + '" style="padding:11px 13px;cursor:pointer">' +
       '<div class="row"><div class="grow">' +
-        '<div style="font-weight:800;font-size:14.5px">' + esc(r.name) + '</div>' +
+        '<div style="font-weight:800;font-size:14.5px">' + esc(r.name) + (r.sites ? ' <span class="pill" style="background:#e0e7ff;color:#312e81">builder &middot; ' + r.sites.length + ' site' + (r.sites.length === 1 ? '' : 's') + '</span>' : '') + '</div>' +
+        (r.sites ? bldLines(r) : '') +   /* 1.62.0 */
         '<div class="muted" style="margin-top:2px">' +
           (r.oldestUnpaid ? 'Oldest unpaid ' + esc(ageWords(r.ageDays)) : 'No dated delivery') +
           (r.oldBook > 0 ? ' · <b style="color:#b91c1c">' + money(r.oldBook) + ' old book</b>' : '') +
@@ -3164,7 +3214,7 @@ function cancelMap() {
         /* v1.32.0 - when both books carry money, say which is which under the one total */
         (r.svcDue > 0.5 ? '<div class="muted">' + (r.due > 0.5 ? 'goods ' + money(r.due) + ' · ' : '') + '<b style="color:#b45309">service ' + money(r.svcDue) + '</b></div>' : '') +
       '</div></div></div>' +
-      (open ? clientBody(r, t) : '') +
+      (open ? (r.sites ? bldBody(r, t) : clientBody(r, t)) : '') +
       '</div>';
   }
 
