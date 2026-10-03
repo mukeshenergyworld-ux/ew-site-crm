@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.682";
+  var APP_VERSION = "6.9.683";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -27781,6 +27781,180 @@ function viewCatalogue() {
     return bal < -0.5 ? "In credit — paid ahead, comes off the next delivery"
          : bal > 0.5 ? "Balance due" : "Settled in full";
   }
+  /* ===== 6.9.683 - A BUILDER OR DEALER AS A MASTER ACCOUNT, ITS SITES UNDER IT =====
+     HIS WORDS, 3 Oct 2026: "if there is any builder or sanitary dealer, we can make him master and put
+     under him all sites going under that builder - like National Hardware have 3 sites going under it,
+     Space Construction have 4 site - we have options to send combined builder / dealer statement or
+     individual client statement, how can we do so better and professionally". His answers to the two
+     questions: the builder owes for all of them, and a payment from him clears the oldest dues first.
+     THE SHAPE. Each site stays a client of its own - its challans, its prices, its hisab, its own
+     statement, exactly as today. The site carries one new fact, billedThrough = the master's name
+     (a column on Clients from server V142). The master's HISAB screen gains its sites, one row each
+     with what was billed, received and is owed, one total, and a COMBINED STATEMENT: a summary page,
+     then every site's full statement in turn, numbered as one document. A site's screen says whose
+     account it is billed through. Nothing is moved and nothing is merged: undoing it is one choice. */
+  function mstKey(n) { return String(n == null ? "" : n).trim().toLowerCase(); }
+  function mstOf(name) { var c = clientByName(name); return c ? String(c.billedThrough || "").trim() : ""; }
+  function mstSites(master) {
+    var k = mstKey(master); if (!k) return [];
+    return (S.data.clients || []).filter(function (c) { return mstKey(c.billedThrough) === k && mstKey(c.name) !== k; })
+      .map(function (c) { return String(c.name || "").trim(); }).filter(Boolean).sort(alpha);
+  }
+  /* the account of the master and every site under it: one row each, and the total */
+  function mstRows(master) {
+    var names = [master].concat(mstSites(master)), out = [];
+    names.forEach(function (n, i) {
+      var l = clientLedger(n) || {}, c = clientByName(n) || {};
+      var billed = (l.opening || 0) + (l.billed || 0) + (l.freight || 0);
+      var row = { name: n, own: i === 0, area: [c.area, c.location].filter(Boolean).join(", "), billed: billed, paid: l.paid || 0, returned: l.returned || 0, due: l.due || 0,
+        oldest: (clientAging(n) || {}).oldest || 0 };
+      if (i === 0 && Math.abs(row.billed) < 0.5 && Math.abs(row.paid) < 0.5 && Math.abs(row.due) < 0.5) return;   /* the master with no account of his own */
+      out.push(row);
+    });
+    var tot = out.reduce(function (a, r) { a.billed += r.billed; a.paid += r.paid; a.returned += r.returned; a.due += r.due; a.oldest = Math.max(a.oldest, r.oldest); return a; }, { billed: 0, paid: 0, returned: 0, due: 0, oldest: 0 });
+    return { rows: out, tot: tot };
+  }
+  /* does the server keep billedThrough (V142)? asked once a session */
+  var _mstSrv = null;
+  function mstSrvOk() {
+    if (_mstSrv) return _mstSrv;
+    _mstSrv = api("srvProbe", {}, 45000).then(function (r) {
+      var v = Number(String((r && r.srv) || "").replace(/\D/g, ""));
+      if (!v) { _mstSrv = null; throw new Error("the server did not say which version it is - try again"); }
+      return v >= 142;
+    }, function (e) { _mstSrv = null; throw new Error("could not reach the server (" + apiWhy(e) + ")"); });
+    return _mstSrv;
+  }
+  function mstCard(cl) {
+    var own = roleIs("admin"), sites = mstSites(cl), up = mstOf(cl);
+    var link = function (act, n, label) { return '<button class="btn sm ghost" data-act="' + act + '" data-n="' + esc(n) + '">' + label + '</button>'; };
+    if (sites.length) {
+      var M = mstRows(cl);
+      var h = '<div class="card" style="border-color:#c7d2fe;background:#f8faff">' +
+        '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center"><b style="flex:1 1 240px;font-size:14px;color:#312e81">' + esc(cl) + ' &mdash; master account &middot; ' + plural(sites.length, "site") + ' billed through it</b>' +
+        '<button class="btn sm" data-act="mst-pdf" data-n="' + esc(cl) + '">Combined statement (PDF)</button>' +
+        (own ? link("mst-add", cl, "+ Add a site") : '') + '</div>' +
+        '<div class="meta" style="font-size:12.5px;margin-top:3px">' + esc(cl) + ' owes for every site below. Each site keeps its own hisab and its own statement; the combined statement is all of them, one after another, with this summary first.</div>' +
+        '<div style="overflow-x:auto;margin-top:8px"><table style="width:100%;min-width:560px;border-collapse:collapse;font-size:12.5px"><thead><tr style="background:#312e81;color:#fff">' +
+        ['SITE', 'AREA', 'BILLED', 'RECEIVED', 'OWES', 'OLDEST', ''].map(function (t, i) { return '<th style="padding:5px 7px;text-align:' + (i >= 2 && i <= 5 ? 'right' : 'left') + ';white-space:nowrap">' + t + '</th>'; }).join("") + '</tr></thead><tbody>' +
+        M.rows.map(function (r, i) {
+          return '<tr style="border-top:1px solid #e0e7ff;background:' + (i % 2 ? '#f5f7ff' : '#fff') + '">' +
+            '<td style="padding:5px 7px;font-weight:700">' + esc(r.name) + (r.own ? ' <span style="font-weight:500;color:#64748b;font-size:12px">(his own)</span>' : '') + '</td>' +
+            '<td style="padding:5px 7px;color:#64748b">' + esc(r.area || "—") + '</td>' +
+            '<td style="padding:5px 7px;text-align:right;white-space:nowrap">' + money(r.billed) + '</td>' +
+            '<td style="padding:5px 7px;text-align:right;white-space:nowrap;color:#0f766e">' + money(r.paid + r.returned) + '</td>' +
+            '<td style="padding:5px 7px;text-align:right;white-space:nowrap;font-weight:700;color:' + (r.due > 0.5 ? '#b91c1c' : '#0f766e') + '">' + (r.due < -0.5 ? money(-r.due) + ' adv.' : money(r.due)) + '</td>' +
+            '<td style="padding:5px 7px;text-align:right;white-space:nowrap">' + (r.due > 0.5 && r.oldest ? r.oldest + 'd' : '—') + '</td>' +
+            '<td style="padding:5px 7px;white-space:nowrap"><span class="xlrow">' + (r.own ? '' : '<button class="btn sm ghost" data-act="bill-open" data-n="' + esc(r.name) + '">Hisab</button>') +
+              (own && !r.own ? '<button class="btn sm ghost" data-act="mst-off" data-n="' + esc(r.name) + '" title="Take this site out from under ' + esc(cl) + '">Remove</button>' : '') + '</span></td></tr>';
+        }).join("") +
+        '<tr style="background:#312e81;color:#fff;font-weight:800"><td style="padding:6px 7px" colspan="2">TOTAL &middot; ' + esc(cl) + ' owes</td>' +
+        '<td style="padding:6px 7px;text-align:right;white-space:nowrap">' + money(M.tot.billed) + '</td><td style="padding:6px 7px;text-align:right;white-space:nowrap">' + money(M.tot.paid + M.tot.returned) + '</td>' +
+        '<td style="padding:6px 7px;text-align:right;white-space:nowrap">' + money(M.tot.due) + '</td><td style="padding:6px 7px;text-align:right">' + (M.tot.oldest ? M.tot.oldest + 'd' : '') + '</td><td></td></tr>' +
+        '</tbody></table></div></div>';
+      return h;
+    }
+    if (up) {
+      return '<div class="card" style="border-color:#c7d2fe;background:#f8faff;padding:9px 12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">' +
+        '<span style="flex:1 1 240px;font-size:13px">Billed through <b>' + esc(up) + '</b> &mdash; ' + esc(up) + ' owes for this site, and it is on ' + esc(up) + '&rsquo;s combined statement. This site&rsquo;s own statement is below as always.</span>' +
+        '<button class="btn sm" data-act="bill-open" data-n="' + esc(up) + '">Open ' + esc(up) + '</button>' +
+        (own ? link("mst-under", cl, "Change") : '') + '</div>';
+    }
+    if (!own) return '';
+    return '<div class="meta" style="font-size:12.5px;margin:2px 0 8px;display:flex;flex-wrap:wrap;gap:6px;align-items:center">Builder or dealer paying for several sites? ' +
+      link("mst-add", cl, "Put sites under " + esc(cl)) + link("mst-under", cl, "This site is billed through a builder / dealer") + '</div>';
+  }
+  /* the picker: who this site is billed through (mode under), or which site goes under this master (mode add) */
+  function modalMasterPick(name, mode) {
+    var me = mstKey(name), mine = {}; mstSites(name).forEach(function (n) { mine[mstKey(n)] = 1; });
+    var trade = { builder: 1, dealer: 1, contractor: 1, pmc: 1 }, top = [], rest = [];
+    (S.data.clients || []).forEach(function (c) {
+      var n = String(c.name || "").trim(), k = mstKey(n); if (!n || k === me) return;
+      if (mode === "under" && mstKey(c.billedThrough)) return;          /* a site is not a master */
+      if (mode === "add" && (mine[k] || mstSites(n).length)) return;    /* already his, or a master itself */
+      (mode === "under" && trade[String(c.type || "").toLowerCase()] ? top : rest).push(n);
+    });
+    top.sort(alpha); rest.sort(alpha);
+    var opt = function (n) { return '<option value="' + esc(n) + '">' + esc(n) + '</option>'; };
+    var cur = mode === "under" ? mstOf(name) : "";
+    return '<h2>' + (mode === "under" ? 'Billed through a builder / dealer' : 'Put a site under ' + esc(name)) + '</h2>' +
+      '<p class="sub">' + (mode === "under"
+        ? 'Pick the builder or dealer who pays for <b>' + esc(name) + '</b>. The site keeps its own hisab and statement; it also appears on his combined statement, and he owes for it.'
+        : 'Pick a client whose bills <b>' + esc(name) + '</b> pays. It keeps its own hisab and statement, and joins ' + esc(name) + '&rsquo;s combined statement.') + '</p>' +
+      '<label>' + (mode === "under" ? 'Builder / dealer' : 'Site') + '</label>' +
+      '<select id="mst_pick">' + '<option value="">' + (mode === "under" ? (cur ? '— not under anyone —' : '— pick —') : '— pick —') + '</option>' +
+      (top.length ? '<optgroup label="Builders, dealers, contractors">' + top.map(opt).join("") + '</optgroup>' : '') +
+      (rest.length ? '<optgroup label="' + (mode === "under" ? 'Other clients' : 'Clients') + '">' + rest.map(opt).join("") + '</optgroup>' : '') + '</select>' +
+      (cur ? '<div class="meta" style="margin-top:6px">Now billed through <b>' + esc(cur) + '</b>.</div>' : '') +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
+      '<button class="btn" data-act="mst-save" data-n="' + esc(name) + '" data-mode="' + esc(mode) + '">Save</button></div>';
+  }
+  /* write one site's master (or clear it) */
+  function mstWrite(site, master) {
+    var c = clientByName(site); if (!c) { toast(site + " is not on this device yet - refresh."); return Promise.resolve(false); }
+    return mstSrvOk().then(function (ok) {
+      if (!ok) { toast("This needs the server update V142 (the paste steps in the project). Nothing was saved."); return false; }
+      return save("clients", { id: c.id, name: c.name, billedThrough: master || "" }, true).then(function () {
+        c.billedThrough = master || "";
+        try { save("audit", { action: "client:master", actor: S.user, recId: c.id, detail: JSON.stringify({ site: c.name, master: master || "", why: master ? "billed through " + master : "taken out from under a master" }) }, true); } catch (e) { }
+        return true;
+      });
+    }, function (e) { toast(String((e && e.message) || e)); return false; });
+  }
+  /* the combined statement: a summary page, then each site's own statement in turn */
+  function masterPdf(master) {
+    var M = mstRows(master);
+    var doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4", orientation: "landscape" });
+    var W = 297, H = 210, L = 14, Rt = W - 14;
+    var F = function (b) { doc.setFont(ppEmbed(doc), b ? "bold" : "normal"); };
+    var RS = function (n) { return (nAmt(n) < -0.5 ? "- " : "") + "₹" + Math.round(Math.abs(nAmt(n))).toLocaleString("en-IN"); };
+    try { if (LOGO_B64) doc.addImage(LOGO_B64, "JPEG", L, 9, 20, 20); } catch (e) { }
+    F(true); doc.setFontSize(18); doc.setTextColor(17, 34, 45); doc.text("Combined statement of account", L + 22, 18);
+    F(false); doc.setFontSize(11); doc.setTextColor(55, 65, 81);
+    doc.text(master + "  ·  " + plural(M.rows.length, "account") + "  ·  as on " + dmy(today()), L + 22, 25);
+    var y = 40, X = [L + 2, L + 96, 200, 234, 266, Rt - 2];   /* left, left, right, right, right, right */
+    doc.setFillColor(49, 46, 129); doc.rect(L, y - 6, Rt - L, 9, "F");
+    F(true); doc.setFontSize(10); doc.setTextColor(255, 255, 255);
+    doc.text("Site", X[0], y); doc.text("Area", X[1], y);
+    ["Billed", "Received", "Owes", "Oldest"].forEach(function (t, i) { doc.text(t, X[i + 2], y, { align: "right" }); });
+    y += 9;
+    M.rows.forEach(function (r, i) {
+      if (i % 2) { doc.setFillColor(245, 247, 255); doc.rect(L, y - 6, Rt - L, 9, "F"); }
+      F(true); doc.setFontSize(10.5); doc.setTextColor(17, 34, 45);
+      doc.text(doc.splitTextToSize(r.name + (r.own ? " (own account)" : ""), 90)[0], X[0], y);
+      F(false); doc.setFontSize(10); doc.setTextColor(55, 65, 81);
+      doc.text(doc.splitTextToSize(r.area || "-", 66)[0], X[1], y);
+      doc.text(RS(r.billed), X[2], y, { align: "right" });
+      doc.text(RS(r.paid + r.returned), X[3], y, { align: "right" });
+      F(true); r.due > 0.5 ? doc.setTextColor(185, 28, 28) : doc.setTextColor(13, 118, 108);
+      doc.text(RS(r.due), X[4], y, { align: "right" });
+      F(false); doc.setTextColor(55, 65, 81); doc.text(r.due > 0.5 && r.oldest ? r.oldest + " days" : "-", X[5], y, { align: "right" });
+      y += 9;
+    });
+    doc.setFillColor(49, 46, 129); doc.rect(L, y - 6, Rt - L, 10, "F");
+    F(true); doc.setFontSize(11); doc.setTextColor(255, 255, 255);
+    doc.text("TOTAL", X[0], y + 0.5);
+    doc.text(RS(M.tot.billed), X[2], y + 0.5, { align: "right" });
+    doc.text(RS(M.tot.paid + M.tot.returned), X[3], y + 0.5, { align: "right" });
+    doc.text(RS(M.tot.due), X[4], y + 0.5, { align: "right" });
+    y += 16;
+    F(true); doc.setFontSize(14); doc.setTextColor(17, 34, 45);
+    doc.text((M.tot.due < -0.5 ? "Advance held for " : "Amount due from ") + master + ":  " + RS(Math.abs(M.tot.due)), L, y);
+    F(false); doc.setFontSize(10); doc.setTextColor(55, 65, 81);
+    doc.text("Each account's full statement follows, one after another: every delivery, return and payment, with the balance after each.", L, y + 8);
+    doc.text("Received includes goods returned and credited.", L, y + 14);
+    var chain = Promise.resolve();
+    M.rows.forEach(function (r) { chain = chain.then(function () { return hisabPdf(r.name, true, false, false, doc); }); });
+    return chain.then(function () {
+      var nP = doc.internal.getNumberOfPages();
+      for (var pi = 1; pi <= nP; pi++) {
+        doc.setPage(pi); F(false); doc.setFontSize(8); doc.setTextColor(55, 65, 81);
+        doc.text("Energy World  |  Combined statement — " + master + "  |  Statement of account, not a tax invoice.", L, H - 6);
+        doc.text("Page " + pi + " of " + nP, Rt, H - 6, { align: "right" });
+      }
+      return doc;
+    });
+  }
   function hisabSummaryCard(cl) {
     var m = hisabMiniRows(cl);
     if (m.rows.length < 2 && !m.opening) return "";
@@ -28753,6 +28927,7 @@ function viewCatalogue() {
        delivery he has not finalised has to be visible for him to finalise it. */
     var _acct = hisabSummaryCard(cl);           /* v6.9.424 - the account, before the cards */
     h += _acct;
+    h += mstCard(cl);                           /* 6.9.683 - master account / billed through */
     h += hisabNewBar(cl, chs);
     h += hisabPendingCard(cl);
     if (!chs.length) {
@@ -29840,7 +30015,7 @@ function viewCatalogue() {
     });
     return best;
   }
-  function hisabPdf(cl, all, pp, since) {
+  function hisabPdf(cl, all, pp, since, into) {   /* 6.9.683 - into: append to a combined statement */
     /* v6.9.480 - the gated list, because this is the document that leaves the building. A
        statement that lists what the balance does not count is a statement the client wins an
        argument with. */
@@ -29906,7 +30081,9 @@ function viewCatalogue() {
       }) : Promise.resolve({})
     ]).then(function (_pre) {
       var TSZ = _pre[0], RIMG = _pre[2];
-      var doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4", orientation: "landscape" });
+      var doc = into || new window.jspdf.jsPDF({ unit: "mm", format: "a4", orientation: "landscape" });
+      if (into) doc.addPage("a4", "landscape");
+      var _p0 = doc.internal.getNumberOfPages();   /* this statement's first page (1 on its own) */
       /* 6.9.674 - HIS WORDS, 2 Oct 2026: "this font is not clearly visible in printout, suggest any other best
        font and also font size" (the quote), then "inspect challan and client hisab pdf also and do
        needful for all".
@@ -29915,6 +30092,8 @@ function viewCatalogue() {
          8 pt, 7.4 at 8.6, 8.2 at 9.4 - and every light grey on white becomes dark grey. Its rows were
          spaced for the old sizes with room to spare (a 4.8 mm row holds an 8.4 pt line), and the
          rupee sign, now in the font, gives the money columns back the width "Rs." took. */
+      if (!doc.__ewLift) {   /* 6.9.683 - lifted once per document, not once per statement in it */
+      doc.__ewLift = 1;
       var _fs0 = doc.setFontSize.bind(doc);
       doc.setFontSize = function (n) { n = Number(n) || 0; return _fs0(n < 9 ? Math.max(8, n + 1.2) : n); };
       var _tc0 = doc.setTextColor.bind(doc);
@@ -29924,6 +30103,7 @@ function viewCatalogue() {
         if (_LIGHT[[r, g2, b].join(",")]) return _tc0(55, 65, 81);
         return (g2 === undefined) ? _tc0(r) : _tc0(r, g2, b);
       };
+      }
       var uni = true;    /* the rupee sign is in the font now: narrower than "Rs.", and the same sign on every page */
       var F = function (w) { var s = (w && String(w).indexOf("bold") >= 0) ? "bold" : "normal"; doc.setFont(ppEmbed(doc), s); };
       var W = 297, H = 210, L = 14, R = W - 14, HB = 22, FOOT = H - 12;
@@ -30099,7 +30279,7 @@ function viewCatalogue() {
 
       /* the letterhead strip, on page one - the brand logos come from the persistent cache, so
          nothing is downloaded while this is built; until it is warm the names print as text */
-      doc.setPage(1);
+      doc.setPage(_p0);
       logosReady();
       var slots = PDF_LOGO_ORDER.map(function (n) { return logoFor(n); }).filter(function (s) { return s && s.src; });
       F("bold"); doc.setFontSize(5); ink([120, 130, 140]);
@@ -30326,7 +30506,7 @@ function viewCatalogue() {
 
       /* the foot of every page, numbered against the whole, once the whole is known */
       var nP = doc.internal.getNumberOfPages();
-      for (var pi = 1; pi <= nP; pi++) {
+      if (!into) for (var pi = 1; pi <= nP; pi++) {   /* 6.9.683 - a combined statement numbers its own pages */
         doc.setPage(pi);
         F("normal"); doc.setFontSize(6.4); ink(PALE);
         doc.text("Energy World  |  Panipat · Sonipat · Karnal    |    Statement of account, not a tax invoice.", L, H - 6);
@@ -53496,7 +53676,41 @@ function viewCatalogue() {
       });
       return;
     }
-    if (act === "as-back") { asComeBack("", ""); return; }   /* 6.9.682 - Cancel on the partner form goes back to the sheet */
+    if (act === "as-back") { asComeBack("", ""); return; }
+    /* 6.9.683 - master accounts */
+    if (act === "mst-under" || act === "mst-add") {
+      if (!roleIs("admin")) { toast("Putting a site under a builder is the owner\u2019s."); return; }
+      S.modal = modalMasterPick(t.getAttribute("data-n") || "", act === "mst-under" ? "under" : "add"); render(); return;
+    }
+    if (act === "mst-save") {
+      if (!roleIs("admin")) return;
+      var _mn = t.getAttribute("data-n") || "", _mm = t.getAttribute("data-mode"), _mv = String(val("mst_pick") || "").trim();
+      if (_mm === "add" && !_mv) { toast("Pick the site."); return; }
+      if (_mm === "under" && !_mv && !mstOf(_mn)) { toast("Pick the builder or dealer."); return; }
+      var _site = _mm === "add" ? _mv : _mn, _mas = _mm === "add" ? _mn : _mv;
+      t.disabled = true;
+      mstWrite(_site, _mas).then(function (ok) {
+        t.disabled = false; if (!ok) return;
+        S.modal = null; bustCaches(); render();
+        toast(_mas ? _site + " is now billed through " + _mas + "." : _site + " is no longer under a builder or dealer.");
+      });
+      return;
+    }
+    if (act === "mst-off") {
+      if (!roleIs("admin")) return;
+      var _offN = t.getAttribute("data-n") || "", _offM = mstOf(_offN);
+      askSheet({ title: "Take " + esc(_offN) + " out?", sub: "from under " + esc(_offM), body: '<div>Its own hisab and statement are not touched. It just leaves ' + esc(_offM) + '&rsquo;s combined account.</div>', yes: "Take it out", no: "Keep it" })
+        .then(function (y) { if (!y) return; mstWrite(_offN, "").then(function (ok) { if (ok) { bustCaches(); render(); toast(_offN + " is no longer under " + _offM + "."); } }); });
+      return;
+    }
+    if (act === "mst-pdf") {
+      var _pm = t.getAttribute("data-n") || "";
+      toast("Building the combined statement for " + _pm + "\u2026");
+      loadLogo().then(function () { return masterPdf(_pm); })
+        .then(function (d) { pdfOut(d, _pm.replace(/[^\w.-]/g, "_") + "_combined_statement.pdf"); })
+        .catch(function (e) { toast("Could not build the combined statement" + (e && e.message ? " (" + e.message + ")" : "") + "."); });
+      return;
+    }   /* 6.9.682 - Cancel on the partner form goes back to the sheet */
 
     if (act === "ch-new") { chDraftOpen(); return; }   /* v6.9.554 - the unfinished one comes back first */
     if (act === "ch-draft-go") { chDraftOpen(); return; }
