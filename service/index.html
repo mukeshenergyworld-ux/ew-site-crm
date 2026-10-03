@@ -303,7 +303,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
    Nothing here deletes anything, ever. A visit is a row added.
    ========================================================================== */
 
-  var APP_VERSION = "1.20.0";
+  var APP_VERSION = "1.21.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_service_session";
 
@@ -2527,9 +2527,119 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       '<div class="meta">' + esc(String(c.Ref || "")) + '</div></div>';
   }
 
+  /* ===== 1.21.0 - THE ENGINEER'S JOB LIST =====
+     HIS CHOICE, 3 Oct 2026: "Complaints assigned in the CRM appear in the engineer's Service app. He
+     opens the job, sees the product and its warranty / AMC, does the visit, enters the charge (free
+     in warranty or AMC, else the rate card), collects, closes. The CRM board updates itself - no
+     double entry."
+     A TICKET is the CRM's (6.9.684): audit rows cmp:open and cmp:move, folded in order. Server V143
+     sends them to this phone (before V143 the list is simply empty and the old complaint list works
+     as it always has). Every step this phone takes is one more cmp:move row - the board reads it.
+     THE MONEY. The ticket carries the products and their warranty as the CRM saw them; read again
+     today here. In warranty (or under a live AMC) the visit and the parts are free and the salt is
+     charged, as it always was. A free visit is STORED with charge and parts at 0 and the gross in
+     the note, so every reader of the visit row - this account, the CRM's, the collection app's -
+     adds it up the same way without one of their functions changing. Out of warranty the admin's
+     rate card (cmp:rates, CRM Complaints > Service charges) fills the charge. */
+  var TK_PROMISE = { High: 24, Normal: 48, Low: 72 };
+  var TK_JOB = { "Repair": "Repair", "Installation": "Installation", "Service": "Cleaning / servicing", "Salt refill": "Visit / inspection", "Labour job": "Visit / inspection" };
+  function tkJ(s) { try { return JSON.parse(s || "{}") || {}; } catch (e) { return {}; } }
+  var _tkCache = null;
+  function tkAll() {
+    if (_tkCache) return _tkCache;
+    var T = {}, order = [];
+    ((S.data && S.data.audit) || []).filter(function (a) { return /^cmp:(open|move)$/.test(String(a.action || "")); })
+      .slice().sort(function (a, b) { return String(a.createdAt || "").localeCompare(String(b.createdAt || "")); })
+      .forEach(function (a) {
+        var d = tkJ(a.detail), id = String(a.target || a.recId || d.id || (a.action === "cmp:open" ? a.id : "") || "");
+        if (!id) return;
+        if (a.action === "cmp:open") {
+          if (T[id]) return;
+          T[id] = { id: id, ref: String(d.ref || ""), webRef: String(d.webRef || ""), at: a.createdAt, by: a.actor || "", client: String(d.client || ""), name: String(d.name || ""),
+            mobile: String(d.mobile || ""), area: String(d.area || ""), products: d.products || [], cat: String(d.cat || ""), pri: String(d.pri || "Normal"),
+            desc: String(d.desc || ""), src: String(d.src || ""), status: "Raised", eng: "" };
+          order.push(id); return;
+        }
+        var t = T[id]; if (!t) return;
+        if (d.to) t.status = d.to;
+        if (d.eng) t.eng = String(d.eng);
+      });
+    _tkCache = order.map(function (k) { return T[k]; });
+    return _tkCache;
+  }
+  function tkOpen(t) { return /^(Raised|Assigned|Visited)$/.test(t.status); }
+  function tkMine(t) { return lower(t.eng) === lower(S.user); }
+  function tkRefs() { var m = {}; tkAll().forEach(function (t) { if (t.ref) m[t.ref] = 1; if (t.webRef) m[t.webRef] = 1; }); return m; }
+  function tkDaysTo(v) { var x = Date.parse(String(v || "").slice(0, 10)); return isFinite(x) ? Math.floor((x - Date.now()) / 86400000) : null; }
+  function tkWarr(p) {
+    if (p.kind === "install") {
+      if (!p.amcEnd) return { t: "No AMC", c: "" };
+      return tkDaysTo(p.amcEnd) >= 0 ? { t: "AMC" + (p.amcType ? " (" + p.amcType + ")" : "") + " till " + dstr(p.amcEnd), ok: 1, amc: 1 } : { t: "AMC ended " + dstr(p.amcEnd), c: "bad" };
+    }
+    if (p.kind === "comm") {
+      if (!(p.commissioned || p.date)) return { t: "Not commissioned yet", c: "warn" };
+      if (!p.till) return { t: "Commissioned " + dstr(p.date) + " - no warranty date", c: "warn" };
+      return tkDaysTo(p.till) >= 0 ? { t: "In warranty till " + dstr(p.till), ok: 1 } : { t: "Warranty over " + dstr(p.till), c: "bad" };
+    }
+    return { t: "Delivered " + dstr(p.date), c: "" };
+  }
+  function tkCover(t) {
+    var ps = t.products || [];
+    for (var i = 0; i < ps.length; i++) { var w = tkWarr(ps[i] || {}); if (w.ok) return { ok: 1, txt: w.t, amc: !!w.amc }; }
+    return { ok: 0, txt: ps.length ? tkWarr(ps[0] || {}).t : "no product on the ticket" };
+  }
+  function tkRates() {
+    var best = null;
+    ((S.data && S.data.audit) || []).forEach(function (a) { if (a.action === "cmp:rates" && (!best || String(a.createdAt) > String(best.createdAt))) best = a; });
+    return best ? (tkJ(best.detail).rates || {}) : {};
+  }
+  function tkRateFor(type) { var r = tkRates()[TK_JOB[type] || "Repair"]; return r != null && r !== "" ? String(Number(r) || 0) : ""; }
+  function tkInstall(t) {
+    var k = lower(t.client || t.name), m = cxMob(t.mobile);
+    var list = installs();
+    return list.filter(function (i) { return k && lower(i.client) === k; })[0] || (m ? list.filter(function (i) { return cxMob(i.mobile) === m; })[0] : null) || null;
+  }
+  function tkAge(t) {
+    var h = (Date.now() - Date.parse(t.at || "")) / 3600000; if (!isFinite(h)) return null;
+    return { h: h, late: h > (TK_PROMISE[t.pri] || 48), txt: h < 1 ? "just now" : h < 48 ? Math.round(h) + " h" : Math.round(h / 24) + " days" };
+  }
+  function tkRow(t, take) {
+    var a = tkAge(t), p = (t.products || [])[0], w = p ? tkWarr(p) : null, high = t.pri === "High";
+    return '<div class="card cx' + (high || (a && a.late) ? ' urgent' : '') + '"' + (take ? '' : ' data-act="tk-do" data-id="' + esc(t.id) + '"') + '>' +
+      '<div class="row"><div class="grow">' +
+        '<div class="ttl">' + esc(t.client || t.name || "(no name)") + '</div>' +
+        '<div class="meta">' + esc(t.cat || "Complaint") + ' &middot; ' + esc(t.pri) + (t.area ? ' &middot; ' + esc(t.area) : '') + (t.mobile ? ' &middot; ' + esc(t.mobile) : '') + '</div>' +
+        (p ? '<div class="meta"><b>' + esc(p.desc || "") + '</b>' + (p.sn ? ' S/N ' + esc(p.sn) : '') + ' &middot; <span class="' + (w.ok ? 'ok' : (w.c || '')) + '">' + esc(w.t) + '</span></div>' : '') +
+        (t.desc ? '<div class="cxsay">&ldquo;' + esc(t.desc.slice(0, 180)) + '&rdquo;</div>' : '') +
+      '</div><div class="right">' +
+        (a ? '<div class="amt' + (a.late ? ' bad' : '') + '">' + esc(a.txt) + '</div>' + (a.late ? '<div class="meta bad">past ' + (TK_PROMISE[t.pri] || 48) + ' h</div>' : '') : '') +
+      '</div></div>' +
+      '<div class="row" style="align-items:center"><div class="meta grow">' + esc(t.ref || "") + (t.status === "Visited" ? ' &middot; visited, not closed' : '') + '</div>' +
+        (take ? '<button class="btn" data-act="tk-take" data-id="' + esc(t.id) + '" style="flex:0 0 auto;min-height:44px">Take it</button>' : '') + '</div></div>';
+  }
+  function tkTodayHtml() {
+    var open = tkAll().filter(tkOpen); if (!open.length) return "";
+    var all = seesAllMoney() && !roleIs("service");
+    var mine = open.filter(function (t) { return t.status !== "Raised" && (tkMine(t) || (all && t.eng)); });
+    var free = open.filter(function (t) { return t.status === "Raised" && !t.eng; });
+    var h = "";
+    if (mine.length) h += '<h3 class="sec bad">' + (all ? 'Assigned complaints' : 'My jobs') + ' &mdash; ' + mine.length + '</h3>' +
+      '<div class="note warn-t">Open one and it becomes the visit. Saving the visit tells the office it is done, with the charge and what you collected.</div>' +
+      mine.map(function (t) { return tkRow(t, false) + (all ? '<div class="meta pad">' + esc(t.eng) + '</div>' : ''); }).join("");
+    if (free.length) h += '<h3 class="sec warn">Waiting for an engineer &mdash; ' + free.length + '</h3>' + free.map(function (t) { return tkRow(t, canRecord()); }).join("");
+    return h;
+  }
+  /* the move rows this phone writes - the same shape the CRM writes */
+  function tkMove(t, d) {
+    var row = { id: mintId("TM"), createdAt: new Date().toISOString(), actor: S.user || "", action: "cmp:move", target: t.id, detail: JSON.stringify(d), ip: "" };
+    try { (S.data.audit = S.data.audit || []).push(row); } catch (e) { }
+    _tkCache = null;
+    return saveRow("audit", row);
+  }
+
   function viewToday() {
-    var due = dueList(), ending = amcEnding(45), cx = openComplaints();
-    var h = statBar();
+    var _tkr = tkRefs(), due = dueList(), ending = amcEnding(45), cx = openComplaints().filter(function (c) { return !_tkr[String(c.Ref || "")]; });   /* 1.21.0 - a ticket shows once, as a job */
+    var h = statBar() + tkTodayHtml();
     /* ---- ABOVE EVERYTHING ELSE, AND IN RED (v1.6.0) ----
        A complaint is a customer who has already been let down. It outranks a routine service
        that is merely due, however overdue that service is. */
@@ -2848,18 +2958,27 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      The one form this app exists for. It is deliberately in this order: what kind of work,
      what went into it, what it comes to, and only then - if there is anything to take -
      what was taken. */
+  /* 1.21.0 - a visit opened from a ticket whose product is in warranty: visit and parts free, salt
+     charged as always; otherwise the contract decides, exactly as before */
+  function visCover(v, ins) {
+    var amc = amcCover(ins, v.type, v.date);
+    if (v && v.tkCover && v.tkCover.ok && !v.tkCover.amc && String(v.type || "") !== "Installation") return { visit: true, salt: amc.salt, parts: true, kind: "Warranty", live: true, warranty: true };
+    return amc;
+  }
   function sheetVisit(v) {
     var ins = v.installId ? installById(v.installId) : null;
     var pTot = partsTotal(v.parts);
     var gross = num(v.visitCharge) + num(v.saltAmt) + pTot;
-    var cover = amcCover(ins, v.type, v.date);
+    var cover = visCover(v, ins);
     var due = (cover.visit ? 0 : num(v.visitCharge)) +
               (cover.salt  ? 0 : num(v.saltAmt)) +
               (cover.parts ? 0 : pTot);
     var covered = due <= 0 && gross > 0;
     var total = due;
 
-    var h = '<h2>' + (ins ? esc(ins.client || "") : 'Labour job') + '</h2>' +
+    var h = '<h2>' + (ins ? esc(ins.client || "") : (v.client ? esc(v.client) : 'Labour job')) + '</h2>' +
+      (v.tkCover ? '<div class="note ' + (v.tkCover.ok ? 'ok' : 'warn-t') + '" style="margin:6px 0">' + esc(v.tkRef || "") + ' &middot; ' + esc(v.tkCover.txt) +
+        (v.tkCover.ok ? (v.tkCover.amc ? ' &mdash; the AMC decides the charge' : ' &mdash; <b>no charge for the visit or parts</b> (salt is charged)') : ' &mdash; <b>charge the rate</b>') + '</div>' : '') +   /* 1.21.0 */
       '<div class="muted">' + (ins
         ? esc([ins.product, ins.model].filter(Boolean).join(" · ") || "machine not named")
         : 'Plumbing work with no machine behind it') + '</div>';
@@ -3125,12 +3244,13 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
           machine that says it was serviced with no evidence that it was. */
   function visitRowFrom(v, ins) {
     var pTot = partsTotal(v.parts);
+    var _wfree = !!(v.tkCover && v.tkCover.ok && !v.tkCover.amc && String(v.type || "") !== "Installation");   /* 1.21.0 */
     /* v1.4.0 - `total` is now WHAT WAS CHARGEABLE, after the contract has had its say. The
        gross value of the work is not lost: visitCharge, saltAmt and partsAmt are each stored
        beside it, and visitTotal() adds them back whenever the office wants to know what an
        AMC actually delivered. Storing the chargeable figure is what makes `balance` mean what
        it says, and what lets the account screen add a column without re-deciding the rule. */
-    var cover = amcCover(ins, v.type, v.date);
+    var cover = visCover(v, ins);
     var due = (cover.visit ? 0 : num(v.visitCharge)) +
               (cover.salt  ? 0 : num(v.saltAmt)) +
               (cover.parts ? 0 : pTot);
@@ -3150,7 +3270,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       date: String(v.date || today()).slice(0, 10),
       engineer: S.user,
       type: String(v.type || ""),
-      visitCharge: num(v.visitCharge),
+      visitCharge: _wfree ? 0 : num(v.visitCharge),   /* 1.21.0 - a warranty visit is stored free; the gross is in the note */
       saltBags: num(v.saltBags),
       saltAmt: num(v.saltAmt),
       /* the parts as words, because the sheet column is a word column and the office reads
@@ -3158,11 +3278,11 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       partsUsed: (v.parts || []).map(function (p) {
         return p.name + (num(p.qty) === 1 ? "" : " x" + num(p.qty));
       }).join(", "),
-      partsAmt: pTot,
+      partsAmt: _wfree ? 0 : pTot,
       total: total,
       collected: got,
       balance: total - got,   /* 1.18.0 - never clamped: a minus would be his credit */
-      notes: String(v.notes || ""),
+      notes: (_wfree && (num(v.visitCharge) || pTot) ? "Under warranty - not charged: " + [num(v.visitCharge) ? "visit " + money(num(v.visitCharge)) : "", pTot ? "parts " + money(pTot) : ""].filter(Boolean).join(", ") + ". " : "") + String(v.notes || ""),
       updatedAt: new Date().toISOString()
     };
   }
@@ -3451,6 +3571,16 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
        the moment saveRow takes it; a complaints sheet that is slow or down must never make a
        man think his visit was lost. If the close fails the complaint simply stays open and
        somebody goes again - which is the safe direction. */
+    /* 1.21.0 - and the TICKET: one move row, with what the board needs, so the office types nothing */
+    if (v.tkId) {
+      var _tk = tkAll().filter(function (x) { return x.id === v.tkId; })[0];
+      if (_tk) {
+        var _amcC = amcCover(ins, row.type, row.date);
+        var _out = row.total > 0.5 ? "Service charge" : ((v.tkCover && v.tkCover.ok && !v.tkCover.amc) ? "Free under warranty" : (_amcC.live ? "Free under AMC" : "Other"));
+        tkMove(_tk, { to: "Resolved", outcome: _out, charge: row.total, visitId: row.id || "", eng: S.user, note: (row.type || "") + (row.partsUsed ? " - " + row.partsUsed : "") });
+        if (num(row.collected) > 0) tkMove(_tk, num(row.collected) + 0.5 >= num(row.total) ? { to: "Paid", collected: num(row.collected), mode: "Cash" } : { to: "", collected: num(row.collected), mode: "Cash", note: "part collected at the visit" });
+      }
+    }
     if (v.complaintRef) {
       var _ref = v.complaintRef, _vid = row.id || "";
       api("complaintClose", { ref: _ref, visitId: _vid, note: row.notes || "" }, 20000)
@@ -3504,7 +3634,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
   var _dupPaint = null;
   function svcDupPaint() { return _dupPaint || (_dupPaint = svcDupPhones()); }   /* 1.18.0 */
   function bust() {
-    _cxCache = null; _bookCl = null; _dupPaint = null; }
+    _cxCache = null; _bookCl = null; _dupPaint = null; _tkCache = null; }
 
 
   /* ================= THE SHELL ================= */
@@ -3663,6 +3793,27 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       return;
     }
 
+    /* 1.21.0 - the ticket list */
+    if (act === "tk-take") {
+      if (!canRecord()) { toast("Taking a job is the engineer's."); return; }
+      var _tt = tkAll().filter(function (x) { return x.id === id; })[0]; if (!_tt) return;
+      tkMove(_tt, { to: "Assigned", eng: S.user, note: "taken on the Service app" });
+      toast((_tt.ref || "The job") + " is yours."); render(); return;
+    }
+    if (act === "tk-do") {
+      if (!canRecord()) { toast("Going out on a complaint is the engineer's job."); return; }
+      var _td = tkAll().filter(function (x) { return x.id === id; })[0]; if (!_td) { toast("That job is not on this phone - refresh."); return; }
+      var _ti = tkInstall(_td), _cv = tkCover(_td), _ty = _ti ? "Repair" : "Labour job";
+      var _chg = (_cv.ok && !_cv.amc) ? "" : (tkRateFor(_ty) || (_ti ? defaultCharge(_ti, _ty, today()) : ""));
+      S.vis = _ti
+        ? { installId: _ti.id, type: _ty, date: today(), parts: [], collected: "", visitCharge: _chg }
+        : { installId: "", type: _ty, date: today(), parts: [], collected: "", visitCharge: _chg, client: _td.client || _td.name, area: _td.area };
+      S.vis.tkId = _td.id; S.vis.tkRef = _td.ref; S.vis.tkCover = _cv;
+      if (_td.webRef || _td.ref) S.vis.complaintRef = _td.webRef || _td.ref;
+      S.vis.notes = "Complaint " + (_td.ref || "") + ": " + String(_td.desc || "").slice(0, 160);
+      if (_td.status === "Assigned" && tkMine(_td)) tkMove(_td, { to: "Visited", eng: S.user, note: "opened on site" });
+      S.sheet = sheetVisit(S.vis); render(); return;
+    }
     if (act === "cx-do") {
       if (!canRecord()) { toast("Going out on a complaint is the engineer's job."); return; }
       var cref = t.getAttribute("data-ref") || "";
