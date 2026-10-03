@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.678";
+  var APP_VERSION = "6.9.680";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -11720,9 +11720,9 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
        builder, PMC - only the ones on the card, and one link to add the rest), his quotes and who
        made them, and the brands he took and the ones still open. Every heading still sorts. */
     h += xlTable("clients", [
-      { k: "name", t: "CLIENT", wrap: "220px" }, { k: "due", t: "DUE / FOLLOW-UP", n: 1, r: 1 }, { k: "exec", t: "EXECUTIVE", wrap: "150px" },
-      { k: "pl", t: "PLUMBER · ARCHITECT · BUILDER · PMC", wrap: "250px" }, { k: "quotes", t: "QUOTED", n: 1, r: 1 },
-      { k: "has", t: "HAS / CHASE", wrap: "220px" }
+      { k: "name", t: "CLIENT", nw: 1 }, { k: "due", t: "DUE / FOLLOW-UP", n: 1, r: 1 }, { k: "exec", t: "EXECUTIVE", nw: 1 },
+      { k: "pl", t: "PLUMBER · ARCHITECT · BUILDER · PMC", fill: 1 }, { k: "quotes", t: "QUOTED", n: 1, r: 1 },
+      { k: "has", t: "HAS / CHASE", nw: 1 }
     ], rows.slice().sort(function (a, b) { return clNewestFirst(a.c, b.c); }).map(function (r) {
       var c = r.c, nm = String(c.name || "");
       var fu = clNextFollowup(nm), fuLate = !!(fu && fu.dueDate && daysTo(fu.dueDate) < 0);
@@ -11735,8 +11735,8 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       return { v: { name: nm, kind: kind, due: r.due, fu: fu ? String(fu.dueDate || "9999") : "9999", exec: c.ownedBy || "", mobile: c.mobile || "", where: whereTxt, pl: c.plumber || "", ar: c.architect || "",
                     bl: c.builder || "", pmc: c.pmc || "", quotes: qs.length, qby: Object.keys(qby).join(", "), has: took.join(", "), chase: chase.join(", "), added: d, by: c.createdBy || "" },
         cells: {
-          name: '<a href="#" data-act="cl-open" data-id="' + esc(c.id) + '" style="font-weight:700;color:#0b3b36;text-decoration:none" title="Open the full card">' + esc(nm) + '</a> ' + clWhyPill(nm) +
-            xlSub((whereTxt ? esc(whereTxt) : blank(c, "area", "area")) + (d ? ' &middot; added ' + esc(dmy(d)) + (String(c.createdBy || "").trim() ? ' by ' + esc(regFirst(c.createdBy)) : '') : '')),
+          name: '<a href="#" data-act="cl-open" data-id="' + esc(c.id) + '" style="font-weight:700;color:#0b3b36;text-decoration:none" title="Open the full card' + (clWhyPill(nm) ? ' · ' + esc(String(clWhyPill(nm)).replace(/<[^>]*>/g, "").replace(/&middot;/g, "·").replace(/&[a-z]+;/g, " ")) : '') + (d ? ' · added ' + esc(dmy(d)) + (String(c.createdBy || "").trim() ? ' by ' + esc(regFirst(c.createdBy)) : '') : '') + '">' + esc(nm) + '</a> <span class="xlhide">' + clWhyPill(nm) + '</span>' +
+            xlSub('<span class="xlclip" style="--w:120px">' + (whereTxt ? esc(whereTxt) : blank(c, "area", "area")) + '</span>' + (d ? '<span class="xlhide"> &middot; added ' + esc(dmy(d)) + (String(c.createdBy || "").trim() ? ' by ' + esc(regFirst(c.createdBy)) : '') + '</span>' : '')),
           fu: fu ? '<span style="' + (fuLate ? 'color:#b91c1c;font-weight:700' : 'color:#0f766e') + '" title="' + esc(fuLate ? "was due" : "due") + (fu.createdBy ? ' · ' + esc(String(fu.createdBy)) : '') + '">' + esc(dmy(fu.dueDate)) + '</span>' : '',
           due: r.due > 0.5 ? '<b style="color:#b91c1c">' + money(r.due) + '</b>' : '<span style="color:#94a3b8">\u2014</span>',
           exec: String(c.ownedBy || "").trim() ? whoChip(c.ownedBy) : '<span style="color:#b45309;font-size:12px">unassigned</span>',
@@ -11758,10 +11758,10 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       var have = roles.filter(function (p) { return String(cl0[p[0]] || "").trim(); })
         .map(function (p) { return '<span style="color:#64748b">' + p[1] + '</span> ' + esc(cl0[p[0]]); });
       var miss = roles.filter(function (p) { return !String(cl0[p[0]] || "").trim(); }).map(function (p) { return p[0] === "pmc" ? "PMC" : p[1].toLowerCase(); });
-      c.pl = have.join('<br>') + (miss.length ? (have.length ? '<br>' : '') + '<a href="#" data-act="cl-open" data-id="' + esc(cl0.id || "") +
-        '" style="color:#b45309;text-decoration:none;font-size:12px" title="Not on the card - tap to add">+ ' + esc(miss.join(", ")) + '</a>' : '');
+      c.pl = '<span class="xl1" title="' + esc(roles.filter(function (p) { return String(cl0[p[0]] || "").trim(); }).map(function (p) { return p[1] + " " + cl0[p[0]]; }).join(" · ") || "No plumber, architect, builder or PMC on the card") + '">' + have.join(' <span style="color:#cbd5e1">&middot;</span> ') + (miss.length ? (have.length ? ' <span style="color:#cbd5e1">&middot;</span> ' : '') + '<a href="#" data-act="cl-open" data-id="' + esc(cl0.id || "") +
+        '" style="color:#b45309;text-decoration:none;font-size:12px" title="Not on the card - tap to add">+ ' + esc(miss.join(", ")) + '</a>' : '') + '</span>';
       c.quotes = c.quotes + (v.qby ? xlSub(c.qby) : '');
-      c.has = c.has + (c.chase ? xlSub('open: ' + c.chase) : '');
+      c.has = '<span class="xlclip" style="--w:150px" title="' + esc(v.has + (v.chase ? ' · open: ' + v.chase : '')) + '">' + c.has + (c.chase ? xlSub('open: ' + c.chase) : '') + '</span>';
       return r;
     }), "");
     return h;
@@ -12769,9 +12769,11 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       gaps.map(function (g) {
         return '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px">' +
           '<span style="flex:1 1 140px;font-weight:600;font-size:13.5px">' + esc(g.brand) + ' <span style="color:#64748b;font-weight:500;font-size:12.5px">&middot; ' + money(g.value) + ' here</span></span>' +
-          (g.canSet
-            ? '<input class="hsb-rate" data-i="' + mi + '" data-brand="' + esc(g.brand) + '" inputmode="decimal" placeholder="Rate %" style="flex:0 1 120px;min-width:100px;min-height:44px"/>'
-            : '<span style="font-size:12.5px;color:#b45309">set this brand&rsquo;s discount first (below)</span>') + '</div>';
+          '<input class="hsb-rate" data-i="' + mi + '" data-brand="' + esc(g.brand) + '" inputmode="decimal" placeholder="Rate %" style="flex:0 1 120px;min-width:100px;min-height:44px"/>' +
+          /* 6.9.680 - his SS2: "nowhere option to enter rates, where to enter?" A box for every brand now;
+             a brand whose discount is not saved yet has it saved together with the rate, from the
+             discount box on this same sheet */
+          (g.canSet ? '' : '<span style="flex:1 1 100%;font-size:12px;color:#b45309">its discount is saved with it, from the &ldquo;no discount set&rdquo; box on this sheet</span>') + '</div>';
       }).join("") +
       '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px">' +
         '<button class="btn sm" data-act="hsb-rate-save" data-i="' + mi + '" data-id="' + esc(c.id) + '" data-role="' + esc(m.role) + '" data-name="' + esc(m.name) + '" style="min-height:44px">Save as preset</button>' +
@@ -13170,6 +13172,16 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
                 '" style="width:19px;height:19px;flex:0 0 auto"/> No discount</label>' +
             '</div></div>';
         }).join("") +
+        /* 6.9.680 - HIS WORDS, 3 Oct 2026, over this card on Pawan narang: "entering rates here will be set
+           as preset and also for the current challan, put set as preset button". Until now the % typed
+           here was only written when the delivery was finalised - so the Set rate panel under Who earns
+           said "set this brand's discount first (below)" with nowhere to type. Save as preset writes the
+           brand's row for this client NOW (dated the delivery's day, exactly as Finalise writes it):
+           this delivery is priced at it when it is finalised, every later one at it, and the rate boxes
+           under Who earns open at once. */
+        '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;align-items:center">' +
+          '<button class="btn sm" data-act="hsb-disc-preset" data-id="' + esc(c.id) + '" style="min-height:44px">Save as preset</button>' +
+          '<span class="meta" style="font-size:12.5px;color:#7c2d12">For this delivery and every later one to ' + esc(cl) + '. Then set who earns on it below.</span></div>' +
         '</div>';
     }
 
@@ -21687,7 +21699,7 @@ function viewCatalogue() {
     M.areas.forEach(function (a, i) {
       var achPct = Math.round(a.ach * 100), col = a.ach >= 0.9 ? "#16a34a" : a.ach >= 0.6 ? "#d97706" : "#dc2626";
       h += '<tr style="border-bottom:1px solid #e2e8f0;background:' + (i % 2 ? "#f8fafc" : "#fff") + '">' +
-        '<td style="padding:9px 8px"><b style="color:#0b3b36">' + esc(a.label) + '</b><div style="font-size:12px;color:#64748b">' + esc(a.kpi) + '</div></td>' +
+        '<td style="padding:9px 8px"><b style="color:#0b3b36">' + esc(a.label) + '</b><div class="xlsub" style="font-size:12px;color:#64748b">' + esc(a.kpi) + '</div></td>' +
         '<td style="padding:9px 8px;text-align:center">' + a.w + '%</td>' +
         '<td style="padding:9px 8px;text-align:right">' + fmt(a, a.target) + (a.key === "over" ? " max" : "") + '</td>' +
         '<td style="padding:9px 8px;text-align:right;font-weight:700">' + fmt(a, a.actual) + '</td>' +
@@ -21788,8 +21800,8 @@ function viewCatalogue() {
        first; the step button, the receipt and the question are in the last cell. */
     /* v6.9.593 - 3,937px measured (the item list on one line). Five columns now. */
     h += xlTable("returns", [
-      { k: "no", t: "RETURN", wrap: "150px" }, { k: "client", t: "CLIENT", wrap: "200px" }, { k: "items", t: "ITEMS / REASON", wrap: "300px" },
-      { k: "st", t: "STATUS", wrap: "190px" }, { k: "by", t: "WHO", wrap: "170px" }
+      { k: "no", t: "RETURN", nw: 1 }, { k: "client", t: "CLIENT", wrap: "200px" }, { k: "items", t: "ITEMS / REASON", fill: 1 },
+      { k: "st", t: "STATUS", nw: 1 }, { k: "by", t: "WHO", wrap: "170px" }
     ], list.map(function (r) {
       var stt = r.status || "Raised";
       var cls = stt === "Received" ? "Won" : (stt === "Raised" ? "due" : "teal");
@@ -21805,21 +21817,22 @@ function viewCatalogue() {
           st: '<span class="pill ' + cls + '" style="font-size:12px">' + esc(stt) + '</span>' + (retStamp(r) ? ' ' + retStampPill(r) : ''),
           go: (roleAny(["admin", "accounts"]) ? '<button class="btn sm ghost" data-act="rt-freight" data-id="' + esc(r.id) + '">' + (num(r.freight) > 0 ? 'Freight ' + money(num(r.freight)) : 'Add freight') + '</button> ' : "") +
               (stt === "Raised" ? '<button class="btn sm" data-act="rt-move" data-id="' + esc(r.id) + '" data-to="Picked up">Picked up</button> ' : "") +
-              (stt === "Picked up" ? '<button class="btn sm" data-act="rt-move" data-id="' + esc(r.id) + '" data-to="Received">Received at godown</button> ' : "") +
-              (stt === "Received" && !chProofAny(r).has && canAttachProof() ? '<button class="btn sm ghost" data-act="ch-proof" data-id="' + esc(r.id) + '">Attach goods-in receipt</button> ' : "") +
+              (stt === "Picked up" ? '<button class="btn sm" data-act="rt-move" data-id="' + esc(r.id) + '" data-to="Received" title="Received at godown">Received<span class="xlhide"> at godown</span></button> ' : "") +
+              (stt === "Received" && !chProofAny(r).has && canAttachProof() ? '<button class="btn sm ghost" data-act="ch-proof" data-id="' + esc(r.id) + '" title="Attach goods-in receipt">Attach<span class="xlhide"> goods-in</span> receipt</button> ' : "") +
               (stt === "Received" ? retFinaliseBtn(r) + ' ' : "") +
               cxCardBtn("returns", r.id),
-          client: '<b>' + esc(r.customerName || "") + '</b>' + (r.site ? ' <span style="color:#64748b">' + esc(r.site) + '</span>' : ""),
+          client: '<b title="' + esc(r.site || "") + '" style="white-space:nowrap">' + esc(r.customerName || "") + '</b>' + (r.site ? ' <span class="xlhide" style="color:#64748b">' + esc(r.site) + '</span>' : ""),
           against: esc(r.challanNo || "—"), items: esc(itxt || "—") + (_rPic ? ' <a href="' + esc(_rPic) + '" target="_blank" rel="noopener" style="white-space:nowrap">&#128206; photo of the old paper</a>' : ''), reason: esc(r.reason || "—"),
           pickup: r.driver ? esc(r.driver) + (r.vehicle ? " (" + esc(r.vehicle) + ")" : "") : "—",
           raised: esc(dmy(d)), by: whoChip(r.createdBy), "in": r.receivedBy ? whoChip(r.receivedBy) : "—"
         } };
     }).map(function (x) {
       var c = x.cells;
-      c.no = c.no + xlSub(c.raised + (x.v.against ? ' &middot; against ' + esc(x.v.against) : ''));
-      c.items = c.items + (x.v.reason ? xlSub(c.reason) : '');
-      c.st = c.st + (c.go ? '<div style="margin-top:3px">' + c.go + '</div>' : '');
-      c.by = 'raised ' + c.by + (x.v.pickup ? xlSub('pickup ' + c.pickup) : '') + (x.v["in"] ? xlSub('booked in ' + c["in"]) : '');
+      c.no = '<span title="raised ' + esc(c.raised) + (x.v.against ? ' · against ' + esc(x.v.against) : '') + '">' + c.no + '</span><span class="xlhide">' + xlSub(c.raised + (x.v.against ? ' &middot; against ' + esc(x.v.against) : '')) + '</span>';
+      c.items = '<span class="xl1" title="' + esc(x.v.items + (x.v.reason ? ' — ' + x.v.reason : '')) + '">' + c.items + (x.v.reason ? xlSub(c.reason) : '') + '</span>';
+      c.st = c.st + (c.go ? '<div class="xlrow" style="margin-top:3px">' + c.go + '</div>' : '');
+      c.by = '<span title="raised by ' + esc(x.v.by) + (x.v.pickup ? ' · pickup ' + esc(x.v.pickup) : '') + (x.v["in"] ? ' · booked in by ' + esc(x.v["in"]) : '') + '"><span class="xlhide">raised </span>' + c.by + '</span>' +
+        '<span class="xlhide">' + (x.v.pickup ? xlSub('pickup ' + c.pickup) : '') + (x.v["in"] ? xlSub('booked in ' + c["in"]) : '') + '</span>';
       return x;
     }), "");
     return h;
@@ -22453,7 +22466,7 @@ function viewCatalogue() {
         '</td>' +
       /* one line where the screen has room; on a narrower laptop these two cells wrap instead of the
          table scrolling sideways (his 6.9.596 rule: no scrolling left or right on a laptop) */
-      '<td style="' + regCell(";line-height:1.6;white-space:normal") + '">' + sk(whoChip(c.createdBy)) + regDay(c.createdAt) + ' <span style="color:#cbd5e1">&middot;</span> ' +
+      '<td' + (n === null ? '' : ' class="regwrap"') + ' style="' + regCell(";line-height:1.6;white-space:normal") + '">' + sk(whoChip(c.createdBy)) + regDay(c.createdAt) + ' <span style="color:#cbd5e1">&middot;</span> ' +
         /* 6.9.675 - the passing day only when it is not the making day: one line has to fit a laptop */
         (String(c.approvedBy || "").trim() ? sk(whoChip(c.approvedBy)) + (String(c.approvedAt || "").slice(0, 10) === String(c.createdAt || "").slice(0, 10) ? "" : regDay(c.approvedAt)) : '<span style="color:#b91c1c;font-size:12px">not passed</span>') + '</td>' +
       '<td style="' + regCell(";line-height:1.6;white-space:normal") + '">' +
@@ -28553,7 +28566,7 @@ function viewCatalogue() {
             age: agePill(r.ag),
             net: '<span style="' + _st + '">' + money(r.net) + '</span>', paid: '<span style="' + _st + '">' + money(r.paid) + '</span>',
             due: '<b style="color:' + (dim ? '#94a3b8' : '#dc2626') + '">' + money(r.due) + '</b>',
-            tags: dueTagChips(r)
+            tags: '<span class="xlclip" style="--w:270px" title="' + esc(DUE_TAGS.filter(function (t) { return t.row && t.hit(r); }).map(function (t) { return t.lbl; }).join(" · ")) + '">' + dueTagChips(r) + '</span>'
           } };
       };
       var _cols = [{ k: "name", t: "CLIENT", w: "150px" }, { k: "exec", t: "EXECUTIVE" }, { k: "age", t: "AGE", n: 1 },
@@ -32270,7 +32283,7 @@ function viewCatalogue() {
        the handler already answers. */
     h += xlTable("payled", [
       /* the buttons sit third, one short swipe from the name, not at the far end of the sheet */
-      { k: "name", t: "CLIENT" }, { k: "due", t: "DUE", n: 1, r: 1 }, { k: "go", t: "" }, { k: "age", t: "AGE", n: 1, r: 1 },
+      { k: "name", t: "CLIENT" }, { k: "due", t: "DUE", n: 1, r: 1 }, { k: "go", t: "", nw: 1 }, { k: "age", t: "AGE", n: 1, r: 1 },
       { k: "n", t: "CHALLANS", n: 1, r: 1 }, { k: "billed", t: "BILLED", n: 1, r: 1 }, { k: "paid", t: "RECEIVED", n: 1, r: 1 }
     ], list.map(function (x) {
       var cells = {
@@ -32280,10 +32293,10 @@ function viewCatalogue() {
         n: String(x.l.chs.length),
         billed: money(x.l.billed) + (x.l.freight ? ' <span style="color:#64748b;font-size:12px">+ freight ' + money(x.l.freight) + '</span>' : ""),
         paid: money(x.l.paid),
-        go: '<button class="btn sm" data-act="pay-in" data-n="' + esc(x.name) + '">Payment received</button> ' +
+        go: '<span class="xlrow"><button class="btn sm" data-act="pay-in" data-n="' + esc(x.name) + '" title="Payment received"><span class="xlhide">Payment received</span><span class="xlonly">+ Payment</span></button> ' +
             (x.l.due > 0 ? '<button class="btn sm ghost" data-act="pay-wa" data-n="' + esc(x.name) + '">Remind</button> ' + waExecBtn("pay-wa", x.name, 'data-n="' + esc(x.name) + '"') + ' ' : "") +
             '<button class="btn sm ghost" data-act="rc-list" data-n="' + esc(x.name) + '">Receipts</button> ' +
-            '<button class="btn sm ghost" data-act="ledger-pdf" data-n="' + esc(x.name) + '">Ledger PDF</button>'
+            '<button class="btn sm ghost" data-act="ledger-pdf" data-n="' + esc(x.name) + '">Ledger PDF</button></span>'
       };
       return { v: { name: x.name, due: x.l.due, age: x.age || 0, n: x.l.chs.length, billed: x.l.billed, paid: x.l.paid, go: "" }, cells: cells };
     }), "billed, received and the buttons");
@@ -38161,7 +38174,7 @@ function viewCatalogue() {
       h += '<th data-act="xl-sort" data-s="' + esc(screen) + '" data-k="' + esc(c.k) + '"' +
         ' title="Tap to sort by ' + esc(c.t) + '"' +
         ' style="' + (i === 0 ? xlPin(XL_HEAD) : "background:" + XL_HEAD + ";") +
-        'padding:5px 7px;font-weight:700;font-size:12px;color:#fff;white-space:nowrap;' +
+        'padding:5px 7px;font-weight:700;font-size:12px;color:#fff;white-space:' + (c.fill ? 'normal' : 'nowrap') + ';' +   /* 6.9.679 - a fill column's heading may fold; its rows do not */
         'cursor:pointer;user-select:none;text-align:' + (c.r ? "right" : "left") +
         (c.w ? ";min-width:" + c.w : "") +
         (on ? ";box-shadow:inset 0 -2px 0 #5eead4" : "") + '">' +
@@ -38176,7 +38189,7 @@ function viewCatalogue() {
       h += '<tr style="background:' + bg + '">';
       cols.forEach(function (c, k) {
         var v = (r.cells || {})[c.k];
-        h += '<td style="' + (k === 0 ? xlPin(bg) : "") +
+        h += '<td' + (c.fill ? ' class="xlfill"' : '') + ' style="' + (k === 0 ? xlPin(bg) : "") +   /* 6.9.679 - c.fill: one line, ends in ... on a laptop */
           'padding:5px 7px;border-top:1px solid #e2e8f0;' +
           /* v6.9.592 - a column may WRAP (c.wrap = its widest width). Opt-in: every sheet that does
              not ask is drawn exactly as before. */
@@ -38193,7 +38206,7 @@ function viewCatalogue() {
   }
   /* the cards are one tap away, because this changes the default view of a daily screen */
   /* v6.9.593 - the second line of a stacked cell: smaller, grey, still 12px (the floor) */
-  function xlSub(html) { return html ? '<div style="font-size:12px;color:#64748b;font-weight:400;margin-top:1px;line-height:1.35">' + html + '</div>' : ''; }
+  function xlSub(html) { return html ? '<div class="xlsub" style="font-size:12px;color:#64748b;font-weight:400;margin-top:1px;line-height:1.35">' + html + '</div>' : ''; }   /* 6.9.679 - beside, on a laptop */
   function xlToggle(screen, showingCards) {
     return '<button class="btn sm ghost" data-act="xl-cards" data-s="' + esc(screen) + '">' +
       (showingCards ? "Show as a sheet" : "Show as cards") + '</button>';
@@ -44251,16 +44264,16 @@ function viewCatalogue() {
 
     h += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">' +
       '<thead><tr style="background:#0b3b36;color:#fff"><th style="padding:6px 8px;text-align:left">Product</th>' +
-      '<th style="padding:6px 8px;text-align:right">On hand</th><th style="padding:6px 8px;text-align:right">Critical \u00b7 Reorder \u00b7 Max</th>' +
+      '<th style="padding:6px 8px;text-align:right;white-space:nowrap">On hand</th><th style="padding:6px 8px;text-align:right;white-space:nowrap">Critical \u00b7 Reorder \u00b7 Max</th>' +
       '<th style="padding:6px 8px;text-align:right">Value</th></tr></thead><tbody>' +
       list.map(function (x, i) {
         var col = x.zero ? '#b91c1c' : (x.low ? '#c2410c' : '#0f766e');
         var bg = x.zero ? '#fef2f2' : (x.low ? '#fff7ed' : (i % 2 ? '#f8fafc' : '#fff'));
         return '<tr data-act="stk-open" data-code="' + esc(x.code) + '" style="border-bottom:1px solid #eef2f7;background:' + bg + ';cursor:pointer">' +
-          '<td style="padding:6px 8px"><div style="font-weight:600">' + esc(x.desc) + ' ' + stkTag(x.code, _sctx) + '</div><div style="font-size:12px;color:#94a3b8">' + esc(x.code) + (x.brand ? ' &middot; ' + esc(x.brand) : '') +
-          '<br>in ' + x.inq + ' &middot; del ' + x.del + ' &middot; ret ' + x.ret + (x.rate ? ' &middot; @' + money(x.rate) : '') + '</div></td>' +
-          '<td style="padding:6px 8px;text-align:right;font-weight:800;color:' + col + ';white-space:nowrap">' + x.onhand + '<div style="font-size:12px;font-weight:400;color:#64748b">' + esc(stkQ(x.onhand, x.code).replace(/^\S+\s?/, "")) + '</div></td>' +
-          '<td style="padding:6px 8px;text-align:right;color:#475569;font-size:12.5px;white-space:nowrap">' + (function () { var _L = _sLvl[x.code] || {}; return (_L.crit || _L.min || _L.max) ? (_L.crit || '\u2014') + ' \u00b7 ' + (_L.min || '\u2014') + ' \u00b7 ' + (_L.max || '\u2014') + '<div style="margin-top:3px">' + stkPill(stkState(_sctx.pos[x.code] && _sctx.pos[x.code].counted ? _sctx.pos[x.code].free : null, _L)) + '</div>' : '\u2014'; })() + '</td>' +
+          '<td class="xlfill" style="padding:6px 8px"><div class="xl1" title="' + esc(x.desc + ' · ' + x.code + (x.brand ? ' · ' + x.brand : '')) + '"><span style="font-weight:600">' + esc(x.desc) + '</span> ' + stkTag(x.code, _sctx) + '<div class="xlsub" style="font-size:12px;color:#94a3b8">' + esc(x.code) + (x.brand ? ' &middot; ' + esc(x.brand) : '') +
+          ' &middot; in ' + x.inq + ' &middot; del ' + x.del + ' &middot; ret ' + x.ret + (x.rate ? ' &middot; @' + money(x.rate) : '') + '</div></div></td>' +
+          '<td style="padding:6px 8px;text-align:right;font-weight:800;color:' + col + ';white-space:nowrap">' + x.onhand + '<div class="xlsub" style="font-size:12px;font-weight:400;color:#64748b">' + esc(stkQ(x.onhand, x.code).replace(/^\S+\s?/, "")) + '</div></td>' +
+          '<td style="padding:6px 8px;text-align:right;color:#475569;font-size:12.5px;white-space:nowrap">' + (function () { var _L = _sLvl[x.code] || {}; return (_L.crit || _L.min || _L.max) ? (_L.crit || '\u2014') + ' \u00b7 ' + (_L.min || '\u2014') + ' \u00b7 ' + (_L.max || '\u2014') + '<div class="xlsub" style="margin-top:3px">' + stkPill(stkState(_sctx.pos[x.code] && _sctx.pos[x.code].counted ? _sctx.pos[x.code].free : null, _L)) + '</div>' : '\u2014'; })() + '</td>' +
           '<td style="padding:6px 8px;text-align:right;color:#64748b">' + (x.value ? money(x.value) : '—') + '</td></tr>' +
           (S.stkOpen === x.code ? '<tr><td colspan="4" style="padding:0 0 10px">' + stockLedgerPanel(x.code) + '</td></tr>' : '');
       }).join("") + '</tbody></table></div>' +
@@ -46634,6 +46647,26 @@ function viewCatalogue() {
       ".modalx .btn{padding:5px 12px;font-size:12.5px}" +
       /* 6.9.675 - the register on a laptop: one line a row (his ask); a phone keeps 44px taps */
       "@media(min-width:640px) and (pointer:fine){.regtbl .btn.sm{min-height:28px;min-width:0;padding:2px 9px}.regtbl td{padding-top:4px!important;padding-bottom:4px!important;vertical-align:middle!important}}" +
+      /* 6.9.679 - HIS WORDS, 2 Oct 2026: "inspect all things and do all single liner". Every screen was
+         measured at 1440 wide with a mouse: in eleven tables the one thing making a row 55px instead of
+         ~30px was a 44px phone-sized button in a cell (Challan log, Payment log, Payments, Collections,
+         Incentive, Service desk, Drivers...). On a laptop with a mouse a button in a table row is now
+         28px, as the register's has been since 6.9.675. A phone (or a touch laptop) keeps 44px. */
+      ".xlonly{display:none}" +
+      "@media(min-width:640px) and (pointer:fine){main td .btn,main td .btn.sm{min-height:28px!important;min-width:0!important;padding:2px 9px!important;font-size:12.5px}" +
+      /* inputs typed into a row (discount sheet, salaries) - 30px, not a phone's 44px */
+      "main td input:not([type=checkbox]):not([type=radio]),main td select{min-height:30px!important;padding-top:3px!important;padding-bottom:3px!important}" +
+      /* .xlsub - a cell's grey second line sits BESIDE the first on a laptop; under it on a phone */
+      ".xlsub{display:inline!important;margin:0 0 0 6px!important}" +
+      /* .xlrow - a cell's buttons stay side by side on a laptop */
+      ".xlrow{display:inline-flex!important;gap:6px;white-space:nowrap;margin:0!important;vertical-align:middle}" +
+      /* td.xlfill - a long text cell takes the room the row has and ends in ... (the whole text on hover) */
+      "td.xlfill{max-width:0!important;width:99%;vertical-align:middle!important}td.xlfill .xl1{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}" +
+      ".xlhide{display:none}.xlonly{display:inline!important}" +
+      ".xlclip{display:inline-block;max-width:var(--w,140px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;vertical-align:bottom}" +
+      "}" +
+      /* the register's maker/passer cell stays on one line only where the window is wide; narrower, it folds rather than slide */
+      "@media(min-width:1200px) and (pointer:fine){.regwrap{white-space:nowrap!important}}" +
       /* v6.9.401 THE 40px FLOOR. On a phone, anything a thumb taps is at least 40px tall
          and 40px wide: .btn.sm was 29-31px (about 170 of them across the app), the
          popup's Close 27px, the compact/expand switch 36px, the amber "Set district"
@@ -50351,6 +50384,32 @@ function viewCatalogue() {
         if (_op) { var _f = _rp.querySelector("input.hsb-rate"); if (_f) { _rp.scrollIntoView({ block: "nearest" }); _f.focus(); } } }
       return;
     }
+    if (act === "hsb-disc-preset") {   /* 6.9.680 - the brand discounts typed on the sheet become the client's preset now */
+      if (!roleIs("admin")) { toast("Setting a discount is the owner\u2019s."); return; }
+      var _pc = (S.data.challans || []).filter(function (x) { return x.id === id; })[0];
+      if (!_pc) return;
+      var _pcl = _pc.customerName || "", _pfrom = localDay(_pc.createdAt) || today(), _pbad = "", _pset = [];
+      hisabBrandsMissingDisc(_pc).forEach(function (b) {
+        var inp = document.querySelector('input.hsb-pct[data-brand="' + b.replace(/"/g, '\\"') + '"]'),
+            non = document.querySelector('input.hsb-non[data-brand="' + b.replace(/"/g, '\\"') + '"]');
+        var raw = String((inp && inp.value) || "").trim(), no = !!(non && non.checked);
+        if (!no && !raw) return;
+        var v = no ? 0 : Number(raw);
+        if (!no && (!/^[0-9]+(\.[0-9]+)?$/.test(raw) || v > 100)) { _pbad = _pbad || b; return; }
+        _pset.push({ brand: b, pct: v });
+      });
+      if (_pbad) { toast(_pbad + ": a discount is a number from 0 to 100."); return; }
+      if (!_pset.length) { toast("Put a % in, or tick No discount, for at least one brand."); return; }
+      var _pkeep = hsbKeep();
+      _pset.forEach(function (x) {
+        save("discounts", { id: mintId("D"), client: _pcl, brand: x.brand, pct: x.pct, notes: JSON.stringify({ from: _pfrom }) }, true);
+      });
+      bustCaches();   /* the sheet is rebuilt before the paint that would drop the discount index */
+      toast("Preset for " + _pcl + ": " + _pset.map(function (x) { return x.brand + " " + (x.pct ? x.pct + "%" : "no discount"); }).join(", ") +
+        ". This delivery is priced at it when finalised.");
+      S.modal = modalAddToHisab(_pc.id); render(); _pkeep();
+      return;
+    }
     if (act === "hsb-rate-save") {   /* 6.9.672 - the rate goes onto the client's preset (its discount row) */
       if (!roleIs("admin")) { toast("Setting an incentive rate is the owner\u2019s."); return; }
       var _rc = (S.data.challans || []).filter(function (x) { return x.id === id; })[0];
@@ -50365,11 +50424,22 @@ function viewCatalogue() {
       });
       if (_rbad) { toast(_rbad + ": a rate is a percent above 0 and up to 50."); return; }
       if (!_rv.length) { toast("Type a rate for at least one brand."); return; }
+      /* 6.9.680 - a brand with no discount row yet: its discount comes from the box on this sheet */
+      var _rneed = [];
+      _rv.forEach(function (x) {
+        if (discRow(_rcl, x.brand)) return;
+        var q = x.brand.replace(/"/g, '\\"'), pi = document.querySelector('input.hsb-pct[data-brand="' + q + '"]'), ni = document.querySelector('input.hsb-non[data-brand="' + q + '"]');
+        var raw = String((pi && pi.value) || "").trim(), no = !!(ni && ni.checked);
+        if (no) x.disc = 0;
+        else if (/^[0-9]+(\.[0-9]+)?$/.test(raw) && Number(raw) <= 100) x.disc = Number(raw);
+        else _rneed.push(x.brand);
+      });
+      if (_rneed.length) { toast("First put the discount for " + _rneed.join(", ") + " in the \u201cno discount set\u201d box on this sheet (or tick No discount)."); return; }
       var _rkeep = hsbKeep();
       askSheet({
         title: "Set " + esc(_rname) + "\u2019s rate?",
         sub: esc(incRoleLabel(_rrole)) + " \u00b7 " + esc(_rcl),
-        body: _rv.map(function (x) { return '<div><b>' + esc(x.brand) + '</b> &middot; <b>' + x.pct + '%</b> of the net</div>'; }).join("") +
+        body: _rv.map(function (x) { return '<div><b>' + esc(x.brand) + '</b> &middot; <b>' + x.pct + '%</b> of the net' + (x.disc != null ? ' <span class="meta">&middot; discount ' + (x.disc ? x.disc + '%' : 'none') + ', saved with it</span>' : '') + '</div>'; }).join("") +
           '<div class="meta" style="margin-top:8px">It becomes ' + esc(_rcl) + '&rsquo;s preset for ' + (_rv.length > 1 ? 'these brands' : 'this brand') +
           ': this delivery and every later one earn at it. Change it any time under Discounts.</div>',
         yes: "Save as preset", no: "Not now"
@@ -50377,12 +50447,20 @@ function viewCatalogue() {
         if (yes) {
           var _done = 0;
           _rv.forEach(function (x) {
-            var exd = discRow(_rcl, x.brand); if (!exd) return;
+            var exd = discRow(_rcl, x.brand);
+            if (!exd && x.disc != null) {   /* 6.9.680 - discount and rate written as one new row */
+              var nn = { from: localDay(_rc.createdAt) || today() };
+              if (_rrole === "exec") { nn.exec = x.pct; nn.execOn = 1; } else nn[_rrole.toLowerCase()] = x.pct;
+              save("discounts", { id: mintId("D"), client: _rcl, brand: x.brand, pct: x.disc, notes: JSON.stringify(nn) }, true);
+              _done++; return;
+            }
+            if (!exd) return;
             var notes = incMap(exd);
             if (_rrole === "exec") { notes.exec = x.pct; notes.execOn = 1; } else notes[_rrole.toLowerCase()] = x.pct;
             save("discounts", { id: exd.id, client: exd.client, brand: exd.brand, pct: exd.pct, notes: JSON.stringify(notes) }, true);
             _done++;
           });
+          bustCaches();
           toast(_done ? (_rname + "\u2019s rate saved on " + _done + " brand" + (_done > 1 ? "s" : "") + " \u2014 it is this client\u2019s preset now.") : "Nothing saved.");
         }
         S.modal = modalAddToHisab(_rc.id); render(); _rkeep();
