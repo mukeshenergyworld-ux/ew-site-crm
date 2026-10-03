@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.691";
+  var APP_VERSION = "6.9.692";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -27924,6 +27924,31 @@ function viewCatalogue() {
   /* Clients whose net balance is a CREDIT (we hold their money / advance / an over-payment / a minus
      opening balance). These never showed in the outstanding list (which is due > 0), so a minus-balance
      client like an advance-paying customer was invisible. Surfaced as their own section. */
+  /* 6.9.692 - THE HISAB FRONT LIST CHASES THE BUILDER TOO. Payments, the collection radar and the
+     Collection app have shown a builder as one line since 6.9.686 / 1.62.0; the HISAB front list still
+     listed his sites one by one. Here they fold the same way - only the rows of the sheet: every total
+     above it (DUE AMT, the ageing tiles, the executive chips) is still the sum of the same accounts. */
+  function hsbFold(rows) {
+    var groups = {}, order = [], out = [];
+    rows.forEach(function (r) {
+      var m = mstOf(r.name), key = mstKey(m || r.name);
+      if (!groups[key]) { groups[key] = { master: m || r.name, rows: [] }; order.push(key); }
+      if (!m && mstSites(r.name).length) groups[key].master = r.name;
+      groups[key].rows.push(r);
+    });
+    order.forEach(function (k) {
+      var g = groups[k], mk = mstKey(g.master), sites = g.rows.filter(function (r) { return mstKey(r.name) !== mk; });
+      if (!sites.length) { out.push(g.rows[0]); return; }
+      var own = g.rows.filter(function (r) { return mstKey(r.name) === mk; })[0] || null, cm = clientByName(g.master) || {};
+      var mem = (own ? [own] : []).concat(sites);
+      var ag = { b: { cur: 0, d30: 0, d60: 0, d90: 0 }, oldest: 0, overdue: 0, due: 0 };
+      mem.forEach(function (r) { var a = r.ag || {}; var b = a.b || {}; ag.b.cur += b.cur || 0; ag.b.d30 += b.d30 || 0; ag.b.d60 += b.d60 || 0; ag.b.d90 += b.d90 || 0; ag.oldest = Math.max(ag.oldest, a.oldest || 0); ag.overdue += a.overdue || 0; ag.due += a.due || 0; });
+      out.push({ name: cm.name || g.master, owner: (own && own.owner) || cm.ownedBy || cm.createdBy || (sites[0].owner || ""), ag: ag, sites: sites.sort(function (a, b) { return b.due - a.due; }),
+        net: mem.reduce(function (a, r) { return a + r.net; }, 0), paid: mem.reduce(function (a, r) { return a + r.paid; }, 0),
+        returned: mem.reduce(function (a, r) { return a + (r.returned || 0); }, 0), due: mem.reduce(function (a, r) { return a + r.due; }, 0) });
+    });
+    return out;
+  }
   function hisabCredits() {
     return hisabClientNames().map(function (nm) {
       var l = clientLedger(nm), cl = clientByName(nm) || {};
@@ -29718,9 +29743,9 @@ function viewCatalogue() {
          he has on the challan log), a chip per executive filters, the slab chips filter, and
          a filter puts the matching rows FIRST under a band and the rest below it, greyed - so
          the whole list is always on the screen and the filter is a sort, not a hiding. */
-      var _all = outsAll.slice().sort(function (a, b) { return (b.ag ? b.ag.oldest : 0) - (a.ag ? a.ag.oldest : 0) || b.due - a.due; });
+      var _all = hsbFold(outsAll).sort(function (a, b) {   /* 6.9.692 - a builder is one row */ return (b.ag ? b.ag.oldest : 0) - (a.ag ? a.ag.oldest : 0) || b.due - a.due; });
       var _ex = String(S.hisabExec || "");
-      var _hit = function (r) { return (!_dueT || _dueT.hit(r)) && (!_ex || String(r.owner || "Unassigned") === _ex); };
+      var _hit = function (r) { return (!_dueT || _dueT.hit(r)) && (!_ex || String(r.owner || "Unassigned") === _ex || !!(r.sites && r.sites.some(function (x) { return String(x.owner || "Unassigned") === _ex; }))); };   /* 6.9.692 - a builder matches if any site is his */
       var _on = !!(_dueT || _ex);
       var _top = _on ? _all.filter(_hit) : _all, _rest = _on ? _all.filter(function (r) { return !_hit(r); }) : [];
       oh += '<div class="card"><div class="row" style="flex-wrap:wrap;gap:6px;align-items:center">' +
@@ -29740,7 +29765,9 @@ function viewCatalogue() {
         return { v: { name: r.name, exec: r.owner || "Unassigned", age: r.ag ? r.ag.oldest : 0, net: r.net, paid: r.paid, due: r.due, tags: dueTagChips(r).replace(/<[^>]+>/g, '') },
           cells: {
             name: '<b data-act="bill-open" data-n="' + esc(r.name) + '" style="cursor:pointer;color:' + (dim ? '#94a3b8' : '#0d766c') + '">' + esc(r.name) + '</b>' +
-                  (_mob ? ' <span style="font-size:12px;color:#94a3b8">' + esc(_mob) + '</span>' : ''),
+                  (_mob ? ' <span style="font-size:12px;color:#94a3b8">' + esc(_mob) + '</span>' : '') +
+                  (r.sites ? ' <span class="pill" style="background:#e0e7ff;color:#312e81;font-size:12px">builder &middot; ' + plural(r.sites.length, "site") + '</span>' +   /* 6.9.692 */
+                    r.sites.map(function (x) { return '<div data-act="bill-open" data-n="' + esc(x.name) + '" style="font-size:12px;color:#475569;cursor:pointer;white-space:nowrap">\u21b3 ' + esc(x.name) + ' &middot; <b style="color:#b91c1c">' + money(x.due) + '</b>' + (x.ag && x.ag.oldest ? ' &middot; ' + x.ag.oldest + 'd' : '') + '</div>'; }).join("") : ''),
             exec: whoChip(r.owner || "Unassigned"),
             age: agePill(r.ag),
             net: '<span style="' + _st + '">' + money(r.net) + '</span>', paid: '<span style="' + _st + '">' + money(r.paid) + '</span>',
