@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.689";
+  var APP_VERSION = "6.9.690";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -2215,6 +2215,13 @@
   }
 
   function save(tab, row, quiet) {
+    /* 6.9.690 - FOUND BUILDING THE ENGINEER'S JOB LIST. The audit sheet's columns are id, createdAt,
+       actor, action, target, detail, ip - there is no recId, and a field with no column never
+       reaches the sheet. Every row written as { recId: ... } (the complaint tickets of 6.9.684, the
+       builder's split payments, the auto re-price) kept it only on THIS phone: after the next pull
+       a ticket's events had no id, so its steps could not find their ticket. The id goes up as
+       target too, which is what every reader now also looks at. */
+    if (tab === "audit" && row && row.recId != null && row.recId !== "" && (row.target == null || row.target === "")) row.target = String(row.recId);
     /* v6.9.124 — DUPLICATE FIX: every NEW row (no server id yet) is given a STABLE client-generated
        id that IS sent to the server. The backend upserts by id, so if a create is ever delivered
        twice — a lost/slow response followed by a journal retry, or a double-tap on Save/Approve — the
@@ -8501,7 +8508,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     var ev = (S.data.audit || []).filter(function (a) { return /^cmp:(open|move)$/.test(String(a.action || "")); })
       .slice().sort(function (a, b) { return String(a.createdAt || "").localeCompare(String(b.createdAt || "")); });
     ev.forEach(function (a) {
-      var d = cmpJ(a.detail), id = String(a.recId || d.id || "");
+      var d = cmpJ(a.detail), id = String(a.recId || a.target || d.id || (a.action === "cmp:open" ? a.id : "") || "");   /* 6.9.690 */
       if (!id) return;
       if (a.action === "cmp:open") {
         if (T[id]) return;
@@ -8628,7 +8635,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         (main.length ? main.map(function (p) { return cmpProdRow(p, n.picks && n.picks[p.key], true); }).join("") : '<div class="meta" style="font-size:12.5px">No commissioned product or installation recorded for him.</div>') +
         (rest.length ? '<details style="margin-top:6px"><summary style="cursor:pointer;font-size:12.5px;font-weight:700;min-height:44px;display:flex;align-items:center">Everything else delivered to him (' + rest.length + ')</summary>' +
           rest.slice(0, 60).map(function (p) { return cmpProdRow(p, n.picks && n.picks[p.key], true); }).join("") + '</details>' : '') +
-        cmpPaperStrip(c.name, c.id, true) + '</div>';
+        cmpPaperStrip(c.name, c.id, true) + '<div style="margin-top:8px">' + custLinkBtn(c.name, '&#128241; Send him his own link') + '</div></div>';   /* 6.9.690 */
     }
     h += '<label>What is it about?</label><select id="cmpn_cat">' + opt("", n.cat, "— pick —") + CMP_CATS.map(function (x) { return opt(x, n.cat); }).join("") + '</select>' +
       '<label>What happened</label><textarea id="cmpn_desc" placeholder="What the customer says is wrong, as he told it">' + esc(n.desc || "") + '</textarea>' +
@@ -8765,6 +8772,42 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     });
   } catch (e) { }
 
+  /* ===== 6.9.690 - THE CUSTOMER'S OWN LINK, SENT FROM HERE =====
+     His choice (3 Oct): a personal link per client, on WhatsApp, that opens his products, their
+     warranty / AMC and his complaints, and lets him register one himself - savable on his phone
+     like an app. The server (V143) makes the link: a random token whose fingerprint alone it keeps.
+     A new link for the same man replaces the old one. The page is care/ on this same site. */
+  var _cust190 = null;
+  function custSrvOk() {
+    if (_cust190) return _cust190;
+    _cust190 = api("srvProbe", {}, 45000).then(function (r) {
+      var v = Number(String((r && r.srv) || "").replace(/\D/g, "")); if (!v) { _cust190 = null; throw new Error("the server did not say which version it is"); }
+      return v >= 143;
+    }, function (e) { _cust190 = null; throw new Error(apiWhy(e)); });
+    return _cust190;
+  }
+  function custLinkBtn(name, label) {
+    return '<button class="btn sm ghost" data-act="cust-link" data-n="' + esc(name) + '">' + (label || '&#128241; His own link') + '</button>';
+  }
+  function modalCustLinkPick() {
+    var names = (S.data.clients || []).filter(function (c) { return c && c.name && !dupIsAlias(c.name) && (seesAllClients() || isMineClient(c.name)); })
+      .map(function (c) { return String(c.name); }).sort(alpha);
+    return '<h2>Send a customer his own link</h2><p class="sub">He opens it on his phone: his products, warranty and AMC, his complaints &mdash; and he can register a new complaint himself. He can save it on his phone like an app.</p>' +
+      '<label>Client</label><input id="cust_pick" list="cust_pick_l" placeholder="Type the client’s name…" style="min-height:44px"/>' +
+      '<datalist id="cust_pick_l">' + names.map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join("") + '</datalist>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button><button class="btn" data-act="cust-link-go">Make the link</button></div>';
+  }
+  function modalCustLinkDone(name, url) {
+    var c = clientByName(name) || {}, mob = String(c.mobile || c.mobile2 || "").replace(/\D/g, "").slice(-10);
+    var msg = "Hello " + name + ",\n\nThis is your own Energy World service page - your products, their warranty / AMC, and any complaint, in one place. Save it on your phone and register a complaint any time:\n" + url + "\n\nPlease keep this link to yourself.\n- Energy World, Panipat";
+    return '<h2>His link is ready</h2><p class="sub">' + esc(name) + (mob ? ' &middot; ' + esc(mob) : ' &middot; <b style="color:#b45309">no mobile on his record</b>') + '</p>' +
+      '<div class="card" style="padding:9px 12px;word-break:break-all;font-size:13px"><a href="' + esc(url) + '" target="_blank" rel="noopener">' + esc(url) + '</a></div>' +
+      '<div class="meta" style="font-size:12.5px">Any older link of his has stopped working. Send a fresh one the same way if this one is ever forwarded to someone else.</div>' +
+      '<div class="foot"><button class="btn ghost" data-act="cust-link-copy" data-u="' + esc(url) + '">Copy link</button>' +
+      '<a class="btn" style="text-decoration:none;display:inline-flex;align-items:center" target="_blank" rel="noopener" href="https://wa.me/' + (mob ? "91" + mob : "") + '?text=' + encodeURIComponent(msg) + '">WhatsApp to him</a>' +
+      '<button class="btn ghost" data-act="close">Done</button></div>';
+  }
+
   function viewComplaints() {
     if (_cmpWeb === null && !_cmpWebBusy) cmpWebLoad();
     var all = cmpAll(), tab = S.cmpTab || "pending";
@@ -8782,6 +8825,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     var h = '<div class="card" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">' +
       '<b style="flex:1 1 220px;font-size:15px">Complaints' + (lateN ? ' <span class="pill" style="background:#fee2e2;color:#b91c1c">' + lateN + ' past the promise</span>' : '') + '</b>' +
       (roleIs("admin") ? '<button class="btn ghost" data-act="cmp-rates">Service charges</button>' : '') +   /* 6.9.687 */
+      '<button class="btn ghost" data-act="cust-link-pick">&#128241; Customer link</button>' +   /* 6.9.690 */
       '<button class="btn" data-act="cmp-new">+ Register complaint</button></div>';
     if (inbox.length) {
       h += '<div class="card" style="border-color:#fed7aa;background:#fff7ed"><b>' + plural(inbox.length, "complaint") + ' from the website, not taken in yet</b>' +
@@ -54575,6 +54619,31 @@ function viewCatalogue() {
     /* 6.9.684 - complaints */
     if (act === "cmp-tab") { S.cmpTab = t.getAttribute("data-t") || "pending"; render(); return; }
     if (act === "cmp-new") { S.cmpNew = null; S.modal = modalCmpNew(); render(); return; }
+    /* 6.9.690 - the customer's own link */
+    if (act === "cust-link-pick") { S.modal = modalCustLinkPick(); render(); return; }
+    if (act === "cust-link-go" || act === "cust-link") {
+      var _cn2 = act === "cust-link" ? (t.getAttribute("data-n") || "") : String(val("cust_pick") || "").trim();
+      var _cc2 = clientByName(_cn2);
+      if (!_cc2) { toast("Pick a client from the list."); return; }
+      if (S.cmpNew) cmpKeep();
+      t.disabled = true; toast("Making his link\u2026");
+      custSrvOk().then(function (okS) {
+        if (!okS) throw new Error("this needs the server update V143 (the paste steps in the project)");
+        return api("custLink", { client: _cc2.name }, 45000);
+      }).then(function (r) {
+        t.disabled = false;
+        if (!r || !r.ok || !r.token) throw new Error((r && r.error) || "no link came back");
+        var _u = new URL("../care/?t=" + r.token, location.href).href;
+        try { save("audit", { action: "cust:link", actor: S.user, recId: _cc2.id, detail: JSON.stringify({ client: _cc2.name }) }, true); } catch (e) { }
+        S.modal = modalCustLinkDone(_cc2.name, _u); render();
+      }).catch(function (e) { t.disabled = false; toast("No link: " + String((e && e.message) || e)); });
+      return;
+    }
+    if (act === "cust-link-copy") {
+      var _uu = t.getAttribute("data-u") || "";
+      try { navigator.clipboard.writeText(_uu).then(function () { toast("Link copied."); }, function () { toast("Copy did not work - press and hold the link instead."); }); } catch (e) { toast("Press and hold the link to copy it."); }
+      return;
+    }
     if (act === "cmp-rates") { if (!roleIs("admin")) return; S.modal = modalCmpRates(); render(); return; }   /* 6.9.687 */
     if (act === "cmp-rates-save") {
       if (!roleIs("admin")) return;
