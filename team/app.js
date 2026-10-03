@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.685";
+  var APP_VERSION = "6.9.686";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -27702,7 +27702,9 @@ function viewCatalogue() {
      days) so overdue money is visible at a glance. Payments and booked-in returns are applied to the
      OLDEST deliveries first (FIFO), so what remains is bucketed by the age of the delivery it belongs
      to. The opening balance carried in from before the app is treated as the oldest debt. */
-  function clientAging(name) {
+  /* 6.9.686 - the unpaid bills themselves, split out of clientAging so the builder's payment can
+     settle them oldest-first across his sites with the very same arithmetic. */
+  function agingItems(name) {
     var chs = famChallansIn(name);                          /* v6.9.461 */
     var cl = clientByName(name) || {};
     /* 6.9.666 - the FAMILY's opening balance, as the ledger reads it (famOpening): an alias merged
@@ -27725,6 +27727,10 @@ function viewCatalogue() {
     items.sort(function (a, b) { return b.age - a.age; });          // oldest first
     var led = clientLedger(name), credit = (led.paid || 0) + (led.returned || 0) + (opening < 0 ? -opening : 0) + negCr;
     items.forEach(function (it) { if (credit > 0) { var u = Math.min(credit, it.amt); it.amt -= u; credit -= u; } });
+    return items;
+  }
+  function clientAging(name) {
+    var items = agingItems(name);
     /* ---- ONE RECORD, ONE SET OF TERMS  (v6.9.377, 30 Aug 2026) ----
        The client card has a "Credit days" box. creditTerms() reads it - and only the credit
        control gate, the thing that stops a dispatch, ever asked. This line used the company-wide
@@ -32600,11 +32606,11 @@ function viewCatalogue() {
   }
 
   function rdrRows() {
-    var out = payLedgerList().filter(function (x) { return x.l.due > 0 && x.age >= PAY_MIN; })
+    var out = mstFold(payLedgerList()).filter(function (x) { return x.l.due > 0 && x.age >= PAY_MIN; })   /* 6.9.686 */
       .map(function (x) {
-        var ag = clientAging(x.name), lp = rdrLastPay(x.l), ex = waExecOf(x.name);
+        var ag = mstAgingOf(x), lp = rdrLastPay(x.l), ex = waExecOf(x.name);
         var cl = clientByName(x.name) || {};
-        return { name: x.name, due: x.l.due, age: x.age, ag: ag, oldest: ag.oldest || 0, lp: lp,
+        return { name: x.name, sites: x.sites || null, due: x.l.due, age: x.age, ag: ag, oldest: ag.oldest || 0, lp: lp,
                  since: lp ? -daysTo(lp.date) : null,
                  owner: (ex && ex.name) || String(cl.ownedBy || ""), mobile: String(cl.mobile || "") };
       });
@@ -32619,8 +32625,7 @@ function viewCatalogue() {
     if (own) out = out.filter(function (r) { return dgKey(r.owner) === dgKey(own); });
     var q = String(S.rdQ || "").trim().toLowerCase();
     if (q) out = out.filter(function (r) {
-      var c = clientByName(r.name);
-      return c ? cvMatch(c, q) : String(r.name).toLowerCase().indexOf(q) > -1;
+      return mstFoldMatch(r, q, function (n) { var c = clientByName(n); return c ? cvMatch(c, q) : String(n).toLowerCase().indexOf(q) > -1; });
     });
     var so = String(S.rdSort || "old");
     out.sort(function (a, b) {
@@ -32652,7 +32657,7 @@ function viewCatalogue() {
   }
 
   function rdrSheet(r) {
-    return [r.name, Math.round(r.due), r.oldest, Math.round(r.ag.b.cur), Math.round(r.ag.b.d30),
+    return [r.name + (r.sites ? " (builder, " + r.sites.length + " sites)" : ""), Math.round(r.due), r.oldest, Math.round(r.ag.b.cur), Math.round(r.ag.b.d30),
             Math.round(r.ag.b.d60), Math.round(r.ag.b.d90),
             r.lp ? fullDate(r.lp.date) : "never", r.since == null ? "" : r.since,
             r.owner || "", r.mobile || ""];
@@ -32749,7 +32754,7 @@ function viewCatalogue() {
       var d = r.oldest, tone = d > 90 ? "#b91c1c" : d > 60 ? "#c2410c" : d > CREDIT_DAYS ? "#92400e" : "#166534";
       h += '<tr style="background:' + (i % 2 ? '#fff7f7' : '#fff') + '">' +
         '<td style="' + cell + ';font-weight:700;max-width:210px;overflow:hidden;text-overflow:ellipsis" title="' + esc(r.name) + '">' +
-          esc(r.name) + '</td>' +
+          esc(r.name) + (r.sites ? ' <span style="font-weight:500;color:#312e81;font-size:12px">(builder)</span>' + mstSiteLines(r) : '') + '</td>' +
         '<td style="' + num + ';font-weight:800;color:#b91c1c">' + money(r.due) + '</td>' +
         '<td style="' + num + ';color:' + tone + ';font-weight:700">' + (d ? d + 'd' : '—') + '</td>' +
         (S.rdAge ? '<td style="' + num + ';color:#166534">' + (r.ag.b.cur > 0.5 ? money(r.ag.b.cur) : '') + '</td>' +
@@ -32762,8 +32767,9 @@ function viewCatalogue() {
                 : '<span style="color:#b45309;font-weight:600">never paid</span>') + '</td>' +
         '<td style="' + cell + ';color:#475569;font-size:12px">' + esc(r.owner || '—') + '</td>' +
         '<td style="' + cell + '">' +
+          (r.sites ? '<button class="btn sm" data-act="mst-pdf" data-n="' + esc(r.name) + '">Combined statement</button> ' :
           '<button class="btn sm" data-act="pay-wa" data-n="' + esc(r.name) + '">Remind</button> ' +
-          waExecBtn("pay-wa", r.name, 'data-n="' + esc(r.name) + '"') + ' ' +
+          waExecBtn("pay-wa", r.name, 'data-n="' + esc(r.name) + '"') + ' ') +
           /* v6.9.433 - no Ledger button here on purpose: Remind already sends the ledger PDF
              with the message, and this column was 344px of a 1038px card. The ledger, the
              receipts and everything else are on the client's own card further down. */
@@ -33004,12 +33010,11 @@ function viewCatalogue() {
 
   /* The ledger cards on their own, so the search can redraw just this block. */
   function payListHtml() {
-    var list = payLedgerList();
+    var list = mstFold(payLedgerList()).sort(function (a, b) { return b.l.due - a.l.due; });   /* 6.9.686 - a builder is one line */
     var qq = String(S.payq || "").trim().toLowerCase();
     if (qq) {
       list = list.filter(function (x) {
-        var c = clientByName(x.name);
-        return c ? cvMatch(c, qq) : String(x.name).toLowerCase().indexOf(qq) > -1;
+        return mstFoldMatch(x, qq, function (n) { var c = clientByName(n); return c ? cvMatch(c, qq) : String(n).toLowerCase().indexOf(qq) > -1; });
       });
     }
     if (!list.length) {
@@ -33031,14 +33036,15 @@ function viewCatalogue() {
       { k: "n", t: "CHALLANS", n: 1, r: 1 }, { k: "billed", t: "BILLED", n: 1, r: 1 }, { k: "paid", t: "RECEIVED", n: 1, r: 1 }
     ], list.map(function (x) {
       var cells = {
-        name: '<b>' + esc(x.name) + '</b>' + creditPill(x.name),
+        name: '<b>' + esc(x.name) + '</b>' + (x.sites ? ' <span class="pill" style="background:#e0e7ff;color:#312e81;font-size:12px">builder &middot; ' + plural(x.sites.length, "site") + '</span>' + mstSiteLines(x) : creditPill(x.name)),
         due: x.l.due > 0 ? '<b style="color:#b91c1c">' + money(x.l.due) + '</b>' : '<span class="pill Won">clear</span>',
         age: (x.l.due > 0 && x.age) ? '<span class="pill ' + payBucket(x.age).cls + '">' + x.age + 'd</span>' : "",
         n: String(x.l.chs.length),
         billed: money(x.l.billed) + (x.l.freight ? ' <span style="color:#64748b;font-size:12px">+ freight ' + money(x.l.freight) + '</span>' : ""),
         paid: money(x.l.paid),
         go: '<span class="xlrow"><button class="btn sm" data-act="pay-in" data-n="' + esc(x.name) + '" title="Payment received"><span class="xlhide">Payment received</span><span class="xlonly">+ Payment</span></button> ' +
-            (x.l.due > 0 ? '<button class="btn sm ghost" data-act="pay-wa" data-n="' + esc(x.name) + '">Remind</button> ' + waExecBtn("pay-wa", x.name, 'data-n="' + esc(x.name) + '"') + ' ' : "") +
+            (x.sites ? '<button class="btn sm ghost" data-act="mst-pdf" data-n="' + esc(x.name) + '">Combined statement</button> ' :
+            (x.l.due > 0 ? '<button class="btn sm ghost" data-act="pay-wa" data-n="' + esc(x.name) + '">Remind</button> ' + waExecBtn("pay-wa", x.name, 'data-n="' + esc(x.name) + '"') + ' ' : "")) +
             '<button class="btn sm ghost" data-act="rc-list" data-n="' + esc(x.name) + '">Receipts</button> ' +
             '<button class="btn sm ghost" data-act="ledger-pdf" data-n="' + esc(x.name) + '">Ledger PDF</button></span>'
       };
@@ -33249,9 +33255,170 @@ function viewCatalogue() {
       '<div class="meta" style="font-size:12.5px;margin-top:6px">A new client? Add him under <b>Clients › + New client</b> first, then come back here — the advance must sit on his own account.</div>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button><button class="btn" data-act="adv-next">Next</button></div>';
   }
+  /* ===== 6.9.686 - THE BUILDER PAYS ONCE; IT CLEARS HIS OLDEST DUES ON EVERY SITE =====
+     HIS WORDS, 3 Oct 2026: "Builder payment, oldest dues first: when National Hardware pays
+     Rs 1,00,000, it clears the oldest unpaid challans across all its sites. Each site's hisab would
+     show its share, with a note pointing back to the one receipt. Chase the builder, not each site:
+     in the Payments and Collections lists, the sites would sit under National Hardware with one
+     total to chase."
+     THE MONEY. A payment row belongs to one client - every ledger, statement and receipt in this
+     estate reads it that way, and that does not change. So one cheque from the builder becomes one
+     payment row PER SITE it reached, each carrying the same date, mode and reference and the note
+     "Part of Rs X from <builder> on <date> (MR-...)". The split itself is an audit row (mst:pay)
+     naming every part, so the one receipt can always be put back together. Which site gets what is
+     decided the way every ageing in this app already settles money: oldest unpaid bill first,
+     across the builder's own account and all his sites together. What is left over after every
+     site is clear stays on the builder's own account as his advance.
+     THE CHASE. Payments and the collection radar show a builder as ONE line: his name, one total,
+     his oldest bill, and each site underneath with its own figure. A site's own line is not
+     repeated beside it. Nothing about a site's own hisab or statement changes. */
+  function mstAlloc(master, amount) {
+    var names = [master].concat(mstSites(master)), all = [];
+    names.forEach(function (n, gi) {
+      agingItems(n).forEach(function (it) { if (it.amt > 0.5) all.push({ name: n, age: it.age, amt: it.amt, gi: gi }); });
+    });
+    all.sort(function (a, b) { return (b.age - a.age) || (a.gi - b.gi); });
+    /* never more to an account than its HISAB says it owes: the ageing also counts deliveries
+       whose receipt is not signed yet, which the ledger does not - so the ledger is the cap */
+    var cap = {}; names.forEach(function (n) { cap[n] = Math.max(0, Math.round(clientLedger(n).due || 0)); });
+    var left = Math.round(amount), by = {};
+    var give = function (n, want, age) {
+      var u = Math.min(left, Math.round(want), cap[n]); if (u <= 0) return;
+      left -= u; cap[n] -= u;
+      var k = by[n] || (by[n] = { amt: 0, oldest: 0 });
+      k.amt += u; if (age != null) k.oldest = Math.max(k.oldest, age >= 99999 ? 120 : age);
+    };
+    all.forEach(function (it) { if (left > 0) give(it.name, it.amt, it.age); });
+    names.forEach(function (n) { if (left > 0 && cap[n] > 0) give(n, cap[n], null); });   /* what the ageing did not list */
+    var parts = names.filter(function (n) { return by[n]; }).map(function (n) { return { name: n, amt: by[n].amt, oldest: by[n].oldest }; });
+    if (left > 0) parts.push({ name: master, amt: left, oldest: 0, adv: 1 });
+    return parts;
+  }
+  function mstAllocHtml(master, amount) {
+    var amt = Math.round(Number(amount) || 0);
+    if (!(amt > 0)) return '<div class="meta" style="font-size:12.5px">Type the amount &mdash; the split shows here.</div>';
+    var parts = mstAlloc(master, amt);
+    return '<table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:6px">' +
+      parts.map(function (p) {
+        return '<tr style="border-top:1px solid #e0e7ff"><td style="padding:4px 0">' + esc(p.name) +
+          (p.adv ? ' <span style="color:#0f766e;font-size:12px">(left over &mdash; his advance)</span>' : (p.oldest ? ' <span style="color:#64748b;font-size:12px">oldest ' + p.oldest + 'd</span>' : '')) +
+          '</td><td style="padding:4px 0;text-align:right;font-weight:700;white-space:nowrap">' + money(p.amt) + '</td></tr>';
+      }).join("") + '</table>';
+  }
+  function mstPayCard(master, due) {
+    return '<div class="card" style="border-color:#c7d2fe;background:#f8faff;padding:9px 12px">' +
+      '<div style="font-size:13px"><b>' + esc(master) + '</b> and his ' + plural(mstSites(master).length, "site") + ' owe <b style="color:#b91c1c">' + money(due) + '</b> together.</div>' +
+      '<label style="display:flex;gap:9px;align-items:center;min-height:44px;margin:0;text-transform:none;letter-spacing:0;font-size:13.5px;font-weight:700;color:#312e81;cursor:pointer">' +
+        '<input type="checkbox" id="pi_mst" checked style="width:20px;height:20px;flex:0 0 auto"/> Spread it over his sites &mdash; oldest dues first</label>' +
+      '<div id="pi_mst_prev" data-n="' + esc(master) + '">' + mstAllocHtml(master, due) + '</div></div>';
+  }
+  function mstPaySave(t) {
+    var master = t.getAttribute("data-n") || "";
+    var pr = readPayIn(master, "in");
+    if (pr.err) { unlockBtn(t); toast(pr.err); return; }
+    var base = pr.row, amt = Math.round(base.amount), grp = "MR-" + String(base.date).replace(/-/g, "").slice(2) + "-" + String(Date.now()).slice(-4);
+    var parts = mstAlloc(master, amt);
+    var rows = parts.map(function (p) {
+      var head = (p.adv ? "Advance — " : "") + "Part of " + money(amt) + " from " + master + " on " + dmy(base.date) + " (" + grp + ")" +
+        (p.adv ? ", more than all his sites owed" : ", oldest dues first");
+      return { id: mintId("P"), createdBy: S.user, siteId: "", siteName: "", client: p.name, date: base.date, amount: p.amt,
+        mode: base.mode, ref: base.ref, notes: (head + (base.notes ? " — " + base.notes : "")).slice(0, 300) };
+    });
+    for (var i = 0; i < rows.length; i++) {
+      var tw = payTwin(rows[i]);
+      if (tw) {
+        unlockBtn(t);
+        toast(money(rows[i].amount) + " by " + rows[i].mode + " on " + dmy(rows[i].date) + " is already on " + rows[i].client + "’s book — check it before entering this again.");
+        return;
+      }
+    }
+    unlockBtn(t);
+    rows.forEach(function (r) { payFlightSet(r); });
+    save("audit", { action: "mst:pay", actor: S.user, recId: grp, createdAt: new Date().toISOString(),
+      detail: JSON.stringify({ master: master, total: amt, date: base.date, mode: base.mode, ref: base.ref,
+        parts: rows.map(function (r) { return { client: r.client, id: r.id, amt: r.amount }; }) }) }, true);
+    var st = rows.map(function () { return "saving"; });
+    S.modal = modalMstPayDone(master, amt, grp, rows, st); render();
+    var gen = _mgen;   /* taken after the done screen is up, as payWrite does */
+    var paint = function () { if (gen === _mgen && S.modal) { S.modal = modalMstPayDone(master, amt, grp, rows, st); render(); gen = _mgen; } else renderBg(); };
+    var step = function (i) {
+      if (i >= rows.length) { toast(st.every(function (x) { return x === true; }) ? "Payment recorded on " + plural(rows.length, "account") + "." : "Some parts are held on this phone — they will go up by themselves."); return; }
+      save("payments", rows[i]).then(function (r) { st[i] = !!(r && r !== rows[i]); }, function () { st[i] = false; })
+        .then(function () { payFlightDone(rows[i]); paint(); step(i + 1); });
+    };
+    step(0);
+  }
+  function modalMstPayDone(master, amt, grp, rows, st) {
+    return '<h2>' + money(amt) + ' from ' + esc(master) + '</h2>' +
+      '<p class="sub">' + esc(grp) + ' &middot; ' + esc(dmy(rows[0].date)) + ' &middot; ' + esc(rows[0].mode) + (rows[0].ref ? ' &middot; ' + esc(rows[0].ref) : '') + ' &middot; oldest dues first</p>' +
+      '<div class="card" style="padding:8px 12px"><table style="width:100%;border-collapse:collapse;font-size:13px">' +
+      rows.map(function (r, i) {
+        var s = st[i];
+        return '<tr style="border-top:1px solid #e2e8f0"><td style="padding:6px 0"><b>' + esc(r.client) + '</b>' +
+          '<div style="font-size:12px;color:#64748b">Receipt ' + esc(receiptNo(r)) + '</div></td>' +
+          '<td style="padding:6px 0;text-align:right;font-weight:700;white-space:nowrap">' + money(r.amount) +
+          '<div style="font-size:12px;font-weight:600;color:' + (s === true ? '#0f766e' : s === false ? '#b45309' : '#64748b') + '">' + (s === true ? 'recorded' : s === false ? 'held on this phone' : 'saving…') + '</div></td></tr>';
+      }).join("") + '</table></div>' +
+      '<div class="meta" style="font-size:12.5px">Each site&rsquo;s hisab shows its part, with a note back to ' + esc(grp) + '.</div>' +
+      '<div class="foot"><button class="btn ghost" data-act="mst-pdf" data-n="' + esc(master) + '">Combined statement (PDF)</button><button class="btn" data-act="close">Done</button></div>';
+  }
+  /* the chase lists: a builder and his sites as one line */
+  function mstFold(list) {
+    var groups = {}, order = [];
+    list.forEach(function (x) {
+      var m = mstOf(x.name), key = mstKey(m || x.name);
+      if (!groups[key]) { groups[key] = { master: m || x.name, members: [] }; order.push(key); }
+      if (!m && mstSites(x.name).length) groups[key].master = x.name;
+      groups[key].members.push(x);
+    });
+    return order.map(function (k) {
+      var g = groups[k], mk = mstKey(g.master);
+      var sites = g.members.filter(function (x) { return mstKey(x.name) !== mk; });
+      if (!sites.length) return g.members[0];
+      var own = g.members.filter(function (x) { return mstKey(x.name) === mk; })[0];
+      var mem = (own ? [own] : []).concat(sites.sort(function (a, b) { return b.l.due - a.l.due; }));
+      var l = { due: 0, billed: 0, paid: 0, freight: 0, returned: 0, chs: [], pays: [] };
+      mem.forEach(function (x) {
+        l.due += x.l.due || 0; l.billed += x.l.billed || 0; l.paid += x.l.paid || 0; l.freight += x.l.freight || 0; l.returned += x.l.returned || 0;
+        l.chs = l.chs.concat(x.l.chs || []); l.pays = l.pays.concat(x.l.pays || []);
+      });
+      var cm = clientByName(g.master);
+      return { name: cm ? cm.name : g.master, l: l, age: Math.max.apply(null, mem.map(function (x) { return x.age || 0; })), sites: sites, own: own || null };
+    });
+  }
+  function mstFoldMatch(x, q, test) {
+    if (test(x.name)) return true;
+    return !!(x.sites && x.sites.some(function (s) { return test(s.name); }));
+  }
+  function mstSiteLines(x) {
+    return '<div style="margin-top:3px">' + x.sites.map(function (s) {
+      return '<div style="font-size:12px;color:#475569;white-space:nowrap">↳ ' + esc(s.name) + ' &middot; ' +
+        (s.l.due > 0.5 ? '<b style="color:#b91c1c">' + money(s.l.due) + '</b>' : '<span style="color:#0f766e">clear</span>') +
+        (s.l.due > 0.5 && s.age ? ' &middot; ' + s.age + 'd' : '') + '</div>';
+    }).join("") + '</div>';
+  }
+  function mstAgingOf(x) {
+    if (!x.sites) return clientAging(x.name);
+    var a = { b: { cur: 0, d30: 0, d60: 0, d90: 0 }, oldest: 0, overdue: 0, due: 0 };
+    (x.own ? [x.own] : []).concat(x.sites).forEach(function (m) {
+      var g = clientAging(m.name);
+      a.b.cur += g.b.cur; a.b.d30 += g.b.d30; a.b.d60 += g.b.d60; a.b.d90 += g.b.d90;
+      a.oldest = Math.max(a.oldest, g.oldest); a.overdue += g.overdue; a.due += g.due;
+    });
+    return a;
+  }
+  try {
+    document.addEventListener("input", function (e) {
+      var t = e.target; if (!t || t.id !== "pi_amt") return;
+      var pv = document.getElementById("pi_mst_prev"); if (!pv) return;
+      pv.innerHTML = mstAllocHtml(pv.getAttribute("data-n") || "", Math.round(nAmt(t.value)));
+    });
+  } catch (e) { }
+
   function modalPayIn(client, kind) {
     var _pk = String(kind || "in"), K = PAY_KINDS[_pk] || PAY_KINDS["in"];
     var l = clientLedger(client), sites = clientSiteList(client);
+    var _mstN = _pk === "in" ? mstSites(client).length : 0, _piDue = _mstN ? mstRows(client).tot.due : l.due;   /* 6.9.686 */
     var h = '<h2>' + esc(K.label) + '</h2><p class="sub">' + esc(client) + '</p>' +
       /* v6.9.360 - three tabs on one form, because a man who opened the wrong one should not
          have to close it and find the right button again. */
@@ -33287,7 +33454,8 @@ function viewCatalogue() {
       '<div style="flex:1.3 1 130px;min-width:0"><label style="color:' + (K.sign < 0 ? '#b91c1c' : '#047857') + '">' + (K.sign < 0 ? 'Amount going back' : 'Amount received') + '</label>' +
       '<input id="pi_amt" inputmode="numeric" style="font-size:18px;font-weight:800;min-height:44px;' +
         (K.sign < 0 ? 'background:#fef2f2;border-color:#fca5a5;color:#991b1b' : 'background:#ecfdf5;border-color:#6ee7b7;color:#065f46') + '" value="' +
-        (_pk === "in" ? Math.round(l.due > 0 ? l.due : 0) : (K.sign < 0 && l.due < -0.5 ? Math.round(-l.due) : "")) + '"/></div></div>';
+        (_pk === "in" ? Math.round(_piDue > 0 ? _piDue : 0) : (K.sign < 0 && l.due < -0.5 ? Math.round(-l.due) : "")) + '"/></div></div>';
+    if (_mstN) h += mstPayCard(client, _piDue);   /* 6.9.686 */
     /* Only asked when there is a real choice to make - one site needs no question. */
     if (sites.length > 1) {
       h += '<label>Against which site</label><select id="pi_site"><option value="">Not tied to one site</option>' +
@@ -53079,6 +53247,8 @@ function viewCatalogue() {
        across on purpose: an amount meant as money IN must never become money OUT by a mis-tap. */
     if (act === "pi-kind") { S.modal = modalPayIn(t.getAttribute("data-n"), t.getAttribute("data-k")); render(); return; }
     if (act === "pi-save" || act === "pi-force") {
+      /* 6.9.686 - a builder's payment, spread over his sites oldest-first */
+      if (act === "pi-save" && (t.getAttribute("data-k") || "in") === "in" && el("pi_mst") && el("pi_mst").checked) { mstPaySave(t); return; }
       var piRow;
       if (act === "pi-force") { piRow = _payPend; _payPend = null; }
       else {
