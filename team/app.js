@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.690";
+  var APP_VERSION = "6.9.691";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -8861,15 +8861,144 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     }), "the issue, who raised it, the engineer and the money");
     return h;
   }
+  /* ===== 6.9.691 - SERVICE: THE SCHEDULE AND THE OWNER'S DASHBOARD =====
+     His picks, 3 Oct 2026, after the engineer's job list: "Service schedule & AMC renewals" - one
+     calendar of periodic services due (by machine, by engineer), AMC contracts ending with Offer
+     renewal on WhatsApp, warranty ending -> AMC offer - and "Admin service dashboard": per engineer,
+     jobs open / done / late, visits this month, billed vs collected, AMC revenue, average time to
+     close. Nothing new is stored: the installs, the visits and the complaint tickets already hold
+     every figure; these two screens only read them. */
+  var SVC_HZ = [[7, "Next 7 days"], [30, "Next 30 days"], [60, "Next 60 days"]];
+  function svcPlanRows(hz, eng) {
+    var rows = [];
+    (S.data.installs || []).forEach(function (x) {
+      if (/closed|inactive/i.test(String(x.status || ""))) return;
+      if (eng && lower(x.engineer) !== lower(eng)) return;
+      var d = daysTo(x.nextService); if (!x.nextService || d > hz) return;
+      rows.push({ x: x, d: d });
+    });
+    return rows.sort(function (a, b) { return a.d - b.d || alpha(a.x.client, b.x.client); });
+  }
+  function svcRenewRows(hz) {
+    var out = [];
+    (S.data.installs || []).forEach(function (x) {
+      if (amcKind(x) === "None" || !x.amcEnd) return;
+      var d = daysTo(x.amcEnd); if (d > hz || d < -30) return;
+      out.push({ x: x, d: d });
+    });
+    return out.sort(function (a, b) { return a.d - b.d; });
+  }
+  function svcEngList() {
+    var seen = {}, out = [];
+    (S.data.installs || []).forEach(function (x) { var e = String(x.engineer || "").trim(); if (e && !seen[lower(e)]) { seen[lower(e)] = 1; out.push(e); } });
+    return out.sort(alpha);
+  }
+  function svcPlanHtml() {
+    var hz = Number(S.svcHz) || 30, eng = S.svcEng || "", engs = svcEngList();
+    var chip = function (act, v, on, label) { return '<button class="chip' + (on ? ' on' : '') + '" data-act="' + act + '" data-v="' + esc(v) + '">' + label + '</button>'; };
+    var h = '<div class="chips" style="margin:0 0 6px">' + SVC_HZ.map(function (z) { return chip("svc-hz", z[0], hz === z[0], z[1]); }).join("") + '</div>' +
+      (engs.length > 1 ? '<div class="chips" style="margin:0 0 8px">' + chip("svc-eng", "", !eng, "All engineers") + engs.map(function (e) { return chip("svc-eng", e, lower(eng) === lower(e), esc(e)); }).join("") + '</div>' : '');
+    var due = svcPlanRows(hz, eng), over = due.filter(function (r) { return r.d < 0; }).length;
+    h += '<div class="card"><div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center"><h3 style="margin:0;flex:1 1 220px">Services due <span class="pill ' + (over ? 'due' : 'soon') + '">' + due.length + '</span>' +
+      (over ? ' <span class="pill due">' + over + ' overdue</span>' : '') + '</h3><button class="btn sm ghost" data-act="svc-plan-xlsx">&#8681; Excel</button></div>';
+    h += due.length ? xlTable("svc-plan", [
+      { k: "when", t: "DUE", nw: 1 }, { k: "client", t: "CLIENT", wrap: "180px" }, { k: "area", t: "AREA" }, { k: "mach", t: "MACHINE", fill: 1 },
+      { k: "eng", t: "ENGINEER", nw: 1 }, { k: "amc", t: "AMC", nw: 1 }, { k: "go", t: "", nw: 1 }
+    ], due.map(function (r) {
+      var x = r.x, k = amcKind(x);
+      return { v: { when: r.d, client: x.client, area: x.area, mach: [x.product, x.model].join(" "), eng: x.engineer, amc: k, go: "" }, cells: {
+        when: '<span class="pill ' + (r.d < 0 ? 'due' : r.d <= 7 ? 'soon' : '') + '">' + (r.d < 0 ? Math.abs(r.d) + 'd overdue' : r.d === 0 ? 'today' : esc(fullDate(x.nextService))) + '</span>',
+        client: '<b>' + esc(x.client || "") + '</b>', area: esc(x.area || ""), mach: esc([x.product, x.model].filter(Boolean).join(" ")),
+        eng: esc(x.engineer || "—"), amc: esc(k === "None" ? "—" : k),
+        go: '<span class="xlrow"><button class="btn sm ghost" data-act="svc-due-wa" data-id="' + esc(x.id) + '">Tell him</button><button class="btn sm ghost" data-act="inst-open" data-id="' + esc(x.id) + '">Open</button></span>' } };
+    }), "the client, the machine and who goes") : '<div class="empty" style="margin:0">Nothing due in this window.</div>';
+    h += '</div>';
+    var ren = svcRenewRows(hz);
+    h += '<div class="card" style="border-color:#c7d2fe"><h3 style="margin:0 0 6px">AMC renewals <span class="pill">' + ren.length + '</span></h3>' +
+      '<div class="meta" style="margin:0 0 6px">Contracts ending in this window, and those that lapsed in the last 30 days.</div>' +
+      (ren.length ? xlTable("svc-ren", [
+        { k: "client", t: "CLIENT", wrap: "180px" }, { k: "mach", t: "MACHINE", fill: 1 }, { k: "kind", t: "AMC", nw: 1 }, { k: "amt", t: "AMOUNT", n: 1, r: 1, nw: 1 },
+        { k: "end", t: "ENDS", nw: 1 }, { k: "go", t: "", nw: 1 }
+      ], ren.map(function (r) {
+        var x = r.x, m = [x.product, x.model].filter(Boolean).join(" ");
+        return { v: { client: x.client, mach: m, kind: amcKind(x), amt: nAmt(x.amcAmount), end: r.d, go: "" }, cells: {
+          client: '<b>' + esc(x.client || "") + '</b>', mach: esc(m), kind: esc(amcKind(x)), amt: x.amcAmount ? money(nAmt(x.amcAmount)) : '—',
+          end: '<span class="pill ' + (r.d < 0 ? 'due' : 'soon') + '">' + (r.d < 0 ? 'lapsed ' + Math.abs(r.d) + 'd ago' : r.d === 0 ? 'today' : esc(fullDate(x.amcEnd))) + '</span>',
+          go: '<button class="btn sm" data-act="amc-wa" data-n="' + esc(x.client || "") + '" data-p="' + esc(m) + '" data-till="' + esc(String(x.amcEnd || "").slice(0, 10)) + '">Offer renewal</button>' } };
+      })) : '<div class="empty" style="margin:0">No contract ends in this window.</div>') + '</div>';
+    var wx = warrantyExpiring(hz);
+    h += '<div class="card" style="border-color:#fdba74"><h3 style="margin:0 0 6px">Warranty ending &mdash; offer an AMC <span class="pill soon">' + wx.length + '</span></h3>' +
+      (wx.length ? xlTable("svc-wx", [
+        { k: "client", t: "CLIENT", wrap: "180px" }, { k: "product", t: "MACHINE", fill: 1 }, { k: "till", t: "WARRANTY TILL", nw: 1 }, { k: "go", t: "", nw: 1 }
+      ], wx.map(function (x) {
+        return { v: { client: x.client, product: x.product, till: x.days, go: "" }, cells: {
+          client: '<b>' + esc(x.client) + '</b>', product: esc(x.product),
+          till: '<span class="pill ' + (x.days <= 0 ? 'due' : 'soon') + '">' + esc(fullDate(x.till)) + '</span>',
+          go: '<button class="btn sm" data-act="amc-wa" data-n="' + esc(x.client) + '" data-p="' + esc(x.product) + '" data-till="' + esc(x.till) + '">Offer AMC</button>' } };
+      })) : '<div class="empty" style="margin:0">No warranty ends in this window.</div>') + '</div>';
+    return h;
+  }
+  function svcMonthOf(d) { return String(dstr(String(d || "").slice(0, 10)) || "").slice(0, 7); }
+  function svcDash(ym) {
+    var E = {}, get = function (n) { var k = lower(n || "") || "(nobody)"; return E[k] || (E[k] = { name: n || "(nobody)", open: 0, late: 0, done: 0, hrs: 0, nh: 0, visits: 0, billed: 0, got: 0, pend: 0 }); };
+    var tk = []; try { tk = cmpAll(); } catch (e) { tk = []; }
+    tk.forEach(function (t) {
+      if (/^(Raised|Assigned|Visited)$/.test(t.status)) { var e = get(t.eng); e.open++; var L = cmpLate(t); if (L && L.late) e.late++; }
+      if (t.resolvedAt && svcMonthOf(t.resolvedAt) === ym) { var e2 = get(t.eng); e2.done++; var hh = (Date.parse(t.resolvedAt) - Date.parse(t.at)) / 3600000; if (isFinite(hh) && hh >= 0) { e2.hrs += hh; e2.nh++; } }
+    });
+    (S.data.visits || []).forEach(function (v) {
+      var ins = v.installId ? installById(v.installId) : null, e = get(v.engineer);
+      e.pend += visitPending(v, ins);
+      if (svcMonthOf(v.date) !== ym) return;
+      e.visits++; e.billed += visitDue(v, ins); e.got += num(v.collected);
+    });
+    var rows = Object.keys(E).map(function (k) { return E[k]; }).sort(function (a, b) { return (b.open + b.visits) - (a.open + a.visits); });
+    var live = (S.data.installs || []).filter(function (x) { return amcLiveOn(x, today()); });
+    return { rows: rows, amcN: live.length, amcVal: live.reduce(function (a, x) { return a + nAmt(x.amcAmount); }, 0), renew30: svcRenewRows(30).filter(function (r) { return r.d >= 0; }).length };
+  }
+  function svcDashHtml() {
+    if (!roleAny(["admin", "accounts"])) return '<div class="empty">The service dashboard is for the owner and accounts.</div>';
+    var ym = S.svcYm || today().slice(0, 7), D = svcDash(ym);
+    var T = D.rows.reduce(function (a, r) { ["open", "late", "done", "hrs", "nh", "visits", "billed", "got", "pend"].forEach(function (k) { a[k] += r[k]; }); return a; }, { open: 0, late: 0, done: 0, hrs: 0, nh: 0, visits: 0, billed: 0, got: 0, pend: 0 });
+    var mName = new Date(ym + "-01T00:00:00").toLocaleString("en-IN", { month: "long", year: "numeric" });
+    var tile = function (n, l, alert) { return '<div class="stat' + (alert ? ' alert' : '') + '"><div class="n">' + n + '</div><div class="l">' + l + '</div></div>'; };
+    var h = '<div class="row" style="align-items:center;gap:8px;margin:0 0 8px"><button class="btn sm ghost" data-act="svc-ym" data-d="-1">&lsaquo;</button><b style="font-size:15px">' + esc(mName) + '</b><button class="btn sm ghost" data-act="svc-ym" data-d="1">&rsaquo;</button></div>' +
+      '<div class="cards">' + tile(T.open, "Complaints open", T.open > 0) + tile(T.late, "Past the promise", T.late > 0) + tile(T.done, "Resolved this month") +
+      tile(T.nh ? Math.round(T.hrs / T.nh) + " h" : "—", "Average time to resolve") + tile(T.visits, "Visits this month") +
+      tile(money(T.billed), "Billed this month") + tile(money(T.got), "Collected this month") + tile(money(T.pend), "Pending on visits (all time)", T.pend > 0.5) +
+      tile(D.amcN, "AMC contracts live") + tile(money(D.amcVal), "AMC value live") + tile(D.renew30, "Renewals due in 30 days", D.renew30 > 0) + '</div>';
+    h += xlTable("svc-dash", [
+      { k: "name", t: "ENGINEER", nw: 1 }, { k: "open", t: "OPEN", n: 1, r: 1 }, { k: "late", t: "LATE", n: 1, r: 1 }, { k: "done", t: "RESOLVED", n: 1, r: 1 },
+      { k: "avg", t: "AVERAGE", n: 1, r: 1, nw: 1 }, { k: "visits", t: "VISITS", n: 1, r: 1 }, { k: "billed", t: "BILLED", n: 1, r: 1, nw: 1 }, { k: "got", t: "COLLECTED", n: 1, r: 1, nw: 1 }, { k: "pend", t: "PENDING", n: 1, r: 1, nw: 1 }
+    ], D.rows.map(function (r) {
+      var avg = r.nh ? Math.round(r.hrs / r.nh) : null;
+      return { v: { name: r.name, open: r.open, late: r.late, done: r.done, avg: avg == null ? -1 : avg, visits: r.visits, billed: r.billed, got: r.got, pend: r.pend }, cells: {
+        name: '<b>' + esc(r.name) + '</b>', open: String(r.open), late: r.late ? '<b style="color:#b91c1c">' + r.late + '</b>' : '0', done: String(r.done),
+        avg: avg == null ? '—' : avg + ' h', visits: String(r.visits), billed: money(r.billed), got: '<span style="color:#0f766e">' + money(r.got) + '</span>',
+        pend: r.pend > 0.5 ? '<b style="color:#b91c1c">' + money(r.pend) + '</b>' : '—' } };
+    }), "the engineer's jobs and money") +
+      '<div class="meta" style="font-size:12px;margin-top:6px">Open and late: complaint tickets now. Resolved and average time: tickets resolved in the month. Visits, billed and collected: service visits dated in the month; billed is after the AMC or warranty had its say. Pending: everything still uncollected on his visits.</div>';
+    return h;
+  }
+  function svcPlanXlsx() {
+    var hz = Number(S.svcHz) || 30, rows = svcPlanRows(hz, S.svcEng || "");
+    if (!rows.length) { toast("Nothing due in this window."); return; }
+    var out = [["DUE", "CLIENT", "MOBILE", "AREA", "MACHINE", "ENGINEER", "AMC", "AMC ENDS"].map(function (x) { return { v: x, s: XL.HEAD }; })];
+    rows.forEach(function (r) { var x = r.x; out.push([r.d < 0 ? Math.abs(r.d) + " days overdue" : fullDate(x.nextService), x.client || "", x.mobile || "", x.area || "", [x.product, x.model].filter(Boolean).join(" "), x.engineer || "", amcKind(x), x.amcEnd ? fullDate(x.amcEnd) : ""]); });
+    dlXlsx("Service_schedule_" + today() + ".xlsx", "Service schedule", out, [16, 26, 13, 16, 26, 14, 18, 12]);
+  }
+
   function viewServiceDesk() {
-    var sub = (S.svcSub === "base" || (S.svcSub === "amcrates" && roleIs("admin"))) ? S.svcSub : "visits";
-    var h = '<div class="row" style="margin-bottom:10px">' +
+    var sub = (S.svcSub === "base" || S.svcSub === "plan" || (S.svcSub === "dash" && roleAny(["admin", "accounts"])) || (S.svcSub === "amcrates" && roleIs("admin"))) ? S.svcSub : "visits";
+    var h = '<div class="row" style="margin-bottom:10px;flex-wrap:wrap;gap:6px">' +
       '<button class="btn sm ' + (sub === "visits" ? "" : "ghost") + '" data-act="svc-sub" data-s="visits">Service visits</button>' +
+      '<button class="btn sm ' + (sub === "plan" ? "" : "ghost") + '" data-act="svc-sub" data-s="plan">Schedule &amp; renewals</button>' +   /* 6.9.691 */
+      (roleAny(["admin", "accounts"]) ? '<button class="btn sm ' + (sub === "dash" ? "" : "ghost") + '" data-act="svc-sub" data-s="dash">Dashboard</button>' : '') +
       '<button class="btn sm ' + (sub === "base" ? "" : "ghost") + '" data-act="svc-sub" data-s="base">Installed base</button>' +
       (roleIs("admin") ? '<button class="btn sm ' + (sub === "amcrates" ? "" : "ghost") +
         '" data-act="svc-sub" data-s="amcrates">AMC rates</button>' : '') +
       '</div>';
-    return h + (sub === "amcrates" ? viewAmcRates() : (sub === "base" ? viewBase() : viewService()));
+    return h + (sub === "amcrates" ? viewAmcRates() : sub === "base" ? viewBase() : sub === "plan" ? svcPlanHtml() : sub === "dash" ? svcDashHtml() : viewService());
   }
 
   /* ===== THE THREE COMMISSIONING BLOCKS, AS TABLES  (v6.9.520 - his item 23) =====
@@ -52573,6 +52702,22 @@ function viewCatalogue() {
       render(); return;
     }
     if (act === "svc-sub") { S.svcSub = t.getAttribute("data-s"); S.q = ""; render(); return; }
+    /* 6.9.691 - the schedule and the dashboard */
+    if (act === "svc-hz") { S.svcHz = Number(t.getAttribute("data-v")) || 30; keepScroll = true; render(); return; }
+    if (act === "svc-eng") { S.svcEng = t.getAttribute("data-v") || ""; keepScroll = true; render(); return; }
+    if (act === "svc-plan-xlsx") { svcPlanXlsx(); return; }
+    if (act === "svc-ym") {
+      var _ym = (S.svcYm || today().slice(0, 7)).split("-"), _dd = new Date(Number(_ym[0]), Number(_ym[1]) - 1 + Number(t.getAttribute("data-d") || 0), 1);
+      S.svcYm = _dd.getFullYear() + "-" + String(_dd.getMonth() + 1).padStart(2, "0"); keepScroll = true; render(); return;
+    }
+    if (act === "svc-due-wa") {
+      var _ix = installById(t.getAttribute("data-id")); if (!_ix) return;
+      var _cl = clientByName(_ix.client) || {}, _mb = String(_ix.mobile || _cl.mobile || "").replace(/\D/g, "").slice(-10);
+      var _dd2 = daysTo(_ix.nextService), _mm = [_ix.product, _ix.model].filter(Boolean).join(" ") || "your machine";
+      var _tx = "Dear " + (_ix.client || "") + ",\n\nThe periodic service of your " + _mm + " is " + (_dd2 < 0 ? "due since " : "due on ") + fullDate(_ix.nextService) + ".\n\n" + (_ix.engineer ? "Our engineer " + _ix.engineer + " will call you to fix a time" : "We will call you to fix a time") + ". Please reply here with a time that suits you.\n\nThank you,\nEnergy World";
+      window.open("https://wa.me/" + (_mb.length === 10 ? "91" + _mb : "") + "?text=" + encodeURIComponent(_tx), "_blank");
+      return;
+    }
     if (act === "base-find") { S.baseQ = val("baseq") || ""; render(); return; }
     if (act === "base-clear") { S.baseQ = ""; render(); return; }
     if (act === "base-sn") { S.modal = modalSerial(t.getAttribute("data-k")); render(); return; }
