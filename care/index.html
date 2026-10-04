@@ -53,6 +53,16 @@ details summary{cursor:pointer;min-height:44px;display:flex;align-items:center;f
 .err{color:var(--danger);font-weight:600}
 .done{background:#ecfdf5;border-color:#a7f3d0}
 .foot{text-align:center;font-size:12.5px;color:var(--ink-60);margin-top:18px}
+
+/* 4 Oct 2026 - THE BRANDS WE ARE AUTHORISED FOR, the same marks the challan and quotation print */
+.bgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:8px;}
+.btile{position:relative;background:#fff;border:1.5px solid var(--line);border-radius:12px;min-height:58px;padding:8px;
+  display:flex;align-items:center;justify-content:center;font:inherit;}
+.btile img{max-width:100%;max-height:40px;object-fit:contain;display:block;}
+.btile.txt{font-size:13px;font-weight:700;color:var(--ink-60);text-align:center;line-height:1.2;}
+.btile.on{border-color:var(--teal-700);box-shadow:0 0 0 2px var(--teal-700) inset;}
+.btile.on::after{content:"\2713";position:absolute;top:-8px;right:-8px;width:22px;height:22px;border-radius:50%;background:var(--teal-700);color:#fff;font-size:13px;font-weight:800;display:flex;align-items:center;justify-content:center;}
+.bnote{font-size:12px;color:var(--ink-60);margin:0 0 8px;}
 </style>
 </head>
 <body>
@@ -62,7 +72,7 @@ details summary{cursor:pointer;min-height:44px;display:flex;align-items:center;f
 <script>
 (function () {
   "use strict";
-  var VER = "1.0.0";
+  var VER = "1.1.0";   /* 4 Oct 2026 - the brands we are authorised for */
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var OFFICE = "+919466600611";
   var CATS = ["Product defect", "Not working / no water", "Leakage", "Installation", "Service / AMC", "Billing", "Other"];
@@ -98,6 +108,7 @@ details summary{cursor:pointer;min-height:44px;display:flex;align-items:center;f
     return { t: "Delivered " + dmy(p.date), c: "grey" };
   }
   function prodName(p) { return p.desc + (p.sn ? " (S/N " + p.sn + ")" : ""); }
+  var BRANDS = [["Huliot","../assets/brands/huliot.webp"],["Heliroma","../assets/brands/heliroma.webp"],["FIMA","../assets/brands/fima.webp"],["TOTO","../assets/brands/toto.webp"],["Grundfos","../assets/brands/grundfos.webp"],["Pentair","../assets/brands/pentair.webp"],["Green Heat+","../assets/brands/greenheat.webp"],["Adani Solar","../assets/brands/adani.webp"],["Geberit","../assets/brands/geberit.webp"],["Stellar","../assets/brands/stellar.webp"],["MEA","../assets/brands/mea.webp"],["Oyster","../assets/brands/oyster.webp"],["Eureka Forbes","../assets/logo-eurekaforbes.png"]];
   function render() {
     var R = document.getElementById("root"), h = "";
     if (!S.tok) { R.innerHTML = '<div class="card"><h2>This page needs your own link</h2><p class="muted">Please open the link Energy World sent you on WhatsApp. If you do not have it, call us and we will send it again.</p><a class="btn" href="tel:' + OFFICE + '">&#128222; Call Energy World</a></div>'; return; }
@@ -130,6 +141,8 @@ details summary{cursor:pointer;min-height:44px;display:flex;align-items:center;f
         (ios ? 'Tap <b>Share</b> <span aria-hidden="true">&#x2191;&#xFE0E;</span> at the bottom of Safari, then <b>Add to Home Screen</b>.' : 'Tap the <b>&#8942;</b> menu at the top of Chrome, then <b>Add to Home screen</b> (or <b>Install app</b>).') +
         ' It opens straight to your products next time.</div><button class="btn ghost" data-a="saved" style="margin-top:10px;min-height:44px">Done &mdash; hide this</button></div>';
     }
+    h += '<div class="card"><h3>Authorised distributor for</h3><div class="bgrid">' + BRANDS.map(function (b) {
+      return '<div class="btile"><img src="' + b[1] + '" alt="' + esc(b[0]) + '" loading="lazy"></div>'; }).join("") + '</div></div>';
     h += '<div class="row2"><a class="btn ghost" href="tel:' + OFFICE + '">&#128222; Call us</a><a class="btn ghost" href="https://wa.me/' + OFFICE.replace(/\D/g, "") + '" target="_blank" rel="noopener">WhatsApp</a></div>' +
       '<div class="foot">Energy World, Panipat &middot; this link is yours alone &middot; v' + VER + '</div>';
     R.innerHTML = h;
