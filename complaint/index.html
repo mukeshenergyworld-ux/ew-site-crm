@@ -52,7 +52,7 @@ body{
 .wrap{max-width:640px;margin:0 auto;padding:20px 16px 40px;}
 .hero{margin:8px 2px 22px;}
 .eyebrow{
-  font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;
+  font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;
   color:var(--teal-700);margin:0 0 8px;
 }
 .hero h2{
@@ -101,6 +101,7 @@ select{
   transition:all .15s;user-select:none;
 }
 .chip:hover{border-color:var(--teal-700);color:var(--teal-800);}
+.chip{min-height:44px;display:inline-flex;align-items:center;}
 .chip.on{background:var(--teal-800);border-color:var(--teal-800);color:#fff;box-shadow:0 4px 12px -4px rgba(13,92,86,.5);}
 
 /* ---- Urgency segmented ---- */
@@ -169,7 +170,7 @@ a[href^="tel:"]{white-space:nowrap;}
   background:var(--teal-50);border:1px dashed var(--teal-700);border-radius:12px;
   padding:14px 16px;margin-bottom:16px;
 }
-.ref .rlab{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--teal-700);}
+.ref .rlab{font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--teal-700);}
 .ref .rval{font-size:20px;font-weight:800;color:var(--teal-900);letter-spacing:.02em;}
 .copy{
   background:var(--white);border:1.5px solid var(--teal-700);color:var(--teal-800);
@@ -189,6 +190,16 @@ a[href^="tel:"]{white-space:nowrap;}
   .hero h2{font-size:32px;}
   .card{padding:26px 24px;}
 }
+
+/* 4 Oct 2026 - THE BRANDS WE ARE AUTHORISED FOR, the same marks the challan and quotation print */
+.bgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:8px;}
+.btile{position:relative;background:#fff;border:1.5px solid var(--line);border-radius:12px;min-height:58px;padding:8px;
+  display:flex;align-items:center;justify-content:center;cursor:pointer;font:inherit;}
+.btile img{max-width:100%;max-height:40px;object-fit:contain;display:block;}
+.btile.txt{font-size:13px;font-weight:700;color:var(--ink-60);text-align:center;line-height:1.2;}
+.btile.on{border-color:var(--teal-700);box-shadow:0 0 0 2px var(--teal-700) inset;}
+.btile.on::after{content:"\2713";position:absolute;top:-8px;right:-8px;width:22px;height:22px;border-radius:50%;background:var(--teal-700);color:#fff;font-size:13px;font-weight:800;display:flex;align-items:center;justify-content:center;}
+.bnote{font-size:12px;color:var(--ink-60);margin:0 0 8px;}
 </style>
 </head>
 <body>
@@ -251,6 +262,27 @@ a[href^="tel:"]{white-space:nowrap;}
           <div class="chip" data-v="Other">Other</div>
         </div>
         <div class="errmsg">Please choose a category.</div>
+      </div>
+
+      <div class="field" id="f-brand">
+        <label>Which brand is it? <span class="hint">(tap one, if you know)</span></label>
+        <p class="bnote">Energy World is the authorised distributor for these brands.</p>
+        <div class="bgrid" id="bgrid">
+          <button type="button" class="btile" data-b="Huliot"><img src="../assets/brands/huliot.webp" alt="Huliot" loading="lazy"></button>
+          <button type="button" class="btile" data-b="Heliroma"><img src="../assets/brands/heliroma.webp" alt="Heliroma" loading="lazy"></button>
+          <button type="button" class="btile" data-b="FIMA"><img src="../assets/brands/fima.webp" alt="FIMA" loading="lazy"></button>
+          <button type="button" class="btile" data-b="TOTO"><img src="../assets/brands/toto.webp" alt="TOTO" loading="lazy"></button>
+          <button type="button" class="btile" data-b="Grundfos"><img src="../assets/brands/grundfos.webp" alt="Grundfos" loading="lazy"></button>
+          <button type="button" class="btile" data-b="Pentair"><img src="../assets/brands/pentair.webp" alt="Pentair" loading="lazy"></button>
+          <button type="button" class="btile" data-b="Green Heat+"><img src="../assets/brands/greenheat.webp" alt="Green Heat+" loading="lazy"></button>
+          <button type="button" class="btile" data-b="Adani Solar"><img src="../assets/brands/adani.webp" alt="Adani Solar" loading="lazy"></button>
+          <button type="button" class="btile" data-b="Geberit"><img src="../assets/brands/geberit.webp" alt="Geberit" loading="lazy"></button>
+          <button type="button" class="btile" data-b="Stellar"><img src="../assets/brands/stellar.webp" alt="Stellar" loading="lazy"></button>
+          <button type="button" class="btile" data-b="MEA"><img src="../assets/brands/mea.webp" alt="MEA" loading="lazy"></button>
+          <button type="button" class="btile" data-b="Oyster"><img src="../assets/brands/oyster.webp" alt="Oyster" loading="lazy"></button>
+          <button type="button" class="btile" data-b="Eureka Forbes"><img src="../assets/logo-eurekaforbes.png" alt="Eureka Forbes" loading="lazy"></button>
+          <button type="button" class="btile txt" data-b="Other / not sure">Other / not sure</button>
+        </div>
       </div>
 
       <div class="field" id="f-order">
@@ -327,9 +359,18 @@ var GAS_URL = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjm
    answered and this one said "no version in the file". Without it nobody can tell whether a
    customer is looking at today's form or one from three weeks ago - and this is the one app
    whose users are customers, who will not be asked to refresh. */
-var BUILD = "2026.09.18-1";
+var BUILD = "2026.10.04-1";   /* the brand picker */
 
-var state = { category:"", urgency:"normal" };
+var state = { category:"", urgency:"normal", brand:"" };
+
+/* ---- Brand tiles (4 Oct 2026): one tap picks, a second tap on the same one clears ---- */
+document.getElementById('bgrid').addEventListener('click', function(e){
+  var t = e.target.closest('.btile'); if(!t) return;
+  var was = t.classList.contains('on');
+  document.querySelectorAll('#bgrid .btile').forEach(function(x){x.classList.remove('on');});
+  if (!was) t.classList.add('on');
+  state.brand = was ? "" : t.dataset.b;
+});
 
 /* ---- Category chips ---- */
 document.getElementById('chips').addEventListener('click', function(e){
@@ -461,7 +502,8 @@ document.getElementById('cForm').addEventListener('submit', async function(e){
     city: document.getElementById('city').value,
     category: state.category,
     order: document.getElementById('order').value.trim(),
-    description: document.getElementById('desc').value.trim(),
+    description: (state.brand ? 'Brand: ' + state.brand + ' - ' : '') + document.getElementById('desc').value.trim(),   /* the CRM reads the brand off the first words */
+    brand: state.brand,
     urgency: state.urgency,
     at: new Date().toISOString(),
     source: 'complaint-web'
@@ -530,7 +572,8 @@ document.getElementById('againBtn').addEventListener('click', function(){
   document.querySelectorAll('#chips .chip').forEach(function(x){x.classList.remove('on');});
   document.querySelectorAll('#seg button').forEach(function(x){x.classList.remove('on');});
   document.querySelector('#seg button[data-u="normal"]').classList.add('on');
-  state = { category:"", urgency:"normal" };
+  state = { category:"", urgency:"normal", brand:"" };
+  document.querySelectorAll('#bgrid .btile').forEach(function(x){x.classList.remove('on');});
   document.querySelectorAll('.field.err').forEach(function(x){x.classList.remove('err');});
   document.getElementById('ticketView').classList.remove('show');
   document.getElementById('formView').style.display = 'block';
