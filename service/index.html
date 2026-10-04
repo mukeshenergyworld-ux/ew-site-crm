@@ -303,7 +303,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
    Nothing here deletes anything, ever. A visit is a row added.
    ========================================================================== */
 
-  var APP_VERSION = "1.21.0";
+  var APP_VERSION = "1.22.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_service_session";
 
@@ -3058,6 +3058,10 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
         /* 30 Aug 2026 - HIS rate, not a spares row. "once a service charge enteerd for a
            client first time , remember that for all future , pick highest if changed". */
         if (cover.visit) return '';
+        /* 1.22.0 - a job opened from a complaint ticket is filled from the office rate card; the line
+           under the box said "nothing is suggested" right below the rate it had just suggested. */
+        var _rc = v && v.tkId ? tkRateFor(v.type) : "";
+        if (_rc && String(v.visitCharge || "") === _rc) return '<div class="meta">' + esc(money9(Number(_rc))) + ' is the office rate for ' + esc(TK_JOB[v.type] || "this job") + ' &mdash; change it if this one was different.</div>';
         var mine = clientVisitCharge(v && v.client);
         if (mine > 0) return '<div class="meta">' + esc(money9(mine)) + ' is the most this client has been charged before &mdash; change it if this one was different.</div>';
         return '<div class="meta bad">This client has never been charged for a visit &mdash; type what was agreed. Nothing is suggested, because nothing is known.</div>';
