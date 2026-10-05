@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.698";
+  var APP_VERSION = "6.9.699";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -26823,8 +26823,24 @@ function viewCatalogue() {
        builds what a client owes: opening + net goods + client freight - returns. See the note
        where the ratio is computed. */
     var payBase = 0, collected = 0;
+    /* ================= PAID CHALLAN BY CHALLAN  (6.9.699, 5 Oct 2026) =================
+       HIS WORDS, the day the rate card started: "partner incentive should be credited subject to
+       payment received of that challan". His answers: in proportion when part paid; the payment
+       matched to the challan the way his hisab matches it (oldest first, unless he pointed a
+       payment at particular challans - settleWalk, 6.9.686); on every entry, old and new; and the
+       sales executive the same.
+
+       Until now the payable was one ratio for the whole man - everything his clients had paid,
+       over everything they owed - so a client paying for last month's delivery released incentive
+       on this month's too, and one client's money could carry another's. Now each delivery
+       releases its own incentive in the share its own bill is paid. A return is a credit on the
+       same walk: it pays down a bill like money does, and it takes back its own incentive in full,
+       so a delivery cleared only by goods coming back releases nothing. A delivery signed for but
+       not yet finalised is not on his account, so nothing has paid it yet. */
+    var released = 0;
     myClients.forEach(function (cl) {
       var clLower = dkey(cl.name);
+      var _walk = null; try { _walk = settleWalk(cl.name); } catch (e) { _walk = null; }
       var chs = dedupeChallans(S.data.challans.filter(function (c) {
         return dkey(c.customerName) === clLower &&
                String(c.receiptReceived).toUpperCase() === "Y";
@@ -26869,9 +26885,13 @@ function viewCatalogue() {
         if (off > 0 && base > 0 && !_sh) inc = inc * net / base;   /* 6.9.694 - with the card it is already on its brand */
         billed += net; earned += inc; clientNames[c.customerName] = 1;
         clBilled += net; clFreight += chFreight(c);
+        var _sr = _walk && _walk.by ? _walk.by[String(c.id)] : null;   /* 6.9.699 - what this bill has been paid */
+        var _paid = _sr && _sr.amt > 0.4 ? Math.max(0, Math.min(1, _sr.paid / _sr.amt)) : 0;
+        released += inc * _paid;
         rows.push({ no: c.challanNo, client: c.customerName, site: c.site, brand: c.brand,
           ymd: String(c.createdAt || "").slice(0, 10),
-          amount: net, base: net, off: off, pct: net > 0 ? (inc / net * 100) : 0, inc: inc, ret: false });
+          amount: net, base: net, off: off, pct: net > 0 ? (inc / net * 100) : 0, inc: inc, ret: false,
+          paidShare: _paid, onAcct: !!_sr, rel: inc * _paid });
       });
       /* A MATERIAL RETURN IS A NEGATIVE CHALLAN. It reverses only once the goods are
          booked in at the godown (status "Received") - symmetric with a sale, which
@@ -26907,7 +26927,7 @@ function viewCatalogue() {
            does (returnNet, v6.9.599), so it reverses incentive on the net too */
         var rf = retShare(r).factor;
         if (rf !== 1) { rBase = Math.round(rBase * rf); if (!_rsh) rInc = rInc * rf; }   /* 6.9.694 */
-        returned += rBase; reversed += rInc; earned -= rInc;
+        returned += rBase; reversed += rInc; earned -= rInc; released -= rInc;   /* 6.9.699 */
         clReturned += rBase;
         if (rBase > 0 || rInc !== 0) {
           clientNames[cl.name] = 1;
@@ -26915,7 +26935,7 @@ function viewCatalogue() {
             site: r.site || "", brand: Object.keys(rBrands).sort().join(", "),
             ymd: String(r.createdAt || "").slice(0, 10),
             amount: -rBase, base: -rBase, pct: rBase > 0 ? (rInc / rBase * 100) : 0,
-            inc: -rInc, ret: true });
+            inc: -rInc, ret: true, paidShare: 1, rel: -rInc });
         }
       });
       /* v6.9.266 - THE RATIO NOW COMPARES LIKE WITH LIKE.
@@ -26943,8 +26963,10 @@ function viewCatalogue() {
         .reduce(function (a, p) { return a + payAmt(p); }, 0);
       payBase += clientOpening(cl.name) + clBilled + clFreight - clReturned;
     });
-    var ratio = payBase > 0 ? Math.min(1, collected / payBase) : 0;
-    var payable = earned * ratio;
+    /* 6.9.699 - the payable is the sum of what each paid bill released; ratio is now that share
+       of what was earned, kept so every screen that prints "% in" still reads one number */
+    var payable = Math.max(0, Math.min(Math.max(0, earned), released));
+    var ratio = earned > 0.5 ? payable / earned : 0;
     var paid = S.data.commpay.filter(function (p) { return String(p.associate).toLowerCase() === payeeLower; })
       .reduce(function (a, p) { return a + payAmt(p); }, 0);
     return { rows: rows, billed: billed, earned: earned, returned: returned, reversed: reversed,
@@ -27212,10 +27234,10 @@ function viewCatalogue() {
     h += '<div class="card"><h3>' + esc(name) + ' <span class="pill">' + esc(a.role || "") + '</span></h3>' +
       '<div class="meta">' + (a.mobile ? esc(a.mobile) + '<br>' : "") +
       'Billed ' + money(b.billed) + ' &middot; collected ' + money(b.collected) +
-      ' (' + Math.round(b.ratio * 100) + '% in)' +
+      ' &middot; <b>' + money(b.payable) + '</b> of the incentive released (' + Math.round(b.ratio * 100) + '%)' +   /* 6.9.699 */
       (b.reversed > 0 ? '<br><span style="color:#dc2626">Returns: ' + money(b.returned) + ' came back &middot; ' + money(b.reversed) + ' incentive reversed</span>' : "") +
       (isX ? '<br><i>The executive\u2019s % is taken on each delivery <b>after</b> the plumber\u2019s, architect\u2019s, builder\u2019s and PMC\u2019s incentive on it, where there is any (his decision, 30 Sep 2026).</i>' : '') +   /* 6.9.668 */
-      '<br><i>Incentive becomes payable only in proportion to what the client has actually paid. Booked-in material returns reverse the incentive on the goods that came back, at the same rate that earned it.</i></div>' +
+      '<br><i>Incentive is released <b>challan by challan</b>, in the share that challan&rsquo;s own bill has been paid &mdash; payments clear the oldest bill first, unless a payment was pointed at particular challans. A challan not yet finalised releases nothing. Booked-in material returns reverse the incentive on the goods that came back, at the same rate that earned it.</i></div>' +
       '<div class="acts"><button class="btn sm" data-act="pay-out" data-k="' + kind + '" data-n="' + esc(name) + '">Record payout</button></div></div>';
 
     /* v6.9.231 - the statement, client by client. Only what was earned, foldable,
@@ -27274,7 +27296,11 @@ function viewCatalogue() {
                 return '<tr style="border-top:1px solid #f1f5f9' + (r.ret ? ';background:#fef2f2' : '') + '">' +
                   '<td style="padding:4px 2px;color:#64748b;white-space:nowrap">' + esc(d10(r.ymd)) + '</td>' +
                   '<td style="padding:4px 6px">' + (r.ret ? '<span style="color:#dc2626;font-weight:700">RETURN </span>' : '') +
-                    esc(r.no || "") + (r.brand ? ' <span style="color:#94a3b8">' + esc(r.brand) + '</span>' : '') + '</td>' +
+                    esc(r.no || "") + (r.brand ? ' <span style="color:#94a3b8">' + esc(r.brand) + '</span>' : '') +
+                    (!r.ret && r.paidShare != null && Math.round(r.inc) !== 0   /* 6.9.699 - how much of this bill is paid */
+                      ? '<span style="display:block;font-size:12px;color:' + (r.paidShare > 0.995 ? '#0f766e' : r.paidShare > 0.005 ? '#b45309' : '#b91c1c') + '">' +
+                        (!r.onAcct ? 'not finalised &middot; nothing released yet' : r.paidShare > 0.995 ? 'bill paid &middot; released in full'
+                          : r.paidShare > 0.005 ? Math.round(r.paidShare * 100) + '% of the bill paid &middot; ' + money(r.rel) + ' released' : 'bill unpaid &middot; nothing released yet') + '</span>' : '') + '</td>' +
                   '<td style="padding:4px 2px;text-align:right;color:#64748b;white-space:nowrap">' + money(r.base) + '</td>' +
                   (stmtShowPct() ? '<td style="padding:4px 2px;text-align:right;color:#94a3b8;white-space:nowrap">' + (Math.round(r.pct * 10) / 10) + '%</td>' : '') +
                   '<td style="padding:4px 2px;text-align:right;font-weight:700;color:' + (r.ret ? '#dc2626' : '#0f766e') + ';white-space:nowrap">' + money(r.inc) + '</td></tr>';
