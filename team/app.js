@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.697";
+  var APP_VERSION = "6.9.698";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -29531,6 +29531,238 @@ function viewCatalogue() {
       return doc;
     });
   }
+  /* ================= FIND AN ITEM ON THE ACCOUNT  (6.9.698, 5 Oct 2026) =================
+     HIS WORDS, on Jagdish Bansal's account: "if we want to search like a particular item is billed
+     to the client or not, if yes it will be show complete chain in excel that what qty at which
+     challan and what is total qty of that item. we can search by item name or item code, search
+     result shown with item pic".
+
+     MEASURED on his book the same day: Jagdish Bansal took 46 different items on 16 deliveries and
+     17 of them more than once (HR MTA 20 on 5 challans, 40 pieces) - the question has no answer
+     today without opening every challan. 45 of the 46 are in the catalogue, every one with a photo;
+     the catalogue holds 1,089 items, 1,071 with a photo.
+
+     WHAT IT READS. The same lines the account reads: pricedLines for a delivery (so the rate after
+     discount is the one on his statement) and returnLines for a return that came back to the
+     godown. Every delivery of the man - his duplicate client rows too (famHas) - that has been
+     passed; a Draft is not a delivery. Each line says where it stands: on the account, signed for
+     but not finalised, or still on its way. An item is the catalogue's CURRENT code (codeNow), so
+     a line booked under the code it had before Tally's still lands on the same item.
+     Nothing is written anywhere - this only reads. */
+  function itfUnit(u) { return String(u || "").replace(/^\s*per\s+/i, "").replace(/\.$/, "").trim(); }
+  function itfProd(code) {
+    var k = String(code == null ? "" : code).trim();
+    if (!k) return null;
+    for (var i = 0; i < PRODUCTS.length; i++) if (String(PRODUCTS[i].code) === k) return PRODUCTS[i];
+    return null;
+  }
+  function itfKey(code, desc) {
+    var c = String(codeNow(String(code == null ? "" : code).trim()) || "").trim();
+    return c ? "c:" + c : "d:" + dkey(desc);
+  }
+  function itfIndex(cl) {
+    var h = famHas(cl), by = {}, order = [];
+    var units = {};
+    var add = function (key, code, desc, brand, unit, row) {
+      var g = by[key];
+      if (!g) {
+        var cNow = key.indexOf("c:") === 0 ? key.slice(2) : "";
+        var p = itfProd(cNow);
+        g = by[key] = { key: key, code: cNow, desc: (p && p.desc) || desc || cNow, brand: (p && (p.brand || "")) || brand || "",
+                        unit: itfUnit(unit) || itfUnit(p && p.unit), pic: (p && p.pic) || "", was: (p && p.was) || [],
+                        out: 0, back: 0, nCh: 0, rows: [], seen: {} };
+        order.push(key);
+      }
+      if (!g.unit && unit) g.unit = itfUnit(unit);
+      if (row.kind === "ch") { g.out += row.qty; if (!g.seen[row.id]) { g.seen[row.id] = 1; g.nCh++; } }
+      else g.back += row.qty;
+      g.rows.push(row);
+    };
+    dedupeChallans((S.data.challans || []).filter(function (c) {
+      var st = String(c.status || "").trim().toLowerCase();
+      return h(c.customerName) && st && st !== "draft" && st !== "cancelled" && st !== "rejected";
+    })).forEach(function (c) {
+      var items = []; try { items = JSON.parse(c.itemsJson || "[]") || []; } catch (e) { items = []; }
+      var where = hisabOwed(c) ? "On the account" : (hisabCounts(c) ? "Signed for, not finalised" : "On its way");
+      pricedLines(c, cl).forEach(function (l) {
+        if (l.job || !(l.qty > 0)) return;
+        var raw = items[l.ix] || {};
+        add(itfKey(l.code, l.desc), l.code, l.desc, l.brand, raw.unit, {
+          kind: "ch", id: c.id, ts: String(c.createdAt || ""), date: d10(c.createdAt), no: String(c.challanNo || ""),
+          site: String(c.site || "").trim(), qty: l.qty, dr: l.dr, amt: l.amt, where: where, code: String(l.code || "") });
+      });
+    });
+    (famRets(cl) || []).forEach(function (r) {
+      var items = []; try { items = JSON.parse(r.itemsJson || "[]") || []; } catch (e) { items = []; }
+      returnLines(r).forEach(function (l, n) {
+        if (l.job || !(l.qty > 0)) return;
+        add(itfKey(l.code, l.desc), l.code, l.desc, l.brand, (items[n] || {}).unit, {
+          kind: "ret", id: r.id, ts: String(r.createdAt || ""), date: d10(r.createdAt), no: String(r.returnNo || "(no number yet)"),
+          site: r.challanNo ? "against " + String(r.challanNo) : "", qty: l.qty, dr: l.dr, amt: l.amt, where: "Back at the godown", code: String(l.code || "") });
+      });
+    });
+    return order.map(function (k) {
+      var g = by[k];
+      g.rows.sort(function (a, b) { return a.ts.localeCompare(b.ts) || (a.kind === "ch" ? -1 : 1); });
+      var run = 0;
+      g.rows.forEach(function (r) { run += r.kind === "ch" ? r.qty : -r.qty; r.run = run; });
+      g.net = g.out - g.back;
+      delete g.seen;
+      return g;
+    });
+  }
+  /* every word he types must be somewhere in the name, the code, an old code or the brand */
+  function itfHit(q, code, desc, brand, was) {
+    var hay = (String(code || "") + " " + String(desc || "") + " " + (was || []).join(" ") + " " + String(brand || "")).toLowerCase();
+    var flat = hay.replace(/[^a-z0-9]+/g, "");
+    return String(q || "").toLowerCase().split(/\s+/).filter(Boolean).every(function (w) {
+      return hay.indexOf(w) >= 0 || (w.replace(/[^a-z0-9]+/g, "") && flat.indexOf(w.replace(/[^a-z0-9]+/g, "")) >= 0);
+    });
+  }
+  function itfFind(cl, q) {
+    q = String(q || "").trim();
+    var all = itfIndex(cl);
+    if (q.length < 2) return { took: [], not: [], all: all };
+    var took = all.filter(function (g) {
+      return itfHit(q, g.code, g.desc, g.brand, g.was) || g.rows.some(function (r) { return itfHit(q, r.code, "", "", []); });
+    });
+    took.sort(function (a, b) { return b.nCh - a.nCh || b.net - a.net || String(a.desc).localeCompare(String(b.desc)); });
+    var have = {}; all.forEach(function (g) { if (g.code) have[g.code] = 1; });
+    var not = PRODUCTS.filter(function (p) { return !have[String(p.code)] && itfHit(q, p.code, p.desc, p.brand, p.was); }).slice(0, 4);
+    return { took: took, not: not, all: all };
+  }
+  function itfPic(u, px) {
+    var src = u ? driveImg(u, 200) : "";
+    return '<div style="width:' + px + 'px;height:' + px + 'px;flex:0 0 auto;border:1px solid #e2e8f0;border-radius:8px;background:#fff;' +
+      'display:flex;align-items:center;justify-content:center;overflow:hidden">' +
+      (src ? '<img src="' + esc(src) + '" loading="lazy" alt="" style="max-width:100%;max-height:100%;object-fit:contain"/>'
+           : '<span style="font-size:12px;color:#94a3b8;text-align:center;line-height:1.2">no<br>photo</span>') + '</div>';
+  }
+  function itfChainHtml(g) {
+    var u = g.unit ? " " + esc(g.unit) : "";
+    var c = 'padding:4px 6px;border-top:1px solid #e2e8f0;white-space:nowrap';
+    var n = c + ';text-align:right;font-variant-numeric:tabular-nums';
+    return '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch;margin:6px 0 2px"><table style="border-collapse:collapse;font-size:12px;width:100%">' +
+      '<tr style="background:#0b3b36;color:#fff">' + ["Date", "Challan / return", "Qty", "Rate", "Amount", "Running qty", "Where it stands"].map(function (t, i) {
+        return '<th style="padding:4px 6px;font-weight:700;white-space:nowrap;text-align:' + (i >= 2 && i <= 5 ? 'right' : 'left') + '">' + t + '</th>';
+      }).join("") + '</tr>' +
+      g.rows.map(function (r) {
+        var red = r.kind === "ret";
+        return '<tr' + (red ? ' style="color:#b91c1c"' : '') + '><td style="' + c + '">' + esc(r.date) + '</td>' +
+          '<td style="' + c + '"><b>' + esc(r.no) + '</b>' + (r.site ? '<span style="color:#64748b"> &middot; ' + esc(r.site) + '</span>' : '') + '</td>' +
+          '<td style="' + n + '"><b>' + (red ? '&minus;' : '') + r.qty + '</b></td>' +
+          '<td style="' + n + '">' + money(r.dr) + '</td>' +
+          '<td style="' + n + '">' + (red ? '&minus;' : '') + money(r.amt) + '</td>' +
+          '<td style="' + n + '">' + r.run + '</td>' +
+          '<td style="' + c + ';color:' + (red ? '#b91c1c' : r.where === "On the account" ? '#0f766e' : '#b45309') + '">' + esc(r.where) + '</td></tr>';
+      }).join("") +
+      '<tr style="border-top:2px solid #0d766c"><td colspan="2" style="' + c + ';font-weight:700">Total</td>' +
+        '<td style="' + n + ';font-weight:800">' + g.net + u + '</td>' +
+        '<td style="' + c + '"></td>' +
+        '<td style="' + n + ';font-weight:700">' + money(g.rows.reduce(function (s, r) { return s + (r.kind === "ch" ? r.amt : -r.amt); }, 0)) + '</td>' +
+        '<td colspan="2" style="' + c + ';color:#64748b">' + g.out + ' sent' + (g.back ? ', ' + g.back + ' back' : '') + '</td></tr>' +
+      '</table></div>';
+  }
+  function itfResultsHtml(cl, q) {
+    q = String(q || "").trim();
+    if (q.length < 2) return "";
+    var F = itfFind(cl, q), open = (S.itf && S.itf.open) || "";
+    var h = "";
+    if (!F.took.length) {
+      h += '<div class="meta" style="font-size:12.5px;margin:6px 2px;color:#b91c1c"><b>Not billed to ' + esc(cl) + '.</b> No delivery of his carries an item matching &ldquo;' + esc(q) + '&rdquo;.</div>';
+    } else {
+      h += '<div class="acts" style="margin:6px 2px 4px;gap:8px;flex-wrap:wrap;align-items:center">' +
+        '<span class="meta grow" style="font-size:12.5px"><b>' + plural(F.took.length, "item") + '</b> billed to ' + esc(cl) + ' match &ldquo;' + esc(q) + '&rdquo;. Tap one for every challan it went on.</span>' +
+        '<button class="btn sm ghost" data-act="itf-xl" data-cl="' + esc(cl) + '" data-k="*" style="min-height:44px">&#11015; Excel' + (F.took.length > 1 ? ' &mdash; all ' + F.took.length : '') + '</button></div>';
+      h += F.took.slice(0, 30).map(function (g) {
+        var on = open === g.key;
+        return '<div style="border:1px solid ' + (on ? '#0d766c' : '#e2e8f0') + ';border-radius:10px;padding:7px 9px;margin:0 0 6px;background:#fff">' +
+          '<div data-act="itf-open" data-k="' + esc(g.key) + '" data-cl="' + esc(cl) + '" style="display:flex;gap:10px;align-items:center;cursor:pointer;min-height:44px">' +
+          itfPic(g.pic, 56) +
+          '<div style="flex:1 1 auto;min-width:0"><div style="font-weight:700;font-size:13px;color:#0f172a">' + esc(g.desc) + '</div>' +
+          '<div class="meta" style="font-size:12px">' + esc(g.code || "no code") + (g.brand ? ' &middot; ' + esc(g.brand) : '') + '</div>' +
+          '<div style="font-size:12.5px;color:#0f766e;margin-top:2px"><b>' + g.net + (g.unit ? ' ' + esc(g.unit) : '') + '</b> on ' + plural(g.nCh, "challan") +
+            (g.back ? ' <span style="color:#b91c1c">(' + g.out + ' sent, ' + g.back + ' back)</span>' : '') + '</div></div>' +
+          '<span style="font-size:13px;color:#64748b;flex:0 0 auto">' + (on ? '▾' : '▸') + '</span></div>' +
+          (on ? itfChainHtml(g) +
+            '<div class="acts" style="margin-top:4px"><button class="btn sm" data-act="itf-xl" data-cl="' + esc(cl) + '" data-k="' + esc(g.key) + '" style="min-height:44px">&#11015; Excel of this item</button></div>' : '') +
+          '</div>';
+      }).join("") +
+      (F.took.length > 30 ? '<div class="meta" style="font-size:12px;margin:0 2px 6px">' + (F.took.length - 30) + ' more &mdash; type more of the name, or take them all in the Excel.</div>' : '');
+    }
+    if (F.not.length) {
+      h += '<div class="meta" style="font-size:12px;margin:6px 2px 4px">In the catalogue, <b>never billed to him</b>:</div>' +
+        F.not.map(function (p) {
+          return '<div style="display:flex;gap:10px;align-items:center;padding:4px 2px;opacity:.85">' + itfPic(p.pic, 44) +
+            '<div style="min-width:0;font-size:12.5px"><b>' + esc(p.desc || p.code) + '</b><div class="meta" style="font-size:12px">' + esc(p.code) + (p.brand ? ' &middot; ' + esc(p.brand) : '') + ' &middot; 0 billed</div></div></div>';
+        }).join("");
+    }
+    return h;
+  }
+  function itfBoxHtml(cl) {
+    var q = (S.itf && S.itf.cl === cl) ? S.itf.q : "";
+    return '<div style="margin:0 0 8px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:10px;background:#f8fafc">' +
+      '<input id="itf_q" data-cl="' + esc(cl) + '" value="' + esc(q) + '" autocomplete="off" ' +
+      'placeholder="&#128269; Is an item billed to him? Type its name or code" ' +
+      'style="width:100%;box-sizing:border-box;min-height:44px;padding:8px 10px;font-size:14px;font-family:inherit;border:1px solid #cbd5e1;border-radius:8px;background:#fff"/>' +
+      '<div id="itf_res">' + itfResultsHtml(cl, q) + '</div></div>';
+  }
+  var _itfT = null;
+  document.addEventListener("input", function (e) {
+    var t = e && e.target;
+    if (!t || t.id !== "itf_q") return;
+    var cl = t.getAttribute("data-cl") || "";
+    S.itf = { cl: cl, q: t.value, open: "" };
+    clearTimeout(_itfT);
+    _itfT = setTimeout(function () { var r = document.getElementById("itf_res"); if (r) r.innerHTML = itfResultsHtml(cl, S.itf.q); }, 160);
+  });
+  function itfRepaint(cl) { var r = document.getElementById("itf_res"); if (r) r.innerHTML = itfResultsHtml(cl, (S.itf && S.itf.q) || ""); }
+  /* THE EXCEL: one band per item - its photo, name, code - then every challan and return it went
+     on, in date order, with the running quantity, then the item's total. */
+  function itfXlsx(cl, key) {
+    var q = (S.itf && S.itf.q) || "";
+    var F = itfFind(cl, q);
+    var list = key === "*" ? F.took : F.took.filter(function (g) { return g.key === key; });
+    if (!list.length) { toast("Nothing to put in the file."); return; }
+    toast("Making the Excel…");
+    var urls = []; list.forEach(function (g) { if (g.pic && urls.indexOf(g.pic) < 0) urls.push(g.pic); });
+    var got = {};
+    Promise.all(urls.map(function (u) { return stkXlPic(u).then(function (p) { if (p) got[u] = p; }, function () { }); })).then(function () {
+      var HEAD = ["Picture", "Item", "Code", "Date", "Challan / return", "Site", "Qty", "Unit", "Rate after discount", "Amount", "Running qty", "Where it stands"];
+      var NC = HEAD.length, M = function (v) { return { v: v, s: XL.MID }; };
+      var out = [
+        [{ v: "Energy World · " + cl + " · items billed" + (q ? " matching “" + q + "”" : "") + " · " + fullDate(today()), s: XL.BOLD }],
+        [{ v: "Every delivery passed for him (his other client rows too) and every return received back. Running qty = sent less returned, in date order. " +
+              "Rate is after his discount, as on his statement. “Signed for, not finalised” is not on his statement yet.", s: XL.MID }],
+        HEAD.map(function (t) { return { v: t, s: XL.HEADW }; })
+      ];
+      var heights = { 0: 24, 1: 34, 2: 30 }, pics = [], media = [], mIdx = {}, merges = ["A2:" + xlCol(NC - 1) + "2"];
+      list.forEach(function (g) {
+        var r0 = out.length;
+        var band = [{ v: "", s: XL.BAND }, { v: g.desc, s: XL.BAND }, { v: g.code, s: XL.BAND }];
+        for (var c = 3; c < NC; c++) band.push({ v: c === 4 ? g.net + (g.unit ? " " + g.unit : "") + " on " + plural(g.nCh, "challan") + (g.brand ? " · " + g.brand : "") : "", s: XL.BAND });
+        out.push(band); heights[r0] = 21;
+        var u = g.pic, p = u && got[u];
+        if (p) {
+          heights[r0] = 54;
+          if (mIdx[u] === undefined) { mIdx[u] = media.length; media.push(stkPicBytes(p.src)); }
+          var sc = Math.min(64 / p.w, 64 / p.h, 1), w = Math.max(1, Math.round(p.w * sc)), hh = Math.max(1, Math.round(p.h * sc));
+          pics.push({ r: r0, c: 0, m: mIdx[u], w: w, h: hh, x: Math.max(0, (82 - w) / 2), y: Math.max(0, (72 - hh) / 2) });
+        }
+        g.rows.forEach(function (r) {
+          var s = r.kind === "ret" ? -1 : 1;
+          out.push([M(""), M(g.desc), M(g.code), M(r.date), { v: r.no, s: XL.MIDB }, M(r.site), M(s * r.qty), M(g.unit), M(r.dr), M(s * r.amt), M(r.run),
+                    M(r.kind === "ret" ? "Returned - back at the godown" : r.where)]);
+        });
+        var amt = g.rows.reduce(function (t, r) { return t + (r.kind === "ch" ? r.amt : -r.amt); }, 0);
+        out.push([M(""), { v: "Total — " + g.desc, s: XL.MIDB }, M(g.code), M(""), M(plural(g.nCh, "challan")), M(g.back ? g.out + " sent, " + g.back + " back" : ""),
+                  { v: g.net, s: XL.MIDB }, M(g.unit), M(""), { v: amt, s: XL.MIDB }, M(""), M("")]);
+      });
+      var cols = [11.5, 34, 13, 11, 22, 22, 8, 7, 11, 12, 10, 26];
+      var name = ("Items_" + cl + (key === "*" ? "" : "_" + (list[0].code || "item")) + "_" + today()).replace(/[^A-Za-z0-9_\-]+/g, "_") + ".xlsx";
+      dlXlsx(name, "Items billed", out, cols, { heights: heights, freeze: { r: 3, c: 2 }, merges: merges, pics: pics, media: media });
+    }).catch(function () { toast("Could not make the Excel."); });
+  }
   function hisabSummaryCard(cl) {
     var m = hisabMiniRows(cl);
     if (m.rows.length < 2 && !m.opening) return "";
@@ -29672,6 +29904,7 @@ function viewCatalogue() {
          is kept in S so it survives a repaint and follows him from client to client - a <details>
          springs back open on every render. The balance and the two download buttons stay visible
          when it is shut, because those are the reasons to look. */
+      itfBoxHtml(cl) +   /* 6.9.698 - is an item billed to him, and on which challans */
       '<div class="acts" style="margin:0 0 6px">' +
       '<button class="btn sm ghost" data-act="mini-fold">' +
         (S.miniShut ? '\u25b8 Show the ' + (m.rows.length - 1) + ' line' + (m.rows.length === 2 ? '' : 's')
@@ -51972,6 +52205,13 @@ function viewCatalogue() {
        array the screen draws, so a file he sends can never disagree with the screen he
        read it off. Neither writes anything. */
     if (act === "mini-fold") { S.miniShut = !S.miniShut; render(); return; }
+    if (act === "itf-open") {   /* 6.9.698 */
+      var _ik = t.getAttribute("data-k") || "";
+      S.itf = S.itf || { cl: t.getAttribute("data-cl") || "", q: "" };
+      S.itf.open = S.itf.open === _ik ? "" : _ik;
+      itfRepaint(t.getAttribute("data-cl") || ""); return;
+    }
+    if (act === "itf-xl") { itfXlsx(t.getAttribute("data-cl") || "", t.getAttribute("data-k") || "*"); return; }
     if (act === "rates-fold") { S.ratesOpen = !S.ratesOpen; keepScroll = true; render(); return; }
     if (act === "mini-xlsx") { hisabMiniXlsx(t.getAttribute("data-n") || ""); return; }
     /* v6.9.456 - the full hisab as cells; the statement-only Excel above is unchanged */
