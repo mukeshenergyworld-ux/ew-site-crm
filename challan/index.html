@@ -241,7 +241,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.123.0";
+  var APP_VERSION = "1.124.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -7136,13 +7136,15 @@ function discRowOn(client, brand, onYmd) {
              pmc: "PMC", exec: "Executive" }[String(r || "")] || String(r || "");
   }
   function incLineup(c) {
-    var cl = clientByName(c && c.customerName) || {};
+    /* 6.9.693 - who held each role ON THE DAY OF THE DELIVERY: a partner changed on the client
+       takes over from the day he was changed, and the earlier deliveries stay the old man's */
+    var cn = (c && c.customerName) || "", day = localDay(c && (c.createdAt || c.date));
     var out = [];
     INC_ROLES.forEach(function (role) {
-      var nm = String(cl[role] || "").trim();
+      var nm = incHolderOn(cn, role, day);
       if (nm) out.push({ role: role, name: nm });
     });
-    var ex = execForClient((c && c.customerName) || "");
+    var ex = incHolderOn(cn, "exec", day);
     if (ex) out.push({ role: "exec", name: ex });
     return out;
   }
@@ -7152,11 +7154,12 @@ function discRowOn(client, brand, onYmd) {
        pricedLines and the Challan app with its own chLines; if this function called either by
        name the two apps would carry different bodies for the same rule, which is the one thing
        t_apps_agree exists to stop. Handed the lines, the body is identical in both. */
+    var day = localDay(c && (c.createdAt || c.date));   /* 6.9.693 - the delivery's day and each line's own discount */
     return incLineup(c).map(function (m) {
       var amt = 0, pcts = {};
       lines.forEach(function (x) {
         if (x.job) return;
-        var r = (m.role === "exec") ? execRateFor(cl, x.brand) : incRate(cl, x.brand, m.role);
+        var r = (m.role === "exec") ? execRateFor(cl, x.brand, day, x.disc) : incRate(cl, x.brand, m.role, day, x.disc);
         if (r > 0) { amt += x.amt * r / 100; pcts[String(r)] = 1; }
       });
       var ks = Object.keys(pcts);
@@ -7178,11 +7181,144 @@ function discRowOn(client, brand, onYmd) {
     var st = hisabStamp(c);
     return (st ? (Number(st.extra) || 0) : 0) + Math.max(0, nAmt(c && c.discAmt));   /* 6.9.666 - "1,500" is 1500, not 0 */
   }
-  function incRate(client, brand, role, onYmd) {
+  /* ================= ONE INCENTIVE CARD FOR EVERYONE  (6.9.693 / Challan 1.124.0, 5 Oct 2026) ====
+     HIS WORDS: "instead of everytime entering partners and executive incentive for each new site,
+     i have preset it for everyone with discount slab, once a partner added its automatically fetch
+     preset dist slab and calculate amount". And: "if a partner changed from any site then the date
+     its changed in crm will be considered for new partner".
+
+     HIS DECISIONS, the same day: above the top slab earns nothing; the card REPLACES the rates typed
+     on each client from the day it starts; builders earn what PMC earns; it starts today; a blank
+     cell is 0%; and the brand names he gave for the catalogue words (Heat Pump is Green Heat Plus,
+     SS Water Tank is Stellar, plain Huliot is Accessory, and so on) are the card's own aliases.
+
+     WHERE THE CARD LIVES. On the discounts tab, under one client name nobody can have -
+     "#INCENTIVE CARD#" - one row per brand, its slabs in "notes", dated with "from" exactly like
+     every dated rate since 6.9.350. Chosen for who RECEIVES it, not for neatness: the server already
+     hands discount rows only to the owner (a sales phone gets its own clients' rows with notes
+     blanked, the godown and accounts get none), so the partners' rates go nowhere they did not go
+     yesterday. A change appends a new dated row; nothing is edited, nothing deleted.
+
+     HOW A RATE IS PICKED. By the discount ACTUALLY GIVEN on the line - frozen on the challan since
+     6.9.598 - not the client's preset: up to the first slab pays the first slab, up to the second
+     pays the second, above it pays nothing. Before the card's first day nothing changes: the client
+     rows answer, as they always have, so no rupee already earned moves.
+
+     WHO. A partner changed on a client is written down with the day it was changed in the CRM
+     (audit "ptn:change"). A delivery on or after that day is the new man's, before it the old
+     man's. A partner named for the FIRST time is not a change - he earns from the start, as before -
+     so filling in a plumber who was missing does not take his earlier deliveries away from him.
+
+     THIS BLOCK IS BYTE-IDENTICAL IN THE CRM AND THE CHALLAN APP (t_apps_agree). The godown phone is
+     never sent a discount row, so there the card is simply absent and every answer falls back. */
+  var INC_CARD = "#incentive card#";
+  function incKey(s) { return String(s == null ? "" : s).toUpperCase().replace(/[^A-Z0-9]/g, ""); }
+  function incDayOf(v) {
+    var d = String(v || "").slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(d)) return d;
+    var n = new Date();
+    return n.getFullYear() + "-" + String(n.getMonth() + 1).padStart(2, "0") + "-" + String(n.getDate()).padStart(2, "0");
+  }
+  var _incCard = null;
+  function incCard() {
+    var src = (S.data && S.data.discounts) || [];
+    if (_incCard && _incCard.src === src && _incCard.n === src.length) return _incCard;
+    var vers = {}, byKey = {}, start = "";
+    src.forEach(function (r) {
+      if (!r || dkey(r.client) !== INC_CARD) return;
+      var f = discFrom(r), cb = incKey(r.brand);
+      if (!f || !cb) return;                       /* an undated card row means nothing */
+      if (!start || f < start) start = f;
+      (vers[cb] || (vers[cb] = [])).push(r);
+      [r.brand].concat(incMap(r).also || []).forEach(function (a) {
+        var k = incKey(a); if (k) (byKey[k] || (byKey[k] = {}))[cb] = 1;
+      });
+    });
+    return (_incCard = { src: src, n: src.length, vers: vers, byKey: byKey, start: start });
+  }
+  function incCardLive(day) { var C = incCard(); return !!C.start && incDayOf(day) >= C.start; }
+  function incCardLatest(list, day) {
+    var best = null;
+    (list || []).forEach(function (r) {
+      var f = discFrom(r);
+      if (!f || f > day) return;
+      if (!best || f > discFrom(best) || (f === discFrom(best) && discStamp(r) > discStamp(best))) best = r;
+    });
+    return best;
+  }
+  /* The card's row for a brand on a day: the brand itself, one of its aliases, or - for a word
+     that is only a catalogue value - whatever the brand map turns it into. */
+  function incCardFind(brand, day) {
+    var C = incCard(), d = incDayOf(day);
+    var tryKey = function (key) {
+      var hit = null;
+      Object.keys(C.byKey[key] || {}).forEach(function (cb) {
+        var v = incCardLatest(C.vers[cb], d); if (!v) return;
+        var m = incMap(v);
+        if (m.off) return;
+        if (incKey(v.brand) !== key && !(m.also || []).some(function (a) { return incKey(a) === key; })) return;
+        hit = { row: v, m: m };
+      });
+      return hit;
+    };
+    var k = incKey(brand), h = k ? tryKey(k) : null;
+    if (h || !k) return h;
+    var bm = ((S.data && S.data.brandmap) || []).filter(function (x) { return incKey(x && x.catalogValue) === k; })[0];
+    return (bm && bm.brand) ? tryKey(incKey(bm.brand)) : null;
+  }
+  function incCardSlab(m, disc) {
+    var d = Number(disc) || 0, e = 1e-9;
+    if (m && m.s1 && d <= (Number(m.s1.upto) || 0) + e) return m.s1;
+    if (m && m.s2 && d <= (Number(m.s2.upto) || 0) + e) return m.s2;
+    return null;
+  }
+  /* null: the card is not in force on that day - ask the client's own row, as before.
+     A number: the card's answer, 0 included. */
+  function incCardRate(client, brand, role, onYmd, disc) {
+    var day = incDayOf(onYmd);
+    if (!incCardLive(day)) return null;
+    var hit = incCardFind(brand, day); if (!hit) return 0;
+    var d = (disc == null || disc === "" || isNaN(Number(disc))) ? clientDiscountOn(client, brand, day) : Number(disc);
+    var s = incCardSlab(hit.m, d);
+    return s ? (Number(s[String(role).toLowerCase()]) || 0) : 0;
+  }
+  /* ---- who held a role on a client on a given day ---- */
+  var _incHist = null;
+  function incHist() {
+    var src = (S.data && S.data.audit) || [];
+    if (_incHist && _incHist.src === src && _incHist.n === src.length) return _incHist;
+    var by = {};
+    src.forEach(function (a) {
+      if (!a || String(a.action || "") !== "ptn:change") return;
+      var d = {}; try { d = JSON.parse(a.detail || "{}") || {}; } catch (e) { d = {}; }
+      var on = String(d.on || "").slice(0, 10), role = String(d.role || "").toLowerCase();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(on) || !role) return;
+      var k = dkey(d.client || a.target) + "|" + role;
+      (by[k] || (by[k] = [])).push({ on: on, was: String(d.was || "").trim(), now: String(d.now || "").trim(), at: String(a.createdAt || "") });
+    });
+    Object.keys(by).forEach(function (k) {
+      by[k].sort(function (x, y) { return x.on < y.on ? -1 : x.on > y.on ? 1 : (x.at < y.at ? -1 : x.at > y.at ? 1 : 0); });
+    });
+    return (_incHist = { src: src, n: src.length, by: by });
+  }
+  function incChanges(clName, role) { return incHist().by[dkey(clName) + "|" + String(role).toLowerCase()] || []; }
+  function incHolderOn(clName, role, day) {
+    var cl = clientByName(clName) || {};
+    var now = String((role === "exec" ? (cl.ownedBy || cl.createdBy) : cl[role]) || "").trim();
+    var ch = incChanges(cl.name || clName, role);
+    if (!ch.length) return now;
+    var d = incDayOf(day), last = -1;
+    for (var i = 0; i < ch.length; i++) if (ch[i].on <= d) last = i;
+    if (last < 0) return ch[0].was;
+    return last === ch.length - 1 ? now : ch[last].now;
+  }
+  function incRate(client, brand, role, onYmd, disc) {
+    var cr = incCardRate(client, brand, role, onYmd, disc); if (cr !== null) return cr;   /* 6.9.693 - the card, from its first day */
     var d = discRow(client, brand, onYmd); if (!d) return 0;
     return Number(incMap(d)[String(role).toLowerCase()]) || 0;
   }
-  function execRateFor(client, brand, onYmd) {
+  function execRateFor(client, brand, onYmd, disc) {
+    var cr = incCardRate(client, brand, "exec", onYmd, disc); if (cr !== null) return cr;   /* 6.9.693 */
     var d = discRow(client, brand, onYmd); if (!d) return 0;
     return Number(incMap(d).exec) || 0;
   }
@@ -7200,6 +7336,7 @@ function discRowOn(client, brand, onYmd) {
       var d = num(l.disc);
       return { brand: isJobLine(l) ? "" : String(l.brand || (c && c.brand) || ""),
                amt: num(l.qty) * Math.round(num(l.rate) * (1 - d / 100)),
+               disc: (l.disc === "" || l.disc == null) ? null : d,   /* 1.124.0 - the incentive card's slab is picked by it */
                job: isJobLine(l) };
     });
   }
