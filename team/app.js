@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.699";
+  var APP_VERSION = "6.9.700";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -3143,7 +3143,16 @@ window.addEventListener("beforeunload", function (ev) {
      line's rate and amount, the goods, and - through the one existing painter - the delivery
      total and what the client will owe after it. Nothing is saved from here. */
   /* v6.9.567 - the brand split on the finalise sheet; for the owner, one discount box per brand */
-  function hsbBrandBlock(priced, edit) {
+  /* 6.9.700 - A ZERO IS SHOWN AS NOTHING. HIS WORDS, 5 Oct 2026, over DRP on this sheet with "0" in its
+     box: "here it should be shown blank, issue is that if we set brand discount to 50% it assumes 0% as
+     it's entered 0 here, we have to delete 0 then it shows 50% ... let it be blank everywhere if not any
+     number above zero". The box was FILLED with the 0 the line carried, so the 0 was read back as a
+     figure he had typed: after he set the brand's rate on the same sheet, the question sheet came back
+     with the old "0" put back in the box and the lines painted at 0% again until he cleared it.
+     Now a box holds only a figure above zero. Blank means "nothing typed here" - the lines keep what
+     they carry, and a line stored at 0% takes the rate on file when the delivery is finalised, as it
+     has since 6.9.682. The grey figure in a blank box is that rate on file. pre(brand) gives it. */
+  function hsbBrandBlock(priced, edit, pre) {
     var bs = brandSplit(priced);
     if (!bs.length) return "";
     var td = 'padding:5px 6px;text-align:right';
@@ -3152,7 +3161,8 @@ window.addEventListener("beforeunload", function (ev) {
       '<th style="font-weight:600;padding:3px 6px 5px">Items</th><th style="font-weight:600;padding:3px 6px 5px">MRP</th>' +
       '<th style="font-weight:600;padding:3px 6px 5px">Disc</th><th style="font-weight:600;padding:3px 0 5px 6px">Amount</th></tr>' +
       bs.map(function (b, n) {
-        var dTxt = b.job ? '&mdash;' : (b.disc == null ? 'mixed' : b.disc + '%');
+        var dTxt = b.job ? '&mdash;' : (b.disc == null ? 'mixed' : (b.disc > 0 ? b.disc + '%' : '&mdash;'));   /* 6.9.700 */
+        var _pre = 0; try { _pre = pre && !b.job ? (Number(pre(b.name)) || 0) : 0; } catch (e) { _pre = 0; }
         return '<tr style="border-top:1px solid #e2e8f0">' +
           '<td style="padding:5px 6px 5px 0;font-weight:700">' + esc(b.name) + '</td>' +
           '<td style="' + td + '">' + b.n + '</td>' +
@@ -3160,7 +3170,7 @@ window.addEventListener("beforeunload", function (ev) {
           '<td style="' + td + ';font-weight:700;color:#0f766e;white-space:nowrap">' +
             (edit && !b.job
               ? '<input data-bdisc="' + n + '" data-bname="' + esc(b.name) + '" data-was="' + (b.disc == null ? '' : b.disc) + '" inputmode="decimal" ' +
-                'value="' + (b.disc == null ? '' : esc(String(b.disc))) + '" placeholder="mixed" aria-label="Discount on ' + esc(b.name) + '" ' +
+                'value="' + (b.disc == null || !(b.disc > 0) ? '' : esc(String(b.disc))) + '" placeholder="' + (b.disc == null ? 'mixed' : (_pre > 0 ? esc(String(_pre)) : '\u2014')) + '" aria-label="Discount on ' + esc(b.name) + '" ' +
                 /* v6.9.569 - his words: "compact view like the item discounts" - an item row's height */
                 'style="width:46px;height:26px;min-height:0;padding:1px 5px;margin:0;text-align:right;font-weight:700;font-size:12.5px;' +
                 'color:#0f766e;border:1px solid #cbd5e1;border-radius:6px;box-sizing:border-box"/>%'
@@ -3194,7 +3204,7 @@ window.addEventListener("beforeunload", function (ev) {
       var rc = document.getElementById("hsbr_" + ix), ac = document.getElementById("hsba_" + ix), dc = document.getElementById("hsbd_" + ix);
       if (rc) rc.textContent = money(dr);
       if (ac) ac.textContent = money(amt);
-      if (dc) { dc.textContent = d + "%"; dc.style.background = d !== was ? "#fef9c3" : ""; }
+      if (dc) { dc.textContent = d > 0 ? d + "%" : "\u2014"; dc.style.background = d !== was ? "#fef9c3" : ""; }   /* 6.9.700 - no 0% */
       goods += amt; bAmt[bn] = (bAmt[bn] || 0) + amt;
     });
     Object.keys(bAmt).forEach(function (bn) { var e = document.getElementById("hsbb_" + bn); if (e) e.textContent = money(bAmt[bn]); });
@@ -9626,7 +9636,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         (clientVisitCharge(inst.client)
           ? '<div class="meta" style="font-size:12px">' + money(clientVisitCharge(inst.client)) + ' is the most ' + esc(String(inst.client || "this client")) + ' has been charged before.</div>'
           : '<div class="meta" style="font-size:12px;color:#b45309">This client has never been charged for a visit \u2014 type what was agreed. Nothing is suggested, because nothing is known.</div>') + '</div>' +
-      '<div><label>Salt bags</label><input id="v_salt" inputmode="numeric" value="0"/></div></div>' +
+      '<div><label>Salt bags</label><input id="v_salt" inputmode="numeric" value="" placeholder="0"/></div></div>' +
       '<label>Salt rate per bag (Rs)</label><input id="v_saltrate" inputmode="numeric" value="' + esc(saltBag || "") + '" placeholder="set the salt price in Spares or the catalogue"/>' +
       (saltBag
         ? '<div class="meta" style="font-size:12px">' + money(saltBag) + ' a bag \u2014 TABSALT at ' +
@@ -9634,7 +9644,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         : '<div class="meta" style="font-size:12px;color:#b45309">No salt price in the catalogue yet \u2014 price TABSALT on the Products sheet.</div>') +
       '<label>Spare parts used</label><div id="v_lines">' + spareRow(0) + '</div>' +
       '<button class="btn sm ghost" data-act="sv-add" style="margin-top:4px">+ Add spare</button>' +
-      '<label>Collected now (Rs)</label><input id="v_coll" inputmode="numeric" value="0"/>' +
+      '<label>Collected now (Rs)</label><input id="v_coll" inputmode="numeric" value="" placeholder="0"/>' +
       '<label>Notes</label><textarea id="v_notes"></textarea>' +
       /* v6.9.381 - the whole price list, by code AND by name, so he can type either. The
          service-only spares stay on the end; an item in both is offered once. */
@@ -13598,10 +13608,10 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     if (!g || !g.n) return "";
     return '<div class="card" style="border-color:#fde68a;background:#fffbeb;padding:9px 12px;margin-top:8px">' +
       '<div style="font-weight:800;font-size:13px;color:#92400e">' + g.n + ' line' + (g.n === 1 ? '' : 's') +
-      ' at 0% will take the rate on file when you finalise &middot; ' + esc(money(g.diff)) + ' off</div>' +
+      ' with no discount will take the rate on file when you finalise &middot; ' + esc(money(g.diff)) + ' off</div>' +   /* 6.9.700 - no 0% */
       '<div class="meta" style="font-size:12.5px;color:#78350f;margin-top:4px">' +
       g.lines.map(function (l) {
-        return '<div><b>' + esc(l.desc) + '</b> &middot; 0% &rarr; <b>' + l.preset + '%</b></div>';
+        return '<div><b>' + esc(l.desc) + '</b> &middot; none &rarr; <b>' + l.preset + '%</b></div>';
       }).join('') + '</div>' +
       '<div class="meta" style="font-size:12px;margin-top:5px">Automatic &mdash; nothing to type. It is written to the audit trail with your name.' +
       (roleIs("admin") ? ' <button class="btn sm ghost" data-act="reprice-one" data-id="' + esc(c.id) + '" style="padding:2px 8px;font-size:12px">Do it now</button>' : '') +
@@ -13692,12 +13702,12 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     h += '<div class="card" style="padding:10px 12px">' +
       '<div class="meta" style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#475569">' +
       '<b>The bill, as this client is priced</b></div>' +
-      hsbBrandBlock(priced, roleIs("admin")) +
+      hsbBrandBlock(priced, roleIs("admin"), function (b) { return rateOnFileOn(cl, b, c.createdAt); }) +   /* 6.9.700 - the rate on file, grey in a blank box */
       /* v6.9.569 - the save sits under the brand boxes it saves (his ask) */
       (roleIs("admin") && priced.some(function (x) { return !x.job; })
         ? '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:8px">' +
             '<button class="btn sm" data-act="hsb-disc-save" data-id="' + esc(c.id) + '" style="min-height:36px">Save these discounts</button>' +
-            '<span id="hsb_discnote" class="meta" style="font-size:12px">Change a brand\u2019s discount above; nothing is saved until you press this.</span></div>'
+            '<span id="hsb_discnote" class="meta" style="font-size:12px">Change a brand\u2019s discount above; nothing is saved until you press this. A blank box means nothing typed &mdash; the grey figure is the client\u2019s rate on file, which a line with no discount takes when you finalise.</span></div>'
         : '') +
       '<div class="meta" style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#475569;margin-top:10px"><b>Item by item</b></div>' +
       '<div style="overflow-x:auto;margin-top:6px"><table style="width:100%;border-collapse:collapse;font-size:12.5px">' +
@@ -13721,7 +13731,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         '<td style="padding:5px 6px">' + esc(String(x.qty)) + '</td>' +
         '<td style="padding:5px 6px;color:' + (x.disc > 0 ? '#94a3b8;text-decoration:line-through' : '#334155') + '">' + money(x.rate) + '</td>' +
         '<td style="padding:5px 6px;font-weight:700;color:' + (x.disc > 0 ? '#0f766e' : '#94a3b8') + '">' +
-          '<span id="hsbd_' + x.ix + '">' + (x.job ? '&mdash;' : (x.disc > 0 ? x.disc + '%' : '0%')) + '</span></td>' +
+          '<span id="hsbd_' + x.ix + '">' + (x.job ? '&mdash;' : (x.disc > 0 ? x.disc + '%' : '&mdash;')) + '</span></td>' +   /* 6.9.700 */
         '<td id="hsbr_' + x.ix + '" style="padding:5px 6px">' + money(x.dr) + '</td>' +
         '<td id="hsba_' + x.ix + '" style="padding:5px 0 5px 6px;font-weight:700">' + money(x.amt) + '</td></tr>';
     });
@@ -13914,7 +13924,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         ? '<label for="hsb_offbrand" style="margin:10px 0 4px">Which brand does it come off? <span class="meta" style="font-weight:500">(for the incentive)</span></label>' +
           '<select id="hsb_offbrand" style="min-height:44px">' +
             '<option value="">Not specified &mdash; ' + esc(_oo[0].brand) + ' (highest incentive, lowest discount)</option>' +
-            _oo.map(function (g) { return '<option value="' + esc(g.brand) + '">' + esc(g.brand) + ' &middot; ' + esc(String(g.disc)) + '% now</option>'; }).join("") +
+            _oo.map(function (g) { return '<option value="' + esc(g.brand) + '">' + esc(g.brand) + ' &middot; ' + (Number(g.disc) > 0 ? esc(String(g.disc)) + '% now' : 'no discount now') + '</option>';   /* 6.9.700 */ }).join("") +
           '</select>'
         : (_oo.length === 1 ? '<div class="meta" style="font-size:12.5px;margin-top:6px">It comes off ' + esc(_oo[0].brand) + ', the only brand on this delivery.</div>' : '')) +
       '</div>';
@@ -17960,7 +17970,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
           '<div class="pmeta">' + plural(bt.count, "item") + ' \u00B7 ' + money(bt.gross) + ' \u2192 <b>' + money(bt.net) + '</b></div></div>' +
           (lockDisc
             ? '<span class="pill teal" style="font-size:15px;padding:8px 12px;font-weight:700">' + esc(z.brandDiscs[b] || 0) + '% off list</span>'
-            : '<input class="qz-bd" data-brand="' + esc(b) + '" inputmode="decimal" value="' + esc(z.brandDiscs && z.brandDiscs[b] != null ? z.brandDiscs[b] : 0) + '" style="width:80px;padding:9px 10px;font-size:16px;font-weight:700"/>' +
+            : '<input class="qz-bd" data-brand="' + esc(b) + '" inputmode="decimal" value="' + esc(z.brandDiscs && Number(z.brandDiscs[b]) > 0 ? z.brandDiscs[b] : "") + '" placeholder="\u2014" style="width:80px;padding:9px 10px;font-size:16px;font-weight:700"/>' +
               '<span class="pill teal">% off list</span>') + '</div>' +
           /* what this brand is worth to the person building the quote - his own
              number, not anybody else's, and only once the rate card is set */
@@ -23205,7 +23215,7 @@ function viewCatalogue() {
       pickedTable(z, PICKERS.rt)) +
       '<div class="grid2" style="margin-top:10px">' +
       '<div>' + strictDriverField("r_driver", (z && z.driver) || "", "Pickup driver") + '</div>' +
-      '<div><label>Freight on the return</label><input id="r_freight" inputmode="numeric" value="0"/></div>' +
+      '<div><label>Freight on the return</label><input id="r_freight" inputmode="numeric" value="" placeholder="0"/></div>' +
       '</div>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
       '<button class="btn" data-act="rt-save">Register return</button></div>';
@@ -45519,7 +45529,7 @@ function viewCatalogue() {
          list price. Without this the credit is always slightly too generous and the leak is
          invisible, because each one looks fair on its own. */
       '<div class="grid2">' +
-      '<div><label>Discount given on the whole challan</label><input id="m_disc" inputmode="decimal" placeholder="0" value="' + esc((z && z.disc != null) ? z.disc : 0) + '"' + (canSetPricing() ? '' : ' readonly title="Only the owner can set a discount" style="background:#f1f5f9;color:#94a3b8"') + '/></div>' +
+      '<div><label>Discount given on the whole challan</label><input id="m_disc" inputmode="decimal" placeholder="\u2014" value="' + esc((z && Number(z.disc) > 0) ? z.disc : "") + '"' + (canSetPricing() ? '' : ' readonly title="Only the owner can set a discount" style="background:#f1f5f9;color:#94a3b8"') + '/></div>' +
       '<div><label>Why (optional)</label><input id="m_discnote" placeholder="bargained on site" value="' + esc((z && z.discnote) || "") + '"' + (canSetPricing() ? '' : ' readonly') + '/></div>' +
       '</div>' +
       '<div class="grid2" style="margin-top:6px">' +
