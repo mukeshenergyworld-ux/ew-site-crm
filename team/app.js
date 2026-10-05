@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.692";
+  var APP_VERSION = "6.9.693";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -2275,6 +2275,7 @@
        very next read serves the row as it was a second ago. */
     if (tab === "pitch") _pitchIdx = null;
     if (tab === "visits" || tab === "installs" || tab === "clients") _vmCache = null;   /* v6.9.402 */
+    if (tab === "clients" && _chgBefore) { try { incNoteChange(_chgBefore, row); } catch (e) { } }   /* 6.9.693 */
     /* Send the FULL merged in-memory row, not just the handful of fields the caller passed. The
        backend writes the whole sheet row from whatever it receives - any column it is NOT sent is
        written blank - so a partial save would wipe the rest of the record (this is what blanked a
@@ -9966,7 +9967,139 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
   function incMap(row) {
     try { var m = JSON.parse((row && row.notes) || "{}"); return (m && typeof m === "object") ? m : {}; } catch (e) { return {}; }
   }
-  function incRate(client, brand, role, onYmd) {
+  /* ================= ONE INCENTIVE CARD FOR EVERYONE  (6.9.693 / Challan 1.124.0, 5 Oct 2026) ====
+     HIS WORDS: "instead of everytime entering partners and executive incentive for each new site,
+     i have preset it for everyone with discount slab, once a partner added its automatically fetch
+     preset dist slab and calculate amount". And: "if a partner changed from any site then the date
+     its changed in crm will be considered for new partner".
+
+     HIS DECISIONS, the same day: above the top slab earns nothing; the card REPLACES the rates typed
+     on each client from the day it starts; builders earn what PMC earns; it starts today; a blank
+     cell is 0%; and the brand names he gave for the catalogue words (Heat Pump is Green Heat Plus,
+     SS Water Tank is Stellar, plain Huliot is Accessory, and so on) are the card's own aliases.
+
+     WHERE THE CARD LIVES. On the discounts tab, under one client name nobody can have -
+     "#INCENTIVE CARD#" - one row per brand, its slabs in "notes", dated with "from" exactly like
+     every dated rate since 6.9.350. Chosen for who RECEIVES it, not for neatness: the server already
+     hands discount rows only to the owner (a sales phone gets its own clients' rows with notes
+     blanked, the godown and accounts get none), so the partners' rates go nowhere they did not go
+     yesterday. A change appends a new dated row; nothing is edited, nothing deleted.
+
+     HOW A RATE IS PICKED. By the discount ACTUALLY GIVEN on the line - frozen on the challan since
+     6.9.598 - not the client's preset: up to the first slab pays the first slab, up to the second
+     pays the second, above it pays nothing. Before the card's first day nothing changes: the client
+     rows answer, as they always have, so no rupee already earned moves.
+
+     WHO. A partner changed on a client is written down with the day it was changed in the CRM
+     (audit "ptn:change"). A delivery on or after that day is the new man's, before it the old
+     man's. A partner named for the FIRST time is not a change - he earns from the start, as before -
+     so filling in a plumber who was missing does not take his earlier deliveries away from him.
+
+     THIS BLOCK IS BYTE-IDENTICAL IN THE CRM AND THE CHALLAN APP (t_apps_agree). The godown phone is
+     never sent a discount row, so there the card is simply absent and every answer falls back. */
+  var INC_CARD = "#incentive card#";
+  function incKey(s) { return String(s == null ? "" : s).toUpperCase().replace(/[^A-Z0-9]/g, ""); }
+  function incDayOf(v) {
+    var d = String(v || "").slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(d)) return d;
+    var n = new Date();
+    return n.getFullYear() + "-" + String(n.getMonth() + 1).padStart(2, "0") + "-" + String(n.getDate()).padStart(2, "0");
+  }
+  var _incCard = null;
+  function incCard() {
+    var src = (S.data && S.data.discounts) || [];
+    if (_incCard && _incCard.src === src && _incCard.n === src.length) return _incCard;
+    var vers = {}, byKey = {}, start = "";
+    src.forEach(function (r) {
+      if (!r || dkey(r.client) !== INC_CARD) return;
+      var f = discFrom(r), cb = incKey(r.brand);
+      if (!f || !cb) return;                       /* an undated card row means nothing */
+      if (!start || f < start) start = f;
+      (vers[cb] || (vers[cb] = [])).push(r);
+      [r.brand].concat(incMap(r).also || []).forEach(function (a) {
+        var k = incKey(a); if (k) (byKey[k] || (byKey[k] = {}))[cb] = 1;
+      });
+    });
+    return (_incCard = { src: src, n: src.length, vers: vers, byKey: byKey, start: start });
+  }
+  function incCardLive(day) { var C = incCard(); return !!C.start && incDayOf(day) >= C.start; }
+  function incCardLatest(list, day) {
+    var best = null;
+    (list || []).forEach(function (r) {
+      var f = discFrom(r);
+      if (!f || f > day) return;
+      if (!best || f > discFrom(best) || (f === discFrom(best) && discStamp(r) > discStamp(best))) best = r;
+    });
+    return best;
+  }
+  /* The card's row for a brand on a day: the brand itself, one of its aliases, or - for a word
+     that is only a catalogue value - whatever the brand map turns it into. */
+  function incCardFind(brand, day) {
+    var C = incCard(), d = incDayOf(day);
+    var tryKey = function (key) {
+      var hit = null;
+      Object.keys(C.byKey[key] || {}).forEach(function (cb) {
+        var v = incCardLatest(C.vers[cb], d); if (!v) return;
+        var m = incMap(v);
+        if (m.off) return;
+        if (incKey(v.brand) !== key && !(m.also || []).some(function (a) { return incKey(a) === key; })) return;
+        hit = { row: v, m: m };
+      });
+      return hit;
+    };
+    var k = incKey(brand), h = k ? tryKey(k) : null;
+    if (h || !k) return h;
+    var bm = ((S.data && S.data.brandmap) || []).filter(function (x) { return incKey(x && x.catalogValue) === k; })[0];
+    return (bm && bm.brand) ? tryKey(incKey(bm.brand)) : null;
+  }
+  function incCardSlab(m, disc) {
+    var d = Number(disc) || 0, e = 1e-9;
+    if (m && m.s1 && d <= (Number(m.s1.upto) || 0) + e) return m.s1;
+    if (m && m.s2 && d <= (Number(m.s2.upto) || 0) + e) return m.s2;
+    return null;
+  }
+  /* null: the card is not in force on that day - ask the client's own row, as before.
+     A number: the card's answer, 0 included. */
+  function incCardRate(client, brand, role, onYmd, disc) {
+    var day = incDayOf(onYmd);
+    if (!incCardLive(day)) return null;
+    var hit = incCardFind(brand, day); if (!hit) return 0;
+    var d = (disc == null || disc === "" || isNaN(Number(disc))) ? clientDiscountOn(client, brand, day) : Number(disc);
+    var s = incCardSlab(hit.m, d);
+    return s ? (Number(s[String(role).toLowerCase()]) || 0) : 0;
+  }
+  /* ---- who held a role on a client on a given day ---- */
+  var _incHist = null;
+  function incHist() {
+    var src = (S.data && S.data.audit) || [];
+    if (_incHist && _incHist.src === src && _incHist.n === src.length) return _incHist;
+    var by = {};
+    src.forEach(function (a) {
+      if (!a || String(a.action || "") !== "ptn:change") return;
+      var d = {}; try { d = JSON.parse(a.detail || "{}") || {}; } catch (e) { d = {}; }
+      var on = String(d.on || "").slice(0, 10), role = String(d.role || "").toLowerCase();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(on) || !role) return;
+      var k = dkey(d.client || a.target) + "|" + role;
+      (by[k] || (by[k] = [])).push({ on: on, was: String(d.was || "").trim(), now: String(d.now || "").trim(), at: String(a.createdAt || "") });
+    });
+    Object.keys(by).forEach(function (k) {
+      by[k].sort(function (x, y) { return x.on < y.on ? -1 : x.on > y.on ? 1 : (x.at < y.at ? -1 : x.at > y.at ? 1 : 0); });
+    });
+    return (_incHist = { src: src, n: src.length, by: by });
+  }
+  function incChanges(clName, role) { return incHist().by[dkey(clName) + "|" + String(role).toLowerCase()] || []; }
+  function incHolderOn(clName, role, day) {
+    var cl = clientByName(clName) || {};
+    var now = String((role === "exec" ? (cl.ownedBy || cl.createdBy) : cl[role]) || "").trim();
+    var ch = incChanges(cl.name || clName, role);
+    if (!ch.length) return now;
+    var d = incDayOf(day), last = -1;
+    for (var i = 0; i < ch.length; i++) if (ch[i].on <= d) last = i;
+    if (last < 0) return ch[0].was;
+    return last === ch.length - 1 ? now : ch[last].now;
+  }
+  function incRate(client, brand, role, onYmd, disc) {
+    var cr = incCardRate(client, brand, role, onYmd, disc); if (cr !== null) return cr;   /* 6.9.693 - the card, from its first day */
     var d = discRow(client, brand, onYmd); if (!d) return 0;
     return Number(incMap(d)[String(role).toLowerCase()]) || 0;
   }
@@ -9985,7 +10118,8 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     var m = incMap(d);
     return String(m.execOn) === "1" || Number(m.exec) > 0;
   }
-  function execRateFor(client, brand, onYmd) {
+  function execRateFor(client, brand, onYmd, disc) {
+    var cr = incCardRate(client, brand, "exec", onYmd, disc); if (cr !== null) return cr;   /* 6.9.693 */
     var d = discRow(client, brand, onYmd); if (!d) return 0;
     return Number(incMap(d).exec) || 0;
   }
@@ -13158,13 +13292,15 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
      the client, plus the executive the client is assigned to. A blank name is not a line - a
      client with no PMC has no PMC row to tick. */
   function incLineup(c) {
-    var cl = clientByName(c && c.customerName) || {};
+    /* 6.9.693 - who held each role ON THE DAY OF THE DELIVERY: a partner changed on the client
+       takes over from the day he was changed, and the earlier deliveries stay the old man's */
+    var cn = (c && c.customerName) || "", day = localDay(c && (c.createdAt || c.date));
     var out = [];
     INC_ROLES.forEach(function (role) {
-      var nm = String(cl[role] || "").trim();
+      var nm = incHolderOn(cn, role, day);
       if (nm) out.push({ role: role, name: nm });
     });
-    var ex = execForClient((c && c.customerName) || "");
+    var ex = incHolderOn(cn, "exec", day);
     if (ex) out.push({ role: "exec", name: ex });
     return out;
   }
@@ -13179,11 +13315,12 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
        pricedLines and the Challan app with its own chLines; if this function called either by
        name the two apps would carry different bodies for the same rule, which is the one thing
        t_apps_agree exists to stop. Handed the lines, the body is identical in both. */
+    var day = localDay(c && (c.createdAt || c.date));   /* 6.9.693 - the delivery's day and each line's own discount */
     return incLineup(c).map(function (m) {
       var amt = 0, pcts = {};
       lines.forEach(function (x) {
         if (x.job) return;
-        var r = (m.role === "exec") ? execRateFor(cl, x.brand) : incRate(cl, x.brand, m.role);
+        var r = (m.role === "exec") ? execRateFor(cl, x.brand, day, x.disc) : incRate(cl, x.brand, m.role, day, x.disc);
         if (r > 0) { amt += x.amt * r / 100; pcts[String(r)] = 1; }
       });
       var ks = Object.keys(pcts);
@@ -13276,7 +13413,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     var out = [];
     (bs.rows || []).forEach(function (r) {
       var p = (r.per || [])[mi];
-      if (!p || p.rated || !p.earns || !r.real) return;
+      if (!p || p.rated || !p.earns || !r.real || p.card) return;   /* 6.9.693 - the card decides */
       out.push({ brand: r.brand, value: r.value, canSet: r.disc !== null });
     });
     return out;
@@ -13298,7 +13435,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         '<button class="btn sm" data-act="hsb-rate-save" data-i="' + mi + '" data-id="' + esc(c.id) + '" data-role="' + esc(m.role) + '" data-name="' + esc(m.name) + '" style="min-height:44px">Save as preset</button>' +
         '<button class="btn sm ghost" data-act="hsb-rate-open" data-i="' + mi + '" style="min-height:44px">Cancel</button></div></div>';
   }
-  function hisabBrandRows(cl, priced, lineup) {
+  function hisabBrandRows(cl, priced, lineup, day) {
     var byBrand = {}, order = [], job = 0;
     (priced || []).forEach(function (x) {
       if (x.job) { job += x.amt; return; }
@@ -13319,13 +13456,22 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         real: presRealBrand(b),
         disc: d ? (Number(d.pct) || 0) : null,      /* null means NOT SET, 0 means "no discount", set */
         per: (lineup || []).map(function (m) {
-          var r = (m.role === "exec") ? execRateFor(cl, b) : incRate(cl, b, m.role);
+          /* 6.9.693 - line by line: with the card, each line's own discount picks its slab, so one
+             brand can carry two rates on one delivery. The percent shown is what it comes to. */
+          var amt = 0, pcts = {};
+          (priced || []).forEach(function (x) {
+            if (x.job || (String(x.brand || "").trim() || "(no brand)") !== b) return;
+            var r1 = (m.role === "exec") ? execRateFor(cl, b, day, x.disc) : incRate(cl, b, m.role, day, x.disc);
+            amt += x.amt * r1 / 100; pcts[String(r1)] = 1;
+          });
+          var ks = Object.keys(pcts);
+          var r = ks.length === 1 ? Number(ks[0]) : (byBrand[b] ? Math.round(amt / byBrand[b] * 10000) / 100 : 0);
           /* v6.9.389 - a partner named on the client always earns; an EXECUTIVE earns only if
              he is one. A blank box for a man who takes no executive incentive is not an
              omission, and calling it one is what made this warning noise. */
           var earns = (m.role !== "exec") || execEarns(m.name);
-          return { role: m.role, name: m.name, pct: r, amt: byBrand[b] * r / 100,
-                   rated: r > 0, earns: earns };
+          return { role: m.role, name: m.name, pct: r, amt: amt,
+                   rated: amt > 0 || r > 0, earns: earns, card: incCardLive(day) };
         })
       };
     });
@@ -13333,7 +13479,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
              /* only what there is a box for - see `real` above */
              noDisc: rows.filter(function (r) { return r.disc === null && r.real; }).length,
              noRate: rows.reduce(function (n, r) {
-               return n + r.per.filter(function (p) { return !p.rated && p.earns; }).length;
+               return n + r.per.filter(function (p) { return !p.rated && p.earns && !p.card; }).length;   /* 6.9.693 - the card's 0 is an answer */
              }, 0),
              /* v6.9.389 - how many men in this line-up can earn at all. The all-clear sentence
                 below used to read "every man in the line-up has a rate on all of them", which on
@@ -13612,7 +13758,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
        is worth on THIS delivery, what it is discounted at, and what every man in the line-up
        earns on it. Quiet where it is right, loud where it is missing. */
     var lineup = incPreview(c, priced);
-    var bs = hisabBrandRows(cl, priced, lineup);
+    var bs = hisabBrandRows(cl, priced, lineup, rateDayOf(c));   /* 6.9.693 */
     /* v6.9.357 - accounts reaches this screen now. It sees the delivery, the paper and the
        money the CLIENT owes, because that is its job. It does not see who earns, and it cannot
        set a price. Four blocks below turn on this one flag. */
@@ -13645,10 +13791,11 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
             /* v6.9.389 - three states, not two. Rated. Unrated and somebody should set it
                (amber, and counted below). Unrated because this man takes no executive
                incentive at all - grey, silent, and it says so when you hold it. */
-            var _col = p.rated ? '#0f172a' : (p.earns ? '#b45309' : '#94a3b8');
+            var _col = p.rated ? '#0f172a' : ((p.earns && !p.card) ? '#b45309' : '#94a3b8');
             return '<td style="padding:5px 6px;white-space:nowrap;color:' + _col + '">' +
               (p.rated ? p.pct + '% &middot; <b>' + money(p.amt) + '</b>'
-                       : (p.earns ? '<b>no rate</b>'
+                       : (p.card ? '<span title="' + esc(incCardWhy(r.brand, rateDayOf(c))) + '">0% &middot; card</span>' :   /* 6.9.693 */
+                         p.earns ? '<b>no rate</b>'
                                   : '<span title="' + esc(p.name) + ' owns this client but is not a ' +
                                     'sales executive, so he takes no executive incentive. Nothing is ' +
                                     'missing here.">&mdash;</span>')) + '</td>';
@@ -13671,7 +13818,9 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
             'brand until it is set. Tap <b>Set rate</b> beside him under Who earns. This does not stop the stamp.' : '') +
           '</div>';
       } else if (own && lineup.length) {
-        h += '<div class="meta" style="margin-top:8px;font-size:12.5px;color:#0f766e">' +
+        h += (incCardLive(rateDayOf(c)) ? '<div class="meta" style="margin-top:8px;font-size:12.5px;color:#475569">Incentives on this delivery come from the <b>incentive card</b> (in force from ' +
+          esc(fullDate(incCard().start)) + '): each line&rsquo;s discount picks its slab. &ldquo;0% &middot; card&rdquo; is the card&rsquo;s own answer &mdash; hold it to see why.</div>' : '') +   /* 6.9.693 */
+          '<div class="meta" style="margin-top:8px;font-size:12.5px;color:#0f766e">' +
           (bs.earners
             ? 'Every brand is priced and every man in the line-up has a rate on all of them. Nothing left out.'
             /* v6.9.389 - and when NOBODY on this client takes an executive incentive, say that
@@ -25536,41 +25685,78 @@ function viewCatalogue() {
      its date costs nothing and is the whole point of dating a rate. A delivery with no date -
      there are none, but the book is old - asks for today's, which is what it always did. */
   function rateDayOf(c) { return localDay(c && (c.createdAt || c.date)) || today(); }   /* 6.9.666 */
-  function partnerBookRate(cl, br, c, nmLower) {
+  /* 6.9.693 - the roles this man held on this client ON THE DAY OF THE DELIVERY */
+  function incRolesOn(cl, nmLower, day) {
+    var nm = dkey(nmLower);
+    if (!nm) return [];
+    return INC_ROLES.filter(function (role) { return dkey(incHolderOn(cl.name, role, day)) === nm; });
+  }
+  /* 6.9.693 - a partner change, written down with the day it was made in the CRM. Called from
+     save() for every client write, with the row as it was and what was sent. A role this save did
+     not carry is not looked at; a name only re-spelt is not a change; and a role named for the
+     FIRST time is not a change either - he earns from the start, as he always did. */
+  function incNoteChange(before, row) {
+    var cn = String((row && row.name) || (before && before.name) || "").trim();
+    if (!cn || !before || !row) return;
+    INC_ROLES.concat(["exec"]).forEach(function (role) {
+      var f = role === "exec" ? "ownedBy" : role;
+      if (!(f in row)) return;
+      var was = String((role === "exec" ? (before.ownedBy || before.createdBy) : before[role]) || "").trim();
+      var now = String((role === "exec" ? (row.ownedBy || before.createdBy) : row[role]) || "").trim();
+      if (dkey(was) === dkey(now)) return;
+      if (!was && !incChanges(cn, role).length) return;
+      save("audit", { id: "", createdAt: new Date().toISOString(), actor: S.user || "", action: "ptn:change", target: cn,
+        detail: JSON.stringify({ client: cn, role: role, was: was, now: now, on: today() }), ip: "" }, true);
+    });
+  }
+  /* every client this man appears on in a change, as the old or the new holder */
+  function incHistClients(nmLower, exec) {
+    var out = {}, H = incHist().by, nm = dkey(nmLower);
+    if (!nm) return out;
+    Object.keys(H).forEach(function (k) {
+      var p = k.lastIndexOf("|"), role = k.slice(p + 1);
+      if ((role === "exec") !== !!exec) return;
+      if (H[k].some(function (x) { return dkey(x.was) === nm || dkey(x.now) === nm; })) out[k.slice(0, p)] = 1;
+    });
+    return out;
+  }
+  function partnerBookRate(cl, br, c, nmLower, dsc) {
     /* The stamped line-up wins where there is one. "exec" is dropped here on purpose: a man who
        is both this client's plumber and its executive is paid once as each, by the two books,
        and letting the partner's book see the exec role would pay him twice. */
-    var roles = chIncRoles(c, nmLower);
-    roles = roles === null ? clientRolesOf(cl, nmLower)
+    var roles = chIncRoles(c, nmLower), day = rateDayOf(c), rate = 0;
+    roles = roles === null ? incRolesOn(cl, nmLower, day)   /* 6.9.693 - on the delivery's day */
                            : roles.filter(function (r) { return r !== "exec"; });
-    var day = rateDayOf(c), rate = 0;
-    roles.forEach(function (role) { var r = incRate(cl.name, br, role, day); if (r > rate) rate = r; });
+    roles.forEach(function (role) { var r = incRate(cl.name, br, role, day, dsc); if (r > rate) rate = r; });
     return rate;
   }
   /* 6.9.668 - the PARTNERS' rates on one line of one delivery, added up: every partner role on
      the delivery's line-up (or on the client record when it has none), at that client-and-brand
      rate on the delivery's day. The executive earns on what is left after these. */
-  function partnersRateOn(cl, br, c) {
+  function partnersRateOn(cl, br, c, dsc) {
     var day = rateDayOf(c), total = 0, stamp = chIncStamp(c), seen = {};
     if (stamp) {
       stamp.forEach(function (x) {
         if (!x || x.on === false) return;
         var role = String(x.role || "").toLowerCase(), key = role + "|" + dkey(x.name);
         if (role === "exec" || !dkey(x.name) || seen[key]) return;
-        seen[key] = 1; total += incRate(cl.name, br, role, day);
+        seen[key] = 1; total += incRate(cl.name, br, role, day, dsc);
       });
     } else {
-      INC_ROLES.forEach(function (role) { if (String(cl[role] || "").trim()) total += incRate(cl.name, br, role, day); });
+      INC_ROLES.forEach(function (role) { if (incHolderOn(cl.name, role, day)) total += incRate(cl.name, br, role, day, dsc); });   /* 6.9.693 */
     }
     return Math.max(0, Math.min(100, total));
   }
-  function execBookRate(cl, br, c, nmLower) {
+  function execBookRate(cl, br, c, nmLower, dsc) {
     /* v6.9.325 - three-way. null: no line-up on this delivery, behave as before. A line-up
        without "exec": he was deliberately left off it, and earns nothing. With "exec": his
        usual rate. */
     var roles = chIncRoles(c, nmLower);
     if (roles && roles.indexOf("exec") < 0) return 0;
-    return execRateFor(cl.name, br, rateDayOf(c));   /* v6.9.350 - the day of the delivery */
+    var _eday = rateDayOf(c);
+    /* 6.9.693 - with no stamp, the executive is whoever held the client on the delivery's day */
+    if (roles === null && dkey(incHolderOn(cl.name, "exec", _eday)) !== dkey(nmLower)) return 0;
+    return execRateFor(cl.name, br, _eday, dsc);   /* v6.9.350 - the day of the delivery */
   }
   /* What ONE man has earned on ONE client, through the payout engine itself rather than beside
      it. Returns incentiveBook's own totals, so this panel and his incentive card cannot print
@@ -25581,8 +25767,8 @@ function viewCatalogue() {
     var nm = dkey(personName);
     if (!nm) return null;
     return incentiveBook([cl], (kind === "exec")
-      ? function (c2, br, c) { return execBookRate(c2, br, c, nm); }
-      : function (c2, br, c) { return partnerBookRate(c2, br, c, nm); }, nm, kind === "exec" ? partnersRateOn : null);   /* 6.9.668 */
+      ? function (c2, br, c, dsc) { return execBookRate(c2, br, c, nm, dsc); }
+      : function (c2, br, c, dsc) { return partnerBookRate(c2, br, c, nm, dsc); }, nm, kind === "exec" ? partnersRateOn : null);   /* 6.9.668 */
   }
   /* ================= THE OWNER'S OWN CORNER  (v6.9.344, 23 August 2026) =================
      HIS WORDS: "for admin only ... show client discount structure for all brand, ask to add
@@ -25717,6 +25903,7 @@ function viewCatalogue() {
     return '<input ' + attrs + ' inputmode="decimal" value="' + (miss ? "" : esc(v)) + '" placeholder="\u2014" style="' + st + '"/>';
   }
   function admCell(cl, brand, role, v, ro) {
+    if (role !== "disc" && incCardLive("")) ro = true;   /* 6.9.693 - set on the incentive card now */
     return gridBox('class="admr" data-cl="' + esc(cl) + '" data-b="' + esc(brand) + '" data-role="' + esc(role) + '"', v, ro);
   }
   /* v6.9.350 - a rate with a start date says so, and one that replaced an earlier rate says
@@ -26378,8 +26565,8 @@ function viewCatalogue() {
              line-up answers for itself, and one that does not falls back to the client record
              exactly as it always has. */
           /* 6.9.668 - the executive's base is the line LESS the partners' incentive on it */
-          var _pd = deductFor ? deductFor(cl, x.brand || c.brand || "", c) : 0;
-          inc += x.amt * (1 - _pd / 100) * rateFor(cl, x.brand || c.brand || "", c) / 100;
+          var _pd = deductFor ? deductFor(cl, x.brand || c.brand || "", c, x.disc) : 0;
+          inc += x.amt * (1 - _pd / 100) * rateFor(cl, x.brand || c.brand || "", c, x.disc) / 100;   /* 6.9.693 - the line's own discount picks the slab */
         });
         /* v6.9.609 - REVIEW A9, HIS DECISION 25 Sep 2026: "after further discount". The further
            discount at hisab time and the discount on the whole challan (hisabExtra) come off the
@@ -26419,8 +26606,8 @@ function viewCatalogue() {
              RETURNED value, because the client is credited for it, and reverses nobody's
              incentive, because nobody earned one on it. Same flag, same rule, both directions. */
           if (x.job) return;
-          var _rpd = deductFor ? deductFor(cl, x.brand, rCh) : 0;   /* 6.9.668 - the mirror */
-          rInc += x.amt * (1 - _rpd / 100) * rateFor(cl, x.brand, rCh) / 100;
+          var _rpd = deductFor ? deductFor(cl, x.brand, rCh, x.disc) : 0;   /* 6.9.668 - the mirror */
+          rInc += x.amt * (1 - _rpd / 100) * rateFor(cl, x.brand, rCh, x.disc) / 100;
           if (x.brand) rBrands[x.brand] = 1;
         });
         /* v6.9.609 - A9: a return carries the same share of its delivery's discount as the credit
@@ -26508,11 +26695,12 @@ function viewCatalogue() {
        record he vanished from his own book - including from deliveries he had been stamped onto
        and had genuinely earned. Any client whose stamped delivery still names him is added back. */
     var stampedCl = incStampClients(nm);
+    var histCl = incHistClients(nm, false);   /* 6.9.693 - and every client he held before a change */
     var myClients = (S.data.clients || []).filter(function (cl) {
-      return clientRolesOf(cl, nm).length || stampedCl[dkey(cl.name)];
+      return clientRolesOf(cl, nm).length || stampedCl[dkey(cl.name)] || histCl[dkey(cl.name)];
     });
-    var bk = incentiveBook(myClients, function (cl, br, c) {
-      return partnerBookRate(cl, br, c, nm);
+    var bk = incentiveBook(myClients, function (cl, br, c, dsc) {
+      return partnerBookRate(cl, br, c, nm, dsc);
     }, nm);
     bk.sites = partnerSites(name);
     return bk;
@@ -26526,13 +26714,13 @@ function viewCatalogue() {
     var nm = String(name).trim().toLowerCase();
     /* v6.9.325 - and an executive moved off a client keeps his stamped deliveries too. The
        client changing hands is far commoner than a partner changing, so this matters more here. */
-    var stampedEx = incStampClients(nm);
+    var stampedEx = incStampClients(nm), histEx = incHistClients(nm, true);   /* 6.9.693 */
     var myClients = (S.data.clients || []).filter(function (cl) {
       return (String(cl.ownedBy || cl.createdBy || "").trim().toLowerCase() === nm && nm) ||
-             stampedEx[dkey(cl.name)];
+             stampedEx[dkey(cl.name)] || histEx[dkey(cl.name)];
     });
-    var bk = incentiveBook(myClients, function (cl, br, c) {
-      return execBookRate(cl, br, c, nm);
+    var bk = incentiveBook(myClients, function (cl, br, c, dsc) {
+      return execBookRate(cl, br, c, nm, dsc);
     }, nm, partnersRateOn);   /* 6.9.668 - after the partners' incentive */
     var mine = {};
     myClients.forEach(function (cl) { mine[String(cl.name || "").trim().toLowerCase()] = 1; });
@@ -26920,6 +27108,110 @@ function viewCatalogue() {
   }
 
   /* ---------------- client discounts (sales may set these) ---------------- */
+  /* ================= THE INCENTIVE CARD SCREEN  (6.9.693, 5 Oct 2026) =================
+     His table, as he sent it on 5 Oct 2026, is the first card. Roles in every slab: plumber,
+     architect, PMC, builder (his decision: the same as PMC), executive. A blank cell is 0%.
+     "also" is the catalogue's words for the same brand, his answers of the same day. */
+  var INC_CARD_SEED = [
+    ["Sanitaar", [], 50, [4.2, 4.2, 4.2, 4.2, 1], 55, [3, 3, 3, 3, 0.5]],
+    ["Heliroma PPR", [], 50, [4.2, 4.2, 4.2, 4.2, 1], 55, [3, 3, 3, 3, 0.5]],
+    ["Huliot Ultra Silent", [], 50, [4.2, 4.2, 4.2, 4.2, 1], 55, [3, 3, 3, 3, 0.5]],
+    ["Huliot HT Pro", [], 50, [4.2, 4.2, 4.2, 4.2, 1], 55, [3, 3, 3, 3, 0.5]],
+    ["Heliroma", [], 50, [4.2, 4.2, 4.2, 4.2, 1], 55, [3, 3, 3, 3, 0.5]],
+    ["Accessory", ["Huliot"], 0, [0, 0, 0, 0, 1], 0, [0, 0, 0, 0, 0.5]],
+    ["CPVC Pipe", ["CPVC Pipes"], 40, [0, 0, 0, 0, 1], 45, [0, 0, 0, 0, 0.5]],
+    ["Stellar", ["SS Water Tank"], 35, [0, 0, 0, 0, 0], 35, [0, 0, 0, 0, 0]],
+    ["Drain Chambers", [], 0, [4.2, 4.2, 4.2, 4.2, 1], null, null],
+    ["DRP", [], 32, [0, 0, 0, 0, 1], 35, [0, 0, 0, 0, 0.5]],
+    ["Grundfos", [], 25, [3, 0, 0, 0, 1], 28, [2, 0, 0, 0, 0.5]],
+    ["Pentair", ["Water Filtration"], 45, [3, 3, 3, 3, 1], 50, [2, 2, 2, 2, 0.5]],
+    ["Net Price Items", [], 0, [0, 0, 0, 0, 1], 0, [0, 0, 0, 0, 1]],
+    ["Inair", ["Fresh Air"], 0, [4.2, 4.2, 4.2, 4.2, 1], 0, [4.2, 4.2, 4.2, 4.2, 1]],
+    ["DWC Pipes", [], 50, [4.2, 4.2, 4.2, 4.2, 1], 55, [3, 3, 3, 3, 0.5]],
+    ["Geberit", ["Cistern"], 30, [0, 0, 0, 0, 1], 35, [0, 0, 0, 0, 0.5]],
+    ["Green Heat Plus", ["Heat Pump", "Green Heat"], 45, [2, 2, 2, 2, 0.5], 48, [1, 1, 1, 1, 0.3]],
+    ["MEA", ["MEA Drain"], 50, [4.2, 4.2, 4.2, 4.2, 1], 55, [3, 3, 3, 3, 0.5]],
+    ["Oyster", [], 25, [3, 3, 3, 3, 0.5], 28, [2, 2, 2, 2, 0.3]],
+    ["TOTO", [], 45, [3, 3, 3, 3, 0.5], 50, [2, 2, 2, 2, 0.3]],
+    ["IonCare", [], 30, [4.2, 4.2, 4.2, 4.2, 1], 30, [4.2, 4.2, 4.2, 4.2, 1]],
+    ["Leo", ["Leo Pump"], 45, [3, 3, 3, 3, 1], 50, [2, 2, 2, 2, 0.5]],
+    ["Lunos", [], 29, [3, 3, 3, 3, 1], 32, [2, 2, 2, 2, 0.5]],
+    ["Drain - Bathroom", ["TECE"], 29, [3, 3, 3, 3, 1], 32, [2, 2, 2, 2, 0.5]],
+    ["Fima", [], 45, [4.2, 4.2, 4.2, 4.2, 0], 45, [4.2, 4.2, 4.2, 4.2, 0]]
+  ];
+  var INC_CARD_ROLES = ["plumber", "architect", "pmc", "builder", "exec"];
+  function incCardSlabOf(upto, v) {
+    if (upto == null) return null;
+    var o = { upto: upto };
+    INC_CARD_ROLES.forEach(function (r, i) { o[r] = v[i]; });
+    return o;
+  }
+  /* What the screen shows: the card in force today, or - before it has started - his table. */
+  function incCardNow() {
+    var C = incCard(), day = today();
+    if (!C.start) {
+      return INC_CARD_SEED.map(function (x) {
+        return { brand: x[0], also: x[1].slice(), s1: incCardSlabOf(x[2], x[3]), s2: incCardSlabOf(x[4], x[5]), seed: true };
+      });
+    }
+    var out = [];
+    Object.keys(C.vers).forEach(function (cb) {
+      var v = incCardLatest(C.vers[cb], day); if (!v) return;
+      var m = incMap(v); if (m.off) return;
+      out.push({ brand: v.brand, also: (m.also || []).slice(), s1: m.s1 || null, s2: m.s2 || null, from: discFrom(v) });
+    });
+    return out;
+  }
+  function incCardWhy(brand, day) {
+    var hit = incCardFind(brand, day);
+    if (!hit) return brand + " is not on the incentive card, so nobody earns on it. Add it to the card to change that.";
+    var m = hit.m, top = m.s2 ? m.s2.upto : (m.s1 ? m.s1.upto : 0);
+    return "The incentive card pays this man 0% on " + hit.row.brand + " at the discount given here (the card pays up to " + top + "% discount).";
+  }
+  function incCardHtml() {
+    if (!roleIs("admin")) return "";
+    var C = incCard(), rows = incCardNow().concat((S.icdExtra || []).map(function (b) {
+      return { brand: b, also: [], s1: incCardSlabOf(0, [0, 0, 0, 0, 0]), s2: null, extra: true };
+    }));
+    var live = !!C.start;
+    var cell = function (b, f, v) {
+      return '<td style="padding:3px 3px"><input class="icd" data-b="' + esc(b) + '" data-f="' + f + '" inputmode="decimal" value="' +
+        (v == null || v === "" ? "" : esc(String(v))) + '" style="width:54px;min-height:44px;text-align:center;font-size:13px;padding:2px 3px"/></td>';
+    };
+    var th = function (t) { return '<th style="font-weight:600;padding:2px 3px 5px;font-size:12px">' + t + '</th>'; };
+    var heads = "Plumber|Architect|PMC|Builder|Exec".split("|");
+    var h = '<div class="card"><h3 style="margin:0 0 4px">Incentive card &mdash; one for every client</h3>' +
+      '<div class="meta" style="margin-bottom:8px">' + (live
+        ? 'In force from <b>' + esc(fullDate(C.start)) + '</b>. Every delivery from that day earns what this card says, picked by the discount given on each line: up to slab 1 pays slab 1, up to slab 2 pays slab 2, above that nobody earns. Deliveries before it keep the rates they were made at. A change you save here starts from the date you give it.'
+        : 'This is your table of 5 Oct 2026, ready to start. <b>Nothing is in force yet</b> &mdash; until you tap Start, every delivery still earns the rates typed on each client.') + '</div>' +
+      '<div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:12.5px;min-width:100%">' +
+      '<tr style="color:#475569;text-align:center"><th style="text-align:left;font-weight:600;padding:2px 6px 5px 0;font-size:12px">Brand</th>' +
+      th('Slab 1<br>disc up to %') + heads.map(th).join("") + th('Slab 2<br>disc up to %') + heads.map(th).join("") + '</tr>' +
+      rows.map(function (r) {
+        var s1 = r.s1 || {}, s2 = r.s2 || {};
+        return '<tr style="border-top:1px solid #e2e8f0;text-align:center">' +
+          '<td style="text-align:left;padding:4px 6px 4px 0;min-width:150px"><b>' + esc(r.brand) + '</b>' +
+            '<input class="icd-also" data-b="' + esc(r.brand) + '" value="' + esc((r.also || []).join(", ")) + '" placeholder="also called&hellip;" ' +
+            'style="display:block;width:100%;margin-top:3px;font-size:12px;min-height:44px;padding:2px 6px"/></td>' +
+          cell(r.brand, "s1.upto", s1.upto) + INC_CARD_ROLES.map(function (k) { return cell(r.brand, "s1." + k, s1[k]); }).join("") +
+          cell(r.brand, "s2.upto", r.s2 ? s2.upto : "") + INC_CARD_ROLES.map(function (k) { return cell(r.brand, "s2." + k, r.s2 ? s2[k] : ""); }).join("") +
+          '</tr>';
+      }).join("") + '</table></div>';
+    /* measured on the live book, every time the screen opens: which brands no card row reaches */
+    var day = today(), miss = brandList().filter(function (b) {
+      if (live) return !incCardFind(b, day);
+      var k = incKey(b);
+      return !rows.some(function (r) { return incKey(r.brand) === k || (r.also || []).some(function (a) { return incKey(a) === k; }); });
+    });
+    if (miss.length) h += '<div class="meta" style="margin-top:8px;font-size:12.5px;color:#b45309"><b>Not on the card &mdash; nobody earns on them:</b> ' +
+      miss.map(esc).join(", ") + '. Add a brand below, or write the name into &ldquo;also called&rdquo; on the brand it belongs to.</div>';
+    h += '<div class="row" style="gap:8px;margin-top:10px;flex-wrap:wrap;align-items:center">' +
+      '<input id="icd_new" placeholder="Add a brand to the card" style="flex:1 1 200px;min-height:44px"/>' +
+      '<button class="btn sm ghost" data-act="icd-add" style="min-height:44px">+ Add</button>' +
+      '<button class="btn sm" data-act="icd-save" style="min-height:44px">' + (live ? '&#10003; Save changes' : '&#10003; Start this card from today') + '</button></div>' +
+      '<div class="meta" style="margin-top:6px;font-size:12px">Slab 2 left blank means there is no second slab. A blank rate is 0%. Builders earn what you put under Builder.</div></div>';
+    return h;
+  }
   function viewDiscounts() {
     var cl = S.q;
     var h = '<div class="row"><input class="grow" id="q" placeholder="Type a client to set their brand discounts..." list="dclients" value="' + esc(S.q) + '"/></div>' +
@@ -26939,6 +27231,7 @@ function viewCatalogue() {
          anywhere is not shown at all. */
       var agg = {};
       (S.data.discounts || []).forEach(function (d) {
+        if (dkey(d.client) === INC_CARD) return;   /* 6.9.693 - the card has its own place, above */
         /* v6.9.207: skip any row that is not the winner for its client+brand, and file it under the
            client's REAL spelling - so "Sandeep Gupta" and "sandeep  gupta" are one card, not two. */
         var win = discPick(discRowsFor(d.client, d.brand));
@@ -26958,6 +27251,7 @@ function viewCatalogue() {
       }).sort();
       h += '<div class="empty" style="text-align:left;padding:0 0 10px">Type a client above to set discounts, or tap one below to edit. Discounts feed the quote builder, each new challan and the billing screen. <b>Admin only</b>; edits apply to future challans, not past ones.</div>';
       h += '<div class="card" style="border-color:#fde68a;background:#fffbeb;padding:10px 12px"><div class="meta" style="font-size:12px;color:#92400e">🔒 Incentive figures are admin-only inside the app — but they also live in the CRM Google Sheet. Keep that sheet shared with as few Google accounts as possible (ideally just you) so partner rates stay private there too. Staff should work through the app, not the sheet.</div></div>';
+      h += incCardHtml();   /* 6.9.693 */
       if (!names.length) return h + '<div class="empty">No client discounts set yet. Type a client above to set the first one.</div>';
       /* THE EXECUTIVE RATE CARD. One card for the whole team, brand by brand, kept
          on the Brands master. Set once; every quote and every discount screen
@@ -26967,7 +27261,7 @@ function viewCatalogue() {
          with the rest behind How it works; the cells are gridBox, so an unset rate is an amber
          dash and not a grey placeholder that reads as a value. Same header style as the owner's
          corner. Nothing about what is saved or how it is read has changed. */
-      h += '<div class="card"><h3 style="margin:0 0 4px">Sales executive rate card</h3>' +
+      if (!incCardLive("")) h += '<div class="card"><h3 style="margin:0 0 4px">Sales executive rate card</h3>' +   /* 6.9.693 - replaced by the incentive card */
         '<div class="meta" style="margin-bottom:6px">Optional. A brand row filled in here is what the app <i>offers</i> ' +
         'when you tick an executive on a client; the % you actually save on the client is what he is paid.</div>' +
         '<details style="margin-bottom:8px"><summary style="cursor:pointer;font-size:12px;color:#0d766c">How it works</summary>' +
@@ -27045,7 +27339,10 @@ function viewCatalogue() {
         ? ' Under the discount row, set the incentive % for each of this client’s partners on that brand — each earns on the net (post-discount) sale.'
         : ' <span style="color:#94a3b8">No plumber / architect / builder / PMC is linked to this client, so there is no incentive to set. Add one on the client’s record to set partner incentives here.</span>') +
       '<br><span style="color:#0f766e;font-weight:600">Fill in every brand you need, then tap <b>Save &amp; back</b> — nothing is saved until you do.</span>' +
-      '</div>';
+      '</div>' +
+      (incCardLive("") ? '<div class="card" style="border-color:#99f6e4;background:#f0fdfa;padding:9px 12px;margin-bottom:8px"><div class="meta" style="font-size:12.5px;color:#0f766e">' +
+        'Partner and executive incentives come from the <b>incentive card</b> (Discounts, at the top) for every delivery from ' + esc(fullDate(incCard().start)) +
+        '. An incentive typed below counts only on deliveries before that day. The brand discount here is still this client&rsquo;s price.</div></div>' : '');   /* 6.9.693 */
     /* ============ ONE TAP FOR ALL OF THEM  (v6.9.414) ============
        MEASURED: of 352 discount rows on his book, 155 carry a plumber rate and 72 an architect
        rate; the SALES EXECUTIVE rate is on TWO. Not indifference - arithmetic. The tick and the
@@ -36643,14 +36940,14 @@ function viewCatalogue() {
     hisabClientNames().forEach(function (n) { var d = clientLedger(n).due; if (d < -0.5) neg.push({ name: n, due: d }); });
     var cnames = {};
     (S.data.clients || []).forEach(function (c) { cnames[String(c.name || "").trim().toLowerCase()] = 1; });
-    var orphanDisc = (S.data.discounts || []).filter(function (d) { return !cnames[String(d.client || "").trim().toLowerCase()]; });
+    var orphanDisc = (S.data.discounts || []).filter(function (d) { return dkey(d.client) !== INC_CARD && !cnames[String(d.client || "").trim().toLowerCase()]; });   /* 6.9.693 */
     /* v6.9.207: more than one discount row for the same client+brand. The app now always reads the
        same winner so pricing is already correct, but the extra rows are shown here so they can be
        cleared away - and so it is obvious if the fault ever comes back. */
     var dgrp = {}, dupDisc = [];
     (S.data.discounts || []).forEach(function (d) {
       var k = dkey(d.client) + "||" + dkey(d.brand);
-      if (!k || k === "||") return;
+      if (!k || k === "||" || dkey(d.client) === INC_CARD) return;   /* 6.9.693 - a card version is not a duplicate */
       (dgrp[k] = dgrp[k] || []).push(d);
     });
     Object.keys(dgrp).forEach(function (k) {
@@ -51072,6 +51369,70 @@ function viewCatalogue() {
        Onto the SAME discount row the Discounts screen writes, in the same shape - one row per
        client and brand carrying the discount in pct and every incentive in notes. A second
        storage for the same fact would be two answers to a money question. */
+    /* 6.9.693 - the incentive card */
+    if (act === "icd-add") {
+      var _nb = String((el("icd_new") || {}).value || "").trim();
+      if (!_nb) { toast("Type the brand's name first."); return; }
+      var _have = incCardNow().concat((S.icdExtra || []).map(function (b) { return { brand: b }; }));
+      if (_have.some(function (r) { return incKey(r.brand) === incKey(_nb); })) { toast(_nb + " is already on the card."); return; }
+      S.icdExtra = (S.icdExtra || []).concat([_nb]); keepScroll = true; render(); return;
+    }
+    if (act === "icd-save") {
+      if (!roleIs("admin")) { toast("The incentive card is the owner’s."); return; }
+      var _IC = incCard(), _live = !!_IC.start, _bad = [], _rows = {};
+      document.querySelectorAll(".icd").forEach(function (x) {
+        var b = x.getAttribute("data-b") || "", f = String(x.getAttribute("data-f") || "").split(".");
+        var g = _rows[incKey(b)] || (_rows[incKey(b)] = { brand: b, s1: {}, s2: {}, also: [] });
+        var raw = String(x.value || "").trim();
+        if (raw !== "" && (!isFinite(Number(raw)) || Number(raw) < 0 || Number(raw) > 100)) _bad.push(b);
+        g[f[0]][f[1]] = raw;
+      });
+      document.querySelectorAll(".icd-also").forEach(function (x) {
+        var g = _rows[incKey(x.getAttribute("data-b") || "")];
+        if (g) g.also = String(x.value || "").split(",").map(function (a) { return a.trim(); }).filter(Boolean);
+      });
+      if (_bad.length) { toast("A percent must be between 0 and 100: " + _bad.slice(0, 3).join(", ") + ". Nothing was saved."); return; }
+      var _num = function (v) { return v === "" || v == null ? 0 : Number(v) || 0; };
+      var _slab = function (o, need) {
+        if (!need && String(o.upto == null ? "" : o.upto).trim() === "") return null;
+        var r = { upto: _num(o.upto) };
+        INC_CARD_ROLES.forEach(function (k) { r[k] = _num(o[k]); });
+        return r;
+      };
+      var _now = {}; incCardNow().forEach(function (r) { if (!r.seed) _now[incKey(r.brand)] = r; });
+      var _write = [];
+      Object.keys(_rows).forEach(function (k) {
+        var g = _rows[k], m = { also: g.also, s1: _slab(g.s1, true), s2: _slab(g.s2, false) };
+        var was = _now[k];
+        if (_live && was && JSON.stringify({ also: was.also || [], s1: was.s1 || null, s2: was.s2 || null }) === JSON.stringify(m)) return;
+        _write.push({ brand: g.brand, m: m });
+      });
+      if (!_write.length) { toast("Nothing changed on the card."); return; }
+      var _go = function (from) {
+        _write.forEach(function (w) {
+          var m = { from: from, also: w.m.also, s1: w.m.s1, s2: w.m.s2 };
+          save("discounts", { id: "", client: "#INCENTIVE CARD#", brand: w.brand, pct: w.m.s1 ? w.m.s1.upto : 0, notes: JSON.stringify(m) }, true);
+        });
+        S.icdExtra = [];
+        save("audit", { id: "", createdAt: new Date().toISOString(), actor: S.user || "", action: "inc:card", target: from,
+          detail: JSON.stringify({ from: from, brands: _write.map(function (w) { return w.brand; }) }).slice(0, 4000), ip: "" }, true);
+        toast(_live ? "Incentive card saved — " + plural(_write.length, "brand") + " from " + fullDate(from) + "."
+                    : "The incentive card is in force from today — " + plural(_write.length, "brand") + ".");
+        keepScroll = true; render();
+      };
+      if (!_live) { _go(today()); return; }
+      promptSheet({ title: "From which date does the changed card apply?",
+        body: "Deliveries <b>before</b> this date keep the rates they were made at. Leave it as today if it starts now.",
+        type: "date", value: today(), max: today(), ok: "From this date" })
+      .then(function (d) {
+        if (d === null || d === undefined) return;
+        var v = String(d).trim() || today();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(v) || v > today()) { toast("Give a date up to today, e.g. " + today() + "."); return; }
+        if (v < _IC.start) { toast("The card started on " + fullDate(_IC.start) + " — a change cannot start before it."); return; }
+        _go(v);
+      });
+      return;
+    }
     if (act === "adm-save") {
       if (!roleIs("admin")) { toast("The discount and incentive card is the owner\u2019s."); return; }
       var admCl = t.getAttribute("data-cl") || "";
