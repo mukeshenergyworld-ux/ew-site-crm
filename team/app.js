@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.696";
+  var APP_VERSION = "6.9.697";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -1555,6 +1555,7 @@
   /* pressing a button is a fresh start - never make a man wait out a backoff he can see */
   function flushNow() { _flushFails = 0; _flushSkip = 0; flushSoon(); }
   function startFlushTicker() {
+    try { rcfStartAuto(); } catch (e) { }   /* 6.9.697 */
     if (_flushTick) return;
     _flushTick = setInterval(flushSoon, 45000);
     try {
@@ -21294,7 +21295,7 @@ function viewCatalogue() {
     };
     if (pick) {
       return window.showDirectoryPicker({ id: "ew-challan-receipts", mode: "read" }).then(function (dir) {
-        return idbSet("ew_rcf_dir", dir).then(function () { return go(dir); });
+        return idbSet("ew_rcf_dir", dir).then(function () { rcfMetaSet({ linked: dir.name || "", need: 0 }); rcfStartAuto(); return go(dir); });   /* 6.9.697 */
       }).catch(function (e) { if (!(e && e.name === "AbortError")) toast("Could not open the folder."); });
     }
     return idbGet("ew_rcf_dir").then(function (dir) {
@@ -21346,27 +21347,108 @@ function viewCatalogue() {
     return h + '<div class="foot"><button class="btn ghost" data-act="close">Close</button>' +
       (R.busy || R.done ? '' : '<button class="btn" data-act="rcf-go"' + (nOn ? '' : ' disabled') + '>Attach ' + nOn + ' receipt' + (nOn === 1 ? '' : 's') + '</button>') + '</div>';
   }
+  /* ================= THE FOLDER, LINKED FOR GOOD  (6.9.697, 5 Oct 2026) =================
+     HIS WORDS: "i want to permanently link the folder, crm with auto sync only pending one only,
+     we can also manually refresh with refresh button".
+
+     The folder is linked once on this laptop and stays linked (the browser keeps the link; it
+     needs nothing on the server). From then on the CRM checks it by itself - a few seconds after
+     it opens, every ten minutes while it is open, when it comes back to the front, and whenever
+     he taps Refresh - and attaches a photo ONLY to a delivery that has no receipt yet and none on
+     its way up. A delivery that already has its paper is never touched by the automatic check;
+     replacing one stays a decision he makes on the list.
+
+     THE ONE THING THE BROWSER KEEPS FOR ITSELF. Chrome asks once whether this site may read the
+     folder. If he answers "Allow on every visit" it never asks again and the check runs on its
+     own; otherwise the first Refresh of each visit asks, and the screen says so in one line. */
+  var RCF_META = "ew_rcf_meta", _rcfBusy = false, _rcfTimer = null;
+  function rcfMeta() { try { return JSON.parse(localStorage.getItem(RCF_META) || "null") || {}; } catch (e) { return {}; } }
+  function rcfMetaSet(o) { try { localStorage.setItem(RCF_META, JSON.stringify(Object.assign(rcfMeta(), o))); } catch (e) { } }
+  function rcfQueued() { var q = {}; try { prfLoad().forEach(function (x) { q[x.chId] = 1; }); } catch (e) { } return q; }
+  /* every delivery this laptop has already given a receipt from the folder. The automatic check
+     never gives one a second, even if the book on screen is older than the receipt it sent. */
+  var RCF_DONE = "ew_rcf_done";
+  function rcfDone() { try { return JSON.parse(localStorage.getItem(RCF_DONE) || "{}") || {}; } catch (e) { return {}; } }
+  function rcfDoneAdd(id) { try { var d = rcfDone(); d[id] = Date.now(); localStorage.setItem(RCF_DONE, JSON.stringify(d)); } catch (e) { } }
+  /* the attach itself, shared by the list and the automatic check */
+  function rcfAttach(groups, each, done) {
+    var i = 0, n = 0, names = [];
+    var step = function () {
+      if (i >= groups.length) { done(n, names); return; }
+      var g = groups[i++];
+      Promise.all(g.files.map(function (f) { return shrinkPhoto(f); })).then(function (list) {
+        list = (list || []).filter(function (x) { return !!x; });
+        if (!list.length) return;
+        proofStart(g.c.id, { by: "", photo: list[0], photos: list, sig: "", rows: null, replaces: g.have ? String(g.have.url || "") : "" });
+        prfPromote(g.c.id, true);
+        n++; names.push(String(g.c.challanNo || "").split("/").pop()); rcfDoneAdd(g.c.id);
+      }).catch(function () { }).then(function () { if (each) each(n); setTimeout(step, 600); });
+    };
+    step();
+  }
+  /* manual: called from a tap, so the browser may ask for permission */
+  function rcfAuto(manual) {
+    if (_rcfBusy || !canSeeRcptQueue() || !rcfCanLink() || !S.data || !(S.data.challans || []).length) return Promise.resolve();
+    return idbGet("ew_rcf_dir").then(function (dir) {
+      if (!dir) { rcfMetaSet({ linked: "" }); return; }
+      return (dir.queryPermission ? dir.queryPermission({ mode: "read" }) : Promise.resolve("granted")).then(function (p) {
+        if (p !== "granted" && manual && dir.requestPermission) return dir.requestPermission({ mode: "read" });
+        return p;
+      }).then(function (p) {
+        if (p !== "granted") { rcfMetaSet({ linked: dir.name || "", need: 1 }); renderBg(); return; }
+        _rcfBusy = true;
+        return rcfScan(dir).then(function (fs) {
+          var q = rcfQueued(), dn = rcfDone();
+          var todo = rcfPlan(fs).list.filter(function (g) { return !g.have && !q[g.c.id] && !dn[g.c.id]; });
+          var stamp = new Date().toISOString();
+          if (!todo.length) {
+            _rcfBusy = false; rcfMetaSet({ linked: dir.name || "", need: 0, last: stamp, lastN: 0 });
+            if (manual) toast("Folder " + (dir.name || "") + " checked — no new receipt for a pending delivery.");
+            renderBg(); return;
+          }
+          toast("Folder " + (dir.name || "") + ": attaching " + plural(todo.length, "receipt") + "…");
+          rcfAttach(todo, null, function (n, names) {
+            _rcfBusy = false;
+            rcfMetaSet({ linked: dir.name || "", need: 0, last: stamp, lastN: n, lastNos: names.slice(0, 12) });
+            toast(plural(n, "receipt") + " attached from " + (dir.name || "your folder") + (names.length ? " — " + names.slice(0, 8).join(", ") + (names.length > 8 ? "…" : "") : "") + ".");
+            renderBg();
+          });
+        }, function () { _rcfBusy = false; });
+      });
+    }).catch(function () { _rcfBusy = false; });
+  }
+  function rcfStartAuto() {
+    if (_rcfTimer || !rcfCanLink()) return;
+    _rcfTimer = setInterval(function () { if (!document.hidden) rcfAuto(false); }, 600000);
+    setTimeout(function () { rcfAuto(false); }, 8000);
+    try { document.addEventListener("visibilitychange", function () { if (!document.hidden) rcfAuto(false); }); } catch (e) { }
+  }
+  function rcfStatusHtml() {
+    var m = rcfMeta(), t = m.last ? new Date(m.last) : null;
+    var when = t ? t.toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "";
+    if (!rcfCanLink() || !m.linked) {
+      return '<div class="row" style="margin:8px 2px 0;gap:8px;flex-wrap:wrap"><button class="btn sm ghost" data-act="rcf-open" style="min-height:44px">&#128193; Receipts from your folder</button></div>';
+    }
+    return '<div class="card" style="margin:8px 0 0;padding:9px 12px;border-color:' + (m.need ? '#fde68a;background:#fffbeb' : '#99f6e4;background:#f0fdfa') + '">' +
+      '<div class="meta" style="font-size:12.5px;color:' + (m.need ? '#92400e' : '#0f766e') + '">&#128193; Folder <b>' + esc(m.linked) + '</b> is linked. ' +
+      (m.need ? 'Chrome needs your OK to read it on this visit &mdash; tap <b>Check now</b> and choose <b>Allow on every visit</b>, so it never asks again.'
+              : 'It checks itself when the CRM opens and every 10 minutes, and attaches a photo only to a delivery with no receipt yet.') +
+      (when ? ' Last check ' + esc(when) + (m.lastN ? ' &mdash; ' + plural(m.lastN, "receipt") + ' attached' + (m.lastNos && m.lastNos.length ? ' (' + esc(m.lastNos.join(", ")) + ')' : '') : ' &mdash; nothing new') + '.' : '') + '</div>' +
+      '<div class="row" style="gap:8px;flex-wrap:wrap;margin-top:6px">' +
+        '<button class="btn sm" data-act="rcf-now" style="min-height:44px">&#8635; Check now</button>' +
+        '<button class="btn sm ghost" data-act="rcf-open" style="min-height:44px">See the list</button>' +
+        '<button class="btn sm ghost" data-act="rcf-unlink" style="min-height:44px">Unlink</button></div></div>';
+  }
   function rcfGo() {
     var R = S.rcf; if (!R || R.busy) return;
     var todo = R.plan.list.filter(function (g) { return R.on[g.c.id]; });
     if (!todo.length) return;
     R.busy = true; R.done = 0; R.total = todo.length; S.modal = modalRcf(); render();
-    var i = 0;
-    var step = function () {
-      if (i >= todo.length) { R.busy = false; if (S.rcf === R) { S.modal = modalRcf(); render(); } toast(R.done + " receipt" + (R.done === 1 ? "" : "s") + " attached — they upload one by one."); return; }
-      var g = todo[i++];
-      Promise.all(g.files.map(function (f) { return shrinkPhoto(f); })).then(function (list) {
-        list = (list || []).filter(function (x) { return !!x; });
-        if (!list.length) { toast(g.files[0].name + " could not be read — skipped."); return; }
-        proofStart(g.c.id, { by: "", photo: list[0], photos: list, sig: "", rows: null, replaces: g.have ? String(g.have.url || "") : "" });
-        prfPromote(g.c.id, true);
-        R.done++;
-      }).catch(function () { }).then(function () {
-        if (S.rcf === R && S.modal) { S.modal = modalRcf(); renderBg(); }
-        setTimeout(step, 600);   /* one document built at a time - the phone and the queue both prefer it */
-      });
-    };
-    step();
+    rcfAttach(todo, function (n) { R.done = n; if (S.rcf === R && S.modal) { S.modal = modalRcf(); renderBg(); } }, function (n) {   /* 6.9.697 - one attach for both paths */
+      R.busy = false; R.done = n;
+      if (S.rcf === R) { S.modal = modalRcf(); render(); }
+      toast(n + " receipt" + (n === 1 ? "" : "s") + " attached \u2014 they upload one by one.");
+    });
   }
   /* 6.9.696 - lifted out of prf-save unchanged, so a receipt from the folder obeys the same rule.
      quiet: the folder path attaches many at once and says so once at the end. */
@@ -21394,7 +21476,7 @@ function viewCatalogue() {
   function viewRcptPending() {
     if (!canSeeRcptQueue()) return '<div class="empty">This list is the owner\u2019s, accounts\u2019 and the godown\u2019s.</div>';
     var out = rcptOutNoPaper(), inn = rcptInNoPaper(), all = rcptAllWaiting();
-    var _rcfBtn = '<div class="row" style="margin:8px 2px 0"><button class="btn sm ghost" data-act="rcf-open" style="min-height:44px">&#128193; Receipts from your folder</button></div>';   /* 6.9.696 */
+    var _rcfBtn = rcfStatusHtml();   /* 6.9.696 / 6.9.697 - the linked folder and its last check */
     if (!all.length) {
       return _rcfBtn + '<div class="card" style="border-color:#99f6e4;background:#f0fdfa">' +
         '<b style="color:#0f766e">Every delivery has its signed paper</b>' +
@@ -49778,6 +49860,7 @@ function viewCatalogue() {
        screen keeps its "Reload app" button for the old behaviour. */
     if (act === "app-refresh") {
       toast("Checking for anything new…");
+      try { rcfAuto(true); } catch (e) { }   /* 6.9.697 - the linked folder too */
       appTag().then(function (tag) {
         if (tag && _appTag && tag !== _appTag) {
           if (S.pending > 0) { toast("A new version is ready. A save is still syncing - tap Refresh again in a few seconds."); return; }
@@ -57089,6 +57172,13 @@ function viewCatalogue() {
     if (act === "rcf-open") { if (!canSeeRcptQueue()) return; S.modal = modalRcf(); render(); return; }   /* 6.9.696 */
     if (act === "rcf-link") { rcfFromLinked(true); return; }
     if (act === "rcf-recheck") { rcfFromLinked(false); return; }
+    if (act === "rcf-now") { rcfAuto(true); return; }   /* 6.9.697 */
+    if (act === "rcf-unlink") {
+      askSheet({ title: "Unlink the folder?", yes: "Unlink", no: "Keep it",
+        body: "The CRM stops checking it. Receipts already attached stay attached. You can link it again any time." })
+      .then(function (y) { if (!y) return; idbDel("ew_rcf_dir").then(function () { try { localStorage.removeItem(RCF_META); } catch (e) { } toast("Folder unlinked."); render(); }); });
+      return;
+    }
     if (act === "rcf-go") { rcfGo(); return; }
     if (act === "prf-list") {
       S.modal = null; S.tab = "deliveries"; S.delSub = "rcpt"; render(); return;
