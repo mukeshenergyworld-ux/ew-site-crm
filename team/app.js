@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.694";
+  var APP_VERSION = "6.9.695";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -13878,14 +13878,14 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     }
 
     /* ---- 3. ANY FURTHER DISCOUNT ON THIS DELIVERY ---- */
-    var _oDay = rateDayOf(c), _oLive = own && incCardLive(_oDay), _oo = _oLive ? chOffOrder(c, priced, _oDay) : [];   /* 6.9.694 */
+    var _oDay = rateDayOf(c), _oLive = own && incCardLive(_oDay), _oo = own ? chOffOrder(c, priced, _oDay) : [];   /* 6.9.694 / 6.9.695 - every delivery */
     if (own) h += '<div class="card" style="padding:10px 12px">' +
       '<div class="meta" style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#475569">' +
       '<b>Any further discount on this delivery?</b></div>' +
       '<div class="meta" style="font-size:12.5px;margin-top:3px">Over and above the preset above, for this ' +
       'delivery only. It comes off what ' + esc(cl) + ' owes' + (_oLive
         ? ', and off the incentive: it deepens the discount on one brand, which can move that brand to a lower slab of the incentive card.</div>'
-        : ', and every incentive on this delivery is cut by the same share.</div>') +   /* 6.9.694 - the old line said it cut nobody\'s, untrue since 6.9.609 */
+        : ', and off the incentive on one brand &mdash; the partners earn nothing on that part of it.</div>') +   /* 6.9.695 */   /* 6.9.694 - the old line said it cut nobody\'s, untrue since 6.9.609 */
       '<div class="row" style="gap:10px;flex-wrap:wrap;margin-top:8px;align-items:center">' +
         '<input id="hsb_extra" inputmode="decimal" placeholder="Amount off (₹)" ' +
           'data-goods="' + Math.round(goods) + '" data-frt="' + Math.round(frt) + '" ' +
@@ -13912,7 +13912,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       (_oo.length > 1
         ? '<label for="hsb_offbrand" style="margin:10px 0 4px">Which brand does it come off? <span class="meta" style="font-weight:500">(for the incentive)</span></label>' +
           '<select id="hsb_offbrand" style="min-height:44px">' +
-            '<option value="">Not specified &mdash; ' + esc(_oo[0].brand) + ' (lowest discount, highest incentive)</option>' +
+            '<option value="">Not specified &mdash; ' + esc(_oo[0].brand) + ' (highest incentive, lowest discount)</option>' +
             _oo.map(function (g) { return '<option value="' + esc(g.brand) + '">' + esc(g.brand) + ' &middot; ' + esc(String(g.disc)) + '% now</option>'; }).join("") +
           '</select>'
         : (_oo.length === 1 ? '<div class="meta" style="font-size:12.5px;margin-top:6px">It comes off ' + esc(_oo[0].brand) + ', the only brand on this delivery.</div>' : '')) +
@@ -26393,13 +26393,18 @@ function viewCatalogue() {
   /* v6.9.348 - the per-man arithmetic, lifted out of admChallanStrip so the RETURN strip can use
      the identical body. A delivery that says a man earned Rs 231 and a return that says he loses
      Rs 199 must be two runs of one calculation, not two calculations that agree today. */
-  function admIncRows(cl, lines, line, fallbackBrand) {
+  function admIncRows(cl, lines, line, fallbackBrand, ctx) {
+    /* 6.9.695 - with the delivery in hand (ctx.c), the rate on its own day and the extra discount
+       put on its brand (ctx.sh), exactly as incentiveBook pays it - the strip and the book agree */
+    var _day = ctx && ctx.c ? rateDayOf(ctx.c) : "", _sh = ctx ? ctx.sh : null;
     return (line || []).map(function (m) {
       var amt = 0, pcts = {};
       (lines || []).forEach(function (x) {
         if (x.job) return;
-        var r = admRateOf(cl, x.brand || fallbackBrand || "", m.role);
-        if (r > 0) { amt += x.amt * r / 100; pcts[String(r)] = 1; }
+        var _b = x.brand || fallbackBrand || "", _f = _sh ? (_sh[dkey(_b)] || 0) : 0;
+        var _d = _f ? 100 - (100 - (Number(x.disc) || 0)) * (1 - _f) : x.disc;
+        var r = ctx && ctx.c ? ((m.role === "exec") ? execRateFor(cl, _b, _day, _d) : incRate(cl, _b, m.role, _day, _d)) : admRateOf(cl, _b, m.role);
+        if (r > 0) { amt += x.amt * (1 - _f) * r / 100; pcts[String(r)] = 1; }
       });
       var ks = Object.keys(pcts);
       return { role: m.role, name: m.name, amt: amt, rated: ks.length > 0,
@@ -26424,7 +26429,7 @@ function viewCatalogue() {
     var line = stamp ? stamp.filter(function (x) { return x && x.on !== false; })
                             .map(function (x) { return { role: x.role, name: x.name }; })
                      : incLineup(c);
-    var rows = admIncRows(cl, priced, line, c.brand);
+    var rows = admIncRows(cl, priced, line, c.brand, { c: c, sh: chOffShare(c, priced, chFurtherOff(c, priced.reduce(function (a, x) { return a + x.amt; }, 0))) });   /* 6.9.695 */
     var body = rows.length
       ? rows.map(function (r) { return admIncLine(r, 1); }).join("")
       : '<div style="color:#b45309;font-weight:600">Nobody earns on this delivery</div>';
@@ -26464,7 +26469,8 @@ function viewCatalogue() {
     var line = stamp ? stamp.filter(function (x) { return x && x.on !== false; })
                             .map(function (x) { return { role: x.role, name: x.name }; })
                      : admLineup(cl);
-    var rows = admIncRows(cl, lines, line, "");
+    var _rpl = rCh ? pricedLines(rCh, rCh.customerName) : [];
+    var rows = admIncRows(cl, lines, line, "", rCh ? { c: rCh, sh: chOffShare(rCh, _rpl, chFurtherOff(rCh, _rpl.reduce(function (a, x) { return a + x.amt; }, 0))) } : null);   /* 6.9.695 */
     /* v6.9.351 - "compact this also for all". ON A RETURN, "no rate" IS NOT NEWS. It means
        nothing is being taken back off that man, which is quiet and uninteresting - three lines
        of it set the height of the whole card. On a DELIVERY the same words are a job to do (a
@@ -28200,8 +28206,21 @@ function viewCatalogue() {
      that brand the discount is raised by the same share, that discount picks the slab, and the
      partner earns on what is left of the line.
 
-     ONLY FROM THE CARD'S FIRST DAY. Before it, the share rule of 6.9.609 stands, so no rupee
-     already earned moves. A return reverses on the same terms as the delivery it came back from. */
+     A return reverses on the same terms as the delivery it came back from.
+
+     6.9.695 - HIS WORDS: "also applicable on all old entries, everywhere when extra discount word
+     entered in CRM, that should effect partner incentive". So it is no longer only from the card's
+     first day: every delivery carrying an extra discount puts it on a brand. Before the card the
+     brand's own client rate applies (there is no slab to move), so the effect there is that the
+     incentive is lost on that brand rather than shaved off all of them.
+
+     AND THE ORDER IS INCENTIVE FIRST. Measured on his book (5 Oct 2026, 7 deliveries with an extra
+     discount, Rs 1,27,251 in all): taking "lowest discount" literally put the rupees on Accessory
+     (0% discount, 0% incentive) and DRP (32%, 0%) first - so the partners lost NOTHING, the opposite
+     of what he asked. The brand that earns the most incentive takes it, the lowest discount breaks a
+     tie. On the card the two agree anyway: the lower discount sits in the higher slab. With this
+     order the old entries lose Rs 1,736 of incentive in all, against Rs 1,669 under the share rule
+     they were on - Rs 67 more, on two deliveries. */
   function chOffOrder(c, lines, day) {
     var cn = (c && c.customerName) || "", by = {}, order = [];
     (lines || []).forEach(function (x) {
@@ -28218,13 +28237,14 @@ function viewCatalogue() {
       INC_ROLES.forEach(function (role) { t += incRate(cn, g.brand, role, day, g.disc); });
       g.inc = t;
       return g;
-    }).sort(function (a, b) { return (a.disc - b.disc) || (b.inc - a.inc) || (b.amt - a.amt); });
+    }).sort(function (a, b) { return (b.inc - a.inc) || (a.disc - b.disc) || (b.amt - a.amt); });   /* 6.9.695 - incentive first */
   }
   /* brand -> the share of that brand's value the extra discount takes; null = the old share rule */
   function chOffShare(c, lines, off) {
     var day = rateDayOf(c);
-    if (!(off > 0) || !incCardLive(day)) return null;
+    if (!(off > 0)) return null;   /* 6.9.695 - every delivery, old ones too */
     var list = chOffOrder(c, lines, day), st = hisabStamp(c), pick = dkey(st && st.offBrand);
+    if (!list.length) return null;
     if (pick) list.sort(function (a, b) { return (dkey(b.brand) === pick ? 1 : 0) - (dkey(a.brand) === pick ? 1 : 0); });
     var left = off, out = {};
     list.forEach(function (g) {
