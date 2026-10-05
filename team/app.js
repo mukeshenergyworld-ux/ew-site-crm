@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.693";
+  var APP_VERSION = "6.9.694";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -12811,7 +12811,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
                       /* v6.9.342 - carried out of the audit row so the card can show it. An
                          old stamp has no such key and reads "", which is exactly right: every
                          stamp written before today required a receipt to exist. */
-                      noProof: String(d.noProof || "") };
+                      noProof: String(d.noProof || ""), offBrand: String(d.offBrand || "") };   /* 6.9.694 */
       }
     });
     _hsbCache = m;
@@ -13632,7 +13632,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
   }
   function hsbKeep() {
     var v = {}, ck = {};
-    ["hsb_extra", "hsb_extrapc", "hsb_noproof", "hsb_extranote"].forEach(function (k) { var e = document.getElementById(k); if (e) v[k] = e.value; });
+    ["hsb_extra", "hsb_extrapc", "hsb_noproof", "hsb_extranote", "hsb_offbrand"].forEach(function (k) { var e = document.getElementById(k); if (e) v[k] = e.value; });
     var nx = document.getElementById("hsb_noextra"); if (nx) ck.nx = nx.checked;
     var inc = Array.prototype.map.call(document.querySelectorAll("input.hsb-inc"), function (e) { return [e.getAttribute("data-role") + "|" + e.getAttribute("data-name"), e.checked]; });
     var cls = function (sel) { return Array.prototype.map.call(document.querySelectorAll(sel), function (e) { return [e.getAttribute("data-brand"), e.type === "checkbox" ? e.checked : e.value]; }); };
@@ -13878,11 +13878,14 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     }
 
     /* ---- 3. ANY FURTHER DISCOUNT ON THIS DELIVERY ---- */
+    var _oDay = rateDayOf(c), _oLive = own && incCardLive(_oDay), _oo = _oLive ? chOffOrder(c, priced, _oDay) : [];   /* 6.9.694 */
     if (own) h += '<div class="card" style="padding:10px 12px">' +
       '<div class="meta" style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#475569">' +
       '<b>Any further discount on this delivery?</b></div>' +
       '<div class="meta" style="font-size:12.5px;margin-top:3px">Over and above the preset above, for this ' +
-      'delivery only. It comes off what ' + esc(cl) + ' owes. It does <b>not</b> cut anybody&rsquo;s incentive.</div>' +
+      'delivery only. It comes off what ' + esc(cl) + ' owes' + (_oLive
+        ? ', and off the incentive: it deepens the discount on one brand, which can move that brand to a lower slab of the incentive card.</div>'
+        : ', and every incentive on this delivery is cut by the same share.</div>') +   /* 6.9.694 - the old line said it cut nobody\'s, untrue since 6.9.609 */
       '<div class="row" style="gap:10px;flex-wrap:wrap;margin-top:8px;align-items:center">' +
         '<input id="hsb_extra" inputmode="decimal" placeholder="Amount off (₹)" ' +
           'data-goods="' + Math.round(goods) + '" data-frt="' + Math.round(frt) + '" ' +
@@ -13905,7 +13908,15 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
           'style="width:19px;height:19px;flex:0 0 auto"/> No further discount</label>' +
       '</div>' +
       '<input id="hsb_extranote" placeholder="Why (optional) — e.g. breakage adjusted, rate settled on site" ' +
-        'style="margin-top:8px"/></div>';
+        'style="margin-top:8px"/>' +
+      (_oo.length > 1
+        ? '<label for="hsb_offbrand" style="margin:10px 0 4px">Which brand does it come off? <span class="meta" style="font-weight:500">(for the incentive)</span></label>' +
+          '<select id="hsb_offbrand" style="min-height:44px">' +
+            '<option value="">Not specified &mdash; ' + esc(_oo[0].brand) + ' (lowest discount, highest incentive)</option>' +
+            _oo.map(function (g) { return '<option value="' + esc(g.brand) + '">' + esc(g.brand) + ' &middot; ' + esc(String(g.disc)) + '% now</option>'; }).join("") +
+          '</select>'
+        : (_oo.length === 1 ? '<div class="meta" style="font-size:12.5px;margin-top:6px">It comes off ' + esc(_oo[0].brand) + ', the only brand on this delivery.</div>' : '')) +
+      '</div>';
 
     /* ---- 4. WHO EARNS ON THIS DELIVERY ----
        `lineup` is the one built for the brand table above. Computing it twice would be two
@@ -14015,7 +14026,8 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         /* v6.9.342 - empty means there WAS a signed receipt. A non-empty string is the reason
            this delivery was passed without one, in his words, kept beside the stamp itself so
            the two can never be separated. */
-        noProof: String(x.noProof || "")
+        noProof: String(x.noProof || ""),
+        offBrand: String(x.offBrand || "")   /* 6.9.694 - the brand the extra discount comes off */
       })
     }, true);
   }
@@ -26546,7 +26558,9 @@ function viewCatalogue() {
       var clBilled = 0, clFreight = 0, clReturned = 0;
       chs.forEach(function (c) {
         var base = 0, inc = 0;
-        pricedLines(c, c.customerName).forEach(function (x) {
+        var _lines = pricedLines(c, c.customerName);   /* 6.9.694 - the extra discount, put onto a brand */
+        var _sh = chOffShare(c, _lines, chFurtherOff(c, _lines.reduce(function (a, x) { return a + x.amt; }, 0)));
+        _lines.forEach(function (x) {
           /* ---- JOB WORK EARNS NOBODY AN INCENTIVE (v6.9.323, 20 Aug 2026) ----
              Asked directly: "does job work earn the partner his incentive, the same as
              material?" He answered MATERIAL ONLY - a partner earns on the goods he brought us,
@@ -26565,8 +26579,10 @@ function viewCatalogue() {
              line-up answers for itself, and one that does not falls back to the client record
              exactly as it always has. */
           /* 6.9.668 - the executive's base is the line LESS the partners' incentive on it */
-          var _pd = deductFor ? deductFor(cl, x.brand || c.brand || "", c, x.disc) : 0;
-          inc += x.amt * (1 - _pd / 100) * rateFor(cl, x.brand || c.brand || "", c, x.disc) / 100;   /* 6.9.693 - the line's own discount picks the slab */
+          var _f = _sh ? (_sh[dkey(x.brand || c.brand || "")] || 0) : 0;
+          var _d = _f ? 100 - (100 - (Number(x.disc) || 0)) * (1 - _f) : x.disc;   /* 6.9.694 - the deeper discount picks the slab */
+          var _pd = deductFor ? deductFor(cl, x.brand || c.brand || "", c, _d) : 0;
+          inc += x.amt * (1 - _f) * (1 - _pd / 100) * rateFor(cl, x.brand || c.brand || "", c, _d) / 100;   /* 6.9.693 - the line's own discount picks the slab */
         });
         /* v6.9.609 - REVIEW A9, HIS DECISION 25 Sep 2026: "after further discount". The further
            discount at hisab time and the discount on the whole challan (hisabExtra) come off the
@@ -26576,7 +26592,7 @@ function viewCatalogue() {
            And the ratio's base (payBase) is the net too: a client who paid everything he owes
            now reads fully paid, where the gross base kept his partner short for ever. */
         var off = chFurtherOff(c, base), net = base - off;
-        if (off > 0 && base > 0) inc = inc * net / base;
+        if (off > 0 && base > 0 && !_sh) inc = inc * net / base;   /* 6.9.694 - with the card it is already on its brand */
         billed += net; earned += inc; clientNames[c.customerName] = 1;
         clBilled += net; clFreight += chFreight(c);
         rows.push({ no: c.challanNo, client: c.customerName, site: c.site, brand: c.brand,
@@ -26599,21 +26615,24 @@ function viewCatalogue() {
            delivery's line-up. Read against the client record instead, a partner deliberately
            ticked off a challan would be reversed for an incentive he never earned and would go
            NEGATIVE. A return naming no challan hands back null and falls back, as before. */
-        var rCh = retChallan(r);
+        var rCh = retChallan(r), _rsh = null;
+        if (rCh) { var _rl = pricedLines(rCh, rCh.customerName); _rsh = chOffShare(rCh, _rl, chFurtherOff(rCh, _rl.reduce(function (a, x) { return a + x.amt; }, 0))); }   /* 6.9.694 */
         returnLines(r).forEach(function (x) {
           rBase += x.amt;
           /* v6.9.354 - the mirror of the sale four hundred lines above: job work counts as
              RETURNED value, because the client is credited for it, and reverses nobody's
              incentive, because nobody earned one on it. Same flag, same rule, both directions. */
           if (x.job) return;
-          var _rpd = deductFor ? deductFor(cl, x.brand, rCh, x.disc) : 0;   /* 6.9.668 - the mirror */
-          rInc += x.amt * (1 - _rpd / 100) * rateFor(cl, x.brand, rCh, x.disc) / 100;
+          var _rf = _rsh ? (_rsh[dkey(x.brand)] || 0) : 0;
+          var _rd = _rf ? 100 - (100 - (Number(x.disc) || 0)) * (1 - _rf) : x.disc;   /* 6.9.694 - as it was earned */
+          var _rpd = deductFor ? deductFor(cl, x.brand, rCh, _rd) : 0;   /* 6.9.668 - the mirror */
+          rInc += x.amt * (1 - _rf) * (1 - _rpd / 100) * rateFor(cl, x.brand, rCh, _rd) / 100;
           if (x.brand) rBrands[x.brand] = 1;
         });
         /* v6.9.609 - A9: a return carries the same share of its delivery's discount as the credit
            does (returnNet, v6.9.599), so it reverses incentive on the net too */
         var rf = retShare(r).factor;
-        if (rf !== 1) { rBase = Math.round(rBase * rf); rInc = rInc * rf; }
+        if (rf !== 1) { rBase = Math.round(rBase * rf); if (!_rsh) rInc = rInc * rf; }   /* 6.9.694 */
         returned += rBase; reversed += rInc; earned -= rInc;
         clReturned += rBase;
         if (rBase > 0 || rInc !== 0) {
@@ -28166,6 +28185,55 @@ function viewCatalogue() {
 
      One function now, read by both, so they cannot drift apart again. A further discount is
      never negative and never more than goods that exist. */
+  /* ================= AN EXTRA DISCOUNT MOVES THE SLAB  (6.9.694, 5 Oct 2026) =================
+     HIS WORDS: "any extra discount kind of thing given to client should also effect partner
+     incentive, if not specified then lowest discount highest incentive brand to be considered".
+
+     Until today an extra discount in rupees (the further discount at Finalise, and the discount on
+     the whole challan) cut every incentive on the delivery by the same share (6.9.609). With the
+     incentive card that is not enough: an extra discount is a deeper discount on SOME brand, and a
+     deeper discount can fall into a lower slab of the card - or above it, where nobody earns.
+
+     So the rupees are put onto a brand. The one he names at Finalise if he names one; otherwise
+     the brand on the delivery with the LOWEST discount, and among those the one paying the HIGHEST
+     incentive - his rule - then the next, if the amount is bigger than that brand. On each line of
+     that brand the discount is raised by the same share, that discount picks the slab, and the
+     partner earns on what is left of the line.
+
+     ONLY FROM THE CARD'S FIRST DAY. Before it, the share rule of 6.9.609 stands, so no rupee
+     already earned moves. A return reverses on the same terms as the delivery it came back from. */
+  function chOffOrder(c, lines, day) {
+    var cn = (c && c.customerName) || "", by = {}, order = [];
+    (lines || []).forEach(function (x) {
+      if (x.job) return;
+      var b = String(x.brand || (c && c.brand) || "").trim(); if (!b) return;
+      var k = dkey(b);
+      if (!by[k]) { by[k] = { brand: b, amt: 0, disc: null, inc: 0 }; order.push(k); }
+      var g = by[k], d = Number(x.disc) || 0;
+      g.amt += x.amt;
+      if (g.disc === null || d < g.disc) g.disc = d;
+    });
+    return order.map(function (k) {
+      var g = by[k], t = execRateFor(cn, g.brand, day, g.disc);
+      INC_ROLES.forEach(function (role) { t += incRate(cn, g.brand, role, day, g.disc); });
+      g.inc = t;
+      return g;
+    }).sort(function (a, b) { return (a.disc - b.disc) || (b.inc - a.inc) || (b.amt - a.amt); });
+  }
+  /* brand -> the share of that brand's value the extra discount takes; null = the old share rule */
+  function chOffShare(c, lines, off) {
+    var day = rateDayOf(c);
+    if (!(off > 0) || !incCardLive(day)) return null;
+    var list = chOffOrder(c, lines, day), st = hisabStamp(c), pick = dkey(st && st.offBrand);
+    if (pick) list.sort(function (a, b) { return (dkey(b.brand) === pick ? 1 : 0) - (dkey(a.brand) === pick ? 1 : 0); });
+    var left = off, out = {};
+    list.forEach(function (g) {
+      if (left <= 0 || !(g.amt > 0)) return;
+      var take = Math.min(left, g.amt);
+      left -= take; out[dkey(g.brand)] = take / g.amt;
+    });
+    return out;
+  }
   function chFurtherOff(c, sub) {
     return sub > 0 ? Math.min(Math.max(0, hisabExtra(c)), sub) : 0;
   }
@@ -52254,7 +52322,7 @@ function viewCatalogue() {
       var _diff = _nowG - _was;
       /* v6.9.571 - the sheet comes back the moment he answers, with what he had typed */
       var _keep = {};
-      ["hsb_extra", "hsb_extrapc", "hsb_noproof"].forEach(function (k) { var e = document.getElementById(k); if (e) _keep[k] = e.value; });
+      ["hsb_extra", "hsb_extrapc", "hsb_noproof", "hsb_offbrand"].forEach(function (k) { var e = document.getElementById(k); if (e) _keep[k] = e.value; });
       var _keepNx = document.getElementById("hsb_noextra"); _keepNx = _keepNx ? _keepNx.checked : null;
       var _keepB = {};
       Array.prototype.forEach.call(document.querySelectorAll("[data-bdisc]"), function (inp) { _keepB[inp.getAttribute("data-bdisc")] = inp.value; });
@@ -54921,7 +54989,8 @@ function viewCatalogue() {
       }
       hisabStampSave(hc, hset, hign, {
         inc: hInc, extra: hxAmt, noProof: hNoProof,
-        extraNote: (el("hsb_extranote") && el("hsb_extranote").value) || ""
+        extraNote: (el("hsb_extranote") && el("hsb_extranote").value) || "",
+        offBrand: hxAmt > 0 ? ((el("hsb_offbrand") && el("hsb_offbrand").value) || "") : ""
       });
       S.modal = null;
       _hsbCache = null;
