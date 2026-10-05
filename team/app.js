@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.695";
+  var APP_VERSION = "6.9.696";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -21206,11 +21206,197 @@ function viewCatalogue() {
   /* one row, and it NAMES THE MEN - the point of a chase list is knowing who to ask */
   /* v6.9.483 - rcptRow REMOVED. The compact chase row 6.9.481 drew, replaced by challanCardHtml - the card the Challans tab has always drawn, which already carries the status pills, the made/passed/receipt trail and every button including Attach. Declared in lift.js REMOVED. */
   /* v6.9.483 - rcptBand REMOVED. The state-banded wrapper from 6.9.481, replaced by rcptDayBands - he compared the two apps and asked for the Challan app's shape, which is date-wise. Its two sentences are kept on one line under the strap. Declared in lift.js REMOVED. */
+  /* ================= RECEIPTS FROM A FOLDER  (6.9.696, 5 Oct 2026) =================
+     HIS WORDS, with a photograph of his laptop folder "CRM CHALLANS" - 74.jpg, 138.jpg ... 222.jpg:
+     "this is how i save challans in my laptop with challan name as serial no, can it be possible
+     then i link this folder with challan in crm, so it automatically fetch the receipt with
+     identifying from pic name that is challan no".
+
+     MEASURED on his book the same day: 221 deliveries carry the new number (dd/mm/yyyy/NNN), and
+     NNN runs 1-231 with no number used twice, so "149.jpg" names exactly one delivery. 185 of the
+     221 already have a receipt on file; 36 do not. The old per-client numbers (KAPIL2660/180826/001)
+     repeat 001, 002 ... for every client and are never matched from a file name.
+
+     WHAT IT DOES. He picks the folder (or links it once, in Chrome, and checks it again with one
+     tap). Every photo is read by its name: the first number in it is the delivery's serial, so
+     149.jpg, 149-2.jpg and "149 (1).jpg" all go on 22/09/2026/149 - more than one photo of one
+     delivery becomes one receipt with several pages. He sees the list before anything is written:
+     new receipts are ticked, a delivery that already has one is NOT (tick it to replace - the old
+     one stays on the sheet, as every replacement always has), a name that matches nothing is
+     listed and left alone. Attach puts each through the very same queue as a receipt attached by
+     hand - same document, same Drive and Telegram copy, same "paper is proof it arrived" rule. */
+  var RCF_IMG = /\.(jpe?g|png|webp|heic|heif)$/i;
+  function rcfSerial(name) {
+    var stem = String(name || "").replace(/\.[^.]+$/, "");
+    var m = stem.match(/^\D*(\d{1,4})(?!\d)/);
+    return m ? Number(m[1]) : null;
+  }
+  function rcfIndex() {
+    var ix = {};
+    (S.data.challans || []).forEach(function (c) {
+      var m = String(c.challanNo || "").match(/^\d{2}\/\d{2}\/\d{4}\/(\d{1,4})$/);
+      if (m) (ix[Number(m[1])] || (ix[Number(m[1])] = [])).push(c);
+    });
+    return ix;
+  }
+  function rcfPlan(files) {
+    var ix = rcfIndex(), groups = {}, order = [], nomatch = [], skipped = [];
+    (files || []).forEach(function (f) {
+      var nm = String((f && f.name) || "");
+      if (!RCF_IMG.test(nm)) { if (!/^\./.test(nm)) skipped.push(nm); return; }
+      var s = rcfSerial(nm), hits = s == null ? [] : (ix[s] || []);
+      if (hits.length !== 1) { nomatch.push({ name: nm, ser: s, two: hits.length > 1 }); return; }
+      var c = hits[0];
+      if (!groups[c.id]) { groups[c.id] = { c: c, files: [], have: challanProof(c.id) }; order.push(c.id); }
+      groups[c.id].files.push(f);
+    });
+    var list = order.map(function (id) {
+      var g = groups[id];
+      var stem = function (f) { return String(f.name).replace(/\.[^.]+$/, ""); };
+      g.files.sort(function (a, b) { return stem(a).localeCompare(stem(b), undefined, { numeric: true }); });
+      g.files = g.files.slice(0, PRF_MAX_PHOTOS);
+      return g;
+    }).sort(function (a, b) { return rcfSerial(a.c.challanNo.split("/").pop()) - rcfSerial(b.c.challanNo.split("/").pop()); });
+    return { list: list, nomatch: nomatch, skipped: skipped };
+  }
+  function rcfSet(files, from) {
+    var p = rcfPlan(files);
+    S.rcf = { from: from || "", plan: p, on: {}, busy: false, done: 0, total: 0 };
+    p.list.forEach(function (g) { if (!g.have) S.rcf.on[g.c.id] = 1; });
+    S.modal = modalRcf(); render();
+  }
+  /* Chrome on a laptop can remember the folder itself; Safari and phones pick it each time. */
+  function rcfCanLink() { return typeof window.showDirectoryPicker === "function"; }
+  function rcfScan(dir) {
+    var out = [];
+    var walk = function (h) {
+      var it = h.values(), next = function () {
+        return it.next().then(function (r) {
+          if (r.done) return;
+          var e = r.value;
+          if (e.kind === "file" && RCF_IMG.test(e.name)) return e.getFile().then(function (f) { out.push(f); return next(); });
+          return next();
+        });
+      };
+      return next();
+    };
+    return walk(dir).then(function () { return out; });
+  }
+  function rcfFromLinked(pick) {
+    var go = function (dir) {
+      return (dir.queryPermission ? dir.queryPermission({ mode: "read" }) : Promise.resolve("granted")).then(function (p) {
+        return p === "granted" ? p : (dir.requestPermission ? dir.requestPermission({ mode: "read" }) : "denied");
+      }).then(function (p) {
+        if (p !== "granted") { toast("The browser did not allow reading the folder. Pick it again."); return; }
+        toast("Reading " + (dir.name || "the folder") + "…");
+        return rcfScan(dir).then(function (fs) { rcfSet(fs, dir.name || ""); });
+      });
+    };
+    if (pick) {
+      return window.showDirectoryPicker({ id: "ew-challan-receipts", mode: "read" }).then(function (dir) {
+        return idbSet("ew_rcf_dir", dir).then(function () { return go(dir); });
+      }).catch(function (e) { if (!(e && e.name === "AbortError")) toast("Could not open the folder."); });
+    }
+    return idbGet("ew_rcf_dir").then(function (dir) {
+      if (!dir) return rcfFromLinked(true);
+      return go(dir);
+    }).catch(function () { toast("Could not open the linked folder — link it again."); });
+  }
+  function modalRcf() {
+    var R = S.rcf, P = R && R.plan;
+    var h = '<h2>Receipts from your folder</h2>' +
+      '<div class="meta" style="margin-bottom:8px">Each photo is read by its <b>name</b>: <b>149.jpg</b> goes on delivery <b>&hellip;/149</b>, ' +
+      '149-2.jpg on the same one as a second page. You see the list before anything is attached.</div>' +
+      '<div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:8px">' +
+      (rcfCanLink()
+        ? '<button class="btn sm" data-act="rcf-link" style="min-height:44px">&#128193; Link my challan folder</button>' +
+          '<button class="btn sm ghost" data-act="rcf-recheck" style="min-height:44px">&#8635; Check the linked folder</button>'
+        : '') +
+      '<label class="btn sm ghost" style="min-height:44px;display:inline-flex;align-items:center;cursor:pointer;margin:0;text-transform:none;letter-spacing:0">Pick the folder' +
+        '<input type="file" id="rcf_dir" webkitdirectory multiple style="display:none"/></label>' +
+      '<label class="btn sm ghost" style="min-height:44px;display:inline-flex;align-items:center;cursor:pointer;margin:0;text-transform:none;letter-spacing:0">Pick photos' +
+        '<input type="file" id="rcf_files" accept="image/*" multiple style="display:none"/></label></div>';
+    if (!P) return h + '<div class="foot"><button class="btn ghost" data-act="close">Close</button></div>';
+    var on = R.on, nOn = P.list.filter(function (g) { return on[g.c.id]; }).length;
+    var nNew = P.list.filter(function (g) { return !g.have; }).length, nHave = P.list.length - nNew;
+    h += '<div class="card" style="padding:9px 12px"><div class="meta" style="font-size:12.5px">' + (R.from ? 'Folder <b>' + esc(R.from) + '</b>: ' : '') +
+      '<b>' + nNew + '</b> deliver' + (nNew === 1 ? 'y gets' : 'ies get') + ' a receipt &middot; ' +
+      '<b>' + nHave + '</b> already ha' + (nHave === 1 ? 's' : 've') + ' one (not ticked &mdash; tick to replace) &middot; ' +
+      '<b>' + P.nomatch.length + '</b> ' + (P.nomatch.length === 1 ? 'name matches' : 'names match') + ' no delivery' +
+      (P.skipped.length ? ' &middot; ' + P.skipped.length + ' not a photo' : '') + '</div></div>';
+    if (R.busy || R.done) {
+      h += '<div class="card" style="border-color:#99f6e4;background:#f0fdfa;padding:9px 12px"><b style="color:#0f766e">' +
+        (R.busy ? 'Attaching ' + R.done + ' of ' + R.total + '…' : R.done + ' receipt' + (R.done === 1 ? '' : 's') + ' attached') + '</b>' +
+        '<div class="meta" style="font-size:12.5px">They go up one by one in the background, like any receipt — you can close this.</div></div>';
+    }
+    h += '<div style="max-height:52vh;overflow:auto;border:1px solid #e2e8f0;border-radius:10px">' +
+      P.list.map(function (g) {
+        var c = g.c;
+        return '<label style="display:flex;gap:10px;align-items:center;padding:8px 10px;border-bottom:1px solid #f1f5f9;min-height:44px;cursor:pointer;margin:0;text-transform:none;letter-spacing:0;font-weight:400;font-size:13px;color:#0f172a">' +
+          '<input type="checkbox" class="rcf-on" data-id="' + esc(c.id) + '"' + (on[c.id] ? ' checked' : '') + (R.busy || R.done ? ' disabled' : '') +
+            ' style="width:19px;height:19px;flex:0 0 auto"/>' +
+          '<span style="flex:1 1 auto;min-width:0"><b>' + esc(c.challanNo) + '</b> &middot; ' + esc(c.customerName || "") +
+            '<span class="meta" style="display:block;font-size:12px">' + esc(g.files.map(function (f) { return f.name; }).join(", ")) +
+            (g.have ? ' &middot; <span style="color:#b45309">already has a receipt</span>' : '') + '</span></span></label>';
+      }).join("") +
+      P.nomatch.map(function (x) {
+        return '<div style="padding:8px 10px;border-bottom:1px solid #f1f5f9;color:#94a3b8;font-size:12.5px">' + esc(x.name) + ' &mdash; ' +
+          (x.ser == null ? 'no number in the name' : x.two ? 'two deliveries carry ' + x.ser : 'no delivery numbered ' + x.ser) + '</div>';
+      }).join("") + '</div>';
+    return h + '<div class="foot"><button class="btn ghost" data-act="close">Close</button>' +
+      (R.busy || R.done ? '' : '<button class="btn" data-act="rcf-go"' + (nOn ? '' : ' disabled') + '>Attach ' + nOn + ' receipt' + (nOn === 1 ? '' : 's') + '</button>') + '</div>';
+  }
+  function rcfGo() {
+    var R = S.rcf; if (!R || R.busy) return;
+    var todo = R.plan.list.filter(function (g) { return R.on[g.c.id]; });
+    if (!todo.length) return;
+    R.busy = true; R.done = 0; R.total = todo.length; S.modal = modalRcf(); render();
+    var i = 0;
+    var step = function () {
+      if (i >= todo.length) { R.busy = false; if (S.rcf === R) { S.modal = modalRcf(); render(); } toast(R.done + " receipt" + (R.done === 1 ? "" : "s") + " attached — they upload one by one."); return; }
+      var g = todo[i++];
+      Promise.all(g.files.map(function (f) { return shrinkPhoto(f); })).then(function (list) {
+        list = (list || []).filter(function (x) { return !!x; });
+        if (!list.length) { toast(g.files[0].name + " could not be read — skipped."); return; }
+        proofStart(g.c.id, { by: "", photo: list[0], photos: list, sig: "", rows: null, replaces: g.have ? String(g.have.url || "") : "" });
+        prfPromote(g.c.id, true);
+        R.done++;
+      }).catch(function () { }).then(function () {
+        if (S.rcf === R && S.modal) { S.modal = modalRcf(); renderBg(); }
+        setTimeout(step, 600);   /* one document built at a time - the phone and the queue both prefer it */
+      });
+    };
+    step();
+  }
+  /* 6.9.696 - lifted out of prf-save unchanged, so a receipt from the folder obeys the same rule.
+     quiet: the folder path attaches many at once and says so once at the end. */
+  function prfPromote(pcid, quiet) {
+      var _pc = (S.data.challans || []).filter(function (x) { return x.id === pcid; })[0];
+      /* v6.9.560 - THE PAPER IS THE PROOF IT ARRIVED (the Challan app's rule since 1.10.0, his
+         question tonight: "attaching receipt auto marked as received, what you think?"). A PASSED
+         challan - Approved or Dispatched - goes to Received the moment its receipt is attached,
+         through the same journalled write the Receipt-in sheet uses. A Draft keeps the paper and
+         is NOT promoted: passing is the money control and the approval queue must see it. */
+      if (_pc && !hisabCounts(_pc) && (String(_pc.status || "") === "Dispatched" || String(_pc.status || "") === "Approved")) {
+        _pc.status = "Received"; _pc.receiptReceived = "Y"; _pc.receiptAt = _pc.receiptAt || new Date().toISOString();
+        if (!quiet) toast("Receipt attached \u2014 " + (_pc.challanNo || "the delivery") + " is marked Received; " + money(_pc.amount) + " is on " + (_pc.customerName || "his") + "\u2019s account.");
+        render();
+        (function (pc) {
+          api("challanMove", { id: pc.id, to: "Received" }).then(function (r2) {
+            if (!r2 || !r2.ok) { try { save("challans", pc); } catch (e) { } toast("Marked received on this device \u2014 the server has not confirmed it yet. It is saved and will keep trying."); }
+            quietSync();
+          }).catch(function () { try { save("challans", pc); } catch (e) { } quietSync(); });
+        })(_pc);
+      } else if (_pc && !hisabCounts(_pc) && String(_pc.status || "") === "Draft") {
+        if (!quiet) toast("Receipt filed. " + (_pc.challanNo || "This challan") + " has not been passed yet, so it stays Draft \u2014 pass it and it counts.");
+      }
+  }
   function viewRcptPending() {
     if (!canSeeRcptQueue()) return '<div class="empty">This list is the owner\u2019s, accounts\u2019 and the godown\u2019s.</div>';
     var out = rcptOutNoPaper(), inn = rcptInNoPaper(), all = rcptAllWaiting();
+    var _rcfBtn = '<div class="row" style="margin:8px 2px 0"><button class="btn sm ghost" data-act="rcf-open" style="min-height:44px">&#128193; Receipts from your folder</button></div>';   /* 6.9.696 */
     if (!all.length) {
-      return '<div class="card" style="border-color:#99f6e4;background:#f0fdfa">' +
+      return _rcfBtn + '<div class="card" style="border-color:#99f6e4;background:#f0fdfa">' +
         '<b style="color:#0f766e">Every delivery has its signed paper</b>' +
         '<div class="meta" style="color:#0f766e;font-size:12.5px;margin-top:3px">' +
         'Nothing is waiting. A delivery appears here the moment it leaves the godown, and ' +
@@ -21221,7 +21407,7 @@ function viewCatalogue() {
        its own with a paragraph in it; he compared the two apps and asked for the Challan app's
        shape, which is date-wise. The words that mattered are kept, on one line, and the state
        itself is on every row in the card's own status pill. */
-    return '<div class="meta" style="font-weight:700;margin:8px 2px 4px;color:#0f172a">' +
+    return _rcfBtn + '<div class="meta" style="font-weight:700;margin:8px 2px 4px;color:#0f172a">' +
         all.length + ' challan' + (all.length === 1 ? '' : 's') + ' &middot; ' + money(val) +
         ' &middot; ' + (NEWEST_DAY_FIRST ? 'latest day first' : 'oldest day first') + '</div>' +
       '<div class="meta" style="font-size:12.5px;line-height:1.55;margin:0 2px 4px;color:#7f1d1d">' +
@@ -48901,6 +49087,23 @@ function viewCatalogue() {
        photo usually lands on WhatsApp from a driver an hour after the material did, and forcing
        the camera open is exactly why no proof was ever attached. Read on the change event, never
        at save time - a repaint empties a file input and the photo would be gone. */
+    /* 6.9.696 - Receipts from your folder: the folder or the photos, and the ticks */
+    ["rcf_dir", "rcf_files"].forEach(function (id) {
+      var rf = el(id);
+      if (rf) rf.addEventListener("change", function (e) {
+        var fs = [].slice.call(e.target.files || []);
+        var top = id === "rcf_dir" && fs[0] && fs[0].webkitRelativePath ? String(fs[0].webkitRelativePath).split("/")[0] : "";
+        if (fs.length) rcfSet(fs, top);
+      });
+    });
+    document.querySelectorAll("input.rcf-on").forEach(function (cb) {
+      cb.addEventListener("change", function () {
+        if (!S.rcf) return;
+        var id = cb.getAttribute("data-id");
+        if (cb.checked) S.rcf.on[id] = 1; else delete S.rcf.on[id];
+        S.modal = modalRcf(); render();
+      });
+    });
     var pfEl = el("prf_photo");
     if (pfEl) {
       pfEl.addEventListener("change", function (e) {
@@ -56883,6 +57086,10 @@ function viewCatalogue() {
     if (act === "prf-cancel") { S.prf = null; S.modal = null; render(); return; }
     /* v6.9.483 - the modal is gone; this goes to the section that answers the same question
        properly, day by day, with the whole card on every row. */
+    if (act === "rcf-open") { if (!canSeeRcptQueue()) return; S.modal = modalRcf(); render(); return; }   /* 6.9.696 */
+    if (act === "rcf-link") { rcfFromLinked(true); return; }
+    if (act === "rcf-recheck") { rcfFromLinked(false); return; }
+    if (act === "rcf-go") { rcfGo(); return; }
     if (act === "prf-list") {
       S.modal = null; S.tab = "deliveries"; S.delSub = "rcpt"; render(); return;
     }
@@ -56905,25 +57112,7 @@ function viewCatalogue() {
          hisab and nothing said so. It is offered here, with the consequence spelled out in
          rupees, rather than assumed either way: a return, or a receipt filed for the record on
          something already received, must not be moved by accident. */
-      var _pc = (S.data.challans || []).filter(function (x) { return x.id === pcid; })[0];
-      /* v6.9.560 - THE PAPER IS THE PROOF IT ARRIVED (the Challan app's rule since 1.10.0, his
-         question tonight: "attaching receipt auto marked as received, what you think?"). A PASSED
-         challan - Approved or Dispatched - goes to Received the moment its receipt is attached,
-         through the same journalled write the Receipt-in sheet uses. A Draft keeps the paper and
-         is NOT promoted: passing is the money control and the approval queue must see it. */
-      if (_pc && !hisabCounts(_pc) && (String(_pc.status || "") === "Dispatched" || String(_pc.status || "") === "Approved")) {
-        _pc.status = "Received"; _pc.receiptReceived = "Y"; _pc.receiptAt = _pc.receiptAt || new Date().toISOString();
-        toast("Receipt attached \u2014 " + (_pc.challanNo || "the delivery") + " is marked Received; " + money(_pc.amount) + " is on " + (_pc.customerName || "his") + "\u2019s account.");
-        render();
-        (function (pc) {
-          api("challanMove", { id: pc.id, to: "Received" }).then(function (r2) {
-            if (!r2 || !r2.ok) { try { save("challans", pc); } catch (e) { } toast("Marked received on this device \u2014 the server has not confirmed it yet. It is saved and will keep trying."); }
-            quietSync();
-          }).catch(function () { try { save("challans", pc); } catch (e) { } quietSync(); });
-        })(_pc);
-      } else if (_pc && !hisabCounts(_pc) && String(_pc.status || "") === "Draft") {
-        toast("Receipt filed. " + (_pc.challanNo || "This challan") + " has not been passed yet, so it stays Draft \u2014 pass it and it counts.");
-      }
+      prfPromote(pcid, false);   /* 6.9.696 - the same rule, now shared with Receipts from your folder */
       return;
     }
     /* Sending a delivery to the customer. If the combined document is already hosted we send THAT
