@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.701";
+  var APP_VERSION = "6.9.702";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -7441,8 +7441,56 @@ window.addEventListener("beforeunload", function (ev) {
     return null;
   }
   function chItems(ch) { try { return JSON.parse(ch.itemsJson || "[]"); } catch (e) { return []; } }
+  /* ===== 6.9.702 / Service 2.0.0 - A BRAND THAT NEEDS SERVICE, AND COMMISSIONING DONE ON THE SERVICE APP =====
+     HIS WORDS, 6 Oct 2026: "once a challan generated of serviceable items (I will mark in crm which brand
+     required regular service which not), it will show commissioning pending in service app, once completed
+     its pics will be uploaded by service technician". HIS ANSWERS: a delivered line waits for commissioning
+     when its brand is switched on here OR its product type is one this CRM already commissions (COMM_CATS);
+     warranty months and the service cycle are set per brand, beside the switch.
+     THE SWITCH is an audit row brand:svc {brand, on, wm, cm} - newest wins, nothing overwritten.
+     A COMMISSIONING DONE ON THE SERVICE APP is an audit row comm:done {chId, date, eng, lines:[{idx, sn, wm,
+     till, cm, skip}], photos}; the engineer's phone may not write a challan, so the stamp lives beside it and
+     is read here exactly as the challan's own i.comm is. A line he marked "not a machine" (skip) leaves the
+     commissioning list for good. */
+  var _svcAud = null, _svcAudN = -1;
+  function svcAud() {
+    var a = (S.data && S.data.audit) || [];
+    if (_svcAud && _svcAudN === a.length) return _svcAud;
+    var brand = {}, bAt = {}, comm = {};
+    a.forEach(function (r) {
+      var act = String((r && r.action) || "");
+      if (act === "brand:svc") {
+        var d = {}; try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
+        var k = dkey(d.brand); if (!k) return;
+        if (!bAt[k] || String(r.createdAt || "") >= bAt[k]) { bAt[k] = String(r.createdAt || ""); brand[k] = { on: !!d.on, wm: Number(d.wm) || 0, cm: Number(d.cm) || 0 }; }
+      } else if (act === "comm:done") {
+        var c = {}; try { c = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
+        if (!c.chId) return;
+        var m = comm[c.chId] || (comm[c.chId] = {});
+        (c.lines || []).forEach(function (l) { m[String(l.idx)] = { date: c.date || "", eng: c.eng || r.actor || "", wm: Number(l.wm) || 0, till: l.till || "", sn: l.sn || "", skip: !!l.skip, id: c.id || "" }; });
+      }
+    });
+    _svcAud = { brand: brand, comm: comm }; _svcAudN = a.length;
+    return _svcAud;
+  }
+  function brandSvc(b) { return svcAud().brand[dkey(b)] || null; }
+  /* the cat a delivered line is commissioned under: the product type's, with the brand's months over it */
+  function commNeed(i) {
+    var cat = commCat(i && i.desc), bs = brandSvc(i && i.brand);
+    if (!(bs && bs.on) && !cat) return null;
+    if (!(bs && bs.on)) return cat;
+    return { kw: [], label: cat ? cat.label : String(i.brand || "Machine"), months: bs.wm || (cat && cat.months) || 12,
+             cycle: bs.cm ? Math.round(bs.cm * 30) : ((cat && cat.cycle) || 180), brand: true };
+  }
   function commItemsOf(ch) {
-    return chItems(ch).map(function (i, idx) { var c = commCat(i.desc); return c ? { i: i, idx: idx, cat: c } : null; }).filter(Boolean);
+    var stamps = (ch && svcAud().comm[ch.id]) || null;
+    return chItems(ch).map(function (i, idx) {
+      var c = commNeed(i); if (!c) return null;
+      var st = stamps ? stamps[String(idx)] : null;
+      if (st && st.skip) return null;   /* the engineer said: not a machine */
+      if (st && !(i.comm && i.comm.date)) i.comm = { date: st.date, eng: st.eng, wm: st.wm, till: st.till, sn: st.sn, app: 1 };
+      return { i: i, idx: idx, cat: c };
+    }).filter(Boolean);
   }
   function commDateOf(ch) { var ci = commItemsOf(ch); return (ci[0] && ci[0].i.comm && ci[0].i.comm.date) || ""; }
   function commPending() {
@@ -8630,7 +8678,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     var rest = [];
     chs.forEach(function (c) {
       chItems(c).forEach(function (i, idx) {
-        if (commCat(i.desc)) return;
+        if (commNeed(i)) return;   /* 6.9.702 - the brand switch too */
         var d = String(i.desc || i.code || "").trim(); if (!d || seen[d]) return; seen[d] = 1;
         rest.push({ key: c.id + ":" + idx, kind: "item", desc: d, brand: String(i.brand || ""), date: localDay(c.createdAt), ch: c.challanNo || "" });
       });
@@ -18382,6 +18430,7 @@ function viewCatalogue() {
         '<span style="display:inline-block;width:15px;color:#94a3b8">' + (bopen ? '&#9662;' : '&#9656;') + '</span>' +
         esc(b.brand) + ' <span class="pill' + (n ? " teal" : " due") + '">' + n + ' products</span>' +
         (String(b.active).toUpperCase() === "N" ? ' <span class="pill">inactive</span>' : "") +
+        ((brandSvc(b.brand) || {}).on ? ' <span class="pill teal">needs service \u00b7 ' + brandSvc(b.brand).wm + ' m warranty \u00b7 every ' + brandSvc(b.brand).cm + ' m</span>' : '') +   /* 6.9.702 */
         /* v6.9.256 - on the row itself as well as in the card above, so it is seen while
            scrolling and not only when the card at the top is read */
         (n ? "" : ' <span class="pill" style="background:#fee2e2;color:#b91c1c">nothing mapped</span>') +
@@ -18424,6 +18473,15 @@ function viewCatalogue() {
       '<label>Brand name</label><input id="b_name" data-ta="brand"' + (b.id ? '' : ' data-ta-new="1"') + ' autocomplete="off" value="' + esc(b.brand) + '"/>' +   /* 6.9.685 */
       '<label>What it is</label><input id="b_notes" value="' + esc(b.notes) + '"/>' +
       '<label>Active</label><select id="b_active">' + opts(["Y", "N"], b.active || "Y") + '</select>' +
+      (function () {   /* 6.9.702 - needs regular service */
+        var bs = brandSvc(b.brand) || {};
+        return '<div class="card" style="margin-top:12px;border-color:#99f6e4;background:#f0fdfa">' +
+          '<label style="display:flex;align-items:center;gap:10px;margin:0;min-height:44px;cursor:pointer;text-transform:none;letter-spacing:0;font-size:13.5px;color:#0f172a">' +
+            '<input type="checkbox" id="b_svc"' + (bs.on ? ' checked' : '') + ' style="width:20px;height:20px"/> <b>Needs commissioning &amp; regular service</b></label>' +
+          '<div class="meta" style="font-size:12.5px">Every delivered line of this brand waits as <b>Commissioning pending</b> in the Service app until the engineer commissions it with photos; then it goes on the service schedule.</div>' +
+          '<div class="grid2" style="margin-top:6px"><div><label>Warranty (months)</label><input id="b_wm" inputmode="numeric" value="' + esc(bs.wm || "") + '" placeholder="12"/></div>' +
+          '<div><label>Service every (months)</label><input id="b_cm" inputmode="numeric" value="' + esc(bs.cm || "") + '" placeholder="6"/></div></div></div>';
+      })() +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
       '<button class="btn" data-act="br-save" data-id="' + esc(b.id || "") + '">Save</button></div>';
   }
@@ -51106,6 +51164,17 @@ function viewCatalogue() {
     if (act === "br-save") {
       var bn = val("b_name");
       if (!bn) { toast("Brand name is required."); return; }
+      /* 6.9.702 - the service switch, as its own audit row, only when it changed */
+      var _bsOld = brandSvc(bn) || { on: false, wm: 0, cm: 0 }, _bsBox = el("b_svc");
+      if (_bsBox) {
+        var _bsNew = { on: !!_bsBox.checked, wm: Number(String(val("b_wm") || "").replace(/[^0-9]/g, "")) || 0, cm: Number(String(val("b_cm") || "").replace(/[^0-9]/g, "")) || 0 };
+        if (_bsNew.on && (!_bsNew.wm || !_bsNew.cm)) { toast("Put the warranty months and how often it is serviced."); return; }
+        if (_bsNew.on !== !!_bsOld.on || (_bsNew.on && (_bsNew.wm !== _bsOld.wm || _bsNew.cm !== _bsOld.cm))) {
+          save("audit", { id: "", createdAt: new Date().toISOString(), actor: S.user, action: "brand:svc", target: bn,
+            detail: JSON.stringify({ brand: bn, on: _bsNew.on, wm: _bsNew.wm, cm: _bsNew.cm }), ip: "" }, true);
+          _svcAud = null;
+        }
+      }
       save("brands", { id: id || "", brand: bn, active: val("b_active"), notes: val("b_notes") })
         .then(function (r) { if (r) closeAck(_gClick, "Brand saved."); });
       return;
@@ -53933,7 +54002,7 @@ function viewCatalogue() {
            into the Service-due reminders and AMC pipeline automatically. */
         var cl = clientByName(commCh.customerName) || {};
         justDone.forEach(function (it) {
-          var cat = commCat(it.desc) || {}, cyc = cat.cycle || 180;
+          var cat = commNeed(it) || {}, cyc = cat.cycle || 180;   /* 6.9.702 - the brand's cycle when it is switched on */
           save("installs", {
             id: "", createdBy: S.user, client: commCh.customerName, mobile: cl.mobile || "",
             address: cl.address || "", area: cl.area || cl.location || "",
