@@ -260,6 +260,22 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
   .sheet .inner{border-radius:16px;max-height:86vh}
 }
 </style>
+<style>
+/* 2.0.0 - the desk */
+.sv2bar{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 4px}
+.sv2bar .btn{flex:1 1 auto}
+.sv2g{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+button.stat.sv2t{font-family:inherit;color:inherit;cursor:pointer;min-height:76px;display:block;width:100%}
+.stat.good .n{color:#0f766e}
+.sv2tab{width:100%;border-collapse:collapse;font-size:13px}
+.sv2tab th{text-align:left;font-size:12px;color:#64748b;font-weight:700;padding:6px 4px}
+.sv2tab td{padding:8px 4px;border-top:1px solid #f1f5f9}
+.sv2tab td.bad{color:#b91c1c;font-weight:700}
+label.sv2p{display:flex;gap:10px;align-items:flex-start;font-size:13px;font-weight:400;color:#0f172a;margin:6px 0;cursor:pointer;min-height:44px}
+label.sv2p input{margin-top:3px;width:20px;height:20px}
+.note.ok{border-color:#a7f3d0;background:#f0fdfa;color:#0f766e}
+textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;font-size:16px;font-family:inherit}
+</style>
 </head>
 <body>
 <div id="root"></div>
@@ -303,14 +319,14 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
    Nothing here deletes anything, ever. A visit is a row added.
    ========================================================================== */
 
-  var APP_VERSION = "1.22.0";
+  var APP_VERSION = "2.0.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_service_session";
 
   var SNAP  = "ew_service_snap";
   var BIO_KEY = "ew_service_bio";
   var CRM_URL = "../team/";
-  var S = { user:"", pin:"", role:"", data:null, tab:"today", q:"", sheet:null, busy:false,
+  var S = { user:"", pin:"", role:"", data:null, tab:"home", q:"", sheet:null, busy:false,
             syncAt:0, fastAt:0, restAt:0, job:null, vis:null, pick:null, open:"", accOpen:"" };
 
   var MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -405,7 +421,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
 
      IT GOES IN THE SLOW HALF, behind REST_EVERY, and not in the fast one. A photograph taken
      last week is not urgent; the machine list and the money are. */
-  var KEEP_REST = ["audit"];
+  var KEEP_REST = ["audit", "challans"];   /* 2.0.0 - the deliveries: products at a site, commissioning */
   var KEEP = KEEP_FAST.concat(KEEP_REST);
 
   /* ---- A MAN MAY HOLD MORE THAN ONE ROLE (20 Aug 2026) ----
@@ -2409,6 +2425,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
 
   /* 1.17.0 - HOW TO USE. One section per screen of this app, keyed by the screen's own key. */
   var HELP_AT = { today: 1, jobs: 1, labour: 1, history: 1, account: 1 };
+  HELP_AT.home = 1;
   function helpHref() { var t = S.tab || "today"; return "../help/service.html#t-" + (HELP_AT[t] ? t : "start"); }
   function header() {
     var age = bookAgeHtml(S.syncAt, S.busy);
@@ -2577,7 +2594,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       return tkDaysTo(p.amcEnd) >= 0 ? { t: "AMC" + (p.amcType ? " (" + p.amcType + ")" : "") + " till " + dstr(p.amcEnd), ok: 1, amc: 1 } : { t: "AMC ended " + dstr(p.amcEnd), c: "bad" };
     }
     if (p.kind === "comm") {
-      if (!(p.commissioned || p.date)) return { t: "Not commissioned yet", c: "warn" };
+      if (p.commissioned === false || !(p.commissioned || p.date)) return { t: "Not commissioned yet", c: "warn" };   /* 2.0.0 - the CRM sends commissioned:false with the delivery date */
       if (!p.till) return { t: "Commissioned " + dstr(p.date) + " - no warranty date", c: "warn" };
       return tkDaysTo(p.till) >= 0 ? { t: "In warranty till " + dstr(p.till), ok: 1 } : { t: "Warranty over " + dstr(p.till), c: "bad" };
     }
@@ -2637,6 +2654,541 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     return saveRow("audit", row);
   }
 
+  /* =====================================================================================
+     2.0.0 - THE SERVICE & COMPLAINT DESK  (6 Oct 2026)
+     HIS WORDS: "need a proper dashboard for service and complaint management: 1. register new
+     complaint 2. selecting a client show which product installed at client site and what is
+     warranty status 3. client will be same as in CRM, no different client 4. pending complaint
+     5. complaint finish button, click it will ask about service charge received or not, if yes
+     how many, if no, put him in pending 6. once a challan generated of serviceable items (I will
+     mark in crm which brand required regular service which not), it will show commissioning
+     pending in service app, once completed its pics will be uploaded by service technician ...
+     make it a professional service cum complaint management app".
+     HIS ANSWERS: commissioning waits on a delivered line when its BRAND is switched on in the CRM
+     or its product type is one the CRM already commissions (softener, filters, pumps, heat pump,
+     RO); warranty months and service cycle are set per brand in the CRM; every technician sees
+     every complaint; photos are the proof of a commissioning.
+     ONE BOOK. A complaint here is the CRM's ticket (audit cmp:open / cmp:move) - the same rows, so
+     the CRM board and this app can never disagree. A client is the CRM's client. A commissioning
+     done here is an audit row comm:done (the CRM reads it beside its own challan stamp) plus an
+     installation row per machine, which is what puts the machine on the service schedule.
+     Nothing is ever deleted: every step is a new row. */
+  var SV2_CATS = ["Product defect", "Wrong / short supply", "Delivery delay", "Installation", "Billing", "Warranty", "Service / AMC", "Other"];
+  var SV2_SRC = ["Phone call", "Walk-in", "WhatsApp", "Engineer"];
+  var SV2_OUT = ["Repaired", "Part replaced", "Advice / settings", "Not a fault / misuse", "Other"];
+  /* the CRM's own commissioning list (COMM_CATS, 6.9.2xx) - the product types it commissions */
+  var SV2_COMM = [
+    { kw: ["softener"], label: "Water Softener", months: 12, cycle: 90 },
+    { kw: ["sand filter"], label: "Sand Filter", months: 12, cycle: 180 },
+    { kw: ["carbon filter"], label: "Carbon Filter", months: 12, cycle: 180 },
+    { kw: ["pressure pump"], label: "Pressure Pump", months: 12, cycle: 365 },
+    { kw: ["heat pump"], label: "Heat Pump", months: 24, cycle: 180 },
+    { kw: ["recirculation"], label: "Recirculation Pump", months: 12, cycle: 365 },
+    { kw: ["purifier", "reverse osmosis"], label: "RO / Purifier", months: 12, cycle: 180 }
+  ];
+  function sv2Key(s) { return String(s == null ? "" : s).replace(/\s+/g, " ").trim().toLowerCase(); }
+  function sv2J(s) { try { return JSON.parse(s || "{}") || {}; } catch (e) { return {}; } }
+  function sv2AddMonths(ymd, m) {
+    var d = new Date(String(ymd || today()).slice(0, 10) + "T00:00:00"); if (isNaN(d.getTime())) return "";
+    d.setMonth(d.getMonth() + (Number(m) || 0)); return ymdLocal(d);
+  }
+  function sv2AddDays(ymd, n) {
+    var d = new Date(String(ymd || today()).slice(0, 10) + "T00:00:00"); if (isNaN(d.getTime())) return "";
+    d.setDate(d.getDate() + (Number(n) || 0)); return ymdLocal(d);
+  }
+  var _sv2c = null;
+  function sv2Bust() { _sv2c = null; }
+  function sv2Cache() {
+    if (_sv2c) return _sv2c;
+    var brand = {}, comm = {}, bAt = {};
+    ((S.data && S.data.audit) || []).forEach(function (a) {
+      var act = String(a && a.action || "");
+      if (act === "brand:svc") {
+        var d = sv2J(a.detail), k = sv2Key(d.brand); if (!k) return;
+        if (!bAt[k] || String(a.createdAt || "") >= bAt[k]) { bAt[k] = String(a.createdAt || ""); brand[k] = { on: !!d.on, wm: Number(d.wm) || 0, cm: Number(d.cm) || 0 }; }
+      } else if (act === "comm:done") {
+        var c = sv2J(a.detail); if (!c.chId) return;
+        var m = comm[c.chId] || (comm[c.chId] = {});
+        (c.lines || []).forEach(function (l) { m[String(l.idx)] = { date: c.date || "", eng: c.eng || a.actor || "", sn: l.sn || "", wm: l.wm, till: l.till || "", cm: l.cm, skip: !!l.skip, id: c.id || a.id, by: a.actor || "" }; });
+      }
+    });
+    _sv2c = { brand: brand, comm: comm };
+    return _sv2c;
+  }
+  function sv2BrandSvc(b) { return sv2Cache().brand[sv2Key(b)] || null; }
+  function sv2CommCat(desc) {
+    var d = " " + String(desc || "").toLowerCase() + " ";
+    for (var i = 0; i < SV2_COMM.length; i++) if (SV2_COMM[i].kw.some(function (k) { return d.indexOf(k) >= 0; })) return SV2_COMM[i];
+    return null;
+  }
+  /* does this delivered line wait for a commissioning, and on what terms */
+  function sv2Need(i) {
+    var bs = sv2BrandSvc(i && i.brand), cat = sv2CommCat(i && i.desc);
+    if (!(bs && bs.on) && !cat) return null;
+    return { label: cat ? cat.label : String((i && i.brand) || "Machine"),
+             wm: (bs && bs.on && bs.wm) || (cat && cat.months) || 12,
+             cm: (bs && bs.on && bs.cm) || (cat ? Math.max(1, Math.round(cat.cycle / 30)) : 6) };
+  }
+  function sv2Items(c) { try { return JSON.parse((c && c.itemsJson) || "[]") || []; } catch (e) { return []; } }
+  /* the stamp on one line: the CRM's own (itemsJson comm) or this app's (comm:done) */
+  function sv2Stamp(c, idx, i) {
+    if (i && i.comm && i.comm.date) return { date: i.comm.date, sn: i.comm.sn || "", till: i.comm.till || "", wm: i.comm.wm, eng: i.comm.eng || "" };
+    var m = sv2Cache().comm[c.id]; return m ? (m[String(idx)] || null) : null;
+  }
+  function sv2CommLines(c) {
+    var out = [];
+    sv2Items(c).forEach(function (i, idx) {
+      var n = sv2Need(i); if (!n) return;
+      out.push({ i: i, idx: idx, need: n, st: sv2Stamp(c, idx, i) });
+    });
+    return out;
+  }
+  function sv2Challans() { return ((S.data && S.data.challans) || []).filter(function (c) { return !isCancelled("challans", c.id); }); }
+  function sv2CommPending() {
+    return sv2Challans().filter(function (c) {
+      if (String(c.receiptReceived || "").toUpperCase() !== "Y") return false;
+      return sv2CommLines(c).some(function (x) { return !x.st; });
+    }).sort(function (a, b) { return String(a.createdAt || "").localeCompare(String(b.createdAt || "")); });
+  }
+  function sv2CommDone() {
+    var out = [];
+    ((S.data && S.data.audit) || []).forEach(function (a) {
+      if (String(a.action || "") !== "comm:done") return;
+      var d = sv2J(a.detail); d.at = a.createdAt; d.by = a.actor; out.push(d);
+    });
+    return out.sort(function (a, b) { return String(b.at || "").localeCompare(String(a.at || "")); });
+  }
+  /* WHAT IS INSTALLED AT HIS SITE - the CRM's cmpProducts, read the same way: commissioned or
+     waiting machines first (warranty from the commissioning), then the installations (AMC),
+     then everything else he was delivered. */
+  function sv2Products(name) {
+    var k = sv2Key(name), out = [], seen = {};
+    var chs = sv2Challans().filter(function (c) { return sv2Key(c.customerName) === k && String(c.receiptReceived || "").toUpperCase() === "Y"; })
+      .sort(function (a, b) { return String(b.createdAt || "").localeCompare(String(a.createdAt || "")); });
+    chs.forEach(function (c) {
+      sv2CommLines(c).forEach(function (x) {
+        if (x.st && x.st.skip) return;
+        out.push({ key: c.id + ":" + x.idx, kind: "comm", desc: String(x.i.desc || x.need.label), brand: String(x.i.brand || ""), sn: (x.st && x.st.sn) || "",
+                   date: (x.st && x.st.date) || String(c.createdAt || "").slice(0, 10), till: (x.st && x.st.till) || "", ch: c.challanNo || "", commissioned: !!(x.st && x.st.date) });
+      });
+    });
+    installs().filter(function (x) { return sv2Key(x.client) === k; }).forEach(function (x) {
+      out.push({ key: "I:" + x.id, kind: "install", desc: [x.product, x.model].filter(Boolean).join(" "), sn: x.serial || "", date: x.installDate || "", amcType: x.amcType || "", amcEnd: x.amcEnd || "" });
+    });
+    var rest = [];
+    chs.forEach(function (c) {
+      sv2Items(c).forEach(function (i, idx) {
+        if (sv2Need(i)) return;
+        var d = String(i.desc || i.code || "").trim(); if (!d || seen[d]) return; seen[d] = 1;
+        rest.push({ key: c.id + ":" + idx, kind: "item", desc: d, brand: String(i.brand || ""), date: String(c.createdAt || "").slice(0, 10), ch: c.challanNo || "" });
+      });
+    });
+    return out.concat(rest);
+  }
+  function sv2WarrPill(p) {
+    var w = tkWarr(p);
+    return '<span class="pill ' + (w.ok ? 'grn' : (w.c === 'bad' ? 'red' : (w.c === 'warn' ? 'amb' : ''))) + '" style="white-space:normal">' + esc(w.t) + '</span>';
+  }
+
+  /* ---- THE TICKET, WITH ITS MONEY ---- */
+  function sv2Tickets() {
+    var T = {}, order = [];
+    ((S.data && S.data.audit) || []).filter(function (a) { return /^cmp:(open|move)$/.test(String(a.action || "")); })
+      .slice().sort(function (a, b) { return String(a.createdAt || "").localeCompare(String(b.createdAt || "")); })
+      .forEach(function (a) {
+        var d = sv2J(a.detail), id = String(a.target || a.recId || d.id || (a.action === "cmp:open" ? a.id : "") || "");
+        if (!id) return;
+        if (a.action === "cmp:open") {
+          if (T[id]) return;
+          T[id] = { id: id, ref: String(d.ref || ""), webRef: String(d.webRef || ""), at: a.createdAt, by: a.actor || "", client: String(d.client || ""), name: String(d.name || ""),
+            mobile: String(d.mobile || ""), area: String(d.area || ""), products: d.products || [], cat: String(d.cat || ""), pri: String(d.pri || "Normal"),
+            desc: String(d.desc || ""), src: String(d.src || ""), status: "Raised", eng: "", charge: 0, got: 0, steps: [{ at: a.createdAt, by: a.actor || "", to: "Raised", note: "" }] };
+          order.push(id); return;
+        }
+        var t = T[id]; if (!t) return;
+        if (d.to) t.status = d.to;
+        if (d.eng) t.eng = String(d.eng);
+        if (d.to === "Resolved") { t.charge = Number(d.charge) || 0; t.outcome = String(d.outcome || ""); t.visitId = String(d.visitId || ""); t.doneAt = a.createdAt; }
+        if (Number(d.collected) > 0) { t.got += Number(d.collected); t.mode = String(d.mode || ""); }
+        t.steps.push({ at: a.createdAt, by: a.actor || "", to: d.to || "", note: String(d.note || ""), eng: d.eng || "", charge: d.charge, got: d.collected, outcome: d.outcome || "" });
+      });
+    return order.map(function (k) { return T[k]; });
+  }
+  function sv2Due(t) { return Math.max(0, (Number(t.charge) || 0) - (Number(t.got) || 0)); }
+  function sv2Bucket(t) {
+    if (t.status === "Cancelled") return "cancelled";
+    if (/^(Raised|Assigned|Visited)$/.test(t.status)) return "pending";
+    if (t.status === "Resolved" && sv2Due(t) > 0.5) return "payment";
+    return "done";
+  }
+  function sv2Find(id) { return sv2Tickets().filter(function (x) { return x.id === id; })[0] || null; }
+  function sv2Engineers() {
+    var m = {}, add = function (n) { n = String(n || "").trim(); if (n) m[sv2Key(n)] = n; };
+    installs().forEach(function (x) { add(x.engineer); });
+    visits().forEach(function (v) { add(v.engineer); });
+    sv2Tickets().forEach(function (t) { add(t.eng); });
+    if (roleIs("service")) add(S.user);
+    return Object.keys(m).map(function (k) { return m[k]; }).sort(alpha);
+  }
+  function sv2Month(ymd) { return String(ymd || "").slice(0, 7); }
+
+  /* ================= THE DASHBOARD ================= */
+  function sv2Tile(n, l, cls, act, k, sub) {
+    return '<button class="stat sv2t' + (cls ? ' ' + cls : '') + '" data-act="' + act + '" data-k="' + esc(k || "") + '">' +
+      '<div class="n">' + n + '</div><div class="l">' + l + '</div>' + (sub ? '<div class="l" style="font-weight:700">' + sub + '</div>' : '') + '</button>';
+  }
+  function viewHome() {
+    var tk = sv2Tickets(), pend = tk.filter(function (t) { return sv2Bucket(t) === "pending"; });
+    var late = pend.filter(function (t) { var a = tkAge(t); return a && a.late; });
+    var pay = tk.filter(function (t) { return sv2Bucket(t) === "payment"; }), payAmt = pay.reduce(function (s, t) { return s + sv2Due(t); }, 0);
+    var mon = sv2Month(today()), doneM = tk.filter(function (t) { return sv2Bucket(t) === "done" && t.doneAt && sv2Month(String(t.doneAt).slice(0, 10)) === mon; }).length;
+    var cp = sv2CommPending(), over = installs().filter(function (x) { return dueBand(x) === "over"; }).length, soon = installs().filter(function (x) { return dueBand(x) === "soon"; }).length;
+    var web = openComplaints().filter(function (c) { return !tkRefs()[String(c.Ref || "")]; });
+    var h = '<div class="sv2bar">' +
+      '<button class="btn" data-act="sv2-new">+ New complaint</button>' +
+      (canRecord() ? '<button class="btn ghost" data-act="tab" data-k="labour">Labour job</button>' : '') +
+      '<button class="btn ghost" data-act="tab" data-k="history">My work</button></div>';
+    h += '<div class="stats sv2g">' +
+      sv2Tile(pend.length, 'Pending complaints', pend.length ? 'bad' : 'good', 'sv2-go', 'pending', late.length ? late.length + ' past the promise' : '') +
+      sv2Tile(money(payAmt), 'Payment pending', pay.length ? 'warn' : 'good', 'sv2-go', 'payment', pay.length ? pay.length + ' customer' + (pay.length === 1 ? '' : 's') : '') +
+      sv2Tile(cp.length, 'Commissioning pending', cp.length ? 'warn' : 'good', 'sv2-go', 'commission', '') +
+      sv2Tile(over, 'Service overdue', over ? 'bad' : 'good', 'sv2-go', 'over', soon ? soon + ' due this week' : '') +
+      sv2Tile(doneM, 'Completed this month', 'good', 'sv2-go', 'done', '') +
+      sv2Tile(web.length, 'From the website', web.length ? 'bad' : 'good', 'sv2-go', 'web', '') +
+      '</div>';
+    if (!S.data || !Array.isArray(S.data.challans)) {
+      h += '<div class="note warn-t">This phone has not been sent the deliveries yet, so the products at a site and the commissioning list cannot be shown. The owner pastes server update V144 once; after that they come with every refresh.</div>';
+    }
+    if (late.length) h += '<h3 class="sec bad">Past the promise &mdash; ' + late.length + '</h3>' + late.slice(0, 6).map(function (t) { return sv2Row(t); }).join("");
+    var _isLate = {}; late.forEach(function (t) { _isLate[t.id] = 1; });   /* a ticket shows once on Home */
+    var free = pend.filter(function (t) { return !t.eng && !_isLate[t.id]; });
+    if (free.length) h += '<h3 class="sec warn">Waiting for an engineer &mdash; ' + free.length + '</h3>' + free.slice(0, 6).map(function (t) { return sv2Row(t); }).join("");
+    var mine = pend.filter(function (t) { return t.eng && lower(t.eng) === lower(S.user) && !_isLate[t.id]; });
+    if (mine.length) h += '<h3 class="sec">My jobs &mdash; ' + mine.length + '</h3>' + mine.map(function (t) { return sv2Row(t); }).join("");
+    if (web.length) h += '<h3 class="sec bad">Raised on the website &mdash; ' + web.length + '</h3>' +
+      '<div class="note warn-t">The customer raised these himself. Open one and it becomes a visit; saving that visit closes the complaint.</div>' + web.map(cxRow).join("");
+    if (cp.length) h += '<h3 class="sec warn">Commissioning pending &mdash; ' + cp.length + '</h3>' + cp.slice(0, 4).map(sv2CommRow).join("") +
+      (cp.length > 4 ? '<button class="btn gry full" data-act="sv2-go" data-k="commission">See all ' + cp.length + '</button>' : '');
+    /* the team, for the office */
+    if (seesAllMoney()) {
+      var engs = sv2Engineers();
+      if (engs.length) {
+        h += '<h3 class="sec">The team</h3><div class="card" style="padding:4px 12px"><table class="sv2tab"><tr><th>Engineer</th><th>Open</th><th>Late</th><th>Done this month</th></tr>' +
+          engs.map(function (e) {
+            var mineE = tk.filter(function (t) { return lower(t.eng) === lower(e); });
+            var o = mineE.filter(function (t) { return sv2Bucket(t) === "pending"; });
+            var l = o.filter(function (t) { var a = tkAge(t); return a && a.late; }).length;
+            var d = mineE.filter(function (t) { return sv2Bucket(t) !== "pending" && t.doneAt && sv2Month(String(t.doneAt).slice(0, 10)) === mon; }).length;
+            return '<tr><td><b>' + esc(e) + '</b></td><td>' + o.length + '</td><td' + (l ? ' class="bad"' : '') + '>' + l + '</td><td>' + d + '</td></tr>';
+          }).join("") + '</table></div>';
+      }
+    }
+    var due = dueList();
+    if (due.length) h += '<h3 class="sec">Service calls due &mdash; ' + due.length + '</h3>' + due.slice(0, 5).map(insRow).join("") +
+      (due.length > 5 ? '<button class="btn gry full" data-act="sv2-go" data-k="over">See all ' + due.length + '</button>' : '');
+    return h;
+  }
+
+  /* ================= COMPLAINTS ================= */
+  function sv2Row(t) {
+    var a = tkAge(t), p = (t.products || [])[0], b = sv2Bucket(t), due = sv2Due(t);
+    var st = b === "payment" ? '<span class="pill amb">' + esc(money(due)) + ' to collect</span>'
+      : b === "done" ? '<span class="pill grn">' + esc(t.status === "Paid" ? "Paid" : t.status) + '</span>'
+      : b === "cancelled" ? '<span class="pill">Cancelled</span>'
+      : '<span class="pill ' + (t.eng ? 'blu' : 'red') + '">' + esc(t.eng ? t.status + ' · ' + t.eng : 'No engineer yet') + '</span>';
+    return '<div class="card cx' + (b === "pending" && (t.pri === "High" || (a && a.late)) ? ' urgent' : '') + '" data-act="sv2-open" data-id="' + esc(t.id) + '">' +
+      '<div class="row" style="align-items:flex-start"><div class="grow">' +
+        '<div class="ttl">' + esc(t.client || t.name || "(no name)") + '</div>' +
+        '<div class="meta">' + esc(t.cat || "Complaint") + ' &middot; ' + esc(t.pri) + (t.area ? ' &middot; ' + esc(t.area) : '') + '</div>' +
+        (p ? '<div class="meta"><b>' + esc(p.desc || "") + '</b> ' + sv2WarrPill(p) + '</div>' : '') +
+        (t.desc ? '<div class="cxsay">&ldquo;' + esc(t.desc.slice(0, 140)) + '&rdquo;</div>' : '') +
+      '</div><div class="right">' + (b === "pending" && a ? '<div class="amt' + (a.late ? ' bad' : '') + '">' + esc(a.txt) + '</div>' : '') + '</div></div>' +
+      '<div class="row" style="margin-top:4px;flex-wrap:wrap"><span class="meta grow">' + esc(t.ref || "") + '</span>' + st +
+        (b === "pending" && !t.eng && canRecord() ? '<button class="btn" data-act="tk-take" data-id="' + esc(t.id) + '" style="flex:0 0 auto;min-height:44px">Take it</button>' : '') + '</div></div>';
+  }
+  function viewComplaints() {
+    var f = S.sv2f || "pending", tk = sv2Tickets().filter(function (t) { return sv2Bucket(t) !== "cancelled" || f === "all"; });
+    var cnt = { pending: 0, payment: 0, done: 0, all: tk.length };
+    tk.forEach(function (t) { var b = sv2Bucket(t); if (cnt[b] != null) cnt[b]++; });
+    var q = lower(S.q);
+    var list = tk.filter(function (t) { return f === "all" || sv2Bucket(t) === f; }).filter(function (t) {
+      return !q || lower([t.client, t.name, t.mobile, t.ref, t.area, t.cat, t.desc, t.eng].join(" ")).indexOf(q) >= 0;
+    });
+    list.sort(function (a, b) { return f === "pending" ? String(a.at).localeCompare(String(b.at)) : String(b.at).localeCompare(String(a.at)); });
+    var chip = function (k, l) { return '<button class="chip bchip' + (f === k ? ' on' : '') + '" data-act="sv2-f" data-k="' + k + '">' + l + ' <b>' + cnt[k] + '</b></button>'; };
+    return '<div class="sv2bar"><button class="btn" data-act="sv2-new">+ New complaint</button></div>' +
+      '<div class="chips">' + chip("pending", "Pending") + chip("payment", "Payment pending") + chip("done", "Completed") + chip("all", "All") + '</div>' +
+      searchBox("Search a customer, mobile, ref or engineer") +
+      (f === "payment" && list.length ? '<div class="note warn-t"><b>' + money(list.reduce(function (s, t) { return s + sv2Due(t); }, 0)) + '</b> to collect. Open one and tap <b>Payment received</b> when the money comes.</div>' : '') +
+      (list.length ? list.map(sv2Row).join("") : '<div class="empty">' + (f === "pending" ? "No pending complaint. " : "Nothing here.") + '</div>');
+  }
+  function sv2Sheet(t) {
+    var a = tkAge(t), b = sv2Bucket(t), mob = cxMob(t.mobile);
+    var h = '<h2>' + esc(t.client || t.name || "Complaint") + '</h2>' +
+      '<div class="muted">' + esc(t.ref || "") + ' &middot; raised ' + esc(dstr(String(t.at || "").slice(0, 10))) + (t.by ? ' by ' + esc(t.by) : '') + (t.src ? ' &middot; ' + esc(t.src) : '') + '</div>' +
+      '<div class="row" style="flex-wrap:wrap;margin:8px 0">' +
+        '<span class="pill ' + (b === "pending" ? (t.eng ? 'blu' : 'red') : b === "payment" ? 'amb' : 'grn') + '">' + esc(b === "payment" ? "Payment pending" : t.status) + '</span>' +
+        (t.eng ? '<span class="pill">' + esc(t.eng) + '</span>' : '') + '<span class="pill' + (t.pri === "High" ? ' red' : '') + '">' + esc(t.pri) + '</span>' +
+        (b === "pending" && a ? '<span class="pill' + (a.late ? ' red' : '') + '">' + esc(a.txt) + (a.late ? ' · past ' + (TK_PROMISE[t.pri] || 48) + ' h' : '') + '</span>' : '') + '</div>' +
+      '<div class="card" style="margin:6px 0"><b>' + esc(t.cat || "Complaint") + '</b>' + (t.desc ? '<div style="margin-top:4px;white-space:pre-wrap">' + esc(t.desc) + '</div>' : '') +
+        (t.area ? '<div class="meta" style="margin-top:6px">' + esc(t.area) + '</div>' : '') + '</div>';
+    if ((t.products || []).length) h += '<label>Product</label>' + t.products.map(function (p) {
+      return '<div class="card" style="margin:4px 0;padding:9px 11px"><b>' + esc(p.desc || "") + '</b>' + (p.sn ? ' <span class="meta">S/N ' + esc(p.sn) + '</span>' : '') + '<div style="margin-top:4px">' + sv2WarrPill(p) + '</div></div>';
+    }).join("");
+    if (b === "payment" || b === "done") h += '<div class="kv">' + kv("Outcome", t.outcome || "-") + kv("Service charge", money(t.charge)) + kv("Collected", money(t.got)) + (b === "payment" ? kv("To collect", money(sv2Due(t))) : '') + '</div>';
+    h += '<div class="acts">';
+    if (mob.length === 10) h += '<a class="btn gry" href="tel:' + mob + '">Call ' + esc(mob) + '</a>';
+    if (b === "pending") {
+      if (!t.eng && canRecord()) h += '<button class="btn gry" data-act="tk-take" data-id="' + esc(t.id) + '">Take it</button>';
+      if (canRecord()) h += '<button class="btn gry" data-act="tk-do" data-id="' + esc(t.id) + '">Record a visit (parts, salt)</button>' +
+        '<button class="btn" data-act="sv2-fin" data-id="' + esc(t.id) + '">Finish</button>';
+    }
+    if (b === "payment" && canRecord()) h += '<button class="btn" data-act="sv2-pay" data-id="' + esc(t.id) + '">Payment received</button>';
+    h += '</div>';
+    if (b === "pending" && seesAllMoney()) {
+      var engs = sv2Engineers();
+      h += '<label>Assign to</label><div class="row"><select id="sv2_eng" class="grow"><option value="">&mdash; pick the engineer &mdash;</option>' +
+        engs.map(function (e) { return '<option' + (lower(e) === lower(t.eng) ? ' selected' : '') + '>' + esc(e) + '</option>'; }).join("") + '</select>' +
+        '<button class="btn gry" data-act="sv2-assign" data-id="' + esc(t.id) + '" style="flex:0 0 auto">Assign</button></div>';
+    }
+    h += '<label>History</label><div class="card" style="padding:6px 11px">' + t.steps.map(function (s) {
+      return '<div class="meta" style="padding:4px 0;border-bottom:1px solid #f1f5f9"><b>' + esc(s.to || "Note") + '</b>' + (s.eng && s.to !== "Raised" ? ' · ' + esc(s.eng) : '') +
+        (s.outcome ? ' · ' + esc(s.outcome) : '') + (s.charge != null && s.to === "Resolved" ? ' · charge ' + esc(money(s.charge)) : '') + (Number(s.got) > 0 ? ' · ' + esc(money(s.got)) + ' collected' : '') +
+        (s.note ? ' · ' + esc(s.note) : '') + '<br>' + esc(dstr(String(s.at || "").slice(0, 10))) + ' ' + esc(String(s.at || "").slice(11, 16)) + (s.by ? ' · ' + esc(s.by) : '') + '</div>';
+    }).join("") + '</div>' +
+      '<div class="acts"><button class="btn gry grow" data-act="close">Close</button></div>';
+    return h;
+  }
+
+  /* ---- FINISH: the one question about money ---- */
+  function sv2FinSheet() {
+    var F = S.fin || {}, t = sv2Find(F.id); if (!t) return '<h2>Not found</h2><div class="acts"><button class="btn gry" data-act="close">Close</button></div>';
+    var cv = tkCover(t);
+    var h = '<h2>Finish &mdash; ' + esc(t.client || t.name || "") + '</h2><div class="muted">' + esc(t.ref || "") + ' &middot; ' + esc(cv.txt) + '</div>' +
+      '<label>What was done</label><div class="chips">' + SV2_OUT.map(function (o) { return '<button class="chip bchip' + (F.out === o ? ' on' : '') + '" data-act="sv2-fo" data-k="' + esc(o) + '">' + esc(o) + '</button>'; }).join("") + '</div>' +
+      '<label>Service charge (&#8377;)</label><input id="sv2_chg" inputmode="numeric" value="' + esc(F.chg == null ? "" : F.chg) + '" placeholder="' + (cv.ok ? 'Nothing - ' + esc(cv.amc ? 'under AMC' : 'in warranty') : '0') + '"/>' +
+      (cv.ok ? '<div class="meta">' + esc(cv.txt) + ' &mdash; no charge, unless it was misuse.</div>' : '') +
+      '<label>Service charge received?</label><div class="chips">' +
+        '<button class="chip bchip' + (F.got === "yes" ? ' on' : '') + '" data-act="sv2-fg" data-k="yes">Yes</button>' +
+        '<button class="chip bchip' + (F.got === "no" ? ' on' : '') + '" data-act="sv2-fg" data-k="no">No &mdash; keep it pending</button>' +
+        '<button class="chip bchip' + (F.got === "free" ? ' on' : '') + '" data-act="sv2-fg" data-k="free">No charge</button></div>';
+    if (F.got === "yes") h += '<div class="grid2"><div><label>How much was received (&#8377;)</label><input id="sv2_amt" inputmode="numeric" value="' + esc(F.amt == null ? (F.chg || "") : F.amt) + '"/></div>' +
+      '<div><label>How</label><div class="chips">' + ["Cash", "UPI", "Bank"].map(function (m) { return '<button class="chip bchip' + ((F.mode || "Cash") === m ? ' on' : '') + '" data-act="sv2-fm" data-k="' + m + '">' + m + '</button>'; }).join("") + '</div></div></div>';
+    if (F.got === "no") h += '<div class="note warn-t">The complaint is closed as work done and the customer goes on <b>Payment pending</b> until the money comes.</div>';
+    h += '<label>Note (optional)</label><input id="sv2_fnote" value="' + esc(F.note || "") + '" placeholder="what you did, parts used"/>' +
+      '<div class="acts"><button class="btn gry" data-act="close">Cancel</button><button class="btn grow" data-act="sv2-fsave">Finish the complaint</button></div>';
+    return h;
+  }
+  function sv2FinKeep() {
+    var F = S.fin; if (!F) return;
+    if (el("sv2_chg")) F.chg = val("sv2_chg");
+    if (el("sv2_amt")) F.amt = val("sv2_amt");
+    if (el("sv2_fnote")) F.note = val("sv2_fnote");
+    if (el("sv2_pamt")) F.pamt = val("sv2_pamt");
+  }
+  function sv2FinSave() {
+    sv2FinKeep();
+    var F = S.fin || {}, t = sv2Find(F.id); if (!t) return;
+    if (!F.out) { toast("Say what was done."); return; }
+    if (!F.got) { toast("Was the service charge received? Pick Yes, No or No charge."); return; }
+    var chg = F.got === "free" ? 0 : num(F.chg);
+    if (F.got !== "free" && !(chg > 0)) { toast("Put the service charge, or pick No charge."); return; }
+    var cv = tkCover(t);
+    if (cv.ok && chg > 0 && !roleIs("admin") && F.out !== "Not a fault / misuse") { toast(cv.txt + " — no charge. Pick Not a fault / misuse if it was."); return; }
+    var got = F.got === "yes" ? num(F.amt) : 0;
+    if (F.got === "yes" && !(got > 0)) { toast("How much was received?"); return; }
+    if (got > chg + 0.5) { toast("More received than the charge — check the amount."); return; }
+    var ins = tkInstall(t);
+    var row = { id: mintId("SV"), createdAt: new Date().toISOString(), createdBy: S.user, installId: ins ? String(ins.id) : "",
+      client: ins ? String(ins.client || "") : String(t.client || t.name || ""), area: ins ? String(ins.area || "") : String(t.area || ""),
+      date: today(), engineer: S.user, type: ins ? "Repair" : "Labour job", visitCharge: chg, saltBags: 0, saltAmt: 0, partsUsed: "", partsAmt: 0,
+      total: chg, collected: got, balance: chg - got, notes: "Complaint " + (t.ref || "") + ": " + F.out + (F.note ? " - " + F.note : "") + (cv.ok && !chg ? " (" + cv.txt + ")" : ""), updatedAt: new Date().toISOString() };
+    saveRow("visits", row); try { applyJournal(); } catch (e) { }
+    var tk = tkAll().filter(function (x) { return x.id === t.id; })[0] || t;
+    var outW = chg > 0 ? "Service charge" : (cv.ok ? (cv.amc ? "Free under AMC" : "Free under warranty") : "Other");
+    tkMove(tk, { to: "Resolved", outcome: outW, job: F.out, charge: chg, visitId: row.id, eng: S.user, note: F.out + (F.note ? " - " + F.note : "") });
+    if (got > 0) tkMove(tk, got + 0.5 >= chg ? { to: "Paid", collected: got, mode: F.mode || "Cash" } : { to: "", collected: got, mode: F.mode || "Cash", note: "part received" });
+    S.fin = null; S.sheet = null; bust(); sv2Bust(); render();
+    toast((t.ref || "Complaint") + " finished" + (chg > got + 0.5 ? " — " + money(chg - got) + " on Payment pending." : got > 0 ? " — " + money(got) + " received." : "."));
+  }
+  function sv2PaySheet() {
+    var F = S.fin || {}, t = sv2Find(F.id); if (!t) return "";
+    var due = sv2Due(t);
+    return '<h2>Payment received &mdash; ' + esc(t.client || t.name || "") + '</h2><div class="muted">' + esc(t.ref || "") + ' &middot; charge ' + esc(money(t.charge)) + ', ' + esc(money(t.got)) + ' received so far</div>' +
+      '<div class="grid2"><div><label>Amount (&#8377;)</label><input id="sv2_pamt" inputmode="numeric" value="' + esc(F.pamt == null ? Math.round(due) : F.pamt) + '"/></div>' +
+      '<div><label>How</label><div class="chips">' + ["Cash", "UPI", "Bank"].map(function (m) { return '<button class="chip bchip' + ((F.mode || "Cash") === m ? ' on' : '') + '" data-act="sv2-fm" data-k="' + m + '">' + m + '</button>'; }).join("") + '</div></div></div>' +
+      '<div class="acts"><button class="btn gry" data-act="close">Cancel</button><button class="btn grow" data-act="sv2-psave">Save the payment</button></div>';
+  }
+  function sv2PaySave() {
+    sv2FinKeep();
+    var F = S.fin || {}, t = sv2Find(F.id); if (!t) return;
+    var amt = num(F.pamt), due = sv2Due(t);
+    if (!(amt > 0)) { toast("How much was received?"); return; }
+    if (amt > due + 0.5) { toast("That is more than the " + money(due) + " still due."); return; }
+    var tk = tkAll().filter(function (x) { return x.id === t.id; })[0] || t;
+    tkMove(tk, amt + 0.5 >= due ? { to: "Paid", collected: amt, mode: F.mode || "Cash" } : { to: "", collected: amt, mode: F.mode || "Cash", note: "part received" });
+    /* and the visit row the finish wrote, so the service account adds up the same */
+    var v = t.visitId ? visits().filter(function (x) { return String(x.id) === String(t.visitId); })[0] : null;
+    if (v) { var nv = Object.assign({}, v, { collected: num(v.collected) + amt, balance: num(v.total) - num(v.collected) - amt, updatedAt: new Date().toISOString() }); saveRow("visits", nv); try { applyJournal(); } catch (e) { } }
+    S.fin = null; S.sheet = null; bust(); sv2Bust(); render();
+    toast(money(amt) + " received" + (amt + 0.5 >= due ? " — " + (t.ref || "the complaint") + " is paid." : " — " + money(due - amt) + " still to collect."));
+  }
+
+  /* ---- NEW COMPLAINT ---- */
+  function sv2NewSheet() {
+    var N = S.nc || (S.nc = { src: "Phone call", pri: "Normal", picks: {} });
+    var c = N.client ? clientByName(N.client) : null;
+    var h = '<h2>New complaint</h2><div class="muted">The same clients as the CRM. It goes on the CRM board at once.</div>';
+    if (!c && !N.newCaller) {
+      var q = lower(N.cq || ""), hits = q.length >= 2 ? clients().filter(function (x) { return clientHay(x).indexOf(q) >= 0; }).slice(0, 8) : [];
+      h += '<label>Client</label><input id="sv2_cq" value="' + esc(N.cq || "") + '" placeholder="Type a name, mobile or area" autocomplete="off"/>' +
+        '<div id="sv2_hits">' + sv2Hits(hits, q) + '</div>';
+    } else if (c) {
+      h += '<div class="card" style="margin:8px 0"><div class="row"><div class="grow"><b>' + esc(c.name) + '</b><div class="meta">' + esc([c.location, c.mobile].filter(Boolean).join(" · ")) + '</div></div>' +
+        '<button class="btn gry sm" data-act="sv2-nc-clear">Change</button></div></div>';
+      var ps = sv2Products(c.name);
+      h += '<label>Installed at his site &mdash; tick the product</label>' + (ps.length ? ps.map(function (p) {
+        return '<label class="card sv2p"><input type="checkbox" class="sv2-pick" data-k="' + esc(p.key) + '"' + (N.picks[p.key] ? ' checked' : '') + '/>' +
+          '<span class="grow"><b>' + esc(p.desc) + '</b>' + (p.brand ? ' <span class="meta">' + esc(p.brand) + '</span>' : '') + (p.sn ? ' <span class="meta">S/N ' + esc(p.sn) + '</span>' : '') +
+          (p.ch ? '<span class="meta" style="display:block">' + esc(p.ch) + ' · ' + esc(dstr(p.date)) + '</span>' : '') +
+          '<span style="display:block;margin-top:3px">' + sv2WarrPill(p) + '</span></span></label>';
+      }).join("") : '<div class="note">' + (Array.isArray(S.data && S.data.challans) ? 'Nothing delivered to him is on the book.' : 'The deliveries are not on this phone yet (server update V144).') + '</div>');
+    } else {
+      h += '<div class="grid2"><div><label>Caller&rsquo;s name</label><input id="sv2_nm" value="' + esc(N.name || "") + '"/></div>' +
+        '<div><label>Mobile</label><input id="sv2_mob" inputmode="numeric" value="' + esc(N.mobile || "") + '"/></div></div>' +
+        '<label>Area</label><input id="sv2_area" value="' + esc(N.area || "") + '"/>' +
+        '<div class="acts"><button class="btn gry sm" data-act="sv2-nc-clear">Pick a client instead</button></div>';
+    }
+    h += '<label>What is it about</label><div class="chips">' + SV2_CATS.map(function (x) { return '<button class="chip bchip' + (N.cat === x ? ' on' : '') + '" data-act="sv2-nc-cat" data-k="' + esc(x) + '">' + esc(x) + '</button>'; }).join("") + '</div>' +
+      '<label>How urgent</label><div class="chips">' + [["High", "High · 24 h"], ["Normal", "Normal · 48 h"], ["Low", "Low · 72 h"]].map(function (x) { return '<button class="chip bchip' + (N.pri === x[0] ? ' on' : '') + '" data-act="sv2-nc-pri" data-k="' + x[0] + '">' + x[1] + '</button>'; }).join("") + '</div>' +
+      '<label>How it came</label><div class="chips">' + SV2_SRC.map(function (x) { return '<button class="chip bchip' + (N.src === x ? ' on' : '') + '" data-act="sv2-nc-src" data-k="' + esc(x) + '">' + esc(x) + '</button>'; }).join("") + '</div>' +
+      '<label>What happened</label><textarea id="sv2_desc" rows="3" placeholder="In the customer’s words">' + esc(N.desc || "") + '</textarea>' +
+      '<label>Engineer</label><select id="sv2_neng"><option value="">Leave it for whoever takes it</option>' +
+        sv2Engineers().map(function (e) { return '<option' + (lower(N.eng) === lower(e) ? ' selected' : '') + '>' + esc(e) + '</option>'; }).join("") + '</select>' +
+      '<div class="acts"><button class="btn gry" data-act="close">Cancel</button><button class="btn grow" data-act="sv2-nc-save">Register the complaint</button></div>';
+    return h;
+  }
+  function sv2Hits(hits, q) {
+    if (!q || q.length < 2) return '<div class="meta">Type two letters.</div><button class="btn gry sm" data-act="sv2-nc-newcaller" style="margin-top:6px">Not on the book &mdash; a new caller</button>';
+    return (hits.length ? hits.map(function (x) {
+      return '<button class="tile" data-act="sv2-nc-pick" data-k="' + esc(x.name) + '"><span class="grow">' + esc(x.name) + '<span class="sub">' + esc([x.location, x.mobile].filter(Boolean).join(" · ")) + '</span></span></button>';
+    }).join("") : '<div class="meta">No client matches.</div>') +
+      '<button class="btn gry sm" data-act="sv2-nc-newcaller" style="margin-top:6px">Not on the book &mdash; a new caller</button>';
+  }
+  function sv2NewKeep() {
+    var N = S.nc; if (!N) return;
+    if (el("sv2_desc")) N.desc = String(el("sv2_desc").value || "");
+    if (el("sv2_neng")) N.eng = val("sv2_neng");
+    if (el("sv2_nm")) N.name = val("sv2_nm");
+    if (el("sv2_mob")) N.mobile = val("sv2_mob");
+    if (el("sv2_area")) N.area = val("sv2_area");
+    if (el("sv2_cq")) N.cq = val("sv2_cq");
+    Array.prototype.forEach.call(document.querySelectorAll(".sv2-pick"), function (b) { if (b.checked) N.picks[b.getAttribute("data-k")] = 1; else delete N.picks[b.getAttribute("data-k")]; });
+  }
+  function sv2NewSave(btn) {
+    sv2NewKeep();
+    var N = S.nc || {}, c = N.client ? clientByName(N.client) : null;
+    var nm = c ? c.name : String(N.name || "").trim(), mob = cxMob(c ? (c.mobile || c.mobile2) : N.mobile);
+    if (!nm) { toast("Pick the client, or type the caller’s name."); return; }
+    if (!c && mob.length !== 10) { toast("A new caller needs his 10-digit mobile number."); return; }
+    if (!N.cat) { toast("Pick what it is about."); return; }
+    if (String(N.desc || "").trim().length < 4) { toast("Write in a line what happened."); return; }
+    var ps = c ? sv2Products(c.name).filter(function (p) { return N.picks[p.key]; }) : [];
+    var pt = ps.map(function (p) { return p.desc + (p.sn ? " S/N " + p.sn : "") + " (" + tkWarr(p).t + ")"; }).join("; ");
+    if (btn) { btn.disabled = true; btn.textContent = "Registering…"; }
+    api("complaint", { name: nm, mobile: mob, city: c ? (c.location || "") : (N.area || ""), category: N.cat, orderNo: "", urgency: N.pri,
+      description: "[" + N.src + " · registered by " + S.user + " in the Service app]" + (pt ? "\nProduct: " + pt : "") + "\n" + N.desc }, 30000).catch(function () { return null; })
+      .then(function (r) {
+        var ref = (r && r.ok && r.ref) ? String(r.ref) : "C-" + today().replace(/-/g, "").slice(2) + "-" + String(Date.now()).slice(-4);
+        var id = mintId("T"), at = new Date().toISOString();
+        var open = { id: mintId("TO"), createdAt: at, actor: S.user || "", action: "cmp:open", target: id,
+          detail: JSON.stringify({ ref: ref, webRef: "", src: N.src, client: c ? c.name : "", clientId: c ? (c.id || "") : "", name: nm, mobile: mob,
+            area: c ? [c.area, c.location].filter(Boolean).join(", ") : (N.area || ""), products: ps, cat: N.cat, pri: N.pri, desc: String(N.desc || "").trim() }), ip: "" };
+        (S.data.audit = S.data.audit || []).push(open); saveRow("audit", open);
+        if (N.eng) { var mv = { id: mintId("TM"), createdAt: new Date(Date.now() + 1000).toISOString(), actor: S.user || "", action: "cmp:move", target: id, detail: JSON.stringify({ to: "Assigned", eng: N.eng }), ip: "" };
+          S.data.audit.push(mv); saveRow("audit", mv); }
+        _tkCache = null; sv2Bust(); S.nc = null; S.sheet = null; S.tab = "complaints"; S.sv2f = "pending"; render();
+        toast("Complaint " + ref + " registered" + (N.eng ? " for " + N.eng : "") + (r && r.ok ? "." : " (no signal for the number — a local one was used; it is saved)."));
+      });
+  }
+
+  /* ================= COMMISSIONING ================= */
+  function sv2CommRow(c) {
+    var ls = sv2CommLines(c).filter(function (x) { return !x.st; });
+    var d = Math.max(0, Math.round((Date.now() - Date.parse(String(c.receiptAt || c.createdAt || ""))) / 86400000));
+    return '<div class="card" data-act="sv2-comm" data-id="' + esc(c.id) + '"><div class="row" style="align-items:flex-start"><div class="grow">' +
+      '<div class="ttl">' + esc(c.customerName || "") + '</div><div class="meta">' + esc(c.challanNo || "") + (c.site ? ' &middot; ' + esc(c.site) : '') + '</div>' +
+      ls.map(function (x) { return '<div class="meta"><b>' + esc(x.i.desc || x.need.label) + '</b>' + (x.i.brand ? ' &middot; ' + esc(x.i.brand) : '') + ' &middot; qty ' + esc(String(x.i.qty || 1)) + '</div>'; }).join("") +
+      '</div><div class="right">' + (isFinite(d) ? '<div class="amt' + (d > 7 ? ' bad' : '') + '">' + d + ' day' + (d === 1 ? '' : 's') + '</div>' : '') + '</div></div></div>';
+  }
+  function viewCommission() {
+    var p = sv2CommPending(), done = sv2CommDone();
+    var h = '<div class="note">A delivery waits here when it carries a brand the office has marked <b>needs service</b> in the CRM, or a machine the CRM commissions (softener, filters, pumps, heat pump, RO). Commission it on site with photos; its warranty starts that day and it goes on the service schedule.</div>';
+    if (!Array.isArray(S.data && S.data.challans)) return h + '<div class="empty">The deliveries are not on this phone yet. The owner pastes server update V144 once, then they come with every refresh.</div>';
+    h += '<h3 class="sec' + (p.length ? ' warn' : '') + '">Commissioning pending &mdash; ' + p.length + '</h3>' + (p.length ? p.map(sv2CommRow).join("") : '<div class="empty ok">Nothing waiting.</div>');
+    if (done.length) h += '<h3 class="sec">Commissioned &mdash; latest</h3>' + done.slice(0, 15).map(function (d) {
+      var n = (d.lines || []).filter(function (l) { return !l.skip; }).length, pics = picsOf("commission", d.id);
+      return '<div class="card"><div class="ttl">' + esc(d.client || "") + '</div><div class="meta">' + esc(d.no || "") + ' &middot; ' + esc(dstr(d.date)) + ' &middot; ' + esc(d.eng || d.by || "") + ' &middot; ' + n + ' machine' + (n === 1 ? '' : 's') + '</div>' + picStrip(pics, "Photos") + '</div>';
+    }).join("");
+    return h;
+  }
+  function sv2CommSheet() {
+    var K = S.cm || {}, c = sv2Challans().filter(function (x) { return x.id === K.id; })[0];
+    if (!c) return '<h2>Not found</h2><div class="acts"><button class="btn gry" data-act="close">Close</button></div>';
+    var ls = sv2CommLines(c).filter(function (x) { return !x.st; });
+    var h = '<h2>Commission &mdash; ' + esc(c.customerName || "") + '</h2><div class="muted">' + esc(c.challanNo || "") + (c.site ? ' &middot; ' + esc(c.site) : '') + ' &middot; delivered ' + esc(dstr(String(c.createdAt || "").slice(0, 10))) + '</div>' +
+      '<label>Date of commissioning</label><input id="cm2_date" type="date" value="' + esc(K.date || today()) + '"/>';
+    h += ls.map(function (x) {
+      var L = (K.l && K.l[x.idx]) || {};
+      return '<div class="card"><div class="row" style="align-items:flex-start"><div class="grow"><b>' + esc(x.i.desc || x.need.label) + '</b><div class="meta">' + esc(x.i.brand || "") + ' &middot; qty ' + esc(String(x.i.qty || 1)) + '</div></div>' +
+        '<label style="display:flex;align-items:center;gap:6px;margin:0;font-size:12.5px;min-height:44px"><input type="checkbox" class="cm2-skip" data-i="' + x.idx + '"' + (L.skip ? ' checked' : '') + '/> Not a machine</label></div>' +
+        (L.skip ? '<div class="meta">Left out &mdash; no commissioning, no warranty card.</div>' :
+        '<div class="grid2"><div><label>Serial no. (if any)</label><input class="cm2-sn" data-i="' + x.idx + '" value="' + esc(L.sn || "") + '"/></div>' +
+        '<div class="grid2" style="gap:6px"><div><label>Warranty months</label><input class="cm2-wm" data-i="' + x.idx + '" inputmode="numeric" value="' + esc(L.wm == null ? x.need.wm : L.wm) + '"/></div>' +
+        '<div><label>Service every (months)</label><input class="cm2-cm" data-i="' + x.idx + '" inputmode="numeric" value="' + esc(L.cm == null ? x.need.cm : L.cm) + '"/></div></div></div>') + '</div>';
+    }).join("");
+    h += '<label>Photos of the installed machine &mdash; at least one</label>' +
+      '<input type="file" accept="image/*" capture="environment" id="cm2_pic" multiple/>' +
+      ((K.pics || []).length ? '<div class="note ok">' + K.pics.length + ' photo' + (K.pics.length === 1 ? '' : 's') + ' ready &mdash; ' + (K.pics.length === 1 ? 'it goes' : 'they go') + ' up when you save.</div>' : '<div class="meta">Take the machine running, and its serial plate.</div>') +
+      '<div class="acts"><button class="btn gry" data-act="close">Cancel</button><button class="btn grow" data-act="sv2-csave">Commissioning done</button></div>';
+    return h;
+  }
+  function sv2CommKeep() {
+    var K = S.cm; if (!K) return; K.l = K.l || {};
+    if (el("cm2_date")) K.date = val("cm2_date");
+    var put = function (cls, f, isBox) { Array.prototype.forEach.call(document.querySelectorAll(cls), function (e) { var i = e.getAttribute("data-i"); (K.l[i] = K.l[i] || {})[f] = isBox ? e.checked : String(e.value || "").trim(); }); };
+    put(".cm2-skip", "skip", true); put(".cm2-sn", "sn"); put(".cm2-wm", "wm"); put(".cm2-cm", "cm");
+  }
+  function sv2CommSave() {
+    sv2CommKeep();
+    var K = S.cm || {}, c = sv2Challans().filter(function (x) { return x.id === K.id; })[0]; if (!c) return;
+    var ls = sv2CommLines(c).filter(function (x) { return !x.st; }), date = K.date || today();
+    var lines = ls.map(function (x) {
+      var L = (K.l && K.l[x.idx]) || {};
+      if (L.skip) return { idx: x.idx, code: x.i.code || "", desc: x.i.desc || "", brand: x.i.brand || "", skip: true };
+      var wm = L.wm === "" || L.wm == null ? x.need.wm : num(L.wm), cm = L.cm === "" || L.cm == null ? x.need.cm : num(L.cm);
+      return { idx: x.idx, code: x.i.code || "", desc: x.i.desc || "", brand: x.i.brand || "", qty: num(x.i.qty) || 1, sn: L.sn || "", wm: wm, till: sv2AddMonths(date, wm), cm: cm };
+    });
+    var real = lines.filter(function (l) { return !l.skip; });
+    if (real.length && !(K.pics || []).length) { toast("Take at least one photo of the installed machine."); return; }
+    if (!lines.length) { toast("Nothing left to commission on this delivery."); return; }
+    var id = mintId("CM"), at = new Date().toISOString();
+    var arow = { id: id, createdAt: at, actor: S.user || "", action: "comm:done", target: String(c.challanNo || c.id),
+      detail: JSON.stringify({ id: id, chId: c.id, no: c.challanNo || "", client: c.customerName || "", site: c.site || "", date: date, eng: S.user || "", lines: lines, photos: (K.pics || []).length }), ip: "" };
+    (S.data.audit = S.data.audit || []).push(arow); saveRow("audit", arow);
+    var cl = clientByName(c.customerName) || {};
+    real.forEach(function (l) {
+      saveRow("installs", { id: mintId("IN"), createdBy: S.user, client: c.customerName || "", mobile: cl.mobile || "", address: cl.address || "", area: cl.location || "",
+        product: l.desc, model: l.brand, serial: l.sn, installDate: date, waterQuality: "", cycleDays: Math.round(l.cm * 30), lastService: date,
+        nextService: sv2AddMonths(date, l.cm), amcType: "None", amcAmount: "", amcEnd: "", engineer: S.user, status: "Active",
+        notes: "Commissioned on the Service app · Challan " + (c.challanNo || "") + " · warranty till " + dstr(l.till) + (l.qty > 1 ? " · qty " + l.qty : "") });
+    });
+    try { applyJournal(); } catch (e) { }
+    var pics = (K.pics || []).slice();
+    S.cm = null; S.sheet = null; sv2Bust(); bust(); render();
+    toast("Commissioned " + real.length + " machine" + (real.length === 1 ? "" : "s") + (real.length ? " — on the service schedule from today." : "."));
+    if (pics.length) { try { picSend(pics, id, "", c.customerName || ""); } catch (e) { toast("Saved. The photos could not be sent."); } }
+  }
   function viewToday() {
     var _tkr = tkRefs(), due = dueList(), ending = amcEnding(45), cx = openComplaints().filter(function (c) { return !_tkr[String(c.Ref || "")]; });   /* 1.21.0 - a ticket shows once, as a job */
     var h = statBar() + tkTodayHtml();
@@ -3642,12 +4194,12 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
 
 
   /* ================= THE SHELL ================= */
-  var NAV = [
-    { k: "today",   t: "Today" },
-    { k: "jobs",    t: "Machines" },
-    { k: "labour",  t: "Labour job" },
-    { k: "history", t: "My work" },
-    { k: "account", t: "Account" }
+  var NAV = [   /* 2.0.0 - the desk: Labour job and My work are buttons on Home now */
+    { k: "home",       t: "Home" },
+    { k: "complaints", t: "Complaints" },
+    { k: "commission", t: "Commission" },
+    { k: "jobs",       t: "Machines" },
+    { k: "account",    t: "Account" }
   ];
   function navBtn(n) {
     return '<button class="nav' + (S.tab === n.k ? ' on' : '') + '" data-act="tab" data-k="' + esc(n.k) + '">' +
@@ -3660,8 +4212,8 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
        a white card. On a narrow phone that mostly stacked anyway and looked passable, which is
        why it survived; on a Mac it is the scattered mess in his screenshot. */
     if (S.sheet) return '<div class="sheet"><div class="inner">' + S.sheet + '</div></div>';
-    var v = { today: viewToday, jobs: viewJobs, history: viewHistory, account: viewAccount }[S.tab];
-    return v ? v() : viewToday();
+    var v = { home: viewHome, today: viewHome, complaints: viewComplaints, commission: viewCommission, jobs: viewJobs, history: viewHistory, account: viewAccount }[S.tab];
+    return v ? v() : viewHome();
   }
 
   /* v1.13.0 - KEEP HIS PLACE. This whole screen is rebuilt with one innerHTML assignment, which
@@ -3722,6 +4274,29 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
   function renderBg() { if (S.sheet) return; render(); }
 
   function wireInputs() {
+    /* 2.0.0 - the desk's own boxes */
+    var cq = el("sv2_cq");
+    if (cq) {
+      cq.addEventListener("input", function () {
+        if (!S.nc) return; S.nc.cq = cq.value;
+        var q2 = lower(cq.value), box = el("sv2_hits");
+        if (box) box.innerHTML = sv2Hits(q2.length >= 2 ? clients().filter(function (x) { return clientHay(x).indexOf(q2) >= 0; }).slice(0, 8) : [], q2);
+      });
+      try { cq.focus({ preventScroll: true }); cq.setSelectionRange(cq.value.length, cq.value.length); } catch (e) { }
+    }
+    Array.prototype.forEach.call(document.querySelectorAll(".cm2-skip"), function (b) {
+      b.addEventListener("change", function () { sv2CommKeep(); S.sheet = sv2CommSheet(); render(); });
+    });
+    var cp = el("cm2_pic");
+    if (cp) cp.addEventListener("change", function () {
+      sv2CommKeep();
+      var fs = [].slice.call(cp.files || []);
+      Promise.all(fs.map(function (f) { return picRead(f, "commission").catch(function () { return null; }); })).then(function (list) {
+        if (!S.cm) return;
+        S.cm.pics = (S.cm.pics || []).concat(list.filter(Boolean));
+        S.sheet = sv2CommSheet(); render();
+      });
+    });
     var q = el("q");
     if (q) {
       q.addEventListener("input", function () {
@@ -3757,7 +4332,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       S.accOpen = (S.accOpen === ak) ? "" : ak;
       render(); return;
     }
-    if (act === "close")   { S.parts = false; S.sheet = null; S.vis = null; S.q = ""; render(); return; }
+    if (act === "close")   { S.parts = false; S.sheet = null; S.vis = null; S.q = ""; S.fin = null; S.nc = null; S.cm = null; S.sv2id = ""; render(); return; }
     if (act === "refresh") { pull(true); return; }
     /* ================= FIVE BUTTONS THAT DID NOTHING  (v1.12.1, 3 Sep 2026) =================
        Found by scanning every data-act this app EMITS against the acts its router HANDLES.
@@ -3796,6 +4371,61 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       window.open(url, "_blank");
       return;
     }
+
+    /* ===== 2.0.0 - the desk ===== */
+    if (act === "sv2-go") {
+      var _k = t.getAttribute("data-k") || "";
+      if (_k === "commission") S.tab = "commission";
+      else if (_k === "over") S.tab = "jobs";
+      else if (_k === "web") S.tab = "home";
+      else { S.tab = "complaints"; S.sv2f = _k; }
+      S.q = ""; render(); try { window.scrollTo(0, 0); } catch (e) { } return;
+    }
+    if (act === "sv2-f") { S.sv2f = t.getAttribute("data-k") || "pending"; render(); return; }
+    if (act === "sv2-open") { var _so = sv2Find(id); if (!_so) return; S.sv2id = id; S.sheet = sv2Sheet(_so); render(); return; }
+    if (act === "tk-take" && S.sv2id) {
+      if (!canRecord()) { toast("Taking a job is the engineer's."); return; }
+      var _tt2 = tkAll().filter(function (x) { return x.id === id; })[0]; if (!_tt2) return;
+      tkMove(_tt2, { to: "Assigned", eng: S.user, note: "taken on the Service app" }); sv2Bust();
+      S.sheet = sv2Sheet(sv2Find(id)); render(); toast((_tt2.ref || "The job") + " is yours."); return;
+    }
+    if (act === "sv2-assign") {
+      if (!seesAllMoney()) return;
+      var _ae = val("sv2_eng"), _at = tkAll().filter(function (x) { return x.id === id; })[0];
+      if (!_at) return; if (!_ae) { toast("Pick the engineer."); return; }
+      tkMove(_at, { to: "Assigned", eng: _ae }); sv2Bust();
+      S.sheet = sv2Sheet(sv2Find(id)); render(); toast((_at.ref || "The complaint") + " is with " + _ae + "."); return;
+    }
+    if (act === "sv2-fin") {
+      if (!canRecord()) { toast("Finishing a complaint is the engineer's."); return; }
+      var _ft = sv2Find(id); if (!_ft) return;
+      var _fc = tkCover(_ft), _fi = tkInstall(_ft);
+      S.fin = { id: id, view: "fin", chg: (_fc.ok ? "" : (tkRateFor(_fi ? "Repair" : "Labour job") || "")), mode: "Cash" };
+      S.sheet = sv2FinSheet(); render(); return;
+    }
+    if (act === "sv2-fo" || act === "sv2-fg" || act === "sv2-fm") {
+      if (!S.fin) return; sv2FinKeep();
+      var _fk = t.getAttribute("data-k");
+      if (act === "sv2-fo") S.fin.out = _fk; else if (act === "sv2-fg") S.fin.got = _fk; else S.fin.mode = _fk;
+      S.sheet = S.fin.view === "pay" ? sv2PaySheet() : sv2FinSheet(); render(); return;
+    }
+    if (act === "sv2-fsave") { sv2FinSave(); return; }
+    if (act === "sv2-pay") { if (!canRecord()) return; S.fin = { id: id, view: "pay", mode: "Cash" }; S.sheet = sv2PaySheet(); render(); return; }
+    if (act === "sv2-psave") { sv2PaySave(); return; }
+    if (act === "sv2-new") { S.nc = { src: roleIs("service") ? "Engineer" : "Phone call", pri: "Normal", picks: {} }; S.sheet = sv2NewSheet(); render(); return; }
+    if (act === "sv2-nc-pick") { sv2NewKeep(); S.nc.client = t.getAttribute("data-k"); S.nc.picks = {}; S.sheet = sv2NewSheet(); render(); return; }
+    if (act === "sv2-nc-clear") { sv2NewKeep(); S.nc.client = ""; S.nc.newCaller = false; S.nc.picks = {}; S.sheet = sv2NewSheet(); render(); return; }
+    if (act === "sv2-nc-newcaller") { sv2NewKeep(); S.nc.newCaller = true; S.nc.client = ""; S.sheet = sv2NewSheet(); render(); return; }
+    if (act === "sv2-nc-cat" || act === "sv2-nc-pri" || act === "sv2-nc-src") {
+      sv2NewKeep(); S.nc[act === "sv2-nc-cat" ? "cat" : act === "sv2-nc-pri" ? "pri" : "src"] = t.getAttribute("data-k");
+      S.sheet = sv2NewSheet(); render(); return;
+    }
+    if (act === "sv2-nc-save") { sv2NewSave(t); return; }
+    if (act === "sv2-comm") {
+      if (!canRecord()) { toast("Commissioning is the engineer's."); return; }
+      S.cm = { id: id, date: today(), l: {}, pics: [] }; S.sheet = sv2CommSheet(); render(); return;
+    }
+    if (act === "sv2-csave") { sv2CommSave(); return; }
 
     /* 1.21.0 - the ticket list */
     if (act === "tk-take") {
