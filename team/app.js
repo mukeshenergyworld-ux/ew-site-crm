@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.703";
+  var APP_VERSION = "6.9.704";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -578,10 +578,10 @@
   }
 
   var ROLE_TABS = {
-    admin:    ["dash","review","agent","report","scorecard","returns","tools","rates","clients","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","register","paylog","freight","payments","paidout","billing","discounts","commission","complaints","service","spares","dues","payroll","products","catalogs","brandstory","pricelist","catalogue","rules","teampins","health","trouble","changelog","booksweep","dups","stock","brief"],
-    accounts: ["dash","review","agent","returns","tools","clients","partners","followups","challans","register","paylog","freight","payments","billing","complaints","service","spares","dues","products","catalogs","rates","pricelist","dups","stock","trouble"],
+    admin:    ["dash","review","agent","report","scorecard","returns","tools","rates","clients","crlog","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","register","paylog","freight","payments","paidout","billing","discounts","commission","complaints","service","spares","dues","payroll","products","catalogs","brandstory","pricelist","catalogue","rules","teampins","health","trouble","changelog","booksweep","dups","stock","brief"],
+    accounts: ["dash","review","agent","returns","tools","clients","crlog","partners","followups","challans","register","paylog","freight","payments","billing","complaints","service","spares","dues","products","catalogs","rates","pricelist","dups","stock","trouble"],
     godown:   ["dash","agent","returns","tools","challans","freight","products","stock","trouble"],
-    sales:    ["dash","review","agent","report","returns","tools","clients","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","register","paylog","freight","billing","payments","complaints","products","catalogs","dups","brief","trouble"],
+    sales:    ["dash","review","agent","report","returns","tools","clients","crlog","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","register","paylog","freight","billing","payments","complaints","products","catalogs","dups","brief","trouble"],
     service:  ["dash","agent","tools","complaints","service","spares","dues","followups","products","catalogs","trouble"]
   };
   /* v6.9.320 - EVERY SCREEN EITHER OF HIS ROLES OPENS.
@@ -26124,6 +26124,7 @@ function viewCatalogue() {
      save() for every client write, with the row as it was and what was sent. A role this save did
      not carry is not looked at; a name only re-spelt is not a change; and a role named for the
      FIRST time is not a change either - he earns from the start, as he always did. */
+  var _ptnOn = "";   /* 6.9.704 - set only for the one save the Client & lead log makes; "" means today, as before */
   function incNoteChange(before, row) {
     var cn = String((row && row.name) || (before && before.name) || "").trim();
     if (!cn || !before || !row) return;
@@ -26135,7 +26136,7 @@ function viewCatalogue() {
       if (dkey(was) === dkey(now)) return;
       if (!was && !incChanges(cn, role).length) return;
       save("audit", { id: "", createdAt: new Date().toISOString(), actor: S.user || "", action: "ptn:change", target: cn,
-        detail: JSON.stringify({ client: cn, role: role, was: was, now: now, on: today() }), ip: "" }, true);
+        detail: JSON.stringify({ client: cn, role: role, was: was, now: now, on: _ptnOn || today() }), ip: "" }, true);
     });
   }
   /* every client this man appears on in a change, as the old or the new holder */
@@ -38048,7 +38049,7 @@ function viewCatalogue() {
      nothing else could reach it - so the usage counter would have had to keep a second copy
      of the same forty-two names, and a second copy is how the two quietly stop agreeing.
      Hoisted, not duplicated. render() still reads exactly this. */
-  var TAB_TABS = [["search", "Search"], ["dash", "Today"], ["review", "Twice-weekly review"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["register", "Challan log"], ["paylog", "Payment log"], ["freight", "Drivers & freight"], ["deliveries", "Deliveries"], ["collections", "Payments"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["complaints", "Complaints"], ["service", "Service"], ["spares", "Spares"], ["dues", "Service dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["paidout", "Paid out"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["catalogs", "Brand catalogues"], ["brandstory", "Brand stories"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["trouble", "Troubleshoot"], ["changelog", "Change log"], ["booksweep", "Book numbers"], ["dups", "Duplicate check"], ["stock", "Stock"], ["brief", "The brief"]];
+  var TAB_TABS = [["search", "Search"], ["dash", "Today"], ["review", "Twice-weekly review"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["register", "Challan log"], ["paylog", "Payment log"], ["freight", "Drivers & freight"], ["deliveries", "Deliveries"], ["collections", "Payments"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["crlog", "Client & lead log"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["complaints", "Complaints"], ["service", "Service"], ["spares", "Spares"], ["dues", "Service dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["paidout", "Paid out"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["catalogs", "Brand catalogues"], ["brandstory", "Brand stories"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["trouble", "Troubleshoot"], ["changelog", "Change log"], ["booksweep", "Book numbers"], ["dups", "Duplicate check"], ["stock", "Stock"], ["brief", "The brief"]];
   var TAB_LABEL = (function () {
     var m = {}; TAB_TABS.forEach(function (t) { m[t[0]] = t[1]; }); return m;
   })();
@@ -42869,6 +42870,159 @@ function viewCatalogue() {
     dlXlsx("Clients" + (fl ? "_" + regBrandsOn().join("-").replace(/[^\w-]/g, "") + (regModeIs() === "want" ? "_to_sell" : "_took") : "_by_area") +
            "_" + today() + ".xlsx", "Clients", out,
       [12, 20, 30, 34, 22, 13, 13, 40, 16, 12, 12, 16, 16, 16, 12, 14, 12, 10, 17, 12]);
+  }
+
+
+  /* ===================== CLIENT & LEAD LOG  (6.9.704, 7 Oct 2026) =====================
+     HIS WORDS: "in crm show complete client log and lead log, with executive assigned, all partner
+     list, admin can change executive, or partner with pin".
+
+     MEASURED FIRST, on the Clients screen at 390px: the executive is there, but the partners are one
+     cell - "Plumber Bittu · + architect, builder, PMC" - which names the first man found and lists
+     the empty roles, so the architect, builder and PMC on a client could only be read by opening
+     him. And changing any of them meant opening the client form, where nothing asks who is doing it.
+
+     So one sheet, one line a man, every man on the book: client or lead, when and by whom he was
+     added, his executive, and all four partners in their own columns. Clients / Leads / Everyone
+     and one chip per executive narrow it. The same list goes out as Excel.
+
+     AN ADMIN CHANGES A NAME FROM THE LINE ITSELF, WITH HIS PIN. Tap the executive or a partner -
+     a sheet asks who instead, from which day, why, and the PIN. The PIN is checked by the server
+     against his own record (teamAuth, the same check as the previous balance) and the server's
+     reply must say admin. Nothing is deleted: the client row takes the new name, an audit row
+     "client:reassign" keeps both names, the day and the reason, and the dated "ptn:change" row the
+     incentive card reads (6.9.693) is written with the day he chose - deliveries from that day earn
+     for the new man, deliveries before it stay the old man's. A sales man sees his own clients and
+     no buttons; accounts sees everyone and no buttons. */
+  var CRL_ROLES = [["exec", "Executive"], ["plumber", "Plumber"], ["architect", "Architect"], ["builder", "Builder"], ["pmc", "PMC"]];
+  function crlHolder(c, role) { return String((role === "exec" ? (c.ownedBy || c.createdBy) : c[role]) || "").trim(); }
+  function crlRows() {
+    var all = (S.data.clients || []).filter(function (c) { return c && String(c.name || "").trim(); });
+    if (!seesAllClients()) all = all.filter(function (c) { return isMineClient(c.name); });
+    var q = String(S.q || "").trim().toLowerCase();
+    return all.map(function (c) {
+      var cl = isClient(c.name), won = cl ? clientWonBrands(c.name) : [];
+      var why = !cl ? "lead" : (won.length ? won.slice(0, 2).join(", ") + " won" : "took a delivery");
+      var ch = [];
+      CRL_ROLES.forEach(function (r) { incChanges(c.name, r[0]).forEach(function (x) { ch.push({ role: r[0], on: x.on, was: x.was, now: x.now, at: x.at }); }); });
+      ch.sort(function (a, b) { return a.at < b.at ? 1 : a.at > b.at ? -1 : 0; });
+      return { c: c, client: cl, why: why, exec: crlHolder(c, "exec"), ch: ch,
+        hay: [c.name, c.mobile, c.mobile2, c.area, c.location, crlHolder(c, "exec"), c.plumber, c.architect, c.builder, c.pmc].join(" ").toLowerCase() };
+    }).filter(function (r) { return !q || r.hay.indexOf(q) >= 0; });
+  }
+  function viewCrLog() {
+    var rows = crlRows(), adm = roleIs("admin");
+    var nC = rows.filter(function (r) { return r.client; }).length, nL = rows.length - nC;
+    var who = S.crlWho || "all", ex = S.crlEx || "";
+    var execs = {};
+    rows.forEach(function (r) { var k = r.exec || "—"; execs[k] = (execs[k] || 0) + 1; });
+    var list = rows.filter(function (r) {
+      if (who === "client" && !r.client) return false;
+      if (who === "lead" && r.client) return false;
+      if (ex && (r.exec || "—") !== ex) return false;
+      return true;
+    });
+    if (S.crlGap) list = list.filter(function (r) { return CRL_ROLES.some(function (x) { return !crlHolder(r.c, x[0]); }); });
+    list.sort(function (a, b) { return String(b.c.createdAt || "") < String(a.c.createdAt || "") ? -1 : 1; });
+    var chip = function (act, k, v, on, label) { return '<button class="chip ' + (on ? "on" : "") + '" data-act="' + act + '" data-' + k + '="' + esc(v) + '">' + label + '</button>'; };
+    var h = '<div class="card" style="margin-top:6px"><h3 style="margin:0 0 4px">Client &amp; lead log</h3>' +
+      '<div class="meta">Every man on the book, newest first: his executive and all four partners. ' +
+      (adm ? 'Tap a name in the Executive or a partner column to change it &mdash; your PIN is asked and the server checks it.'
+           : (seesAllClients() ? 'Only the owner can change an executive or a partner.' : 'Your own clients and leads. Only the owner can change an executive or a partner.')) + '</div></div>';
+    h += '<div class="chips">' + chip("crl-who", "w", "all", who === "all", 'Everyone <b>' + rows.length + '</b>') +
+      chip("crl-who", "w", "client", who === "client", 'Clients <b>' + nC + '</b>') +
+      chip("crl-who", "w", "lead", who === "lead", 'Leads <b>' + nL + '</b>') + '</div>';
+    var exk = Object.keys(execs).sort(function (a, b) { return execs[b] - execs[a] || a.localeCompare(b); });
+    if (seesAllClients() && exk.length > 1) {
+      h += '<div class="chips">' + chip("crl-ex", "e", "", !ex, 'All executives') + exk.map(function (k) {
+        return chip("crl-ex", "e", k, ex === k, esc(k === "—" ? "Nobody" : k) + ' <b>' + execs[k] + '</b>');
+      }).join("") + '</div>';
+    }
+    h += '<div class="row" style="margin:8px 0 4px;flex-wrap:wrap;gap:6px"><div class="meta"><b>' + list.length + '</b> ' + (list.length === 1 ? "name" : "names") + '</div><div class="grow"></div>' +
+      '<button class="chip ' + (S.crlGap ? "on" : "") + '" data-act="crl-gap">A partner missing</button>' +
+      '<button class="btn sm ghost" data-act="crl-xlsx">&#8681; Excel</button></div>';
+    var cell = function (r, role) {
+      var v = crlHolder(r.c, role);
+      var txt = v ? esc(v) : '<span style="color:#94a3b8">—</span>';
+      if (!adm) return role === "exec" && v ? whoChip(v) : txt;
+      return '<button class="btn sm ghost" data-act="crl-edit" data-id="' + esc(r.c.id || "") + '" data-n="' + esc(r.c.name) + '" data-r="' + role + '" ' +
+        'style="min-height:44px;padding:2px 8px;font-weight:' + (v ? 700 : 500) + ';text-align:left;white-space:normal;max-width:170px">' + txt + ' <span style="color:#64748b">✎</span></button>';
+    };
+    /* the executive and the partners straight after the name - they are what this sheet is for,
+       and on a phone the first swipe should reach them, not the date he was added */
+    var cols = [{ k: "name", t: "NAME", w: "150px" }, { k: "exec", t: "EXECUTIVE" }, { k: "plumber", t: "PLUMBER" }, { k: "architect", t: "ARCHITECT" },
+      { k: "builder", t: "BUILDER" }, { k: "pmc", t: "PMC" }, { k: "st", t: "CLIENT / LEAD" }, { k: "added", t: "ADDED", nw: 1 }, { k: "last", t: "LAST CHANGE" }];
+    var out = list.map(function (r) {
+      var c = r.c, l = r.ch[0];
+      return {
+        v: { name: c.name, st: r.client ? "1" : "0", added: String(c.createdAt || ""), exec: r.exec, plumber: c.plumber || "", architect: c.architect || "", builder: c.builder || "", pmc: c.pmc || "", last: l ? l.at : "" },
+        cells: {
+          name: '<b data-act="cl-open" data-id="' + esc(c.id || "") + '" style="cursor:pointer;color:#0f766e">' + esc(c.name) + '</b>' +
+            xlSub([c.mobile ? '<a href="tel:' + esc(c.mobile) + '">' + esc(c.mobile) + '</a>' : '<span style="color:#dc2626">no number</span>', esc([c.area, c.location].filter(Boolean).join(", "))].filter(Boolean).join(" · ")),
+          st: (r.client ? '<span class="pill Won">client</span>' : '<span class="pill soon">lead</span>') + xlSub(esc(r.why)),
+          added: esc(dmy(c.createdAt)) + xlSub(esc(String(c.createdBy || ""))),
+          exec: cell(r, "exec"), plumber: cell(r, "plumber"), architect: cell(r, "architect"), builder: cell(r, "builder"), pmc: cell(r, "pmc"),
+          last: l ? '<button class="btn sm ghost" data-act="crl-hist" data-n="' + esc(c.name) + '" style="min-height:44px;padding:2px 8px;text-align:left;white-space:normal;max-width:200px">' +
+              esc(incRoleLabel(l.role)) + ': ' + esc(l.was || "nobody") + ' → ' + esc(l.now || "nobody") + xlSub('from ' + esc(dmy(l.on)) + (r.ch.length > 1 ? ' · ' + r.ch.length + ' changes' : '')) + '</button>'
+            : '<span style="color:#94a3b8">—</span>'
+        }
+      };
+    });
+    return h + xlTable("crlog", cols, out, "all four partners and the last change");
+  }
+  /* the sheet: who instead, from which day, why, and his PIN */
+  function sheetCrlEdit(c, role, note) {
+    var lab = incRoleLabel(role), was = crlHolder(c, role), pick;
+    if (role === "exec") {
+      var names = [];
+      (S.data.team || []).filter(function (t) { return String(t.active).toUpperCase() !== "N" && t.name; })
+        .forEach(function (t) { if (names.indexOf(t.name) < 0) names.push(t.name); });
+      pick = '<select id="crl_new"><option value="">— pick the executive —</option>' + names.map(function (n) {
+        return '<option value="' + esc(n) + '"' + (n === was ? " selected" : "") + '>' + esc(n) + '</option>'; }).join("") + '</select>';
+    } else {
+      pick = ppkHtml({ id: "crl_new", role: role, cur: was, district: c.location || "", add: false, empty: "— nobody —", mode: "client" });
+    }
+    return '<h2>Change the ' + esc(lab.toLowerCase()) + '</h2>' +
+      '<p class="sub"><b>' + esc(c.name) + '</b><br>Now: <b>' + esc(was || "nobody") + '</b></p>' +
+      '<label>' + esc(lab) + ' from now on</label>' + pick +
+      (was ? '<label>From which day</label><input id="crl_on" type="date" value="' + today() + '" max="' + today() + '"/>' +
+        '<div class="meta" style="font-size:12.5px;margin-top:4px">Deliveries from this day are the new man’s for incentive; before it they stay ' + esc(was) + '’s.</div>'
+        : '<div class="meta" style="font-size:12.5px;margin-top:6px">Nobody held this before, so the new man counts from the start.</div>') +
+      '<label>Why (kept in the record)</label><input id="crl_why" placeholder="e.g. site handed over to Imran"/>' +
+      '<label>Your PIN</label>' +
+      '<input id="crl_pin" type="password" inputmode="numeric" autocomplete="off" style="font-size:18px;letter-spacing:.3em;text-align:center" placeholder="••••"/>' +
+      '<div id="crl_pin_note" class="meta" style="font-size:12.5px;margin-top:6px;color:#b91c1c">' + esc(note || "") + '</div>' +
+      '<div class="foot"><button class="btn" data-act="crl-go">Change it</button><button class="btn ghost" data-act="close">Cancel</button></div>';
+  }
+  function sheetCrlHist(name) {
+    var c = clientByName(name) || { name: name }, all = [];
+    CRL_ROLES.forEach(function (r) { incChanges(c.name, r[0]).forEach(function (x) { all.push({ role: r[0], on: x.on, was: x.was, now: x.now, at: x.at }); }); });
+    all.sort(function (a, b) { return a.at < b.at ? 1 : -1; });
+    var by = {};
+    ((S.data && S.data.audit) || []).forEach(function (a) {
+      if (!a || a.action !== "client:reassign" || dkey(a.target) !== dkey(c.name)) return;
+      var d = {}; try { d = JSON.parse(a.detail || "{}") || {}; } catch (e) { }
+      by[String(d.role) + "|" + dkey(d.was) + "|" + dkey(d.now) + "|" + String(d.on)] = { who: a.actor, why: d.why || "" };
+    });
+    return '<h2>Changes on ' + esc(c.name) + '</h2>' + (all.length ? all.map(function (x) {
+      var w = by[x.role + "|" + dkey(x.was) + "|" + dkey(x.now) + "|" + x.on] || {};
+      return '<div class="card" style="margin:6px 0;padding:8px 12px"><b>' + esc(incRoleLabel(x.role)) + '</b>: ' + esc(x.was || "nobody") + ' → <b>' + esc(x.now || "nobody") + '</b>' +
+        '<div class="meta" style="font-size:12.5px">from ' + esc(dmy(x.on)) + ' · entered ' + esc(dmy(x.at)) + (w.who ? ' by ' + esc(w.who) : '') + (w.why ? ' · “' + esc(w.why) + '”' : '') + '</div></div>';
+    }).join("") : '<div class="empty">No executive or partner has been changed on him.</div>') +
+      '<div class="foot"><button class="btn ghost" data-act="close">Close</button></div>';
+  }
+  function crlXlsx() {
+    var rows = crlRows();
+    if (!rows.length) { toast("Nobody to list."); return; }
+    rows.sort(function (a, b) { return String(b.c.createdAt || "") < String(a.c.createdAt || "") ? -1 : 1; });
+    var out = [["Name", "Client / lead", "Why", "Mobile", "Area", "District", "Added", "Added by", "Executive", "Plumber", "Architect", "Builder", "PMC", "Last change", "Changes"].map(function (t) { return { v: t, s: XL.HEAD }; })];
+    rows.forEach(function (r) {
+      var c = r.c, l = r.ch[0];
+      out.push([c.name, r.client ? "Client" : "Lead", r.why, String(c.mobile || ""), String(c.area || ""), String(c.location || ""), dmy(c.createdAt), String(c.createdBy || ""),
+        r.exec, String(c.plumber || ""), String(c.architect || ""), String(c.builder || ""), String(c.pmc || ""),
+        l ? incRoleLabel(l.role) + ": " + (l.was || "nobody") + " -> " + (l.now || "nobody") + " from " + dmy(l.on) : "", r.ch.length || ""]);
+    });
+    dlXlsx("Client_and_lead_log_" + today() + ".xlsx", "Client & lead log", out, [28, 10, 20, 13, 18, 12, 11, 14, 16, 18, 18, 18, 16, 40, 8]);
   }
 
   function logout() {
@@ -48837,7 +48991,7 @@ function viewCatalogue() {
     /* v6.9.533 - his third list, item 13: "merge Leads and Clients into one tab with sub-tabs",
        and item 16: "remove Leads tab from header". One group; the lead board is its second
        chip. Every chip the two groups had is still here. */
-    ["Clients",    ["clients", "leads", "brandfollow", "followups", "quotes", "discounts", "pitch", "winloss", "review"]],
+    ["Clients",    ["clients", "leads", "crlog", "brandfollow", "followups", "quotes", "discounts", "pitch", "winloss", "review"]],
     ["Service",    ["complaints", "service"]],   /* 6.9.684 - complaints first */
     ["Products",   ["products", "pricelist", "catalogue", "catalogs", "brandstory", "stock"]],   /* 6.9.612 - price list and add-product back */   /* v6.9.581 - the catalogue library; v6.9.605 - Stock, on his "stock entry in CRM" */
     ["Team",       ["partners", "commission", "payroll", "scorecard", "report", "teampins"]],
@@ -48967,7 +49121,7 @@ function viewCatalogue() {
     catalogue: 1, partners: 1, scorecard: 1, report: 1, commission: 1, payroll: 1, teampins: 1, dash: 1,
     pending: 1, trouble: 1, dups: 1, health: 1, changelog: 1, tools: 1, brief: 1, rates: 1, rules: 1, booksweep: 1 };
   var HELP_ALIAS = { deliveries: "challans", collections: "payments", pricing: "pricelist", payrollhub: "commission",
-    dossier: "clients", matrix: "pitch", sites: "pitch", customers: "clients", paylog: "payments", complaints: "service" };   /* 6.9.667; 6.9.684 complaints -> the service section until it has its own */
+    dossier: "clients", matrix: "pitch", sites: "pitch", customers: "clients", paylog: "payments", complaints: "service", crlog: "clients" };   /* 6.9.667; 6.9.684 complaints -> the service section until it has its own */
   function helpHref(tab) {
     var k = HELP_AT[tab] ? tab : (HELP_ALIAS[tab] || "");
     return "../help/crm.html#t-" + (k || "start");
@@ -49197,7 +49351,7 @@ function viewCatalogue() {
       setTimeout(function () { try { preloadLogos(); } catch (e) { } }, 4000);
     }
     if (!S.pin && !S.tok) { renderLogin(); return; }
-    var views = { agent: viewAgent, search: viewSearch, dossier: viewDossier, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, complaints: viewComplaints, payments: viewPayments, paidout: viewPaidOut, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, catalogs: viewCatalogues, brandstory: viewBrandStories, clients: viewClients, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, register: viewRegister, paylog: viewPayLog, freight: viewFreight, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, trouble: viewTrouble, changelog: viewChangeLog, booksweep: viewBookSweep, dups: viewDups, stock: viewStock, brief: viewBrief, review: viewReview };
+    var views = { agent: viewAgent, search: viewSearch, dossier: viewDossier, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, complaints: viewComplaints, payments: viewPayments, paidout: viewPaidOut, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, catalogs: viewCatalogues, brandstory: viewBrandStories, clients: viewClients, crlog: viewCrLog, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, register: viewRegister, paylog: viewPayLog, freight: viewFreight, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, trouble: viewTrouble, changelog: viewChangeLog, booksweep: viewBookSweep, dups: viewDups, stock: viewStock, brief: viewBrief, review: viewReview };
     var tabs = TAB_TABS;
 
     var h = '<div class="top">' +
@@ -51485,6 +51639,56 @@ function viewCatalogue() {
       save("quotes", _qw).then(function (r) { if (r) toast("Quote " + _qw.status + "."); });
       if (act === "q-lose" && !_wasL) { S.modal = modalQuoteLost(_qw.id); }
       keepScroll = true; render(); return;
+    }
+    /* ---- 6.9.704 - the Client & lead log ---- */
+    if (act === "crl-who") { S.crlWho = t.getAttribute("data-w") || "all"; keepScroll = true; render(); return; }
+    if (act === "crl-ex") { S.crlEx = t.getAttribute("data-e") || ""; keepScroll = true; render(); return; }
+    if (act === "crl-gap") { S.crlGap = !S.crlGap; keepScroll = true; render(); return; }
+    if (act === "crl-xlsx") { crlXlsx(); return; }
+    if (act === "crl-hist") { S.modal = sheetCrlHist(t.getAttribute("data-n")); render(); return; }
+    if (act === "crl-edit") {
+      if (!roleIs("admin")) { toast("Only the owner can change an executive or a partner."); return; }
+      var _cid = t.getAttribute("data-id"), _cn = t.getAttribute("data-n"), _cr = t.getAttribute("data-r");
+      var _cc = (S.data.clients || []).filter(function (x) { return (_cid && String(x.id) === _cid) || (!_cid && x.name === _cn); })[0];
+      if (!_cc) { toast("That client is no longer on this screen."); return; }
+      S.crlPend = { id: _cc.id, n: _cc.name, role: _cr };
+      S.modal = sheetCrlEdit(_cc, _cr); render(); return;
+    }
+    if (act === "crl-go") {
+      var _p = S.crlPend || {};
+      var _c = (S.data.clients || []).filter(function (x) { return (_p.id && String(x.id) === String(_p.id)) || (!_p.id && x.name === _p.n); })[0];
+      if (!_c) { toast("That client is no longer on this screen."); S.crlPend = null; S.modal = null; render(); return; }
+      var _role = _p.role, _was = crlHolder(_c, _role);
+      var _nw = el("crl_new") ? String(el("crl_new").value || "").trim() : "";
+      if (_nw === "__new__") _nw = "";
+      var _on = el("crl_on") ? String(el("crl_on").value || "").slice(0, 10) : today();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(_on) || _on > today()) _on = today();
+      var _why = el("crl_why") ? String(el("crl_why").value || "").trim() : "";
+      var _pin = el("crl_pin") ? String(el("crl_pin").value || "").trim() : "";
+      if (_role === "exec" && !_nw) { pinNote("crl_pin", "Pick the executive. A client is always on somebody’s book."); return; }
+      if (dkey(_nw) === dkey(_was)) { pinNote("crl_pin", "That is who it already is. Nothing changed."); return; }
+      if (!_pin) { pinNote("crl_pin", "Type your PIN first. Nothing was changed."); return; }
+      var _b = t; if (_b) { _b.disabled = true; _b.textContent = "Checking…"; }
+      api("teamAuth", { pin: _pin, ua: navigator.userAgent }).then(function (r) {
+        if (!r || !r.ok) { if (_b) { _b.disabled = false; _b.textContent = "Change it"; } pinNote("crl_pin", (r && r.error) || "Wrong PIN. Nothing was changed."); return; }
+        if (String((r.user && r.user.role) || "").toLowerCase().indexOf("admin") < 0) {
+          if (_b) { _b.disabled = false; _b.textContent = "Change it"; }
+          pinNote("crl_pin", "The server says this sign-in is not the owner’s. Nothing was changed."); return;
+        }
+        /* the trail first, then the name - nothing is deleted, both names stay in the audit row */
+        save("audit", { id: "", createdAt: new Date().toISOString(), actor: S.user, action: "client:reassign", target: _c.name,
+          detail: JSON.stringify({ client: _c.name, role: _role, was: _was, now: _nw, on: _on, why: _why }), ip: "" });
+        var _row = Object.assign({}, _c); _row[_role === "exec" ? "ownedBy" : _role] = _nw;
+        _ptnOn = _on;
+        try { save("clients", _row); } finally { _ptnOn = ""; }
+        S.crlPend = null; S.modal = null;
+        toast(incRoleLabel(_role) + " on " + _c.name + ": " + (_was || "nobody") + " → " + (_nw || "nobody") + (_was ? ", from " + dmy(_on) : "") + ".");
+        render();
+      }, function (e) {
+        if (_b) { _b.disabled = false; _b.textContent = "Change it"; }
+        pinNote("crl_pin", "The server did not answer — " + apiWhy(e) + ". Nothing was changed.");
+      });
+      return;
     }
     if (act === "cl-xlsx") { clientRegisterXlsx(); return; }
     /* v6.9.458 - the register as paper, and the brand filter behind both files */
