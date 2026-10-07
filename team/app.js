@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.702";
+  var APP_VERSION = "6.9.703";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -818,7 +818,25 @@
     if (/Android/i.test(ua)) return "It is in your phone’s <b>Downloads</b> folder (also in the notification at the top).";
     return "It is in the <b>Files</b> app → <b>Downloads</b> (or tap ⬇ in Safari’s address bar).";
   }
-  function dlPanel(blob, fname) {
+  /* ===== 6.9.703 / 1.128.0 / 1.64.0 - A PHONE ONLY SAVES A FILE INSIDE A TAP =====
+     HIS WORDS, 7 Oct 2026: "in mobile in crm its not downloading full hisab, saying empty file". The full
+     hisab fetches every signed receipt before it is drawn - many seconds after his tap. A phone lets a
+     page save a file only while a tap is fresh, and jsPDF's own save on a phone goes through a data:
+     address, which a large PDF does not survive - so the file arrived empty. On a phone now: the PDF is
+     made into a file here (a blob, never a data: address); if his tap was a moment ago it is saved at
+     once, and if the build took longer the panel says the file is READY and the save happens on his
+     next tap - Download, Save to / Send, or Open. A laptop is unchanged. */
+  var _dlTap = 0;
+  try { ["pointerdown", "touchstart", "click"].forEach(function (ev) { document.addEventListener(ev, function () { _dlTap = Date.now(); }, true); }); } catch (eT) { }
+  function dlFresh() { return Date.now() - _dlTap < 3500; }
+  function dlBlob(blob, fname) {
+    var u = URL.createObjectURL(blob), a = document.createElement("a");
+    a.href = u; a.download = fname; a.rel = "noopener"; a.style.display = "none";
+    document.body.appendChild(a); a.click();
+    setTimeout(function () { try { document.body.removeChild(a); } catch (e) { } }, 1500);
+    setTimeout(function () { try { URL.revokeObjectURL(u); } catch (e) { } }, 120000);
+  }
+  function dlPanel(blob, fname, ready) {
     try {
       if (!blob || !dlIsPhone()) return;
       var old = document.getElementById("ewdl"); if (old && old.parentNode) old.parentNode.removeChild(old);
@@ -833,10 +851,10 @@
         "font:500 13px/1.4 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:560px;margin:0 auto");
       var nm = document.createElement("div");
       nm.setAttribute("style", "font-weight:700;font-size:13.5px;word-break:break-all");
-      nm.textContent = "✓ Downloaded — " + fname;
+      nm.textContent = (ready ? "Your file is ready \u2014 " : "\u2713 Downloaded \u2014 ") + fname;
       var where = document.createElement("div");
       where.setAttribute("style", "font-size:12.5px;color:#cbd5e1;margin-top:3px");
-      where.innerHTML = dlWhereSay() + (!canSh ? "" : /Android/i.test(String(navigator.userAgent || ""))
+      where.innerHTML = (ready ? "It took a moment to build. Tap <b>Download</b> to save it." : dlWhereSay()) + (!canSh ? "" : /Android/i.test(String(navigator.userAgent || ""))
         ? " To put it in Drive or send it on WhatsApp, tap <b>Save to\u2026 / Send</b>."
         : " To keep it in a folder of your choice, tap <b>Save to\u2026</b> and pick <b>Save to Files</b>.");
       var row = document.createElement("div");
@@ -850,8 +868,9 @@
         row.appendChild(b);
       };
       var close = function () { if (box.parentNode) box.parentNode.removeChild(box); setTimeout(function () { try { URL.revokeObjectURL(url); } catch (e) { } }, 60000); };
-      btn("Open", !canSh, function () { var w = null; try { w = window.open(url, "_blank"); } catch (e) { w = null; } if (!w) { var a = document.createElement("a"); a.href = url; a.target = "_blank"; a.rel = "noopener"; document.body.appendChild(a); a.click(); a.remove(); } });   /* never navigate the app itself away */
-      if (canSh) btn("Save to… / Send", true, function () { navigator.share({ files: [file], title: fname }).then(close, function () { }); });
+      if (ready) btn("Download", true, function () { dlBlob(blob, fname); nm.textContent = "\u2713 Downloaded \u2014 " + fname; where.innerHTML = dlWhereSay(); });
+      btn("Open", !canSh && !ready, function () { var w = null; try { w = window.open(url, "_blank"); } catch (e) { w = null; } if (!w) { var a = document.createElement("a"); a.href = url; a.target = "_blank"; a.rel = "noopener"; document.body.appendChild(a); a.click(); a.remove(); } });   /* never navigate the app itself away */
+      if (canSh) btn("Save to… / Send", !ready, function () { navigator.share({ files: [file], title: fname }).then(close, function () { }); });
       btn("Close", false, close);
       box.appendChild(nm); box.appendChild(where); box.appendChild(row);
       document.body.appendChild(box);
@@ -867,8 +886,12 @@
     var now = Date.now();
     if (now - _pdfOutAt < 2000) return Promise.resolve(false);   /* the same press twice */
     _pdfOutAt = now;
+    if (dlIsPhone()) {   /* 6.9.703 - never jsPDF's save on a phone, and only inside a fresh tap */
+      var _fn = String(fname || "document.pdf"), _bl = doc.output("blob");
+      if (dlFresh()) { dlBlob(_bl, _fn); dlPanel(_bl, _fn, false); } else dlPanel(_bl, _fn, true);
+      return Promise.resolve(true);
+    }
     doc.save(String(fname || "document.pdf"));
-    try { dlPanel(doc.output("blob"), String(fname || "document.pdf")); } catch (e) { }   /* 6.9.701 - on a phone, where it went */
     return Promise.resolve(true);
   }
   /* the word on the button: every PDF button downloads now (6.9.664) */
