@@ -146,7 +146,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.63.0";
+  var APP_VERSION = "1.64.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_collect_session";
 
@@ -206,7 +206,25 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
     if (/Android/i.test(ua)) return "It is in your phone’s <b>Downloads</b> folder (also in the notification at the top).";
     return "It is in the <b>Files</b> app → <b>Downloads</b> (or tap ⬇ in Safari’s address bar).";
   }
-  function dlPanel(blob, fname) {
+  /* ===== 6.9.703 / 1.128.0 / 1.64.0 - A PHONE ONLY SAVES A FILE INSIDE A TAP =====
+     HIS WORDS, 7 Oct 2026: "in mobile in crm its not downloading full hisab, saying empty file". The full
+     hisab fetches every signed receipt before it is drawn - many seconds after his tap. A phone lets a
+     page save a file only while a tap is fresh, and jsPDF's own save on a phone goes through a data:
+     address, which a large PDF does not survive - so the file arrived empty. On a phone now: the PDF is
+     made into a file here (a blob, never a data: address); if his tap was a moment ago it is saved at
+     once, and if the build took longer the panel says the file is READY and the save happens on his
+     next tap - Download, Save to / Send, or Open. A laptop is unchanged. */
+  var _dlTap = 0;
+  try { ["pointerdown", "touchstart", "click"].forEach(function (ev) { document.addEventListener(ev, function () { _dlTap = Date.now(); }, true); }); } catch (eT) { }
+  function dlFresh() { return Date.now() - _dlTap < 3500; }
+  function dlBlob(blob, fname) {
+    var u = URL.createObjectURL(blob), a = document.createElement("a");
+    a.href = u; a.download = fname; a.rel = "noopener"; a.style.display = "none";
+    document.body.appendChild(a); a.click();
+    setTimeout(function () { try { document.body.removeChild(a); } catch (e) { } }, 1500);
+    setTimeout(function () { try { URL.revokeObjectURL(u); } catch (e) { } }, 120000);
+  }
+  function dlPanel(blob, fname, ready) {
     try {
       if (!blob || !dlIsPhone()) return;
       var old = document.getElementById("ewdl"); if (old && old.parentNode) old.parentNode.removeChild(old);
@@ -221,10 +239,10 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
         "font:500 13px/1.4 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:560px;margin:0 auto");
       var nm = document.createElement("div");
       nm.setAttribute("style", "font-weight:700;font-size:13.5px;word-break:break-all");
-      nm.textContent = "✓ Downloaded — " + fname;
+      nm.textContent = (ready ? "Your file is ready \u2014 " : "\u2713 Downloaded \u2014 ") + fname;
       var where = document.createElement("div");
       where.setAttribute("style", "font-size:12.5px;color:#cbd5e1;margin-top:3px");
-      where.innerHTML = dlWhereSay() + (!canSh ? "" : /Android/i.test(String(navigator.userAgent || ""))
+      where.innerHTML = (ready ? "It took a moment to build. Tap <b>Download</b> to save it." : dlWhereSay()) + (!canSh ? "" : /Android/i.test(String(navigator.userAgent || ""))
         ? " To put it in Drive or send it on WhatsApp, tap <b>Save to\u2026 / Send</b>."
         : " To keep it in a folder of your choice, tap <b>Save to\u2026</b> and pick <b>Save to Files</b>.");
       var row = document.createElement("div");
@@ -238,8 +256,9 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
         row.appendChild(b);
       };
       var close = function () { if (box.parentNode) box.parentNode.removeChild(box); setTimeout(function () { try { URL.revokeObjectURL(url); } catch (e) { } }, 60000); };
-      btn("Open", !canSh, function () { var w = null; try { w = window.open(url, "_blank"); } catch (e) { w = null; } if (!w) { var a = document.createElement("a"); a.href = url; a.target = "_blank"; a.rel = "noopener"; document.body.appendChild(a); a.click(); a.remove(); } });   /* never navigate the app itself away */
-      if (canSh) btn("Save to… / Send", true, function () { navigator.share({ files: [file], title: fname }).then(close, function () { }); });
+      if (ready) btn("Download", true, function () { dlBlob(blob, fname); nm.textContent = "\u2713 Downloaded \u2014 " + fname; where.innerHTML = dlWhereSay(); });
+      btn("Open", !canSh && !ready, function () { var w = null; try { w = window.open(url, "_blank"); } catch (e) { w = null; } if (!w) { var a = document.createElement("a"); a.href = url; a.target = "_blank"; a.rel = "noopener"; document.body.appendChild(a); a.click(); a.remove(); } });   /* never navigate the app itself away */
+      if (canSh) btn("Save to… / Send", !ready, function () { navigator.share({ files: [file], title: fname }).then(close, function () { }); });
       btn("Close", false, close);
       box.appendChild(nm); box.appendChild(where); box.appendChild(row);
       document.body.appendChild(box);
@@ -255,8 +274,12 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
     var now = Date.now();
     if (now - _pdfOutAt < 2000) return Promise.resolve(false);   /* the same press twice */
     _pdfOutAt = now;
+    if (dlIsPhone()) {   /* 6.9.703 - never jsPDF's save on a phone, and only inside a fresh tap */
+      var _fn = String(fname || "document.pdf"), _bl = doc.output("blob");
+      if (dlFresh()) { dlBlob(_bl, _fn); dlPanel(_bl, _fn, false); } else dlPanel(_bl, _fn, true);
+      return Promise.resolve(true);
+    }
     doc.save(String(fname || "document.pdf"));
-    try { dlPanel(doc.output("blob"), String(fname || "document.pdf")); } catch (e) { }   /* 6.9.701 - on a phone, where it went */
     return Promise.resolve(true);
   }
   /* the word on the button: every PDF button downloads now (6.9.664) */
@@ -4015,7 +4038,7 @@ function cancelMap() {
              !isCancelled("challans", c.id);
     })).forEach(function (c) {
       out.push({ ymd: d10(c.createdAt), what: "Delivery " + (c.challanNo || ""),
-                 extra: c.site || "", debit: challanNet(c), credit: 0 });
+                 extra: c.site || "", debit: challanNet(c), credit: 0, ch: c, ts: String(c.createdAt || "") });
     });
     (d.returns || []).filter(function (r) {
       return _isF(r.customerName) &&
@@ -4035,19 +4058,58 @@ function cancelMap() {
                          _rv.est ? _rv.est + " of " + rnLines(r).length + " priced from our catalogue" : "",
                          _rv.unpriced ? _rv.unpriced + (_rv.unpriced === 1 ? " item" : " items") + " not priced - ask the office" : ""]
                         .filter(Boolean).join(" \u00b7 "),
-                 debit: 0, credit: _rv.amt });
+                 debit: 0, credit: _rv.amt, rt: r, ts: String(r.createdAt || "") });
     });
     (d.payments || []).filter(function (p) {
       return _isF(p.client) && !isCancelled("payments", p.id);
     }).forEach(function (p) {
       out.push({ ymd: d10(p.date || p.createdAt), what: "Payment received",
-                 extra: [p.mode, p.ref].filter(Boolean).join(" · "), debit: 0, credit: payAmt(p) });
+                 extra: [p.mode, p.ref].filter(Boolean).join(" · "), debit: 0, credit: payAmt(p), pay: p, ts: String(p.createdAt || "") });
     });
     out.sort(function (a, b) { return String(a.ymd).localeCompare(String(b.ymd)); });
     return out;
   }
 
-  function statementPdf(r) {
+  /* ===== 1.64.0 - THREE PAPERS, AS IN THE CRM =====
+     HIS WORDS, 7 Oct 2026: "in collection app also provide both options to download only statement, to
+     download complete hisab, to download hisab after last payment, as it's not showing now".
+       stmt  - the statement, as it always was.
+       full  - the statement, then every delivery item by item (rate, discount, amount) and every return,
+               each with its signed receipt as a link that opens the photograph.
+       since - from his latest payment: everything before it is one brought-forward line, then what
+               came after, item by item - what he is being asked to pay for now.
+     The figures are the statement's own rows (ledgerRows), so the three papers close on one balance. */
+  function hisabProofUrl(chId) {
+    var best = null;
+    ((S.data && S.data.audit) || []).forEach(function (a) {
+      if (!a || String(a.action || "") !== "challan:proof") return;
+      var d = {}; try { d = JSON.parse(a.detail || "{}") || {}; } catch (e) { return; }
+      if (String(d.chId || "") !== String(chId) || !d.url) return;
+      if (!best || String(a.createdAt || "") > best.at) best = { at: String(a.createdAt || ""), url: String(d.url) };
+    });
+    return best ? best.url : "";
+  }
+  function hisabLastPayRow(rows) {
+    var best = null;
+    rows.forEach(function (x) { if (x.pay && x.credit > 0 && (!best || x.ymd > best.ymd || (x.ymd === best.ymd && x.ts > best.ts))) best = x; });
+    return best;
+  }
+  function sheetHisabDl(name) {
+    var r = rowFor(name); if (!r) return "";
+    var lp = hisabLastPayRow(ledgerRows(name));
+    var opt = function (mode, title, sub) {
+      return '<button class="btn gry" data-act="hisab-dl-go" data-n="' + esc(name) + '" data-m="' + mode + '" style="width:100%;display:block;text-align:left;margin:0 0 8px;padding:10px 12px;min-height:56px">' +
+        '<b style="display:block;font-size:14px">' + title + '</b><span style="display:block;font-size:12.5px;font-weight:500;color:#64748b;margin-top:2px">' + sub + '</span></button>';
+    };
+    return '<h2>Download his hisab</h2><div class="muted" style="margin-bottom:10px">' + esc(name) + ' &middot; balance ' + money(r.due) + '</div>' +
+      opt("stmt", "Statement only", "One page per account: every delivery, return and payment with the running balance.") +
+      opt("full", "Complete hisab", "The statement, then every delivery item by item, with its signed receipt to open.") +
+      (lp ? opt("since", "Hisab after last payment", "From his payment of " + money(lp.credit) + " on " + esc(dstr(lp.ymd)) + ": what came after, item by item.")
+          : '<div class="muted" style="margin:4px 2px 10px">No payment from him yet, so there is no &ldquo;after last payment&rdquo; paper &mdash; the complete hisab is the same thing.</div>') +
+      '<div class="acts"><button class="btn gry grow" data-act="close">Close</button></div>';
+  }
+  function statementPdf(r, mode) {
+    mode = mode || "stmt";
     /* v1.6 - the builder is fetched here, on the first statement of the day, instead of
        being made a condition of the app starting at all */
     return ensurePdf().then(loadLogo).then(function () {
@@ -4118,7 +4180,9 @@ function cancelMap() {
          This is the same fault the CRM carried until v6.9.368 - hidden behind `opening > 0` on
          the ledger card while being counted in the balance beside it - and it is fixed the same
          way. A credit is shown in the RECEIVED column, because that is what it is. */
-      if (r.opening > 0) {
+      var _since0 = mode === "since" && !!hisabLastPayRow(ledgerRows(r.name));
+      if (_since0) bal += r.opening;   /* 1.64.0 - after last payment: the opening is inside the one carried-forward line */
+      else if (r.opening > 0) {
         bal += r.opening;
         line("", "Balance brought forward from earlier books", "", r.opening, 0, true);
       } else if (r.opening < 0) {
@@ -4126,10 +4190,18 @@ function cancelMap() {
         line("", "Advance held from earlier books", "", 0, -r.opening, true);
       }
       var rows2 = ledgerRows(r.name);
+      var _lp = mode === "since" ? hisabLastPayRow(rows2) : null;
+      if (_lp) {   /* 1.64.0 - everything up to and including his latest payment is one line */
+        var _cut = rows2.indexOf(_lp), _bfRows = rows2.slice(0, _cut + 1);
+        _bfRows.forEach(function (x) { bal += x.debit - x.credit; });
+        line(dstr(_lp.ymd), "Balance after your payment of " + RS(_lp.credit) + " on " + dstr(_lp.ymd), "", 0, 0, true);
+        rows2 = rows2.slice(_cut + 1);
+      }
       rows2.forEach(function (x) {
         bal += x.debit - x.credit;
         line(dstr(x.ymd), x.what, x.extra, x.debit, x.credit, false);
       });
+      if (mode === "since" && _lp && !rows2.length) line("", "Nothing since your last payment.", "", 0, 0, false);
       if (!rows2.length && !r.opening) line("", "No entries on this account.", "", 0, 0, false);
 
       y += 3;
@@ -4151,8 +4223,62 @@ function cancelMap() {
       y += 2;
       doc.text("Terms: payment within " + CREDIT_DAYS + " days of delivery.", L, y);
 
-      doc.setFontSize(6.4); doc.setTextColor(150, 163, 175);
-      doc.text("Energy World  |  Panipat . Sonipat . Karnal    |    Statement of account, not a tax invoice.", L, 288);
+      /* 1.64.0 - item by item, for the complete hisab and the one after the last payment */
+      if (mode !== "stmt") {
+        var det = rows2.filter(function (x) { return x.ch || x.rt; });
+        if (det.length) {
+          doc.addPage(); y = 18;
+          F("bold"); doc.setFontSize(11); doc.setTextColor(11, 59, 54);
+          doc.text(mode === "since" ? "Item by item - after the last payment" : "Item by item", L, y); y += 7;
+          var cQ = R - 78, cRt = R - 58, cDs = R - 38, cAm = R - 2;
+          det.forEach(function (x) {
+            var c = x.ch, rt = x.rt;
+            var its = c ? pricedLines(c, r.name) : (function () { var a = []; try { a = JSON.parse(rt.itemsJson || "[]") || []; } catch (e) { a = []; } return a; })();
+            if (y > 262) { doc.addPage(); y = 18; }
+            doc.setFillColor(rt ? 254 : 240, rt ? 242 : 253, rt ? 242 : 250); doc.rect(L, y - 4.2, R - L, 6.4, "F");
+            F("bold"); doc.setFontSize(8); doc.setTextColor(rt ? 185 : 11, rt ? 28 : 59, rt ? 28 : 54);
+            doc.text(dstr(x.ymd) + "   " + (c ? "Delivery " + (c.challanNo || "") : "Material returned " + (rt.returnNo || "")) + (x.extra ? "   " + doc.splitTextToSize(String(x.extra), 70)[0] : ""), L + 2, y);
+            doc.text((rt ? "- " : "") + RS(c ? x.debit : x.credit), cAm, y, { align: "right" });
+            y += 5.5;
+            F("bold"); doc.setFontSize(6.4); doc.setTextColor(100, 116, 139);
+            doc.text("ITEM", L + 2, y); doc.text("QTY", cQ, y, { align: "right" });
+            if (c) { doc.text("RATE", cRt, y, { align: "right" }); doc.text("DISC", cDs, y, { align: "right" }); doc.text("AMOUNT", cAm, y, { align: "right" }); }
+            y += 4;
+            F("normal"); doc.setFontSize(7.2); doc.setTextColor(17, 34, 45);
+            its.forEach(function (i) {
+              if (y > 280) { doc.addPage(); y = 18; }
+              var nmL = doc.splitTextToSize(String(i.desc || i.code || ""), cQ - L - 14);
+              doc.text(nmL[0] || "", L + 2, y);
+              doc.text(String(i.qty || ""), cQ, y, { align: "right" });
+              if (c) {
+                doc.text(RS(i.rate), cRt, y, { align: "right" });
+                doc.text(Number(i.disc) > 0 ? String(i.disc) + "%" : "-", cDs, y, { align: "right" });
+                doc.text(RS(i.amt), cAm, y, { align: "right" });
+              }
+              y += 4.2;
+            });
+            if (c) {   /* the items must add up to the figure on the header: show what came off and the freight */
+              var _gd = its.reduce(function (t, i) { return t + (Number(i.amt) || 0); }, 0);
+              var _off = _gd > 0 ? Math.min(Math.max(0, hisabExtraOf(c)), _gd) : 0;
+              var _fr = String(c.freightTo) === "Client" ? num(c.freight) : 0;
+              if (_off > 0) { doc.setTextColor(185, 28, 28); doc.text("Less: extra discount" + (c.discNote ? " (" + doc.splitTextToSize(String(c.discNote), 60)[0] + ")" : ""), L + 2, y); doc.text("- " + RS(_off), cAm, y, { align: "right" }); y += 4.2; }
+              if (_fr > 0) { doc.setTextColor(17, 34, 45); doc.text("Freight", L + 2, y); doc.text(RS(_fr), cAm, y, { align: "right" }); y += 4.2; }
+              var pu = hisabProofUrl(c.id);
+              doc.setFontSize(6.8);
+              if (pu) { doc.setTextColor(13, 118, 108); try { doc.textWithLink("Signed receipt - tap to open", L + 2, y, { url: pu }); } catch (e) { doc.text("Signed receipt: " + pu, L + 2, y); } }
+              else { doc.setTextColor(150, 163, 175); doc.text("Signed receipt not on file", L + 2, y); }
+              y += 4.6;
+            }
+            y += 2.4;
+          });
+        }
+      }
+      var _np = doc.getNumberOfPages();
+      for (var _pg = 1; _pg <= _np; _pg++) {
+        doc.setPage(_pg);
+        doc.setFontSize(6.4); doc.setTextColor(150, 163, 175);
+        doc.text("Energy World  |  Panipat . Sonipat . Karnal    |    Statement of account, not a tax invoice." + (_np > 1 ? "    Page " + _pg + " of " + _np : ""), L, 288);
+      }
       return doc;
     });
   }
@@ -4201,12 +4327,13 @@ function cancelMap() {
       toast("Could not build the statement. WhatsApp opened with the figure.");
     });
   }
-  function downloadHisab(name) {
+  function downloadHisab(name, mode) {
     var r = rowFor(name); if (!r) return;
-    toast("Building…");
-    statementPdf(r).then(function (doc) {
-      pdfOut(doc, String(r.name).replace(/[^\w.-]+/g, "_") + "_hisab.pdf", "Hisab " + String(r.name || ""));
-    }).catch(function () { toast("Could not build the statement — check your signal and try once more."); });
+    mode = mode || "stmt";
+    toast("Building\u2026");
+    statementPdf(r, mode).then(function (doc) {
+      pdfOut(doc, String(r.name).replace(/[^\w.-]+/g, "_") + ({ stmt: "_statement", full: "_hisab", since: "_hisab_after_last_payment" }[mode] || "_hisab") + ".pdf", "Hisab " + String(r.name || ""));
+    }).catch(function () { toast("Could not build the statement \u2014 check your signal and try once more."); });
   }
 
   /* ================= NOTHING LEAVES WITHOUT BEING LOOKED AT =================
@@ -4272,7 +4399,7 @@ function cancelMap() {
                              : (r.opening < 0 ? ' · advance held ' + money(-r.opening) : '')) +
               ' · balance <b>' + money(r.due) + '</b></div>' +
           '</div>' +
-          '<button class="btn sm gry" data-act="hisab-dl" data-n="' + esc(name) + '">Open it first</button>' +
+          '<button class="btn sm gry" data-act="hisab-peek" data-n="' + esc(name) + '">Open it first</button>' +
           '</div></div>'
         : '') +
 
@@ -4925,7 +5052,9 @@ function cancelMap() {
     }
     if (act === "wa") { S.sheet = sheetSend("reminder", t.getAttribute("data-n")); render(); return; }
     if (act === "hisab-wa") { S.sheet = sheetSend("hisab", t.getAttribute("data-n")); render(); return; }
-    if (act === "hisab-dl") { downloadHisab(t.getAttribute("data-n")); return; }
+    if (act === "hisab-dl") { S.sheet = sheetHisabDl(t.getAttribute("data-n")); render(); return; }   /* 1.64.0 - three papers */
+    if (act === "hisab-peek") { downloadHisab(t.getAttribute("data-n"), "stmt"); return; }   /* 1.64.0 - inside the send screen: the statement itself, the send screen stays open */
+    if (act === "hisab-dl-go") { var _hm = t.getAttribute("data-m") || "stmt", _hn = t.getAttribute("data-n"); S.sheet = null; render(); downloadHisab(_hn, _hm); return; }
     if (act === "pay") {
       if (!canPay()) { toast("Recording money is done by the office."); return; }
       S.sheet = sheetPay(t.getAttribute("data-n")); render(); return;
