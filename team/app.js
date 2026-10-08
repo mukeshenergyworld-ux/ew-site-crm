@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.711";
+  var APP_VERSION = "6.9.712";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -2932,8 +2932,51 @@ window.addEventListener("beforeunload", function (ev) {
          the SAME form that was open when the save started. If the user has since moved to another
          entry, the save quietly finishes without touching their new form. */
   var _mgen = 0, _shownModal = null;
+  /* ===== 6.9.712 - NO BACKGROUND REPAINT UNDER HIS FINGERS  (8 Oct 2026) =====
+     HIS WORDS: "its not stable while uploading something, not able to type anything in any search
+     bar, very fluctuating, not able to type and select anything" (HISAB client box, while a
+     document went up in 8 parts).
+     MEASURED in the rig: type "Aja" in the HISAB client box -> the suggestion list shows and a tap
+     picks "Ajay Madaan". Type the same and let ONE background repaint land -> the list is gone and
+     there is nothing to tap. A repaint rebuilds the screen: the box he is typing in is replaced
+     (the letters are copied across, so typing looked fine in the test) but the suggestion list
+     belonged to the old box and closes. An upload repaints after every receipt that goes up, the
+     receipt folder after every check, a sync after every pull - so while anything uploads, the
+     list kept vanishing.
+     Now a background repaint WAITS while a typing box has the cursor: it runs when he leaves the
+     box, or once he has stopped typing for 4 seconds with no suggestion list open (a minute at most). Anything he does himself (a tap, Enter, a pick)
+     still repaints at once, and the fresh data is already in memory, so nothing is lost. */
+  var _bgKeyAt = 0, _bgT = null;
+  try { document.addEventListener("input", function () { _bgKeyAt = Date.now(); }, true); } catch (e) { }
+  function bgTyping() {
+    var a = null; try { a = document.activeElement; } catch (e) { a = null; }
+    if (!a || !a.tagName) return false;
+    var tg = String(a.tagName).toLowerCase(), ty = String(a.type || "").toLowerCase();
+    if (tg === "textarea") return true;
+    if (tg !== "input") return false;
+    return !/^(checkbox|radio|file|button|submit|range|color)$/.test(ty);
+  }
+  function bgLater() {
+    if (_bgT) return;
+    _bgT = setTimeout(function chk() {
+      _bgT = null;
+      if (!S.bgDefer) return;
+      if (S.modal) { S.bgDefer = false; S.bgPending = true; return; }
+      var idle = Date.now() - _bgKeyAt, open = !!(_ta && _ta.box && _ta.box.style.display === "block");
+      /* typed in the last 4 s, or a suggestion list is open (he is choosing) - for up to a minute */
+      if (bgTyping() && idle < 60000 && (idle < 4000 || open)) { _bgT = setTimeout(chk, 1500); return; }
+      S.bgDefer = false; render();
+    }, 1500);
+  }
+  try {
+    document.addEventListener("focusout", function () {
+      if (!S.bgDefer) return;
+      setTimeout(function () { if (S.bgDefer && !bgTyping() && !S.modal) { S.bgDefer = false; render(); } }, 400);   /* after a pick has done its own work */
+    }, true);
+  } catch (e) { }
   function renderBg() {
     if (S.modal) { S.bgPending = true; return; }
+    if (bgTyping()) { S.bgDefer = true; bgLater(); return; }   /* 6.9.712 */
     render();
   }
   function closeAck(gen, msg) {
@@ -46882,6 +46925,7 @@ function viewCatalogue() {
   }
 
   function render() {
+    S.bgDefer = false;   /* 6.9.712 - any paint carries the waiting one */
     try { agClearCache(); } catch (e) { }   /* one agent scan per paint, always fresh */
     _bgCache = null;                        /* brand groups rebuilt if the catalogue changed */
     var _fsnap = null; try { _fsnap = formSnap(); } catch (e) { }
