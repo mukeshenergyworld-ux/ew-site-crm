@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.709";
+  var APP_VERSION = "6.9.710";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -3368,6 +3368,34 @@ window.addEventListener("beforeunload", function (ev) {
     }, 450);
   });
 
+  /* 6.9.710 - Boxes on the Stock table */
+  document.addEventListener("input", function (ev) {
+    var t = ev && ev.target;
+    if (!t || !t.classList || !t.classList.contains("stk-bx")) return;
+    var v = String(t.value || "").replace(/[^0-9]/g, ""); if (v !== t.value) t.value = v;
+    var k = t.getAttribute("data-code") || "", pk = Number(t.getAttribute("data-pack")) || 0;
+    stkBoxSet(k, v);
+    var c = document.getElementById("sbq_" + t.getAttribute("data-i")); if (c) c.innerHTML = stkBoxQtyHtml(v, pk, k);
+    var c2 = document.getElementById("sbq2_" + t.getAttribute("data-i")); if (c2) c2.innerHTML = stkBoxQtyTxt(v, pk, k);
+    var sm = document.getElementById("stk_bx_sum"); if (sm) sm.innerHTML = stkBoxSumHtml();
+  });
+  document.addEventListener("input", function (ev) {
+    var t = ev && ev.target;
+    if (!t || !t.classList || !t.classList.contains("stk-pk")) return;
+    S.stkPkDraft = S.stkPkDraft || {}; S.stkPkDraft[t.getAttribute("data-code") || ""] = t.value;
+  });
+  document.addEventListener("keydown", function (ev) {
+    var t = ev && ev.target;
+    if (!t || !t.classList || ev.key !== "Enter") return;
+    if (t.classList.contains("stk-pk")) {
+      ev.preventDefault();
+      var b = document.querySelector('[data-act="stk-pk-save"][data-i="' + t.getAttribute("data-i") + '"]'); if (b) b.click();
+    } else if (t.classList.contains("stk-bx")) {
+      ev.preventDefault();
+      var all = [].slice.call(document.querySelectorAll(".stk-bx")), n = all[all.indexOf(t) + 1];
+      if (n) { n.focus(); try { n.select(); } catch (x) { } } else t.blur();
+    }
+  });
   /* v6.9.485 - the register's Find box types, it does not "change", so it needs the input event.
      Only reg_q: everything else on that bar is a <select>. */
   document.addEventListener("input", function (ev) {
@@ -47057,22 +47085,53 @@ function viewCatalogue() {
       ' <button class="btn sm ghost" data-act="stock-landing">Change</button></div></div>';
     if (totVal > 0) h += '<div class="card" style="border-color:#99f6e4;background:#f0fdfa"><b>Stock value (approx):</b> ' + money(totVal) + ' <span style="font-size:12px;color:#64748b">— on-hand × latest purchase rate, for items where a rate is set.</span></div>';
 
-    h += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">' +
-      '<thead><tr style="background:#0b3b36;color:#fff"><th style="padding:6px 8px;text-align:left">Product</th>' +
-      '<th style="padding:6px 8px;text-align:right;white-space:nowrap">On hand</th><th style="padding:6px 8px;text-align:right;white-space:nowrap">Critical \u00b7 Reorder \u00b7 Max</th>' +
-      '<th style="padding:6px 8px;text-align:right">Value</th></tr></thead><tbody>' +
+    /* ===== 6.9.710 - THE STOCK LIST AS A TABLE YOU ORDER FROM  (8 Oct 2026) =====
+       HIS WORDS: "show in table format, show option to enter and save pcs in box, so that we have to
+       just enter no of box and its will auto calculate qty to order".
+       Columns: Product · On hand · Free · Critical/Reorder/Max · PER BOX · BOXES · ORDER QTY · Value.
+       PER BOX is typed in the row and saved with its own button - the same "reorder" row the Levels
+       window writes (reorder point, max and critical kept as they are, only the pack changes), so
+       Stock to order, both Excels and the Levels window all read the new figure.
+       BOXES is typed in the row; ORDER QTY = boxes x per box, worked out as he types (no repaint, the
+       cursor stays put). Boxes are kept on this phone/computer only (localStorage) - they are an
+       order being put together, not stock - and feed the Stock to order Excel's BOXES column and a
+       "My order" Excel of just the lines with boxes typed. With no per box set, the Boxes box asks
+       for it first: an order in boxes needs to know the box. A line on Stock to order shows the boxes
+       it suggests as the grey hint in the box. */
+    var _bx = stkBoxes(), _lv = stkLvl(), _sug = {};
+    stkToOrder(_sctx.pos).list.forEach(function (o) { if (o.pack > 0 && o.need > 0) _sug[o.code] = Math.ceil(o.need / o.pack); });
+    var TH = function (t, al) { return '<th style="padding:6px 8px;text-align:' + (al || 'right') + ';white-space:nowrap">' + t + '</th>'; };
+    h += '<div id="stk_bx_sum">' + stkBoxSumHtml() + '</div>';
+    /* on a phone the table keeps to the screen: Product, On hand, Per box, Boxes (the order qty under
+       the box); Free, the levels, the separate Order qty column and Value are for the wider screen */
+    h += '<style>.stk7 .ph1{display:none}@media(max-width:639px){.stk7 table{min-width:0!important}.stk7 .ph0{display:none!important}.stk7 .ph1{display:block}' +
+      '.stk7 td,.stk7 th{padding-left:4px!important;padding-right:4px!important}.stk7 .pnm{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;font-size:13px}' +
+      '.stk7 .pkb{display:block;margin:4px auto 0}}</style>';
+    h += '<div class="stk7" style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table style="width:100%;min-width:860px;border-collapse:collapse;font-size:13px">' +
+      '<thead><tr style="background:#0b3b36;color:#fff">' + TH('Product', 'left') + TH('On hand') + TH('Free').replace('<th', '<th class="ph0"') + TH('Critical · Reorder · Max').replace('<th', '<th class="ph0"') +
+      TH('Per box', 'center') + TH('Boxes', 'center') + TH('Order qty').replace('<th', '<th class="ph0"') + TH('Value').replace('<th', '<th class="ph0"') + '</tr></thead><tbody>' +
       list.map(function (x, i) {
         var col = x.zero ? '#b91c1c' : (x.low ? '#c2410c' : '#0f766e');
         var bg = x.zero ? '#fef2f2' : (x.low ? '#fff7ed' : (i % 2 ? '#f8fafc' : '#fff'));
-        return '<tr data-act="stk-open" data-code="' + esc(x.code) + '" style="border-bottom:1px solid #eef2f7;background:' + bg + ';cursor:pointer">' +
-          '<td class="xlfill" style="padding:6px 8px"><div class="xl1" title="' + esc(x.desc + ' · ' + x.code + (x.brand ? ' · ' + x.brand : '')) + '"><span style="font-weight:600">' + esc(x.desc) + '</span> ' + stkTag(x.code, _sctx) + '<div class="xlsub" style="font-size:12px;color:#94a3b8">' + esc(x.code) + (x.brand ? ' &middot; ' + esc(x.brand) : '') +
+        var P = _sctx.pos[x.code] || {}, L = _lv[x.code] || {}, pk = L.pack || 0, nb = _bx[x.code] || "";
+        var freeTxt = P.counted ? String(P.free) : '<span style="font-size:12px;color:#94a3b8">not counted</span>';
+        var inS = 'width:64px;text-align:center;padding:6px 4px;border:1.5px solid #cbd5e1;border-radius:8px;min-height:44px;box-sizing:border-box';
+        return '<tr style="border-bottom:1px solid #eef2f7;background:' + bg + '">' +
+          '<td class="xlfill" data-act="stk-open" data-code="' + esc(x.code) + '" style="padding:6px 8px;cursor:pointer;min-width:120px"><div class="xl1" title="' + esc(x.desc + ' · ' + x.code + (x.brand ? ' · ' + x.brand : '')) + '"><span class="pnm" style="font-weight:600">' + esc(x.desc) + '</span> <span class="ph0">' + stkTag(x.code, _sctx) + '</span><div class="xlsub ph0" style="font-size:12px;color:#94a3b8">' + esc(x.code) + (x.brand ? ' &middot; ' + esc(x.brand) : '') +
           ' &middot; in ' + x.inq + ' &middot; del ' + x.del + ' &middot; ret ' + x.ret + (x.rate ? ' &middot; @' + money(x.rate) : '') + '</div></div></td>' +
-          '<td style="padding:6px 8px;text-align:right;font-weight:800;color:' + col + ';white-space:nowrap">' + x.onhand + '<div class="xlsub" style="font-size:12px;font-weight:400;color:#64748b">' + esc(stkQ(x.onhand, x.code).replace(/^\S+\s?/, "")) + '</div></td>' +
-          '<td style="padding:6px 8px;text-align:right;color:#475569;font-size:12.5px;white-space:nowrap">' + (function () { var _L = _sLvl[x.code] || {}; return (_L.crit || _L.min || _L.max) ? (_L.crit || '\u2014') + ' \u00b7 ' + (_L.min || '\u2014') + ' \u00b7 ' + (_L.max || '\u2014') + '<div class="xlsub" style="margin-top:3px">' + stkPill(stkState(_sctx.pos[x.code] && _sctx.pos[x.code].counted ? _sctx.pos[x.code].free : null, _L)) + '</div>' : '\u2014'; })() + '</td>' +
-          '<td style="padding:6px 8px;text-align:right;color:#64748b">' + (x.value ? money(x.value) : '—') + '</td></tr>' +
-          (S.stkOpen === x.code ? '<tr><td colspan="4" style="padding:0 0 10px">' + stockLedgerPanel(x.code) + '</td></tr>' : '');
+          '<td data-act="stk-open" data-code="' + esc(x.code) + '" style="padding:6px 8px;text-align:right;font-weight:800;color:' + col + ';white-space:nowrap;cursor:pointer">' + x.onhand + '<div class="xlsub" style="font-size:12px;font-weight:400;color:#64748b">' + esc(stkQ(x.onhand, x.code).replace(/^\S+\s?/, "")) + '</div></td>' +
+          '<td class="ph0" style="padding:6px 8px;text-align:right;white-space:nowrap;color:#334155">' + freeTxt + '</td>' +
+          '<td class="ph0" style="padding:6px 8px;text-align:right;color:#475569;font-size:12.5px;white-space:nowrap">' + ((L.crit || L.min || L.max) ? (L.crit || '—') + ' · ' + (L.min || '—') + ' · ' + (L.max || '—') + '<div class="xlsub" style="margin-top:3px">' + stkPill(stkState(P.counted ? P.free : null, L)) + '</div>' : '—') + '</td>' +
+          '<td style="padding:4px 6px;text-align:center;white-space:nowrap"><input class="stk-pk" id="spk_' + i + '" data-code="' + esc(x.code) + '" data-i="' + i + '" inputmode="numeric" value="' + esc((S.stkPkDraft && S.stkPkDraft[x.code] !== undefined) ? S.stkPkDraft[x.code] : (pk || '')) + '" placeholder="pcs" aria-label="Pieces in one box" style="font-size:14px;' + inS + '"/> ' +
+            '<button class="btn sm ghost pkb" style="min-height:44px" data-act="stk-pk-save" data-code="' + esc(x.code) + '" data-i="' + i + '">Save</button></td>' +
+          '<td style="padding:4px 6px;text-align:center">' + (pk > 0
+            ? '<input class="stk-bx" id="sbx_' + i + '" data-code="' + esc(x.code) + '" data-i="' + i + '" data-pack="' + pk + '" inputmode="numeric" value="' + esc(nb) + '" placeholder="' + (_sug[x.code] ? 'e.g. ' + _sug[x.code] : 'boxes') + '" aria-label="Boxes to order" style="font-size:14px;' + inS + ';border-color:#f59e0b;background:#fffbeb"/><div class="ph1" id="sbq2_' + i + '" style="font-size:12px;font-weight:700;color:#0b3b36;margin-top:3px;white-space:nowrap">' + stkBoxQtyTxt(nb, pk, x.code) + '</div>'
+            : '<span style="font-size:12px;color:#94a3b8;white-space:nowrap">set per box</span>') + '</td>' +
+          '<td class="ph0" id="sbq_' + i + '" style="padding:6px 8px;text-align:right;font-weight:800;white-space:nowrap;color:#0b3b36">' + stkBoxQtyHtml(nb, pk, x.code) + '</td>' +
+          '<td class="ph0" style="padding:6px 8px;text-align:right;color:#64748b;white-space:nowrap">' + (x.value ? money(x.value) : '—') + '</td></tr>' +
+          (S.stkOpen === x.code ? '<tr><td colspan="8" style="padding:0 0 10px">' + stockLedgerPanel(x.code) + '</td></tr>' : '');
       }).join("") + '</tbody></table></div>' +
-      '<div class="meta" style="font-size:12px;margin-top:6px">Tap a product for its <b>stock ledger</b> &mdash; every bill, delivery and return, with the balance after each. Showing products with a stock entry, a delivery, or a reorder level.</div>';
+      '<div class="meta" style="font-size:12px;margin-top:6px">Type <b>Per box</b> (pieces in one box) and press Save once per product. Then type <b>Boxes</b> &mdash; Order qty = boxes &times; per box. The boxes stay on this device until you clear them, and go into <b>My order</b> Excel and the Stock to order Excel. Tap a product for its <b>stock ledger</b>.</div>';
     return h;
   }
 
@@ -47301,6 +47360,47 @@ function viewCatalogue() {
     return { by: by, bills: bills };
   }
   function stkRoundPack(q, pack) { q = Math.max(0, q); return pack > 0 ? Math.ceil(q / pack) * pack : Math.ceil(q); }
+  /* 6.9.710 - the boxes typed on the Stock table: {code: boxes}, on this device only */
+  var _stkBx = null;
+  function stkBoxes() {
+    if (_stkBx) return _stkBx;
+    _stkBx = {};
+    try { var o = JSON.parse(localStorage.getItem("ew_stk_boxes") || "{}") || {}; Object.keys(o).forEach(function (k) { var n = Number(o[k]); if (n > 0) _stkBx[k] = n; }); } catch (e) { }
+    return _stkBx;
+  }
+  function stkBoxSet(code, n) {
+    var b = stkBoxes(); n = Math.floor(Number(n) || 0);
+    if (n > 0) b[code] = n; else delete b[code];
+    try { localStorage.setItem("ew_stk_boxes", JSON.stringify(b)); } catch (e) { }
+  }
+  function stkBoxQtyHtml(nb, pk, code) {
+    nb = Number(nb) || 0;
+    if (!(pk > 0) || !(nb > 0)) return '<span style="color:#cbd5e1;font-weight:400">—</span>';
+    return esc(stkQ(nb * pk, code)) + '<div class="xlsub" style="font-size:12px;font-weight:400;color:#64748b">' + nb + ' × ' + pk + '</div>';
+  }
+  function stkBoxQtyTxt(nb, pk, code) { nb = Number(nb) || 0; return (pk > 0 && nb > 0) ? "= " + esc(stkQ(nb * pk, code)) : ""; }
+  /* the lines with boxes typed, shaped like Stock to order's lines so the same Excel takes them */
+  function stkBoxList() {
+    var b = stkBoxes(), lvl = stkLvl(), pm = stkPMap(), pos = stkPositions(), out = [];
+    Object.keys(b).forEach(function (k) {
+      var L = lvl[k] || {}; if (!(L.pack > 0)) return;
+      var x = pos[k] || { onhand: 0, held: 0, free: 0, counted: false }, p = pm[k] || {};
+      var st = !x.counted ? "Not counted" : (L.crit > 0 && x.free <= L.crit) ? "Critical" : (L.min > 0 && x.free <= L.min) ? "Reorder" : "Above reorder";
+      out.push({ code: k, desc: p.desc || x.desc || k, brand: p.brand || "", unit: p.unit || "", onhand: x.onhand, held: x.held, free: x.free,
+        min: L.min || 0, max: L.max || 0, pack: L.pack, crit: L.crit || 0, need: b[k] * L.pack, st: st });
+    });
+    out.sort(function (a, c) { return String(a.brand).localeCompare(String(c.brand)) || String(a.desc).localeCompare(String(c.desc)); });
+    return out;
+  }
+  function stkBoxSumHtml() {
+    var L = stkBoxList(); if (!L.length) return '';
+    var nb = L.reduce(function (a, x) { return a + x.need / x.pack; }, 0), pm = stkPMap();
+    var val = L.reduce(function (a, x) { var m = nAmt((pm[x.code] || {}).rate); return a + (m > 0 ? m * x.need : 0); }, 0);
+    return '<div class="card" style="border-color:#f59e0b;background:#fffbeb"><div class="acts" style="align-items:center;margin:0;flex-wrap:wrap;gap:6px">' +
+      '<b class="grow">My order: ' + plural(L.length, "item") + ' &middot; ' + plural(nb, "box", "boxes") + (val ? ' &middot; ' + money(Math.round(val)) + ' at MRP' : '') + '</b>' +
+      '<button class="btn sm" style="min-height:44px" data-act="stk-bx-xlsx">&#8681; My order Excel</button>' +
+      '<button class="btn sm ghost" style="min-height:44px" data-act="stk-bx-clear">Clear boxes</button></div></div>';
+  }
 
   /* ---- Stock to order, with how much ---- */
   function stkToOrder(pos) {
@@ -47375,10 +47475,15 @@ function viewCatalogue() {
      Critical or at Reorder - so the sheet can go to a supplier or into the purchase meeting as it is.
      A band per brand on the "all" sheet, a total at the foot of each brand and of the sheet. */
   var _stkOrdXlBusy = false;
-  function stkOrderXlsx(brand) {
+  function stkOrderXlsx(brand, mine) {
     if (_stkOrdXlBusy) { toast("The Excel is being made — one moment."); return; }
-    var o = stkToOrder(), L = o.list.filter(function (x) { return !brand || (x.brand || "Other") === brand; });
-    if (!L.length) { toast("Nothing to order" + (brand ? " for " + brand : "") + "."); return; }
+    /* 6.9.710 - mine: only the lines with boxes typed on the Stock table; otherwise boxes typed there
+       replace the suggested boxes on the Stock to order lines */
+    var o = mine ? { list: stkBoxList(), uncounted: [] } : stkToOrder(), _bxT = stkBoxes();
+    var L = o.list.filter(function (x) { return !brand || (x.brand || "Other") === brand; }).map(function (x) {
+      return (!mine && x.pack > 0 && _bxT[x.code] > 0) ? Object.assign({}, x, { need: _bxT[x.code] * x.pack }) : x;
+    });
+    if (!L.length) { toast(mine ? "Type boxes on a line first." : "Nothing to order" + (brand ? " for " + brand : "") + "."); return; }
     _stkOrdXlBusy = true;
     var pm = stkPMap(), t0 = Date.now();
     var picOf = function (x) { return String(((pm[x.code] || {}).pic) || "").trim(); };
@@ -47430,7 +47535,7 @@ function viewCatalogue() {
             x.pack > 0 ? { v: boxes, s: XL.INPUT } : M(""),
             x.pack > 0 ? { f: "IF(M" + R1 + ">0,N" + R1 + "*M" + R1 + ",0)", v: x.need, s: XL.MIDB } : { v: x.need > 0 ? x.need : 0, s: XL.MIDB },
             mrp > 0 ? { f: "O" + R1 + "*F" + R1, v: val, s: XL.MID } : M(""),
-            { v: crit ? "Critical" : "Reorder", s: crit ? XL.C_LOST : XL.C_LIVE },
+            x.st ? { v: x.st, s: x.st === "Critical" || x.st === "Not counted" ? XL.C_LOST : x.st === "Reorder" ? XL.C_LIVE : XL.MID } : { v: crit ? "Critical" : "Reorder", s: crit ? XL.C_LOST : XL.C_LIVE },
             ctx.fsn[x.code] ? { v: FSN_WORD[ctx.fsn[x.code]], s: MV[ctx.fsn[x.code]] } : M("no history"),
             M(((ctx.hist.by[x.code] || {}).q90) || 0), M(ctx.cls[x.code] || ""),
             WI.by[x.code] ? { v: WI.by[x.code].qty + " on " + WI.by[x.code].bills.join(", "), s: XL.C_LIVE } : M("")]);
@@ -47452,8 +47557,9 @@ function viewCatalogue() {
       if (L.some(function (x) { return !(nAmt((pm[x.code] || {}).rate) > 0); })) out.push(["Lines with no MRP in the catalogue are not counted in the value."]);
       if (!brand && o.uncounted.length) out.push(["Reorder point set but not counted yet (stock not known): " + o.uncounted.map(function (x) { return x.desc; }).join(", ")]);
       var cols = [11.5, 38, 15, 14, 8, 10, 9, 10, 8, 9, 10, 9, 8, 9, 10, 13, 10, 12, 10, 7, 26];
-      var name = "Stock_to_order_" + (brand ? brand.replace(/[^\w]+/g, "_") + "_" : "") + today() + ".xlsx";
-      dlXlsx(name, "Stock to order", out, cols, { heights: heights, freeze: { r: 3, c: 2 }, filter: "A3:" + xlCol(NC - 1) + "3", merges: merges, pics: pics, media: media });
+      var name = (mine ? "My_order_boxes_" : "Stock_to_order_") + (brand ? brand.replace(/[^\w]+/g, "_") + "_" : "") + today() + ".xlsx";
+      if (mine) out[0][0].v = String(out[0][0].v).replace("Stock to order", "My order (boxes typed on the Stock table)");
+      dlXlsx(name, mine ? "My order" : "Stock to order", out, cols, { heights: heights, freeze: { r: 3, c: 2 }, filter: "A3:" + xlCol(NC - 1) + "3", merges: merges, pics: pics, media: media });
       var miss = urls.length - Object.keys(got).length, noPic = L.filter(function (x) { return !picOf(x); }).length;
       toast("Downloaded " + name + " — " + plural(L.length, "item") + ", " + media.length + " picture" + (media.length === 1 ? "" : "s") +
         (miss ? " (" + miss + " would not load)" : "") + (noPic ? ", " + noPic + " with no picture in the catalogue" : "") + ", " + Math.round((Date.now() - t0) / 1000) + " s.");
@@ -51032,6 +51138,23 @@ function viewCatalogue() {
     if (act === "stk-open") { var _sc = t.getAttribute("data-code") || ""; S.stkOpen = (S.stkOpen === _sc) ? "" : _sc; keepScroll = true; render(); return; }   /* v6.9.605 */
     if (act === "stk-xlsx") { if (!STOCK_LOADED) { ensureStock(); toast("Stock is still loading \u2014 try again in a moment."); return; } stockXlsx(); return; }   /* v6.9.606 */
     if (act === "stk-ord") { S.stkOrd = !!t.getAttribute("data-v"); S.stkView = ""; render(); window.scrollTo(0, 0); return; }   /* 6.9.617 */
+    if (act === "stk-pk-save") {   /* 6.9.710 - Per box, saved from the Stock table */
+      var _pc = t.getAttribute("data-code") || "", _pv = String((el("spk_" + t.getAttribute("data-i")) || {}).value || "").trim();
+      if (!/^\d+$/.test(_pv) || !(Number(_pv) > 0)) { toast("Type the pieces in one box - a whole number, e.g. 25."); return; }
+      var _pL = stkLvl()[_pc] || {};
+      if (Number(_pv) === _pL.pack) { toast("Per box is already " + _pv + "."); return; }
+      var _prow = { id: "S-" + Date.now() + "-" + Math.floor(Math.random() * 1000000) + "-reorder", type: "reorder", code: _pc, desc: "",
+        qty: _pL.min || 0, ref: "", asOn: today(), notes: JSON.stringify({ max: _pL.max || 0, pack: Number(_pv), crit: _pL.crit || 0 }) };
+      S.stock = (S.stock || []).concat([_prow]);
+      if (S.stkPkDraft) delete S.stkPkDraft[_pc];
+      keepScroll = true; render(); toast("Saving per box…");
+      api("stockSave", { row: _prow }).then(function (r) {
+        toast((r && r.ok) ? "Per box " + _pv + " saved — now type the boxes." : ((r && r.error) || "Not saved — only admin/godown can edit stock."));
+      }).catch(function () { toast("Not saved — check connection."); });
+      return;
+    }
+    if (act === "stk-bx-xlsx") { if (!STOCK_LOADED) { ensureStock(); toast("Stock is still loading \u2014 try again in a moment."); return; } stkOrderXlsx("", true); return; }
+    if (act === "stk-bx-clear") { _stkBx = {}; try { localStorage.removeItem("ew_stk_boxes"); } catch (e) { } keepScroll = true; render(); toast("Boxes cleared."); return; }
     if (act === "stk-ord-xlsx") { if (!STOCK_LOADED) { ensureStock(); toast("Stock is still loading \u2014 try again in a moment."); return; } stkOrderXlsx(t.getAttribute("data-b") || ""); return; }
     /* ---- 6.9.621 - planning ---- */
     if (act === "stk-view") { S.stkView = t.getAttribute("data-v") || ""; S.stkOrd = false; render(); window.scrollTo(0, 0); return; }
