@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.707";
+  var APP_VERSION = "6.9.708";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -43059,7 +43059,7 @@ function viewCatalogue() {
       if (o) { x.n = o.n + 1; if (String(o.at) > x.at) { o.n = x.n; return; } }
       by[k] = x;
     });
-    return Object.keys(by).map(function (k) { var b = by[k]; b.onReg = !!reg[k]; if (!b.value && reg[k]) b.value = reg[k].amount; return b; })
+    return Object.keys(by).map(function (k) { var b = by[k]; b.onReg = !!reg[k] || stkOnReg(b.supplier, b.billNo); if (!b.value && reg[k]) b.value = reg[k].amount; return b; })
       .sort(function (a, b) { return String(b.date).localeCompare(String(a.date)) || String(a.supplier).localeCompare(String(b.supplier)); });
   }
   function tlRegs() {
@@ -43069,8 +43069,8 @@ function viewCatalogue() {
     }).sort(function (a, b) { return String(b.at).localeCompare(String(a.at)); });
   }
   function tlData() {
-    var bills = tlBills(), bil = stkBilledRefs(), reg = stkRegister();
-    var pend = reg.filter(function (b) { return !bil[b.key.toLowerCase()]; });
+    var bills = tlBills(), reg = stkRegister();
+    var pend = reg.filter(function (b) { return stkRegHas(b) !== "bill"; });   /* 6.9.708 - matched loosely: names and numbers differ between the portal and Tally */
     var wait = stkWaiting().map(function (o) { return { key: stkBillKey(o.supplier, o.billNo), supplier: o.supplier, billNo: o.billNo, date: String(o.date || "").slice(0, 10), value: Number(o.total) || 0, lines: (o.lines || []).length }; });
     var mon = S.tlMon || "", inM = function (d) { return !mon || String(d || "").slice(0, 7) === mon; };
     var months = {};
@@ -43084,10 +43084,10 @@ function viewCatalogue() {
   function viewTally() {
     ensureStock();
     var h = '<div class="card"><div class="acts" style="align-items:center;margin:0;flex-wrap:wrap;gap:6px"><h2 class="grow" style="margin:0">Tally</h2>' +
-      '<button class="btn sm" data-act="stock-import" data-from="tally">&#8593; Upload Tally bills / register</button>' +
+      '<button class="btn sm" data-act="stock-import" data-from="tally">&#8593; Upload bills / register / GSTR-2B</button>' +
       '<button class="btn sm ghost" data-act="tl-xlsx">&#8681; Excel</button>' +
       '<button class="btn sm ghost" data-act="stock-refresh">Refresh</button></div>' +
-      '<div class="meta" style="font-size:12.5px;margin-top:4px">Tally is the book for tax. Each month upload the <b>Purchase Register</b> (it says which bills there are) and then <b>each bill</b> (Excel or PDF from Tally) &mdash; a bill uploaded puts its goods into stock, and its item codes are matched to Tally&rsquo;s.</div></div>';
+      '<div class="meta" style="font-size:12.5px;margin-top:4px">Each month upload <b>GSTR-2B</b> from the GST portal (every bill your suppliers filed against your GSTIN &mdash; ready on the 14th) or the Tally <b>Purchase Register</b>; they say which bills there are. Then upload <b>each bill</b> (Excel or PDF from Tally) &mdash; a bill uploaded puts its goods into stock, and its item codes are matched to Tally&rsquo;s.</div></div>';
     if (!STOCK_LOADED && !(S.stock && S.stock.length)) return h + '<div class="empty">Loading the Tally uploads&hellip;</div>';
     var D = tlData(), adm = roleIs("admin");
     var sum = function (L) { return L.reduce(function (a, b) { return a + (Number(b.value) || 0); }, 0); };
@@ -43098,10 +43098,10 @@ function viewCatalogue() {
     h += '<div class="row" style="flex-wrap:wrap;gap:8px;margin:6px 0">' +
       tile("Uploaded", plural(D.bills.length, "bill"), money(sum(D.bills)), "#0f766e") +
       (D.hasReg ? tile("Pending to upload", plural(D.pend.length, "bill"), money(sum(D.pend.map(function (b) { return { value: b.amount }; }))), D.pend.length ? "#b45309" : "#0f766e")
-                : tile("Pending to upload", "not known", "upload the Purchase Register", "#94a3b8")) +
+                : tile("Pending to upload", "not known", "upload GSTR-2B", "#94a3b8")) +
       tile("Waiting to match", plural(D.wait.length, "bill"), adm ? "codes for you to match" : "with the owner", D.wait.length ? "#b91c1c" : "#0f766e") +
       (adm ? tile("Codes not Tally's", String(D.drift.length), D.alias + " part no" + (D.alias === 1 ? "" : "s") + " matched by hand", D.drift.length ? "#b45309" : "#0f766e") : "") +
-      tile("Registers", String(D.regs.length), D.regs.length ? "last " + esc(D.regs[0].period || dmy(D.regs[0].at)) : "none uploaded yet", D.regs.length ? "#0f766e" : "#94a3b8") + '</div>';
+      tile("GSTR-2B / registers", String(D.regs.length), D.regs.length ? "last " + esc(D.regs[0].period || dmy(D.regs[0].at)) : "none uploaded yet", D.regs.length ? "#0f766e" : "#94a3b8") + '</div>';
     if (D.months.length) {
       h += '<div class="chips"><button class="chip ' + (D.mon ? "" : "on") + '" data-act="tl-mon" data-m="">All months</button>' +
         D.months.map(function (m) { return '<button class="chip ' + (D.mon === m ? "on" : "") + '" data-act="tl-mon" data-m="' + m + '">' + tlMonLabel(m) + '</button>'; }).join("") + '</div>';
@@ -43113,12 +43113,14 @@ function viewCatalogue() {
     var td = function (v, al, x) { return '<td style="padding:6px 8px;border-top:1px solid #e2e8f0;vertical-align:top;text-align:' + (al || "left") + (x || "") + '">' + v + '</td>'; };
     /* 1 - pending to upload */
     h += '<div class="card" style="border-color:' + (D.pend.length ? '#fdba74' : '#e2e8f0') + '"><h3 style="margin:0 0 6px">Pending to upload' + (D.hasReg ? ' &middot; ' + D.pend.length : '') + '</h3>';
-    if (!D.hasReg) h += '<div class="meta" style="font-size:13px">No Purchase Register has been uploaded, so the CRM cannot tell which bills are still to come. In Tally: Display &rarr; Account Books &rarr; Purchase Register &rarr; the month &rarr; export as Excel, then <b>Upload</b> it here.</div>';
+    if (!D.hasReg) h += '<div class="meta" style="font-size:13px;line-height:1.5">No GSTR-2B or Purchase Register has been uploaded, so the CRM cannot tell which bills are still to come.<br>' +
+      '<b>GSTR-2B (best):</b> GST portal &rarr; Services &rarr; Returns &rarr; Returns Dashboard &rarr; the month &rarr; GSTR-2B &rarr; View &rarr; Download Excel (or JSON), then <b>Upload</b> it here.<br>' +
+      '<b>Or from Tally:</b> Display &rarr; Account Books &rarr; Purchase Register &rarr; the month &rarr; export as Excel.</div>';
     else if (!D.pend.length) h += '<div class="meta" style="font-size:13px;color:#0f766e">Every bill on the register' + (D.mon ? ' for ' + tlMonLabel(D.mon) : '') + ' is uploaded.</div>';
-    else { var _wk = {}; D.wait.forEach(function (w) { _wk[String(w.key).toLowerCase()] = 1; });
+    else {
       h += tbl([["DATE"], ["SUPPLIER"], ["BILL NO"], ["AMOUNT", "right"], ["STATUS"]], D.pend.map(function (b) {
       return '<tr>' + td(esc(dmy(b.date)), "", ";white-space:nowrap") + td(esc(b.supplier)) + td('<b>' + esc(b.billNo) + '</b>') + td(money(b.amount), "right", ";white-space:nowrap") +
-        td(_wk[String(b.key).toLowerCase()] ? '<span class="pill due" style="font-size:12px">uploaded, waiting to match</span>' : '<span class="pill Lost" style="font-size:12px">not uploaded</span>') + '</tr>';
+        td(stkRegHas(b) === "wait" ? '<span class="pill due" style="font-size:12px">uploaded, waiting to match</span>' : '<span class="pill Lost" style="font-size:12px">not uploaded</span>') + '</tr>';
     }), '<tfoot><tr style="background:#fff7ed"><td colspan="3" style="padding:6px 8px;font-weight:800">Total</td><td style="padding:6px 8px;text-align:right;font-weight:800">' + money(sum(D.pend.map(function (b) { return { value: b.amount }; }))) + '</td><td></td></tr></tfoot>'); }
     h += '</div>';
     /* 2 - waiting for the owner */
@@ -43134,12 +43136,12 @@ function viewCatalogue() {
     var pm = stkPMap();
     h += '<div class="card"><h3 style="margin:0 0 6px">Uploaded bills &middot; ' + D.bills.length + (D.bills.length ? ' &middot; ' + money(sum(D.bills)) : '') + '</h3>';
     if (!D.bills.length) h += '<div class="meta" style="font-size:13px">No bill uploaded' + (D.mon ? ' for ' + tlMonLabel(D.mon) : '') + '.</div>';
-    else h += tbl([["DATE"], ["SUPPLIER"], ["BILL NO"], ["LINES", "right"], ["AMOUNT", "right"], ["UPLOADED"], ["REGISTER"]], D.bills.map(function (b) {
+    else h += tbl([["DATE"], ["SUPPLIER"], ["BILL NO"], ["LINES", "right"], ["AMOUNT", "right"], ["UPLOADED"], ["2B / REGISTER"]], D.bills.map(function (b) {
       var open = S.tlOpen === b.key;
       var row = '<tr style="cursor:pointer" data-act="tl-bill" data-k="' + esc(b.key) + '">' + td(esc(dmy(b.date)), "", ";white-space:nowrap") + td(esc(b.supplier)) +
         td('<b style="color:#0f766e">' + esc(b.billNo || "—") + '</b> <span style="color:#64748b">' + (open ? '▾' : '▸') + '</span>') + td(String(b.lines.length), "right") +
         td(money(b.value), "right", ";white-space:nowrap") + td(esc(b.by) + '<div style="font-size:12px;color:#64748b">' + esc(dmy(b.at)) + (b.n > 1 ? ' &middot; uploaded ' + b.n + ' times' : '') + '</div>') +
-        td(D.hasReg ? (b.onReg ? '<span class="pill teal" style="font-size:12px">on register</span>' : '<span class="pill due" style="font-size:12px">not on register</span>') : '<span style="color:#94a3b8">&mdash;</span>') + '</tr>';
+        td(D.hasReg ? (b.onReg ? '<span class="pill teal" style="font-size:12px">on 2B / register</span>' : '<span class="pill due" style="font-size:12px" title="Not on GSTR-2B: the supplier may not have filed it - its GST credit cannot be taken yet">not on 2B / register</span>') : '<span style="color:#94a3b8">&mdash;</span>') + '</tr>';
       if (open) {
         row += '<tr><td colspan="7" style="padding:0 8px 10px;background:#f8fafc">' + tbl([["CODE"], ["PRODUCT"], ["TALLY PART NO"], ["QTY", "right"], ["NET RATE", "right"], ["AMOUNT", "right"]], b.lines.map(function (l) {
           var p = pm[String(l.c || "").trim()] || {}, q = Number(l.q) || 0, n = Number(l.n) || 0;
@@ -43161,7 +43163,7 @@ function viewCatalogue() {
         })) + '</div>';
     }
     /* 5 - registers, and codes */
-    h += '<div class="card"><h3 style="margin:0 0 6px">Purchase Registers uploaded &middot; ' + D.regs.length + '</h3>' +
+    h += '<div class="card"><h3 style="margin:0 0 6px">GSTR-2B and Purchase Registers uploaded &middot; ' + D.regs.length + '</h3>' +
       (D.regs.length ? tbl([["PERIOD"], ["BILLS", "right"], ["VALUE", "right"], ["FILE"], ["UPLOADED"]], D.regs.map(function (r) {
         return '<tr>' + td(esc(r.period || "—")) + td(String(r.bills), "right") + td(money(r.value), "right", ";white-space:nowrap") + td(esc(r.file)) + td(esc(r.by) + '<div style="font-size:12px;color:#64748b">' + esc(dmy(r.at)) + '</div>') + '</tr>';
       })) : '<div class="meta" style="font-size:13px">None yet.</div>') + '</div>';
@@ -46671,23 +46673,41 @@ function viewCatalogue() {
      uploaded". Once per sign-in, to accounts and admin only, and only when an uploaded Purchase
      Register lists a bill that has not been uploaded. Never over a form that is open. */
   var _stkNagDone = false;
+  /* 6.9.708 - the month whose GSTR-2B should be in by now: last month's, from the 14th */
+  function stk2bDue() {
+    var t = today(), y = Number(t.slice(0, 4)), m = Number(t.slice(5, 7)), d = Number(t.slice(8, 10));
+    if (d < 14) return null;
+    m -= 1; if (m < 1) { m = 12; y -= 1; }
+    var M = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"], lab = "GSTR-2B " + M[m - 1] + " " + y;
+    var have = (S.stock || []).some(function (r) { return String(r.type) === "register" && String(r.ref || "") === lab; });
+    return have ? null : lab;
+  }
   function stkBillNag() {
     if (_stkNagDone || S.modal || !roleAny(["admin", "accounts"])) return;
+    var _due = stk2bDue();
+    if (_due) {
+      _stkNagDone = true;
+      S.modal = '<h2>' + esc(_due) + ' is not uploaded</h2>' +
+        '<p class="sub">The GST portal has had it ready since the 14th. It lists every purchase bill your suppliers filed against Energy World&rsquo;s GSTIN &mdash; upload it and the CRM shows which bills are still to upload.</p>' +
+        '<div class="card" style="font-size:13px;line-height:1.5">GST portal &rarr; Services &rarr; Returns &rarr; <b>Returns Dashboard</b> &rarr; pick the month &rarr; <b>GSTR-2B</b> &rarr; View &rarr; <b>Download Excel</b> (or JSON). Then Products &rarr; Tally &rarr; Upload.</div>' +
+        '<div class="foot"><button class="btn" data-act="stk-nag-go">Open the Tally screen</button><button class="btn ghost" data-act="close">Later</button></div>';
+      render(); return;
+    }
     var reg = stkRegister(); if (!reg.length) return;
     var bil = stkBilledRefs();
-    var miss = reg.filter(function (b) { return !bil[b.key.toLowerCase()]; });
+    var miss = reg.filter(function (b) { return stkRegHas(b) !== "bill"; });   /* 6.9.708 */
     _stkNagDone = true;
     if (!miss.length) return;
     var amt = miss.reduce(function (a, b) { return a + b.amount; }, 0);
     S.modal = '<h2>' + plural(miss.length, "purchase bill") + ' not uploaded</h2>' +
-      '<p class="sub">These are on the Purchase Register from Tally but their bills are not in the CRM yet, so their goods are <b>not in stock</b>. Download each bill from Tally as Excel or PDF and upload it.</p>' +
+      '<p class="sub">These are on GSTR-2B or the Tally Purchase Register but their bills are not in the CRM yet, so their goods are <b>not in stock</b>. Download each bill from Tally as Excel or PDF and upload it.</p>' +
       '<div style="overflow-x:auto;max-height:45vh"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="background:#e2e8f0">' +
       '<th style="padding:5px 7px;text-align:left">DATE</th><th style="padding:5px 7px;text-align:left">SUPPLIER</th><th style="padding:5px 7px;text-align:left">BILL NO</th><th style="padding:5px 7px;text-align:right">AMOUNT</th></tr></thead><tbody>' +
       miss.map(function (b) {
         return '<tr style="border-top:1px solid #e2e8f0"><td style="padding:5px 7px;white-space:nowrap">' + esc(dmy(b.date)) + '</td><td style="padding:5px 7px">' + esc(b.supplier) +
           '</td><td style="padding:5px 7px"><b>' + esc(b.billNo) + '</b></td><td style="padding:5px 7px;text-align:right">' + money(b.amount) + '</td></tr>';
       }).join("") + '</tbody><tfoot><tr style="background:#f1f5f9"><td colspan="3" style="padding:6px 7px;font-weight:800">Total</td><td style="padding:6px 7px;text-align:right;font-weight:800">' + money(amt) + '</td></tr></tfoot></table></div>' +
-      '<div class="foot"><button class="btn" data-act="stk-nag-go">Upload bills now</button><button class="btn ghost" data-act="close">Later</button></div>';
+      '<div class="foot"><button class="btn" data-act="stk-nag-go">Open the Tally screen</button><button class="btn ghost" data-act="close">Later</button></div>';
     render();
   }
   /* v6.9.605 - HIS DECISIONS, 24 Sep 2026: "will start from a physical count, soon, make provision
@@ -46988,7 +47008,7 @@ function viewCatalogue() {
        Register are in stock and which are still to upload */
     var _reg = stkRegister();
     if (_reg.length) {
-      var _imp = stkImportedRefs(), _bil = stkBilledRefs(), _miss = _reg.filter(function (b) { return !_bil[b.key.toLowerCase()]; });
+      var _imp = stkImportedRefs(), _miss = _reg.filter(function (b) { return stkRegHas(b) !== "bill"; });   /* 6.9.708 */
       var _missAmt = _miss.reduce(function (a, b) { return a + b.amount; }, 0);
       h += '<div class="card" style="border-color:' + (_miss.length ? '#fdba74' : '#99f6e4') + '"><div class="acts" style="align-items:center;margin:0">' +
         '<b class="grow">Purchase bills from Tally: ' + (_reg.length - _miss.length) + ' of ' + _reg.length + ' uploaded' +
@@ -46997,7 +47017,7 @@ function viewCatalogue() {
         (S.stkReg ? '<div style="overflow-x:auto;margin-top:6px"><table style="width:100%;border-collapse:collapse;font-size:12.5px"><thead><tr style="background:#e2e8f0">' +
           '<th style="padding:5px 7px;text-align:left">DATE</th><th style="padding:5px 7px;text-align:left">SUPPLIER</th><th style="padding:5px 7px;text-align:left">BILL NO</th><th style="padding:5px 7px;text-align:right">AMOUNT</th><th style="padding:5px 7px;text-align:left">IN STOCK</th></tr></thead><tbody>' +
           _reg.map(function (b) {
-            var inS = !!_imp[b.key.toLowerCase()], bil = !!_bil[b.key.toLowerCase()];
+            var inS = !!_imp[b.key.toLowerCase()], bil = stkRegHas(b) === "bill";
             return '<tr style="border-top:1px solid #e2e8f0"><td style="padding:5px 7px;white-space:nowrap">' + esc(dmy(b.date)) + '</td><td style="padding:5px 7px">' + esc(b.supplier) + '</td>' +
               '<td style="padding:5px 7px"><b>' + esc(b.billNo) + '</b></td><td style="padding:5px 7px;text-align:right">' + money(b.amount) + '</td>' +
               '<td style="padding:5px 7px">' + (bil ? '<span class="pill teal" style="font-size:12px">uploaded</span>' : '<span class="pill due" style="font-size:12px">to upload</span>') + (inS && !bil ? ' <span style="font-size:12px;color:#64748b">(old lorry entry)</span>' : '') + '</td></tr>';
@@ -48617,19 +48637,123 @@ function viewCatalogue() {
     return Object.keys(byKey).map(function (k) { return byKey[k]; }).sort(function (a, b) { return String(a.date).localeCompare(String(b.date)); });
   }
   /* files picked: registers are saved at once, bills go to the review */
+
+  /* ===================== GSTR-2B AS THE MONTH'S BILL SUMMARY  (6.9.708, 8 Oct 2026) =====================
+     HIS WORDS, over the new Tally screen showing "Pending to upload - not known": "bill summary not
+     showing .. can we fetch from GST portal directly and remind to upload pending bills". Asked and
+     chosen: the GSTR-2B FILE, not the GST portal's API. A direct pull needs a paid GST Suvidha
+     Provider and the API access re-granted on the portal every 30 days; the file is free and is
+     the better list anyway - GSTR-2B is every bill a supplier has FILED against Energy World's GSTIN,
+     so a bill that never reached the office (and so never reached Tally) still shows as pending.
+     Accounts downloads it once a month (GST portal -> Returns Dashboard -> GSTR-2B -> Download
+     Excel or JSON, ready on the 14th) and uploads it where the Tally files go. It is kept as a
+     "register" row - the same row the Tally Purchase Register makes - so the Tally screen, the
+     pending list and the sign-in popup read it with no second path.
+     Matching a 2B line to an uploaded bill cannot be by exact name: the portal says "HULIOT PIPES &
+     FITTINGS PRIVATE LIMITED", Tally says "Huliot Pipes & Fittings Private Limited " (trailing space
+     measured on his sheet), and an invoice can be "HPF/26-27/13981" on one and "13981" on the other.
+     So: the supplier's first real word, and the invoice number with everything but letters and
+     digits taken out - equal, or one ending in the other when both are 4 characters or more. */
+  function stkNoNorm(n) { return String(n == null ? "" : n).toUpperCase().replace(/[^A-Z0-9]/g, "").replace(/^0+/, ""); }
+  function stkSupNorm(s) {
+    var w = String(s || "").toLowerCase().replace(/m\/s\.?/g, " ").replace(/[^a-z0-9 ]+/g, " ").split(/\s+/).filter(function (x) {
+      return x.length >= 3 && !/^(the|and|pvt|private|ltd|limited|llp|company|india|new|shri|sri)$/.test(x); });
+    return w[0] || "";
+  }
+  /* the last part of an invoice number: "HPF/26-27/13981" -> "13981" */
+  function stkNoTail(n) { var p = String(n == null ? "" : n).toUpperCase().split(/[^A-Z0-9]+/).filter(Boolean); return p.length ? p[p.length - 1].replace(/^0+/, "") : ""; }
+  function stkNoSame(a, b) {
+    if (!a.no || !b.no) return false; if (a.no === b.no) return true;
+    if (a.tail && a.tail.length >= 3 && (a.tail === b.no || a.tail === b.tail) && a.tail.length >= Math.min(4, b.no.length)) return true;
+    if (b.tail && b.tail.length >= 3 && b.tail === a.no) return true;
+    return false;
+  }
+  var _stkBkIdx = null, _stkBkKey = "";
+  function stkBkIdx() {
+    var k = (S.stock || []).length + "|" + ((S.stock || [])[(S.stock || []).length - 1] || {}).id;
+    if (_stkBkIdx && k === _stkBkKey) return _stkBkIdx;
+    var bill = [], wait = [], reg = [];
+    var put = function (arr, key, sup, no, extra) { arr.push(Object.assign({ key: key, sup: stkSupNorm(sup), no: stkNoNorm(no), tail: stkNoTail(no) }, extra || {})); };
+    (S.stock || []).forEach(function (r) {
+      var t = String(r.type);
+      if ((t === "bill" || t === "billwait") && r.ref) { var p = String(r.ref).split(" / "); put(t === "bill" ? bill : wait, String(r.ref).trim(), r.notes || p[0], p.slice(1).join(" / ")); }
+    });
+    stkRegister().forEach(function (b) { put(reg, b.key, b.supplier, b.billNo); });
+    _stkBkKey = k; _stkBkIdx = { bill: bill, wait: wait, reg: reg };
+    return _stkBkIdx;
+  }
+  function stkBkFind(list, sup, no) {
+    var s2 = stkSupNorm(sup), q = { no: stkNoNorm(no), tail: stkNoTail(no) };
+    for (var i = 0; i < list.length; i++) { var x = list[i]; if (stkNoSame(x, q) && (!x.sup || !s2 || x.sup === s2)) return x; }
+    return null;
+  }
+  /* a register / 2B bill: "bill" when uploaded, "wait" when uploaded and waiting to be matched, "" when not uploaded */
+  function stkRegHas(b) {
+    var ix = stkBkIdx();
+    return stkBkFind(ix.bill, b.supplier, b.billNo) ? "bill" : stkBkFind(ix.wait, b.supplier, b.billNo) ? "wait" : "";
+  }
+  function stkOnReg(supplier, billNo) { return !!stkBkFind(stkBkIdx().reg, supplier, billNo); }
+  /* the Excel the GST portal gives: a "Read me" sheet and a "B2B" sheet, two header rows, one row per
+     invoice per tax rate (so an invoice with 12% and 18% lines is two rows, added up here) */
+  function gstr2bBook(wb, X) {
+    var names = wb.SheetNames || [], find = function (re) { return names.filter(function (n) { return re.test(String(n).trim()); })[0]; };
+    var b2b = find(/^b2b$/i), rd = find(/read\s*me/i);
+    var grid = function (n) { return n ? X.utils.sheet_to_json(wb.Sheets[n], { header: 1, defval: "", raw: true }) : []; };
+    var R = grid(rd), rdTxt = R.map(function (r) { return r.join(" "); }).join(" ");
+    if (!b2b || !(/gstr\s*-?\s*2b/i.test(rdTxt) || /gstr\s*-?\s*2b/i.test(names.join(" ")) || names.some(function (n) { return /itc\s*available/i.test(n); }))) return null;
+    var cell = function (re) { for (var i = 0; i < R.length; i++) for (var j = 0; j < R[i].length; j++) if (re.test(String(R[i][j]))) { for (var k = j + 1; k < R[i].length; k++) if (String(R[i][k]).trim()) return String(R[i][k]).trim(); } return ""; };
+    var rows = grid(b2b), h = -1;
+    for (var i = 0; i < Math.min(rows.length, 15); i++) if (rows[i].some(function (c) { return /invoice\s*number/i.test(String(c)); })) { h = i; break; }
+    if (h < 0) return { kind: "unknown" };
+    var lab = rows[h].map(function (c, j) { return (String(c || "") + " " + String((rows[h - 1] || [])[j] || "")).toLowerCase(); });
+    var col = function (re) { for (var j = 0; j < lab.length; j++) if (re.test(lab[j])) return j; return -1; };
+    var C = { g: col(/gstin/), s: col(/trade|legal/), n: col(/invoice\s*number/), d: col(/invoice\s*date/), v: col(/invoice\s*value/), t: col(/taxable/),
+      i: col(/integrated/), c: col(/central/), st: col(/state/), cs: col(/cess/) };
+    var num = function (r, j) { return j < 0 ? 0 : (Number(String(r[j]).replace(/[^\d.\-]/g, "")) || 0); };
+    var by = {}, order = [];
+    for (var r = h + 1; r < rows.length; r++) {
+      var x = rows[r], g = String(x[C.g] || "").trim().toUpperCase(), no = String(x[C.n] == null ? "" : x[C.n]).trim();
+      if (!/^\d{2}[A-Z0-9]{13}$/.test(g) || !no) continue;
+      var key = g + "|" + no.toUpperCase();
+      if (!by[key]) { by[key] = { gstin: g, supplier: String(x[C.s] || "").trim(), billNo: no, date: tallyDate(x[C.d]), amount: num(x, C.v), taxable: 0, tax: 0 }; order.push(key); }
+      by[key].taxable += num(x, C.t); by[key].tax += num(x, C.i) + num(x, C.c) + num(x, C.st) + num(x, C.cs);
+    }
+    var bills = order.map(function (k) { return by[k]; });
+    return { kind: "register", src: "gstr2b", bills: bills, period: gstr2bPeriod(cell(/tax\s*period/i), cell(/financial\s*year/i), bills) };
+  }
+  /* the JSON the portal gives: data.docdata.b2b[] = { ctin, trdnm, inv: [{ inum, dt, val, txval, igst, cgst, sgst, cess }] } */
+  function gstr2bJson(o) {
+    var d = (o && o.data) || o || {}, b2b = (d.docdata && d.docdata.b2b) || null;
+    if (!Array.isArray(b2b)) return null;
+    var bills = [];
+    b2b.forEach(function (s0) { (s0.inv || []).forEach(function (v) {
+      bills.push({ gstin: String(s0.ctin || "").toUpperCase(), supplier: String(s0.trdnm || ""), billNo: String(v.inum || ""), date: tallyDate(v.dt), amount: Number(v.val) || 0,
+        taxable: Number(v.txval) || 0, tax: (Number(v.igst) || 0) + (Number(v.cgst) || 0) + (Number(v.sgst) || 0) + (Number(v.cess) || 0) }); }); });
+    var rp = String(d.rtnprd || ""), N = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    return { kind: "register", src: "gstr2b", bills: bills, period: /^\d{6}$/.test(rp) ? "GSTR-2B " + N[Number(rp.slice(0, 2)) - 1] + " " + rp.slice(2) : gstr2bPeriod("", "", bills) };
+  }
+  function gstr2bPeriod(tp, fy, bills) {
+    var N = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"], M = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    var mi = N.indexOf(String(tp || "").trim().slice(0, 3).toLowerCase()), y = (String(fy || "").match(/(\d{4})/) || [])[1];
+    if (mi >= 0 && y) return "GSTR-2B " + M[mi] + " " + (mi < 3 ? Number(y) + 1 : Number(y));
+    var cnt = {}; (bills || []).forEach(function (b) { var m = String(b.date || "").slice(0, 7); if (m) cnt[m] = (cnt[m] || 0) + 1; });
+    var best = Object.keys(cnt).sort(function (a, b) { return cnt[b] - cnt[a]; })[0];
+    return best ? "GSTR-2B " + M[Number(best.slice(5, 7)) - 1] + " " + best.slice(0, 4) : "GSTR-2B";
+  }
   function stkReadFiles(files) {
     var list = [].slice.call(files || []);
     if (!list.length) return;
     var _isP = function (f) { return /\.pdf$/i.test(f.name) || f.type === "application/pdf"; };   /* 6.9.671 */
     var pdfs = list.filter(_isP);
     var xl = list.filter(function (f) { return /\.xlsx?$/i.test(f.name); });
-    var other = list.filter(function (f) { return !/\.xlsx?$/i.test(f.name) && !_isP(f); });
-    if (other.length && !xl.length && !pdfs.length) {
+    var jsons = list.filter(function (f) { return /\.json$/i.test(f.name); });   /* 6.9.708 - GSTR-2B as JSON */
+    var other = list.filter(function (f) { return !/\.xlsx?$/i.test(f.name) && !_isP(f) && !/\.json$/i.test(f.name); });
+    if (other.length && !xl.length && !pdfs.length && !jsons.length) {
       var rd0 = new FileReader();
       rd0.onload = function () { try { stockImportFromFile(String(rd0.result || ""), other[0].name); } catch (err) { toast("Couldn't read that file."); } };
       rd0.readAsText(other[0]); return;
     }
-    toast("Reading " + plural(xl.length + pdfs.length, "file") + "…");
+    toast("Reading " + plural(xl.length + pdfs.length + jsons.length, "file") + "…");
     (xl.length ? xlsxReady() : Promise.resolve(true)).then(function (X) {
       if (!X) { toast("The Excel reader did not load — check the connection and pick the files again."); return; }
       var _pdfJobs = pdfs.map(function (f) {   /* 6.9.671 - a bill or register printed from Tally as PDF */
@@ -48653,6 +48777,7 @@ function viewCatalogue() {
           rd.onload = function () {
             try {
               var wb = X.read(new Uint8Array(rd.result), { type: "array", cellDates: true });
+              var _g2 = gstr2bBook(wb, X); if (_g2) { _g2.file = f.name; res(_g2); return; }   /* 6.9.708 */
               var ws = wb.Sheets[wb.SheetNames[0]];
               var o = tallyParse(X.utils.sheet_to_json(ws, { header: 1, defval: "", raw: true }));
               o.file = f.name; res(o);
@@ -48661,23 +48786,31 @@ function viewCatalogue() {
           rd.onerror = function () { res({ kind: "unknown", file: f.name }); };
           rd.readAsArrayBuffer(f);
         });
-      }).concat(_pdfJobs)).then(function (parsed) {
+      }).concat(_pdfJobs, jsons.map(function (f) {   /* 6.9.708 - GSTR-2B JSON */
+        return new Promise(function (res) {
+          var rd = new FileReader();
+          rd.onload = function () { try { var o = gstr2bJson(JSON.parse(String(rd.result || ""))); if (o) { o.file = f.name; res(o); } else res({ kind: "unknown", file: f.name }); } catch (e) { res({ kind: "unknown", file: f.name }); } };
+          rd.onerror = function () { res({ kind: "unknown", file: f.name }); };
+          rd.readAsText(f);
+        });
+      }))).then(function (parsed) {
         var regs = parsed.filter(function (o) { return o.kind === "register" && o.bills.length; });
         var bills = parsed.filter(function (o) { return o.kind === "bill" && o.lines.length; });
         var pics = parsed.filter(function (o) { return o.kind === "picture"; });
         if (pics.length) toast(pics.map(function (o) { return o.file; }).join(", ") + ": a scanned picture, not text — print the bill from Tally as PDF, or download it as Excel.");
         if (parsed.some(function (o) { return o.kind === "nopdf"; })) toast("The PDF reader did not load — check the connection and pick the files again.");
         var bad = parsed.filter(function (o) { return o.kind !== "register" && o.kind !== "bill" && o.kind !== "picture" && o.kind !== "nopdf"; });
+        if (regs.some(function (o) { return o.src === "gstr2b"; })) { _stkBkIdx = null; if (S.impFrom === "tally") { S.imp = null; S.tab = "tally"; S.impFrom = ""; } }   /* 6.9.708 - back to the Tally screen to see what is pending */
         regs.forEach(function (o) {
           var row = { id: "S-" + Date.now() + "-" + Math.floor(Math.random() * 1000000) + "-reg", type: "register", code: "*REG",
-            desc: JSON.stringify(o.bills.map(function (b) { return { d: b.date, s: b.supplier, n: b.billNo, a: b.amount }; })),
+            desc: JSON.stringify(o.bills.map(function (b) { var z = { d: b.date, s: b.supplier, n: b.billNo, a: b.amount }; if (b.gstin) { z.g = b.gstin; z.t = Math.round(b.taxable * 100) / 100; z.x = Math.round(b.tax * 100) / 100; } return z; })),
             qty: o.bills.length, ref: o.period || "", asOn: today(), notes: o.file || "" };
           S.stock = (S.stock || []).concat([row]);
           api("stockSave", { row: row }).then(function (r) {
-            toast((r && r.ok) ? "Purchase register " + (o.period || "") + " saved: " + plural(o.bills.length, "bill") + "." : ((r && r.error) || "The register was not saved."));
+            toast((r && r.ok) ? (o.src === "gstr2b" ? o.period : "Purchase register " + (o.period || "")) + " saved: " + plural(o.bills.length, "bill") + "." : ((r && r.error) || "The register was not saved."));
           });
         });
-        if (bad.length) toast(bad.map(function (o) { return o.file; }).join(", ") + ": not a Tally purchase bill or register.");
+        if (bad.length) toast(bad.map(function (o) { return o.file; }).join(", ") + ": not a Tally purchase bill, a register or a GSTR-2B.");
         if (bills.length) S.imp = { step: "tally", bills: stkTallyOpen(bills) };   /* 6.9.671 */
         render();
       });
@@ -49155,8 +49288,8 @@ function viewCatalogue() {
       '<div class="acts" style="gap:6px;margin-bottom:4px">' +
       '<button class="btn sm ' + (im.type === "opening" ? "" : "ghost") + '" data-act="imp-type" data-t="opening">Opening stock</button>' +
       '<button class="btn sm ' + (im.type !== "opening" ? "" : "ghost") + '" data-act="imp-type" data-t="in">Goods received (purchase)</button></div>' +
-      '<div ' + lbl + '>Upload from Tally: <b>purchase bills</b> (Excel or PDF, several at once) and the month&rsquo;s <b>Purchase Register</b> (Excel or PDF) &mdash; or a CSV of code + qty</div>' +
-      '<input type="file" id="imp_file" multiple accept=".xlsx,.xls,.pdf,.csv,.txt" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;background:#fff"/>' +
+      '<div ' + lbl + '>Upload from Tally: <b>purchase bills</b> (Excel or PDF, several at once) and the month&rsquo;s <b>Purchase Register</b> (Excel or PDF); or the month&rsquo;s <b>GSTR-2B</b> from the GST portal (Excel or JSON) &mdash; or a CSV of code + qty</div>' +
+      '<input type="file" id="imp_file" multiple accept=".xlsx,.xls,.pdf,.csv,.txt,.json" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;background:#fff"/>' +
       '<div style="text-align:center;color:#94a3b8;font-size:12px;margin:6px 0">— or paste rows —</div>' +
       '<div ' + lbl + '>Paste rows (code &nbsp;&lt;tab&gt;&nbsp; qty)</div>' +
       '<textarea id="imp_paste" rows="12" placeholder="HUL-32MM\t50&#10;STL-1IN-ELB\t200&#10;…" style="width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font:13px monospace">' + esc(im.paste || "") + '</textarea>' +
@@ -51065,7 +51198,7 @@ function viewCatalogue() {
       return;
     }
     if (act === "stock-import") { S.impFrom = t.getAttribute("data-from") || ""; S.imp = { step: 1, type: "in", asOn: today(), ref: "", paste: "" }; S.tab = "stock"; render(); return; }
-    if (act === "stk-nag-go") { S.modal = null; S.grn = null; S.pc = null; S.imp = { step: 1, type: "in", asOn: today(), ref: "", paste: "" }; S.tab = "stock"; render(); return; }   /* 6.9.607 */
+    if (act === "stk-nag-go") { S.modal = null; S.grn = null; S.pc = null; S.imp = null; S.tab = "tally"; render(); window.scrollTo(0, 0); return; }   /* 6.9.708 - to the Tally screen: the pending list and the Upload button */
     if (act === "imp-cancel") { S.imp = null; if (S.impFrom) { S.tab = S.impFrom; S.impFrom = ""; } render(); return; }
     if (act === "imp-back") { if (S.imp) S.imp.step = 1; render(); return; }
     if (act === "imp-type") {
