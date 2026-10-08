@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.708";
+  var APP_VERSION = "6.9.709";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -33485,6 +33485,7 @@ function viewCatalogue() {
         var o = (cell && typeof cell === "object" && !(cell instanceof Date)) ? cell : { v: cell };
         var v = o.v, st = o.s ? ' s="' + o.s + '"' : "";
         var ref = xlCol(c) + (r + 1);
+        if (o.f) return '<c r="' + ref + '"' + st + '><f>' + xlEsc(o.f) + '</f>' + (typeof v === "number" && isFinite(v) ? '<v>' + v + '</v>' : '') + '</c>';   /* 6.9.709 - Excel works it out when a box count is changed */
         if (v === null || v === undefined || v === "") return '<c r="' + ref + '"' + st + '/>';
         if (typeof v === "number" && isFinite(v)) return '<c r="' + ref + '"' + st + '><v>' + v + '</v></c>';
         return '<c r="' + ref + '"' + st + ' t="inlineStr"><is><t xml:space="preserve">' +
@@ -43128,9 +43129,12 @@ function viewCatalogue() {
       h += '<div class="card" style="border-color:#fecaca"><div class="acts" style="align-items:center;margin:0 0 6px"><h3 class="grow" style="margin:0">Waiting to match &middot; ' + D.wait.length + '</h3>' +
         (adm ? '<button class="btn sm" data-act="tb-wait">Match them now</button>' : '') + '</div>' +
         '<div class="meta" style="font-size:12.5px;margin-bottom:6px">A line on these bills is not yet matched to a catalogue product, so they are <b>not in stock</b>.' + (adm ? '' : ' The owner matches them.') + '</div>' +
-        tbl([["DATE"], ["SUPPLIER"], ["BILL NO"], ["LINES", "right"], ["AMOUNT", "right"]], D.wait.map(function (b) {
-          return '<tr>' + td(esc(dmy(b.date)), "", ";white-space:nowrap") + td(esc(b.supplier)) + td('<b>' + esc(b.billNo) + '</b>') + td(String(b.lines), "right") + td(b.value ? money(b.value) : "&mdash;", "right", ";white-space:nowrap") + '</tr>';
-        })) + '</div>';
+        (function () { var _wb = {}; stkWaitIn().bills.forEach(function (x) { _wb[x.supplier + "|" + x.billNo] = x; });   /* 6.9.709 */
+        return tbl([["DATE"], ["SUPPLIER"], ["BILL NO"], ["LINES", "right"], ["MATCH NOW", "right"], ["AMOUNT", "right"]], D.wait.map(function (b) {
+          var m = _wb[b.supplier + "|" + b.billNo] || { matched: 0, lines: b.lines };
+          return '<tr>' + td(esc(dmy(b.date)), "", ";white-space:nowrap") + td(esc(b.supplier)) + td('<b>' + esc(b.billNo) + '</b>') + td(String(b.lines), "right") +
+            td(m.matched === m.lines && m.lines ? '<b style="color:#0f766e">all ' + m.lines + ' &#10003;</b>' : m.matched + ' of ' + m.lines, "right", ";white-space:nowrap") + td(b.value ? money(b.value) : "&mdash;", "right", ";white-space:nowrap") + '</tr>';
+        })); })() + '</div>';
     }
     /* 3 - uploaded bills */
     var pm = stkPMap();
@@ -47264,6 +47268,38 @@ function viewCatalogue() {
           '<span style="color:#0f766e;font-weight:700;white-space:nowrap">Set levels \u203a</span>'   /* 6.9.656 */
         : '<span style="margin-left:auto;color:#0f766e;font-weight:700;white-space:nowrap">Set levels \u203a</span>') + '</div>';
   }
+
+  /* ===== 6.9.709 - WHY A LINE IS MINUS: THE BILL IS WAITING =====
+     HIS WORDS, 8 Oct 2026, over Stock to order showing HT Socket 110 at -147, HT Pipe 110 at -142, HT
+     Tee 110 at -33: "the stock is showing in minus, the reason may be it's calculating only on
+     challans which are finalised ... inspect this issue and fix".
+     MEASURED on his sheets that day, HT Socket 110 (41740250): counted 42 on 25 Sep; out since, on
+     challans dated 26 Sep - 6 Oct, 208 (every one Dispatched or Received - the challan's status is
+     not what took it below zero); IN since, nothing. Huliot bill 14221 of 26 Sep - which carries HT
+     Socket 110 x 480, HT Pipe 110/3000 x 200 and HT Tee 110 x 60 + 30 - has sat in "waiting to
+     match" since 1 Oct, so not one of those pieces is in stock. The three minus lines are exactly
+     that bill.
+     So every line now says what is waiting for it: the quantity on bills not yet matched, read
+     with the same matcher the review uses (a part number matched by hand since - 41740055-I was
+     tied to 41740250 on 2 Oct - counts). Stock to order says so above the list, with the button;
+     nothing is put into stock without the owner's Save. */
+  function stkWaitIn() {
+    var ix = stkMatchIdx(), by = {}, bills = [];
+    stkWaiting().forEach(function (o) {
+      var hit = 0, n = 0;
+      (o.lines || []).forEach(function (l0) {
+        var l = Object.assign({}, l0), cn = tallyCodeInName(l.desc), pn0 = String(l.partNo == null ? "" : l.partNo).trim();
+        if (cn && (!pn0 || pn0 === cn.code)) l.partNo = cn.code;
+        stkMatchLine(l, ix); n++;
+        if (!l.code) return;
+        hit++;
+        var q = Number(l.qty) || 0, x = by[l.code] || (by[l.code] = { qty: 0, bills: [] });
+        x.qty += q; var lab = String(o.supplier || "").split(/\s+/)[0] + " " + o.billNo; if (x.bills.indexOf(lab) < 0) x.bills.push(lab);
+      });
+      bills.push({ supplier: o.supplier, billNo: o.billNo, lines: n, matched: hit });
+    });
+    return { by: by, bills: bills };
+  }
   function stkRoundPack(q, pack) { q = Math.max(0, q); return pack > 0 ? Math.ceil(q / pack) * pack : Math.ceil(q); }
 
   /* ---- Stock to order, with how much ---- */
@@ -47294,8 +47330,16 @@ function viewCatalogue() {
         (L.length ? ' — ' + plural(L.length, "item") : ' — nothing at or below its reorder point') + '</h3>' +
         (full ? '<button class="btn sm ghost" data-act="stk-ord-xlsx" data-b="">&#8681; Excel, all</button><button class="btn sm ghost" data-act="stk-ord" data-v="">All stock</button>'
               : '<button class="btn sm" data-act="stk-ord" data-v="1">Open the list</button>') + '</div>' +
-      '<div class="meta" style="font-size:12.5px;margin-top:3px">Only products with a reorder point (“Min”) set. One is listed when its <b>free</b> stock (on hand less challans made but not yet dispatched) is at or below it. <b>Order</b> = maximum less free, rounded up to the pack; with no maximum set, up to the reorder point only.</div>';
+      '<div class="meta" style="font-size:12.5px;margin-top:3px">Only products with a reorder point (“Min”) set. One is listed when its <b>free</b> stock (on hand less challans made but not yet dispatched) is at or below it. <b>Order</b> = maximum less free, rounded up to whole boxes when Per box is set; with no maximum set, up to the reorder point only.</div>';
     var _oc = full && L.length ? stkCtx() : null;   /* 6.9.707 */
+    var _wi = full && L.length ? stkWaitIn() : null, _wShort = _wi ? L.filter(function (x) { return _wi.by[x.code]; }) : [];   /* 6.9.709 */
+    if (_wShort.length) {
+      h += '<div style="margin-top:8px;padding:9px 11px;border-radius:10px;background:#fff;border:1.5px solid #f59e0b;font-size:13px">' +
+        '<b style="color:#b45309">' + plural(_wShort.length, "line") + ' here ' + (_wShort.length === 1 ? 'is' : 'are') + ' short because a purchase bill is waiting to be matched</b> &mdash; ' +
+        esc(_wi.bills.filter(function (b) { return b.matched; }).map(function (b) { return String(b.supplier).split(/\s+/)[0] + " " + b.billNo + " (" + b.matched + " of " + b.lines + " lines match)"; }).join(", ")) +
+        '. Its goods are in the godown but not in stock until the bill is saved.' +
+        (roleIs("admin") ? ' <button class="btn sm" style="min-height:44px;margin-left:4px" data-act="tb-wait">Match them now</button>' : ' The owner matches it.') + '</div>';
+    }
     if (full && L.length) {
       var fig = function (lab, v, col) { return '<span style="display:inline-block;margin-right:14px;white-space:nowrap"><span style="color:#64748b">' + lab + '</span> <b style="color:' + (col || '#0f172a') + '">' + v + '</b></span>'; };
       stkByBrand(L).forEach(function (g) {
@@ -47307,7 +47351,9 @@ function viewCatalogue() {
             return '<div class="acts" style="align-items:center;flex-wrap:nowrap;gap:8px;margin:0;padding:8px 10px' + (i ? ';border-top:1px solid #fee2e2' : '') + '"><div class="grow" style="min-width:0">' +
               '<div style="font-weight:700;font-size:14px">' + esc(x.desc) + '</div><div style="font-size:12px;color:#64748b">' + esc([x.code, x.unit].filter(Boolean).join(" · ")) + (_oc ? ' ' + stkMoveTag(x.code, _oc) : '') + '</div>' +
               '<div style="font-size:13px;margin-top:3px">' + fig("Free", stkQ(x.free, x.code), '#b91c1c') + (x.held ? fig("Held", stkQ(x.held, x.code)) : '') + (x.crit ? fig("Critical", stkQ(x.crit, x.code)) : '') + fig("Reorder", stkQ(x.min, x.code)) +
-                (x.max ? fig("Max", stkQ(x.max, x.code)) : '') + fig("Order", x.need > 0 ? stkQ(x.need, x.code) : 'at min', '#b91c1c') + (x.pack ? fig("Pack", stkQ(x.pack, x.code)) : '') + '</div></div>' +
+                (x.max ? fig("Max", stkQ(x.max, x.code)) : '') + fig("Order", x.need > 0 ? (x.pack ? (x.need / x.pack) + ' box' + (x.need / x.pack === 1 ? '' : 'es') + ' = ' : '') + stkQ(x.need, x.code) : 'at min', '#b91c1c') +
+                (x.pack ? fig("Per box", stkQ(x.pack, x.code)) : '<span style="display:inline-block;font-size:12px;color:#94a3b8;margin-right:14px">per box not set</span>') + '</div>' +
+                (_wi && _wi.by[x.code] ? '<div style="font-size:12.5px;color:#b45309;margin-top:2px">+' + stkQ(_wi.by[x.code].qty, x.code) + ' on ' + esc(_wi.by[x.code].bills.join(", ")) + ' &mdash; waiting to match, not in stock yet</div>' : '') + '</div>' +
               '<button class="btn sm ghost" style="min-height:44px;flex:0 0 auto" data-act="stock-item" data-code="' + esc(x.code) + '">Levels</button></div>';
           }).join("") + '</div>';
       });
@@ -47352,31 +47398,42 @@ function viewCatalogue() {
          least 60% of the weeks there is history for, Slow = went out less often, Non-moving = nothing
          out in the last 180 days (or the whole history, if shorter); ABC by the value moved in a year. */
       var ctx = stkCtx(), MV = { F: XL.C_WON, S: XL.C_LIVE, N: XL.C_LOST };
-      var HEAD = ["Picture", "Product", "Code", "Brand", "Unit", "MRP", "On hand", "Held on challans", "Free", "Critical", "Reorder point", "Maximum", "Pack", "ORDER", "Order value (MRP)", "Status", "Movement", "Out last 90 days", "Class"];
+      /* 6.9.709 - HIS WORDS: "we have to enter per box qty in stock section so that we can enter how many box to order in order
+         excel sheet and it will auto calculate qty to order, so that we can order only boxes not any loose fittings". The yellow
+         BOXES column is his to change; ORDER and its value are Excel formulas, so they follow it. A line with no per-box set keeps
+         a plain ORDER figure he can type over. */
+      var WI = stkWaitIn();
+      var HEAD = ["Picture", "Product", "Code", "Brand", "Unit", "MRP", "On hand", "Held on challans", "Free", "Critical", "Reorder point", "Maximum", "Per box", "BOXES", "ORDER", "Order value (MRP)", "Status", "Movement", "Out last 90 days", "Class", "Waiting to match (not in stock)"];
       var NC = HEAD.length;
       var out = [
         [{ v: "Energy World · Stock to order" + (brand ? " · " + brand : "") + " · " + fullDate(today()) + " · " + plural(L.length, "item"), s: XL.BOLD }],
-        [{ v: "Listed when free stock (on hand less challans made but not yet dispatched) is at or below the reorder point. ORDER = maximum less free, rounded up to the pack; with no maximum set, up to the reorder point. Status Critical = free stock at or below the critical level. " +
-          "Movement: Fast = went out in most weeks, Slow = now and then, Non-moving = nothing out in the last " + ctx.nDays + " days - think before ordering a slow or non-moving line. Class A = the lines that carry 80% of the value moved in a year, B the next 15%, C the rest.", s: XL.MID }],
+        [{ v: "Listed when free stock (on hand less challans made but not yet dispatched) is at or below the reorder point. ORDER = maximum less free, rounded up to whole boxes; with no maximum set, up to the reorder point. Status Critical = free stock at or below the critical level. " +
+          "Movement: Fast = went out in most weeks, Slow = now and then, Non-moving = nothing out in the last " + ctx.nDays + " days - think before ordering a slow or non-moving line. Class A = the lines that carry 80% of the value moved in a year, B the next 15%, C the rest. " +
+          "BOXES (yellow) is yours to change: ORDER = boxes x per box, and the value follows. Set Per box on the product (Stock > Levels) to order whole boxes only. 'Waiting to match' = pieces on a purchase bill not yet matched, so not in stock - match the bill before ordering more.", s: XL.MID }],
         HEAD.map(function (t) { return { v: t, s: XL.HEADW }; })
       ];
-      var heights = { 0: 24, 1: 46, 2: 30 }, pics = [], media = [], mIdx = {}, merges = ["A2:" + xlCol(NC - 1) + "2"];
+      var heights = { 0: 24, 1: 58, 2: 30 }, pics = [], media = [], mIdx = {}, merges = ["A2:" + xlCol(NC - 1) + "2"];
       var M = function (v) { return { v: v, s: XL.MID }; };
       var band = function (txt, sty) { var b = [{ v: txt, s: sty }]; for (var c = 1; c < NC; c++) b.push({ v: "", s: sty }); return b; };
-      var grand = 0;
+      var grand = 0, subRows = [];
       stkByBrand(L).forEach(function (g) {
         if (!brand) { merges.push("A" + (out.length + 1) + ":" + xlCol(NC - 1) + (out.length + 1)); heights[out.length] = 21; out.push(band(g.brand + "  (" + plural(g.list.length, "item") + ")", XL.BAND)); }
-        var sub = 0;
+        var sub = 0, r0 = out.length + 1;
         g.list.forEach(function (x) {
           var p = pm[x.code] || {}, mrp = nAmt(p.rate), val = mrp > 0 && x.need > 0 ? Math.round(mrp * x.need) : 0;
           sub += val;
-          var crit = x.crit > 0 && x.free <= x.crit, r = out.length;
+          var crit = x.crit > 0 && x.free <= x.crit, r = out.length, R1 = r + 1;
           heights[r] = 20;
+          var boxes = x.pack > 0 ? Math.round(x.need / x.pack * 100) / 100 : "";
           out.push([M(""), { v: x.desc, s: XL.MIDB }, M(x.code), M(x.brand || "Other"), M(x.unit), M(mrp > 0 ? mrp : ""), M(x.onhand), M(x.held || ""), M(x.free),
-            M(x.crit || ""), M(x.min), M(x.max || ""), M(x.pack || ""), { v: x.need > 0 ? x.need : "at min", s: XL.MIDB }, M(val || ""),
+            M(x.crit || ""), M(x.min), M(x.max || ""), M(x.pack || ""),
+            x.pack > 0 ? { v: boxes, s: XL.INPUT } : M(""),
+            x.pack > 0 ? { f: "IF(M" + R1 + ">0,N" + R1 + "*M" + R1 + ",0)", v: x.need, s: XL.MIDB } : { v: x.need > 0 ? x.need : 0, s: XL.MIDB },
+            mrp > 0 ? { f: "O" + R1 + "*F" + R1, v: val, s: XL.MID } : M(""),
             { v: crit ? "Critical" : "Reorder", s: crit ? XL.C_LOST : XL.C_LIVE },
             ctx.fsn[x.code] ? { v: FSN_WORD[ctx.fsn[x.code]], s: MV[ctx.fsn[x.code]] } : M("no history"),
-            M(((ctx.hist.by[x.code] || {}).q90) || 0), M(ctx.cls[x.code] || "")]);
+            M(((ctx.hist.by[x.code] || {}).q90) || 0), M(ctx.cls[x.code] || ""),
+            WI.by[x.code] ? { v: WI.by[x.code].qty + " on " + WI.by[x.code].bills.join(", "), s: XL.C_LIVE } : M("")]);
           var u = picOf(x), gp = u && got[u];
           if (gp) {
             heights[r] = 54;   /* 72 px */
@@ -47386,13 +47443,15 @@ function viewCatalogue() {
           }
         });
         grand += sub;
-        if (!brand) { var tr = band("", XL.BOLD); tr[1] = { v: "Total · " + g.brand, s: XL.BOLD }; tr[14] = { v: sub || "", s: XL.BOLD }; out.push(tr); }
+        if (!brand) { var tr = band("", XL.BOLD); tr[1] = { v: "Total · " + g.brand, s: XL.BOLD }; tr[15] = { f: "SUM(P" + r0 + ":P" + out.length + ")", v: sub, s: XL.BOLD }; subRows.push(out.length + 1); out.push(tr); }
+        else subRows.push(r0 + ":P" + out.length);
       });
       out.push([]);
-      var gt = band("", XL.BAND); gt[1] = { v: "TOTAL ORDER VALUE AT MRP" + (brand ? " · " + brand : ""), s: XL.BAND }; gt[14] = { v: grand, s: XL.BAND }; out.push(gt);
+      var gt = band("", XL.BAND); gt[1] = { v: "TOTAL ORDER VALUE AT MRP" + (brand ? " · " + brand : ""), s: XL.BAND };
+      gt[15] = { f: brand ? "SUM(P" + subRows[0] + ")" : subRows.map(function (n) { return "P" + n; }).join("+"), v: grand, s: XL.BAND }; out.push(gt);
       if (L.some(function (x) { return !(nAmt((pm[x.code] || {}).rate) > 0); })) out.push(["Lines with no MRP in the catalogue are not counted in the value."]);
       if (!brand && o.uncounted.length) out.push(["Reorder point set but not counted yet (stock not known): " + o.uncounted.map(function (x) { return x.desc; }).join(", ")]);
-      var cols = [11.5, 38, 15, 14, 8, 10, 9, 10, 8, 9, 10, 9, 7, 10, 13, 10, 12, 10, 7];
+      var cols = [11.5, 38, 15, 14, 8, 10, 9, 10, 8, 9, 10, 9, 8, 9, 10, 13, 10, 12, 10, 7, 26];
       var name = "Stock_to_order_" + (brand ? brand.replace(/[^\w]+/g, "_") + "_" : "") + today() + ".xlsx";
       dlXlsx(name, "Stock to order", out, cols, { heights: heights, freeze: { r: 3, c: 2 }, filter: "A3:" + xlCol(NC - 1) + "3", merges: merges, pics: pics, media: media });
       var miss = urls.length - Object.keys(got).length, noPic = L.filter(function (x) { return !picOf(x); }).length;
@@ -47559,7 +47618,7 @@ function viewCatalogue() {
     say();
     var lanes = []; for (var i = 0; i < 6; i++) lanes.push(lane());
     Promise.all(lanes).then(function () {
-      var HEAD = ["Picture", "Product", "Code", "Brand", "Category", "Unit", "Pack", "Class", "Out 90 days", "Out 12 months", "Average a month",
+      var HEAD = ["Picture", "Product", "Code", "Brand", "Category", "Unit", "Per box", "Class", "Out 90 days", "Out 12 months", "Average a month",
         "In stock", "Free", "Status today", "Critical set", "Reorder set", "Max set", "Suggested critical", "Suggested reorder", "Suggested max",
         "Why no suggestion", "Agreed critical", "Agreed reorder", "Agreed max", "Remarks"];
       var NC = HEAD.length, win = Math.min(90, ctx.hist.span);
@@ -47567,7 +47626,7 @@ function viewCatalogue() {
         [{ v: "Energy World \u00b7 Stock levels for the sales meeting \u00b7 " + fullDate(today()) + " \u00b7 " + prods.length + " products", s: XL.BOLD }],
         [{ v: "Critical = never let free stock fall to this. Reorder = order when free stock reaches this. Max = order up to this. Free = in stock less challans made but not yet dispatched. " +
           "Suggested levels come from the last " + win + " days of challans (lead time " + ctx.plan.leadDef + " days unless set for the brand; safety days A " + ctx.plan.safe.A + ", B " + ctx.plan.safe.B + ", C " + ctx.plan.safe.C + "; cover " + ctx.plan.cover + " days). " +
-          "Class: A = the lines that carry 80% of the value moved, B the next 15%, C the rest; Fast / Slow / Non-moving by how often it went out. Fill the yellow columns in the meeting.", s: XL.MID }],
+          "Class: A = the lines that carry 80% of the value moved, B the next 15%, C the rest; Fast / Slow / Non-moving by how often it went out. Fill the yellow columns in the meeting - Per box too: Stock to order then orders whole boxes.", s: XL.MID }],
         HEAD.map(function (t) { return { v: t, s: XL.HEADW }; })
       ];
       var heights = { 0: 24, 1: 46, 2: 30 }, pics = [], media = [], mIdx = {}, lastGrp = "", merges = ["A2:" + xlCol(NC - 1) + "2"];
@@ -47587,7 +47646,7 @@ function viewCatalogue() {
         var M = function (v) { return { v: v, s: XL.MID }; };
         var r = out.length;
         heights[r] = 20;   /* every row is given its height, so a picture can never be placed against a guessed one */
-        out.push([M(""), { v: p.desc || k, s: XL.MIDB }, M(k), M(brand(p)), M(fam(p)), M(stkUnit(k)), M(L.pack || ""), M(cl),
+        out.push([M(""), { v: p.desc || k, s: XL.MIDB }, M(k), M(brand(p)), M(fam(p)), M(stkUnit(k)), { v: L.pack || "", s: XL.INPUT }, M(cl),   /* 6.9.709 - yellow: fill it in and load the sheet back */
           M(h ? h.q90 : 0), M(h ? h.q365 : 0), M(perMonth),
           M(counted ? x.onhand : "not counted"), M(counted ? x.free : ""),
           { v: st.w, s: ST[st.w] || XL.C_NR },
@@ -47628,6 +47687,7 @@ function viewCatalogue() {
     var cC = H.indexOf("code"), cP = col(["product", "description", "item"]);
     var ag = [col(["agreed critical"]), col(["agreed reorder"]), col(["agreed max"])];
     var st = [col(["critical set", "critical", "critical stock", "min"]), col(["reorder set", "reorder", "reorder point", "reorder level"]), col(["max set", "max", "maximum"])];
+    var cBox = col(["agreed per box", "per box", "box qty", "qty per box", "pack"]);   /* 6.9.709 */
     if (st[1] < 0 && ag[1] < 0) return { err: "No Reorder column was found (Reorder set, Reorder, or Agreed reorder)." };
     var blank = function (v) { return v === null || v === undefined || String(v).trim() === ""; };
     var n = function (v) { var x = Number(String(v).replace(/[^0-9.]/g, "")); return isFinite(x) ? x : 0; };
@@ -47637,8 +47697,9 @@ function viewCatalogue() {
       if (!code) continue;
       var pick = ag.some(function (k) { return k >= 0 && !blank(a[k]); }) ? ag : st;
       var v = pick.map(function (k) { return k >= 0 ? a[k] : ""; });
-      if (v.every(blank)) continue;
-      out.push({ code: code, desc: cP >= 0 ? String(a[cP] || "") : "", crit: n(v[0]), min: n(v[1]), max: n(v[2]), from: pick === ag ? "agreed" : "set" });
+      var bx = cBox >= 0 && !blank(a[cBox]) ? n(a[cBox]) : null;
+      if (v.every(blank) && bx === null) continue;
+      out.push({ code: code, desc: cP >= 0 ? String(a[cP] || "") : "", crit: n(v[0]), min: n(v[1]), max: n(v[2]), pack: bx, onlyBox: v.every(blank), from: pick === ag ? "agreed" : "set" });
     }
     return { rows: out };
   }
@@ -47650,10 +47711,12 @@ function viewCatalogue() {
       var code = pm[r.code] ? r.code : byKey[keyOf(r.code)];
       if (!code) { plan.unknown.push(r); return; }
       var cur = lvl[code] || { crit: 0, min: 0, max: 0, pack: 0 };
+      if (r.onlyBox) { r.crit = cur.crit || 0; r.min = cur.min || 0; r.max = cur.max || 0; }   /* 6.9.709 - only the box filled: the levels stay as they are */
+      var pk = r.pack === null || r.pack === undefined ? (cur.pack || 0) : r.pack;
       if ((r.crit && r.min && r.crit > r.min) || (r.max && r.min > r.max)) { r.code = code; r.cur = cur; plan.doubt.push(r); return; }
-      if ((cur.crit || 0) === r.crit && (cur.min || 0) === r.min && (cur.max || 0) === r.max) { plan.same++; return; }
+      if ((cur.crit || 0) === r.crit && (cur.min || 0) === r.min && (cur.max || 0) === r.max && (cur.pack || 0) === pk) { plan.same++; return; }
       if (!r.crit && !r.min && !r.max) plan.cleared++;
-      plan.change.push({ code: code, desc: (pm[code] || {}).desc || r.desc, crit: r.crit, min: r.min, max: r.max, pack: cur.pack || 0, cur: cur });
+      plan.change.push({ code: code, desc: (pm[code] || {}).desc || r.desc, crit: r.crit, min: r.min, max: r.max, pack: pk, cur: cur });
     });
     return plan;
   }
@@ -47973,7 +48036,7 @@ function viewCatalogue() {
           '<input id="si_crit" inputmode="numeric" value="' + esc(L.crit || "") + '" placeholder="e.g. 5" ' + inp + '/>' +
           '<div ' + lbl + '>Maximum \u2014 order up to this (blank = none)</div>' +
           '<input id="si_max" inputmode="numeric" value="' + esc(L.max || "") + '" placeholder="e.g. 60" ' + inp + '/>' +
-          '<div ' + lbl + '>Pack \u2014 the supplier sells it in multiples of (optional)</div>' +
+          '<div ' + lbl + '>Per box \u2014 pieces in one box. Stock to order then orders whole boxes only (blank = loose)</div>' +
           '<input id="si_pack" inputmode="numeric" value="' + esc(L.pack || "") + '" placeholder="e.g. 10" ' + inp + '/>' +
           (sg.min !== undefined
             ? '<div style="margin-top:8px;padding:8px 10px;border-radius:8px;background:#f0fdfa;font-size:13px">Suggested from challans: critical <b>' + esc(stkQ(sg.ss, code)) + '</b>, reorder at <b>' + esc(stkQ(sg.min, code)) + '</b>, maximum <b>' + esc(stkQ(sg.max, code)) + '</b> (sells ' + esc(stkQ(sg.ads, code)) + ' a day, class ' + sg.cls + ', lead ' + sg.lt + ' days). ' +
