@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.705";
+  var APP_VERSION = "6.9.706";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -578,8 +578,8 @@
   }
 
   var ROLE_TABS = {
-    admin:    ["dash","review","agent","report","scorecard","returns","tools","rates","clients","crlog","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","register","paylog","freight","payments","paidout","billing","discounts","commission","complaints","service","spares","dues","payroll","products","catalogs","brandstory","pricelist","catalogue","rules","teampins","health","trouble","changelog","booksweep","dups","stock","brief"],
-    accounts: ["dash","review","agent","returns","tools","clients","crlog","partners","followups","challans","register","paylog","freight","payments","billing","complaints","service","spares","dues","products","catalogs","rates","pricelist","dups","stock","trouble"],
+    admin:    ["dash","review","agent","report","scorecard","returns","tools","rates","clients","crlog","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","register","paylog","freight","payments","paidout","billing","discounts","commission","complaints","service","spares","dues","payroll","products","catalogs","brandstory","pricelist","catalogue","rules","teampins","tally","health","trouble","changelog","booksweep","dups","stock","brief"],
+    accounts: ["dash","review","agent","returns","tools","clients","crlog","partners","followups","challans","register","paylog","freight","payments","billing","complaints","service","spares","dues","products","catalogs","rates","pricelist","dups","stock","tally","trouble"],
     godown:   ["dash","agent","returns","tools","challans","freight","products","stock","trouble"],
     sales:    ["dash","review","agent","report","returns","tools","clients","crlog","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","register","paylog","freight","billing","payments","complaints","products","catalogs","dups","brief","trouble"],
     service:  ["dash","agent","tools","complaints","service","spares","dues","followups","products","catalogs","trouble"]
@@ -38049,7 +38049,7 @@ function viewCatalogue() {
      nothing else could reach it - so the usage counter would have had to keep a second copy
      of the same forty-two names, and a second copy is how the two quietly stop agreeing.
      Hoisted, not duplicated. render() still reads exactly this. */
-  var TAB_TABS = [["search", "Search"], ["dash", "Today"], ["review", "Twice-weekly review"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["register", "Challan log"], ["paylog", "Payment log"], ["freight", "Drivers & freight"], ["deliveries", "Deliveries"], ["collections", "Payments"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["crlog", "Client & lead log"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["complaints", "Complaints"], ["service", "Service"], ["spares", "Spares"], ["dues", "Service dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["paidout", "Paid out"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["catalogs", "Brand catalogues"], ["brandstory", "Brand stories"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["trouble", "Troubleshoot"], ["changelog", "Change log"], ["booksweep", "Book numbers"], ["dups", "Duplicate check"], ["stock", "Stock"], ["brief", "The brief"]];
+  var TAB_TABS = [["search", "Search"], ["dash", "Today"], ["review", "Twice-weekly review"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["register", "Challan log"], ["paylog", "Payment log"], ["freight", "Drivers & freight"], ["deliveries", "Deliveries"], ["collections", "Payments"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["crlog", "Client & lead log"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["complaints", "Complaints"], ["service", "Service"], ["spares", "Spares"], ["dues", "Service dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["paidout", "Paid out"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["catalogs", "Brand catalogues"], ["brandstory", "Brand stories"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["trouble", "Troubleshoot"], ["changelog", "Change log"], ["booksweep", "Book numbers"], ["dups", "Duplicate check"], ["stock", "Stock"], ["tally", "Tally"], ["brief", "The brief"]];
   var TAB_LABEL = (function () {
     var m = {}; TAB_TABS.forEach(function (t) { m[t[0]] = t[1]; }); return m;
   })();
@@ -43023,6 +43023,169 @@ function viewCatalogue() {
         l ? incRoleLabel(l.role) + ": " + (l.was || "nobody") + " -> " + (l.now || "nobody") + " from " + dmy(l.on) : "", r.ch.length || ""]);
     });
     dlXlsx("Client_and_lead_log_" + today() + ".xlsx", "Client & lead log", out, [28, 10, 20, 13, 18, 12, 11, 14, 16, 18, 18, 18, 16, 40, 8]);
+  }
+
+
+  /* ===================== TALLY, IN ONE PLACE  (6.9.706, 8 Oct 2026) =====================
+     HIS WORDS: "under product show tally summary and bills uploaded, bills pending to upload, all
+     tally section".
+
+     MEASURED FIRST, on his TeamStock sheet that morning: 4 purchase bills uploaded (three Huliot,
+     one Mehar), 8 "waiting" rows (bills accounts sent to the owner because a line did not match a
+     catalogue code - Fima FJ-766 among them), 8 part-number matches, and NO Purchase Register yet.
+     All of it lived on the Stock screen, in three different cards, one of them hidden behind
+     "Show the list", and the uploaded bills themselves were nowhere to be seen as a list.
+
+     So Products -> Tally: one screen, for the owner and accounts.
+       - the summary: uploaded (bills, value), pending to upload (off the register), waiting for
+         the owner to match, catalogue codes still not Tally's, registers uploaded;
+       - a month chip row, every section below follows it;
+       - Pending to upload, Waiting to match, Uploaded bills (tap one for its lines), By supplier,
+         Registers uploaded;
+       - Upload, Match them now and Change codes are the Stock screen's own buttons - nothing new
+         writes anything; and the whole screen goes out as one Excel.
+     With no register uploaded it says so, because "pending" cannot be known without one. */
+  function tlBills() {
+    /* uploaded bills: one per supplier / bill no, the last upload wins, the number of uploads kept */
+    var by = {}, reg = {};
+    stkRegister().forEach(function (b) { reg[b.key.toLowerCase()] = b; });
+    (S.stock || []).forEach(function (r) {
+      if (String(r.type) !== "bill" || !r.ref) return;
+      var k = String(r.ref).trim().toLowerCase(), o = by[k];
+      var ls = []; try { ls = JSON.parse(r.desc || "[]") || []; } catch (e) { ls = []; }
+      var p = String(r.ref).split(" / ");
+      var x = { key: String(r.ref).trim(), supplier: String(r.notes || p[0] || "").trim(), billNo: String(p.slice(1).join(" / ") || "").trim(),
+        date: String(r.asOn || "").slice(0, 10), value: Number(r.qty) || 0, lines: ls, by: String(r.createdBy || ""), at: String(r.createdAt || ""), n: 1 };
+      if (o) { x.n = o.n + 1; if (String(o.at) > x.at) { o.n = x.n; return; } }
+      by[k] = x;
+    });
+    return Object.keys(by).map(function (k) { var b = by[k]; b.onReg = !!reg[k]; if (!b.value && reg[k]) b.value = reg[k].amount; return b; })
+      .sort(function (a, b) { return String(b.date).localeCompare(String(a.date)) || String(a.supplier).localeCompare(String(b.supplier)); });
+  }
+  function tlRegs() {
+    return (S.stock || []).filter(function (r) { return String(r.type) === "register"; }).map(function (r) {
+      var list = []; try { list = JSON.parse(r.desc || "[]") || []; } catch (e) { list = []; }
+      return { period: String(r.ref || ""), bills: list.length, value: list.reduce(function (a, b) { return a + (Number(b.a) || 0); }, 0), file: String(r.notes || ""), by: String(r.createdBy || ""), at: String(r.createdAt || r.asOn || "") };
+    }).sort(function (a, b) { return String(b.at).localeCompare(String(a.at)); });
+  }
+  function tlData() {
+    var bills = tlBills(), bil = stkBilledRefs(), reg = stkRegister();
+    var pend = reg.filter(function (b) { return !bil[b.key.toLowerCase()]; });
+    var wait = stkWaiting().map(function (o) { return { key: stkBillKey(o.supplier, o.billNo), supplier: o.supplier, billNo: o.billNo, date: String(o.date || "").slice(0, 10), value: Number(o.total) || 0, lines: (o.lines || []).length }; });
+    var mon = S.tlMon || "", inM = function (d) { return !mon || String(d || "").slice(0, 7) === mon; };
+    var months = {};
+    bills.concat(pend, wait).forEach(function (b) { var m = String(b.date || "").slice(0, 7); if (/^\d{4}-\d{2}$/.test(m)) months[m] = 1; });
+    return { all: bills, bills: bills.filter(function (b) { return inM(b.date); }), pend: pend.filter(function (b) { return inM(b.date); }),
+      wait: wait.filter(function (b) { return inM(b.date); }), regs: tlRegs(), hasReg: reg.length > 0, drift: roleIs("admin") ? stkDrift() : [],
+      alias: (S.stock || []).filter(function (r) { return String(r.type) === "alias"; }).length,
+      months: Object.keys(months).sort().reverse(), mon: mon };
+  }
+  function tlMonLabel(m) { var p = String(m).split("-"); var N = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]; return (N[Number(p[1]) - 1] || p[1]) + " " + p[0]; }
+  function viewTally() {
+    ensureStock();
+    var h = '<div class="card"><div class="acts" style="align-items:center;margin:0;flex-wrap:wrap;gap:6px"><h2 class="grow" style="margin:0">Tally</h2>' +
+      '<button class="btn sm" data-act="stock-import" data-from="tally">&#8593; Upload Tally bills / register</button>' +
+      '<button class="btn sm ghost" data-act="tl-xlsx">&#8681; Excel</button>' +
+      '<button class="btn sm ghost" data-act="stock-refresh">Refresh</button></div>' +
+      '<div class="meta" style="font-size:12.5px;margin-top:4px">Tally is the book for tax. Each month upload the <b>Purchase Register</b> (it says which bills there are) and then <b>each bill</b> (Excel or PDF from Tally) &mdash; a bill uploaded puts its goods into stock, and its item codes are matched to Tally&rsquo;s.</div></div>';
+    if (!STOCK_LOADED && !(S.stock && S.stock.length)) return h + '<div class="empty">Loading the Tally uploads&hellip;</div>';
+    var D = tlData(), adm = roleIs("admin");
+    var sum = function (L) { return L.reduce(function (a, b) { return a + (Number(b.value) || 0); }, 0); };
+    var tile = function (lab, big, sub, col, act) {
+      return '<div' + (act ? ' data-act="' + act + '" style="cursor:pointer;' : ' style="') + 'flex:1 1 150px;min-width:140px;background:#fff;border:1px solid #e2e8f0;border-left:4px solid ' + col + ';border-radius:10px;padding:8px 10px">' +
+        '<div style="font-size:12px;color:#64748b;font-weight:700;text-transform:uppercase">' + lab + '</div><div style="font-size:20px;font-weight:800;color:' + col + '">' + big + '</div><div style="font-size:12.5px;color:#475569">' + sub + '</div></div>';
+    };
+    h += '<div class="row" style="flex-wrap:wrap;gap:8px;margin:6px 0">' +
+      tile("Uploaded", plural(D.bills.length, "bill"), money(sum(D.bills)), "#0f766e") +
+      (D.hasReg ? tile("Pending to upload", plural(D.pend.length, "bill"), money(sum(D.pend.map(function (b) { return { value: b.amount }; }))), D.pend.length ? "#b45309" : "#0f766e")
+                : tile("Pending to upload", "not known", "upload the Purchase Register", "#94a3b8")) +
+      tile("Waiting to match", plural(D.wait.length, "bill"), adm ? "codes for you to match" : "with the owner", D.wait.length ? "#b91c1c" : "#0f766e") +
+      (adm ? tile("Codes not Tally's", String(D.drift.length), D.alias + " part no" + (D.alias === 1 ? "" : "s") + " matched by hand", D.drift.length ? "#b45309" : "#0f766e") : "") +
+      tile("Registers", String(D.regs.length), D.regs.length ? "last " + esc(D.regs[0].period || dmy(D.regs[0].at)) : "none uploaded yet", D.regs.length ? "#0f766e" : "#94a3b8") + '</div>';
+    if (D.months.length) {
+      h += '<div class="chips"><button class="chip ' + (D.mon ? "" : "on") + '" data-act="tl-mon" data-m="">All months</button>' +
+        D.months.map(function (m) { return '<button class="chip ' + (D.mon === m ? "on" : "") + '" data-act="tl-mon" data-m="' + m + '">' + tlMonLabel(m) + '</button>'; }).join("") + '</div>';
+    }
+    var tbl = function (head, rows, foot) {
+      return '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="background:#e2e8f0">' +
+        head.map(function (x) { return '<th style="padding:6px 8px;text-align:' + (x[1] || "left") + ';font-size:12px;white-space:nowrap">' + x[0] + '</th>'; }).join("") + '</tr></thead><tbody>' + rows.join("") + '</tbody>' + (foot || "") + '</table></div>';
+    };
+    var td = function (v, al, x) { return '<td style="padding:6px 8px;border-top:1px solid #e2e8f0;vertical-align:top;text-align:' + (al || "left") + (x || "") + '">' + v + '</td>'; };
+    /* 1 - pending to upload */
+    h += '<div class="card" style="border-color:' + (D.pend.length ? '#fdba74' : '#e2e8f0') + '"><h3 style="margin:0 0 6px">Pending to upload' + (D.hasReg ? ' &middot; ' + D.pend.length : '') + '</h3>';
+    if (!D.hasReg) h += '<div class="meta" style="font-size:13px">No Purchase Register has been uploaded, so the CRM cannot tell which bills are still to come. In Tally: Display &rarr; Account Books &rarr; Purchase Register &rarr; the month &rarr; export as Excel, then <b>Upload</b> it here.</div>';
+    else if (!D.pend.length) h += '<div class="meta" style="font-size:13px;color:#0f766e">Every bill on the register' + (D.mon ? ' for ' + tlMonLabel(D.mon) : '') + ' is uploaded.</div>';
+    else { var _wk = {}; D.wait.forEach(function (w) { _wk[String(w.key).toLowerCase()] = 1; });
+      h += tbl([["DATE"], ["SUPPLIER"], ["BILL NO"], ["AMOUNT", "right"], ["STATUS"]], D.pend.map(function (b) {
+      return '<tr>' + td(esc(dmy(b.date)), "", ";white-space:nowrap") + td(esc(b.supplier)) + td('<b>' + esc(b.billNo) + '</b>') + td(money(b.amount), "right", ";white-space:nowrap") +
+        td(_wk[String(b.key).toLowerCase()] ? '<span class="pill due" style="font-size:12px">uploaded, waiting to match</span>' : '<span class="pill Lost" style="font-size:12px">not uploaded</span>') + '</tr>';
+    }), '<tfoot><tr style="background:#fff7ed"><td colspan="3" style="padding:6px 8px;font-weight:800">Total</td><td style="padding:6px 8px;text-align:right;font-weight:800">' + money(sum(D.pend.map(function (b) { return { value: b.amount }; }))) + '</td><td></td></tr></tfoot>'); }
+    h += '</div>';
+    /* 2 - waiting for the owner */
+    if (D.wait.length) {
+      h += '<div class="card" style="border-color:#fecaca"><div class="acts" style="align-items:center;margin:0 0 6px"><h3 class="grow" style="margin:0">Waiting to match &middot; ' + D.wait.length + '</h3>' +
+        (adm ? '<button class="btn sm" data-act="tb-wait">Match them now</button>' : '') + '</div>' +
+        '<div class="meta" style="font-size:12.5px;margin-bottom:6px">A line on these bills is not yet matched to a catalogue product, so they are <b>not in stock</b>.' + (adm ? '' : ' The owner matches them.') + '</div>' +
+        tbl([["DATE"], ["SUPPLIER"], ["BILL NO"], ["LINES", "right"], ["AMOUNT", "right"]], D.wait.map(function (b) {
+          return '<tr>' + td(esc(dmy(b.date)), "", ";white-space:nowrap") + td(esc(b.supplier)) + td('<b>' + esc(b.billNo) + '</b>') + td(String(b.lines), "right") + td(b.value ? money(b.value) : "&mdash;", "right", ";white-space:nowrap") + '</tr>';
+        })) + '</div>';
+    }
+    /* 3 - uploaded bills */
+    var pm = stkPMap();
+    h += '<div class="card"><h3 style="margin:0 0 6px">Uploaded bills &middot; ' + D.bills.length + (D.bills.length ? ' &middot; ' + money(sum(D.bills)) : '') + '</h3>';
+    if (!D.bills.length) h += '<div class="meta" style="font-size:13px">No bill uploaded' + (D.mon ? ' for ' + tlMonLabel(D.mon) : '') + '.</div>';
+    else h += tbl([["DATE"], ["SUPPLIER"], ["BILL NO"], ["LINES", "right"], ["AMOUNT", "right"], ["UPLOADED"], ["REGISTER"]], D.bills.map(function (b) {
+      var open = S.tlOpen === b.key;
+      var row = '<tr style="cursor:pointer" data-act="tl-bill" data-k="' + esc(b.key) + '">' + td(esc(dmy(b.date)), "", ";white-space:nowrap") + td(esc(b.supplier)) +
+        td('<b style="color:#0f766e">' + esc(b.billNo || "—") + '</b> <span style="color:#64748b">' + (open ? '▾' : '▸') + '</span>') + td(String(b.lines.length), "right") +
+        td(money(b.value), "right", ";white-space:nowrap") + td(esc(b.by) + '<div style="font-size:12px;color:#64748b">' + esc(dmy(b.at)) + (b.n > 1 ? ' &middot; uploaded ' + b.n + ' times' : '') + '</div>') +
+        td(D.hasReg ? (b.onReg ? '<span class="pill teal" style="font-size:12px">on register</span>' : '<span class="pill due" style="font-size:12px">not on register</span>') : '<span style="color:#94a3b8">&mdash;</span>') + '</tr>';
+      if (open) {
+        row += '<tr><td colspan="7" style="padding:0 8px 10px;background:#f8fafc">' + tbl([["CODE"], ["PRODUCT"], ["TALLY PART NO"], ["QTY", "right"], ["NET RATE", "right"], ["AMOUNT", "right"]], b.lines.map(function (l) {
+          var p = pm[String(l.c || "").trim()] || {}, q = Number(l.q) || 0, n = Number(l.n) || 0;
+          return '<tr>' + td(esc(l.c || "")) + td(esc(p.desc || "")) + td(esc(l.p || "")) + td(esc(String(q)) + (l.u ? ' ' + esc(l.u) : ''), "right", ";white-space:nowrap") + td(n ? money(n) : "", "right") + td(n && q ? money(Math.round(n * q)) : "", "right") + '</tr>';
+        })) + '</td></tr>';
+      }
+      return row;
+    }));
+    h += '</div>';
+    /* 4 - by supplier */
+    if (D.bills.length || D.pend.length) {
+      var sup = {};
+      var add = function (s, k, v) { var x = sup[s] || (sup[s] = { up: 0, upv: 0, pe: 0, pev: 0 }); x[k] += 1; x[k + "v"] += v; };
+      D.bills.forEach(function (b) { add(b.supplier || "—", "up", Number(b.value) || 0); });
+      D.pend.forEach(function (b) { add(b.supplier || "—", "pe", Number(b.amount) || 0); });
+      h += '<div class="card"><h3 style="margin:0 0 6px">By supplier</h3>' + tbl([["SUPPLIER"], ["UPLOADED", "right"], ["VALUE", "right"], ["PENDING", "right"], ["VALUE", "right"]],
+        Object.keys(sup).sort(function (a, b) { return (sup[b].upv + sup[b].pev) - (sup[a].upv + sup[a].pev); }).map(function (k) {
+          var x = sup[k]; return '<tr>' + td(esc(k)) + td(String(x.up), "right") + td(money(x.upv), "right", ";white-space:nowrap") + td(x.pe ? '<b style="color:#b45309">' + x.pe + '</b>' : '0', "right") + td(x.pe ? money(x.pev) : "&mdash;", "right", ";white-space:nowrap") + '</tr>';
+        })) + '</div>';
+    }
+    /* 5 - registers, and codes */
+    h += '<div class="card"><h3 style="margin:0 0 6px">Purchase Registers uploaded &middot; ' + D.regs.length + '</h3>' +
+      (D.regs.length ? tbl([["PERIOD"], ["BILLS", "right"], ["VALUE", "right"], ["FILE"], ["UPLOADED"]], D.regs.map(function (r) {
+        return '<tr>' + td(esc(r.period || "—")) + td(String(r.bills), "right") + td(money(r.value), "right", ";white-space:nowrap") + td(esc(r.file)) + td(esc(r.by) + '<div style="font-size:12px;color:#64748b">' + esc(dmy(r.at)) + '</div>') + '</tr>';
+      })) : '<div class="meta" style="font-size:13px">None yet.</div>') + '</div>';
+    if (adm && D.drift.length) h += '<div class="card" style="border-color:#fdba74"><div class="acts" style="align-items:center;margin:0"><b class="grow">' + plural(D.drift.length, "catalogue code") + ' still differ' + (D.drift.length === 1 ? 's' : '') + ' from Tally&rsquo;s</b>' +
+      '<button class="btn sm ghost" data-act="tb-drift">Change ' + plural(D.drift.length, "code") + ' to Tally&rsquo;s</button></div></div>';
+    return h;
+  }
+  function tlXlsx() {
+    var D = tlData(), out = [], X = function (v) { return { v: v, s: XL.HEAD }; };
+    out.push([{ v: "Energy World · Tally · " + (D.mon ? tlMonLabel(D.mon) : "all months") + " · " + fullDate(today()), s: XL.BOLD }], []);
+    out.push([{ v: "UPLOADED BILLS", s: XL.BAND }]);
+    out.push(["Date", "Supplier", "Bill no", "Lines", "Amount", "Uploaded by", "Uploaded on", "On register"].map(X));
+    D.bills.forEach(function (b) { out.push([dmy(b.date), b.supplier, b.billNo, b.lines.length, b.value, b.by, dmy(b.at), D.hasReg ? (b.onReg ? "yes" : "NO") : ""]); });
+    out.push([], [{ v: "PENDING TO UPLOAD" + (D.hasReg ? "" : " - no Purchase Register uploaded, not known"), s: XL.BAND }]);
+    out.push(["Date", "Supplier", "Bill no", "", "Amount"].map(X));
+    D.pend.forEach(function (b) { out.push([dmy(b.date), b.supplier, b.billNo, "", b.amount]); });
+    out.push([], [{ v: "WAITING FOR THE OWNER TO MATCH", s: XL.BAND }]);
+    out.push(["Date", "Supplier", "Bill no", "Lines", "Amount"].map(X));
+    D.wait.forEach(function (b) { out.push([dmy(b.date), b.supplier, b.billNo, b.lines, b.value || ""]); });
+    var pm = stkPMap();
+    out.push([], [{ v: "LINES OF THE UPLOADED BILLS", s: XL.BAND }]);
+    out.push(["Date", "Supplier", "Bill no", "Code", "Product", "Tally part no", "Qty", "Unit", "Net rate", "Amount"].map(X));
+    D.bills.forEach(function (b) { b.lines.forEach(function (l) { var q = Number(l.q) || 0, n = Number(l.n) || 0; out.push([dmy(b.date), b.supplier, b.billNo, l.c || "", (pm[String(l.c || "").trim()] || {}).desc || "", l.p || "", q, l.u || "", n || "", n && q ? Math.round(n * q) : ""]); }); });
+    dlXlsx("Tally_" + (D.mon || "all") + "_" + today() + ".xlsx", "Tally", out, [12, 34, 16, 14, 40, 18, 12, 12, 10, 12]);
   }
 
   function logout() {
@@ -49056,7 +49219,7 @@ function viewCatalogue() {
        chip. Every chip the two groups had is still here. */
     ["Clients",    ["clients", "leads", "crlog", "brandfollow", "followups", "quotes", "discounts", "pitch", "winloss", "review"]],
     ["Service",    ["complaints", "service"]],   /* 6.9.684 - complaints first */
-    ["Products",   ["products", "pricelist", "catalogue", "catalogs", "brandstory", "stock"]],   /* 6.9.612 - price list and add-product back */   /* v6.9.581 - the catalogue library; v6.9.605 - Stock, on his "stock entry in CRM" */
+    ["Products",   ["products", "pricelist", "catalogue", "catalogs", "brandstory", "stock", "tally"]],   /* 6.9.612 - price list and add-product back */   /* v6.9.581 - the catalogue library; v6.9.605 - Stock, on his "stock entry in CRM" */
     ["Team",       ["partners", "commission", "payroll", "scorecard", "report", "teampins"]],
     /* v6.9.539 - item 23: "Book numbers - what's the use, it's empty" (measured: 0 rows) - off
        the header; the screen still opens from the Health check. Item 25: The brief is a tab
@@ -49184,7 +49347,7 @@ function viewCatalogue() {
     catalogue: 1, partners: 1, scorecard: 1, report: 1, commission: 1, payroll: 1, teampins: 1, dash: 1,
     pending: 1, trouble: 1, dups: 1, health: 1, changelog: 1, tools: 1, brief: 1, rates: 1, rules: 1, booksweep: 1 };
   var HELP_ALIAS = { deliveries: "challans", collections: "payments", pricing: "pricelist", payrollhub: "commission",
-    dossier: "clients", matrix: "pitch", sites: "pitch", customers: "clients", paylog: "payments", complaints: "service", crlog: "clients" };   /* 6.9.667; 6.9.684 complaints -> the service section until it has its own */
+    dossier: "clients", matrix: "pitch", sites: "pitch", customers: "clients", paylog: "payments", complaints: "service", crlog: "clients", tally: "stock" };   /* 6.9.667; 6.9.684 complaints -> the service section until it has its own */
   function helpHref(tab) {
     var k = HELP_AT[tab] ? tab : (HELP_ALIAS[tab] || "");
     return "../help/crm.html#t-" + (k || "start");
@@ -49414,7 +49577,7 @@ function viewCatalogue() {
       setTimeout(function () { try { preloadLogos(); } catch (e) { } }, 4000);
     }
     if (!S.pin && !S.tok) { renderLogin(); return; }
-    var views = { agent: viewAgent, search: viewSearch, dossier: viewDossier, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, complaints: viewComplaints, payments: viewPayments, paidout: viewPaidOut, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, catalogs: viewCatalogues, brandstory: viewBrandStories, clients: viewClients, crlog: viewCrLog, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, register: viewRegister, paylog: viewPayLog, freight: viewFreight, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, trouble: viewTrouble, changelog: viewChangeLog, booksweep: viewBookSweep, dups: viewDups, stock: viewStock, brief: viewBrief, review: viewReview };
+    var views = { agent: viewAgent, search: viewSearch, dossier: viewDossier, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, complaints: viewComplaints, payments: viewPayments, paidout: viewPaidOut, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, catalogs: viewCatalogues, brandstory: viewBrandStories, clients: viewClients, crlog: viewCrLog, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, register: viewRegister, paylog: viewPayLog, freight: viewFreight, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, trouble: viewTrouble, changelog: viewChangeLog, booksweep: viewBookSweep, dups: viewDups, stock: viewStock, tally: viewTally, brief: viewBrief, review: viewReview };
     var tabs = TAB_TABS;
 
     var h = '<div class="top">' +
@@ -50837,6 +51000,10 @@ function viewCatalogue() {
       setTimeout(pcAutoSave, 1500);
       return;
     }
+    /* ---- 6.9.706 - the Tally screen ---- */
+    if (act === "tl-mon") { S.tlMon = t.getAttribute("data-m") || ""; S.tlOpen = ""; keepScroll = true; render(); return; }
+    if (act === "tl-bill") { var _tk = t.getAttribute("data-k") || ""; S.tlOpen = S.tlOpen === _tk ? "" : _tk; keepScroll = true; render(); return; }
+    if (act === "tl-xlsx") { tlXlsx(); return; }
     if (act === "stk-reglist") { S.stkReg = !S.stkReg; keepScroll = true; render(); return; }
     if (act === "stock-landing") { S.modal = modalStockLanding(); render(); return; }
     if (act === "stock-landing-save") {
@@ -50882,9 +51049,9 @@ function viewCatalogue() {
       }).catch(function () { toast("Save failed — check connection."); });
       return;
     }
-    if (act === "stock-import") { S.imp = { step: 1, type: "in", asOn: today(), ref: "", paste: "" }; S.tab = "stock"; render(); return; }
+    if (act === "stock-import") { S.impFrom = t.getAttribute("data-from") || ""; S.imp = { step: 1, type: "in", asOn: today(), ref: "", paste: "" }; S.tab = "stock"; render(); return; }
     if (act === "stk-nag-go") { S.modal = null; S.grn = null; S.pc = null; S.imp = { step: 1, type: "in", asOn: today(), ref: "", paste: "" }; S.tab = "stock"; render(); return; }   /* 6.9.607 */
-    if (act === "imp-cancel") { S.imp = null; render(); return; }
+    if (act === "imp-cancel") { S.imp = null; if (S.impFrom) { S.tab = S.impFrom; S.impFrom = ""; } render(); return; }
     if (act === "imp-back") { if (S.imp) S.imp.step = 1; render(); return; }
     if (act === "imp-type") {
       if (S.imp) {
