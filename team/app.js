@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.706";
+  var APP_VERSION = "6.9.707";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -47191,6 +47191,12 @@ function viewCatalogue() {
     return '<span style="display:inline-block;font-size:12px;font-weight:700;padding:1px 6px;border-radius:6px;border:1px solid ' + col + ';color:' + col + ';white-space:nowrap">' +
       (c || "-") + (f ? ' · ' + FSN_WORD[f] : '') + '</span>';
   }
+  /* 6.9.707 - Fast / Slow / Non-moving as a coloured word, for the Stock to order list */
+  function stkMoveTag(k, ctx) {
+    var f = ctx.fsn[k]; if (!f) return '';
+    var col = f === "F" ? "#15803d" : f === "S" ? "#b45309" : "#b91c1c";
+    return '<span style="display:inline-block;font-size:12px;font-weight:700;padding:0 6px;border-radius:6px;background:' + col + ';color:#fff;white-space:nowrap">' + FSN_WORD[f] + (ctx.cls[k] ? ' · ' + ctx.cls[k] : '') + '</span>';
+  }
   /* the suggestion for one product, or why there is none */
   function stkSuggest(k, ctx) {
     var x = ctx.hist.by[k], win = Math.min(90, ctx.hist.span);
@@ -47269,6 +47275,7 @@ function viewCatalogue() {
         (full ? '<button class="btn sm ghost" data-act="stk-ord-xlsx" data-b="">&#8681; Excel, all</button><button class="btn sm ghost" data-act="stk-ord" data-v="">All stock</button>'
               : '<button class="btn sm" data-act="stk-ord" data-v="1">Open the list</button>') + '</div>' +
       '<div class="meta" style="font-size:12.5px;margin-top:3px">Only products with a reorder point (“Min”) set. One is listed when its <b>free</b> stock (on hand less challans made but not yet dispatched) is at or below it. <b>Order</b> = maximum less free, rounded up to the pack; with no maximum set, up to the reorder point only.</div>';
+    var _oc = full && L.length ? stkCtx() : null;   /* 6.9.707 */
     if (full && L.length) {
       var fig = function (lab, v, col) { return '<span style="display:inline-block;margin-right:14px;white-space:nowrap"><span style="color:#64748b">' + lab + '</span> <b style="color:' + (col || '#0f172a') + '">' + v + '</b></span>'; };
       stkByBrand(L).forEach(function (g) {
@@ -47278,7 +47285,7 @@ function viewCatalogue() {
           '<div style="background:#fff;border:1px solid #fee2e2;border-radius:10px">' +
           g.list.map(function (x, i) {
             return '<div class="acts" style="align-items:center;flex-wrap:nowrap;gap:8px;margin:0;padding:8px 10px' + (i ? ';border-top:1px solid #fee2e2' : '') + '"><div class="grow" style="min-width:0">' +
-              '<div style="font-weight:700;font-size:14px">' + esc(x.desc) + '</div><div style="font-size:12px;color:#64748b">' + esc([x.code, x.unit].filter(Boolean).join(" · ")) + '</div>' +
+              '<div style="font-weight:700;font-size:14px">' + esc(x.desc) + '</div><div style="font-size:12px;color:#64748b">' + esc([x.code, x.unit].filter(Boolean).join(" · ")) + (_oc ? ' ' + stkMoveTag(x.code, _oc) : '') + '</div>' +
               '<div style="font-size:13px;margin-top:3px">' + fig("Free", stkQ(x.free, x.code), '#b91c1c') + (x.held ? fig("Held", stkQ(x.held, x.code)) : '') + (x.crit ? fig("Critical", stkQ(x.crit, x.code)) : '') + fig("Reorder", stkQ(x.min, x.code)) +
                 (x.max ? fig("Max", stkQ(x.max, x.code)) : '') + fig("Order", x.need > 0 ? stkQ(x.need, x.code) : 'at min', '#b91c1c') + (x.pack ? fig("Pack", stkQ(x.pack, x.code)) : '') + '</div></div>' +
               '<button class="btn sm ghost" style="min-height:44px;flex:0 0 auto" data-act="stock-item" data-code="' + esc(x.code) + '">Levels</button></div>';
@@ -47320,14 +47327,20 @@ function viewCatalogue() {
     if (urls.length) toast("Excel: fetching " + urls.length + " picture" + (urls.length === 1 ? "" : "s") + "…");
     var lanes = []; for (var i = 0; i < 6; i++) lanes.push(lane());
     Promise.all(lanes).then(function () {
-      var HEAD = ["Picture", "Product", "Code", "Brand", "Unit", "MRP", "On hand", "Held on challans", "Free", "Critical", "Reorder point", "Maximum", "Pack", "ORDER", "Order value (MRP)", "Status"];
+      /* 6.9.707 - HIS WORDS, 8 Oct 2026: "in stock to order sheet, mark slow moving and fast moving". The
+         same classes the Stock levels sheet has carried since 6.9.621 (stkClasses): Fast = went out in at
+         least 60% of the weeks there is history for, Slow = went out less often, Non-moving = nothing
+         out in the last 180 days (or the whole history, if shorter); ABC by the value moved in a year. */
+      var ctx = stkCtx(), MV = { F: XL.C_WON, S: XL.C_LIVE, N: XL.C_LOST };
+      var HEAD = ["Picture", "Product", "Code", "Brand", "Unit", "MRP", "On hand", "Held on challans", "Free", "Critical", "Reorder point", "Maximum", "Pack", "ORDER", "Order value (MRP)", "Status", "Movement", "Out last 90 days", "Class"];
       var NC = HEAD.length;
       var out = [
         [{ v: "Energy World · Stock to order" + (brand ? " · " + brand : "") + " · " + fullDate(today()) + " · " + plural(L.length, "item"), s: XL.BOLD }],
-        [{ v: "Listed when free stock (on hand less challans made but not yet dispatched) is at or below the reorder point. ORDER = maximum less free, rounded up to the pack; with no maximum set, up to the reorder point. Status Critical = free stock at or below the critical level.", s: XL.MID }],
+        [{ v: "Listed when free stock (on hand less challans made but not yet dispatched) is at or below the reorder point. ORDER = maximum less free, rounded up to the pack; with no maximum set, up to the reorder point. Status Critical = free stock at or below the critical level. " +
+          "Movement: Fast = went out in most weeks, Slow = now and then, Non-moving = nothing out in the last " + ctx.nDays + " days - think before ordering a slow or non-moving line. Class A = the lines that carry 80% of the value moved in a year, B the next 15%, C the rest.", s: XL.MID }],
         HEAD.map(function (t) { return { v: t, s: XL.HEADW }; })
       ];
-      var heights = { 0: 24, 1: 34, 2: 30 }, pics = [], media = [], mIdx = {}, merges = ["A2:" + xlCol(NC - 1) + "2"];
+      var heights = { 0: 24, 1: 46, 2: 30 }, pics = [], media = [], mIdx = {}, merges = ["A2:" + xlCol(NC - 1) + "2"];
       var M = function (v) { return { v: v, s: XL.MID }; };
       var band = function (txt, sty) { var b = [{ v: txt, s: sty }]; for (var c = 1; c < NC; c++) b.push({ v: "", s: sty }); return b; };
       var grand = 0;
@@ -47341,7 +47354,9 @@ function viewCatalogue() {
           heights[r] = 20;
           out.push([M(""), { v: x.desc, s: XL.MIDB }, M(x.code), M(x.brand || "Other"), M(x.unit), M(mrp > 0 ? mrp : ""), M(x.onhand), M(x.held || ""), M(x.free),
             M(x.crit || ""), M(x.min), M(x.max || ""), M(x.pack || ""), { v: x.need > 0 ? x.need : "at min", s: XL.MIDB }, M(val || ""),
-            { v: crit ? "Critical" : "Reorder", s: crit ? XL.C_LOST : XL.C_LIVE }]);
+            { v: crit ? "Critical" : "Reorder", s: crit ? XL.C_LOST : XL.C_LIVE },
+            ctx.fsn[x.code] ? { v: FSN_WORD[ctx.fsn[x.code]], s: MV[ctx.fsn[x.code]] } : M("no history"),
+            M(((ctx.hist.by[x.code] || {}).q90) || 0), M(ctx.cls[x.code] || "")]);
           var u = picOf(x), gp = u && got[u];
           if (gp) {
             heights[r] = 54;   /* 72 px */
@@ -47357,7 +47372,7 @@ function viewCatalogue() {
       var gt = band("", XL.BAND); gt[1] = { v: "TOTAL ORDER VALUE AT MRP" + (brand ? " · " + brand : ""), s: XL.BAND }; gt[14] = { v: grand, s: XL.BAND }; out.push(gt);
       if (L.some(function (x) { return !(nAmt((pm[x.code] || {}).rate) > 0); })) out.push(["Lines with no MRP in the catalogue are not counted in the value."]);
       if (!brand && o.uncounted.length) out.push(["Reorder point set but not counted yet (stock not known): " + o.uncounted.map(function (x) { return x.desc; }).join(", ")]);
-      var cols = [11.5, 38, 15, 14, 8, 10, 9, 10, 8, 9, 10, 9, 7, 10, 13, 10];
+      var cols = [11.5, 38, 15, 14, 8, 10, 9, 10, 8, 9, 10, 9, 7, 10, 13, 10, 12, 10, 7];
       var name = "Stock_to_order_" + (brand ? brand.replace(/[^\w]+/g, "_") + "_" : "") + today() + ".xlsx";
       dlXlsx(name, "Stock to order", out, cols, { heights: heights, freeze: { r: 3, c: 2 }, filter: "A3:" + xlCol(NC - 1) + "3", merges: merges, pics: pics, media: media });
       var miss = urls.length - Object.keys(got).length, noPic = L.filter(function (x) { return !picOf(x); }).length;
