@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.710";
+  var APP_VERSION = "6.9.711";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -578,7 +578,7 @@
   }
 
   var ROLE_TABS = {
-    admin:    ["dash","review","agent","report","scorecard","returns","tools","rates","clients","crlog","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","register","paylog","freight","payments","paidout","billing","discounts","commission","complaints","service","spares","dues","payroll","products","catalogs","brandstory","pricelist","catalogue","rules","teampins","tally","health","trouble","changelog","booksweep","dups","stock","brief"],
+    admin:    ["dash","review","agent","report","scorecard","returns","tools","rates","clients","crlog","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","register","paylog","freight","payments","paidout","billing","discounts","commission","complaints","service","spares","dues","payroll","products","catalogs","brandstory","pricelist","catalogue","rules","teampins","tally","plcheck","health","trouble","changelog","booksweep","dups","stock","brief"],
     accounts: ["dash","review","agent","returns","tools","clients","crlog","partners","followups","challans","register","paylog","freight","payments","billing","complaints","service","spares","dues","products","catalogs","rates","pricelist","dups","stock","tally","trouble"],
     godown:   ["dash","agent","returns","tools","challans","freight","products","stock","trouble"],
     sales:    ["dash","review","agent","report","returns","tools","clients","crlog","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","register","paylog","freight","billing","payments","complaints","products","catalogs","dups","brief","trouble"],
@@ -3440,6 +3440,18 @@ window.addEventListener("beforeunload", function (ev) {
     hsbExtraPaint();
   });
 
+  /* 6.9.711 - A MERGED PRODUCT. When two catalogue rows turn out to be one item (Huliot's 40744860-i
+     was on the catalogue as both 40744860-I and 40744860), the one he drops is written into the
+     keeper's column M, "Old Codes" (server V145, catalogCode op "merge"). Its row stays on the sheet -
+     nothing is deleted - but a product whose code is ANOTHER product's old code is not offered any
+     more: its history is already read under the keeper's code (codesIn), so showing it would only
+     let a new challan be written under the dropped code. */
+  function catMergedOut(list) {
+    var old = {};
+    (list || []).forEach(function (p) { var c = String((p && p.code) || "").trim(); (p && p.was || []).forEach(function (o) { o = String(o || "").trim(); if (o && o !== c) old[o] = 1; }); });
+    if (!Object.keys(old).length) return list;
+    return list.filter(function (p) { return !old[String((p && p.code) || "").trim()]; });
+  }
   function parseCatalog(rows) {
     var head = -1, i, r;
     for (i = 0; i < rows.length && i < 10; i++) {
@@ -3518,7 +3530,7 @@ window.addEventListener("beforeunload", function (ev) {
     var _fresh = !!(_shelf && _shelf.v === CAT_V && _shelf.at &&
                     (Date.now() - _shelf.at < 86400000) && _shelf.items && _shelf.items.length);
     if (_fresh) {
-      PRODUCTS = _shelf.items;
+      PRODUCTS = catMergedOut(_shelf.items);   /* 6.9.711 */
       try { codesIn(); } catch (e) { }   /* 6.9.671 */
       if (!force) {
         _catAt = _shelf.at;               /* so the 5-minute guard above works on the NEXT call too */
@@ -3547,7 +3559,7 @@ window.addEventListener("beforeunload", function (ev) {
              is at most one extra paint per page load, and render() carries the form snapshot
              so a half-typed challan survives it. */
           var _wasEmpty = !PRODUCTS.length;
-          PRODUCTS = items;
+          PRODUCTS = catMergedOut(items);   /* 6.9.711 */
           try { codesIn(); } catch (e) { }   /* 6.9.671 */
           PRODLIST_HTML = null;
           _pcbCache = null; _plcCache = null;   /* v6.9.373 - the brand map is derived from PRODUCTS */
@@ -38078,7 +38090,7 @@ function viewCatalogue() {
      nothing else could reach it - so the usage counter would have had to keep a second copy
      of the same forty-two names, and a second copy is how the two quietly stop agreeing.
      Hoisted, not duplicated. render() still reads exactly this. */
-  var TAB_TABS = [["search", "Search"], ["dash", "Today"], ["review", "Twice-weekly review"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["register", "Challan log"], ["paylog", "Payment log"], ["freight", "Drivers & freight"], ["deliveries", "Deliveries"], ["collections", "Payments"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["crlog", "Client & lead log"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["complaints", "Complaints"], ["service", "Service"], ["spares", "Spares"], ["dues", "Service dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["paidout", "Paid out"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["catalogs", "Brand catalogues"], ["brandstory", "Brand stories"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["trouble", "Troubleshoot"], ["changelog", "Change log"], ["booksweep", "Book numbers"], ["dups", "Duplicate check"], ["stock", "Stock"], ["tally", "Tally"], ["brief", "The brief"]];
+  var TAB_TABS = [["search", "Search"], ["dash", "Today"], ["review", "Twice-weekly review"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["register", "Challan log"], ["paylog", "Payment log"], ["freight", "Drivers & freight"], ["deliveries", "Deliveries"], ["collections", "Payments"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["crlog", "Client & lead log"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["complaints", "Complaints"], ["service", "Service"], ["spares", "Spares"], ["dues", "Service dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["paidout", "Paid out"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["catalogs", "Brand catalogues"], ["brandstory", "Brand stories"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["trouble", "Troubleshoot"], ["changelog", "Change log"], ["booksweep", "Book numbers"], ["dups", "Duplicate check"], ["stock", "Stock"], ["tally", "Tally"], ["plcheck", "Supplier price list"], ["brief", "The brief"]];
   var TAB_LABEL = (function () {
     var m = {}; TAB_TABS.forEach(function (t) { m[t[0]] = t[1]; }); return m;
   })();
@@ -43110,6 +43122,212 @@ function viewCatalogue() {
       months: Object.keys(months).sort().reverse(), mon: mon };
   }
   function tlMonLabel(m) { var p = String(m).split("-"); var N = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]; return (N[Number(p[1]) - 1] || p[1]) + " " + p[0]; }
+
+  /* ===== 6.9.711 - SUPPLIER PRICE LIST, AGAINST THE CATALOGUE  (8 Oct 2026) =====
+     HIS WORDS: "fetch standard pack size from attached sheet and enter in master product list and
+     stock to order process, show me if any not matching or found identical to merge", then "add all
+     in price list and show what to merge to crm only or what to check as price diff in crm only, put
+     new items under yet to assign brand head, i will assign mannualy".
+     He uploads a supplier's price list as an Excel (Price list, Family, Code, Description, Unit,
+     Std pack, List price - the four Huliot April 2026 PDFs were read into one such sheet). The CRM
+     sets it against the catalogue and shows, in one place:
+       NEW        on the list, not in the catalogue -> "Add all" puts them in the Product Catalog
+                  under the brand "Yet to assign" (family, unit, MRP = list price + GST); he moves
+                  them to their brand himself (Catalogue > Edit).
+       MERGE      two catalogue products that are ONE item on the list -> he picks which to keep;
+                  the other's code goes into the keeper's Old Codes (V145) and it is no longer
+                  offered. Nothing is deleted.
+       PRICE      the catalogue MRP is not the list price + GST (207 of 216 Huliot MRPs on the book
+                  ARE list + 18% exactly, so that is the rule checked) -> "Set" writes column G only
+                  (V145).
+       PER BOX    the std pack, written as Per box on Stock > Levels for every product it differs on.
+       and, for information: codes written differently (-i, a space, an old code) and catalogue
+       products of the same brands that are not on the list.
+     Matching, in order: the same code; the same ignoring spaces and case; one of the product's old
+     codes; then the code without Huliot's -i / -S / -HM endings, a P- in front of a K code, or dots.
+     The last kept file stays on this device (IndexedDB), so the screen survives a reload. */
+  var PL_KEY = "ew_pl_last", PL_BRAND = "Yet to assign";
+  function plN(c) { return String(c == null ? "" : c).toUpperCase().replace(/\s+/g, ""); }
+  function plLo(c) { return plN(c).replace(/^P-(?=K\d)/, "").replace(/-(I|S|HM|B)$/, "").replace(/(G|B)-I$/, "$1").replace(/-G$/, "G").replace(/\./g, ""); }
+  function plLoad() {
+    if (S.pl === undefined) { S.pl = null; try { S.pl = JSON.parse(bigGet(PL_KEY) || "null"); } catch (e) { S.pl = null; } }
+    return S.pl;
+  }
+  function plGst() { var g = Number(S.plGst); return isFinite(g) && g >= 0 && S.plGst !== "" && S.plGst !== undefined ? g : 18; }
+  function plMrp(list) { return Math.round(list * (1 + plGst() / 100)); }
+  function plParse(aoa) {
+    var hi = -1, H = [];
+    for (var r = 0; r < Math.min(aoa.length, 15); r++) {
+      var row = (aoa[r] || []).map(function (x) { return String(x == null ? "" : x).trim().toLowerCase(); });
+      if (row.indexOf("code") >= 0) { hi = r; H = row; break; }
+    }
+    if (hi < 0) return { err: "No column headed Code was found in the first rows of the sheet." };
+    var col = function (a) { for (var i = 0; i < a.length; i++) { var k = H.indexOf(a[i]); if (k >= 0) return k; } return -1; };
+    var C = { code: H.indexOf("code"), desc: col(["description", "product", "part name", "item"]), list: col(["price list", "list", "series"]),
+      fam: col(["family", "section", "group"]), unit: col(["unit"]), pack: col(["std pack", "std. pack", "pack", "per box", "standard pack"]),
+      price: col(["list price", "price", "rate", "mrp"]) };
+    if (C.price < 0) return { err: "No List price column was found." };
+    var out = [], seen = {};
+    for (var i = hi + 1; i < aoa.length; i++) {
+      var a = aoa[i] || [], code = String(a[C.code] == null ? "" : a[C.code]).trim();
+      if (!code || seen[plN(code)]) continue;
+      seen[plN(code)] = 1;
+      var g = function (k) { return k >= 0 ? String(a[k] == null ? "" : a[k]).trim() : ""; };
+      var pk = g(C.pack), pkn = Number((pk.match(/^\d+(\.\d+)?/) || [""])[0]) || 0;
+      out.push({ code: code, desc: g(C.desc), list: g(C.list), fam: g(C.fam), unit: g(C.unit), pack: pkn, packTxt: pk, price: Number(g(C.price).replace(/[^0-9.]/g, "")) || 0 });
+    }
+    return out.length ? { rows: out } : { err: "No product lines were found under the Code heading." };
+  }
+  function plCompare(rows) {
+    var ex = {}, nm = {}, lo = {};
+    rows.forEach(function (l, i) { ex[l.code] = i; nm[plN(l.code)] = i; var k = plLo(l.code); (lo[k] = lo[k] || []).push(i); });
+    var hit = {}, out = { same: 0, spelled: [], merge: [], price: [], noPrice: [], pack: [], fresh: [], gone: [] };
+    var brands = {};
+    PRODUCTS.forEach(function (p) {
+      var c = String(p.code || "").trim(), i = ex[c], how = "same";
+      if (i === undefined && nm[plN(c)] !== undefined) { i = nm[plN(c)]; how = "spelled"; }
+      if (i === undefined) (p.was || []).some(function (o) { var j = ex[o] !== undefined ? ex[o] : nm[plN(o)]; if (j !== undefined) { i = j; how = "old code " + o; return true; } return false; });
+      if (i === undefined && lo[plLo(c)] && lo[plLo(c)].length === 1) { i = lo[plLo(c)][0]; how = "spelled"; }
+      if (i === undefined) return;
+      (hit[i] = hit[i] || []).push({ p: p, how: how });
+      if (p.brand) brands[p.brand] = 1;
+    });
+    var lvl = stkLvl();
+    rows.forEach(function (l, i) {
+      var ps = hit[i];
+      if (!ps) { out.fresh.push(l); return; }
+      if (ps.length > 1) out.merge.push({ l: l, ps: ps.map(function (x) { return x.p; }) });
+      ps.forEach(function (x) {
+        var p = x.p;
+        if (x.how === "same") out.same++; else out.spelled.push({ p: p, l: l, how: x.how });
+        var want = plMrp(l.price), have = Number(p.price) || 0;
+        if (l.price > 0 && !(have > 0)) out.noPrice.push({ p: p, l: l, want: want, have: 0 });
+        else if (l.price > 0 && Math.abs(have - want) > Math.max(2, want * 0.006)) out.price.push({ p: p, l: l, want: want, have: have });
+        var L = lvl[p.code] || {};
+        if (l.pack > 0 && (L.pack || 0) !== l.pack && !(l.pack === 1 && !(L.pack > 0))) out.pack.push({ code: p.code, desc: p.desc, now: L.pack || 0, want: l.pack });
+      });
+    });
+    var matched = {}; Object.keys(hit).forEach(function (i) { hit[i].forEach(function (x) { matched[x.p.code] = 1; }); });
+    PRODUCTS.forEach(function (p) { if (brands[p.brand] && !matched[p.code]) out.gone.push(p); });
+    /* a product added from this list a moment ago is in PRODUCTS now, so it is no longer new */
+    return out;
+  }
+  function viewPlCheck() {
+    var pl = plLoad(), adm = roleIs("admin");
+    var h = '<div class="card"><h2 style="margin:0">Supplier price list</h2>' +
+      '<div class="meta" style="font-size:13px">Upload a supplier’s price list (Excel: Price list, Family, Code, Description, Unit, Std pack, List price). It is set against the catalogue: new items to add, products to merge, MRPs to check and the box size for Stock to order. Nothing changes until you press a button.</div>' +
+      '<div class="acts" style="margin-top:8px;flex-wrap:wrap;gap:6px;align-items:center">' +
+      '<label class="btn sm" style="min-height:44px;display:inline-flex;align-items:center;cursor:pointer">&#8679; Upload price list (Excel)<input type="file" id="pl_file" accept=".xlsx,.xls" style="display:none"/></label>' +
+      '<label style="font-size:13px;display:inline-flex;align-items:center;gap:6px">GST % added to the list price <input id="pl_gst" inputmode="decimal" value="' + esc(String(plGst())) + '" style="width:64px;min-height:44px;font-size:15px;text-align:center;border:1.5px solid #cbd5e1;border-radius:8px"/></label>' +
+      '</div>' + (S.plMsg ? '<div style="margin-top:8px;font-size:13px;font-weight:700;color:#0f766e">' + esc(S.plMsg) + '</div>' : '') + '</div>';
+    if (!pl || !pl.rows || !pl.rows.length) return h + '<div class="empty">No price list loaded yet.</div>';
+    if (!PRODUCTS.length) return h + '<div class="empty">The catalogue is still loading…</div>';
+    var o = plCompare(pl.rows), lists = {};
+    pl.rows.forEach(function (l) { lists[l.list || "(no name)"] = (lists[l.list || "(no name)"] || 0) + 1; });
+    var tile = function (n, lab, col) { return '<div class="stat"' + (col ? ' style="border-color:' + col + '"' : '') + '><div class="n">' + n + '</div><div class="l">' + lab + '</div></div>'; };
+    h += '<div class="card"><b>' + esc(pl.file || "Price list") + '</b> <span style="font-size:12px;color:#64748b">' + esc(Object.keys(lists).map(function (k) { return k + " " + lists[k]; }).join(" · ")) + '</span>' +
+      '<div class="cards" style="margin-top:8px">' + tile(pl.rows.length, "codes on the list") + tile(o.same + o.spelled.length, "in the catalogue") + tile(o.fresh.length, "new - not in the catalogue", o.fresh.length ? "#f59e0b" : "") +
+      tile(o.merge.length, "to merge", o.merge.length ? "#ef4444" : "") + tile(o.price.length, "MRP to check", o.price.length ? "#ef4444" : "") + tile(o.noPrice.length, "no MRP in the CRM") + tile(o.pack.length, "per box to set", o.pack.length ? "#f59e0b" : "") + '</div></div>';
+    var T = function (cols, rows, max) {
+      return '<div style="overflow-x:auto;max-height:' + (max || 420) + 'px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:10px;margin-top:8px"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="background:#0b3b36;color:#fff;position:sticky;top:0">' +
+        cols.map(function (c) { return '<th style="padding:6px 8px;text-align:' + (c[1] || "left") + ';white-space:nowrap">' + c[0] + '</th>'; }).join("") + '</tr></thead><tbody>' +
+        rows.map(function (r, i) { return '<tr style="border-top:1px solid #eef2f7;background:' + (i % 2 ? '#f8fafc' : '#fff') + '">' + r.map(function (v, j) { return '<td style="padding:5px 8px;text-align:' + (cols[j][1] || "left") + ';vertical-align:middle">' + v + '</td>'; }).join("") + '</tr>'; }).join("") + '</tbody></table></div>';
+    };
+    var B = function (lab, act, attrs, ghost) { return '<button class="btn sm' + (ghost ? ' ghost' : '') + '" style="min-height:44px" data-act="' + act + '"' + (attrs || '') + '>' + lab + '</button>'; };
+    /* 1. merge */
+    h += '<div class="card" style="border-color:' + (o.merge.length ? '#fca5a5' : '#e2e8f0') + '"><h3 style="margin:0">To merge — ' + o.merge.length + '</h3>' +
+      '<div class="meta" style="font-size:12.5px">Two catalogue products that are one item on the price list. Pick the one to keep: the other’s code goes into its Old codes, so its challans and stock join it, and it is no longer offered. Its row stays on the sheet.</div>' +
+      (o.merge.length ? T([["On the list"], ["Catalogue products"], ["Keep", "center"]], o.merge.map(function (m) {
+        return ['<b>' + esc(m.l.code) + '</b><div style="font-size:12px;color:#64748b">' + esc(m.l.desc) + '</div>',
+          m.ps.map(function (p) { return '<div><b>' + esc(p.code) + '</b> ' + esc(p.desc) + (p.price ? ' · ' + money(p.price) : '') + '</div>'; }).join(""),
+          adm ? m.ps.map(function (p) { var others = m.ps.filter(function (q) { return q !== p; }).map(function (q) { return q.code; }).join(","); return '<div style="margin:2px 0">' + B("Keep " + esc(p.code), "pl-merge", ' data-into="' + esc(p.code) + '" data-from="' + esc(others) + '"') + '</div>'; }).join("") : '—'];
+      })) : '<div style="font-size:13px;color:#0f766e;margin-top:6px">Nothing to merge.</div>') + '</div>';
+    /* 2. price */
+    h += '<div class="card" style="border-color:' + (o.price.length ? '#fca5a5' : '#e2e8f0') + '"><div class="acts" style="align-items:center;margin:0;flex-wrap:wrap;gap:6px"><h3 class="grow" style="margin:0">MRP to check — ' + o.price.length + '</h3>' +
+      (adm && o.price.length > 1 ? B("Set all " + o.price.length + " to list + " + plGst() + "%", "pl-price-all") : '') + '</div>' +
+      '<div class="meta" style="font-size:12.5px">The catalogue MRP is not the list price + ' + plGst() + '% GST (a rupee or two of rounding is ignored). Set writes the MRP only.</div>' +
+      (o.price.length ? T([["Code"], ["Product"], ["CRM MRP", "right"], ["List price", "right"], ["List + GST", "right"], ["Diff", "right"], ["", "center"]], o.price.map(function (x) {
+        var d = x.have - x.want;
+        return ['<b>' + esc(x.p.code) + '</b>', esc(x.p.desc), x.have ? money(x.have) : '<span style="color:#94a3b8">not set</span>', money(x.l.price), '<b>' + money(x.want) + '</b>',
+          '<span style="color:' + (d > 0 ? '#b45309' : '#b91c1c') + '">' + (x.have ? (d > 0 ? '+' : '') + money(d) : '—') + '</span>',
+          adm ? B("Set " + money(x.want), "pl-price", ' data-code="' + esc(x.p.code) + '" data-v="' + x.want + '"', true) : ''];
+      })) : '<div style="font-size:13px;color:#0f766e;margin-top:6px">Every matched MRP is the list price + GST.</div>') + '</div>';
+    h += '<details class="card"' + (o.noPrice.length ? ' style="border-color:#fcd34d"' : '') + '><summary style="cursor:pointer;min-height:44px;display:flex;align-items:center"><b>No MRP in the CRM \u2014 ' + o.noPrice.length + '</b>&nbsp;<span style="font-size:12px;color:#64748b">(on the list with a price)</span></summary>' +
+      (adm && o.noPrice.length ? '<div style="margin-top:6px">' + B("Set all " + o.noPrice.length + " to list + " + plGst() + "%", "pl-price-none") + '</div>' : '') +
+      (o.noPrice.length ? T([["Code"], ["Product"], ["List price", "right"], ["List + GST", "right"]], o.noPrice.map(function (x) { return ['<b>' + esc(x.p.code) + '</b>', esc(x.p.desc), money(x.l.price), '<b>' + money(x.want) + '</b>']; }), 300) : '') + '</details>';
+    /* 3. new */
+    h += '<div class="card" style="border-color:' + (o.fresh.length ? '#fcd34d' : '#e2e8f0') + '"><div class="acts" style="align-items:center;margin:0;flex-wrap:wrap;gap:6px"><h3 class="grow" style="margin:0">New — not in the catalogue — ' + o.fresh.length + '</h3>' +
+      (adm && o.fresh.length ? B("Add all " + o.fresh.length + " under “" + PL_BRAND + "”", "pl-add") : '') + '</div>' +
+      '<div class="meta" style="font-size:12.5px">Added to the Product Catalog with brand <b>' + PL_BRAND + '</b>, the family and unit from the list, the list name as sub-brand, and MRP = list price + ' + plGst() + '% GST. Move each to its brand in Catalogue › Edit.</div>' +
+      (o.fresh.length ? T([["Price list"], ["Family"], ["Code"], ["Description"], ["Std pack", "right"], ["List", "right"], ["MRP", "right"]], o.fresh.slice(0, 300).map(function (l) {
+        return [esc(l.list), esc(l.fam), '<b>' + esc(l.code) + '</b>', esc(l.desc), esc(l.packTxt), money(l.price), money(plMrp(l.price))];
+      })) + (o.fresh.length > 300 ? '<div class="meta" style="font-size:12px">Showing 300 of ' + o.fresh.length + '; all ' + o.fresh.length + ' are added.</div>' : '') : '') + '</div>';
+    /* 4. per box */
+    h += '<div class="card"><div class="acts" style="align-items:center;margin:0;flex-wrap:wrap;gap:6px"><h3 class="grow" style="margin:0">Per box from the std pack — ' + o.pack.length + '</h3>' +
+      (adm && o.pack.length ? B("Set per box for " + plural(o.pack.length, "product"), "pl-pack") : '') + '</div>' +
+      '<div class="meta" style="font-size:12.5px">Written on Stock › Levels (the reorder point, max and critical stay as they are), so Stock to order orders whole boxes. New items get theirs once they are added.</div>' +
+      (S.lvSave ? '<div style="font-size:13px;font-weight:700;color:#0f766e;margin-top:6px">' + esc(S.lvSave) + '</div>' : '') +
+      (o.pack.length ? T([["Code"], ["Product"], ["Now", "right"], ["Std pack", "right"]], o.pack.map(function (x) { return ['<b>' + esc(x.code) + '</b>', esc(x.desc), x.now || '—', '<b>' + x.want + '</b>']; }), 260) : '') + '</div>';
+    /* 5 and 6 - for information */
+    h += '<details class="card"><summary style="cursor:pointer;min-height:44px;display:flex;align-items:center"><b>Code written differently — ' + o.spelled.length + '</b>&nbsp;<span style="font-size:12px;color:#64748b">(the same item; nothing to do)</span></summary>' +
+      (o.spelled.length ? T([["In the catalogue"], ["On the list"], ["How"]], o.spelled.map(function (x) { return ['<b>' + esc(x.p.code) + '</b> ' + esc(x.p.desc), esc(x.l.code), esc(x.how)]; }), 300) : '') + '</details>';
+    h += '<details class="card"><summary style="cursor:pointer;min-height:44px;display:flex;align-items:center"><b>In the catalogue, not on this list — ' + o.gone.length + '</b>&nbsp;<span style="font-size:12px;color:#64748b">(same brands; discontinued, renamed, or another list)</span></summary>' +
+      (o.gone.length ? T([["Code"], ["Product"], ["Brand"], ["MRP", "right"]], o.gone.map(function (p) { return ['<b>' + esc(p.code) + '</b>', esc(p.desc), esc(p.brand), p.price ? money(p.price) : '—']; }), 300) : '') + '</details>';
+    return h;
+  }
+  /* catalogue changes from this screen: server catalogCode (V142 add; V145 merge and price) */
+  function plOps(ops, what) {
+    var chunks = []; for (var i = 0; i < ops.length; i += 250) chunks.push(ops.slice(i, i + 250));
+    var all = [], c = Promise.resolve(), n = 0;
+    chunks.forEach(function (ch) {
+      c = c.then(function () {
+        S.plMsg = what + "… " + n + " of " + ops.length; renderBg();
+        return api("catalogCode", { ops: ch }, 60000).then(function (r) {
+          if (r && r.ok && Array.isArray(r.results)) r.results.forEach(function (x, k) { x._op = ch[k]; all.push(x); });
+          else ch.forEach(function (o2) { all.push({ ok: false, _op: o2, error: (r && r.error) || "no answer" }); });
+          n += ch.length;
+        }, function () { ch.forEach(function (o2) { all.push({ ok: false, _op: o2, error: "no answer" }); }); n += ch.length; });
+      });
+    });
+    return c.then(function () { return all; });
+  }
+  function plSay(res, what) {
+    var ok = res.filter(function (x) { return x.ok; }).length, bad = res.filter(function (x) { return !x.ok; });
+    var why = bad.length ? bad[0].error || "refused" : "";
+    if (bad.length && /unknown change/i.test(why)) why = "the server does not know this change yet - paste server step V145 (Find/Replace) and deploy";
+    S.plMsg = what + ": " + ok + " done" + (bad.length ? ", " + bad.length + " NOT done (" + why + ")" : "") + ".";
+    render(); toast(S.plMsg);
+  }
+  /* per box for a whole price list is hundreds of stock rows: ten to a call (server V145 lets
+     stockSave into a batch), three calls at a time; before V145 the batch is refused and each row
+     goes alone, as stkLvlSave has always sent them */
+  function plStockMany(rows) {
+    S.stock = (S.stock || []).concat(rows);
+    var ch = []; for (var i = 0; i < rows.length; i += 10) ch.push(rows.slice(i, i + 10));
+    var next = 0, ok = 0, bad = 0, why = "", solo = false;
+    var say = function () { S.plMsg = (ok + bad < rows.length) ? "Saving per box\u2026 " + (ok + bad) + " of " + rows.length : (bad ? ok + " saved, " + bad + " NOT saved (" + why + ")" : "Per box saved for all " + ok + "."); renderBg(); };
+    var one = function (r) { return api("stockSave", { row: r }).then(function (a) { if (a && a.ok) ok++; else { bad++; why = (a && a.error) || "refused"; } }, function (e) { bad++; why = (e && e.message) || "no answer"; }); };
+    var lane = function () {
+      if (next >= ch.length) return Promise.resolve();
+      var c = ch[next++];
+      var p = solo ? c.reduce(function (pr, r) { return pr.then(function () { return one(r); }); }, Promise.resolve())
+        : api("multi", { calls: c.map(function (r) { return { action: "stockSave", row: r }; }) }, 90000).then(function (a) {
+          var res = a && a.ok && a.results && a.results.length === c.length ? a.results : null;
+          if (!res || res.some(function (x) { return x && !x.ok && /cannot go in a batch|unknown action/i.test(String(x.error || "")); }) || /unknown action/i.test(String((a && a.error) || ""))) {
+            solo = true; return c.reduce(function (pr, r) { return pr.then(function () { return one(r); }); }, Promise.resolve());
+          }
+          res.forEach(function (x) { if (x && x.ok) ok++; else { bad++; why = (x && x.error) || "refused"; } });
+        }, function () { solo = true; return c.reduce(function (pr, r) { return pr.then(function () { return one(r); }); }, Promise.resolve()); });
+      return p.then(function () { say(); return lane(); });
+    };
+    say();
+    return Promise.all([lane(), lane(), lane()]).then(function () { toast(S.plMsg); render(); });
+  }
+  function plSetPrice(code, v) {
+    PRODUCTS.forEach(function (p) { if (String(p.code) === code) p.price = v; });
+    var at = 0; try { at = (JSON.parse(bigGet(CAT_KEY) || "null") || {}).at || 0; } catch (e) { }
+    bigSet(CAT_KEY, JSON.stringify({ v: CAT_V, at: at || Date.now(), items: PRODUCTS }));
+  }
   function viewTally() {
     ensureStock();
     var h = '<div class="card"><div class="acts" style="align-items:center;margin:0;flex-wrap:wrap;gap:6px"><h2 class="grow" style="margin:0">Tally</h2>' +
@@ -47855,6 +48073,29 @@ function viewCatalogue() {
       (pl.change.length && !p.done ? '<button class="btn" data-act="stk-lvimp-go">Save ' + plural(pl.change.length, "level") + '</button>' : '') + '</div>';
     return h;
   }
+  /* 6.9.711 - the supplier price list */
+  document.addEventListener("change", function (ev) {
+    var tg = ev && ev.target; if (!tg) return;
+    if (tg.id === "pl_gst") { S.plGst = String(tg.value || "").trim(); keepScroll = true; render(); return; }
+    if (tg.id !== "pl_file" || !tg.files || !tg.files[0]) return;
+    var f = tg.files[0]; tg.value = "";
+    toast("Reading " + f.name + "\u2026");
+    xlsxReady().then(function (X) {
+      if (!X) { toast("The Excel reader did not load \u2014 check the connection and pick the file again."); return; }
+      var rd = new FileReader();
+      rd.onload = function () {
+        try {
+          var wb = X.read(new Uint8Array(rd.result), { type: "array" });
+          var p = plParse(X.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: "", raw: true }));
+          if (p.err) { toast(p.err); return; }
+          S.pl = { file: f.name, at: Date.now(), rows: p.rows }; S.plMsg = "";
+          try { bigSet(PL_KEY, JSON.stringify(S.pl)); } catch (e) { }
+          render();
+        } catch (e) { toast("Couldn't read that file: " + ((e && e.message) || "error")); }
+      };
+      rd.readAsArrayBuffer(f);
+    });
+  });
   document.addEventListener("change", function (ev) {
     var tg = ev && ev.target; if (!tg || tg.id !== "stk_lv_file" || !tg.files || !tg.files[0]) return;
     var f = tg.files[0]; tg.value = "";
@@ -49536,7 +49777,7 @@ function viewCatalogue() {
        chip. Every chip the two groups had is still here. */
     ["Clients",    ["clients", "leads", "crlog", "brandfollow", "followups", "quotes", "discounts", "pitch", "winloss", "review"]],
     ["Service",    ["complaints", "service"]],   /* 6.9.684 - complaints first */
-    ["Products",   ["products", "pricelist", "catalogue", "catalogs", "brandstory", "stock", "tally"]],   /* 6.9.612 - price list and add-product back */   /* v6.9.581 - the catalogue library; v6.9.605 - Stock, on his "stock entry in CRM" */
+    ["Products",   ["products", "pricelist", "catalogue", "catalogs", "brandstory", "stock", "tally", "plcheck"]],   /* 6.9.612 - price list and add-product back */   /* v6.9.581 - the catalogue library; v6.9.605 - Stock, on his "stock entry in CRM" */
     ["Team",       ["partners", "commission", "payroll", "scorecard", "report", "teampins"]],
     /* v6.9.539 - item 23: "Book numbers - what's the use, it's empty" (measured: 0 rows) - off
        the header; the screen still opens from the Health check. Item 25: The brief is a tab
@@ -49664,7 +49905,7 @@ function viewCatalogue() {
     catalogue: 1, partners: 1, scorecard: 1, report: 1, commission: 1, payroll: 1, teampins: 1, dash: 1,
     pending: 1, trouble: 1, dups: 1, health: 1, changelog: 1, tools: 1, brief: 1, rates: 1, rules: 1, booksweep: 1 };
   var HELP_ALIAS = { deliveries: "challans", collections: "payments", pricing: "pricelist", payrollhub: "commission",
-    dossier: "clients", matrix: "pitch", sites: "pitch", customers: "clients", paylog: "payments", complaints: "service", crlog: "clients", tally: "stock" };   /* 6.9.667; 6.9.684 complaints -> the service section until it has its own */
+    dossier: "clients", matrix: "pitch", sites: "pitch", customers: "clients", paylog: "payments", complaints: "service", crlog: "clients", tally: "stock", plcheck: "stock" };   /* 6.9.667; 6.9.684 complaints -> the service section until it has its own */
   function helpHref(tab) {
     var k = HELP_AT[tab] ? tab : (HELP_ALIAS[tab] || "");
     return "../help/crm.html#t-" + (k || "start");
@@ -49894,7 +50135,7 @@ function viewCatalogue() {
       setTimeout(function () { try { preloadLogos(); } catch (e) { } }, 4000);
     }
     if (!S.pin && !S.tok) { renderLogin(); return; }
-    var views = { agent: viewAgent, search: viewSearch, dossier: viewDossier, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, complaints: viewComplaints, payments: viewPayments, paidout: viewPaidOut, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, catalogs: viewCatalogues, brandstory: viewBrandStories, clients: viewClients, crlog: viewCrLog, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, register: viewRegister, paylog: viewPayLog, freight: viewFreight, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, trouble: viewTrouble, changelog: viewChangeLog, booksweep: viewBookSweep, dups: viewDups, stock: viewStock, tally: viewTally, brief: viewBrief, review: viewReview };
+    var views = { agent: viewAgent, search: viewSearch, dossier: viewDossier, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, complaints: viewComplaints, payments: viewPayments, paidout: viewPaidOut, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, catalogs: viewCatalogues, brandstory: viewBrandStories, clients: viewClients, crlog: viewCrLog, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, register: viewRegister, paylog: viewPayLog, freight: viewFreight, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, trouble: viewTrouble, changelog: viewChangeLog, booksweep: viewBookSweep, dups: viewDups, stock: viewStock, tally: viewTally, plcheck: viewPlCheck, brief: viewBrief, review: viewReview };
     var tabs = TAB_TABS;
 
     var h = '<div class="top">' +
@@ -51337,6 +51578,58 @@ function viewCatalogue() {
     /* ---- 6.9.706 - the Tally screen ---- */
     if (act === "tl-mon") { S.tlMon = t.getAttribute("data-m") || ""; S.tlOpen = ""; keepScroll = true; render(); return; }
     if (act === "tl-bill") { var _tk = t.getAttribute("data-k") || ""; S.tlOpen = S.tlOpen === _tk ? "" : _tk; keepScroll = true; render(); return; }
+    if (act === "pl-add") {   /* 6.9.711 - every new code on the price list, under "Yet to assign" */
+      var _po = plCompare((plLoad() || {}).rows || []).fresh;
+      if (!_po.length) { toast("Nothing new to add."); return; }
+      var _bk = (S.data.brands || []).some(function (b) { return String(b.brand || "").trim().toLowerCase() === PL_BRAND.toLowerCase(); });
+      if (!_bk) { try { save("brands", { id: "", brand: PL_BRAND, active: "Y" }); } catch (e) { } }
+      var _pops = _po.map(function (l) { return { op: "add", product: { code: l.code, desc: l.desc || l.code, family: l.fam || "", category: "", unit: l.unit || "Per Pc.", price: l.price > 0 ? plMrp(l.price) : "", subBrand: l.list || "", masterBrand: PL_BRAND, hsn: "", pic: "" } }; });
+      t.disabled = true;
+      plOps(_pops, "Adding " + _pops.length + " products").then(function (res) {
+        res.forEach(function (x) { if (x.ok && x._op && x._op.product) catalogPatch(x._op.product); });
+        _pcbCache = null; _plcCache = null;
+        plSay(res, "Added under “" + PL_BRAND + "”");
+        setTimeout(function () { loadCatalog(true); }, 4000);
+      });
+      return;
+    }
+    if (act === "pl-merge") {   /* 6.9.711 - keep one, the other's code into its Old codes (V145) */
+      var _into = t.getAttribute("data-into") || "", _from = (t.getAttribute("data-from") || "").split(",").filter(Boolean);
+      if (!_into || !_from.length) return;
+      t.disabled = true;
+      plOps(_from.map(function (f) { return { op: "merge", from: f, into: _into }; }), "Merging into " + _into).then(function (res) {
+        res.forEach(function (x) {
+          if (!x.ok || !x._op) return;
+          PRODUCTS.forEach(function (p) { if (String(p.code) === _into) { p.was = (p.was || []).slice(); if (p.was.indexOf(x._op.from) < 0) p.was.push(x._op.from); } });
+          catalogForget(x._op.from);
+        });
+        try { codesIn(); } catch (e) { }
+        plSay(res, "Merged into " + _into);
+      });
+      return;
+    }
+    if (act === "pl-price" || act === "pl-price-all" || act === "pl-price-none") {   /* 6.9.711 - MRP only, column G (V145) */
+      var _pp = act === "pl-price" ? [{ code: t.getAttribute("data-code"), price: Number(t.getAttribute("data-v")) || 0 }]
+        : plCompare((plLoad() || {}).rows || [])[act === "pl-price-none" ? "noPrice" : "price"].map(function (x) { return { code: x.p.code, price: x.want }; });
+      if (!_pp.length) return;
+      t.disabled = true;
+      plOps(_pp.map(function (x) { return { op: "price", code: x.code, price: x.price }; }), "Setting " + plural(_pp.length, "MRP")).then(function (res) {
+        res.forEach(function (x) { if (x.ok && x._op) plSetPrice(x._op.code, x._op.price); });
+        plSay(res, "MRP set");
+      });
+      return;
+    }
+    if (act === "pl-pack") {   /* 6.9.711 - std pack as Per box, levels kept */
+      var _pk = plCompare((plLoad() || {}).rows || []).pack, _lv0 = stkLvl();
+      if (!_pk.length) { toast("Every per box already matches."); return; }
+      t.disabled = true;
+      plStockMany(_pk.map(function (x, i) {
+        var L = _lv0[x.code] || {};
+        return { id: "S-" + Date.now() + "-" + i + "-" + Math.floor(Math.random() * 1000000) + "-reorder", type: "reorder", code: x.code, desc: "", qty: L.min || 0, ref: "", asOn: today(),
+          notes: JSON.stringify({ max: L.max || 0, pack: x.want, crit: L.crit || 0 }) };
+      }));
+      return;
+    }
     if (act === "tl-xlsx") { tlXlsx(); return; }
     if (act === "stk-reglist") { S.stkReg = !S.stkReg; keepScroll = true; render(); return; }
     if (act === "stock-landing") { S.modal = modalStockLanding(); render(); return; }
