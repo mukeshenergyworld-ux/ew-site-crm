@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.704";
+  var APP_VERSION = "6.9.705";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -47130,15 +47130,78 @@ function viewCatalogue() {
       esc(o.uncounted.slice(0, 8).map(function (x) { return String(x.desc).replace(/\.+$/, ""); }).join(", ")) + (o.uncounted.length > 8 ? ' and ' + (o.uncounted.length - 8) + ' more' : '') + '. Count ' + (o.uncounted.length > 1 ? 'them' : 'it') + ' and ' + (o.uncounted.length > 1 ? 'they join' : 'it joins') + ' this list when short.</div>';
     return h + '</div>';
   }
+  /* ===== 6.9.705 - STOCK TO ORDER, AS AN EXCEL WITH THE PICTURE ON EVERY LINE (8 Oct 2026) =====
+     HIS WORDS: "stock to order all option, in excel with product pic". Both buttons - "Excel, all"
+     and each brand's own "Excel" - build this one sheet. The pictures are fetched the same way the
+     Stock levels sheet has fetched them since 6.9.629 (stkXlPic, six at a time, one copy of a photo
+     however many rows use it); a picture that will not load leaves its cell blank and the toast says
+     how many. Added beside the picture: MRP, order value at MRP, and whether the line is at
+     Critical or at Reorder - so the sheet can go to a supplier or into the purchase meeting as it is.
+     A band per brand on the "all" sheet, a total at the foot of each brand and of the sheet. */
+  var _stkOrdXlBusy = false;
   function stkOrderXlsx(brand) {
+    if (_stkOrdXlBusy) { toast("The Excel is being made — one moment."); return; }
     var o = stkToOrder(), L = o.list.filter(function (x) { return !brand || (x.brand || "Other") === brand; });
-    var HEAD = ["Brand", "Code", "Product", "Unit", "On hand", "Held on challans", "Free", "Reorder point", "Maximum", "Pack", "Order"];
-    var out = [[{ v: "Energy World · Stock to order" + (brand ? " · " + brand : "") + " · " + fullDate(today()), s: XL.BOLD }], [], HEAD.map(function (t) { return { v: t, s: XL.HEAD }; })];
-    L.forEach(function (x) { out.push([x.brand, x.code, x.desc, x.unit, x.onhand, x.held, x.free, x.min, x.max || "", x.pack || "", x.need]); });
-    out.push([]);
-    out.push(["Listed when free stock (on hand less challans made but not yet dispatched) is at or below the reorder point. Order = maximum less free, rounded up to the pack."]);
-    if (!brand && o.uncounted.length) out.push(["Reorder point set but not counted yet (stock not known): " + o.uncounted.map(function (x) { return x.desc; }).join(", ")]);
-    dlXlsx("Stock_to_order_" + (brand ? brand.replace(/[^\w]+/g, "_") + "_" : "") + today() + ".xlsx", "Stock to order", out, [16, 14, 38, 9, 10, 14, 9, 13, 10, 8, 10]);
+    if (!L.length) { toast("Nothing to order" + (brand ? " for " + brand : "") + "."); return; }
+    _stkOrdXlBusy = true;
+    var pm = stkPMap(), t0 = Date.now();
+    var picOf = function (x) { return String(((pm[x.code] || {}).pic) || "").trim(); };
+    var urls = [], seen = {};
+    L.forEach(function (x) { var u = picOf(x); if (u && !seen[u]) { seen[u] = 1; urls.push(u); } });
+    var got = {}, next = 0, done = 0;
+    var lane = function () {
+      if (next >= urls.length) return Promise.resolve();
+      var u = urls[next++];
+      return stkXlPic(u).then(function (p) { if (p) got[u] = p; }, function () { }).then(function () { done++; if (done % 20 === 0) toast("Excel: pictures " + done + " of " + urls.length + "…"); return lane(); });
+    };
+    if (urls.length) toast("Excel: fetching " + urls.length + " picture" + (urls.length === 1 ? "" : "s") + "…");
+    var lanes = []; for (var i = 0; i < 6; i++) lanes.push(lane());
+    Promise.all(lanes).then(function () {
+      var HEAD = ["Picture", "Product", "Code", "Brand", "Unit", "MRP", "On hand", "Held on challans", "Free", "Critical", "Reorder point", "Maximum", "Pack", "ORDER", "Order value (MRP)", "Status"];
+      var NC = HEAD.length;
+      var out = [
+        [{ v: "Energy World · Stock to order" + (brand ? " · " + brand : "") + " · " + fullDate(today()) + " · " + plural(L.length, "item"), s: XL.BOLD }],
+        [{ v: "Listed when free stock (on hand less challans made but not yet dispatched) is at or below the reorder point. ORDER = maximum less free, rounded up to the pack; with no maximum set, up to the reorder point. Status Critical = free stock at or below the critical level.", s: XL.MID }],
+        HEAD.map(function (t) { return { v: t, s: XL.HEADW }; })
+      ];
+      var heights = { 0: 24, 1: 34, 2: 30 }, pics = [], media = [], mIdx = {}, merges = ["A2:" + xlCol(NC - 1) + "2"];
+      var M = function (v) { return { v: v, s: XL.MID }; };
+      var band = function (txt, sty) { var b = [{ v: txt, s: sty }]; for (var c = 1; c < NC; c++) b.push({ v: "", s: sty }); return b; };
+      var grand = 0;
+      stkByBrand(L).forEach(function (g) {
+        if (!brand) { merges.push("A" + (out.length + 1) + ":" + xlCol(NC - 1) + (out.length + 1)); heights[out.length] = 21; out.push(band(g.brand + "  (" + plural(g.list.length, "item") + ")", XL.BAND)); }
+        var sub = 0;
+        g.list.forEach(function (x) {
+          var p = pm[x.code] || {}, mrp = nAmt(p.rate), val = mrp > 0 && x.need > 0 ? Math.round(mrp * x.need) : 0;
+          sub += val;
+          var crit = x.crit > 0 && x.free <= x.crit, r = out.length;
+          heights[r] = 20;
+          out.push([M(""), { v: x.desc, s: XL.MIDB }, M(x.code), M(x.brand || "Other"), M(x.unit), M(mrp > 0 ? mrp : ""), M(x.onhand), M(x.held || ""), M(x.free),
+            M(x.crit || ""), M(x.min), M(x.max || ""), M(x.pack || ""), { v: x.need > 0 ? x.need : "at min", s: XL.MIDB }, M(val || ""),
+            { v: crit ? "Critical" : "Reorder", s: crit ? XL.C_LOST : XL.C_LIVE }]);
+          var u = picOf(x), gp = u && got[u];
+          if (gp) {
+            heights[r] = 54;   /* 72 px */
+            if (mIdx[u] === undefined) { mIdx[u] = media.length; media.push(stkPicBytes(gp.src)); }
+            var sc = Math.min(64 / gp.w, 64 / gp.h, 1), w = Math.max(1, Math.round(gp.w * sc)), hh = Math.max(1, Math.round(gp.h * sc));
+            pics.push({ r: r, c: 0, m: mIdx[u], w: w, h: hh, x: Math.max(0, (82 - w) / 2), y: Math.max(0, (72 - hh) / 2) });
+          }
+        });
+        grand += sub;
+        if (!brand) { var tr = band("", XL.BOLD); tr[1] = { v: "Total · " + g.brand, s: XL.BOLD }; tr[14] = { v: sub || "", s: XL.BOLD }; out.push(tr); }
+      });
+      out.push([]);
+      var gt = band("", XL.BAND); gt[1] = { v: "TOTAL ORDER VALUE AT MRP" + (brand ? " · " + brand : ""), s: XL.BAND }; gt[14] = { v: grand, s: XL.BAND }; out.push(gt);
+      if (L.some(function (x) { return !(nAmt((pm[x.code] || {}).rate) > 0); })) out.push(["Lines with no MRP in the catalogue are not counted in the value."]);
+      if (!brand && o.uncounted.length) out.push(["Reorder point set but not counted yet (stock not known): " + o.uncounted.map(function (x) { return x.desc; }).join(", ")]);
+      var cols = [11.5, 38, 15, 14, 8, 10, 9, 10, 8, 9, 10, 9, 7, 10, 13, 10];
+      var name = "Stock_to_order_" + (brand ? brand.replace(/[^\w]+/g, "_") + "_" : "") + today() + ".xlsx";
+      dlXlsx(name, "Stock to order", out, cols, { heights: heights, freeze: { r: 3, c: 2 }, filter: "A3:" + xlCol(NC - 1) + "3", merges: merges, pics: pics, media: media });
+      var miss = urls.length - Object.keys(got).length, noPic = L.filter(function (x) { return !picOf(x); }).length;
+      toast("Downloaded " + name + " — " + plural(L.length, "item") + ", " + media.length + " picture" + (media.length === 1 ? "" : "s") +
+        (miss ? " (" + miss + " would not load)" : "") + (noPic ? ", " + noPic + " with no picture in the catalogue" : "") + ", " + Math.round((Date.now() - t0) / 1000) + " s.");
+    }).catch(function (e) { toast("Could not make the Excel: " + ((e && e.message) || "error")); })
+      .then(function () { _stkOrdXlBusy = false; });
   }
   /* the order as a message - drafted here, sent by him, to whom he picks in WhatsApp */
   function stkOrderText(brand) {
