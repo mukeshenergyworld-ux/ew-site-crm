@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.713";
+  var APP_VERSION = "6.9.714";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -18606,8 +18606,18 @@ function viewCatalogue() {
     return '<h2>' + (copy ? "Add a similar product" : p.code ? "Edit product" : "Add product") + '</h2>' +
       (copy ? '<p class="sub" style="background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;padding:8px 10px">Copied from <b>' + esc(from.code) + '</b> \u2014 ' + esc(from.desc || "") + '. The picture, family, brand, category and unit are the same. Type the <b>new code</b>, change the size in the name and specs, and check the price.</p>'
             : '<p class="sub">This writes to the master price list the whole firm quotes from.</p>') +
-      '<div class="grid2"><div><label>Product code' + (copy ? ' \u2014 new' : '') + '</label><input id="p_code" value="' + esc(copy ? "" : p.code) + '"' + (isNew ? ' placeholder="new code"' : " readonly") + (copy ? ' autofocus style="border-color:#0f766e;border-width:2px"' : '') + '/></div>' +
+      '<div class="grid2"><div><label>Product code' + (copy ? ' \u2014 new' : '') + '</label><input id="p_code" value="' + esc(copy ? "" : p.code) + '"' + (isNew ? ' placeholder="new code"' : " readonly") + (copy ? ' autofocus style="border-color:#0f766e;border-width:2px"' : '') + '/>' +
+        (!isNew && roleIs("admin") ? '<button class="btn sm ghost" style="min-height:44px;margin-top:6px" data-act="pr-recode-open">Change code</button>' : '') + '</div>' +
       '<div><label>List price (Rs)</label><input id="p_price" inputmode="decimal" value="' + esc(p.price || "") + '"/></div></div>' +
+      /* 6.9.714 - HIS QUESTION: "why not able to change product code". The box is read-only on purpose:
+         Save writes the row whose code is in it, so a code typed over here would have made a SECOND
+         product and left every challan, quote and stock row on the old one. "Change code" renames
+         instead (server catalogCode, the same rename the Tally screen uses): the old code goes into the
+         product's Old codes (column M) and everything written under it is read under the new one. */
+      (!isNew && roleIs("admin") ? '<div id="pr_recode" style="display:none;margin:8px 0 2px;padding:9px 11px;border:1.5px dashed #0f766e;border-radius:10px;background:#f0fdfa">' +
+        '<div style="font-size:13px;color:#134e4a">New code for <b>' + esc(p.code) + '</b>. The old code is kept as an old code, so his challans, quotes and stock stay on this product.</div>' +
+        '<div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-top:6px"><div style="flex:1 1 160px"><label style="margin-top:0">New code</label><input id="p_newcode" autocomplete="off" placeholder="e.g. L4716RE#XW"/></div>' +
+        '<button class="btn sm" style="min-height:44px" data-act="pr-recode-go" data-code="' + esc(p.code) + '">Change code</button></div></div>' : '') +
       (copy ? '<div style="display:flex;gap:6px;align-items:flex-end;flex-wrap:wrap;margin:6px 0 2px;padding:8px 10px;border:1px dashed #0f766e;border-radius:8px">' +
         '<div style="flex:1 1 90px"><label style="margin-top:0">Change</label><input id="p_rfrom" placeholder="e.g. 28"/></div>' +
         '<div style="flex:1 1 90px"><label style="margin-top:0">to</label><input id="p_rto" placeholder="e.g. 35"/></div>' +
@@ -52363,6 +52373,28 @@ function viewCatalogue() {
       if (!_src) { toast("That product is not on the list any more."); return; }
       S.modal = modalProduct(Object.assign({}, _src), _src); render();
       setTimeout(function () { var c = el("p_code"); if (c) c.focus(); }, 50);
+      return;
+    }
+    if (act === "pr-recode-open") { var _rb = el("pr_recode"); if (_rb) { _rb.style.display = _rb.style.display === "none" ? "block" : "none"; var _ni = el("p_newcode"); if (_ni && _rb.style.display === "block") _ni.focus(); } return; }
+    if (act === "pr-recode-go") {   /* 6.9.714 */
+      var _from = t.getAttribute("data-code") || "", _to = String((el("p_newcode") || {}).value || "").trim();
+      if (!_to) { toast("Type the new code first."); return; }
+      if (_to === _from) { toast("That is the code it has now."); return; }
+      if (PRODUCTS.some(function (x) { return String(x.code || "").trim().toLowerCase() === _to.toLowerCase(); })) { toast("Code " + _to + " is already another product \u2014 two products cannot share a code."); return; }
+      t.disabled = true; t.textContent = "Changing\u2026";
+      api("catalogCode", { ops: [{ op: "rename", from: _from, to: _to }] }, 60000).then(function (r) {
+        var x = r && r.ok && r.results && r.results[0];
+        if (!x || !x.ok) { t.disabled = false; t.textContent = "Change code"; toast("Not changed \u2014 " + ((x && x.error) || (r && r.error) || "no answer from the server") + ". Nothing was written."); return; }
+        try { stkCodesApply(r.results); } catch (e) {
+          PRODUCTS.forEach(function (pp) { if (String(pp.code) === _from) { pp.was = (pp.was || []).concat([_from]); pp.code = _to; pp.label = _to + " - " + (pp.desc || ""); } });
+          try { codesIn(); } catch (e2) { }
+        }
+        try { var _at = (JSON.parse(bigGet(CAT_KEY) || "null") || {}).at || 0; bigSet(CAT_KEY, JSON.stringify({ v: CAT_V, at: _at || Date.now(), items: PRODUCTS })); } catch (e) { }
+        PRODLIST_HTML = null; _pcbCache = null; _plcCache = null;
+        S.modal = null; render();
+        toast("Code changed: " + _from + " \u2192 " + _to + ". The old code is kept, so its history stays on this product.");
+        setTimeout(function () { loadCatalog(true); }, 3000);
+      }, function () { t.disabled = false; t.textContent = "Change code"; toast("Not changed \u2014 no answer from the server. Try again."); });
       return;
     }
     if (act === "pr-repl") {
