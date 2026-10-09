@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.718";
+  var APP_VERSION = "6.9.719";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -48133,6 +48133,12 @@ function viewCatalogue() {
   }
   /* 6.9.718 - the order sheet shows bare numbers; the unit has its own column */
   function stkOrdN(q) { q = Math.round((Number(q) || 0) * 100) / 100; return q.toLocaleString("en-IN"); }
+  function stkOrdPic(code) {   /* 6.9.719 */
+    var u = String(((stkPMap()[code] || {}).pic) || "").trim();
+    if (!u) return '<div style="flex:0 0 48px;width:48px;height:48px;border-radius:6px;background:#f1f5f9;color:#94a3b8;font-size:12px;display:flex;align-items:center;justify-content:center">no pic</div>';
+    return '<a href="' + esc(driveImg(u, 900)) + '" target="_blank" rel="noopener" style="flex:0 0 48px;display:block" title="Open the picture">' +
+      '<img src="' + esc(driveImg(u, 96)) + '" loading="lazy" alt="" style="width:48px;height:48px;object-fit:contain;border-radius:6px;background:#fff;border:1px solid #e2e8f0;display:block"/></a>';
+  }
   function stkOrdCellTotal(x) {
     var q = x.qty, sug = x.typed === undefined;
     if (!(q > 0)) return '<span style="color:#94a3b8">left out</span>';
@@ -48155,8 +48161,8 @@ function viewCatalogue() {
     var td = function (t, al, ex) { return '<td style="padding:6px;text-align:' + (al || 'right') + ';vertical-align:middle;font-size:13px;white-space:nowrap;border-bottom:1px solid #eef2f7' + (ex || '') + '">' + t + '</td>'; };
     var inS = 'width:72px;min-height:44px;box-sizing:border-box;padding:6px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:14px;text-align:right';
     var h = '<style>.so7{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid #fee2e2;border-radius:10px;background:#fff}.so7 table{border-collapse:separate;border-spacing:0;width:100%;min-width:1000px}' +
-      '.so7 td:first-child,.so7 th:first-child{position:sticky;left:0;z-index:1;background:#fff;box-shadow:1px 0 0 #e2e8f0}.so7 th:first-child{background:#f1f5f9}' +
-      '@media(max-width:639px){.so7 td:first-child,.so7 th:first-child{max-width:150px;min-width:150px;white-space:normal!important}}</style>';
+      '.so7 td:first-child,.so7 th:first-child{position:sticky;left:0;z-index:1;background:#fff;box-shadow:1px 0 0 #e2e8f0}.so7 th:first-child{background:#f1f5f9}.so7 input.so-on{background:#0f172a!important;color:#fff!important;border-color:#0f172a!important;font-weight:700}' +
+      '@media(max-width:639px){.so7 td:first-child,.so7 th:first-child{max-width:190px;min-width:190px;white-space:normal!important}}</style>';
     h += stkOrdChipsHtml(ALL);
     h += '<div id="so_sum" class="card" style="margin:10px 0 0;padding:10px 12px;border-color:#f59e0b;background:#fffbeb;font-size:13.5px">' + stkOrdSumHtml(L) + '</div>' +
       '<div class="acts" style="flex-wrap:wrap;gap:6px;margin:8px 0 0"><button class="btn sm" style="min-height:44px" data-act="so-pdf" data-b="">&#8681; PDF' + (stkOrdBrSel().length ? ' (' + plural(stkOrdBrSel().length, "brand") + ')' : ', all') + '</button>' +
@@ -48170,7 +48176,7 @@ function viewCatalogue() {
         '<button class="btn sm ghost" style="min-height:44px" data-act="so-pdf" data-b="' + esc(g.brand) + '">&#8681; PDF</button>' +
         '<button class="btn sm ghost" style="min-height:44px" data-act="stk-ord-xlsx" data-b="' + esc(g.brand) + '">&#8681; Excel</button>' +
         '<button class="btn sm" style="min-height:44px;background:#16a34a;border-color:#16a34a" data-act="stk-ord-wa" data-b="' + esc(g.brand) + '">WhatsApp order</button></div>' +
-        '<div class="so7"><table><thead><tr>' + th('Product', 'left') + th('Unit', 'left') + th('On hand') + th('Free') + th('Reorder / Max') + th('Suggested') + th('Per box', 'center') + th('Pcs') + th('Boxes') + th('Total') + th('Value') + th('', 'center') + '</tr></thead><tbody>' +
+        '<div class="so7"><table><thead><tr>' + th('Product', 'left') + th('Moving', 'left') + th('Unit', 'left') + th('On hand') + th('Free') + th('Reorder / Max') + th('Suggested') + th('Per box', 'center') + th('Pcs') + th('Boxes') + th('Total') + th('Value') + th('', 'center') + '</tr></thead><tbody>' +
         g.list.map(function (x) {
           i++;
           var pk = x.pack || 0, t = x.typed, c = t === undefined ? null : stkOrdCalc(t, pk);
@@ -48178,8 +48184,9 @@ function viewCatalogue() {
           var pkDraft = (S.stkPkDraft || {})[x.code];
           var sugTxt = x.added ? '<span style="color:#94a3b8">added</span>' : (x.sug > 0 ? '<b style="color:#b91c1c">' + esc(stkOrdN(x.sug)) + '</b>' + (pk ? '<div style="font-size:12px;color:#64748b">' + (x.sug / pk) + ' box' + (x.sug / pk === 1 ? '' : 'es') + '</div>' : '') : 'at min');
           return '<tr id="so_r' + i + '">' +
-            td('<div style="font-weight:700;white-space:normal;min-width:180px">' + esc(x.desc) + '</div><div style="font-size:12px;color:#64748b;white-space:normal">' + esc(x.code) + (oc ? ' ' + stkMoveTag(x.code, oc) : '') + '</div>' +
-              (wi && wi.by[x.code] ? '<div style="font-size:12px;color:#b45309;white-space:normal">+' + stkOrdN(wi.by[x.code].qty) + ' on ' + esc(wi.by[x.code].bills.join(", ")) + ', not matched</div>' : ''), 'left') +
+            td('<div style="display:flex;gap:8px;align-items:center">' + stkOrdPic(x.code) + '<div style="min-width:0"><div style="font-weight:700;white-space:normal;min-width:120px">' + esc(x.desc) + '</div><div style="font-size:12px;color:#64748b;white-space:normal">' + esc(x.code) + '</div>' +
+              (wi && wi.by[x.code] ? '<div style="font-size:12px;color:#b45309;white-space:normal">+' + stkOrdN(wi.by[x.code].qty) + ' on ' + esc(wi.by[x.code].bills.join(", ")) + ', not matched</div>' : '') + '</div></div>', 'left') +
+            td(oc ? stkMoveTag(x.code, oc) : '', 'left') +
             td(esc(String(x.unit || stkUnit(x.code) || "").replace(/^Per\s+/i, "").replace(/\.$/, "")), 'left', ';color:#475569') +
             td(esc(stkOrdN(x.onhand || 0))) +
             td('<b style="color:' + (x.free <= (x.min || 0) ? '#b91c1c' : '#0f172a') + '">' + esc(stkOrdN(x.free || 0)) + '</b>' + (x.held ? '<div style="font-size:12px;color:#64748b">held ' + esc(stkOrdN(x.held)) + '</div>' : '')) +
@@ -48187,8 +48194,8 @@ function viewCatalogue() {
             td(sugTxt) +
             td('<div style="display:flex;gap:4px;align-items:center;justify-content:center"><input class="stk-pk" id="spk_o' + i + '" data-code="' + esc(x.code) + '" data-i="o' + i + '" inputmode="numeric" value="' + esc(pkDraft !== undefined ? pkDraft : (pk || "")) + '" placeholder="set" aria-label="Pieces in one box" style="' + inS + ';width:62px"/>' +
               '<button class="btn sm ghost" style="min-height:44px;padding:0 10px" data-act="stk-pk-save" data-code="' + esc(x.code) + '" data-i="o' + i + '">Save</button></div>', 'center') +
-            td('<input class="so-pc" id="so_pc' + i + '" data-code="' + esc(x.code) + '" data-i="' + i + '" data-pack="' + pk + '" inputmode="numeric" value="' + (t === undefined ? '' : esc(c.total)) + '" placeholder="' + (x.sug > 0 ? x.sug : 'pcs') + '" aria-label="Pieces to order" style="' + inS + '"/>') +
-            td(pk ? '<input class="so-bx" id="so_bx' + i + '" data-code="' + esc(x.code) + '" data-i="' + i + '" data-pack="' + pk + '" inputmode="numeric" value="' + (t === undefined ? '' : esc(c.boxes)) + '" placeholder="' + (x.sug > 0 ? x.sug / pk : 'boxes') + '" aria-label="Boxes to order" style="' + inS + ';width:64px;border-color:#f59e0b;background:#fffbeb"/>'
+            td('<input class="so-pc' + (t === undefined ? '' : ' so-on') + '" id="so_pc' + i + '" data-code="' + esc(x.code) + '" data-i="' + i + '" data-pack="' + pk + '" inputmode="numeric" value="' + (t === undefined ? '' : esc(c.total)) + '" placeholder="' + (x.sug > 0 ? x.sug : 'pcs') + '" aria-label="Pieces to order" style="' + inS + '"/>') +
+            td(pk ? '<input class="so-bx' + (t === undefined ? '' : ' so-on') + '" id="so_bx' + i + '" data-code="' + esc(x.code) + '" data-i="' + i + '" data-pack="' + pk + '" inputmode="numeric" value="' + (t === undefined ? '' : esc(c.boxes)) + '" placeholder="' + (x.sug > 0 ? x.sug / pk : 'boxes') + '" aria-label="Boxes to order" style="' + inS + ';width:64px;border-color:#f59e0b;background:#fffbeb"/>'
                   : '<span style="font-size:12px;color:#94a3b8;white-space:normal">set per box</span>') +
             td(stkOrdCellTotal(x), 'right', '" id="so_t' + i) +
             td(val ? money(val) : '<span style="color:#cbd5e1">-</span>', 'right', '" id="so_v' + i) +
@@ -48227,6 +48234,7 @@ function viewCatalogue() {
     var v = String(t.value || "").replace(/[^0-9.]/g, ""); if (v !== t.value) t.value = v;
     var k = t.getAttribute("data-code") || "", pk = Number(t.getAttribute("data-pack")) || 0, i = t.getAttribute("data-i");
     var isBx = t.classList.contains("so-bx"), other = document.getElementById((isBx ? "so_pc" : "so_bx") + i);
+    [t, other].forEach(function (e) { if (e) e.classList.toggle("so-on", v !== ""); });   /* 6.9.719 */
     if (v === "") { stkOrdSet(k, null, pk); if (other) other.value = ""; }
     else if (isBx) { var tot = Math.floor(Number(v)) * pk; stkOrdSet(k, tot, pk); if (other) other.value = tot; }
     else { var c = stkOrdCalc(v, pk); stkOrdSet(k, pk > 0 ? c.total : Number(v), pk); if (other) other.value = c.boxes; }
