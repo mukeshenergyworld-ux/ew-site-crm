@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.714";
+  var APP_VERSION = "6.9.715";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -18599,6 +18599,72 @@ function viewCatalogue() {
      a "change this to that" box that rewrites the name and the specs in one press, and the price
      left for him to check. Saving a new code that is already on the list is refused - it would
      overwrite that product. */
+
+  /* ===== 6.9.715 - BRAND FIRST, THEN FAMILY AND CATEGORY, FROM LISTS  (9 Oct 2026) =====
+     HIS WORDS: "product adding. first ask to select brand from drop down, if not option to add, then
+     product family and catagory also from drop down or add new if not in dropdown".
+     The three now head the form, numbered, each a dropdown with "+ New ..." at the end:
+       1 Brand    - every brand on the catalogue and in the brand list;
+       2 Family   - the families already used under THAT brand (the list follows the brand);
+       3 Category - the categories already used under that brand.
+     Choosing "+ New" opens a box to type it. The value saved is written into the same hidden boxes
+     (p_mb, p_fam, p_cat) the Save button has always read, so saving is unchanged. A new brand is also
+     added to the brand list. A product's own value is always in its list, even if nothing else uses it. */
+  function prBrands() {
+    var m = {};
+    (S.data.brandmap || []).forEach(function (b) { var v = String(b.catalogValue || "").trim(); if (v) m[v] = 1; });
+    PRODUCTS.forEach(function (p) { var v = String(p.brand || "").trim(); if (v) m[v] = 1; });
+    return Object.keys(m).sort(function (a, b) { return a.toLowerCase().localeCompare(b.toLowerCase()); });
+  }
+  function prVals(brand, key) {
+    var m = {}, b = String(brand || "").trim().toLowerCase();
+    PRODUCTS.forEach(function (p) { if (String(p.brand || "").trim().toLowerCase() !== b) return; var v = String(p[key] || "").trim(); if (v) m[v] = (m[v] || 0) + 1; });
+    return Object.keys(m).sort(function (x, y) { return x.toLowerCase().localeCompare(y.toLowerCase()); }).map(function (v) { return { v: v, n: m[v] }; });
+  }
+  function prSelOpts(list, cur, noun, withN) {
+    var has = !cur || list.some(function (x) { return x.v === cur; });
+    if (!has) list = [{ v: cur, n: 0 }].concat(list);
+    return '<option value="">— Pick the ' + noun + ' —</option>' +
+      list.map(function (x) { return '<option value="' + esc(x.v) + '"' + (x.v === cur ? ' selected' : '') + '>' + esc(x.v) + (withN && x.n ? ' (' + x.n + ')' : '') + '</option>'; }).join("") +
+      '<option value="__new">+ New ' + noun + '…</option>';
+  }
+  function prClassHtml(p) {
+    var br = String(p.brand || "").trim(), fam = String(p.family || "").trim(), cat = String(p.cat || "").trim();
+    var sel = 'style="width:100%;min-height:44px;font-size:15px;padding:8px 10px;border:1.5px solid #0f766e;border-radius:8px;background:#fff"';
+    var nb = function (id, ph) { return '<input id="' + id + '" autocomplete="off" placeholder="' + ph + '" style="display:none;margin-top:6px"/>'; };
+    var num = function (n) { return '<span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:#0f766e;color:#fff;font-size:12px;font-weight:800;margin-right:6px">' + n + '</span>'; };
+    return '<div style="margin:6px 0 10px;padding:10px 12px;border:1px solid #99f6e4;border-radius:12px;background:#f0fdfa">' +
+      '<label style="margin-top:0">' + num(1) + 'Brand</label><select id="p_mb_s" class="pr-cls" data-k="mb" ' + sel + '>' + prSelOpts(prBrands().map(function (v) { return { v: v }; }), br, "brand") + '</select>' + nb("p_mb_n", "New brand name") +
+      '<div class="grid2" style="margin-top:4px"><div><label>' + num(2) + 'Product family</label><select id="p_fam_s" class="pr-cls" data-k="fam" ' + sel + (br ? '' : ' disabled') + '>' + prSelOpts(prVals(br, "family"), fam, "family", true) + '</select>' + nb("p_fam_n", "New family") + '</div>' +
+      '<div><label>' + num(3) + 'Category</label><select id="p_cat_s" class="pr-cls" data-k="cat" ' + sel + (br ? '' : ' disabled') + '>' + prSelOpts(prVals(br, "cat"), cat, "category", true) + '</select>' + nb("p_cat_n", "New category") + '</div></div>' +
+      (br ? '' : '<div id="p_cls_hint" style="font-size:12.5px;color:#0f766e;margin-top:6px">Pick the brand first — its families and categories then appear.</div>') +
+      '<input type="hidden" id="p_mb" value="' + esc(br) + '"/><input type="hidden" id="p_fam" value="' + esc(fam) + '"/><input type="hidden" id="p_cat" value="' + esc(cat) + '"/></div>';
+  }
+  function prClassSync(k) {
+    var s2 = el("p_" + k + "_s"), n2 = el("p_" + k + "_n"), h2 = el("p_" + k);
+    if (!s2 || !h2) return;
+    var isNew = s2.value === "__new";
+    if (n2) { n2.style.display = isNew ? "block" : "none"; if (isNew && !n2.value) { try { n2.focus(); } catch (e) { } } }
+    h2.value = isNew ? String((n2 && n2.value) || "").trim() : s2.value;
+  }
+  try {
+    document.addEventListener("change", function (e) {
+      var t = e.target; if (!t || !t.classList || !t.classList.contains("pr-cls")) return;
+      var k = t.getAttribute("data-k");
+      prClassSync(k);
+      if (k === "mb") {   /* the families and categories follow the brand */
+        var br = el("p_mb").value, fs = el("p_fam_s"), cs = el("p_cat_s");
+        if (fs) { fs.innerHTML = prSelOpts(prVals(br, "family"), "", "family", true); fs.disabled = !br; prClassSync("fam"); }
+        if (cs) { cs.innerHTML = prSelOpts(prVals(br, "cat"), "", "category", true); cs.disabled = !br; prClassSync("cat"); }
+        var hi = el("p_cls_hint"); if (hi) hi.style.display = br ? "none" : "block";
+      }
+    });
+    document.addEventListener("input", function (e) {
+      var t = e.target; if (!t || !/^p_(mb|fam|cat)_n$/.test(t.id || "")) return;
+      var k = t.id.split("_")[1]; prClassSync(k);
+      if (k === "mb") { var br = el("p_mb").value; ["fam", "cat"].forEach(function (k2) { var s3 = el("p_" + k2 + "_s"); if (s3) s3.disabled = !br; }); }
+    });
+  } catch (e) { }
   function modalProduct(p, from) {
     p = p || {};
     var copy = !!from, isNew = copy || !p.code;
@@ -18606,6 +18672,7 @@ function viewCatalogue() {
     return '<h2>' + (copy ? "Add a similar product" : p.code ? "Edit product" : "Add product") + '</h2>' +
       (copy ? '<p class="sub" style="background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;padding:8px 10px">Copied from <b>' + esc(from.code) + '</b> \u2014 ' + esc(from.desc || "") + '. The picture, family, brand, category and unit are the same. Type the <b>new code</b>, change the size in the name and specs, and check the price.</p>'
             : '<p class="sub">This writes to the master price list the whole firm quotes from.</p>') +
+      prClassHtml(p) +   /* 6.9.715 - brand, then family and category, from lists */
       '<div class="grid2"><div><label>Product code' + (copy ? ' \u2014 new' : '') + '</label><input id="p_code" value="' + esc(copy ? "" : p.code) + '"' + (isNew ? ' placeholder="new code"' : " readonly") + (copy ? ' autofocus style="border-color:#0f766e;border-width:2px"' : '') + '/>' +
         (!isNew && roleIs("admin") ? '<button class="btn sm ghost" style="min-height:44px;margin-top:6px" data-act="pr-recode-open">Change code</button>' : '') + '</div>' +
       '<div><label>List price (Rs)</label><input id="p_price" inputmode="decimal" value="' + esc(p.price || "") + '"/></div></div>' +
@@ -18624,11 +18691,7 @@ function viewCatalogue() {
         '<button class="btn sm" style="min-height:44px" data-act="pr-repl">Change in name &amp; specs</button></div>' : '') +
       '<label>Description &amp; features</label><textarea id="p_desc" rows="3" style="width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid #cbd5e1;border-radius:8px;font:inherit;resize:vertical">' + esc(p.desc) + '</textarea>' +
       '<div class="pmeta" style="font-size:12px;color:#94a3b8;margin:-2px 0 8px">Product name first, then each feature after a comma, a <b>|</b>, or on a new line — they print as neat bullet points on the quote PDF.</div>' +
-      '<div class="grid2"><div><label>Product family</label><input id="p_fam" value="' + esc(p.family) + '"/></div>' +
-      '<div><label>Unit</label><input id="p_unit" value="' + esc(p.unit || "Per Pc.") + '"/></div></div>' +
-      '<div class="grid2"><div><label>Master Brand (catalogue value)</label><input id="p_mb" list="mblist" value="' + esc(p.brand) + '"/></div>' +
-      '<div><label>Category</label><input id="p_cat" value="' + esc(p.cat) + '"/></div></div>' +
-      '<datalist id="mblist">' + mapVals.map(function (m) { return '<option value="' + esc(m) + '"></option>'; }).join("") + '</datalist>' +
+      '<label>Unit</label><input id="p_unit" value="' + esc(p.unit || "Per Pc.") + '"/>' +
       '<label>Picture URL</label><input id="p_pic" value="' + esc(p.pic) + '"/>' +
       '<div id="p_pic_hint" style="font-size:12px;line-height:1.45;margin:4px 2px 0;color:#b45309">' +
         esc(PIC_HINT[picProblem(p.pic)] || "") + '</div>' +
@@ -52425,6 +52488,16 @@ function viewCatalogue() {
          but a price that is there must be a number. Same shape as pr-save and adm-save. */
       var pPrice = String(val("p_price") || "").trim();
       if (pPrice !== "" && !(nAmt(pPrice) > 0)) { toast("That price is not a number I can read: " + pPrice + ". Nothing was saved."); return; }
+      if (el("p_mb_s") && !String(val("p_mb") || "").trim()) { toast("Pick the brand first (or + New brand) \u2014 nothing was saved."); return; }   /* 6.9.715 */
+      if (el("p_fam_s") && !String(val("p_fam") || "").trim()) { toast("Pick the product family (or + New family) \u2014 nothing was saved."); return; }
+      try {
+        var _nbr = String(val("p_mb") || "").trim();
+        if (_nbr && !(S.data.brandmap || []).some(function (b) { return String(b.catalogValue || "").trim().toLowerCase() === _nbr.toLowerCase(); }) &&
+            !PRODUCTS.some(function (x) { return String(x.brand || "").trim().toLowerCase() === _nbr.toLowerCase(); })) {
+          if (!(S.data.brands || []).some(function (b) { return String(b.brand || "").trim().toLowerCase() === _nbr.toLowerCase(); })) save("brands", { id: "", brand: _nbr, active: "Y" });
+          save("brandmap", { id: "", catalogValue: _nbr, brand: _nbr, count: "" });
+        }
+      } catch (eNb) { }
       t.disabled = true; t.textContent = "Saving...";
       var pForm = {
         code: pc, desc: val("p_desc"), family: val("p_fam"), category: val("p_cat"),
