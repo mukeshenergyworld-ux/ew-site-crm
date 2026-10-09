@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.719";
+  var APP_VERSION = "6.9.720";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -5732,6 +5732,7 @@ window.addEventListener("beforeunload", function (ev) {
       f([XL.TILE, XL.TILE_M], [213, 243, 239], null, true);
       f([XL.BAND], [241, 245, 249], null, true); f([XL.INPUT], [249, 241, 196]);
       f([XL.BOLD, XL.MONEYB, XL.MIDB], null, null, true);
+      f([XL.QTYB], [15, 23, 42], [255, 255, 255], true);   /* 6.9.720 */
     }
     return RS_PDF_FILL[st] || { fill: null, ink: [17, 34, 45], bold: false };
   }
@@ -33633,7 +33634,7 @@ function viewCatalogue() {
   /* style ids, in the order they are written into cellXfs below */
   var XL = { PLAIN: 0, HEAD: 1, WON: 2, LIVE: 3, NONE: 4, LOST: 5, NR: 6, BOLD: 7, BAND: 8, INPUT: 9, MID: 10, MIDB: 11, HEADW: 12, C_WON: 13, C_LIVE: 14, C_NONE: 15, C_LOST: 16, C_NR: 17,
     /* 6.9.637 - the review sheet: money in Indian grouping, and the four-colour scale */
-    MONEY: 18, MONEYB: 19, G: 20, A: 21, O: 22, R: 23, G_M: 24, A_M: 25, O_M: 26, R_M: 27, TITLE: 28, SECT: 29, TILE: 30, TILE_M: 31, EXEC: 32, EXECC: 33, EXEC_M: 34 };
+    MONEY: 18, MONEYB: 19, G: 20, A: 21, O: 22, R: 23, G_M: 24, A_M: 25, O_M: 26, R_M: 27, TITLE: 28, SECT: 29, TILE: 30, TILE_M: 31, EXEC: 32, EXECC: 33, EXEC_M: 34, QTYB: 35 };
   var XL_STATUS = { won: XL.WON, live: XL.LIVE, none: XL.NONE, lost: XL.LOST, nr: XL.NR };
   function xlStyles() {
     var solid = function (hex) {
@@ -33651,7 +33652,7 @@ function viewCatalogue() {
         '<font><b/><color rgb="FFFFFFFF"/><sz val="14"/><name val="Calibri"/></font>' +
         '<font><b/><color rgb="FF1E3A8A"/><sz val="11"/><name val="Calibri"/></font>' +
       '</fonts>' +
-      '<fills count="18">' +
+      '<fills count="19">' +
         '<fill><patternFill patternType="none"/></fill>' +
         '<fill><patternFill patternType="gray125"/></fill>' +
         solid("1E293B") + solid("008300") + solid("EDA100") +
@@ -33660,11 +33661,13 @@ function viewCatalogue() {
         solid("D9F2E1") + solid("F6E7B8") + solid("F8D9B8") + solid("F7C9C9") + solid("0F766E") + solid("D5F3EF") +
         /* 6.9.638 - 16 the executive's band (dark blue), 17 his name in a table (pale blue) */
         solid("1E3A8A") + solid("D6E4F9") +
+        /* 6.9.720 - 18 the order quantity (white on near-black) */
+        solid("0F172A") +
       '</fills>' +
       '<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border>' +
         '<border><left style="thin"><color rgb="FFD97706"/></left><right style="thin"><color rgb="FFD97706"/></right><top style="thin"><color rgb="FFD97706"/></top><bottom style="thin"><color rgb="FFD97706"/></bottom><diagonal/></border></borders>' +
       '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
-      '<cellXfs count="35">' +
+      '<cellXfs count="36">' +
         '<xf xfId="0" numFmtId="0" fontId="0" fillId="0" borderId="0"/>' +
         '<xf xfId="0" fontId="1" fillId="2" borderId="0" applyFont="1" applyFill="1"/>' +
         '<xf xfId="0" fontId="1" fillId="3" borderId="0" applyFont="1" applyFill="1"/>' +
@@ -33705,6 +33708,8 @@ function viewCatalogue() {
         '<xf xfId="0" fontId="3" fillId="16" borderId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment vertical="center"/></xf>' +
         '<xf xfId="0" fontId="4" fillId="17" borderId="0" applyFont="1" applyFill="1"/>' +
         '<xf xfId="0" numFmtId="164" fontId="4" fillId="17" borderId="0" applyNumberFormat="1" applyFont="1" applyFill="1"/>' +
+        /* 6.9.720 - 35 the order quantity */
+        '<xf xfId="0" numFmtId="164" fontId="1" fillId="18" borderId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>' +
       '</cellXfs>' +
       /* openpyxl warns "workbook contains no default style" without this, and Excel is stricter
          than openpyxl - a repair prompt on first open is exactly the thing that would make him
@@ -48218,7 +48223,7 @@ function viewCatalogue() {
       var sub = 0;
       g.list.forEach(function (x, j) {
         var mrp = nAmt((pm[x.code] || {}).rate), v = mrp > 0 ? Math.round(mrp * x.qty) : 0; sub += v;
-        rows.push([M(j + 1), { v: x.desc, s: XL.MIDB }, M(x.code), M(x.unit || ""), M(x.free), M(x.min || ""), M(x.pack || ""), M(x.pack > 0 ? Math.ceil(x.qty / x.pack) : ""), { v: x.qty, s: XL.MIDB }, mrp > 0 ? { v: mrp, s: XL.MONEY } : M(""), v ? { v: v, s: XL.MONEY } : M("")]);
+        rows.push([M(j + 1), { v: x.desc, s: XL.MIDB }, M(x.code), M(x.unit || ""), M(x.free), M(x.min || ""), M(x.pack || ""), M(x.pack > 0 ? Math.ceil(x.qty / x.pack) : ""), { v: x.qty, s: XL.QTYB }, mrp > 0 ? { v: mrp, s: XL.MONEY } : M(""), v ? { v: v, s: XL.MONEY } : M("")]);
       });
       grand += sub;
       rows.push(["", { v: "Total · " + g.brand, s: XL.BOLD }, "", "", "", "", "", "", "", "", { v: sub, s: XL.MONEYB }]);
@@ -48361,7 +48366,7 @@ function viewCatalogue() {
           out.push([M(""), { v: x.desc, s: XL.MIDB }, M(x.code), M(x.brand || "Other"), M(x.unit), M(mrp > 0 ? mrp : ""), M(x.onhand), M(x.held || ""), M(x.free),
             M(x.crit || ""), M(x.min), M(x.max || ""), M(x.pack || ""),
             x.pack > 0 ? { v: boxes, s: XL.INPUT } : M(""),
-            x.pack > 0 ? { f: "IF(M" + R1 + ">0,N" + R1 + "*M" + R1 + ",0)", v: x.need, s: XL.MIDB } : { v: x.need > 0 ? x.need : 0, s: XL.MIDB },
+            x.pack > 0 ? { f: "IF(M" + R1 + ">0,N" + R1 + "*M" + R1 + ",0)", v: x.need, s: XL.QTYB } : { v: x.need > 0 ? x.need : 0, s: XL.QTYB },
             mrp > 0 ? { f: "O" + R1 + "*F" + R1, v: val, s: XL.MID } : M(""),
             x.st ? { v: x.st, s: x.st === "Critical" || x.st === "Not counted" ? XL.C_LOST : x.st === "Reorder" ? XL.C_LIVE : XL.MID } : { v: crit ? "Critical" : "Reorder", s: crit ? XL.C_LOST : XL.C_LIVE },
             ctx.fsn[x.code] ? { v: FSN_WORD[ctx.fsn[x.code]], s: MV[ctx.fsn[x.code]] } : M("no history"),
