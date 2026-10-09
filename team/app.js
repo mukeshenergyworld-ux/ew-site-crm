@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.717";
+  var APP_VERSION = "6.9.718";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -48131,10 +48131,12 @@ function viewCatalogue() {
     return '<b>To order: ' + plural(t.n, "line") + (t.boxes ? ' &middot; ' + plural(t.boxes, "box", "boxes") : '') + (t.val ? ' &middot; ' + money(t.val) + ' at MRP' : '') + '</b>' +
       '<span style="color:#64748b"> &middot; ' + (typed ? plural(typed, "quantity", "quantities") + ' typed by you, the rest as suggested' : 'all as suggested - type over any line') + '</span>';
   }
+  /* 6.9.718 - the order sheet shows bare numbers; the unit has its own column */
+  function stkOrdN(q) { q = Math.round((Number(q) || 0) * 100) / 100; return q.toLocaleString("en-IN"); }
   function stkOrdCellTotal(x) {
     var q = x.qty, sug = x.typed === undefined;
     if (!(q > 0)) return '<span style="color:#94a3b8">left out</span>';
-    return '<b style="color:' + (sug ? '#64748b' : '#0b3b36') + '">' + esc(stkQ(q, x.code)) + '</b>' + (x.pack > 0 ? '<div style="font-size:12px;color:#64748b">' + Math.ceil(q / x.pack) + ' &times; ' + x.pack + '</div>' : '') +
+    return '<b style="color:' + (sug ? '#64748b' : '#0b3b36') + '">' + esc(stkOrdN(q)) + '</b>' + (x.pack > 0 ? '<div style="font-size:12px;color:#64748b">' + Math.ceil(q / x.pack) + ' &times; ' + x.pack + '</div>' : '') +
       (sug ? '<div style="font-size:12px;color:#94a3b8">suggested</div>' : '');
   }
   function stkOrdBrSel() { return (S.soBr || []).filter(Boolean); }
@@ -48152,7 +48154,7 @@ function viewCatalogue() {
     var th = function (t, al) { return '<th style="padding:8px 6px;text-align:' + (al || 'right') + ';font-size:12px;white-space:nowrap;background:#f1f5f9;color:#334155;border-bottom:1px solid #cbd5e1">' + t + '</th>'; };
     var td = function (t, al, ex) { return '<td style="padding:6px;text-align:' + (al || 'right') + ';vertical-align:middle;font-size:13px;white-space:nowrap;border-bottom:1px solid #eef2f7' + (ex || '') + '">' + t + '</td>'; };
     var inS = 'width:72px;min-height:44px;box-sizing:border-box;padding:6px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:14px;text-align:right';
-    var h = '<style>.so7{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid #fee2e2;border-radius:10px;background:#fff}.so7 table{border-collapse:separate;border-spacing:0;width:100%;min-width:1080px}' +
+    var h = '<style>.so7{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid #fee2e2;border-radius:10px;background:#fff}.so7 table{border-collapse:separate;border-spacing:0;width:100%;min-width:1000px}' +
       '.so7 td:first-child,.so7 th:first-child{position:sticky;left:0;z-index:1;background:#fff;box-shadow:1px 0 0 #e2e8f0}.so7 th:first-child{background:#f1f5f9}' +
       '@media(max-width:639px){.so7 td:first-child,.so7 th:first-child{max-width:150px;min-width:150px;white-space:normal!important}}</style>';
     h += stkOrdChipsHtml(ALL);
@@ -48168,19 +48170,20 @@ function viewCatalogue() {
         '<button class="btn sm ghost" style="min-height:44px" data-act="so-pdf" data-b="' + esc(g.brand) + '">&#8681; PDF</button>' +
         '<button class="btn sm ghost" style="min-height:44px" data-act="stk-ord-xlsx" data-b="' + esc(g.brand) + '">&#8681; Excel</button>' +
         '<button class="btn sm" style="min-height:44px;background:#16a34a;border-color:#16a34a" data-act="stk-ord-wa" data-b="' + esc(g.brand) + '">WhatsApp order</button></div>' +
-        '<div class="so7"><table><thead><tr>' + th('Product', 'left') + th('On hand') + th('Free') + th('Reorder / Max') + th('Suggested') + th('Per box', 'center') + th('Pcs') + th('Boxes') + th('Total') + th('Value') + th('', 'center') + '</tr></thead><tbody>' +
+        '<div class="so7"><table><thead><tr>' + th('Product', 'left') + th('Unit', 'left') + th('On hand') + th('Free') + th('Reorder / Max') + th('Suggested') + th('Per box', 'center') + th('Pcs') + th('Boxes') + th('Total') + th('Value') + th('', 'center') + '</tr></thead><tbody>' +
         g.list.map(function (x) {
           i++;
           var pk = x.pack || 0, t = x.typed, c = t === undefined ? null : stkOrdCalc(t, pk);
           var mrp = nAmt((pm[x.code] || {}).rate), val = mrp > 0 && x.qty > 0 ? Math.round(mrp * x.qty) : 0;
           var pkDraft = (S.stkPkDraft || {})[x.code];
-          var sugTxt = x.added ? '<span style="color:#94a3b8">added</span>' : (x.sug > 0 ? '<b style="color:#b91c1c">' + esc(stkQ(x.sug, x.code)) + '</b>' + (pk ? '<div style="font-size:12px;color:#64748b">' + (x.sug / pk) + ' box' + (x.sug / pk === 1 ? '' : 'es') + '</div>' : '') : 'at min');
+          var sugTxt = x.added ? '<span style="color:#94a3b8">added</span>' : (x.sug > 0 ? '<b style="color:#b91c1c">' + esc(stkOrdN(x.sug)) + '</b>' + (pk ? '<div style="font-size:12px;color:#64748b">' + (x.sug / pk) + ' box' + (x.sug / pk === 1 ? '' : 'es') + '</div>' : '') : 'at min');
           return '<tr id="so_r' + i + '">' +
-            td('<div style="font-weight:700;white-space:normal;min-width:180px">' + esc(x.desc) + '</div><div style="font-size:12px;color:#64748b;white-space:normal">' + esc([x.code, x.unit].filter(Boolean).join(" · ")) + (oc ? ' ' + stkMoveTag(x.code, oc) : '') + '</div>' +
-              (wi && wi.by[x.code] ? '<div style="font-size:12px;color:#b45309;white-space:normal">+' + stkQ(wi.by[x.code].qty, x.code) + ' on ' + esc(wi.by[x.code].bills.join(", ")) + ', not matched</div>' : ''), 'left') +
-            td(esc(stkQ(x.onhand || 0, x.code))) +
-            td('<b style="color:' + (x.free <= (x.min || 0) ? '#b91c1c' : '#0f172a') + '">' + esc(stkQ(x.free || 0, x.code)) + '</b>' + (x.held ? '<div style="font-size:12px;color:#64748b">held ' + esc(stkQ(x.held, x.code)) + '</div>' : '')) +
-            td(esc(x.min ? stkQ(x.min, x.code) : '-') + '<div style="font-size:12px;color:#64748b">' + (x.max ? 'max ' + esc(stkQ(x.max, x.code)) : 'no max') + (x.crit ? ' &middot; crit ' + x.crit : '') + '</div>') +
+            td('<div style="font-weight:700;white-space:normal;min-width:180px">' + esc(x.desc) + '</div><div style="font-size:12px;color:#64748b;white-space:normal">' + esc(x.code) + (oc ? ' ' + stkMoveTag(x.code, oc) : '') + '</div>' +
+              (wi && wi.by[x.code] ? '<div style="font-size:12px;color:#b45309;white-space:normal">+' + stkOrdN(wi.by[x.code].qty) + ' on ' + esc(wi.by[x.code].bills.join(", ")) + ', not matched</div>' : ''), 'left') +
+            td(esc(String(x.unit || stkUnit(x.code) || "").replace(/^Per\s+/i, "").replace(/\.$/, "")), 'left', ';color:#475569') +
+            td(esc(stkOrdN(x.onhand || 0))) +
+            td('<b style="color:' + (x.free <= (x.min || 0) ? '#b91c1c' : '#0f172a') + '">' + esc(stkOrdN(x.free || 0)) + '</b>' + (x.held ? '<div style="font-size:12px;color:#64748b">held ' + esc(stkOrdN(x.held)) + '</div>' : '')) +
+            td(esc(x.min ? stkOrdN(x.min) : '-') + '<div style="font-size:12px;color:#64748b">' + (x.max ? 'max ' + esc(stkOrdN(x.max)) : 'no max') + (x.crit ? ' &middot; crit ' + x.crit : '') + '</div>') +
             td(sugTxt) +
             td('<div style="display:flex;gap:4px;align-items:center;justify-content:center"><input class="stk-pk" id="spk_o' + i + '" data-code="' + esc(x.code) + '" data-i="o' + i + '" inputmode="numeric" value="' + esc(pkDraft !== undefined ? pkDraft : (pk || "")) + '" placeholder="set" aria-label="Pieces in one box" style="' + inS + ';width:62px"/>' +
               '<button class="btn sm ghost" style="min-height:44px;padding:0 10px" data-act="stk-pk-save" data-code="' + esc(x.code) + '" data-i="o' + i + '">Save</button></div>', 'center') +
