@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.712";
+  var APP_VERSION = "6.9.713";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -23414,6 +23414,71 @@ function viewCatalogue() {
   }
   var RT_FIELDS = ["r_client", "r_site", "r_ch", "r_reason", "r_driver", "r_freight"];
 
+
+  /* ===== 6.9.713 - A RETURN OF SOMETHING THAT WAS NEVER SUPPLIED, IN RED  (9 Oct 2026) =====
+     HIS WORDS: "when registering return, if a material is not supplied and taking it as return,
+     mark it red, if possible also check item code from old attached hisab if any before marking red".
+     Each line on the return is set against what this client was given on his challans (every
+     challan that is not cancelled, a kit counted as its parts too, codes read under today's
+     Tally codes) less what he has already returned:
+       RED   - never supplied to him on any challan, and he has no old hisab;
+       AMBER - not on his challans but he HAS an old hisab attached: the goods may be from the
+               old books, so the line says so and opens the old hisab to check (it is a photo or a
+               PDF, so it cannot be read for codes - he looks);
+       AMBER - more coming back than was supplied less returned before.
+     Nothing is blocked: the return is still his to register. */
+  var _rtSupKey = "", _rtSup = null;
+  function rtSupplied(client) {
+    var nm = String(client || "").trim().toLowerCase();
+    if (!nm) return null;
+    var key = nm + "|" + (S.data.challans || []).length + "|" + (S.data.returns || []).length + "|" + (S.data.audit || []).length;
+    if (_rtSupKey === key && _rtSup) return _rtSup;
+    var sup = {}, ret = {}, bom = null; try { bom = stkBom(); } catch (e) { bom = {}; }
+    var add = function (m, items) { (items || []).forEach(function (x) { var k = String(codeNow((x && x.code) || "")).trim(); if (k) m[k] = (m[k] || 0) + (Number(x.qty) || 0); }); };
+    dedupeChallans(S.data.challans || []).forEach(function (c) {
+      if (String(c.customerName || "").trim().toLowerCase() !== nm) return;
+      try { if (stkChDead(c)) return; } catch (e) { if (/cancel/i.test(String(c.status || ""))) return; }
+      var it = chItems(c), parts = [];
+      try { parts = stkExpand(it.filter(function (x) { return bom[String((x && x.code) || "").trim()]; }), bom); } catch (e) { parts = []; }
+      add(sup, it.concat(parts));
+    });
+    (S.data.returns || []).forEach(function (r) {
+      if (String(r.customerName || "").trim().toLowerCase() !== nm) return;
+      if (/cancel/i.test(String(r.status || ""))) return;
+      var it = []; try { it = JSON.parse(r.itemsJson || "[]"); } catch (e) { it = []; }
+      add(ret, it);
+    });
+    var cl = null; try { cl = clientByName(client); } catch (e) { cl = null; }
+    var hd = cl && cl.id ? hisabDoc(cl.id) : null;
+    _rtSupKey = key; _rtSup = { sup: sup, ret: ret, hd: hd && hd.url ? hd : null, any: Object.keys(sup).length > 0 };
+    return _rtSup;
+  }
+  function rtClientNow(z) { var v = ""; try { v = val("r_client"); } catch (e) { v = ""; } return v || (z && z.client) || ""; }
+  function rtLineState(i, z) {
+    if (!i || i.lump || !i.code) return { k: "" };
+    var m = rtSupplied(rtClientNow(z)); if (!m) return { k: "" };
+    var k = String(codeNow(i.code)).trim(), sup = m.sup[k] || 0, ret = m.ret[k] || 0, q = Number(i.qty) || 0;
+    if (!sup) return { k: m.hd ? "old" : "no", sup: 0, ret: ret, hd: m.hd };
+    if (q > sup - ret) return { k: "over", sup: sup, ret: ret };
+    return { k: "ok", sup: sup, ret: ret };
+  }
+  function rtLineNote(i, z) {
+    var st = rtLineState(i, z), code = '<span style="font-size:12px;color:#94a3b8">' + esc(i.code) + '</span>';
+    if (st.k === "no") return code + ' <span style="display:inline-block;font-size:12px;font-weight:800;color:#fff;background:#dc2626;border-radius:6px;padding:1px 7px">NOT SUPPLIED to this client</span>' +
+      '<div style="font-size:12px;color:#b91c1c">Not on any of his challans, and he has no old hisab attached. Check before registering.</div>';
+    if (st.k === "old") return code + ' <span style="display:inline-block;font-size:12px;font-weight:800;color:#92400e;background:#fde68a;border-radius:6px;padding:1px 7px">not on his CRM challans</span>' +
+      '<div style="font-size:12px;color:#92400e">He has an old hisab — it may be from there. <a href="' + esc(st.hd.url) + '" target="_blank" rel="noopener" style="color:#0f766e;font-weight:700">Open his old hisab &#8599;</a></div>';
+    if (st.k === "over") return code + ' <span style="font-size:12px;font-weight:700;color:#b45309">· supplied ' + st.sup + (st.ret ? ', returned before ' + st.ret : '') + ' — more coming back than he has</span>';
+    if (st.k === "ok") return code + ' <span style="font-size:12px;color:#0f766e">· supplied ' + st.sup + (st.ret ? ', returned before ' + st.ret : '') + '</span>';
+    return code;
+  }
+  function rtPickedHtml(z) {
+    var h = pickedTable(z, PICKERS.rt);
+    var bad = ((z && z.items) || []).filter(function (i) { return rtLineState(i, z).k === "no"; }).length;
+    if (bad) h = '<div style="margin-top:8px;padding:8px 10px;border-radius:10px;background:#fee2e2;border:1.5px solid #dc2626;color:#991b1b;font-size:13px;font-weight:700">' +
+      plural(bad, "line") + ' coming back ' + (bad === 1 ? 'was' : 'were') + ' never supplied to ' + esc(rtClientNow(z)) + ' — shown in red below.</div>' + h;
+    return h;
+  }
   function modalReturn() {
     if (!S.rt) S.rt = { brand: "", family: "", items: [] };
     var z = S.rt;
@@ -23434,7 +23499,7 @@ function viewCatalogue() {
       '<h3 style="margin:10px 0 4px;font-size:14px">Material coming back ' +
       '<span class="pill teal">' + (z.items || []).length + ' picked</span></h3>' +
       '<div id="rt_pick">' + rtPicker() + '</div>' +
-      pickedTable(z, PICKERS.rt)) +
+      '<div id="rt_picked">' + rtPickedHtml(z) + '</div>') +
       '<div class="grid2" style="margin-top:10px">' +
       '<div>' + strictDriverField("r_driver", (z && z.driver) || "", "Pickup driver") + '</div>' +
       '<div><label>Freight on the return</label><input id="r_freight" inputmode="numeric" value="" placeholder="0"/></div>' +
@@ -45993,7 +46058,9 @@ function viewCatalogue() {
                   : '<span style="font-size:12px;color:#94a3b8">' + esc(i.code) + '</span>' + chStkTag(i.code, i.qty);   /* 6.9.655 */
           } },
     rt: { pre: "rt", box: "rt_pick", qid: "rt_q", qcls: "rt-q", noun: "return",
-          meta: function (p) { return esc(p.code) + ' &middot; ' + esc(p.unit) + (p.brand ? ' &middot; ' + esc(realBrand(p) || p.brand) : ''); } },
+          meta: function (p) { return esc(p.code) + ' &middot; ' + esc(p.unit) + (p.brand ? ' &middot; ' + esc(realBrand(p) || p.brand) : ''); },
+          lineNote: function (i, z) { return rtLineNote(i, z); },   /* 6.9.713 */
+          rowBg: function (i, z) { var k = rtLineState(i, z).k; return k === "no" ? "#fee2e2" : (k === "old" || k === "over") ? "#fffbeb" : ""; } },
     oc: { pre: "oc", box: "oc_pick", qid: "oc_q", qcls: "oc-q", noun: "delivery",
           meta: function (p) { return esc(p.code) + ' &middot; ' + money(p.price) + (p.brand ? ' &middot; ' + esc(realBrand(p) || p.brand) : ''); } },
     qz: { pre: "qz", box: "qz_pick", qid: "qz_q", qcls: "qz-q", noun: "quote",
@@ -46053,7 +46120,8 @@ function viewCatalogue() {
       '<th style="width:38px"></th></tr></thead><tbody>' +
       picked.map(function (i, idx) {
         var fixed = P.fixedQty ? P.fixedQty(i) : false;
-        return '<tr style="border-bottom:1px solid #e2e8f0;background:' + (idx % 2 ? '#f8fafc' : '#fff') + '">' +
+        var _rb = P.rowBg ? P.rowBg(i, z) : "";   /* 6.9.713 */
+        return '<tr style="border-bottom:1px solid #e2e8f0;background:' + (_rb || (idx % 2 ? '#f8fafc' : '#fff')) + (_rb === "#fee2e2" ? ';box-shadow:inset 4px 0 0 #dc2626' : '') + '">' +
           '<td style="padding:6px 8px;color:#64748b;font-weight:700">' + (idx + 1) + '</td>' +
           '<td style="padding:6px 8px"><b>' + esc(i.desc) + '</b><br>' +
           (P.lineNote ? P.lineNote(i, z) : '<span style="font-size:12px;color:#94a3b8">' + esc(i.code) + '</span>') + '</td>' +
@@ -50470,6 +50538,7 @@ function viewCatalogue() {
       if (!elc) return;
       elc.addEventListener("change", function (e) {
         if (S[pair[1]]) S[pair[1]].client = e.target.value;
+        if (pair[1] === "rt") { var _rpk = el("rt_picked"); if (_rpk && S.rt) _rpk.innerHTML = rtPickedHtml(S.rt); }   /* 6.9.713 - his lines against his challans */
         var fl = el(pair[0] + "_flash"); if (fl) fl.innerHTML = presetFlashHtml(e.target.value);
         /* v6.9.251 - a different client has different sites and different deliveries. Rebuild
            both from him, or the boxes go on offering the previous man's - and a challan filed
