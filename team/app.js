@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.716";
+  var APP_VERSION = "6.9.717";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -578,7 +578,7 @@
   }
 
   var ROLE_TABS = {
-    admin:    ["dash","review","agent","report","scorecard","returns","tools","rates","clients","crlog","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","register","paylog","freight","payments","paidout","billing","discounts","commission","complaints","service","spares","dues","payroll","products","catalogs","brandstory","pricelist","catalogue","rules","teampins","tally","plcheck","health","trouble","changelog","booksweep","dups","stock","brief"],
+    admin:    ["dash","review","agent","report","scorecard","returns","tools","rates","clients","crlog","partners","pevents","quotes","leads","brandfollow","winloss","visits","followups","challans","register","paylog","freight","payments","paidout","billing","discounts","commission","complaints","service","spares","dues","payroll","products","catalogs","brandstory","pricelist","catalogue","rules","teampins","tally","plcheck","health","trouble","changelog","booksweep","dups","stock","brief"],
     accounts: ["dash","review","agent","returns","tools","clients","crlog","partners","followups","challans","register","paylog","freight","payments","billing","complaints","service","spares","dues","products","catalogs","rates","pricelist","dups","stock","tally","trouble"],
     godown:   ["dash","agent","returns","tools","challans","freight","products","stock","trouble"],
     sales:    ["dash","review","agent","report","returns","tools","clients","crlog","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","register","paylog","freight","billing","payments","complaints","products","catalogs","dups","brief","trouble"],
@@ -38285,7 +38285,7 @@ function viewCatalogue() {
      nothing else could reach it - so the usage counter would have had to keep a second copy
      of the same forty-two names, and a second copy is how the two quietly stop agreeing.
      Hoisted, not duplicated. render() still reads exactly this. */
-  var TAB_TABS = [["search", "Search"], ["dash", "Today"], ["review", "Twice-weekly review"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["register", "Challan log"], ["paylog", "Payment log"], ["freight", "Drivers & freight"], ["deliveries", "Deliveries"], ["collections", "Payments"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["crlog", "Client & lead log"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["complaints", "Complaints"], ["service", "Service"], ["spares", "Spares"], ["dues", "Service dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["paidout", "Paid out"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["catalogs", "Brand catalogues"], ["brandstory", "Brand stories"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["trouble", "Troubleshoot"], ["changelog", "Change log"], ["booksweep", "Book numbers"], ["dups", "Duplicate check"], ["stock", "Stock"], ["tally", "Tally"], ["plcheck", "Supplier price list"], ["brief", "The brief"]];
+  var TAB_TABS = [["search", "Search"], ["dash", "Today"], ["review", "Twice-weekly review"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["register", "Challan log"], ["paylog", "Payment log"], ["freight", "Drivers & freight"], ["deliveries", "Deliveries"], ["collections", "Payments"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["crlog", "Client & lead log"], ["partners", "Partners"], ["pevents", "Partner events"], ["quotes", "Quotes"], ["commission", "Incentives"], ["complaints", "Complaints"], ["service", "Service"], ["spares", "Spares"], ["dues", "Service dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["paidout", "Paid out"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["catalogs", "Brand catalogues"], ["brandstory", "Brand stories"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["trouble", "Troubleshoot"], ["changelog", "Change log"], ["booksweep", "Book numbers"], ["dups", "Duplicate check"], ["stock", "Stock"], ["tally", "Tally"], ["plcheck", "Supplier price list"], ["brief", "The brief"]];
   var TAB_LABEL = (function () {
     var m = {}; TAB_TABS.forEach(function (t) { m[t[0]] = t[1]; }); return m;
   })();
@@ -43523,6 +43523,246 @@ function viewCatalogue() {
     var at = 0; try { at = (JSON.parse(bigGet(CAT_KEY) || "null") || {}).at || 0; } catch (e) { }
     bigSet(CAT_KEY, JSON.stringify({ v: CAT_V, at: at || Date.now(), items: PRODUCTS }));
   }
+
+  /* ===== 6.9.717 - PARTNER EVENTS: WHO SUPPORTS US, THE MEET, THE GREETINGS  (9 Oct 2026) =====
+     HIS WORDS: "greet partners on Diwali, new year, Christmas ... plumbing contractor meet ... october 24,
+     architect foreign trip ... how to select partners for greeting as supporting partners need to be on
+     top ... planning, invitation, seeking contribution from brands like a proper professional approach
+     ... expense monitoring, partner cost to us vs business generation". Then "yes" to: the support
+     ranking and the plumber-meet event first.
+
+     1. PARTNER SUPPORT - every plumber / architect ranked by the business of the clients he is named on
+        (the same book his incentive is worked from: partnerBook), last 12 months, how much of it is
+        paid, lifetime, the incentive paid him, what events and gifts cost us for him, and business per
+        rupee of that cost. Tier, until he sets slabs: Platinum = top 10% of 12-month business, Gold
+        the next 20%, Silver the next 30%, the rest Base (and no business = Base).
+     2. EVENTS - a meet, a trip or a greeting (Diwali, Christmas, New Year): the guest list (added by
+        role and tier, best first; one at a time too), each guest's status and a WhatsApp invitation,
+        brands asked to contribute (ask, what they get, committed, received) with a request letter
+        drafted from the real figures, expenses against the budget, net cost, cost per attendee, and
+        - once it is over - the attendees' business 90 days after against 90 days before.
+     Storage: audit rows (evt:ev / evt:inv / evt:br / evt:ex), the latest row for a key wins. Nothing
+     is ever deleted - a guest, a brand or an expense taken off is a row saying "removed". No server
+     change is needed. Old books (the old hisab is a photo or PDF) are not in the figures yet - his
+     decision on entering an "old books business" amount is open. */
+  var PEV_ST = { meet: ["Invited", "Confirmed", "Attended", "Declined"], trip: ["Shortlisted", "Invited", "Confirmed", "Travelled", "Declined"],
+    greet: ["To send", "Gift packed", "Delivered", "Greeted on WhatsApp"] };
+  var PEV_TYPES = [["meet", "Meet"], ["trip", "Trip"], ["greet", "Greeting"]];
+  var _pevCache = null, _pevKey = "";
+  function pevRows(action) { return (S.data.audit || []).filter(function (a) { return a.action === action; }).map(function (a) { var d = {}; try { d = JSON.parse(a.detail || "{}"); } catch (e) { d = {}; } d._at = a.createdAt || d.at || ""; d._by = a.actor || ""; return d; }); }
+  function pevLatest(action, keyOf) {
+    var m = {};
+    pevRows(action).forEach(function (d) { var k = keyOf(d); if (!k) return; if (!m[k] || String(d._at) >= String(m[k]._at)) m[k] = d; });
+    return Object.keys(m).map(function (k) { return m[k]; }).filter(function (d) { return !d.removed; });
+  }
+  function pevEvents() { return pevLatest("evt:ev", function (d) { return d.eid; }).sort(function (a, b) { return String(b.date || "").localeCompare(String(a.date || "")); }); }
+  function pevEvent(eid) { return pevEvents().filter(function (e) { return e.eid === eid; })[0] || null; }
+  function pevInv(eid) { return pevLatest("evt:inv", function (d) { return d.eid + "|" + dkey(d.partner); }).filter(function (d) { return d.eid === eid; }); }
+  function pevBrands(eid) { return pevLatest("evt:br", function (d) { return d.bid; }).filter(function (d) { return d.eid === eid; }); }
+  function pevExp(eid) { return pevLatest("evt:ex", function (d) { return d.xid; }).filter(function (d) { return d.eid === eid; }); }
+  function pevSum(list, k) { return list.reduce(function (a, x) { return a + (Number(x[k]) || 0); }, 0); }
+  /* what an event cost us, and who was there to share it */
+  function pevMoney(eid) {
+    var ev = pevEvent(eid) || {}, inv = pevInv(eid), ex = pevExp(eid), br = pevBrands(eid);
+    var spent = pevSum(ex, "amt") + pevSum(inv, "cost"), recd = pevSum(br, "received");
+    var att = inv.filter(function (i) { return /Attended|Travelled|Delivered|Greeted/.test(i.st || ""); });
+    return { spent: spent, recd: recd, committed: pevSum(br, "committed"), net: spent - recd, budget: Number(ev.budget) || 0, att: att, inv: inv,
+      perHead: att.length ? (pevSum(ex, "amt") - recd) / att.length : 0 };
+  }
+  /* ---- 1. the support ranking ---- */
+  function pevSupport() {
+    var key = [(S.data.challans || []).length, (S.data.payments || []).length, (S.data.commpay || []).length, (S.data.associates || []).length, (S.data.audit || []).length, (S.data.returns || []).length].join("|");
+    if (_pevCache && _pevKey === key) return _pevCache;
+    var now = Date.parse(today() + "T00:00:00"), y1 = new Date(now - 365 * 86400000).toISOString().slice(0, 10);
+    /* what each event and gift cost us, per partner: a greeting's own cost, and a meet/trip's net cost shared by who came */
+    var evCost = {};
+    pevEvents().forEach(function (e) {
+      var m = pevMoney(e.eid);
+      m.inv.forEach(function (i) {
+        var k = dkey(i.partner), c = Number(i.cost) || 0;
+        if (m.att.indexOf(i) >= 0 && m.perHead > 0) c += m.perHead;
+        if (c) evCost[k] = (evCost[k] || 0) + c;
+      });
+    });
+    var list = (S.data.associates || []).filter(function (a) { return a && String(a.name || "").trim() && !isCancelled("associates", a.id); }).map(function (a) {
+      var bk = null; try { bk = partnerBook(a.name); } catch (e) { bk = null; }
+      var rows = (bk && bk.rows) || [], b12 = 0, p12 = 0, last = "";
+      rows.forEach(function (r) {
+        var amt = Number(r.amount) || 0; if (r.ret && amt > 0) amt = -amt;
+        if (r.ymd && r.ymd >= y1) { b12 += amt; if (!r.ret) p12 += amt * (Number(r.paidShare) || 0); }
+        if (!r.ret && r.ymd > last) last = r.ymd;
+      });
+      var life = rows.reduce(function (s2, r) { var amt = Number(r.amount) || 0; return s2 + (r.ret && amt > 0 ? -amt : amt); }, 0);
+      var inc = bk ? Number(bk.paid) || 0 : 0, ev = evCost[dkey(a.name)] || 0, cost = inc + ev;
+      return { a: a, name: a.name, role: String(a.role || ""), loc: a.location || "", mob: String(a.mobile || "").replace(/\D/g, "").slice(-10),
+        b12: Math.round(b12), p12: Math.round(p12), life: Math.round(life), inc: Math.round(inc), ev: Math.round(ev), cost: Math.round(cost),
+        ret: cost > 0 ? b12 / cost : 0, last: last, sites: bk && bk.sites ? bk.sites.length : 0 };
+    });
+    var withBiz = list.filter(function (x) { return x.b12 > 0; }).sort(function (x, y) { return y.b12 - x.b12; });
+    var n = withBiz.length;
+    withBiz.forEach(function (x, i) { var q = n ? (i + 1) / n : 1; x.tier = q <= 0.10 ? "Platinum" : q <= 0.30 ? "Gold" : q <= 0.60 ? "Silver" : "Base"; });
+    list.forEach(function (x) { if (!x.tier) x.tier = "Base"; x.rank = { Platinum: 0, Gold: 1, Silver: 2, Base: 3 }[x.tier]; });
+    list.sort(function (x, y) { return x.rank - y.rank || y.b12 - x.b12 || y.life - x.life || String(x.name).localeCompare(String(y.name)); });
+    _pevKey = key; _pevCache = list;
+    return list;
+  }
+  function pevTierPill(t) {
+    var c = { Platinum: ["#1e293b", "#e2e8f0"], Gold: ["#92400e", "#fde68a"], Silver: ["#334155", "#e5e7eb"], Base: ["#64748b", "#f1f5f9"] }[t] || ["#64748b", "#f1f5f9"];
+    return '<span style="display:inline-block;font-size:12px;font-weight:800;color:' + c[0] + ';background:' + c[1] + ';border-radius:6px;padding:1px 7px;white-space:nowrap">' + esc(t) + '</span>';
+  }
+  function pevTable(cols, rows) {
+    return '<div style="overflow-x:auto;border:1px solid #e2e8f0;border-radius:10px;margin-top:8px"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="background:#0b3b36;color:#fff">' +
+      cols.map(function (c) { return '<th style="padding:6px 8px;text-align:' + (c[1] || "left") + ';white-space:nowrap">' + c[0] + '</th>'; }).join("") + '</tr></thead><tbody>' +
+      rows.map(function (r, i) { return '<tr style="border-top:1px solid #eef2f7;background:' + (i % 2 ? '#f8fafc' : '#fff') + '">' + r.map(function (v, j) { return '<td style="padding:5px 8px;text-align:' + (cols[j][1] || "left") + ';vertical-align:middle">' + v + '</td>'; }).join("") + '</tr>'; }).join("") +
+      '</tbody></table></div>';
+  }
+  function viewPev() {
+    if (!roleIs("admin")) return '<div class="empty">Partner events are kept by the owner.</div>';
+    if (S.pevOpen) { var ev = pevEvent(S.pevOpen); if (ev) return viewPevEvent(ev); S.pevOpen = ""; }
+    var sup = pevSupport(), role = S.pevRole || "", tf = S.pevTier || "";
+    var shown = sup.filter(function (x) { return (!role || new RegExp(role, "i").test(x.role)) && (!tf || x.tier === tf); });
+    var cnt = function (t) { return sup.filter(function (x) { return x.tier === t && (!role || new RegExp(role, "i").test(x.role)); }).length; };
+    var chip = function (act, v, cur, lab) { return '<button class="btn sm' + (v === cur ? '' : ' ghost') + '" style="min-height:44px" data-act="' + act + '" data-v="' + esc(v) + '">' + lab + '</button>'; };
+    var h = '<div class="card"><h2 style="margin:0">Partner events</h2><div class="meta" style="font-size:13px">Meets, trips and festival greetings, with the partners who support us most on top. Everything here is kept as a record; nothing is deleted.</div>' +
+      '<div class="acts" style="margin-top:8px;flex-wrap:wrap;gap:6px"><button class="btn sm" style="min-height:44px" data-act="pev-new">+ New event</button></div></div>';
+    var evs = pevEvents();
+    h += '<div class="card"><h3 style="margin:0">Events</h3>' + (evs.length ? pevTable([["Event"], ["Type"], ["Date"], ["Guests", "right"], ["Budget", "right"], ["Spent", "right"], ["Brands in", "right"], [""]],
+      evs.map(function (e) { var m = pevMoney(e.eid); return ['<b>' + esc(e.name) + '</b>' + (e.venue ? '<div style="font-size:12px;color:#64748b">' + esc(e.venue) + '</div>' : ''), esc((PEV_TYPES.filter(function (t) { return t[0] === e.type; })[0] || ["", e.type])[1]), esc(e.date ? dmy(e.date) : ''), m.inv.length, m.budget ? money(m.budget) : '—', money(m.spent), money(m.recd),
+        '<button class="btn sm" style="min-height:44px" data-act="pev-open" data-id="' + esc(e.eid) + '">Open</button>']; })) : '<div class="empty">No event yet — press + New event.</div>') + '</div>';
+    h += '<div class="card"><h3 style="margin:0">Partner support — who brings us business</h3>' +
+      '<div class="meta" style="font-size:12.5px">Business = net deliveries to the clients he is named on (the same book as his incentive), last 12 months. Cost = incentive paid + what gifts and events cost us for him. Tier: Platinum top 10% of 12-month business, Gold next 20%, Silver next 30%, rest Base.</div>' +
+      '<div class="acts" style="margin-top:8px;flex-wrap:wrap;gap:6px">' + chip("pev-role", "", role, "All") + chip("pev-role", "plumb", role, "Plumbers") + chip("pev-role", "archit", role, "Architects") +
+      '<span style="width:10px"></span>' + chip("pev-tier", "", tf, "Every tier") + ["Platinum", "Gold", "Silver", "Base"].map(function (t) { return chip("pev-tier", t, tf, t + " (" + cnt(t) + ")"); }).join("") + '</div>' +
+      pevTable([["#", "right"], ["Partner"], ["Tier"], ["Business 12 m", "right"], ["Paid of it", "right"], ["Lifetime", "right"], ["Incentive paid", "right"], ["Gifts & events", "right"], ["Business per ₹1", "right"], ["Last delivery"]],
+        shown.slice(0, 300).map(function (x, i) { return [i + 1, '<b>' + esc(x.name) + '</b><div style="font-size:12px;color:#64748b">' + esc([x.role, x.loc].filter(Boolean).join(" · ")) + '</div>', pevTierPill(x.tier),
+          x.b12 ? money(x.b12) : '—', x.p12 ? money(x.p12) : '—', x.life ? money(x.life) : '—', x.inc ? money(x.inc) : '—', x.ev ? money(x.ev) : '—',
+          x.cost > 0 ? '<b>' + money(Math.round(x.ret)) + '</b>' : (x.b12 > 0 ? '<span style="color:#0f766e">no cost yet</span>' : '—'), x.last ? esc(dmy(x.last)) : '—']; })) +
+      (shown.length > 300 ? '<div class="meta" style="font-size:12px">Showing 300 of ' + shown.length + '.</div>' : '') + '</div>';
+    return h;
+  }
+  function modalPevNew(e) {
+    e = e || {};
+    return '<h2>' + (e.eid ? 'Edit event' : 'New event') + '</h2>' +
+      '<label>Name</label><input id="pe_name" value="' + esc(e.name || "") + '" placeholder="e.g. Plumber meet 2026"/>' +
+      '<div class="grid2"><div><label>Type</label><select id="pe_type">' + PEV_TYPES.map(function (t) { return '<option value="' + t[0] + '"' + (t[0] === (e.type || "meet") ? ' selected' : '') + '>' + t[1] + '</option>'; }).join("") + '</select></div>' +
+      '<div><label>Date</label><input id="pe_date" type="date" value="' + esc(e.date || "") + '"/></div></div>' +
+      '<div class="grid2"><div><label>Venue / place</label><input id="pe_venue" value="' + esc(e.venue || "") + '"/></div>' +
+      '<div><label>Budget (₹)</label><input id="pe_budget" inputmode="numeric" value="' + esc(e.budget || "") + '"/></div></div>' +
+      '<label>Invitation message (WhatsApp)</label><textarea id="pe_msg" rows="4" style="width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid #cbd5e1;border-radius:8px;font:inherit">' +
+      esc(e.msg || "Namaste {name} ji,\nEnergy World invites you to our {event} on {date} at {venue}.\nPlease confirm your presence.\n— Mukesh Verma, Energy World") + '</textarea>' +
+      '<div class="meta" style="font-size:12px;color:#64748b">{name}, {event}, {date} and {venue} are filled in for each guest.</div>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button><button class="btn" data-act="pev-save" data-id="' + esc(e.eid || "") + '">Save event</button></div>';
+  }
+  function pevMsg(e, name) {
+    return String(e.msg || "").replace(/\{name\}/g, name).replace(/\{event\}/g, e.name || "").replace(/\{date\}/g, e.date ? dmy(e.date) : "").replace(/\{venue\}/g, e.venue || "");
+  }
+  /* the business his partners did in one brand, last 12 months - for the request letter */
+  function pevBrandBiz(brand, partners) {
+    var b = dkey(brand), y1 = new Date(Date.parse(today() + "T00:00:00") - 365 * 86400000).toISOString().slice(0, 10), tot = 0, seen = {};
+    var cls = {}; partners.forEach(function (n) { (S.data.clients || []).forEach(function (cl) { if (clientRolesOf(cl, dkey(n)).length) cls[dkey(cl.name)] = 1; }); });
+    dedupeChallans(S.data.challans || []).forEach(function (c) {
+      if (!cls[dkey(c.customerName)] || String(c.createdAt || "").slice(0, 10) < y1 || seen[c.challanNo]) return;
+      try { if (stkChDead(c)) return; } catch (e) { }
+      seen[c.challanNo] = 1;
+      try { pricedLines(c, c.customerName).forEach(function (x) { if (dkey(x.brand || c.brand || "") === b) tot += Number(x.amt) || 0; }); } catch (e) { }
+    });
+    return Math.round(tot);
+  }
+  function viewPevEvent(e) {
+    var m = pevMoney(e.eid), sup = pevSupport(), byN = {}; sup.forEach(function (x) { byN[dkey(x.name)] = x; });
+    var sts = PEV_ST[e.type] || PEV_ST.meet, isG = e.type === "greet";
+    var inv = m.inv.map(function (i) { return { i: i, x: byN[dkey(i.partner)] || { tier: "Base", rank: 3, b12: 0, role: "", mob: "" } }; })
+      .sort(function (p, q) { return p.x.rank - q.x.rank || q.x.b12 - p.x.b12; });
+    var cnt = {}; m.inv.forEach(function (i) { cnt[i.st] = (cnt[i.st] || 0) + 1; });
+    var h = '<div class="card"><div class="acts" style="align-items:center;margin:0;flex-wrap:wrap;gap:6px"><button class="btn sm ghost" style="min-height:44px" data-act="pev-back">← All events</button>' +
+      '<h2 class="grow" style="margin:0">' + esc(e.name) + '</h2><button class="btn sm ghost" style="min-height:44px" data-act="pev-edit" data-id="' + esc(e.eid) + '">Edit</button></div>' +
+      '<div class="meta" style="font-size:13px">' + esc((PEV_TYPES.filter(function (t) { return t[0] === e.type; })[0] || ["", ""])[1]) + (e.date ? ' · ' + esc(dmy(e.date)) : '') + (e.venue ? ' · ' + esc(e.venue) : '') + '</div>' +
+      '<div class="cards" style="margin-top:8px">' +
+        '<div class="stat"><div class="n">' + m.inv.length + '</div><div class="l">guests</div></div>' +
+        sts.map(function (s2) { return '<div class="stat"><div class="n">' + (cnt[s2] || 0) + '</div><div class="l">' + esc(s2) + '</div></div>'; }).join("") +
+        '<div class="stat"><div class="n">' + (m.budget ? money(m.budget) : '—') + '</div><div class="l">budget</div></div>' +
+        '<div class="stat' + (m.budget && m.spent > m.budget ? ' alert' : '') + '"><div class="n">' + money(m.spent) + '</div><div class="l">spent</div></div>' +
+        '<div class="stat"><div class="n">' + money(m.recd) + '</div><div class="l">from brands' + (m.committed > m.recd ? ' (' + money(m.committed) + ' promised)' : '') + '</div></div>' +
+        '<div class="stat"><div class="n">' + money(m.net) + '</div><div class="l">net cost to us</div></div>' +
+        (m.att.length && !isG ? '<div class="stat"><div class="n">' + money(Math.round(m.perHead)) + '</div><div class="l">per attendee</div></div>' : '') + '</div></div>';
+    /* guests */
+    var invited = {}; m.inv.forEach(function (i) { invited[dkey(i.partner)] = 1; });
+    var pool = sup.filter(function (x) { return !invited[dkey(x.name)]; });
+    h += '<div class="card"><h3 style="margin:0">Guests — best supporters first</h3>' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end;margin-top:8px">' +
+        '<div><label style="margin-top:0">Add everyone who is</label><select id="pe_addrole" style="min-height:44px"><option value="plumb">Plumber</option><option value="archit">Architect</option><option value="">Any role</option></select></div>' +
+        '<div><label style="margin-top:0">tier at least</label><select id="pe_addtier" style="min-height:44px"><option>Platinum</option><option selected>Gold</option><option>Silver</option><option>Base</option></select></div>' +
+        '<button class="btn sm" style="min-height:44px" data-act="pev-addrule" data-id="' + esc(e.eid) + '">Add them</button>' +
+        '<div style="flex:1 1 200px"><label style="margin-top:0">or one partner</label><select id="pe_addone" style="min-height:44px;width:100%"><option value="">— pick —</option>' +
+          pool.slice(0, 400).map(function (x) { return '<option value="' + esc(x.name) + '">' + esc(x.name) + ' · ' + esc(x.tier) + (x.b12 ? ' · ' + money(x.b12) : '') + '</option>'; }).join("") + '</select></div>' +
+        '<button class="btn sm ghost" style="min-height:44px" data-act="pev-addone" data-id="' + esc(e.eid) + '">Add</button></div>' +
+      (inv.length ? pevTable([["Partner"], ["Tier"], ["Business 12 m", "right"], ["Status"], [isG ? "Gift ₹" : "Own cost ₹", "right"], [""]],
+        inv.map(function (p, k) {
+          var i = p.i, x = p.x, mob = x.mob || "";
+          return ['<b>' + esc(i.partner) + '</b><div style="font-size:12px;color:#64748b">' + esc(x.role || "") + (mob ? ' · ' + esc(mob) : ' · <span style="color:#b45309">no mobile</span>') + '</div>', pevTierPill(x.tier), x.b12 ? money(x.b12) : '—',
+            '<select class="pev-st" data-id="' + esc(e.eid) + '" data-p="' + esc(i.partner) + '" style="min-height:44px">' + sts.map(function (s2) { return '<option' + (s2 === i.st ? ' selected' : '') + '>' + esc(s2) + '</option>'; }).join("") + '</select>',
+            '<input class="pev-cost" data-id="' + esc(e.eid) + '" data-p="' + esc(i.partner) + '" inputmode="numeric" value="' + esc(i.cost || "") + '" placeholder="0" style="width:84px;font-size:14px;text-align:right;min-height:44px"/>',
+            '<div style="display:flex;gap:6px;justify-content:flex-end">' + (mob ? '<a class="btn sm ghost" style="min-height:44px;display:inline-flex;align-items:center;text-decoration:none" target="_blank" rel="noopener" href="https://wa.me/91' + esc(mob) + '?text=' + encodeURIComponent(pevMsg(e, i.partner)) + '">WhatsApp</a>' : '') +
+            '<button class="btn sm ghost" style="min-height:44px" data-act="pev-rm" data-id="' + esc(e.eid) + '" data-p="' + esc(i.partner) + '">Take off</button></div>'];
+        })) : '<div class="empty">No guest yet.</div>') + '</div>';
+    /* brands */
+    var brs = pevBrands(e.eid), bOpts = (S.data.brands || []).map(function (b) { return String(b.brand || "").trim(); }).filter(Boolean).sort();
+    var gnames = m.inv.map(function (i) { return i.partner; });
+    h += '<div class="card"><h3 style="margin:0">Brands — contribution</h3>' +
+      '<div class="meta" style="font-size:12.5px">Ask each brand for a share. The letter carries what this event’s guests bought of that brand in the last 12 months.</div>' +
+      (brs.length ? pevTable([["Brand"], ["Their guests’ business 12 m", "right"], ["Asked", "right"], ["They get"], ["Committed", "right"], ["Received", "right"], [""]],
+        brs.map(function (b) { var biz = pevBrandBiz(b.brand, gnames); return ['<b>' + esc(b.brand) + '</b>', biz ? money(biz) : '—', b.ask ? money(b.ask) : '—', esc(b.gives || ""),
+          b.committed ? money(b.committed) : '—', b.received ? '<b style="color:#0f766e">' + money(b.received) + '</b>' : '—',
+          '<div style="display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap"><button class="btn sm ghost" style="min-height:44px" data-act="pev-brlet" data-id="' + esc(b.bid) + '">Letter</button><button class="btn sm ghost" style="min-height:44px" data-act="pev-bredit" data-id="' + esc(b.bid) + '">Update</button></div>']; })) : '') +
+      '<div style="margin-top:8px"><button class="btn sm" style="min-height:44px" data-act="pev-bradd" data-id="' + esc(e.eid) + '">+ Brand</button></div></div>';
+    /* expenses */
+    var ex = pevExp(e.eid);
+    h += '<div class="card"><h3 style="margin:0">Expenses' + (m.budget ? ' — ' + money(pevSum(ex, "amt")) + ' of ' + money(m.budget) + ' budget' : '') + '</h3>' +
+      (ex.length ? pevTable([["Head"], ["Paid to"], ["Amount", "right"], ["Note"], ["By"], [""]], ex.map(function (x) { return [esc(x.head), esc(x.to || ""), money(x.amt), esc(x.note || ""), esc(x._by || ""),
+        '<button class="btn sm ghost" style="min-height:44px" data-act="pev-exrm" data-id="' + esc(x.xid) + '">Take off</button>']; })) : '') +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end;margin-top:8px">' +
+        '<div><label style="margin-top:0">Head</label><select id="pe_xhead" style="min-height:44px">' + ["Venue", "Food", "Gifts", "Travel", "Hotel", "Printing", "Sound & stage", "Other"].map(function (o) { return '<option>' + o + '</option>'; }).join("") + '</select></div>' +
+        '<div><label style="margin-top:0">Paid to</label><input id="pe_xto" style="width:150px"/></div>' +
+        '<div><label style="margin-top:0">Amount ₹</label><input id="pe_xamt" inputmode="numeric" style="width:110px"/></div>' +
+        '<div style="flex:1 1 140px"><label style="margin-top:0">Note</label><input id="pe_xnote"/></div>' +
+        '<button class="btn sm" style="min-height:44px" data-act="pev-exadd" data-id="' + esc(e.eid) + '">+ Expense</button></div></div>';
+    /* after the event: did it pay? */
+    if (e.date && e.date <= today() && m.att.length && !isG) {
+      var d0 = e.date, ms = Date.parse(d0 + "T00:00:00"), b90 = new Date(ms - 90 * 86400000).toISOString().slice(0, 10), a90 = new Date(ms + 90 * 86400000).toISOString().slice(0, 10), bef = 0, aft = 0;
+      m.att.forEach(function (i) { var bk = null; try { bk = partnerBook(i.partner); } catch (er) { bk = null; } ((bk && bk.rows) || []).forEach(function (r) { var amt = Number(r.amount) || 0; if (r.ret && amt > 0) amt = -amt; if (r.ymd >= b90 && r.ymd < d0) bef += amt; else if (r.ymd >= d0 && r.ymd < a90) aft += amt; }); });
+      var days = Math.min(90, Math.max(1, Math.round((Date.parse(today() + "T00:00:00") - ms) / 86400000)));
+      h += '<div class="card"><h3 style="margin:0">Did it pay? — the ' + plural(m.att.length, "attendee") + '’ business</h3>' +
+        '<div class="cards" style="margin-top:8px"><div class="stat"><div class="n">' + money(Math.round(bef)) + '</div><div class="l">90 days before</div></div>' +
+        '<div class="stat"><div class="n">' + money(Math.round(aft)) + '</div><div class="l">after (' + days + ' of 90 days so far)</div></div>' +
+        '<div class="stat"><div class="n">' + money(m.net) + '</div><div class="l">what the event cost us</div></div></div></div>';
+    } else if (!isG) {
+      h += '<div class="card" style="background:#f8fafc"><h3 style="margin:0">Did it pay?</h3><div class="meta" style="font-size:13px;margin-top:4px">From the event day on, this shows the business of the partners marked <b>Attended</b>: 90 days before the event against the 90 days after, beside what the event cost us.' +
+        (m.att.length ? '' : ' Mark the guests who came as Attended.') + '</div></div>';
+    }
+    return h;
+  }
+  function modalPevBrand(eid, b) {
+    b = b || {};
+    var bOpts = (S.data.brands || []).map(function (x) { return String(x.brand || "").trim(); }).filter(Boolean).sort();
+    return '<h2>' + (b.bid ? 'Update ' + esc(b.brand) : 'Ask a brand') + '</h2>' +
+      '<label>Brand</label><select id="pb_brand" style="min-height:44px">' + bOpts.map(function (o) { return '<option' + (o === b.brand ? ' selected' : '') + '>' + esc(o) + '</option>'; }).join("") + '</select>' +
+      '<div class="grid2"><div><label>Asked ₹</label><input id="pb_ask" inputmode="numeric" value="' + esc(b.ask || "") + '"/></div><div><label>They get</label><input id="pb_gives" value="' + esc(b.gives || "") + '" placeholder="stall, 10-minute talk, logo on backdrop"/></div></div>' +
+      '<div class="grid2"><div><label>Committed ₹</label><input id="pb_com" inputmode="numeric" value="' + esc(b.committed || "") + '"/></div><div><label>Received ₹</label><input id="pb_rec" inputmode="numeric" value="' + esc(b.received || "") + '"/></div></div>' +
+      '<div class="foot">' + (b.bid ? '<button class="btn ghost" data-act="pev-brrm" data-id="' + esc(b.bid) + '">Take off</button>' : '') + '<button class="btn ghost" data-act="close">Cancel</button>' +
+      '<button class="btn" data-act="pev-brsave" data-id="' + esc(eid) + '" data-bid="' + esc(b.bid || "") + '">Save</button></div>';
+  }
+  function pevLetter(b) {
+    var e = pevEvent(b.eid) || {}, m = pevMoney(b.eid), guests = m.inv.map(function (i) { return i.partner; });
+    var biz = pevBrandBiz(b.brand, guests), roles = {}, sup = pevSupport(), byN = {}; sup.forEach(function (x) { byN[dkey(x.name)] = x; });
+    guests.forEach(function (g) { var r = (byN[dkey(g)] || {}).role || "Partner"; roles[r] = (roles[r] || 0) + 1; });
+    return "To the " + b.brand + " team,\n\nSubject: Partnership for Energy World — " + (e.name || "") + (e.date ? ", " + dmy(e.date) : "") + (e.venue ? ", " + e.venue : "") + "\n\n" +
+      "Energy World is bringing together " + guests.length + " of its partners (" + Object.keys(roles).map(function (r) { return roles[r] + " " + r.toLowerCase() + (roles[r] === 1 ? "" : "s"); }).join(", ") + ") from Panipat, Sonipat and Karnal." +
+      (biz ? "\n\nIn the last 12 months these partners' sites took ₹" + biz.toLocaleString("en-IN") + " of " + b.brand + " through us." : "") +
+      "\n\nWe invite " + b.brand + " to partner with us for this " + ((PEV_TYPES.filter(function (t) { return t[0] === e.type; })[0] || ["", "event"])[1]).toLowerCase() + (b.ask ? " with a contribution of ₹" + Number(b.ask).toLocaleString("en-IN") : "") + "." +
+      (b.gives ? "\n\nIn return, " + b.brand + " will have: " + b.gives + "." : "") +
+      "\n\nWe would be glad to have your team present.\n\nWarm regards,\nMukesh Verma\nEnergy World";
+  }
+  function pevSaveRow(action, target, detail) { return auditFact(action, target, detail).then(function () { _pevKey = ""; }, function () { _pevKey = ""; }); }
   function viewTally() {
     ensureStock();
     var h = '<div class="card"><div class="acts" style="align-items:center;margin:0;flex-wrap:wrap;gap:6px"><h2 class="grow" style="margin:0">Tally</h2>' +
@@ -48432,6 +48672,16 @@ function viewCatalogue() {
       (pl.change.length && !p.done ? '<button class="btn" data-act="stk-lvimp-go">Save ' + plural(pl.change.length, "level") + '</button>' : '') + '</div>';
     return h;
   }
+  /* 6.9.717 - a guest's status or gift cost, saved as he changes it */
+  document.addEventListener("change", function (ev) {
+    var tg = ev && ev.target; if (!tg || !tg.classList) return;
+    if (!tg.classList.contains("pev-st") && !tg.classList.contains("pev-cost")) return;
+    var eid = tg.getAttribute("data-id"), pn = tg.getAttribute("data-p");
+    var cur = pevInv(eid).filter(function (i) { return dkey(i.partner) === dkey(pn); })[0] || { eid: eid, partner: pn };
+    var nx = Object.assign({}, cur); delete nx._at; delete nx._by; delete nx.at;
+    if (tg.classList.contains("pev-st")) nx.st = tg.value; else nx.cost = nAmt(tg.value) || 0;
+    pevSaveRow("evt:inv", eid, nx).then(function () { keepScroll = true; renderBg(); toast(pn + ": " + (tg.classList.contains("pev-st") ? tg.value : money(nx.cost)) + " saved."); });
+  });
   /* 6.9.711 - the supplier price list */
   document.addEventListener("change", function (ev) {
     var tg = ev && ev.target; if (!tg) return;
@@ -50137,7 +50387,7 @@ function viewCatalogue() {
     ["Clients",    ["clients", "leads", "crlog", "brandfollow", "followups", "quotes", "discounts", "pitch", "winloss", "review"]],
     ["Service",    ["complaints", "service"]],   /* 6.9.684 - complaints first */
     ["Products",   ["products", "pricelist", "catalogue", "catalogs", "brandstory", "stock", "tally", "plcheck"]],   /* 6.9.612 - price list and add-product back */   /* v6.9.581 - the catalogue library; v6.9.605 - Stock, on his "stock entry in CRM" */
-    ["Team",       ["partners", "commission", "payroll", "scorecard", "report", "teampins"]],
+    ["Team",       ["partners", "pevents", "commission", "payroll", "scorecard", "report", "teampins"]],
     /* v6.9.539 - item 23: "Book numbers - what's the use, it's empty" (measured: 0 rows) - off
        the header; the screen still opens from the Health check. Item 25: The brief is a tab
        inside Agent now, so it is not here twice. */
@@ -50264,7 +50514,7 @@ function viewCatalogue() {
     catalogue: 1, partners: 1, scorecard: 1, report: 1, commission: 1, payroll: 1, teampins: 1, dash: 1,
     pending: 1, trouble: 1, dups: 1, health: 1, changelog: 1, tools: 1, brief: 1, rates: 1, rules: 1, booksweep: 1 };
   var HELP_ALIAS = { deliveries: "challans", collections: "payments", pricing: "pricelist", payrollhub: "commission",
-    dossier: "clients", matrix: "pitch", sites: "pitch", customers: "clients", paylog: "payments", complaints: "service", crlog: "clients", tally: "stock", plcheck: "stock" };   /* 6.9.667; 6.9.684 complaints -> the service section until it has its own */
+    dossier: "clients", matrix: "pitch", sites: "pitch", customers: "clients", paylog: "payments", complaints: "service", crlog: "clients", tally: "stock", plcheck: "stock", pevents: "partners" };   /* 6.9.667; 6.9.684 complaints -> the service section until it has its own */
   function helpHref(tab) {
     var k = HELP_AT[tab] ? tab : (HELP_ALIAS[tab] || "");
     return "../help/crm.html#t-" + (k || "start");
@@ -50494,7 +50744,7 @@ function viewCatalogue() {
       setTimeout(function () { try { preloadLogos(); } catch (e) { } }, 4000);
     }
     if (!S.pin && !S.tok) { renderLogin(); return; }
-    var views = { agent: viewAgent, search: viewSearch, dossier: viewDossier, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, complaints: viewComplaints, payments: viewPayments, paidout: viewPaidOut, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, catalogs: viewCatalogues, brandstory: viewBrandStories, clients: viewClients, crlog: viewCrLog, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, register: viewRegister, paylog: viewPayLog, freight: viewFreight, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, trouble: viewTrouble, changelog: viewChangeLog, booksweep: viewBookSweep, dups: viewDups, stock: viewStock, tally: viewTally, plcheck: viewPlCheck, brief: viewBrief, review: viewReview };
+    var views = { agent: viewAgent, search: viewSearch, dossier: viewDossier, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, complaints: viewComplaints, payments: viewPayments, paidout: viewPaidOut, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, catalogs: viewCatalogues, brandstory: viewBrandStories, clients: viewClients, crlog: viewCrLog, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, register: viewRegister, paylog: viewPayLog, freight: viewFreight, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, trouble: viewTrouble, changelog: viewChangeLog, booksweep: viewBookSweep, dups: viewDups, stock: viewStock, tally: viewTally, plcheck: viewPlCheck, pevents: viewPev, brief: viewBrief, review: viewReview };
     var tabs = TAB_TABS;
 
     var h = '<div class="top">' +
@@ -51996,6 +52246,76 @@ function viewCatalogue() {
         return { id: "S-" + Date.now() + "-" + i + "-" + Math.floor(Math.random() * 1000000) + "-reorder", type: "reorder", code: x.code, desc: "", qty: L.min || 0, ref: "", asOn: today(),
           notes: JSON.stringify({ max: L.max || 0, pack: x.want, crit: L.crit || 0 }) };
       }));
+      return;
+    }
+    if (act === "pev-new" || act === "pev-edit") { S.modal = modalPevNew(act === "pev-edit" ? pevEvent(t.getAttribute("data-id")) : null); render(); return; }   /* 6.9.717 */
+    if (act === "pev-save") {
+      var _pn = String(val("pe_name") || "").trim(); if (!_pn) { toast("Give the event a name."); return; }
+      var _pid = t.getAttribute("data-id") || mintId("EV");
+      var _pe = { eid: _pid, name: _pn, type: val("pe_type") || "meet", date: val("pe_date") || "", venue: String(val("pe_venue") || "").trim(), budget: nAmt(val("pe_budget")) || 0, msg: String((el("pe_msg") || {}).value || "") };
+      t.disabled = true; pevSaveRow("evt:ev", _pid, _pe).then(function () { S.modal = null; S.pevOpen = _pid; render(); toast("Event saved."); });
+      return;
+    }
+    if (act === "pev-open") { S.pevOpen = t.getAttribute("data-id"); render(); window.scrollTo(0, 0); return; }
+    if (act === "pev-back") { S.pevOpen = ""; render(); return; }
+    if (act === "pev-role") { S.pevRole = t.getAttribute("data-v") || ""; keepScroll = true; render(); return; }
+    if (act === "pev-tier") { S.pevTier = t.getAttribute("data-v") || ""; keepScroll = true; render(); return; }
+    if (act === "pev-addrule" || act === "pev-addone") {
+      var _eid = t.getAttribute("data-id"), _ev = pevEvent(_eid); if (!_ev) return;
+      var _st0 = (PEV_ST[_ev.type] || PEV_ST.meet)[0], _have = {}; pevInv(_eid).forEach(function (i) { _have[dkey(i.partner)] = 1; });
+      var _who = [];
+      if (act === "pev-addone") { var _one = val("pe_addone"); if (!_one) { toast("Pick a partner."); return; } _who = [_one]; }
+      else {
+        var _rl = val("pe_addrole") || "", _mt = { Platinum: 0, Gold: 1, Silver: 2, Base: 3 }[val("pe_addtier") || "Gold"];
+        _who = pevSupport().filter(function (x) { return x.rank <= _mt && (!_rl || new RegExp(_rl, "i").test(x.role)); }).map(function (x) { return x.name; });
+      }
+      _who = _who.filter(function (n) { return !_have[dkey(n)]; });
+      if (!_who.length) { toast("Nobody new to add."); return; }
+      t.disabled = true; toast("Adding " + plural(_who.length, "guest") + "…");
+      Promise.all(_who.map(function (n) { return pevSaveRow("evt:inv", _eid, { eid: _eid, partner: n, st: _st0, cost: 0 }); })).then(function () { keepScroll = true; render(); toast(plural(_who.length, "guest") + " added."); });
+      return;
+    }
+    if (act === "pev-rm") {
+      var _re = t.getAttribute("data-id"), _rp = t.getAttribute("data-p");
+      pevSaveRow("evt:inv", _re, { eid: _re, partner: _rp, removed: 1 }).then(function () { keepScroll = true; render(); toast(_rp + " taken off the list (kept in the record)."); });
+      return;
+    }
+    if (act === "pev-bradd" || act === "pev-bredit") {
+      var _bb = act === "pev-bredit" ? pevLatest("evt:br", function (d) { return d.bid; }).filter(function (d) { return d.bid === t.getAttribute("data-id"); })[0] : null;
+      S.modal = modalPevBrand(_bb ? _bb.eid : t.getAttribute("data-id"), _bb); render(); return;
+    }
+    if (act === "pev-brsave") {
+      var _be = t.getAttribute("data-id"), _bid = t.getAttribute("data-bid") || mintId("EB");
+      var _br = { eid: _be, bid: _bid, brand: val("pb_brand"), ask: nAmt(val("pb_ask")) || 0, gives: String(val("pb_gives") || "").trim(), committed: nAmt(val("pb_com")) || 0, received: nAmt(val("pb_rec")) || 0 };
+      if (!_br.brand) { toast("Pick the brand."); return; }
+      t.disabled = true; pevSaveRow("evt:br", _be, _br).then(function () { S.modal = null; keepScroll = true; render(); toast(_br.brand + " saved."); });
+      return;
+    }
+    if (act === "pev-brrm") {
+      var _rb = pevLatest("evt:br", function (d) { return d.bid; }).filter(function (d) { return d.bid === t.getAttribute("data-id"); })[0];
+      if (!_rb) return;
+      pevSaveRow("evt:br", _rb.eid, Object.assign({}, _rb, { removed: 1 })).then(function () { S.modal = null; keepScroll = true; render(); toast(_rb.brand + " taken off (kept in the record)."); });
+      return;
+    }
+    if (act === "pev-brlet") {
+      var _lb = pevLatest("evt:br", function (d) { return d.bid; }).filter(function (d) { return d.bid === t.getAttribute("data-id"); })[0]; if (!_lb) return;
+      var _lt = pevLetter(_lb);
+      S.modal = '<h2>Request letter — ' + esc(_lb.brand) + '</h2><textarea id="pb_letter" rows="16" style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font:inherit">' + esc(_lt) + '</textarea>' +
+        '<div class="foot"><button class="btn ghost" data-act="close">Close</button><button class="btn ghost" data-act="pev-letcopy">Copy</button>' +
+        '<a class="btn" style="text-decoration:none;display:inline-flex;align-items:center" target="_blank" rel="noopener" href="https://wa.me/?text=' + encodeURIComponent(_lt) + '">WhatsApp</a></div>';
+      render(); return;
+    }
+    if (act === "pev-letcopy") { try { navigator.clipboard.writeText(String((el("pb_letter") || {}).value || "")); toast("Copied."); } catch (e) { toast("Select the text and copy it."); } return; }
+    if (act === "pev-exadd") {
+      var _xe = t.getAttribute("data-id"), _xa = nAmt(val("pe_xamt"));
+      if (!(_xa > 0)) { toast("Type the amount."); return; }
+      var _x = { eid: _xe, xid: mintId("EX"), head: val("pe_xhead") || "Other", to: String(val("pe_xto") || "").trim(), amt: _xa, note: String(val("pe_xnote") || "").trim() };
+      t.disabled = true; pevSaveRow("evt:ex", _xe, _x).then(function () { keepScroll = true; render(); toast(money(_xa) + " " + _x.head + " added."); });
+      return;
+    }
+    if (act === "pev-exrm") {
+      var _rx = pevLatest("evt:ex", function (d) { return d.xid; }).filter(function (d) { return d.xid === t.getAttribute("data-id"); })[0]; if (!_rx) return;
+      pevSaveRow("evt:ex", _rx.eid, Object.assign({}, _rx, { removed: 1 })).then(function () { keepScroll = true; render(); toast("Expense taken off (kept in the record)."); });
       return;
     }
     if (act === "tl-xlsx") { tlXlsx(); return; }
