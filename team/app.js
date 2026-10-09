@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.720";
+  var APP_VERSION = "6.9.721";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -48113,6 +48113,27 @@ function viewCatalogue() {
   function stkOrdLines() {
     var o = stkToOrder(), have = {}, out = [];
     o.list.forEach(function (x) { have[x.code] = 1; var t = stkOrdTyped(x.code, x.pack); out.push(Object.assign({}, x, { sug: x.need, typed: t, qty: t === undefined ? x.need : t })); });
+    /* ===== 6.9.721 - A PRODUCT NEVER COUNTED IS NO LONGER LEFT OFF  (9 Oct 2026) =====
+       HIS WORDS: "Us socket 110 is in critical stock level but not shown in stock to order, can you
+       inspect all and fix this as wrong stock order will be a dangerous thing for my business".
+       MEASURED on his book (TeamStock 1,639 rows, 355 challans, the live code run on it): 626
+       products carry a reorder point; 140 were listed; 116 more were NEVER COUNTED, and a product
+       never counted was dropped from the list altogether - it only appeared by name in one grey
+       sentence under it. US SOCKET 110 (7071740275) is one: reorder 150, max 200, critical 80,
+       no physical count on the sheet, and the CRM works out -295 from the challans since the start.
+       114 of the 116 are at or below their reorder point on those figures.
+       Their stock is NOT KNOWN, so a quantity worked out from it could be badly wrong (-295 would
+       suggest 495). So they now come onto the list, in amber, marked "Not counted", with what the
+       CRM shows and what that would suggest - but they are NOT in the order until he types a
+       quantity (or counts the product: a "Count" button opens the count for that product, and once
+       counted it is an ordinary line). Nothing is ordered on a figure nobody has checked, and
+       nothing at its reorder point is hidden any more. */
+    o.uncounted.forEach(function (x) {
+      if (have[x.code] || !(x.free <= x.min)) return;
+      have[x.code] = 1;
+      var t = stkOrdTyped(x.code, x.pack);
+      out.push(Object.assign({}, x, { sug: x.need, typed: t, qty: t === undefined ? 0 : t, unc: 1, st: "Not counted" }));
+    });
     var m = stkOrdMap(), bx = stkBoxes(), lvl = stkLvl(), pm = stkPMap(), pos = stkPositions(), extra = {};
     Object.keys(m).forEach(function (k) { if (m[k] > 0) extra[k] = 1; });
     Object.keys(bx).forEach(function (k) { if (bx[k] > 0) extra[k] = 1; });
@@ -48123,7 +48144,13 @@ function viewCatalogue() {
       out.push({ code: k, desc: p.desc || x.desc || k, brand: p.brand || "", unit: p.unit || "", onhand: x.onhand || 0, held: x.held || 0, free: x.free || 0,
         min: L.min || x.min || 0, max: L.max || 0, pack: L.pack || 0, crit: L.crit || 0, sug: 0, need: 0, typed: t, qty: t, added: 1 });
     });
-    out.sort(function (a, b) { return String(a.brand || "Other").localeCompare(String(b.brand || "Other")) || ((a.added || 0) - (b.added || 0)); });
+    /* 6.9.721 - HIS WORDS: "In stock to order same product family items to be shown nearby". Brand, then
+       product family, then the name with numbers read as numbers (20, 25, 32, 110 - not 110, 20, 25). */
+    var _fam = function (x) { return String((pm[x.code] || {}).family || "~").trim().toLowerCase(); };
+    out.sort(function (a, b) {
+      return String(a.brand || "Other").localeCompare(String(b.brand || "Other")) || _fam(a).localeCompare(_fam(b), undefined, { numeric: true }) ||
+        String(a.desc || "").localeCompare(String(b.desc || ""), undefined, { numeric: true, sensitivity: "base" });
+    });
     return out;
   }
   function stkOrdTotals(L) {
@@ -48132,9 +48159,10 @@ function viewCatalogue() {
     return { n: n, boxes: nb, val: Math.round(val) };
   }
   function stkOrdSumHtml(L) {
-    var t = stkOrdTotals(L), typed = L.filter(function (x) { return x.typed !== undefined; }).length;
+    var t = stkOrdTotals(L), typed = L.filter(function (x) { return x.typed !== undefined; }).length, _unc = L.filter(function (x) { return x.unc && x.typed === undefined; }).length;
     return '<b>To order: ' + plural(t.n, "line") + (t.boxes ? ' &middot; ' + plural(t.boxes, "box", "boxes") : '') + (t.val ? ' &middot; ' + money(t.val) + ' at MRP' : '') + '</b>' +
-      '<span style="color:#64748b"> &middot; ' + (typed ? plural(typed, "quantity", "quantities") + ' typed by you, the rest as suggested' : 'all as suggested - type over any line') + '</span>';
+      '<span style="color:#64748b"> &middot; ' + (typed ? plural(typed, "quantity", "quantities") + ' typed by you, the rest as suggested' : 'all as suggested - type over any line') + '</span>' +
+      (_unc ? '<div style="margin-top:4px;color:#92400e"><b>' + plural(_unc, "line") + ' not counted</b> (amber) ' + (_unc === 1 ? 'is' : 'are') + ' at or below the reorder point on the CRM figures, but the stock was never counted - they are <b>not in the order</b> until you count them or type a quantity.</div>' : '');   /* 6.9.721 */
   }
   /* 6.9.718 - the order sheet shows bare numbers; the unit has its own column */
   function stkOrdN(q) { q = Math.round((Number(q) || 0) * 100) / 100; return q.toLocaleString("en-IN"); }
@@ -48146,6 +48174,7 @@ function viewCatalogue() {
   }
   function stkOrdCellTotal(x) {
     var q = x.qty, sug = x.typed === undefined;
+    if (x.unc && sug) return '<span style="color:#b45309;font-size:12.5px;white-space:normal">count it, or type the qty</span>';   /* 6.9.721 */
     if (!(q > 0)) return '<span style="color:#94a3b8">left out</span>';
     return '<b style="color:' + (sug ? '#64748b' : '#0b3b36') + '">' + esc(stkOrdN(q)) + '</b>' + (x.pack > 0 ? '<div style="font-size:12px;color:#64748b">' + Math.ceil(q / x.pack) + ' &times; ' + x.pack + '</div>' : '') +
       (sug ? '<div style="font-size:12px;color:#94a3b8">suggested</div>' : '');
@@ -48166,9 +48195,18 @@ function viewCatalogue() {
     var td = function (t, al, ex) { return '<td style="padding:6px;text-align:' + (al || 'right') + ';vertical-align:middle;font-size:13px;white-space:nowrap;border-bottom:1px solid #eef2f7' + (ex || '') + '">' + t + '</td>'; };
     var inS = 'width:72px;min-height:44px;box-sizing:border-box;padding:6px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:14px;text-align:right';
     var h = '<style>.so7{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid #fee2e2;border-radius:10px;background:#fff}.so7 table{border-collapse:separate;border-spacing:0;width:100%;min-width:1000px}' +
-      '.so7 td:first-child,.so7 th:first-child{position:sticky;left:0;z-index:1;background:#fff;box-shadow:1px 0 0 #e2e8f0}.so7 th:first-child{background:#f1f5f9}.so7 input.so-on{background:#0f172a!important;color:#fff!important;border-color:#0f172a!important;font-weight:700}' +
+      '.so7 td:first-child,.so7 th:first-child{position:sticky;left:0;z-index:1;background:#fff;box-shadow:1px 0 0 #e2e8f0}.so7 th:first-child{background:#f1f5f9}.so7 tr.so-unc td{background:#fffbeb}.so7 input.so-on{background:#0f172a!important;color:#fff!important;border-color:#0f172a!important;font-weight:700}' +
       '@media(max-width:639px){.so7 td:first-child,.so7 th:first-child{max-width:190px;min-width:190px;white-space:normal!important}}</style>';
     h += stkOrdChipsHtml(ALL);
+    /* 6.9.721 - MEASURED: 40744860-i and 40744860-I, 49540750B-i and -I, 69111750B-i and -I are each on the
+       catalogue twice. The count went on one, a bill or challan on the other, so each half shows a wrong
+       stock. Said here, where an order is placed, until they are merged. */
+    var _cs = {}, _dup = [], _sp = stkPositions();
+    Object.keys(_sp).forEach(function (k) { var K = k.toUpperCase().replace(/\s+/g, ""); (_cs[K] = _cs[K] || []).push(k); });
+    Object.keys(_cs).forEach(function (K) { if (_cs[K].length > 1) _dup.push(_cs[K]); });
+    if (_dup.length) h += '<div style="margin:10px 0 0;padding:9px 11px;border-radius:10px;background:#fff;border:1.5px solid #dc2626;font-size:13px"><b style="color:#b91c1c">' + plural(_dup.length, "product") + ' ' + (_dup.length === 1 ? 'is' : 'are') + ' on the catalogue twice</b>, the code differing only in capital letters, so ' + (_dup.length === 1 ? 'its' : 'each one\u2019s') + ' stock is split in two: ' +
+      _dup.map(function (a) { return a.map(function (k) { var x = _sp[k] || {}; return '<b>' + esc(k) + '</b> (' + (x.counted ? 'counted, ' : '') + esc(stkOrdN(x.onhand || 0)) + ')'; }).join(' / '); }).join('; ') +
+      '. Check these by hand before ordering; merge the two codes (Supplier price list \u203a Merge) and the stock adds up.</div>';
     h += '<div id="so_sum" class="card" style="margin:10px 0 0;padding:10px 12px;border-color:#f59e0b;background:#fffbeb;font-size:13.5px">' + stkOrdSumHtml(L) + '</div>' +
       '<div class="acts" style="flex-wrap:wrap;gap:6px;margin:8px 0 0"><button class="btn sm" style="min-height:44px" data-act="so-pdf" data-b="">&#8681; PDF' + (stkOrdBrSel().length ? ' (' + plural(stkOrdBrSel().length, "brand") + ')' : ', all') + '</button>' +
       '<button class="btn sm ghost" style="min-height:44px" data-act="stk-ord-xlsx" data-b="">&#8681; Excel' + (stkOrdBrSel().length ? ' (' + plural(stkOrdBrSel().length, "brand") + ')' : ', all') + '</button>' +
@@ -48188,7 +48226,9 @@ function viewCatalogue() {
           var mrp = nAmt((pm[x.code] || {}).rate), val = mrp > 0 && x.qty > 0 ? Math.round(mrp * x.qty) : 0;
           var pkDraft = (S.stkPkDraft || {})[x.code];
           var sugTxt = x.added ? '<span style="color:#94a3b8">added</span>' : (x.sug > 0 ? '<b style="color:#b91c1c">' + esc(stkOrdN(x.sug)) + '</b>' + (pk ? '<div style="font-size:12px;color:#64748b">' + (x.sug / pk) + ' box' + (x.sug / pk === 1 ? '' : 'es') + '</div>' : '') : 'at min');
-          return '<tr id="so_r' + i + '">' +
+          if (x.unc) sugTxt = '<span style="display:inline-block;font-size:12px;font-weight:800;padding:2px 7px;border-radius:6px;background:#f59e0b;color:#fff;white-space:nowrap">Not counted</span>' +
+            (x.sug > 0 ? '<div style="font-size:12px;color:#92400e">CRM says ' + esc(stkOrdN(x.sug)) + '?</div>' : '');   /* 6.9.721 */
+          return '<tr id="so_r' + i + '"' + (x.unc ? ' class="so-unc"' : '') + '>' +
             td('<div style="display:flex;gap:8px;align-items:center">' + stkOrdPic(x.code) + '<div style="min-width:0"><div style="font-weight:700;white-space:normal;min-width:120px">' + esc(x.desc) + '</div><div style="font-size:12px;color:#64748b;white-space:normal">' + esc(x.code) + '</div>' +
               (wi && wi.by[x.code] ? '<div style="font-size:12px;color:#b45309;white-space:normal">+' + stkOrdN(wi.by[x.code].qty) + ' on ' + esc(wi.by[x.code].bills.join(", ")) + ', not matched</div>' : '') + '</div></div>', 'left') +
             td(oc ? stkMoveTag(x.code, oc) : '', 'left') +
@@ -48204,7 +48244,8 @@ function viewCatalogue() {
                   : '<span style="font-size:12px;color:#94a3b8;white-space:normal">set per box</span>') +
             td(stkOrdCellTotal(x), 'right', '" id="so_t' + i) +
             td(val ? money(val) : '<span style="color:#cbd5e1">-</span>', 'right', '" id="so_v' + i) +
-            td('<button class="btn sm ghost" style="min-height:44px" data-act="stock-item" data-code="' + esc(x.code) + '">Levels</button>', 'center') + '</tr>';
+            td((x.unc ? '<button class="btn sm" style="min-height:44px;margin-right:4px;background:#b45309;border-color:#b45309" data-act="so-count" data-code="' + esc(x.code) + '">Count</button>' : '') +
+              '<button class="btn sm ghost" style="min-height:44px" data-act="stock-item" data-code="' + esc(x.code) + '">Levels</button>', 'center') + '</tr>';
         }).join("") + '</tbody></table></div>';
     });
     return h;
@@ -48273,14 +48314,14 @@ function viewCatalogue() {
     return order.map(function (b) { return { brand: b, list: g[b] }; });
   }
   function stkOrderHtml(full) {
-    var o = stkToOrder(), L = o.list;
+    var o = stkToOrder(), L = o.list, _uncS = o.uncounted.filter(function (x) { return x.free <= x.min; });   /* 6.9.721 */
     var h = '<div class="card" style="border-color:' + (L.length ? '#fecaca' : '#99f6e4') + ';background:' + (L.length ? '#fef2f2' : '#f0fdfa') + '">' +
       '<div class="acts" style="align-items:center;margin:0;flex-wrap:wrap;gap:6px"><h3 class="grow" style="margin:0;color:' + (L.length ? '#b91c1c' : '#0f766e') + '">Stock to order' +
-        (L.length ? ' — ' + plural(L.length, "item") : ' — nothing at or below its reorder point') + '</h3>' +
+        (L.length ? ' — ' + plural(L.length, "item") : ' — nothing at or below its reorder point') + (_uncS.length ? ' <span style="color:#b45309">+ ' + _uncS.length + ' not counted</span>' : '') + '</h3>' +
         (full ? '<button class="btn sm ghost" style="min-height:44px" data-act="stk-ord" data-v="">All stock</button>'
               : '<button class="btn sm" data-act="stk-ord" data-v="1">Open the list</button>') + '</div>' +
       '<div class="meta" style="font-size:12.5px;margin-top:3px">Only products with a reorder point (“Min”) set. One is listed when its <b>free</b> stock (on hand less challans made but not yet dispatched) is at or below it. <b>Order</b> = maximum less free, rounded up to whole boxes when Per box is set; with no maximum set, up to the reorder point only.</div>';
-    var _oc = full && L.length ? stkCtx() : null;   /* 6.9.707 */
+    var _oc = full && (L.length || _uncS.length) ? stkCtx() : null;   /* 6.9.707 */
     var _wi = full && L.length ? stkWaitIn() : null, _wShort = _wi ? L.filter(function (x) { return _wi.by[x.code]; }) : [];   /* 6.9.709 */
     if (_wShort.length) {
       h += '<div style="margin-top:8px;padding:9px 11px;border-radius:10px;background:#fff;border:1.5px solid #f59e0b;font-size:13px">' +
@@ -48296,7 +48337,7 @@ function viewCatalogue() {
         return '<div style="border-top:1px solid #fee2e2;padding:5px 0"><b>' + esc(x.desc) + '</b> <span style="color:#b91c1c">free ' + stkQ(x.free, x.code) + ' · order ' + stkQ(x.need, x.code) + '</span></div>'; }).join("") +
         (L.length > 5 ? '<div class="meta" style="font-size:12px">and ' + (L.length - 5) + ' more — open the list</div>' : '') + '</div>';
     }
-    if (o.uncounted.length) h += '<div style="font-size:12.5px;color:#92400e;margin-top:8px">' + plural(o.uncounted.length, "product") + ' with a reorder point set ' + (o.uncounted.length > 1 ? 'have' : 'has') + ' not been counted yet, so ' + (o.uncounted.length > 1 ? 'their' : 'its') + ' stock is not known: ' +
+    if (o.uncounted.length && !full) h += '<div style="font-size:12.5px;color:#92400e;margin-top:8px">' + plural(o.uncounted.length, "product") + ' with a reorder point set ' + (o.uncounted.length > 1 ? 'have' : 'has') + ' not been counted yet, so ' + (o.uncounted.length > 1 ? 'their' : 'its') + ' stock is not known: ' +
       esc(o.uncounted.slice(0, 8).map(function (x) { return String(x.desc).replace(/\.+$/, ""); }).join(", ")) + (o.uncounted.length > 8 ? ' and ' + (o.uncounted.length - 8) + ' more' : '') + '. Count ' + (o.uncounted.length > 1 ? 'them' : 'it') + ' and ' + (o.uncounted.length > 1 ? 'they join' : 'it joins') + ' this list when short.</div>';
     return h + '</div>';
   }
@@ -52029,6 +52070,7 @@ function viewCatalogue() {
       S.soBr = _cur; try { localStorage.setItem("ew_so_br", JSON.stringify(_cur)); } catch (e) { }
       keepScroll = true; render(); return;
     }
+    if (act === "so-count") { S.modal = modalStockAdd("opening", t.getAttribute("data-code") || ""); render(); return; }   /* 6.9.721 */
     if (act === "so-clear") { stkOrdClear(); keepScroll = true; render(); toast("Your quantities are cleared \u2014 the suggested ones stand."); return; }
     if (act === "stk-ord-xlsx") { if (!STOCK_LOADED) { ensureStock(); toast("Stock is still loading \u2014 try again in a moment."); return; } stkOrderXlsx(t.getAttribute("data-b") || ""); return; }
     /* ---- 6.9.621 - planning ---- */
