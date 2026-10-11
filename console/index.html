@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0F1E1C">
+<meta name="theme-color" content="#0D2340">
 <title>EW Console</title>
 <meta name="description" content="Energy World owner console - broadcast and people.">
 <link rel="icon" href="../icons/ew-192.png">
@@ -16,8 +16,8 @@
 <script src="../ew-config.js"></script>
 <style>
 :root{
-  --ink:#0F1E1C; --paper:#EFF1EC; --card:#FFFFFF; --line:#CBD1C7; --brass:#C08A3E;
-  --brass-dim:#8E6529; --green:#2F6E5F; --red:#9E4A32; --muted:#5C6B66; --r:8px;
+  --ink:#0D2340; --paper:#F4F6F9; --card:#FFFFFF; --line:#DCE3EA; --brass:#C9A24A;   /* 11 Oct 2026 - the visiting card */
+  --brass-dim:#9A7A33; --green:#2F6E5F; --red:#9E4A32; --muted:#5E6875; --r:8px;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;padding:0}
@@ -123,6 +123,48 @@ h2{font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;
 </style>
 </head>
 <body>
+<script>
+  /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
+     HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
+     phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
+     turning pictures, logos and PDFs back, so every screen - including the thousands of colours written inline
+     over the years - changes at once and nothing can be left white-on-white. Red stays red, green stays green.
+     Changing it touches no data. */
+  (function () {
+    var K = "ewTheme";
+    function ewtGet() { try { var v = localStorage.getItem(K); return v === "light" || v === "dark" ? v : "auto"; } catch (e) { return "auto"; } }
+    function ewtOs() { try { return !!(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches); } catch (e) { return false; } }
+    function ewtDark() { var m = ewtGet(); return m === "dark" || (m === "auto" && ewtOs()); }
+    function ewtApply() {
+      var r = document.documentElement; if (!r) return;
+      r.setAttribute("data-ewdark", ewtDark() ? "1" : "0");
+      try { var mt = document.querySelector('meta[name="theme-color"]'); if (mt) { if (!mt.getAttribute("data-light")) mt.setAttribute("data-light", mt.getAttribute("content") || ""); mt.setAttribute("content", ewtDark() ? "#11161D" : mt.getAttribute("data-light")); } } catch (e) { }
+    }
+    try {
+      var st = document.createElement("style");
+      st.textContent = 'html{background:#fff}' +
+        'html[data-ewdark="1"]{filter:invert(.92) hue-rotate(180deg)}' +
+        'html[data-ewdark="1"] .top{filter:invert(1) hue-rotate(180deg)}' +   /* the navy bar stays navy, as on the card */
+        'html[data-ewdark="1"] img,html[data-ewdark="1"] video,html[data-ewdark="1"] canvas,html[data-ewdark="1"] iframe,html[data-ewdark="1"] embed,html[data-ewdark="1"] object,html[data-ewdark="1"] [data-noinvert]{filter:invert(1) hue-rotate(180deg)}' +
+        '.ewthm{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:44px;min-width:44px;padding:0 14px;border:1px solid #DCE3EA;border-radius:10px;background:#fff;color:#1F3A5F;font:inherit;font-size:14px;font-weight:700;cursor:pointer}';
+      (document.head || document.documentElement).appendChild(st);
+    } catch (e) { }
+    ewtApply();
+    try { var mq = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)"); if (mq) { if (mq.addEventListener) mq.addEventListener("change", ewtApply); else if (mq.addListener) mq.addListener(ewtApply); } } catch (e) { }
+    function ewtLabel() { var m = ewtGet(); return "&#9681; Theme: " + (m === "auto" ? "Auto (as the phone)" : m === "dark" ? "Dark" : "Light"); }
+    window.ewTheme = {
+      get: ewtGet, isDark: ewtDark, label: ewtLabel,
+      set: function (m) { try { localStorage.setItem(K, m); } catch (e) { } ewtApply(); },
+      next: function (btn) {
+        var m = ewtGet(), n = m === "auto" ? "light" : m === "light" ? "dark" : "auto";
+        window.ewTheme.set(n);
+        if (btn) btn.innerHTML = ewtLabel();
+      },
+      button: function () { return '<button type="button" class="ewthm" onclick="ewTheme.next(this)">' + ewtLabel() + '</button>'; }
+    };
+  })();
+</script>
+
 <div id="app">
   <header>
     <div style="min-width:0"><h1>Energy World console</h1>
@@ -131,7 +173,7 @@ h2{font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;
       <button class="lnkb" id="hRef" style="color:#9FB0AA;font-size:16px" onclick="ewRefresh()"
         title="Pull the latest, and get the new version if one is up">&#8635;</button>
       <button class="lnkb" style="color:#9FB0AA" onclick="renderPinChange(false)">PIN</button>
-      <button class="lnkb" style="color:#9FB0AA" onclick="signOut()">Sign out</button>
+      <button class="lnkb" style="color:#9FB0AA" onclick="ewTheme.next(this)">&#9681; Theme</button> <button class="lnkb" style="color:#9FB0AA" onclick="signOut()">Sign out</button>
     </div>
   </header>
   <div class="tabs" id="tabs"></div>
