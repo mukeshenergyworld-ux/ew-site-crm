@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
-<meta name="theme-color" content="#0f766e"/>
+<meta name="theme-color" content="#1F3A5F"/>
 <title>Energy World — Challan</title>
 <link rel="manifest" href="manifest.webmanifest"/>
 <link rel="apple-touch-icon" href="icon-180.png"/>
@@ -206,6 +206,17 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
   font-size:14.5px;display:flex;justify-content:space-between;align-items:center;gap:8px;cursor:pointer}
 .exec .sub{font-size:12px;font-weight:600;background:rgba(255,255,255,.2);padding:3px 10px;border-radius:999px;white-space:nowrap}
 .exec .car{font-size:13px;opacity:.85}
+/* ===== 1.130.0 - THE VISITING CARD'S COLOURS (11 Oct 2026) =====
+   Navy #1F3A5F with a gold #C9A24A rule, from the Energy World card; slate text. Red stays for money owed and
+   late, green for paid and done. */
+body{background:#F4F6F9}
+.top{background:#1F3A5F;border-bottom:3px solid #C9A24A}
+.top .who{color:#E9D9AE}
+.btn{background:#1F3A5F;border-color:#1F3A5F}
+.btn.ghost{color:#1F3A5F;border-color:#1F3A5F}
+.chip.on{background:#1F3A5F;border-color:#1F3A5F}
+.chip.on b{color:#E9D9AE}
+.nav button.on{color:#1F3A5F}
 </style>
 </head>
 <body>
@@ -241,7 +252,92 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.129.0";
+  var APP_VERSION = "1.130.0";
+  window.__ewCodeSrc = function () { return S.data; };   /* 1.130.0 - the book the numbers are read from */
+  /* ==EW-CODES== 11 Oct 2026 - HIS NUMBER BESIDE EVERY NAME.
+     HIS WORDS: "give every lead a serial no as code like LD001 ... client CL001 ... plumber PL001, architect
+     AR001, builder BL001, PMC PMC001 ... show code everywhere with which everyone whenever mentioned names, in
+     every app, everywhere". The server writes the numbers (V146); this only READS them.
+     A name is drawn in hundreds of places in this app, so instead of touching each one, every piece of text
+     that IS a person's name - the whole text of its node, nothing more, nothing less - gets his number in a
+     small navy tag in front of it, as the screen is drawn (one MutationObserver, batched per frame).
+     Never inside a box you type in, a drop-down, a script or a PDF; a name shared by two different numbers is
+     left alone rather than guessed; a name under 5 letters with no space is left alone (too much like a word). */
+  (function () {
+    var MAP = null, KEY = "", pend = [], sched = false;
+    var SKIP = { SCRIPT: 1, STYLE: 1, TEXTAREA: 1, OPTION: 1, SELECT: 1, INPUT: 1, TITLE: 1, NOSCRIPT: 1, DATALIST: 1 };
+    function low(s) { return String(s == null ? "" : s).replace(/\s+/g, " ").trim().toLowerCase(); }
+    function data() { try { return window.__ewCodeSrc ? window.__ewCodeSrc() : null; } catch (e) { return null; } }
+    function build() {
+      var d = data(); if (!d) return MAP;
+      var cl = d.clients || [], as = d.associates || [];
+      var k = cl.length + ":" + as.length + ":" + cl.filter(function (c) { return c && c.code; }).length + ":" + as.filter(function (a) { return a && a.code; }).length;
+      if (k === KEY && MAP) return MAP;
+      KEY = k; var m = {}, bad = {};
+      function put(name, code) {
+        var n = low(name), c = String(code || "").trim(); if (!n || !c) return;
+        if (n.length < 5 && n.indexOf(" ") < 0) return;
+        if (m[n] && m[n] !== c) bad[n] = 1; else m[n] = c;
+      }
+      cl.forEach(function (c) { if (c) put(c.name, c.code); });
+      as.forEach(function (a) { if (a && !m[low(a.name)]) put(a.name, a.code); });   /* a client's number wins over his partner number */
+      Object.keys(bad).forEach(function (n) { delete m[n]; });
+      MAP = Object.keys(m).length ? m : null;
+      return MAP;
+    }
+    function skipEl(el) {
+      for (var e = el, i = 0; e && i < 12; e = e.parentElement, i++) {
+        if (SKIP[e.tagName] || e.isContentEditable || (e.hasAttribute && e.hasAttribute("data-nocode"))) return true;
+        if (e.classList && e.classList.contains("ewc")) return true;
+      }
+      return false;
+    }
+    function tag(root, m) {
+      if (!root || !m) return;
+      if (root.nodeType === 3) { one(root, m); return; }
+      if (root.nodeType !== 1 || SKIP[root.tagName]) return;
+      var w = document.createTreeWalker(root, 4, null), t, list = [];
+      while ((t = w.nextNode())) list.push(t);
+      for (var i = 0; i < list.length; i++) one(list[i], m);
+    }
+    function one(t, m) {
+      var v = t.nodeValue; if (!v || v.length > 80) return;
+      var code = m[low(v)]; if (!code) return;
+      var p = t.parentNode; if (!p || p.nodeType !== 1 || skipEl(p)) return;
+      var prev = t.previousSibling;
+      while (prev && prev.nodeType === 3 && !prev.nodeValue.trim()) prev = prev.previousSibling;
+      if (prev && prev.nodeType === 1 && prev.classList && (prev.classList.contains("ewc") || prev.classList.contains("code"))) return;
+      if (p.textContent.indexOf(code) >= 0) return;   /* the screen already says it */
+      var s = document.createElement("span"); s.className = "ewc"; s.textContent = code;
+      p.insertBefore(s, t);
+    }
+    function flush() {
+      sched = false; var m = build(); var l = pend; pend = [];
+      if (!m) return;
+      for (var i = 0; i < l.length; i++) { if (l[i].isConnected) tag(l[i], m); }
+    }
+    function kick(n) { pend.push(n); if (!sched) { sched = true; (window.requestAnimationFrame || setTimeout)(flush); } }
+    function start() {
+      if (!document.body || !window.MutationObserver) return;
+      try {
+        var st = document.createElement("style");
+        st.textContent = ".ewc{display:inline-block;font-size:12px;font-weight:800;line-height:1.35;color:#1F3A5F;background:#E8EEF5;border-radius:6px;padding:0 6px;margin-right:5px;vertical-align:1px;white-space:nowrap;letter-spacing:.02em}";
+        document.head.appendChild(st);
+      } catch (e) { }
+      new MutationObserver(function (recs) {
+        for (var i = 0; i < recs.length; i++) {
+          var a = recs[i].addedNodes;
+          for (var j = 0; j < a.length; j++) { var n = a[j]; if (n.nodeType === 1 && n.classList && n.classList.contains("ewc")) continue; kick(n); }
+        }
+      }).observe(document.body, { childList: true, subtree: true });
+      /* the book arrives after the first paint: tag the whole page each time the numbers change */
+      var last = "";
+      setInterval(function () { build(); if (MAP && KEY !== last) { last = KEY; kick(document.body); } }, 1500);
+    }
+    (function wait() { if (document.body) start(); else setTimeout(wait, 50); })();
+    window.__ewCodes = { map: function () { return build(); }, tag: function (r) { tag(r || document.body, build()); } };
+  })();
+
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
