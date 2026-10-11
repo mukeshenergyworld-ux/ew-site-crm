@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.740";
+  var APP_VERSION = "6.9.741";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -8865,7 +8865,8 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       if (d.to === "Closed" || d.to === "Cancelled") t.closedAt = a.createdAt;
       /* 6.9.740 - the Service app 2.4.0 enters a ticket's installed products later (one more move row), or "no product of ours" */
       if (d.noProd) t.noProd = true;
-      if (Array.isArray(d.products) && d.products.length) { var _hv = {}; (t.products || []).forEach(function (p) { if (p && p.key) _hv[p.key] = 1; });
+      if (Array.isArray(d.products) && d.products.length && d.replaceProducts) { t.products = d.products.slice(); t.noProd = false; }   /* 6.9.741 */
+      else if (Array.isArray(d.products) && d.products.length) { var _hv = {}; (t.products || []).forEach(function (p) { if (p && p.key) _hv[p.key] = 1; });
         t.products = (t.products || []).concat(d.products.filter(function (p) { return p && (!p.key || !_hv[p.key]); })); t.noProd = false; }
     });
     return order.map(function (k) { return T[k]; }).sort(function (a, b) { return String(b.at).localeCompare(String(a.at)); });
@@ -8952,8 +8953,27 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     }
     return { t: "Delivered " + dmy(p.date) + (p.brand ? " · " + p.brand + " warranty" : ""), c: "#64748b" };
   }
+  /* ===== 6.9.741 - ONLY THE PRODUCT WITH THE PROBLEM (the Service app's 2.5.0) =====
+     HIS WORDS (11 Oct): "entering a client show his all installed product, complaint registering person will click on product
+     having issue and put remarks for that, no need to show all product list here ... simple, in less words, clean."
+     His products are listed once, to tap. A tapped one asks "What is wrong with it?". Only the tapped ones go on the ticket,
+     each with p.fault. An old ticket carrying all his products is folded to the marked one by a move row (replaceProducts). */
+  function cmpFaultOf(t) { return (t.products || []).filter(function (p) { return p && p.fault; }); }
+  function cmpNeedsMark(t) { return (t.products || []).length > 1 && !cmpFaultOf(t).length; }
+  function cmpTapRow(p, n) {
+    var on = !!(n.picks && n.picks[p.key]), w = p.wtxt0 != null ? { t: p.wtxt0, c: p.wbad ? "#b91c1c" : "#0f766e" } : cmpWarr(p);
+    return '<div style="border:1px solid ' + (on ? '#0f766e' : '#e2e8f0') + ';background:' + (on ? '#f0fdfa' : '#fff') + ';border-radius:10px;margin:6px 0">' +
+      '<button data-act="cmpn-fp" data-k="' + esc(p.key) + '" style="display:flex;gap:10px;align-items:center;width:100%;min-height:48px;padding:8px 10px;background:none;border:0;text-align:left;font:inherit;color:inherit;cursor:pointer">' +
+      '<span style="flex:0 0 24px;height:24px;border-radius:50%;border:2px solid ' + (on ? '#0f766e' : '#94a3b8') + ';background:' + (on ? '#0f766e' : '#fff') + ';color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800">' + (on ? '&#10003;' : '') + '</span>' +
+      '<span style="flex:1;min-width:0"><b style="font-size:13.5px">' + esc(p.desc) + '</b>' + (p.sn ? ' <span style="font-size:12px;color:#64748b">S/N ' + esc(p.sn) + '</span>' : '') + '<span style="display:block;font-size:12px;font-weight:700;color:' + w.c + '">' + esc(w.t) + '</span></span></button>' +
+      (on ? '<input class="cmp-fault" data-k="' + esc(p.key) + '" value="' + esc((n.fault && n.fault[p.key]) || "") + '" placeholder="What is wrong with it?" autocomplete="off" style="margin:0 10px 10px;width:calc(100% - 20px)"/>' : '') + '</div>';
+  }
+  function cmpMachAsList(n) { return (n.mach || []).map(function (m, i) { var w = cmpMachTill(m); return { key: "NM:" + i, desc: [m.brand, m.product, m.model].filter(Boolean).join(" "), wtxt0: w.txt, wbad: !!w.bad }; }); }
   function cmpProdRow(p, picked, pickable) {
     var w = cmpWarr(p);
+    if (!pickable && p.fault) return '<div style="padding:7px 0;border-top:1px solid #e2e8f0;font-size:13px"><b>' + esc(p.desc) + '</b>' +
+      '<span style="display:block;font-size:13px;font-weight:700;color:#b91c1c">&ldquo;' + esc(p.fault) + '&rdquo;</span>' +
+      '<span style="display:block;font-size:12px;font-weight:700;color:' + w.c + '">' + esc(w.t) + '</span></div>';
     return '<label style="display:flex;gap:9px;align-items:flex-start;padding:7px 0;border-top:1px solid #e2e8f0;margin:0;text-transform:none;letter-spacing:0;font-weight:400;font-size:13px;color:#0f172a;cursor:' + (pickable ? 'pointer' : 'default') + '">' +
       (pickable ? '<input type="checkbox" class="cmp-pk" data-k="' + esc(p.key) + '"' + (picked ? ' checked' : '') + ' style="width:19px;height:19px;flex:0 0 auto;margin-top:2px"/>' : '') +
       '<span style="flex:1;min-width:0"><b style="font-size:13px">' + esc(p.desc) + '</b>' + (p.brand ? ' <span style="color:#64748b;font-size:12px">' + esc(p.brand) + '</span>' : '') +
@@ -8975,7 +8995,8 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
   function cmpKeep() {
     var n = S.cmpNew; if (!n) return;
     ["src", "pri", "cat", "desc", "eng", "name", "mobile", "district", "area", "client", "addr", "areanew"].forEach(function (f) { var e = el("cmpn_" + f); if (e) n[f] = e.value; });   /* 6.9.738 - area; 6.9.739 - addr */
-    n.picks = {}; Array.prototype.forEach.call(document.querySelectorAll("input.cmp-pk"), function (x) { if (x.checked) n.picks[x.getAttribute("data-k")] = 1; });
+    n.picks = n.picks || {}; n.fault = n.fault || {};   /* 6.9.741 - picks are taps; the remarks are typed */
+    Array.prototype.forEach.call(document.querySelectorAll("input.cmp-fault"), function (x) { n.fault[x.getAttribute("data-k")] = String(x.value || ""); });
   }
   function modalCmpNew() {
     var n = S.cmpNew || (S.cmpNew = { src: "Phone call", pri: "Normal", picks: {} });
@@ -9005,29 +9026,32 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         (n.area ? '' : '<label>His area, if it is not in the list above</label><input id="cmpn_areanew" value="' + esc(n.areanew || "") + '" placeholder="Colony / sector"/>') +
         '<label>House / address</label><input id="cmpn_addr" value="' + esc(n.addr || "") + '" placeholder="e.g. 96 R, Model Town"/>' +
         cmpMachinesAsk(n, true) +
+        ((n.mach || []).length ? '<div class="meta" style="font-size:12px;font-weight:700;color:#475569;margin-top:8px">NOW TAP THE ONE WITH THE PROBLEM</div>' + cmpMachAsList(n).map(function (p) { return cmpTapRow(p, n); }).join("") : '') +   /* 6.9.741 */
         '<div class="meta" style="font-size:12.5px;margin-top:6px">Want him on the book as a client too? <button class="btn sm ghost" data-act="cmp-newclient" style="min-height:44px">+ Register him as a client</button></div>';
     }
     if (c) {
       var ps = cmpProducts(c.name), main = ps.filter(function (p) { return p.kind !== "item"; }), rest = ps.filter(function (p) { return p.kind === "item"; });
       h += '<div class="card" style="margin:10px 0 0;padding:10px 12px;background:#f8fafc">' +
         '<div style="font-size:13px"><b>' + esc(c.name) + '</b> &middot; ' + esc([c.area, c.location].filter(Boolean).join(", ") || "no area") + (c.mobile ? ' &middot; <a href="tel:' + esc(c.mobile) + '">' + esc(c.mobile) + '</a>' : '') + '</div>' +
-        cmpMoneyHtml(c.name) +   /* 6.9.738 - what he owes: service, and goods */
-        '<div class="meta" style="font-size:12px;font-weight:700;color:#475569;margin-top:8px">INSTALLED AT HIS SITE &mdash; tick the one the complaint is about</div>' +
-        (main.length ? main.map(function (p) { return cmpProdRow(p, n.picks && n.picks[p.key], true); }).join("") : '<div class="meta" style="font-size:12.5px">No commissioned product or installation recorded for him.</div>') +
-        (rest.length ? '<details style="margin-top:6px"><summary style="cursor:pointer;font-size:12.5px;font-weight:700;min-height:44px;display:flex;align-items:center">Everything else delivered to him (' + rest.length + ')</summary>' +
-          rest.slice(0, 60).map(function (p) { return cmpProdRow(p, n.picks && n.picks[p.key], true); }).join("") + '</details>' : '') +
+        cmpMoneyHtml(c.name, true) +   /* 6.9.738 - what he owes: service, and goods; 6.9.741 - no second machine list */
+        '<div class="meta" style="font-size:12px;font-weight:700;color:#475569;margin-top:8px">TAP THE PRODUCT WITH THE PROBLEM</div>' +
+        (main.length ? main.map(function (p) { return cmpTapRow(p, n); }).join("") : '<div class="meta" style="font-size:12.5px">No commissioned product or installation recorded for him.</div>') +
+        (rest.length ? '<details' + (rest.some(function (p) { return n.picks && n.picks[p.key]; }) ? ' open' : '') + ' style="margin-top:6px"><summary style="cursor:pointer;font-size:12.5px;font-weight:700;min-height:44px;display:flex;align-items:center">Other things delivered to him (' + rest.length + ')</summary>' +
+          rest.slice(0, 60).map(function (p) { return cmpTapRow(p, n); }).join("") + '</details>' : '') +
         (main.length ? '' : cmpMachinesAsk(n, false)) +   /* 6.9.739 - nothing of his on file: ask */
+        (!main.length && (n.mach || []).length ? '<div class="meta" style="font-size:12px;font-weight:700;color:#475569;margin-top:8px">NOW TAP THE ONE WITH THE PROBLEM</div>' + cmpMachAsList(n).map(function (p) { return cmpTapRow(p, n); }).join("") : '') +
+        '<div style="margin-top:6px"><button class="chip' + (n.notProd ? ' on' : '') + '" data-act="cmpn-notprod" style="min-height:44px">Not about his products</button></div>' +
         cmpPaperStrip(c.name, c.id, true) + '<div style="margin-top:8px">' + custLinkBtn(c.name, '&#128241; Send him his own link') + '</div></div>';   /* 6.9.690 */
     }
     h += '<label>What is it about?</label><select id="cmpn_cat">' + opt("", n.cat, "— pick —") + CMP_CATS.map(function (x) { return opt(x, n.cat); }).join("") + '</select>' +
-      '<label>What happened</label><textarea id="cmpn_desc" placeholder="What the customer says is wrong, as he told it">' + esc(n.desc || "") + '</textarea>' +
+      '<label>' + (Object.keys(n.picks || {}).length ? 'Anything else (optional)' : 'What happened') + '</label><textarea id="cmpn_desc" placeholder="What the customer says is wrong, as he told it">' + esc(n.desc || "") + '</textarea>' +
       '<label>Send an engineer (optional)</label><select id="cmpn_eng">' + opt("", n.eng, "— decide later —") + cmpEngineers().map(function (x) { return opt(x, n.eng); }).join("") + '</select>' +
       '<div class="foot"><button class="btn ghost" data-act="cmp-cancel">Cancel</button><button class="btn" data-act="cmp-save">Register complaint</button></div>';
     return h;
   }
   /* 6.9.738 - "show how much pending of client service charges, also how much total pending of product amount" -
      two numbers, never added: service work, and the goods on his account */
-  function cmpMoneyHtml(name) {
+  function cmpMoneyHtml(name, noList) {
     var sv = 0, gd = 0; try { sv = svcSummary(name).pending || 0; } catch (e) { sv = 0; } try { gd = clientDue(name) || 0; } catch (e) { gd = 0; }
     var ins = []; try { var kk = clientKeysOf(name); ins = (S.data.installs || []).filter(function (x) { return x && kk.insts[String(x.id)]; }); } catch (e) { ins = []; }
     var cv = ins.map(function (x) { return insCover(x); }), amc = cv.some(function (x) { return x.k === "amc"; });
@@ -9035,7 +9059,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       '<span class="pill" style="background:' + (sv > 0.5 ? '#fee2e2;color:#b91c1c' : '#f1f5f9;color:#475569') + '">Service pending ' + (sv > 0.5 ? money(sv) : 'nil') + '</span>' +
       '<span class="pill" style="background:' + (gd > 0.5 ? '#fef3c7;color:#92400e' : '#f1f5f9;color:#475569') + '">Product amount pending ' + (gd > 0.5 ? money(gd) : 'nil') + '</span>' +
       (ins.length ? '<span class="pill" style="background:' + (amc ? '#ccfbf1;color:#0f766e' : '#fef3c7;color:#92400e') + '">' + (amc ? 'Under AMC' : 'No AMC') + '</span>' : '') + '</div>' +
-      (ins.length ? '<div class="meta" style="font-size:12px;font-weight:700;color:#475569;margin-top:8px">MACHINES ON FILE</div>' + ins.map(function (x, i) {
+      (ins.length && !noList ? '<div class="meta" style="font-size:12px;font-weight:700;color:#475569;margin-top:8px">MACHINES ON FILE</div>' + ins.map(function (x, i) {
         var ps = instProducts(x).map(function (p) { return [p.brand, p.product, p.model].filter(Boolean).join(" ") + (p.installDate ? " · installed " + dmy(p.installDate) : "") + (p.serial ? " · " + p.serial : ""); }).join("; ");
         var vc = visitChargeFor(x, "Repair");
         return '<div style="padding:5px 0;border-top:1px solid #e2e8f0;font-size:12.5px"><b>' + esc(ps || x.product || "Machine") + '</b>' + (x.engineer ? ' <span style="color:#64748b">· engineer ' + esc(x.engineer) + '</span>' : '') +
@@ -9085,7 +9109,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       (L ? ' &middot; <b style="color:' + (L.late ? '#b91c1c' : '#0f766e') + '">open ' + cmpAgeTxt(L.h) + (L.late ? ', past the ' + L.lim + ' h promise' : '') + '</b>' : '') + '</p>' +
       '<div class="card" style="padding:10px 12px"><div style="font-size:13px;white-space:pre-wrap">' + esc(t.desc || "") + '</div>' +
       '<div class="meta" style="font-size:12px;margin-top:6px">Raised by <b>' + esc(t.by || "") + '</b> (' + esc(t.src || "") + ') on ' + esc(dmy(t.at)) + '</div>' +
-      ((t.products || []).length ? '<div class="meta" style="font-size:12px;font-weight:700;color:#475569;margin-top:8px">PRODUCT &mdash; warranty as it stood when raised</div>' +
+      ((t.products || []).length ? '<div class="meta" style="font-size:12px;font-weight:700;color:#475569;margin-top:8px">' + (cmpNeedsMark(t) ? 'HIS PRODUCTS &mdash; the engineer marks the faulty one on the Service app' : 'PRODUCT WITH THE PROBLEM') + '</div>' +
         t.products.map(function (p) { return cmpProdRow(p, false, false); }).join("") : (t.noProd ? '<div class="meta" style="font-size:12px;margin-top:8px">No product of ours at his place.</div>' : '<div style="font-size:13px;font-weight:700;color:#b91c1c;margin-top:8px">No product entered &mdash; the engineer enters his installed products on the Service app.</div>')) +
       (function () { var _od = cmpOldDue(t.client || t.name, t.mobile); return _od && _od.amt > 0 ? '<div style="font-size:13px;margin-top:8px"><b style="color:#b91c1c">Old pending (before the CRM): ' + money(_od.amt) + '</b>' + (_od.note ? ' &middot; ' + esc(_od.note) : '') + ' <span style="color:#64748b;font-size:12px">noted by ' + esc(_od.by) + '; put it on his account as his opening balance if it is right</span></div>' : ''; })() +
       (c ? cmpPaperStrip(c.name, c.id, true) : '') + '</div>';
@@ -9272,14 +9296,14 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       { k: "ref", t: "REF", nw: 1 }, { k: "age", t: "OPEN", n: 1, nw: 1 }, { k: "client", t: "CLIENT", wrap: "200px" }, { k: "issue", t: "ISSUE", fill: 1 },
       { k: "by", t: "RAISED BY", nw: 1 }, { k: "eng", t: "ENGINEER", nw: 1 }, { k: "st", t: "STATUS", nw: 1 }, { k: "money", t: "CHARGE / COLLECTED", n: 1, r: 1, nw: 1 }
     ], list.map(function (t) {
-      var L = cmpLate(t), w = (t.products || [])[0];
+      var L = cmpLate(t), w = cmpFaultOf(t)[0] || (t.products || [])[0];   /* 6.9.741 - the faulty one */
       return { v: { ref: t.ref, age: L ? L.h : 0, client: t.client || t.name, issue: t.cat, by: t.by, eng: t.eng || "", st: t.status, money: t.charge || 0 },
         cells: {
           ref: '<a href="#" data-act="cmp-open" data-id="' + esc(t.id) + '" style="font-weight:700;color:#0b3b36;text-decoration:none">' + esc(t.ref || "—") + '</a>',
           age: L ? '<span style="font-weight:700;color:' + (L.late ? '#b91c1c' : '#0f766e') + '">' + cmpAgeTxt(L.h) + '</span>' : '<span style="color:#94a3b8">' + esc(dmy(t.at)) + '</span>',
           client: '<b>' + esc(t.client || t.name || "") + '</b>' + xlSub(esc(t.area || t.mobile || "")),
           issue: '<span class="xl1" title="' + esc((t.cat || "") + " — " + (t.desc || "")) + '">' + esc(t.cat || "") + ' <span class="pill" style="font-size:12px;' + (t.pri === "High" ? 'background:#fee2e2;color:#b91c1c' : t.pri === "Low" ? '' : 'background:#fef3c7;color:#92400e') + '">' + esc(t.pri || "Normal") + '</span>' +
-            (w ? xlSub(esc(w.desc) + ' &middot; <span style="color:' + cmpWarr(w).c + '">' + esc(cmpWarr(w).t) + '</span>') : (t.noProd ? xlSub('no product of ours') : xlSub('<b style="color:#b91c1c">No product entered</b>'))) + '</span>',
+            (cmpNeedsMark(t) ? xlSub('<b style="color:#b45309">' + t.products.length + ' products &mdash; mark the faulty one</b>') : w ? xlSub(esc(w.desc) + (w.fault ? ' &middot; <b style="color:#b91c1c">&ldquo;' + esc(w.fault) + '&rdquo;</b>' : '') + ' &middot; <span style="color:' + cmpWarr(w).c + '">' + esc(cmpWarr(w).t) + '</span>') : (t.noProd ? xlSub('no product of ours') : xlSub('<b style="color:#b91c1c">No product entered</b>'))) + '</span>',
           by: whoChip(t.by) + xlSub(esc(t.src || "")),
           eng: t.eng ? whoChip(t.eng) : '<span style="color:#b45309;font-size:12px">not assigned</span>',
           st: '<span class="pill" style="font-size:12px">' + esc(t.status) + '</span>' + (t.outcome ? xlSub(esc(t.outcome)) : ''),
@@ -58007,8 +58031,15 @@ function viewCatalogue() {
       }).then(function (r) { if (r) { closeAck(_gClick, "Installation saved."); S.instFor = null; } });
       return;
     }
+    if (act === "cmpn-fp") {   /* 6.9.741 */
+      cmpKeep(); var _fn = S.cmpNew; if (!_fn) return; _fn.picks = _fn.picks || {}; var _fk = t.getAttribute("data-k");
+      if (_fn.picks[_fk]) delete _fn.picks[_fk]; else { _fn.picks[_fk] = 1; _fn.notProd = false; }
+      S.modal = modalCmpNew(); render();
+      setTimeout(function () { var e = document.querySelector('input.cmp-fault[data-k="' + _fk + '"]'); if (e && !e.value) e.focus(); }, 30); return;
+    }
+    if (act === "cmpn-notprod") { cmpKeep(); if (S.cmpNew) { S.cmpNew.notProd = !S.cmpNew.notProd; if (S.cmpNew.notProd) S.cmpNew.picks = {}; } S.modal = modalCmpNew(); render(); return; }
     if (act === "cmpn-hasm") { cmpKeep(); if (S.cmpNew) S.cmpNew.hasM = t.getAttribute("data-k") === "yes" ? "yes" : "no"; S.modal = modalCmpNew(); render(); return; }   /* 6.9.739 */
-    if (act === "cmpn-mdel") { cmpKeep(); if (S.cmpNew && S.cmpNew.mach) S.cmpNew.mach.splice(Number(t.getAttribute("data-i")) || 0, 1); S.modal = modalCmpNew(); render(); return; }
+    if (act === "cmpn-mdel") { cmpKeep(); if (S.cmpNew && S.cmpNew.mach) { S.cmpNew.mach.splice(Number(t.getAttribute("data-i")) || 0, 1); Object.keys(S.cmpNew.picks || {}).forEach(function (k) { if (/^NM:/.test(k)) delete S.cmpNew.picks[k]; }); } S.modal = modalCmpNew(); render(); return; }
     if (act === "cmpn-madd") {
       cmpKeep(); var _cn0 = S.cmpNew; if (!_cn0) return;
       var _md = String(val("cmpm_d") || ""), _mc = String(val("cmpm_c") || ""), _mw = val("cmpm_w") || "auto", _ma = String(val("cmpm_a") || "");
@@ -59971,9 +60002,17 @@ function viewCatalogue() {
       var _nArea = _n.area || String(_n.areanew || "").trim();
       if (!_c && !_n.webRef && !_n.hasM) { toast("Answer: are any of our products installed at his place?"); var _mq = el("cmpn_mq"); if (_mq) _mq.scrollIntoView({ block: "center" }); return; }
       if (_n.hasM === "yes" && !(_n.mach || []).length) { toast("Enter his machine — brand, product and the date it was installed — then + Add this machine."); return; }
+      /* 6.9.741 - the product with the problem, and what is wrong with it */
+      _n.picks = _n.picks || {}; _n.fault = _n.fault || {};
+      var _cand = (_c ? cmpProducts(_c.name) : []).concat(cmpMachAsList(_n)), _pk = [];
+      for (var _ci = 0; _ci < _cand.length; _ci++) { var _cp = _cand[_ci]; if (!_n.picks[_cp.key]) continue;
+        if (String(_n.fault[_cp.key] || "").trim().length < 3) { toast("Write what is wrong with " + _cp.desc + "."); return; } _pk.push(_cp); }
+      if (_cand.length && !_pk.length && !_n.notProd) { toast("Tap the product that has the problem — or Not about his products."); return; }
+      var _rem = _pk.map(function (p) { return p.desc + ": " + String(_n.fault[p.key]).trim(); }).join("; ");
+      if (!String(_n.desc || "").trim() && _rem) _n.desc = _rem;
       if (String(_n.desc || "").trim().length < 4) { toast("Write in a line what happened."); return; }
-      var _ps = _c ? cmpProducts(_c.name).filter(function (p) { return _n.picks && _n.picks[p.key]; }) : [];
-      if (_n.hasM === "yes") (_n.mach || []).forEach(function (m) {   /* 6.9.739 - his machines become installations under his name */
+      var _ps = _c ? cmpProducts(_c.name).filter(function (p) { return _n.picks[p.key]; }).map(function (p) { return Object.assign({}, p, { fault: String(_n.fault[p.key]).trim() }); }) : [];
+      if (_n.hasM === "yes") (_n.mach || []).forEach(function (m, _mi) {   /* 6.9.739 - his machines become installations under his name; 6.9.741 - only the tapped one joins the ticket */
         var bs = brandSvc(m.brand) || {}, wm = m.w === "out" ? 0 : (bs.wm || 12), cyc = bs.cm || 6, st = m.cc || m.cd, w = cmpMachTill(m);
         var row = { id: mintId("IN"), createdBy: S.user, client: _nm, mobile: _mob, address: String(_n.addr || ""), area: _c ? [_c.area, _c.location].filter(Boolean).join(", ") : [_nArea, _n.district].filter(Boolean).join(", "),
           product: m.product, model: m.model || m.brand, serial: autoSerialManual(st), installDate: m.cd, waterQuality: "", cycleDays: Math.round(cyc * 30), lastService: "", nextService: addMonths(st, cyc),
@@ -59981,10 +60020,10 @@ function viewCatalogue() {
           productsJson: JSON.stringify([{ brand: m.brand, product: m.product, model: m.model || m.product, serial: "", installDate: m.cd, commDate: st, warrantyMonths: wm, serviceReq: 1, serviceMonths: cyc }]),
           notes: "Machine entered on a complaint (CRM)" + (m.w === "out" ? " · out of warranty, as told" : "") };
         save("installs", row);
-        _ps.push({ key: "I:" + row.id, kind: "install", desc: [m.brand, m.product, m.model].filter(Boolean).join(" "), brand: m.brand, date: m.cd, amcType: row.amcType, amcEnd: row.amcEnd, insId: row.id,
-          till: w.parts ? w.parts.map(function (p) { return p.till; }).sort().pop() : "", parts: w.parts || [], wtxt: w.txt });
+        if (_n.picks["NM:" + _mi]) _ps.push({ key: "I:" + row.id, kind: "install", desc: [m.brand, m.product, m.model].filter(Boolean).join(" "), brand: m.brand, date: m.cd, amcType: row.amcType, amcEnd: row.amcEnd, insId: row.id,
+          till: w.parts ? w.parts.map(function (p) { return p.till; }).sort().pop() : "", parts: w.parts || [], wtxt: w.txt, fault: String(_n.fault["NM:" + _mi]).trim() });
       });
-      var _pt = _ps.map(function (p) { return p.desc + (p.sn ? " S/N " + p.sn : "") + " (" + cmpWarr(p).t + ")"; }).join("; ");
+      var _pt = _ps.map(function (p) { return p.desc + (p.sn ? " S/N " + p.sn : "") + " (" + cmpWarr(p).t + ")" + (p.fault ? " - " + p.fault : ""); }).join("; ");
       t.disabled = true; t.textContent = "Registering…";
       var _refP = _n.webRef ? Promise.resolve({ ok: true, ref: _n.webRef }) :
         api("complaint", { name: _nm, mobile: _mob, city: _c ? (_c.location || "") : (_n.district || ""), category: _n.cat, orderNo: "", urgency: _n.pri,
