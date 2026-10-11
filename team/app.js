@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.724";
+  var APP_VERSION = "6.9.725";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -30822,10 +30822,11 @@ function viewCatalogue() {
      always agree) are summed into one short band under the "waiting to be passed" band, on every
      screen, for every role that works with deliveries or money. Red when the oldest has waited 3 days
      or more, amber before that. "See them" opens HISAB at that list. Nothing is drawn when nothing waits. */
+  function chNoPaper(c) {   /* 6.9.725 - gone out (or in, or billed) and no signed paper on file */
+    return !!c && !c.cancelled && ["Dispatched", "Received", "Billed"].indexOf(String(c.status || "")) >= 0 && !chProofAny(c).has;
+  }
   function mwPaperList() {
-    return dedupeChallans(S.data.challans || []).filter(function (c) {
-      return isMineClient(c.customerName) && String(c.status || "") === "Dispatched" && !chProofAny(c).has;
-    });
+    return dedupeChallans(S.data.challans || []).filter(function (c) { return isMineClient(c.customerName) && chNoPaper(c); });
   }
   function mwRetList() {
     return (S.data.returns || []).filter(function (r) {
@@ -30868,9 +30869,7 @@ function viewCatalogue() {
       var st = String(c.status || "Draft");
       return st === "Draft" || st === "Approved";
     }).sort(function (a, b) { return String(a.createdAt).localeCompare(String(b.createdAt)); });
-    var toPaper = all.filter(function (c) {
-      return String(c.status || "") === "Dispatched" && !chProofAny(c).has;
-    }).sort(function (a, b) { return String(a.createdAt).localeCompare(String(b.createdAt)); });
+    var toPaper = all.filter(chNoPaper).sort(function (a, b) { return String(a.createdAt).localeCompare(String(b.createdAt)); });   /* 6.9.725 - Received and Billed too */
     if (!toGo.length && !toPaper.length) return '';
 
     var strip = function (list, title, why, colour, wash) {
@@ -30896,11 +30895,11 @@ function viewCatalogue() {
 
     return '<div class="card" id="hw_card" style="border-color:#cbd5e1"><h3 style="margin:0 0 3px">Still waiting</h3>' +
       '<div class="meta" style="font-size:12.5px;margin-bottom:9px">Deliveries that have not finished their ' +
-      'journey. None of this money is in the account below yet &mdash; HISAB counts a delivery only once its ' +
-      'receipt is confirmed. Tap one to open that client.</div>' +
+      'journey. One not yet dispatched is not on his account. One with <b>no signed paper</b> may be on his account already (marked ' +
+      'Received, even finalised) but cannot be proved if he says he never got it &mdash; attach the paper. Tap one to open that client.</div>' +
       '<div style="display:flex;gap:9px;flex-wrap:wrap">' +
       strip(toGo, "waiting to be dispatched", "written, not yet released", "#92400e", "#fef9c3") +
-      strip(toPaper, "waiting for the signed paper", "gone out, nothing signed back", "#b91c1c", "#fee2e2") +
+      strip(toPaper, "no signed paper on file", "gone out - dispatched, received or billed - nothing signed back", "#b91c1c", "#fee2e2") +
       '</div></div>';
   }
 
