@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.731";
+  var APP_VERSION = "6.9.732";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -28914,10 +28914,13 @@ function viewCatalogue() {
       if (!g.n) return;
       /* v6.9.489 - a delivery he has already looked at and left alone is not offered again
          unless the gap has actually grown since he answered. */
-      if (rpNo[c.id] !== undefined && g.diff <= rpNo[c.id]) return;
+      /* 6.9.732 - HIS WORDS: "clicking reprice doing nothing". A delivery once answered "Leave them as they are"
+         was skipped here in silence - right for the standing count, wrong when he has opened that one delivery's
+         Details and pressed Re-price on it himself. A press on one delivery asks again. */
+      if (!onlyId && rpNo[c.id] !== undefined && g.diff <= rpNo[c.id]) return;
       hits.push({ c: c, g: g, ymd: ymd });
     });
-    if (!hits.length) return;
+    if (!hits.length) { if (onlyId) toast("Nothing on this delivery is below the agreed discount any more - it may already be re-priced. Pull down to refresh."); return; }   /* 6.9.732 - never silent */
     hits.sort(function (a, b) { return String(a.ymd).localeCompare(String(b.ymd)); });
     var total = hits.reduce(function (a, h) { return a + h.g.diff; }, 0);
     var inH = hits.filter(function (h) { return inHisab(h.c); });
@@ -55968,7 +55971,7 @@ function viewCatalogue() {
     if (act === "reprice-one") {
       if (!roleIs("admin")) { toast("Re-pricing a delivery is the owner\u2019s."); return; }
       var _r1 = (S.data.challans || []).filter(function (x) { return x.id === id; })[0];
-      if (!_r1) return;
+      if (!_r1) { toast("That delivery is not on this device - pull down to refresh."); return; }   /* 6.9.732 - never silent */
       var _r1g = rateGapRows().filter(function (x) { return x.c.id === _r1.id; })[0];
       if (_r1g && !(_r1g.diff > 0)) { toast("The lump discount on this delivery already covers the 0% lines - re-pricing would give the discount twice. Nothing changed."); return; }   /* 6.9.731 */
       if (_r1g && _r1g.lump > 0) { toast("This delivery carries a lump discount - re-pricing its lines would take off too much. Give the credit shown on Details instead. Nothing changed."); return; }
