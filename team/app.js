@@ -138,7 +138,47 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.743";
+  var APP_VERSION = "6.9.744";
+  /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
+     HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
+     phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
+     turning pictures, logos and PDFs back, so every screen - including the thousands of colours written inline
+     over the years - changes at once and nothing can be left white-on-white. Red stays red, green stays green.
+     Changing it touches no data. */
+  (function () {
+    var K = "ewTheme";
+    function ewtGet() { try { var v = localStorage.getItem(K); return v === "light" || v === "dark" ? v : "auto"; } catch (e) { return "auto"; } }
+    function ewtOs() { try { return !!(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches); } catch (e) { return false; } }
+    function ewtDark() { var m = ewtGet(); return m === "dark" || (m === "auto" && ewtOs()); }
+    function ewtApply() {
+      var r = document.documentElement; if (!r) return;
+      r.setAttribute("data-ewdark", ewtDark() ? "1" : "0");
+      try { var mt = document.querySelector('meta[name="theme-color"]'); if (mt) { if (!mt.getAttribute("data-light")) mt.setAttribute("data-light", mt.getAttribute("content") || ""); mt.setAttribute("content", ewtDark() ? "#11161D" : mt.getAttribute("data-light")); } } catch (e) { }
+    }
+    try {
+      var st = document.createElement("style");
+      st.textContent = 'html{background:#fff}' +
+        'html[data-ewdark="1"]{filter:invert(.92) hue-rotate(180deg)}' +
+        'html[data-ewdark="1"] .top{filter:invert(1) hue-rotate(180deg)}' +   /* the navy bar stays navy, as on the card */
+        'html[data-ewdark="1"] img,html[data-ewdark="1"] video,html[data-ewdark="1"] canvas,html[data-ewdark="1"] iframe,html[data-ewdark="1"] embed,html[data-ewdark="1"] object,html[data-ewdark="1"] [data-noinvert]{filter:invert(1) hue-rotate(180deg)}' +
+        '.ewthm{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:44px;min-width:44px;padding:0 14px;border:1px solid #DCE3EA;border-radius:10px;background:#fff;color:#1F3A5F;font:inherit;font-size:14px;font-weight:700;cursor:pointer}';
+      (document.head || document.documentElement).appendChild(st);
+    } catch (e) { }
+    ewtApply();
+    try { var mq = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)"); if (mq) { if (mq.addEventListener) mq.addEventListener("change", ewtApply); else if (mq.addListener) mq.addListener(ewtApply); } } catch (e) { }
+    function ewtLabel() { var m = ewtGet(); return "&#9681; Theme: " + (m === "auto" ? "Auto (as the phone)" : m === "dark" ? "Dark" : "Light"); }
+    window.ewTheme = {
+      get: ewtGet, isDark: ewtDark, label: ewtLabel,
+      set: function (m) { try { localStorage.setItem(K, m); } catch (e) { } ewtApply(); },
+      next: function (btn) {
+        var m = ewtGet(), n = m === "auto" ? "light" : m === "light" ? "dark" : "auto";
+        window.ewTheme.set(n);
+        if (btn) btn.innerHTML = ewtLabel();
+      },
+      button: function () { return '<button type="button" class="ewthm" onclick="ewTheme.next(this)">' + ewtLabel() + '</button>'; }
+    };
+  })();
+
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -483,44 +523,44 @@
   (function () {
     var MAP = null, KEY = "", pend = [], sched = false;
     var SKIP = { SCRIPT: 1, STYLE: 1, TEXTAREA: 1, OPTION: 1, SELECT: 1, INPUT: 1, TITLE: 1, NOSCRIPT: 1, DATALIST: 1 };
-    function low(s) { return String(s == null ? "" : s).replace(/\s+/g, " ").trim().toLowerCase(); }
-    function data() { try { return window.__ewCodeSrc ? window.__ewCodeSrc() : null; } catch (e) { return null; } }
-    function build() {
-      var d = data(); if (!d) return MAP;
+    function ewcLow(s) { return String(s == null ? "" : s).replace(/\s+/g, " ").trim().toLowerCase(); }
+    function ewcData() { try { return window.__ewCodeSrc ? window.__ewCodeSrc() : null; } catch (e) { return null; } }
+    function ewcBuild() {
+      var d = ewcData(); if (!d) return MAP;
       var cl = d.clients || [], as = d.associates || [];
       var k = cl.length + ":" + as.length + ":" + cl.filter(function (c) { return c && c.code; }).length + ":" + as.filter(function (a) { return a && a.code; }).length;
       if (k === KEY && MAP) return MAP;
       KEY = k; var m = {}, bad = {};
-      function put(name, code) {
-        var n = low(name), c = String(code || "").trim(); if (!n || !c) return;
+      function ewcPut(name, code) {
+        var n = ewcLow(name), c = String(code || "").trim(); if (!n || !c) return;
         if (n.length < 5 && n.indexOf(" ") < 0) return;
         if (m[n] && m[n] !== c) bad[n] = 1; else m[n] = c;
       }
-      cl.forEach(function (c) { if (c) put(c.name, c.code); });
-      as.forEach(function (a) { if (a && !m[low(a.name)]) put(a.name, a.code); });   /* a client's number wins over his partner number */
+      cl.forEach(function (c) { if (c) ewcPut(c.name, c.code); });
+      as.forEach(function (a) { if (a && !m[ewcLow(a.name)]) ewcPut(a.name, a.code); });   /* a client's number wins over his partner number */
       Object.keys(bad).forEach(function (n) { delete m[n]; });
       MAP = Object.keys(m).length ? m : null;
       return MAP;
     }
-    function skipEl(el) {
+    function ewcSkip(el) {
       for (var e = el, i = 0; e && i < 12; e = e.parentElement, i++) {
-        if (SKIP[e.tagName] || e.isContentEditable || (e.hasAttribute && e.hasAttribute("data-nocode"))) return true;
+        if (SKIP[e.tagName] || e.isContentEditable || (e.hasAttribute && e.hasAttribute("ewcData-nocode"))) return true;
         if (e.classList && e.classList.contains("ewc")) return true;
       }
       return false;
     }
-    function tag(root, m) {
+    function ewcTag(root, m) {
       if (!root || !m) return;
-      if (root.nodeType === 3) { one(root, m); return; }
+      if (root.nodeType === 3) { ewcOne(root, m); return; }
       if (root.nodeType !== 1 || SKIP[root.tagName]) return;
       var w = document.createTreeWalker(root, 4, null), t, list = [];
       while ((t = w.nextNode())) list.push(t);
-      for (var i = 0; i < list.length; i++) one(list[i], m);
+      for (var i = 0; i < list.length; i++) ewcOne(list[i], m);
     }
-    function one(t, m) {
+    function ewcOne(t, m) {
       var v = t.nodeValue; if (!v || v.length > 80) return;
-      var code = m[low(v)]; if (!code) return;
-      var p = t.parentNode; if (!p || p.nodeType !== 1 || skipEl(p)) return;
+      var code = m[ewcLow(v)]; if (!code) return;
+      var p = t.parentNode; if (!p || p.nodeType !== 1 || ewcSkip(p)) return;
       var prev = t.previousSibling;
       while (prev && prev.nodeType === 3 && !prev.nodeValue.trim()) prev = prev.previousSibling;
       if (prev && prev.nodeType === 1 && prev.classList && (prev.classList.contains("ewc") || prev.classList.contains("code"))) return;
@@ -528,13 +568,13 @@
       var s = document.createElement("span"); s.className = "ewc"; s.textContent = code;
       p.insertBefore(s, t);
     }
-    function flush() {
-      sched = false; var m = build(); var l = pend; pend = [];
+    function ewcFlush() {
+      sched = false; var m = ewcBuild(); var l = pend; pend = [];
       if (!m) return;
-      for (var i = 0; i < l.length; i++) { if (l[i].isConnected) tag(l[i], m); }
+      for (var i = 0; i < l.length; i++) { if (l[i].isConnected) ewcTag(l[i], m); }
     }
-    function kick(n) { pend.push(n); if (!sched) { sched = true; (window.requestAnimationFrame || setTimeout)(flush); } }
-    function start() {
+    function ewcKick(n) { pend.push(n); if (!sched) { sched = true; (window.requestAnimationFrame || setTimeout)(ewcFlush); } }
+    function ewcStart() {
       if (!document.body || !window.MutationObserver) return;
       try {
         var st = document.createElement("style");
@@ -544,15 +584,15 @@
       new MutationObserver(function (recs) {
         for (var i = 0; i < recs.length; i++) {
           var a = recs[i].addedNodes;
-          for (var j = 0; j < a.length; j++) { var n = a[j]; if (n.nodeType === 1 && n.classList && n.classList.contains("ewc")) continue; kick(n); }
+          for (var j = 0; j < a.length; j++) { var n = a[j]; if (n.nodeType === 1 && n.classList && n.classList.contains("ewc")) continue; ewcKick(n); }
         }
       }).observe(document.body, { childList: true, subtree: true });
       /* the book arrives after the first paint: tag the whole page each time the numbers change */
       var last = "";
-      setInterval(function () { build(); if (MAP && KEY !== last) { last = KEY; kick(document.body); } }, 1500);
+      setInterval(function () { ewcBuild(); if (MAP && KEY !== last) { last = KEY; ewcKick(document.body); } }, 1500);
     }
-    (function wait() { if (document.body) start(); else setTimeout(wait, 50); })();
-    window.__ewCodes = { map: function () { return build(); }, tag: function (r) { tag(r || document.body, build()); } };
+    (function wait() { if (document.body) ewcStart(); else setTimeout(wait, 50); })();
+    window.__ewCodes = { map: function () { return ewcBuild(); }, ewcTag: function (r) { ewcTag(r || document.body, ewcBuild()); } };
   })();
   function ensureToastCss() {
     if (document.getElementById("ew_toast_css")) return;
@@ -2386,7 +2426,46 @@
     } catch (e) { return null; }
   }
 
+  /* ================= 6.9.744 - THE MONTHLY LOCK =================
+     Offered on 11 Oct ("once a month's statements are sent, freeze it; corrections go in the next month as
+     adjustments") and taken with "do all what still pending". A partner locks a month on the Statements tab once
+     its statements have gone out. From then on, in that month:
+       - no new delivery, payment or return can be dated into it;
+       - an existing one cannot have its money changed: lines, amount, discounts, the client, its date, a
+         receipt alteration, or being cancelled.
+     Everything else still moves - a receipt arriving, dispatch, approval, notes - because that is not money.
+     A correction is made as an entry in the current month. A partner can unlock (it is one more audit row, so
+     the lock's history is kept); nothing is deleted. */
+  var LOCK_TABS = { challans: ["items", "itemsJson", "amount", "discountJson", "discAmt", "customerName", "customerId", "createdAt", "altJson"],
+                    payments: ["client", "amount", "date", "siteId"],
+                    returns: ["itemsJson", "customerName", "customerId", "createdAt", "challanNo"] };
+  function ymOf(v) { var d = localDay(v); return /^\d\d\d\d-\d\d/.test(d) ? d.slice(0, 7) : ""; }
+  function monthLocks() {
+    var m = {};
+    ((S.data && S.data.audit) || []).filter(function (a) { return a && (a.action === "month:lock" || a.action === "month:unlock"); })
+      .sort(function (a, b) { return String(a.createdAt || "").localeCompare(String(b.createdAt || "")); })
+      .forEach(function (a) { var ym = String(a.target || ""); if (/^\d\d\d\d-\d\d$/.test(ym)) m[ym] = a.action === "month:lock" ? { by: a.actor, at: a.createdAt } : null; });
+    return m;
+  }
+  function monthLocked(ym) { return !!(ym && monthLocks()[ym]); }
+  function ymLabel(ym) { return monthLabel(ym); }
+  function lockRowYm(tab, r) { return r ? ymOf(tab === "payments" ? (r.date || r.createdAt) : r.createdAt) : ""; }
+  /* null = may save; otherwise the sentence that says why not */
+  function lockRefusal(tab, row) {
+    var F = LOCK_TABS[tab]; if (!F || !row) return null;
+    var was = row.id ? ((S.data && S.data[tab]) || []).filter(function (x) { return x && String(x.id) === String(row.id); })[0] : null;
+    var ymNew = lockRowYm(tab, row), ymWas = lockRowYm(tab, was);
+    var what = tab === "challans" ? "delivery" : tab === "payments" ? "payment" : "return";
+    if (!was) return monthLocked(ymNew) ? ymLabel(ymNew) + " is locked — its statements have gone out. Date this " + what + " in the current month as a correction." : null;
+    var moved = F.filter(function (k) { return row[k] !== undefined && String(row[k] == null ? "" : row[k]) !== String(was[k] == null ? "" : was[k]); });
+    if (tab === "challans" && /cancel/i.test(String(row.status || "")) && !/cancel/i.test(String(was.status || ""))) moved.push("status");
+    if (!moved.length) return null;
+    var hit = monthLocked(ymWas) ? ymWas : monthLocked(ymNew) ? ymNew : "";
+    return hit ? ymLabel(hit) + " is locked — its statements have gone out, so this " + what + "'s money cannot change. Make the correction as an entry this month." : null;
+  }
   function save(tab, row, quiet) {
+    var _lk = null; try { _lk = lockRefusal(tab, row); } catch (eLk) { _lk = null; }
+    if (_lk) { try { toast(_lk); S.lockSay = _lk; setTimeout(function () { if (S.lockSay === _lk) { S.lockSay = ""; } }, 12000); } catch (e) { } return Promise.resolve(null); }   /* 6.9.744 */
     /* 6.9.690 - FOUND BUILDING THE ENGINEER'S JOB LIST. The audit sheet's columns are id, createdAt,
        actor, action, target, detail, ip - there is no recId, and a field with no column never
        reaches the sheet. Every row written as { recId: ... } (the complaint tickets of 6.9.684, the
@@ -43865,6 +43944,7 @@ function viewCatalogue() {
           '<div class="acts" style="margin-top:6px"><button class="btn sm ghost" data-act="pin-change">Change my PIN</button></div></div>'
         : '') +
       '<div class="foot"><button class="btn ghost" data-act="close">Close</button>' +
+      window.ewTheme.button() + ' ' +
       '<button class="btn danger" data-act="logout">Sign out</button></div>';
   }
 
@@ -45256,7 +45336,7 @@ function viewCatalogue() {
     var R = stRange(), detail = S.stView === "detail", sel = S.stEx || [], exs = stExecList();
     var B = stBuild(kind, R, detail);
     var chip = function (on, act, k, lbl) { return '<button class="btn sm' + (on ? '' : ' ghost') + '" style="min-height:44px" data-act="' + act + '" data-k="' + esc(k) + '">' + lbl + '</button>'; };
-    var h = '<div class="card"><h2 style="margin:0 0 6px">Statements</h2>' +
+    var h = monthLockCard() + '<div class="card"><h2 style="margin:0 0 6px">Statements</h2>' +   /* 6.9.744 */
       '<div class="acts" style="flex-wrap:wrap;gap:6px;margin:0">' + K.map(function (k) { return chip(k[0] === kind, "st-k", k[0], esc(k[1])); }).join("") + '</div>' +
       '<div class="meta" style="font-size:12px;font-weight:700;margin-top:10px">PERIOD' + (kind === "pend" ? ' <span style="font-weight:500">(pending payments are always as of today)</span>' : '') + '</div>' +
       '<div class="acts" style="flex-wrap:wrap;gap:6px;margin:4px 0 0;align-items:center">' + ST_PERIODS.map(function (p) { return chip(R.k === p[0], "st-per", p[0], esc(p[1])); }).join("") +
@@ -45283,6 +45363,19 @@ function viewCatalogue() {
     var totRow = '<div style="display:flex;flex-wrap:wrap;gap:14px;margin-top:8px;font-size:13px"><b>TOTAL</b>' + B.cols.filter(function (c) { return B.tot[c.k] != null; }).map(function (c) {
       return '<span>' + esc(c.t.toLowerCase()) + ': <b>' + (c.m ? money(B.tot[c.k]) : (c.k === "rate" ? B.tot[c.k] + "%" : B.tot[c.k])) + '</b></span>'; }).join("") + '</div>';
     return h + xlTable("st_" + kind + (detail ? "_d" : "_c"), cols, rows, "every column") + totRow + '</div>';
+  }
+  /* 6.9.744 - lock a month once its statements have gone out */
+  function monthLockCard() {
+    if (!roleIs("admin")) return "";
+    var L = monthLocks(), t = today(), out = [];
+    for (var i = 1; i <= 6; i++) { var d = new Date(Number(t.slice(0, 4)), Number(t.slice(5, 7)) - 1 - i, 1); out.push(d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0")); }
+    return '<div class="card"><h3 style="margin:0 0 4px">Month lock</h3><div class="meta" style="font-size:12.5px">Lock a month once its statements have gone out. Its deliveries, payments and returns then keep their money as sent; receipts, dispatch and notes still move. A correction goes in as an entry this month.</div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">' + out.map(function (ym) {
+        var l = L[ym], arm = S.lockArm === ym;
+        return '<div style="border:1px solid var(--line);border-radius:10px;padding:8px 10px;min-width:170px"><b>' + esc(ymLabel(ym)) + '</b><div class="meta" style="font-size:12px">' +
+          (l ? '&#128274; locked by ' + esc(l.by || "") + ' on ' + esc(dmy(l.at)) : 'open') + '</div>' +
+          '<button class="btn sm' + (l ? ' ghost' : '') + '" style="min-height:44px;margin-top:6px" data-act="mlock" data-k="' + ym + '">' + (arm ? (l ? 'Tap again to unlock' : 'Tap again to lock') : (l ? 'Unlock' : 'Lock')) + '</button></div>';
+      }).join("") + '</div></div>';
   }
   function stFileName(B, R, ext) { return "Statement_" + B.title.replace(/[^\w]+/g, "_") + "_" + (B.kind === "pend" ? today() : R.from + "_to_" + R.to) + "." + ext; }
   function stXlsx() {
@@ -57313,6 +57406,15 @@ function viewCatalogue() {
       return;
     }
     if (act === "nav-back") { navBack(); return; }   /* 6.9.734 */
+    if (act === "mlock") {   /* 6.9.744 - two taps, so a lock is never a slip of the thumb */
+      var _ym = t.getAttribute("data-k");
+      if (!roleIs("admin")) return;
+      if (S.lockArm !== _ym) { S.lockArm = _ym; render(); setTimeout(function () { if (S.lockArm === _ym) { S.lockArm = ""; render(); } }, 6000); return; }
+      S.lockArm = ""; var _was = monthLocked(_ym);
+      save("audit", { id: "", createdAt: new Date().toISOString(), actor: S.user, action: _was ? "month:unlock" : "month:lock", target: _ym, detail: JSON.stringify({ ym: _ym }), ip: "" });
+      render(); toast(ymLabel(_ym) + (_was ? " is open again." : " is locked."));
+      return;
+    }
     if (act === "st-k") { S.stK = t.getAttribute("data-k"); render(); window.scrollTo(0, 0); return; }   /* 6.9.733 - statements */
     if (act === "st-per") { S.stPer = t.getAttribute("data-k"); render(); return; }
     if (act === "st-range") { var _sf = val("st_from"), _stt = val("st_to"); if (!_sf || !_stt) { toast("Pick both dates."); return; } S.stFrom = _sf; S.stTo = _stt; S.stPer = "custom"; render(); return; }
