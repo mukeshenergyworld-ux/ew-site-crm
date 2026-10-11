@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>EW Visit &amp; Quote</title>
 <link rel="manifest" href="manifest.webmanifest">
-<meta name="theme-color" content="#0e7490">
+<meta name="theme-color" content="#1F3A5F">
 <link rel="apple-touch-icon" href="icon-180.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <script src="../assets/jspdf/jspdf.umd.min.js"></script>
@@ -13,9 +13,9 @@
 <style>
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
-body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#f1f5f9;color:#0f172a;font-size:15px;line-height:1.4;overflow-x:hidden}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#F4F6F9;color:#1A2230;font-size:15px;line-height:1.4;overflow-x:hidden}
 #root{max-width:720px;margin:0 auto;padding:0 12px calc(92px + env(safe-area-inset-bottom))}
-.top{position:sticky;top:0;z-index:20;background:#0e7490;color:#fff;margin:0 -12px;padding:calc(10px + env(safe-area-inset-top)) 14px 10px;display:flex;align-items:center;gap:10px}
+.top{position:sticky;top:0;z-index:20;background:#1F3A5F;border-bottom:3px solid #C9A24A;color:#fff;margin:0 -12px;padding:calc(10px + env(safe-area-inset-top)) 14px 10px;display:flex;align-items:center;gap:10px}
 .top .ttl{flex:1;min-width:0}
 .top b{font-size:17px;display:block}
 .top .sub{font-size:12px;opacity:.9}
@@ -23,19 +23,19 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
 .nav{position:fixed;left:0;right:0;bottom:0;z-index:30;background:#fff;border-top:1px solid #e2e8f0;display:flex;justify-content:center;padding-bottom:env(safe-area-inset-bottom)}
 .nav button{flex:1;max-width:180px;border:0;background:none;min-height:58px;font-size:13px;font-weight:700;color:#64748b;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
 .nav button .i{font-size:20px;line-height:1}
-.nav button.on{color:#0e7490}
+.nav button.on{color:#1F3A5F}
 h2{font-size:19px;margin:14px 0 6px}
 h3.sec{font-size:13px;letter-spacing:.04em;text-transform:uppercase;color:#475569;margin:18px 0 6px}
 .card{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:12px;margin:8px 0}
 .card.tap{cursor:pointer}
-.card.mine{border-left:4px solid #0e7490}
+.card.mine{border-left:4px solid #1F3A5F}
 .card.other{border-left:4px solid #f59e0b}
 .row{display:flex;gap:10px;align-items:center}
 .grow{flex:1;min-width:0}
-.meta{font-size:13px;color:#64748b}
+.meta{font-size:13px;color:#5E6875}
 .ttl2{font-weight:700;font-size:15px}
 .amt{font-weight:800;font-size:15px;white-space:nowrap}
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:0;border-radius:12px;background:#0e7490;color:#fff;font-weight:700;font-size:15px;min-height:48px;padding:0 16px;cursor:pointer;text-decoration:none}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:0;border-radius:12px;background:#1F3A5F;color:#fff;font-weight:700;font-size:15px;min-height:48px;padding:0 16px;cursor:pointer;text-decoration:none}
 .btn.gry{background:#e2e8f0;color:#0f172a}
 .btn.red{background:#dc2626}
 .btn.grn{background:#15803d}
@@ -53,7 +53,7 @@ h3.sec{font-size:13px;letter-spacing:.04em;text-transform:uppercase;color:#47556
 .tile.warn .n{color:#b45309}.tile.bad .n{color:#b91c1c}.tile.good .n{color:#0f766e}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
 .chip{border:1px solid #cbd5e1;background:#fff;border-radius:999px;min-height:44px;padding:0 14px;font-size:14px;font-weight:600;color:#0f172a;cursor:pointer}
-.chip.on{background:#0e7490;color:#fff;border-color:#0e7490}
+.chip.on{background:#1F3A5F;color:#fff;border-color:#1F3A5F}
 .pill{display:inline-block;border-radius:999px;padding:2px 9px;font-size:12px;font-weight:700;background:#e2e8f0;color:#334155}
 .pill.grn{background:#dcfce7;color:#166534}.pill.red{background:#fee2e2;color:#b91c1c}.pill.amb{background:#fef3c7;color:#92400e}.pill.blu{background:#dbeafe;color:#1d4ed8}
 label{display:block;font-size:13px;font-weight:700;color:#334155;margin:12px 0 4px}
@@ -84,7 +84,7 @@ table.t td.pic{width:48px}
 .sheet h2{margin-top:4px}
 .tblw{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid #e2e8f0;border-radius:12px;background:#fff;margin:8px 0}
 table.t{border-collapse:collapse;width:100%;font-size:13px;min-width:520px}
-table.t th{background:#f8fafc;text-align:left;font-size:12px;color:#64748b;padding:8px 8px}
+table.t th{background:#1F3A5F;text-align:left;font-size:12px;color:#fff;padding:8px 8px;border-bottom:2px solid #C9A24A}
 table.t td{border-top:1px solid #f1f5f9;padding:8px;vertical-align:top}
 table.t td.r,table.t th.r{text-align:right;white-space:nowrap}
 .prod{display:flex;gap:10px;align-items:center;padding:8px 0;border-top:1px solid #f1f5f9}
@@ -96,9 +96,9 @@ table.t td.r,table.t th.r{text-align:right;white-space:nowrap}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(80px + env(safe-area-inset-bottom));background:#0f172a;color:#fff;padding:10px 16px;border-radius:12px;font-size:14px;z-index:60;max-width:92vw;box-shadow:0 6px 20px rgba(0,0,0,.25)}
 .steps{display:flex;gap:4px;margin:8px 0}
 .steps span{flex:1;height:6px;border-radius:3px;background:#e2e8f0}
-.steps span.on{background:#0e7490}
+.steps span.on{background:#1F3A5F}
 .login{max-width:420px;margin:0 auto;padding:40px 4px}
-.login .mark{width:72px;height:72px;border-radius:50%;border:3px solid #0e7490;color:#0e7490;font-weight:800;font-size:26px;display:flex;align-items:center;justify-content:center;margin:0 auto 12px}
+.login .mark{width:72px;height:72px;border-radius:50%;border:3px solid #1F3A5F;color:#1F3A5F;font-weight:800;font-size:26px;display:flex;align-items:center;justify-content:center;margin:0 auto 12px}
 .bar{display:flex;gap:8px;align-items:center;margin:10px 0}
 .bar input{flex:1}
 .who{font-size:13px;color:#92400e;font-weight:700}
@@ -107,9 +107,14 @@ table.t td.r,table.t th.r{text-align:right;white-space:nowrap}
 .btile{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:56px;padding:6px 4px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;font:inherit;color:#0f172a;cursor:pointer}
 .btile img{max-width:84px;max-height:24px;object-fit:contain}
 .btile span{font-size:12px;font-weight:600;line-height:1.15;text-align:center;word-break:break-word}
-.btile.on{border:2px solid #0e7490;background:#ecfeff}
-.btile.on::after{content:"\2713";position:absolute;top:2px;right:5px;font-size:12px;font-weight:800;color:#0e7490}
+.btile.on{border:2px solid #1F3A5F;background:#ecfeff}
+.btile.on::after{content:"\2713";position:absolute;top:2px;right:5px;font-size:12px;font-weight:800;color:#1F3A5F}
 .req{color:#b91c1c}
+/* 1.3.0 - his number beside every name */
+.code{display:inline-block;font-size:12px;font-weight:800;color:#1F3A5F;background:#E8EEF5;border-radius:6px;padding:1px 6px;margin-right:6px;vertical-align:1px}
+.card.mine{border-left-color:#C9A24A}
+.steps span.on{background:#C9A24A}
+h3.sec{color:#1F3A5F}
 .nrow{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .nrow input{flex:1 1 150px;width:auto}
 .nrow .chip{padding:0 10px}
@@ -139,7 +144,7 @@ table.t td.r,table.t th.r{text-align:right;white-space:nowrap}
    ===================================================================================== */
 (function () {
   "use strict";
-  var APP_VERSION = "1.2.0";
+  var APP_VERSION = "1.3.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_vq_session", JRN = "ew_vq_journal_v1", CALLQ = "ew_vq_calls_v1", SNAPK = "ew_vq_snap_";
   var CAT_KEY = "ew_team_catalog", CAT_V = 2;   /* the CRM's own shelf copy of the price list - shared, same origin */
@@ -152,7 +157,7 @@ table.t td.r,table.t th.r{text-align:right;white-space:nowrap}
   var MET = ["Owner", "Plumber", "Architect", "Builder", "PMC", "Site only"];
   var MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-    /* ===== LIFTED FROM THE CRM (team/app.js 6.9.741) by visitapp/lift.py - do not edit here ===== */
+    /* ===== LIFTED FROM THE CRM (team/app.js 6.9.742) by visitapp/lift.py - do not edit here ===== */
   function idbOpen() {
     if (_idbP) return _idbP;
     _idbP = new Promise(function (res) {
@@ -2076,6 +2081,17 @@ table.t td.r,table.t th.r{text-align:right;white-space:nowrap}
     if (!ks.length) return brands ? '' : '<div class="hist"><b class="h">Before</b>Nothing quoted or delivered to him yet.</div>';
     return '<div class="hist"><b class="h">' + (brands ? 'These brands, before' : 'Quoted and bought before') + '</b>' + ks.map(function (b) { return histLine(b, H[b]); }).join("") + '</div>';
   }
+  /* 1.3.0 - HIS WORDS (11 Oct): "give every lead a serial no as code like LD001 ... client CL001 ... plumber PL001,
+     architect AR001, builder BL001, PMC PMC001 ... show code everywhere with names, in every app". The server writes
+     the number (V146); a lead that buys becomes CL with his LD kept as oldCode. Read here, never made here. */
+  function whoCode(name) {
+    var k = dkey(name); if (!k) return "";
+    var c = (S.data.clients || []).filter(function (x) { return dkey(x.name) === k; })[0];
+    if (c && c.code) return String(c.code);
+    var a = (S.data.associates || []).filter(function (x) { return dkey(x.name) === k; })[0];
+    return a && a.code ? String(a.code) : "";
+  }
+  function codeTag(name) { var c = whoCode(name); return c ? '<span class="code">' + esc(c) + '</span>' : ''; }
   function clientWho(c) {
     if (!c) return "";
     return 'Registered by <b>' + esc(c.createdBy || "-") + '</b>' + (c.createdAt ? ' on ' + esc(fd(c.createdAt)) : '') +
@@ -2113,6 +2129,7 @@ table.t td.r,table.t th.r{text-align:right;white-space:nowrap}
           '<button class="btn sm" data-act="pv-cfix" data-k="' + f + '">Save</button></span>';
       };
       return '<div class="info">' +
+        (c.code ? '<div class="kv"><span>Code</span><b>' + esc(c.code) + '</b>' + (c.oldCode ? '&nbsp;<span class="meta">(was ' + esc(c.oldCode) + ')</span>' : '') + '</div>' : '') +
         '<div class="kv"><span>Mobile</span><b>' + esc(c.mobile || "-") + '</b>' + (mob10(c.mobile).length === 10 ? ' <a class="btn sm gry" style="margin-left:auto" href="tel:' + mob10(c.mobile) + '">Call</a>' : '') + '</div>' +
         '<div class="kv"><span>Address</span>' + esc([c.address].concat([c.area, c.location].filter(function (x) { return x && lower(c.address).indexOf(lower(x)) < 0; })).filter(Boolean).join(", ") || "-") + '</div>' +
         '<div class="kv"><span>Plumber</span>' + fix("plumber", "plumber", "plumber") + '</div>' +
@@ -2124,6 +2141,7 @@ table.t td.r,table.t th.r{text-align:right;white-space:nowrap}
     var kind = k === "architect" ? "architect" : k === "plumber" ? "plumber" : (/archit/i.test(p.role || "") ? "architect" : "plumber");
     var ss = partnerSites(p.name, kind), cl = (S.data.clients || []).filter(function (c) { return dkey(c[kind]) === dkey(p.name); });
     return '<div class="info">' +
+      (p.code ? '<div class="kv"><span>Code</span><b>' + esc(p.code) + '</b></div>' : '') +
       '<div class="kv"><span>Mobile</span><b>' + esc(p.mobile || "-") + '</b>' + (mob10(p.mobile).length === 10 ? ' <a class="btn sm gry" style="margin-left:auto" href="tel:' + mob10(p.mobile) + '">Call</a>' : '') + '</div>' +
       '<div class="kv"><span>Area</span>' + esc([p.area, p.location].filter(Boolean).join(", ") || "-") + '</div>' +
       '<div class="kv"><span>Clients</span>' + cl.length + ' on your book</div>' +
@@ -2168,7 +2186,7 @@ table.t td.r,table.t th.r{text-align:right;white-space:nowrap}
   function tile(n, l, cls, act, k) { return '<button class="tile ' + (cls || "") + '"' + (act ? ' data-act="' + act + '" data-k="' + esc(k || "") + '"' : '') + '><div class="n">' + n + '</div><div class="l">' + l + '</div></button>'; }
   function visitRow(v) {
     var k = { site: "Site", plumber: "Plumber", architect: "Architect", showroom: "Showroom" }[v.kind] || v.kind;
-    return '<div class="card"><div class="row"><div class="grow"><div class="ttl2">' + esc(v.who || "") + '</div><div class="meta">' + esc(k) + (v.met ? ' &middot; met ' + esc(v.met) : '') + ' &middot; ' + esc(fdt(v.at)) + '</div>' +
+    return '<div class="card"><div class="row"><div class="grow"><div class="ttl2">' + codeTag(v.who) + esc(v.who || "") + '</div><div class="meta">' + esc(k) + (v.met ? ' &middot; met ' + esc(v.met) : '') + ' &middot; ' + esc(fdt(v.at)) + '</div>' +
       (v.note ? '<div class="meta" style="color:#334155">' + esc(String(v.note).slice(0, 160)) + '</div>' : '') + '</div></div></div>';
   }
 
@@ -2282,7 +2300,7 @@ table.t td.r,table.t th.r{text-align:right;white-space:nowrap}
   }
 
   /* ================= SITES ================= */
-  function siteHay(st) { return lower([st.name, st.client, st.city, st.location, st.architect, st.plumber, st.builder, st.code, digits(st.mobile)].join(" ")); }
+  function siteHay(st) { return lower([st.name, st.client, whoCode(st.client), st.city, st.location, st.architect, st.plumber, st.builder, st.code, digits(st.mobile)].join(" ")); }
   function siteResults() {
     var q = lower(S.q), qd = digits(S.q), list;
     var all = (S.data.sites || []).filter(function (st) { return st && String(st.status || "") !== "Lost"; });
@@ -2296,7 +2314,7 @@ table.t td.r,table.t th.r{text-align:right;white-space:nowrap}
   function siteRow(st) {
     var o = siteOwner(st), mine = !o.by || isMe(o.by), lv = vlVisits(st)[0];
     return '<div class="card tap ' + (mine ? 'mine' : 'other') + '" data-act="site-open" data-id="' + esc(st.id) + '"><div class="ttl2">' + esc(st.name || st.client || "Site") + '</div>' +
-      '<div class="meta">' + esc([st.client && st.client !== st.name ? st.client : "", st.city || st.location, st.stage].filter(Boolean).join(" · ")) + '</div>' +
+      '<div class="meta">' + (st.client ? codeTag(st.client) : '') + esc([st.client && st.client !== st.name ? st.client : "", st.city || st.location, st.stage].filter(Boolean).join(" · ")) + '</div>' +
       (mine ? '' : '<div class="who">Already visited by ' + esc(o.by) + (o.at ? ' on ' + esc(fd(o.at)) : '') + '</div>') +
       (lv ? '<div class="meta">Last visit ' + esc(fd(lv.createdAt || lv.date)) + ' by ' + esc(lv.createdBy || "") + '</div>' : '<div class="meta">No visit logged yet</div>') + '</div>';
   }
@@ -2477,7 +2495,7 @@ table.t td.r,table.t th.r{text-align:right;white-space:nowrap}
   /* ================= QUOTES: the list and one quote ================= */
   function qTone(s) { return s === "Won" ? "grn" : s === "Lost" ? "red" : s === "Draft" ? "amb" : "blu"; }
   function qRow(q) {
-    return '<div class="card tap mine" data-act="q-open" data-id="' + esc(q.id) + '"><div class="row"><div class="grow"><div class="ttl2">' + esc(q.client || "") + '</div>' +
+    return '<div class="card tap mine" data-act="q-open" data-id="' + esc(q.id) + '"><div class="row"><div class="grow"><div class="ttl2">' + codeTag(q.client) + esc(q.client || "") + '</div>' +
       '<div class="meta">' + esc(q.quoteNo || "") + ' &middot; ' + esc(fd(q.createdAt)) + ' &middot; ' + esc(q.brand || "") + '</div></div>' +
       '<div style="text-align:right"><div class="amt">' + esc(money(q.net)) + '</div><span class="pill ' + qTone(q.status) + '">' + esc(q.status || "Draft") + '</span></div></div></div>';
   }
@@ -2499,7 +2517,7 @@ table.t td.r,table.t th.r{text-align:right;white-space:nowrap}
   function qById(id) { return (S.data.quotes || []).filter(function (x) { return String(x.id) === String(id); })[0] || null; }
   function qSheet(q) {
     var it = qItems(q), c = clientByName(q.client) || {}, m = mob10(c.mobile), mine = roleIs("admin") || isMe(q.createdBy) || isMineClient(q.client);
-    var h = '<h2>' + esc(q.client || "") + '</h2><div class="meta">' + esc(q.quoteNo || "") + ' &middot; ' + esc(fd(q.createdAt)) + ' &middot; by ' + esc(q.createdBy || "") + '</div>' +
+    var h = '<h2>' + codeTag(q.client) + esc(q.client || "") + '</h2><div class="meta">' + esc(q.quoteNo || "") + ' &middot; ' + esc(fd(q.createdAt)) + ' &middot; by ' + esc(q.createdBy || "") + '</div>' +
       '<div style="margin:6px 0"><span class="pill ' + qTone(q.status) + '">' + esc(q.status || "Draft") + '</span> <span class="pill">' + esc(q.brand || "") + '</span></div>';
     h += lineTable(it.map(function (i) { return { i: i, d: qLineDisc(q, i), net: Math.round(qLineNet(q, i) * (Number(i.qty) || 0)) }; }));
     h += totCard({ gross: Number(q.gross) || 0, net: Number(q.net) || 0, gst: Number(q.gstAmt) || 0, total: Number(q.total) || 0 }, it.some(function (i) { return i.gst; }));   /* 1.1.0 - GST only when the quote says so */
@@ -2570,7 +2588,7 @@ table.t td.r,table.t th.r{text-align:right;white-space:nowrap}
       '<div class="steps">' + [1, 2, 3, 4].map(function (i) { return '<span class="' + (z.step >= i ? 'on' : '') + '"></span>'; }).join("") + '</div>' +
       '<div class="meta">' + ["", "Step 1 of 4 &middot; the client", "Step 2 of 4 &middot; products", "Step 3 of 4 &middot; discount", "Step 4 of 4 &middot; check and save"][z.step] + '</div>';
     if (z.client && z.step > 1) { var _zc = clientByName(z.client) || {};
-      h += '<div class="card"><div class="row"><div class="grow"><div class="ttl2">' + esc(z.client) + '</div><div class="meta">' + esc([_zc.mobile, _zc.area, _zc.location].filter(Boolean).join(" · ")) +
+      h += '<div class="card"><div class="row"><div class="grow"><div class="ttl2">' + codeTag(z.client) + esc(z.client) + (_zc.oldCode ? ' <span class="meta">(was ' + esc(_zc.oldCode) + ')</span>' : '') + '</div><div class="meta">' + esc([_zc.mobile, _zc.area, _zc.location].filter(Boolean).join(" · ")) +
         ([_zc.plumber, _zc.architect].some(Boolean) ? '<br>' + esc([_zc.plumber ? "Plumber " + _zc.plumber : "", _zc.architect ? "Architect " + _zc.architect : ""].filter(Boolean).join(" · ")) : '') +
         '<br>' + clientWho(_zc) + '</div></div><button class="btn sm gry" data-act="qz-step" data-k="1">Change</button></div></div>';
       if (z.step === 2) h += histHtml(z.client); }   /* 1.1.0 - on every step: what he was quoted and bought, by whom */
@@ -2590,7 +2608,7 @@ table.t td.r,table.t th.r{text-align:right;white-space:nowrap}
   function qzHits(hits, q) {
     if (q.length < 2) return '<div class="meta">Type two letters. Only your own clients are listed.</div>';
     if (!hits.length) return '<div class="meta">No client of yours matches. Add him as a new client.</div>';
-    return hits.slice(0, 12).map(function (c) { return '<div class="card tap" data-act="qz-client" data-k="' + esc(c.name) + '"><div class="ttl2">' + esc(c.name) + '</div><div class="meta">' + esc([c.area, c.location, c.mobile].filter(Boolean).join(" · ")) + '</div></div>'; }).join("");
+    return hits.slice(0, 12).map(function (c) { return '<div class="card tap" data-act="qz-client" data-k="' + esc(c.name) + '"><div class="ttl2">' + codeTag(c.name) + esc(c.name) + '</div><div class="meta">' + esc([c.area, c.location, c.mobile].filter(Boolean).join(" · ")) + '</div></div>'; }).join("");
   }
   function qzProducts() {
     var z = S.qz, brands = brandList(), b = z.brand;
@@ -2809,7 +2827,7 @@ table.t td.r,table.t th.r{text-align:right;white-space:nowrap}
     if (t.id === "cn_dist") { var _cd = el("cn_adl"); if (_cd) _cd.innerHTML = dl("cn_areas", areasFor(t.value)); return; }
     if (t.id === "sq") { S.q = t.value; S.near = null; var r = el("sres"); if (r) r.innerHTML = siteResults(); return; }
     if (t.id === "qq") { S.q = t.value; var r2 = el("qres"); if (r2) { var f = S.fq || "all", q = lower(S.q); var list = myQuotes().filter(function (x) { return fqOk(x, f); }).filter(function (x) { return !q || lower([x.client, x.quoteNo, x.brand, x.siteName].join(" ")).indexOf(q) >= 0; }); r2.innerHTML = list.length ? list.slice(0, 80).map(qRow).join("") : '<div class="empty">No quote here.</div>'; } return; }
-    if (t.id === "qz_cq") { S.qz.cq = t.value; var q3 = lower(t.value), cl = myClients(); var hits = q3.length >= 2 ? cl.filter(function (c) { return lower([c.name, c.area, c.location, c.mobile].join(" ")).indexOf(q3) >= 0; }) : []; el("qz_hits").innerHTML = qzHits(hits, q3); return; }
+    if (t.id === "qz_cq") { S.qz.cq = t.value; var q3 = lower(t.value), cl = myClients(); var hits = q3.length >= 2 ? cl.filter(function (c) { return lower([c.code, c.oldCode, c.name, c.area, c.location, c.mobile].join(" ")).indexOf(q3) >= 0; }) : []; el("qz_hits").innerHTML = qzHits(hits, q3); return; }
     if (t.id === "qz_pq") { S.qz.pq = t.value; el("qz_pres").innerHTML = qzProdHits(); return; }
     if (t.classList && (t.classList.contains("qz-qty") || t.classList.contains("qz-bd"))) { qzKeep(); return; }
     if (t.id === "pv_name" || t.id === "pv_note" || t.id === "pv_mob") { S.pv = S.pv || {}; S.pv.name = val("pv_name"); S.pv.note = val("pv_note"); S.pv.mob = val("pv_mob"); }
