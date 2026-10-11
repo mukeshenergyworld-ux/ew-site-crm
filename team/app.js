@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.737";
+  var APP_VERSION = "6.9.738";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -4553,6 +4553,7 @@ window.addEventListener("beforeunload", function (ev) {
     /* 6.9.635 - "Called" on the twice-weekly review is an audit row, never a new column */
     (S.data.audit || []).forEach(function (r) {
       if (r && String(r.action || "") === "partner:call") touch(r.target, dstr(r.createdAt));
+      if (r && String(r.action || "") === "visit:mark") touch(r.target, dstr(r.createdAt));   /* 6.9.738 - a visit to him, or his to the showroom */
     });
     _pcCache = m;
     return m;
@@ -7622,7 +7623,7 @@ window.addEventListener("beforeunload", function (ev) {
       if (act === "brand:svc") {
         var d = {}; try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
         var k = dkey(d.brand); if (!k) return;
-        if (!bAt[k] || String(r.createdAt || "") >= bAt[k]) { bAt[k] = String(r.createdAt || ""); brand[k] = { on: !!d.on, wm: Number(d.wm) || 0, cm: Number(d.cm) || 0, wby: d.wby === "brand" ? "brand" : "ew", help: String(d.help || "") }; }   /* 6.9.736 - wby, help */
+        if (!bAt[k] || String(r.createdAt || "") >= bAt[k]) { bAt[k] = String(r.createdAt || ""); brand[k] = { on: !!d.on, wm: Number(d.wm) || 0, cm: Number(d.cm) || 0, wby: d.wby === "brand" ? "brand" : "ew", help: String(d.help || ""), at: String(r.createdAt || "") }; }   /* 6.9.736 - wby, help; 6.9.738 - at */
       } else if (act === "comm:done") {
         var c = {}; try { c = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
         if (!c.chId) return;
@@ -7633,12 +7634,61 @@ window.addEventListener("beforeunload", function (ev) {
     _svcAud = { brand: brand, comm: comm }; _svcAudN = a.length;
     return _svcAud;
   }
-  function brandSvc(b) { return svcAud().brand[dkey(b)] || null; }
+  /* ===== 6.9.738 - HIS SERVICE RULES, PER BRAND  (11 Oct 2026) =====
+     HIS WORDS: "servicable brands are LEO, GRUNDFOS, PENTAIR, GREEN HEAT / LEO - warranty 2 years - service from
+     Energy World / Grundfos - warranty 2 years - service under warranty from Grundfos then by Energy World / Pentair -
+     warranty 2 years - service from Energy World / Green Heat - Compressor 5 years, Hot Water Tank 5 years, other parts
+     2 years - service from Energy World / all warranties from date of commissioning or auto start after 60 days of the
+     supply challan date / Pentair periodic softener and sand filter service will not be under warranty, it is chargeable".
+     These are the defaults for the four brands. A brand form saved AFTER this release (Products > Brands) overrides the
+     months and who services it; the parts and the periodic rule stay his. */
+  var SVC_RULES = {
+    "leo":        { label: "LEO", wm: 24, wby: "ew" },
+    "grundfos":   { label: "Grundfos", wm: 24, wby: "brand" },
+    "pentair":    { label: "Pentair", wm: 24, wby: "ew", periodicCharged: 1 },
+    "green heat": { label: "Green Heat", wm: 24, wby: "ew", parts: [{ kw: ["compressor"], label: "Compressor", wm: 60 }, { kw: ["tank"], label: "Hot water tank", wm: 60 }, { kw: [], label: "Other parts", wm: 24 }] }
+  };
+  var SVC_RULES_AT = "2026-10-11T12:10:05";   /* this release; a brand form saved after it is his override */
+  var WARR_AUTO_DAYS = 60;   /* warranty starts at commissioning, or by itself 60 days after the challan */
+  function svcRule(b) {
+    var k = dkey(b); if (!k) return null;
+    for (var r in SVC_RULES) if (SVC_RULES.hasOwnProperty(r) && (k === r || k.indexOf(r + " ") === 0)) return SVC_RULES[r];
+    return null;
+  }
+  function brandSvc(b) {
+    var row = svcAud().brand[dkey(b)] || null, R = svcRule(b);
+    if (!R) return row;
+    var o = row ? Object.assign({}, row) : { on: false, wm: 0, cm: 0, wby: "ew", help: "" };
+    if (!row || String(row.at || "") < SVC_RULES_AT) { o.wm = R.wm; o.wby = R.wby; }
+    o.parts = R.parts || null; o.periodicCharged = !!R.periodicCharged; o.rule = R.label;
+    return o;
+  }
+  /* when the warranty of a delivered line starts: its commissioning, or 60 days after the challan, whichever is first */
+  function warrStartOf(chDate, commDate) {
+    var auto = addDays(String(chDate || "").slice(0, 10), WARR_AUTO_DAYS), cd = String(commDate || "").slice(0, 10);
+    if (cd && (!auto || cd <= auto)) return { start: cd, auto: false, autoOn: auto };
+    return { start: auto, auto: true, autoOn: auto, started: !!auto && auto <= today() };
+  }
+  /* every warranty clock on one product: one line, or the brand's parts */
+  function warrParts(brand, desc, start, months) {
+    var bs = brandSvc(brand);
+    if (!start) return [];
+    if (bs && bs.parts) return bs.parts.map(function (p) { return { label: p.label, till: addMonths(start, p.wm), wm: p.wm }; });
+    var m = Number(months) || (bs && bs.wm) || 0;
+    return m ? [{ label: "", till: addMonths(start, m), wm: m }] : [];
+  }
+  function warrPartsTxt(ps, d) {
+    d = d || today();
+    var on = ps.filter(function (p) { return p.till >= d; }), off = ps.filter(function (p) { return p.till < d; });
+    if (ps.length === 1 && !ps[0].label) return on.length ? "In warranty till " + fullDate(ps[0].till) : "Warranty over " + fullDate(ps[0].till);
+    return (on.length ? "In warranty: " + on.map(function (p) { return p.label + " till " + fullDate(p.till); }).join(", ") : "") +
+           (on.length && off.length ? "; " : "") + (off.length ? "over: " + off.map(function (p) { return p.label + " " + fullDate(p.till); }).join(", ") : "");
+  }
   /* the cat a delivered line is commissioned under: the product type's, with the brand's months over it */
   function commNeed(i) {
     var cat = commCat(i && i.desc), bs = brandSvc(i && i.brand);
     if (!(bs && bs.on) && !cat) return null;
-    if (!(bs && bs.on)) return cat;
+    if (!(bs && bs.on)) return bs && bs.rule ? Object.assign({}, cat, { months: bs.wm || cat.months }) : cat;   /* 6.9.738 - the brand's warranty */
     return { kw: [], label: cat ? cat.label : String(i.brand || "Machine"), months: bs.wm || (cat && cat.months) || 12,
              cycle: bs.cm ? Math.round(bs.cm * 30) : ((cat && cat.cycle) || 180), brand: true };
   }
@@ -8833,7 +8883,10 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     chs.slice().sort(function (a, b) { return String(b.createdAt).localeCompare(String(a.createdAt)); }).forEach(function (c) {
       commItemsOf(c).forEach(function (x) {
         var cm = x.i.comm || {};
-        out.push({ key: c.id + ":" + x.idx, kind: "comm", desc: String(x.i.desc || x.cat.label), brand: String(x.i.brand || ""), sn: cm.sn || "", date: cm.date || localDay(c.createdAt), till: cm.till || "", ch: c.challanNo || "", commissioned: !!cm.date });
+        var _ws = warrStartOf(localDay(c.createdAt), cm.date), _wp = warrParts(x.i.brand, x.i.desc, cm.date ? (cm.from || cm.date) : (_ws.started ? _ws.start : ""), cm.wm || x.cat.months);   /* 6.9.738 */
+        if (cm.date && cm.till && _wp.length === 1) _wp[0].till = cm.till;   /* a commissioned line keeps the till it was certified with */
+        out.push({ key: c.id + ":" + x.idx, kind: "comm", desc: String(x.i.desc || x.cat.label), brand: String(x.i.brand || ""), sn: cm.sn || "", date: cm.date || localDay(c.createdAt), till: cm.till || (_wp[0] ? _wp[0].till : ""), ch: c.challanNo || "", commissioned: !!cm.date,
+          eng: cm.eng || "", chDate: localDay(c.createdAt), autoOn: _ws.autoOn, autoStarted: !cm.date && _ws.started, parts: _wp });
       });
     });
     (S.data.installs || []).filter(function (x) { return dkey(x.client) === k; }).forEach(function (x) {
@@ -8861,6 +8914,16 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       return a >= 0 ? { t: "AMC" + (p.amcType ? " (" + p.amcType + ")" : "") + " till " + dmy(p.amcEnd), c: "#0f766e", ok: 1 } : { t: "AMC ended " + dmy(p.amcEnd), c: "#b91c1c" };
     }
     if (p.kind === "comm") {
+      /* 6.9.738 - not commissioned: covered while new; after 60 days the warranty has started by itself */
+      if (!p.commissioned && !p.autoStarted) return { t: "Not commissioned yet — covered; warranty starts at commissioning or by itself on " + dmy(p.autoOn), c: "#0f766e", ok: 1 };
+      if (p.parts && p.parts.length) {
+        var _on = p.parts.filter(function (x) { return x.till >= today(); });
+        var _by = p.brand && brandWby(p.brand) === "brand" ? " — " + p.brand + "’s engineer services it" + (brandHelp(p.brand) ? " (" + brandHelp(p.brand) + ")" : "") : "";
+        var _tx = warrPartsTxt(p.parts) + (p.autoStarted ? " (started by itself 60 days after delivery)" : "") + (p.eng ? " · commissioned by " + p.eng : "");
+        if (_on.length === p.parts.length) return { t: _tx + _by, c: "#0f766e", ok: 1, byBrand: !!_by };
+        if (_on.length) return { t: _tx, c: "#b45309", partial: 1 };
+        return { t: _tx, c: "#b91c1c" };
+      }
       if (!p.commissioned) return { t: "Not commissioned yet — warranty not started", c: "#b45309" };
       if (!p.till) return { t: "Commissioned " + dmy(p.date) + " · no warranty date", c: "#b45309" };
       var w = daysTo(p.till);
@@ -8891,13 +8954,15 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
   /* the register sheet: S.cmpNew holds what is typed, so a redraw (client picked) keeps it */
   function cmpKeep() {
     var n = S.cmpNew; if (!n) return;
-    ["src", "pri", "cat", "desc", "eng", "name", "mobile", "district", "client"].forEach(function (f) { var e = el("cmpn_" + f); if (e) n[f] = e.value; });
+    ["src", "pri", "cat", "desc", "eng", "name", "mobile", "district", "area", "client"].forEach(function (f) { var e = el("cmpn_" + f); if (e) n[f] = e.value; });   /* 6.9.738 - area */
     n.picks = {}; Array.prototype.forEach.call(document.querySelectorAll("input.cmp-pk"), function (x) { if (x.checked) n.picks[x.getAttribute("data-k")] = 1; });
   }
   function modalCmpNew() {
     var n = S.cmpNew || (S.cmpNew = { src: "Phone call", pri: "Normal", picks: {} });
-    var ds = locations(), d = n.district || "";
-    var cls = (S.data.clients || []).filter(function (c) { return !d || String(c.location || "") === d; })
+    var ds = locations(), d = n.district || "", ar = n.area || "";
+    /* 6.9.738 - HIS WORDS: "pick a client from pre set, District, area then client name" */
+    var ars = []; (S.data.clients || []).forEach(function (c) { var a = String(c.area || "").trim(); if (a && (!d || String(c.location || "") === d) && ars.indexOf(a) < 0) ars.push(a); }); ars.sort(alpha);
+    var cls = (S.data.clients || []).filter(function (c) { return (!d || String(c.location || "") === d) && (!ar || String(c.area || "").trim() === ar); })
       .map(function (c) { return String(c.name || "").trim(); }).filter(Boolean).sort(alpha);
     var opt = function (v, cur, label) { return '<option value="' + esc(v) + '"' + (v === cur ? ' selected' : '') + '>' + esc(label == null ? v : label) + '</option>'; };
     var c = n.client ? clientByName(n.client) : null;
@@ -8908,16 +8973,21 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       '<div><label>Urgency</label><select id="cmpn_pri">' + ["Low", "Normal", "High"].map(function (x) { return opt(x, n.pri, x + " — within " + CMP_PROMISE[x] + " h"); }).join("") + '</select></div></div>' +
       '<label>Client</label><div class="ppk" style="display:flex;gap:8px;flex-wrap:wrap">' +
         '<select id="cmpn_district" class="cmpn-d" style="flex:0 1 150px;min-width:120px">' + opt("", d, "All districts") + ds.map(function (x) { return opt(x, d); }).join("") + '</select>' +
+        '<select id="cmpn_area" class="cmpn-a" style="flex:0 1 170px;min-width:120px">' + opt("", ar, "All areas") + ars.map(function (x) { return opt(x, ar); }).join("") + '</select>' +   /* 6.9.738 */
         '<select id="cmpn_client" class="cmpn-c" style="flex:1 1 200px;min-width:160px">' + opt("", n.client, "— pick the client —") + cls.map(function (x) { return opt(x, n.client); }).join("") +
           '<option value="__none__"' + (n.client === "__none__" ? ' selected' : '') + '>+ Not on the book (new caller)</option></select></div>';
     if (n.client === "__none__" || (!c && n.webRef)) {
       h += '<div class="grid2"><div><label>Name</label><input id="cmpn_name" value="' + esc(n.name || "") + '"/></div>' +
-        '<div><label>Mobile</label><input id="cmpn_mobile" inputmode="numeric" value="' + esc(n.mobile || "") + '"/></div></div>';
+        '<div><label>Mobile</label><input id="cmpn_mobile" inputmode="numeric" value="' + esc(n.mobile || "") + '"/></div></div>' +
+        /* 6.9.738 - "if client is old, before CRM time, not in list ask to enter new, ask to enter old installed product details" */
+        '<div class="card" style="margin:8px 0 0;border-color:#99f6e4;background:#f0fdfa;padding:8px 11px"><div class="meta" style="font-size:12.5px">An old client from before the CRM? Register him once &mdash; then his machines with the installation date and warranty &mdash; and every complaint after this knows him.</div>' +
+        '<button class="btn sm" data-act="cmp-newclient" style="min-height:44px;margin-top:6px">+ Register him and his machines</button></div>';
     }
     if (c) {
       var ps = cmpProducts(c.name), main = ps.filter(function (p) { return p.kind !== "item"; }), rest = ps.filter(function (p) { return p.kind === "item"; });
       h += '<div class="card" style="margin:10px 0 0;padding:10px 12px;background:#f8fafc">' +
         '<div style="font-size:13px"><b>' + esc(c.name) + '</b> &middot; ' + esc([c.area, c.location].filter(Boolean).join(", ") || "no area") + (c.mobile ? ' &middot; <a href="tel:' + esc(c.mobile) + '">' + esc(c.mobile) + '</a>' : '') + '</div>' +
+        cmpMoneyHtml(c.name) +   /* 6.9.738 - what he owes: service, and goods */
         '<div class="meta" style="font-size:12px;font-weight:700;color:#475569;margin-top:8px">INSTALLED AT HIS SITE &mdash; tick the one the complaint is about</div>' +
         (main.length ? main.map(function (p) { return cmpProdRow(p, n.picks && n.picks[p.key], true); }).join("") : '<div class="meta" style="font-size:12.5px">No commissioned product or installation recorded for him.</div>') +
         (rest.length ? '<details style="margin-top:6px"><summary style="cursor:pointer;font-size:12.5px;font-weight:700;min-height:44px;display:flex;align-items:center">Everything else delivered to him (' + rest.length + ')</summary>' +
@@ -8929,6 +8999,23 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       '<label>Send an engineer (optional)</label><select id="cmpn_eng">' + opt("", n.eng, "— decide later —") + cmpEngineers().map(function (x) { return opt(x, n.eng); }).join("") + '</select>' +
       '<div class="foot"><button class="btn ghost" data-act="cmp-cancel">Cancel</button><button class="btn" data-act="cmp-save">Register complaint</button></div>';
     return h;
+  }
+  /* 6.9.738 - "show how much pending of client service charges, also how much total pending of product amount" -
+     two numbers, never added: service work, and the goods on his account */
+  function cmpMoneyHtml(name) {
+    var sv = 0, gd = 0; try { sv = svcSummary(name).pending || 0; } catch (e) { sv = 0; } try { gd = clientDue(name) || 0; } catch (e) { gd = 0; }
+    var ins = []; try { var kk = clientKeysOf(name); ins = (S.data.installs || []).filter(function (x) { return x && kk.insts[String(x.id)]; }); } catch (e) { ins = []; }
+    var cv = ins.map(function (x) { return insCover(x); }), amc = cv.some(function (x) { return x.k === "amc"; });
+    return '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">' +
+      '<span class="pill" style="background:' + (sv > 0.5 ? '#fee2e2;color:#b91c1c' : '#f1f5f9;color:#475569') + '">Service pending ' + (sv > 0.5 ? money(sv) : 'nil') + '</span>' +
+      '<span class="pill" style="background:' + (gd > 0.5 ? '#fef3c7;color:#92400e' : '#f1f5f9;color:#475569') + '">Product amount pending ' + (gd > 0.5 ? money(gd) : 'nil') + '</span>' +
+      (ins.length ? '<span class="pill" style="background:' + (amc ? '#ccfbf1;color:#0f766e' : '#fef3c7;color:#92400e') + '">' + (amc ? 'Under AMC' : 'No AMC') + '</span>' : '') + '</div>' +
+      (ins.length ? '<div class="meta" style="font-size:12px;font-weight:700;color:#475569;margin-top:8px">MACHINES ON FILE</div>' + ins.map(function (x, i) {
+        var ps = instProducts(x).map(function (p) { return [p.brand, p.product, p.model].filter(Boolean).join(" ") + (p.installDate ? " · installed " + dmy(p.installDate) : "") + (p.serial ? " · " + p.serial : ""); }).join("; ");
+        var vc = visitChargeFor(x, "Repair");
+        return '<div style="padding:5px 0;border-top:1px solid #e2e8f0;font-size:12.5px"><b>' + esc(ps || x.product || "Machine") + '</b>' + (x.engineer ? ' <span style="color:#64748b">· engineer ' + esc(x.engineer) + '</span>' : '') +
+          insCoverHtml(cv[i], 1) + (!cv[i].free && vc.amt !== "" ? '<div class="meta" style="font-size:12px">Fixed charge for a repair visit: <b>' + money(vc.amt) + '</b></div>' : '') + '</div>';
+      }).join("") : '');
   }
   function cmpEngineers() {
     var out = SVC_ENGINEERS.slice();
@@ -8963,7 +9050,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         var chs = []; if (c) chs = (S.data.challans || []).filter(function (x) { return dkey(x.customerName) === dkey(c.name) && String(x.createdAt) >= String(t.at).slice(0, 10); });
         h += '<label>How it was settled</label><select id="cmp_out"><option value="">— not yet —</option>' + CMP_OUT.map(function (x) { return opt(x, t.outcome || cmpOutDefault(t)); }).join("") + '</select>' +
           cmpChargeHtml(t) +   /* 6.9.687 */
-          '<div class="grid2"><div><label>Service charge (₹)</label><input id="cmp_chg" inputmode="decimal" placeholder="0 if free" value="' + esc(String(cmpChargeFor(t))) + '"/></div>' +
+          '<div class="grid2"><div><label>Service charge (₹)</label><input id="cmp_chg" inputmode="decimal" placeholder="0 if free" value="' + esc(String(cmpChargeFor(t))) + '"' + (roleIs("admin") || cmpChargeFor(t) === "" ? '' : ' readonly style="background:#f1f5f9"') + '/></div>' +   /* 6.9.738 - fixed by the owner */
           '<div><label>Challan raised</label><select id="cmp_ch"><option value="">— none —</option>' + chs.map(function (x) { return '<option value="' + esc(x.challanNo || x.id) + '">' + esc((x.challanNo || "no number") + " · " + dmy(x.createdAt) + " · " + money(chValue(x))) + '</option>'; }).join("") + '</select></div></div>';
       }
       if (st === "Resolved" && t.charge > t.collected + 0.5) h += '<div class="grid2"><div><label>Collected (₹)</label><input id="cmp_col" inputmode="decimal" value="' + Math.round(t.charge - t.collected) + '"/></div>' +
@@ -9779,7 +9866,12 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     if (!ins) return [];
     var out = [];
     var raw = []; try { raw = JSON.parse(ins.productsJson || "[]") || []; } catch (e) { raw = []; }
-    raw.forEach(function (p) { var e = warrantyEnd(p || {}); if (e) out.push({ brand: String(p.brand || ""), desc: String(p.model || p.product || ""), till: e }); });
+    raw.forEach(function (p) {
+      p = p || {};
+      var bs = brandSvc(p.brand), st = dstr(p.commDate) || dstr(p.installDate);
+      if (bs && bs.parts && st) { warrParts(p.brand, p.model, st).forEach(function (w) { out.push({ brand: String(p.brand || ""), desc: String(p.model || p.product || ""), till: w.till, part: w.label }); }); return; }   /* 6.9.738 */
+      var e = warrantyEnd(p); if (e) out.push({ brand: String(p.brand || ""), desc: String(p.model || p.product || ""), till: e });
+    });
     if (out.length) return out;
     var n = String(ins.notes || ""), m = n.match(/warranty till (\d{2})\/(\d{2})\/(\d{4})/i), m2 = n.match(/warranty till (\d{4}-\d{2}-\d{2})/i);
     var till = m ? m[3] + "-" + m[2] + "-" + m[1] : (m2 ? m2[1] : "");
@@ -9803,6 +9895,14 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         txt: "Under AMC (" + ak.replace(/^AMC /, "") + ")" + (dstr(ins.amcEnd) ? " till " + fullDate(ins.amcEnd) : "") + " — Energy World services it, no visit charge" + (ak === "AMC with spares" ? "" : "; parts are billed") };
     }
     var ws = insWarrList(ins), on = ws.filter(function (w) { return w.till >= d; }).sort(function (a, b) { return b.till.localeCompare(a.till); });
+    /* 6.9.738 - Pentair's periodic softener / sand filter service is charged even in warranty */
+    var _per = /periodic|^service$|amc visit/i.test(String(type || "")) && on.some(function (w) { var b = brandSvc(w.brand); return b && b.periodicCharged; });
+    if (on.length && _per) return { k: "paid", free: false, by: "Energy World", periodic: 1, txt: "In warranty till " + fullDate(on[0].till) + ", but " + (brandSvc(on[0].brand).rule || on[0].brand) + "’s periodic service is charged — by Energy World" };
+    /* 6.9.738 - Green Heat: some parts still in warranty, some not */
+    var _parted = ws.filter(function (w) { return w.part; });
+    if (_parted.length && on.length && on.length < _parted.length) {
+      return { k: "partial", free: false, by: "Energy World", parts: _parted, txt: "Partly in warranty — " + on.map(function (w) { return w.part + " till " + fullDate(w.till); }).join(", ") + ". A fault in those is free; other parts are charged" };
+    }
     if (on.length) {
       var w = on[0], byB = brandWby(w.brand) === "brand", hp = byB ? brandHelp(w.brand) : "";
       return { k: "warranty", free: true, by: byB ? w.brand : "Energy World", brand: w.brand, help: hp, till: w.till, byBrand: byB,
@@ -9813,7 +9913,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       txt: (last ? "Warranty over " + fullDate(last.till) : "No warranty on file") + " and no AMC — chargeable, by Energy World" };
   }
   function insCoverHtml(cv, small) {
-    var col = cv.k === "paid" ? "#92400e" : "#0f766e", bg = cv.k === "paid" ? "#fffbeb" : "#f0fdfa";
+    var _pd = cv.k === "paid" || cv.k === "partial", col = _pd ? "#92400e" : "#0f766e", bg = _pd ? "#fffbeb" : "#f0fdfa";   /* 6.9.738 - partial */
     return '<div class="ins-cover" data-k="' + cv.k + '" style="margin:' + (small ? '4px 0' : '6px 0 8px') + ';padding:7px 10px;border-radius:8px;font-size:12.5px;font-weight:700;background:' + bg + ';color:' + col + '">' + esc(cv.txt) + '</div>';
   }
   function insCoverPill(ins) {
@@ -9827,8 +9927,8 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     var cv = insCover(ins, type);
     if (cv.free) return { amt: 0, why: "covered", cv: cv };
     var r = cmpRates().r[VT_JOB[type] || "Visit / inspection"];
-    /* an installation or a repair is a job of its own, priced by the card first; a routine visit is his agreed rate */
-    if ((type === "Installation" || type === "Repair") && r != null && r !== "" && Number(r) > 0) return { amt: Number(r), why: "card", cv: cv };
+    /* 6.9.738 - HIS RULE: "service charges will be prefixed by admin and not to be changed by technician". The rate card first, always */
+    if (r != null && r !== "" && Number(r) > 0) return { amt: Number(r), why: "card", cv: cv, fixed: 1 };
     var c = ins ? clientVisitCharge(ins.client) : 0;
     if (c > 0) return { amt: c, why: "history", cv: cv };
     if (r != null && r !== "" && Number(r) > 0) return { amt: Number(r), why: "card", cv: cv };
@@ -10028,12 +10128,12 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         }
         return h0;
       })() +
-      '<div class="grid2"><div><label>Visit charge (Rs)</label><input id="v_charge" inputmode="numeric" value="' + (function () { var vc = visitChargeFor(inst, "Periodic service"); return vc.amt === "" ? "" : String(vc.amt); })() + '"/>' +
+      '<div class="grid2"><div><label>Visit charge (Rs)</label><input id="v_charge" inputmode="numeric" value="' + (function () { var vc = visitChargeFor(inst, "Periodic service"); return vc.amt === "" ? "" : String(vc.amt); })() + '"' + (function () { var vc = visitChargeFor(inst, "Periodic service"); return (vc.fixed || vc.why === "covered") && !roleIs("admin") ? ' readonly style="background:#f1f5f9"' : ''; })() + '/>' +   /* 6.9.738 - fixed by the owner */
         (function () {
           var vc = visitChargeFor(inst, "Periodic service");
           if (vc.why === "covered") return '<div class="meta" style="font-size:12px;color:#0f766e">Rs 0 &mdash; covered. Salt is still charged; under an AMC without spares, parts are too.</div>';
           if (vc.why === "history") return '<div class="meta" style="font-size:12px">' + money(vc.amt) + ' is the most ' + esc(String(inst.client || "this client")) + ' has been charged before.</div>';
-          if (vc.why === "card") return '<div class="meta" style="font-size:12px">' + money(vc.amt) + ' from the rate card (Complaints &rsaquo; Service charges) &mdash; his first charged visit.</div>';
+          if (vc.why === "card") return '<div class="meta" style="font-size:12px">' + money(vc.amt) + ' &mdash; the owner&rsquo;s fixed rate for this job (Complaints &rsaquo; Service charges)' + (roleIs("admin") ? '' : '; only the owner changes it') + '.</div>';
           return '<div class="meta" style="font-size:12px;color:#b45309">This client has never been charged for a visit and the rate card has no rate — type what was agreed.</div>';
         })() + '</div>' +
       '<div><label>Salt bags</label><input id="v_salt" inputmode="numeric" value="" placeholder="0"/></div></div>' +
@@ -19063,7 +19163,8 @@ function viewCatalogue() {
             '<option value="ew"' + (bs.wby === "brand" ? '' : ' selected') + '>Energy World (free)</option>' +
             '<option value="brand"' + (bs.wby === "brand" ? ' selected' : '') + '>The brand&rsquo;s own engineer</option></select></div>' +
           '<div><label>Brand service helpline</label><input id="b_help" inputmode="tel" value="' + esc(bs.help || "") + '" placeholder="1800 ..."/></div></div>' +
-          '<div class="meta" style="font-size:12.5px;margin-top:4px">After the warranty, every visit is <b>Energy World&rsquo;s, and charged</b> &mdash; unless the client has an AMC.</div></div>';
+          '<div class="meta" style="font-size:12.5px;margin-top:4px">After the warranty, every visit is <b>Energy World&rsquo;s, and charged</b> &mdash; unless the client has an AMC. Warranty runs from commissioning, or starts by itself 60 days after the challan.</div>' +
+          (bs.rule ? '<div class="meta" style="font-size:12.5px;margin-top:4px;color:#0f766e"><b>Energy World rule for ' + esc(bs.rule) + ':</b> ' + (bs.parts ? bs.parts.map(function (p) { return esc(p.label) + ' ' + (p.wm / 12) + ' years'; }).join(", ") : (bs.wm / 12) + ' years') + ', serviced in warranty by ' + (bs.wby === "brand" ? esc(bs.rule) : 'Energy World') + (bs.periodicCharged ? '; periodic softener and sand filter service is charged even in warranty' : '') + '.</div>' : '') + '</div>';
       })() +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
       '<button class="btn" data-act="br-save" data-id="' + esc(b.id || "") + '">Save</button></div>';
@@ -21823,11 +21924,65 @@ function viewCatalogue() {
   function viewVisits() {
     var st0 = S.vlSite ? siteById(S.vlSite) : null;
     if (st0) return vlSitePage(st0);
-    return '<div class="card" style="padding:10px 12px"><h2 style="margin:0 0 6px;font-size:17px">Site visits &amp; quotes</h2>' +
+    /* 6.9.738 - HIS WORDS: "it will be simple mark a visit for executive, like visited a site, plumber visit, architect
+       visit, showroom visit of a client or plumber, once entered we can compile data in CRM, on the basis of which we can
+       plan strategy". Four buttons. A site visit goes through the site (as before); the other three are one audit row
+       each (visit:mark), so nothing on the server changes. The report below adds them up per executive. */
+    return '<div class="card" style="padding:10px 12px;border-color:#99f6e4;background:#f0fdfa"><h2 style="margin:0 0 6px;font-size:17px">Mark a visit</h2>' +
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px">' +
+      [["site", "Site visit"], ["plumber", "Plumber visit"], ["architect", "Architect visit"], ["showroom", "Showroom visit"]].map(function (k) {
+        return '<button class="btn" data-act="vm-new" data-k="' + k[0] + '" style="min-height:52px;font-size:15px">' + k[1] + '</button>'; }).join("") + '</div></div>' +
+      vmReportHtml() +
+      '<div class="card" style="padding:10px 12px"><h2 style="margin:0 0 6px;font-size:17px">Site visits &amp; quotes</h2>' +
       '<input id="vl_q" type="search" autocomplete="off" placeholder="Find a site — name, client, mobile, area or partner" value="' + esc(S.vlQ || "") + '" style="min-height:44px;font-size:15px"/>' +
       '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><button class="btn" data-act="site-new" style="min-height:44px">+ New site</button>' +
       '<button class="btn ghost" data-act="vl-gps" style="min-height:44px">Sites near me (GPS)</button></div></div>' +
       '<div id="vl_res">' + vlFindHtml(S.vlQ) + '</div>';
+  }
+  /* ---- 6.9.738 - marked visits: one list of every kind ---- */
+  var VM_KINDS = { site: "Site", plumber: "Plumber", architect: "Architect", showroom: "Showroom" };
+  function vmAll() {
+    var out = [];
+    (S.data.sitevisits || []).forEach(function (v) { out.push({ kind: "site", at: String(v.createdAt || v.date || ""), by: v.createdBy || "", who: v.siteName || v.client || "", met: v.visitType || "", note: v.purpose || v.note || "" }); });
+    (S.data.audit || []).forEach(function (r) {
+      if (!r || r.action !== "visit:mark") return;
+      var d = {}; try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
+      out.push({ kind: d.kind || "", at: String(r.createdAt || ""), by: r.actor || "", who: d.who || r.target || "", met: d.whoKind || "", note: d.note || "" });
+    });
+    return out.sort(function (a, b) { return b.at.localeCompare(a.at); });
+  }
+  function vmReportHtml() {
+    var days = Number(S.vmDays) || 30, from = addDays(today(), -days + 1), all = vmAll().filter(function (v) { return v.at.slice(0, 10) >= from; });
+    if (!roleIs("admin")) all = all.filter(function (v) { return dkey(v.by) === dkey(S.user); });
+    var by = {};
+    all.forEach(function (v) { var b = by[v.by] || (by[v.by] = { site: 0, plumber: 0, architect: 0, showroom: 0, n: 0, last: "" }); if (b[v.kind] != null) b[v.kind]++; b.n++; if (v.at > b.last) b.last = v.at; });
+    var ex = Object.keys(by).sort(function (a, b) { return by[b].n - by[a].n; });
+    var h = '<div class="card" style="padding:10px 12px"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><h3 style="margin:0;font-size:15px;flex:1">Visits &middot; last ' + days + ' days</h3>' +
+      [7, 30, 90].map(function (d) { return '<button class="chip' + (d === days ? ' on' : '') + '" data-act="vm-days" data-d="' + d + '" style="min-height:44px">' + d + ' days</button>'; }).join("") + '</div>';
+    if (!all.length) return h + '<div class="empty">No visit marked in this period.</div></div>';
+    h += pevTable([["Executive"], ["Site", "right"], ["Plumber", "right"], ["Architect", "right"], ["Showroom", "right"], ["Total", "right"], ["Last"]], ex.map(function (e) {
+      var b = by[e]; return ['<b>' + esc(e || "(no name)") + '</b>', b.site || "—", b.plumber || "—", b.architect || "—", b.showroom || "—", '<b>' + b.n + '</b>', esc(dmy(b.last))];
+    }));
+    h += '<details style="margin-top:8px"><summary style="cursor:pointer;min-height:44px;display:flex;align-items:center;font-weight:700;font-size:13px">Every visit in the period (' + all.length + ')</summary>' +
+      pevTable([["Date"], ["By"], ["Kind"], ["Who / where"], ["What happened"]], all.slice(0, 300).map(function (v) {
+        return [esc(dmy(v.at)) + ' <span style="color:#64748b">' + esc(v.at.slice(11, 16)) + '</span>', esc(v.by), esc(VM_KINDS[v.kind] || v.kind) + (v.met ? ' <span style="color:#64748b">(' + esc(v.met) + ')</span>' : ''), esc(v.who), esc(v.note)];
+      })) + '</details></div>';
+    return h;
+  }
+  function modalVmMark(kind) {
+    var role = kind === "plumber" ? /plumb/i : kind === "architect" ? /archit/i : null;
+    var who = S.vmWho || (kind === "showroom" ? "Client" : "");
+    var names = [];
+    if (role) names = assocLive().filter(function (a) { return role.test(String(a.role || "")); }).map(function (a) { return a.name; });
+    else if (who === "Client") names = (S.data.clients || []).map(function (c) { return c.name; });
+    else names = assocLive().map(function (a) { return a.name + (a.role ? " (" + a.role + ")" : ""); });
+    names = names.filter(Boolean).sort(function (a, b) { return String(a).toLowerCase().localeCompare(String(b).toLowerCase()); });
+    return '<h2>' + esc(VM_KINDS[kind] || "") + ' visit</h2><p class="sub">' + (kind === "showroom" ? 'Who came to the showroom?' : 'Whom did you visit?') + '</p>' +
+      (kind === "showroom" ? '<div class="chips" style="margin-bottom:6px">' + ["Client", "Plumber / partner"].map(function (w) { return '<button class="chip' + (who === w ? ' on' : '') + '" data-act="vm-who" data-w="' + w + '" style="min-height:44px">' + w + '</button>'; }).join("") + '</div>' : '') +
+      '<label>Name <span style="color:#ef4444">*</span></label><select id="vm_name"><option value="">— pick —</option>' + names.map(function (n) { return '<option>' + esc(n) + '</option>'; }).join("") + '<option value="__other__">Someone not on the list</option></select>' +
+      '<input id="vm_other" placeholder="Name and mobile, if not on the list" style="margin-top:6px"/>' +
+      '<label>What happened <span style="color:#ef4444">*</span></label><textarea id="vm_note" placeholder="e.g. showed the new CP range; he has 2 sites starting in Sector 12"></textarea>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button><button class="btn" data-act="vm-save" data-k="' + esc(kind) + '">Save visit</button></div>';
   }
   function viewVisitsOld() {
     var mine = roleIs("admin") ? S.data.sitevisits
@@ -57510,7 +57665,8 @@ function viewCatalogue() {
       });
       [].slice.call(document.querySelectorAll(".cm-wm")).forEach(function (inp) {
         var idx = Number(inp.getAttribute("data-idx")), wm = Number(inp.value) || 0;
-        if (cItems[idx]) { cItems[idx].comm = { date: cDate, eng: cEng, wm: wm, till: addMonths(cDate, wm), sn: _sn[String(idx)] || "" }; justDone.push(cItems[idx]); }
+        var _ws = warrStartOf(localDay(commCh.createdAt), cDate);   /* 6.9.738 - commissioning, or challan + 60 days if that came first */
+        if (cItems[idx]) { cItems[idx].comm = { date: cDate, eng: cEng, wm: wm, till: addMonths(_ws.start, wm), sn: _sn[String(idx)] || "", from: _ws.start }; justDone.push(cItems[idx]); }
       });
       commCh.itemsJson = JSON.stringify(cItems);
       /* v6.9.401 - the form closed only when Google had answered, then the certificate and
@@ -57665,6 +57821,13 @@ function viewCatalogue() {
       }).then(function (r) { if (r) { closeAck(_gClick, "Installation saved."); S.instFor = null; } });
       return;
     }
+    if (act === "cmp-newclient") {   /* 6.9.738 - an old client: register him, then his machines (the owner's form asks) */
+      if (S.cmpNew) cmpKeep();
+      var _cn = S.cmpNew || {};
+      S.modal = modalClient({ name: _cn.name || "", mobile: String(_cn.mobile || "").replace(/\D/g, "").slice(-10), location: _cn.district || "", area: _cn.area || "", leadType: "Old" }); render();
+      toast("Register him; answer Yes to the machines question and his machines come next.");
+      return;
+    }
     if (act === "inst-for") {   /* 6.9.736 - from a client: a new installation with him filled in */
       var _ifc = clientById(id) || clientByName(t.getAttribute("data-n") || "");
       if (!_ifc) { toast("That client is not on this device."); return; }
@@ -57722,6 +57885,8 @@ function viewCatalogue() {
       var saltAmt = bags * saltRate;
       var charge = nAmt(val("v_charge"));
       var _vcv = insCover(ins, val("v_type"), val("v_date"));   /* 6.9.736 - a covered visit is Rs 0 */
+      var _vfx = visitChargeFor(ins, val("v_type"));   /* 6.9.738 - not the technician's to change */
+      if (!roleIs("admin") && _vfx.fixed && !_vcv.free && charge !== Number(_vfx.amt)) charge = Number(_vfx.amt);
       if (charge < MIN_VISIT && !(_vcv.free && charge === 0)) { toast(_vcv.free ? "Covered visits are Rs 0. Anything charged is at least Rs " + MIN_VISIT + "." : "Minimum visit charge is Rs " + MIN_VISIT + "."); return; }
       var total = charge + saltAmt + partsAmt;
       var coll = nAmt(val("v_coll"));   /* 6.9.666 */
@@ -58951,6 +59116,32 @@ function viewCatalogue() {
     }
 
     if (act === "visit-start") { startVisit(); return; }
+    /* 6.9.738 - mark a visit */
+    if (act === "vm-days") { S.vmDays = Number(t.getAttribute("data-d")) || 30; render(); return; }
+    if (act === "vm-new") {
+      var _vk = t.getAttribute("data-k") || "";
+      if (_vk === "site") { var _q = el("vl_q"); if (_q) { _q.focus(); _q.scrollIntoView({ block: "center" }); } toast("Find the site, open it, then Log a visit. Not there? + New site."); return; }
+      S.vmWho = _vk === "showroom" ? "Client" : ""; S.modal = modalVmMark(_vk); render(); return;
+    }
+    if (act === "vm-who") { S.vmWho = t.getAttribute("data-w") || "Client"; var _kk = (document.querySelector('.modal [data-act="vm-save"]') || {}).getAttribute ? document.querySelector('.modal [data-act="vm-save"]').getAttribute("data-k") : "showroom"; S.modal = modalVmMark(_kk); render(); return; }
+    if (act === "vm-save") {
+      var _mk = t.getAttribute("data-k") || "", _mn = String(val("vm_name") || ""), _mo = String(val("vm_other") || "").trim(), _mt = String(val("vm_note") || "").trim();
+      var _who = _mn === "__other__" || !_mn ? _mo : _mn.replace(/ \([^)]*\)$/, "");
+      if (!_who) { toast("Pick the name, or type it if he is not on the list."); return; }
+      if (_mt.length < 3) { toast("Say in a few words what happened."); return; }
+      var _whoKind = _mk === "showroom" ? (S.vmWho || "Client") : (_mk === "plumber" ? "Plumber" : "Architect");
+      var _mb = t, _ml = t.textContent; _mb.disabled = true; _mb.textContent = "Saving...";
+      var _mgo = function (g) {
+        save("audit", { id: "", createdAt: new Date().toISOString(), actor: S.user, action: "visit:mark", target: _who,
+          detail: JSON.stringify({ kind: _mk, who: _who, whoKind: _whoKind, note: _mt.slice(0, 500), lat: g ? g.lat : "", lng: g ? g.lng : "", acc: g ? g.acc : "" }), ip: "" }, true)
+          .then(function () { S.modal = null; toast((VM_KINDS[_mk] || "") + " visit marked — " + _who + "."); render(); },
+                function (e) { btnBack(_mb, _ml); toast("NOT saved — " + apiWhy(e) + ". Press Save again."); });
+      };
+      var _md = false, _mtm = setTimeout(function () { if (!_md) { _md = true; _mgo(null); } }, 5000);
+      try { navigator.geolocation.getCurrentPosition(function (p) { if (_md) return; _md = true; clearTimeout(_mtm); _mgo({ lat: p.coords.latitude, lng: p.coords.longitude, acc: Math.round(p.coords.accuracy || 0) }); },
+        function () { if (_md) return; _md = true; clearTimeout(_mtm); _mgo(null); }, { enableHighAccuracy: true, timeout: 4500, maximumAge: 60000 }); } catch (e) { if (!_md) { _md = true; clearTimeout(_mtm); _mgo(null); } }
+      return;
+    }
     /* 6.9.737 - the visit-cum-quote tool */
     if (act === "vl-open") { S.vlSite = id; S.tab = "visits"; S.modal = null; render(); try { window.scrollTo(0, 0); } catch (e) { } return; }
     if (act === "vl-home") { S.vlSite = ""; render(); return; }
@@ -61340,9 +61531,10 @@ function viewCatalogue() {
   document.addEventListener("change", function (e) {
     var t = e.target;
     /* 6.9.684 - the complaint sheet: district / client picked redraws it with his products */
-    if (t && (t.id === "cmpn_district" || t.id === "cmpn_client") && S.cmpNew) {
+    if (t && (t.id === "cmpn_district" || t.id === "cmpn_area" || t.id === "cmpn_client") && S.cmpNew) {   /* 6.9.738 - area */
       var _was = S.cmpNew.client; cmpKeep();
-      if (t.id === "cmpn_district") S.cmpNew.client = "";
+      if (t.id === "cmpn_district") { S.cmpNew.client = ""; S.cmpNew.area = ""; }
+      if (t.id === "cmpn_area") S.cmpNew.client = "";
       if (S.cmpNew.client !== _was) S.cmpNew.picks = {};
       S.modal = modalCmpNew(); render(); return;
     }
