@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
-<meta name="theme-color" content="#7f1d1d"/>
+<meta name="theme-color" content="#1F3A5F"/>
 <title>Energy World — Collection</title>
 <link rel="manifest" href="manifest.webmanifest"/>
 <link rel="apple-touch-icon" href="icon-180.png"/>
@@ -17,15 +17,15 @@ body{font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,
   background:#f1f5f9;color:#0f172a;padding-bottom:env(safe-area-inset-bottom)}
 a{color:#0f766e}
 .wrap{max-width:760px;margin:0 auto;padding:0 12px 90px}
-.top{background:#7f1d1d;color:#fff;padding:calc(env(safe-area-inset-top) + 12px) 14px 12px;position:sticky;top:0;z-index:20;
+.top{background:#1F3A5F;color:#fff;padding:calc(env(safe-area-inset-top) + 12px) 14px 12px;position:sticky;top:0;z-index:20;
   box-shadow:0 2px 10px rgba(0,0,0,.15)}
 .top .t1{display:flex;align-items:center;gap:10px}
 .top h1{margin:0;font-size:16px;font-weight:800;letter-spacing:.02em;flex:1}
 .top .who{font-size:12px;color:#fecaca}
-.btn{appearance:none;border:1px solid #7f1d1d;background:#7f1d1d;color:#fff;border-radius:9px;
+.btn{appearance:none;border:1px solid #1F3A5F;background:#1F3A5F;color:#fff;border-radius:9px;
   padding:9px 13px;font-size:13.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;min-height:44px}   /* 1.59.0 - the 44px floor .btn.sm already had */
 .btn:active{transform:translateY(1px)}
-.btn.ghost{background:#fff;color:#7f1d1d}
+.btn.ghost{background:#fff;color:#1F3A5F}
 /* v1.31.2 - a 40px floor under every small button and filter chip, and 12px under every
    word. Measured at 360 before the change: 9 of 29 taps under 40px, 16 texts under 12px.
    A man chasing money in the street taps with a thumb, not a mouse. */
@@ -45,7 +45,7 @@ a{color:#0f766e}
 .chips{display:flex;gap:7px;overflow-x:auto;padding:4px 0 8px;-webkit-overflow-scrolling:touch}
 .chip{white-space:nowrap;border:1px solid #cbd5e1;background:#fff;color:#334155;border-radius:999px;
   padding:7px 13px;font-size:12.5px;font-weight:700;cursor:pointer;flex:0 0 auto;min-height:44px}
-.chip.on{background:#7f1d1d;border-color:#7f1d1d;color:#fff}
+.chip.on{background:#1F3A5F;border-color:#1F3A5F;color:#fff}
 .chip .c{opacity:.7;font-weight:600}
 input,select,textarea{width:100%;padding:11px 12px;border:1px solid #cbd5e1;border-radius:9px;min-height:44px;
   font-size:16px;font-family:inherit;background:#fff;color:#0f172a}
@@ -104,8 +104,39 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
 .nav{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid #e2e8f0;display:flex;z-index:30;
   padding-bottom:env(safe-area-inset-bottom)}
 .nav button{flex:1;border:0;background:none;padding:9px 4px 10px;font-size:12px;font-weight:700;color:#94a3b8;cursor:pointer}
-.nav button.on{color:#7f1d1d}
+.nav button.on{color:#1F3A5F}
 .nav button b{display:block;font-size:16px;line-height:1.25}
+/* ===== 1.65.0 - THE VISITING CARD'S COLOURS (11 Oct 2026) =====
+   Navy #1F3A5F and gold #C9A24A from the Energy World card; slate text. Red stays for money owed and
+   late, green for paid and done - nothing else is coloured. */
+:root{--ew-navy:#1F3A5F;--ew-navy-d:#0D2340;--ew-gold:#C9A24A;--ew-gold-l:#F6EFD9;--ew-slate:#5E6875;--ew-line:#DCE3EA;--ew-page:#F4F6F9}
+body{background:var(--ew-page);color:#1A2230}
+a{color:var(--ew-navy)}
+.top{background:var(--ew-navy);border-bottom:3px solid var(--ew-gold)}
+.top .who{color:#E9D9AE}
+.btn{background:var(--ew-navy);border-color:var(--ew-navy)}
+.btn.ghost{background:#fff;color:var(--ew-navy);border-color:var(--ew-navy)}
+.chip.on{background:var(--ew-navy);border-color:var(--ew-navy)}
+.card,.stat{border-color:var(--ew-line)}
+.muted{color:var(--ew-slate)}
+/* the chase list */
+.ctw{background:#fff;border:1px solid var(--ew-line);border-radius:12px;overflow:hidden;margin:8px 0}
+table.ct{border-collapse:collapse;width:100%;font-size:13.5px}
+table.ct th{background:var(--ew-navy);color:#fff;text-align:left;font-size:12px;font-weight:700;letter-spacing:.03em;padding:9px 10px;border-bottom:2px solid var(--ew-gold);white-space:nowrap}
+table.ct td{padding:9px 10px;border-top:1px solid var(--ew-line);vertical-align:top}
+table.ct tr.r{cursor:pointer}
+table.ct tr.r:hover td{background:#F8FAFC}
+table.ct tr.r.on td{background:var(--ew-gold-l)}
+table.ct .n{text-align:right;white-space:nowrap}
+table.ct .cd{font-size:12px;font-weight:800;color:var(--ew-navy);white-space:nowrap}
+table.ct .nm{font-weight:800;color:#1A2230}
+table.ct .amt{font-weight:800;font-size:15px}
+table.ct td.body{padding:0;background:#fff}
+table.ct .owe{color:#b91c1c}
+.code{display:inline-block;font-size:12px;font-weight:800;color:var(--ew-navy);background:#E8EEF5;border-radius:6px;padding:1px 6px;margin-right:6px;vertical-align:1px}
+table.ct td.wd{white-space:nowrap}
+@media (min-width:1000px){ .wrap{max-width:1080px} }
+@media (max-width:640px){ table.ct .wd{display:none} table.ct td,table.ct th{padding:8px 7px} }
 </style>
 </head>
 <body>
@@ -146,7 +177,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.64.0";
+  var APP_VERSION = "1.65.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_collect_session";
 
@@ -2622,10 +2653,17 @@ function cancelMap() {
 
      One function, so no two screens can search different things and disagree. The GSTIN is
      in there on purpose: a man holding a bill often has the number and not the spelling. */
+  /* 1.65.0 - his number: CL087 (a client), LD014 (still a lead); oldCode is the lead number he had */
+  function codeRec(name) {
+    var k = String(name || "").trim().toLowerCase();
+    return ((S.data && S.data.clients) || []).filter(function (c) { return String(c.name || "").trim().toLowerCase() === k; })[0] || null;
+  }
+  function codeOf(name) { var c = codeRec(name); return c ? String(c.code || "").trim() : ""; }
+  function codeTag(name) { var c = codeOf(name); return c ? '<span class="code">' + esc(c) + '</span>' : ''; }
   function clientHay(c) {
     if (!c) return "";
     if (c.__hay !== undefined) return c.__hay;
-    var parts = ["name", "shortName", "mobile", "mobile2", "location", "area",
+    var parts = ["code", "oldCode", "name", "shortName", "mobile", "mobile2", "location", "area",
                  "plumber", "architect", "builder", "pmc", "address", "notes"]
       .map(function (k) { return String(c[k] || ""); });
     try {
@@ -3263,6 +3301,37 @@ function cancelMap() {
     return '<span class="pill blu">' + (isP ? 'Promised ' : 'Ring again ') + esc(dstr(p.date)) + '</span>';
   }
 
+  /* 1.65.0 - THE CHASE LIST IS A TABLE. One line a client: his number, name (sites and promise under
+     it), executive, how old, old book, last paid, past term, to collect. Tapping the line opens his
+     account right under it, as the card did. A phone keeps number, name, age and money. */
+  function clientTable(list, t) {
+    if (!list.length) return "";
+    var h = '<div class="ctw"><table class="ct"><thead><tr><th>Code</th><th>Client</th><th class="wd">Executive</th><th>Oldest unpaid</th>' +
+      '<th class="wd n">Old book</th><th class="wd">Last paid</th><th class="wd n">Past term</th><th class="n">To collect</th></tr></thead><tbody>';
+    list.forEach(function (r) {
+      var open = S.open === r.name, late = (r.overdue > 0 || r.oldBook > 0);
+      var pills = promiseLine(r, t) + (promisePill(r.name) ? ' ' + promisePill(r.name) : '') + (function () {
+        var pr = promiseRecord(r.name), n = followFor(r.name).length, out = "";
+        if (n) out += ' <span class="pill">' + n + ' call' + (n === 1 ? '' : 's') + '</span>';
+        if (pr && pr.broken) out += ' <span class="pill red">' + pr.broken + ' broken</span>';
+        return out;
+      })() + (r.mobile ? '' : ' <span class="pill red">no mobile</span>');
+      h += '<tr class="r' + (open ? ' on' : '') + '" data-act="open" data-n="' + esc(r.name) + '">' +
+        '<td class="cd">' + (esc(codeOf(r.name)) || '<span class="muted">&mdash;</span>') + '</td>' +
+        '<td><div class="nm">' + esc(r.name) + (r.sites ? ' <span class="pill" style="background:#E8EEF5;color:#1F3A5F">builder &middot; ' + r.sites.length + ' site' + (r.sites.length === 1 ? '' : 's') + '</span>' : '') + '</div>' +
+          (r.sites ? bldLines(r) : '') +
+          (pills.replace(/\s/g, '') ? '<div style="margin-top:4px">' + pills + '</div>' : '') + '</td>' +
+        '<td class="wd">' + (r.owner ? esc(r.owner) : '<span class="muted">&mdash;</span>') + '</td>' +
+        '<td>' + (r.oldestUnpaid ? esc(ageWords(r.ageDays)) : '<span class="muted">no dated delivery</span>') + '</td>' +
+        '<td class="wd n">' + (r.oldBook > 0 ? '<b class="owe">' + money(r.oldBook) + '</b>' : '<span class="muted">&mdash;</span>') + '</td>' +
+        '<td class="wd">' + (r.lastPay ? esc(dstr(r.lastPay)) : '<b class="owe">never paid</b>') + '</td>' +
+        '<td class="wd n">' + (r.overdue > 0 ? '<span class="owe">' + money(r.overdue) + '</span>' : '<span class="muted">&mdash;</span>') + '</td>' +
+        '<td class="n"><div class="amt' + (late ? ' owe' : '') + '">' + money(r.toCollect) + '</div>' +
+          (r.svcDue > 0.5 ? '<div class="muted" style="font-size:12px">' + (r.due > 0.5 ? 'goods ' + money(r.due) + ' &middot; ' : '') + '<b style="color:#b45309">service ' + money(r.svcDue) + '</b></div>' : '') + '</td></tr>';
+      if (open) h += '<tr><td class="body" colspan="8">' + (r.sites ? bldBody(r, t) : clientBody(r, t)) + '</td></tr>';
+    });
+    return h + '</tbody></table></div>';
+  }
   function clientCard(r, t) {
     var open = S.open === r.name;
     var tone = (r.overdue > 0 || r.oldBook > 0) ? '#b91c1c' : '#0f172a';
@@ -3494,7 +3563,7 @@ function cancelMap() {
         var on = S.exec === x.name;
         return '<div data-act="exec" data-n="' + esc(on ? "" : x.name) + '" ' +
           'style="display:flex;align-items:center;gap:9px;padding:8px 9px;margin-top:5px;border-radius:10px;cursor:pointer;' +
-          'border:1px solid ' + (on ? '#7f1d1d' : '#e2e8f0') + ';background:' + (on ? '#fef2f2' : '#fff') + '">' +
+          'border:1px solid ' + (on ? '#1F3A5F' : '#e2e8f0') + ';background:' + (on ? '#fef2f2' : '#fff') + '">' +
           '<div class="grow" style="min-width:0">' +
             '<div style="font-weight:700;font-size:13px">' + esc(x.name) + '</div>' +
             '<div class="muted">' + x.n + ' client' + (x.n === 1 ? '' : 's') +
@@ -3549,7 +3618,7 @@ function cancelMap() {
     var sum = list.reduce(function (a, r) { return a + r.due; }, 0);
     h += '<div class="muted" style="margin:0 2px 6px">' + list.length + ' match' + (list.length === 1 ? '' : 'es') +
       ' · ' + money(sum) + ' — searched every client, not just this tab</div>';
-    return h + list.map(function (r) { return clientCard(r, t); }).join("");
+    return h + clientTable(list, t);   /* 1.65.0 */
   }
 
   function viewList() {
@@ -3563,7 +3632,7 @@ function cancelMap() {
     var sum = list.reduce(function (a, r) { return a + r.due; }, 0);
     h += '<div class="muted" style="margin:0 2px 4px">' + list.length + ' client' + (list.length === 1 ? '' : 's') +
       ' · ' + money(sum) + ' — hardest first</div>';
-    h += list.map(function (r) { return clientCard(r, t); }).join("");
+    h += clientTable(list, t);   /* 1.65.0 */
     return h;
   }
 
@@ -3576,7 +3645,7 @@ function cancelMap() {
     var _h0 = searchBox();
     var broke = l.filter(function (r) { return r.promise && r.promise.date && r.promise.date < t; });
     var rest = l.filter(function (r) { return said.indexOf(r) < 0 && broke.indexOf(r) < 0; }).slice(0, 8);
-    var h = _h0 + '<div class="card" style="background:#7f1d1d;color:#fff;border-color:#7f1d1d">' +
+    var h = _h0 + '<div class="card" style="background:#1F3A5F;color:#fff;border-color:#1F3A5F">' +
       '<div style="font-size:13px;opacity:.85">' + esc(dstr(t)) + '</div>' +
       '<div style="font-size:17px;font-weight:800;margin-top:2px">' +
       (said.length + broke.length ? (said.length + broke.length) + ' to ring on a promise' : 'No promises outstanding today') + '</div>' +
@@ -3587,7 +3656,7 @@ function cancelMap() {
       if (!arr.length) return "";
       return '<div class="muted" style="font-weight:700;margin:14px 2px 2px">' + esc(title) +
         (note ? ' <span style="font-weight:400">— ' + esc(note) + '</span>' : '') + '</div>' +
-        arr.map(function (r) { return clientCard(r, t); }).join("");
+        clientTable(arr, t);   /* 1.65.0 */
     };
     h += sec("Due today", said, "he named today, or asked to be rung today");
     h += sec("The day he named has passed", broke, "these are the ones that slip");
@@ -3719,7 +3788,7 @@ function cancelMap() {
     var untouched = list.filter(function (r) { return r.ob.state === "none"; }).length;
     var pct = list.length ? Math.round(agreedRows.length / list.length * 100) : 0;
 
-    var h = searchBox() + '<div class="card" style="background:#7f1d1d;color:#fff;border-color:#7f1d1d">' +
+    var h = searchBox() + '<div class="card" style="background:#1F3A5F;color:#fff;border-color:#1F3A5F">' +
       '<div style="font-size:17px;font-weight:800">' + shortMoney(tot) + ' from the old books</div>' +
       '<div style="font-size:12.5px;opacity:.9;margin-top:3px">' + list.length + ' client' + (list.length === 1 ? '' : 's') +
       ' carrying a balance brought forward from the paper ledgers. It has no date, so it can never be aged — ' +
