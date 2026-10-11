@@ -110,6 +110,12 @@ table.t td.r,table.t th.r{text-align:right;white-space:nowrap}
 .btile.on{border:2px solid #1F3A5F;background:#ecfeff}
 .btile.on::after{content:"\2713";position:absolute;top:2px;right:5px;font-size:12px;font-weight:800;color:#1F3A5F}
 .req{color:#b91c1c}
+/* 1.4.0 - Pending / Won / Lost on the quote line */
+.qst{display:flex;gap:6px;margin-top:8px}
+.qst button{flex:1;min-height:44px;border:1px solid #DCE3EA;background:#fff;border-radius:10px;font:inherit;font-size:13px;font-weight:700;color:#5E6875;cursor:pointer}
+.qst button.pending.on{background:#FEF3C7;border-color:#F59E0B;color:#92400E}
+.qst button.won.on{background:#15803d;border-color:#15803d;color:#fff}
+.qst button.lost.on{background:#b91c1c;border-color:#b91c1c;color:#fff}
 /* 1.3.0 - his number beside every name */
 .code{display:inline-block;font-size:12px;font-weight:800;color:#1F3A5F;background:#E8EEF5;border-radius:6px;padding:1px 6px;margin-right:6px;vertical-align:1px}
 .card.mine{border-left-color:#C9A24A}
@@ -144,7 +150,46 @@ h3.sec{color:#1F3A5F}
    ===================================================================================== */
 (function () {
   "use strict";
-  var APP_VERSION = "1.3.0";
+  /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
+     HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
+     phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
+     turning pictures, logos and PDFs back, so every screen - including the thousands of colours written inline
+     over the years - changes at once and nothing can be left white-on-white. Red stays red, green stays green.
+     Changing it touches no data. */
+  (function () {
+    var K = "ewTheme";
+    function ewtGet() { try { var v = localStorage.getItem(K); return v === "light" || v === "dark" ? v : "auto"; } catch (e) { return "auto"; } }
+    function ewtOs() { try { return !!(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches); } catch (e) { return false; } }
+    function ewtDark() { var m = ewtGet(); return m === "dark" || (m === "auto" && ewtOs()); }
+    function ewtApply() {
+      var r = document.documentElement; if (!r) return;
+      r.setAttribute("data-ewdark", ewtDark() ? "1" : "0");
+      try { var mt = document.querySelector('meta[name="theme-color"]'); if (mt) { if (!mt.getAttribute("data-light")) mt.setAttribute("data-light", mt.getAttribute("content") || ""); mt.setAttribute("content", ewtDark() ? "#11161D" : mt.getAttribute("data-light")); } } catch (e) { }
+    }
+    try {
+      var st = document.createElement("style");
+      st.textContent = 'html{background:#fff}' +
+        'html[data-ewdark="1"]{filter:invert(.92) hue-rotate(180deg)}' +
+        'html[data-ewdark="1"] .top{filter:invert(1) hue-rotate(180deg)}' +   /* the navy bar stays navy, as on the card */
+        'html[data-ewdark="1"] img,html[data-ewdark="1"] video,html[data-ewdark="1"] canvas,html[data-ewdark="1"] iframe,html[data-ewdark="1"] embed,html[data-ewdark="1"] object,html[data-ewdark="1"] [data-noinvert]{filter:invert(1) hue-rotate(180deg)}' +
+        '.ewthm{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:44px;min-width:44px;padding:0 14px;border:1px solid #DCE3EA;border-radius:10px;background:#fff;color:#1F3A5F;font:inherit;font-size:14px;font-weight:700;cursor:pointer}';
+      (document.head || document.documentElement).appendChild(st);
+    } catch (e) { }
+    ewtApply();
+    try { var mq = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)"); if (mq) { if (mq.addEventListener) mq.addEventListener("change", ewtApply); else if (mq.addListener) mq.addListener(ewtApply); } } catch (e) { }
+    function ewtLabel() { var m = ewtGet(); return "&#9681; Theme: " + (m === "auto" ? "Auto (as the phone)" : m === "dark" ? "Dark" : "Light"); }
+    window.ewTheme = {
+      get: ewtGet, isDark: ewtDark, label: ewtLabel,
+      set: function (m) { try { localStorage.setItem(K, m); } catch (e) { } ewtApply(); },
+      next: function (btn) {
+        var m = ewtGet(), n = m === "auto" ? "light" : m === "light" ? "dark" : "auto";
+        window.ewTheme.set(n);
+        if (btn) btn.innerHTML = ewtLabel();
+      },
+      button: function () { return '<button type="button" class="ewthm" onclick="ewTheme.next(this)">' + ewtLabel() + '</button>'; }
+    };
+  })();
+  var APP_VERSION = "1.4.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_vq_session", JRN = "ew_vq_journal_v1", CALLQ = "ew_vq_calls_v1", SNAPK = "ew_vq_snap_";
   var CAT_KEY = "ew_team_catalog", CAT_V = 2;   /* the CRM's own shelf copy of the price list - shared, same origin */
@@ -157,7 +202,7 @@ h3.sec{color:#1F3A5F}
   var MET = ["Owner", "Plumber", "Architect", "Builder", "PMC", "Site only"];
   var MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-    /* ===== LIFTED FROM THE CRM (team/app.js 6.9.742) by visitapp/lift.py - do not edit here ===== */
+    /* ===== LIFTED FROM THE CRM (team/app.js 6.9.744) by visitapp/lift.py - do not edit here ===== */
   function idbOpen() {
     if (_idbP) return _idbP;
     _idbP = new Promise(function (res) {
@@ -2199,11 +2244,16 @@ h3.sec{color:#1F3A5F}
      meeting date. A showroom client also marks the brands he is interested in. A plumber / architect / partner visit asks
      for none of this. The next meeting becomes a follow-up (the same `followups` row the CRM makes), so it shows on his
      My day and in the CRM on the day; the brands ride on the visit itself, readable in the CRM as written. */
+  /* 1.4.0 - the brand logos already in the site (assets/brands/, the ones on his visiting card), served with the app */
+  var CARD_LOGO = [["fima", "fima"], ["toto", "toto"], ["huliot", "huliot"], ["green heat", "greenheat"], ["grundfos", "grundfos"], ["pentair", "pentair"],
+    ["geberit", "geberit"], ["oyster", "oyster"], ["mea", "mea"], ["adani", "adani"], ["stellar", "stellar"], ["heliroma", "heliroma"]];
+  function cardLogo(b) { var k = lower(b); for (var i = 0; i < CARD_LOGO.length; i++) { if (k === CARD_LOGO[i][0] || k.indexOf(CARD_LOGO[i][0] + " ") === 0 || k.indexOf(CARD_LOGO[i][0]) === 0) return "../assets/brands/" + CARD_LOGO[i][1] + ".webp"; } return ""; }
   function brandTiles(sel, act, grp) {
     var bs = []; try { bs = brandList(); } catch (e) { bs = []; }
+    bs = bs.filter(function (b) { return !/^(accessor|net price)/i.test(String(b)); });   /* not brands a client comes for */
     if (!bs.length) return '<div class="meta">The brand list is loading…</div>';
     return '<div class="btiles" data-grp="' + grp + '">' + bs.map(function (b) {
-      var L = null; try { L = logoFor(b); } catch (e) { L = null; }
+      var L = null; var cl = cardLogo(b); if (cl) L = { src: cl }; else { try { L = logoFor(b); } catch (e) { L = null; } }
       var on = sel.indexOf(b) >= 0;
       return '<button type="button" class="btile' + (on ? ' on' : '') + '" data-act="' + act + '" data-k="' + esc(b) + '" aria-pressed="' + on + '">' +
         (L && L.src ? '<img src="' + L.src + '" alt=""/>' : '') + '<span>' + esc(b) + '</span></button>';
@@ -2494,10 +2544,27 @@ h3.sec{color:#1F3A5F}
 
   /* ================= QUOTES: the list and one quote ================= */
   function qTone(s) { return s === "Won" ? "grn" : s === "Lost" ? "red" : s === "Draft" ? "amb" : "blu"; }
+  /* 1.4.0 - HIS WORDS (11 Oct): "Pending / WON / LOST button here only, to easily mark" - on the quote's own line in the
+     list, no need to open it. Pending = still open (Draft, Sent, Negotiating); tapping Pending on a Won or Lost quote
+     opens it again as Sent. Lost still asks why (one short sheet) - that reason is the only thing a lost quote teaches.
+     Only his own quotes carry the buttons; the status is the same row sent again, nothing is deleted. */
   function qRow(q) {
+    var st = q.status || "Draft", grp = st === "Won" ? "Won" : st === "Lost" ? "Lost" : "Pending", mine = isMe(q.createdBy) || !q.createdBy;
     return '<div class="card tap mine" data-act="q-open" data-id="' + esc(q.id) + '"><div class="row"><div class="grow"><div class="ttl2">' + codeTag(q.client) + esc(q.client || "") + '</div>' +
       '<div class="meta">' + esc(q.quoteNo || "") + ' &middot; ' + esc(fd(q.createdAt)) + ' &middot; ' + esc(q.brand || "") + '</div></div>' +
-      '<div style="text-align:right"><div class="amt">' + esc(money(q.net)) + '</div><span class="pill ' + qTone(q.status) + '">' + esc(q.status || "Draft") + '</span></div></div></div>';
+      '<div style="text-align:right"><div class="amt">' + esc(money(q.net)) + '</div><span class="pill ' + qTone(st) + '">' + esc(st) + '</span></div></div>' +
+      (mine ? '<div class="qst">' + [["Pending", "Pending"], ["Won", "Won"], ["Lost", "Lost"]].map(function (x) {
+        return '<button type="button" class="' + x[0].toLowerCase() + (grp === x[0] ? ' on' : '') + '" data-act="qr-st" data-k="' + x[0] + '" data-id="' + esc(q.id) + '" aria-pressed="' + (grp === x[0]) + '">' + x[1] + '</button>';
+      }).join("") + '</div>' : '') + '</div>';
+  }
+  function qRowSet(q, k) {
+    var st = q.status || "Draft", grp = st === "Won" ? "Won" : st === "Lost" ? "Lost" : "Pending";
+    if (k === grp) { toast((q.quoteNo || "Quote") + " is already " + (k === "Pending" ? "pending (" + st + ")" : k) + "."); return; }
+    if (k === "Lost") { S.sheet = qLostSheet(q); render(); return; }
+    var to = k === "Won" ? "Won" : "Sent";
+    var row = Object.assign({}, q, { status: to }); delete row._lid;
+    saveRow("quotes", row); render();
+    toast((q.quoteNo || "Quote") + " — " + (to === "Won" ? "Won" : "pending again (Sent)") + ".");
   }
   function viewQuotes() {
     var f = S.fq || "all", all = myQuotes(), q = lower(S.q);
@@ -2722,6 +2789,7 @@ h3.sec{color:#1F3A5F}
     try { if (ae && ae.selectionStart != null) ss = [ae.selectionStart, ae.selectionEnd]; } catch (e) { ss = null; }
     el("root").innerHTML = '<div class="top"><div class="ttl"><b>Visit &amp; Quote</b><span class="sub">' + esc(S.user) + '</span></div>' +
       '<button data-act="refresh" aria-label="Update">&#8635;</button><button data-act="menu">Menu</button></div>' +
+      (S.newVer ? '<div class="note warn" style="margin-top:10px"><b>Version ' + esc(S.newVer) + ' is ready.</b> You are on ' + APP_VERSION + '. <button class="btn sm" data-act="vq-upd">Update now</button></div>' : '') +   /* 1.4.0 */
       body + '<div class="sync" id="ew_sync">' + syncLine() + '</div>' +
       '<div class="nav">' + [["day", "&#9728;", "My day"], ["visit", "&#128205;", "Visit"], ["quotes", "&#8377;", "Quotes"]].map(function (x) {
         return '<button class="' + (t === x[0] || (t === "quote" && x[0] === "quotes") ? 'on' : '') + '" data-act="tab" data-k="' + x[0] + '"><span class="i">' + x[1] + '</span>' + x[2] + '</button>'; }).join("") + '</div>' +
@@ -2734,6 +2802,7 @@ h3.sec{color:#1F3A5F}
       '<div class="acts"><a class="btn gry full" href="../collect/">Open the Collection app</a></div>' +
       '<div class="acts"><a class="btn gry full" href="../team/">Open the CRM (for the office)</a></div>' +
       (pendingN() ? '<div class="note warn">' + pendingN() + ' saved on this phone, waiting for signal. Signing out keeps them on this phone.</div>' : '') +
+      '<div class="acts">' + window.ewTheme.button() + '</div>' +   /* 1.4.0 - dark or light */
       '<div class="acts"><button class="btn red full" data-act="signout">Sign out</button></div>' +
       '<div class="acts"><button class="btn gry full" data-act="close">Close</button></div>';
   }
@@ -2810,6 +2879,8 @@ h3.sec{color:#1F3A5F}
     if (act === "fq") { S.fq = k; render(); return; }
     if (act === "q-open") { var q = qById(id); if (!q) return; S.sheet = qSheet(q); render(); return; }
     if (act === "q-wa" || act === "q-pdf") { var q2 = qById(id); if (q2) qShare(q2, act === "q-wa"); return; }
+    if (act === "vq-upd") { vqUpdate(); return; }
+    if (act === "qr-st") { var _qr = qById(id); if (_qr) qRowSet(_qr, k); return; }   /* 1.4.0 */
     if (act === "q-st") { var q3 = qById(id); if (q3) qSetStatus(q3, k); return; }
     if (act === "q-lost") { var q4 = qById(id); if (!q4) return; S.sheet = qLostSheet(q4); render(); return; }
     if (act === "ql-save") { var q5 = qById(id); if (q5) qlSave(q5); return; }
@@ -2857,7 +2928,40 @@ h3.sec{color:#1F3A5F}
       if (r && r.ok === false && /wrong name or pin|locked for|not allowed|blocked|removed/i.test(String(r.error || ""))) signOut(String(r.error)); else pull(false);
     }).catch(function () { render(); });
   }
-  window.__vq = { S: S, render: render, pull: pull };
+  /* 1.4.0 - WHICH VERSION DOES THE SERVER HAVE? Asked on open, when the app comes back to the front, every 30 minutes,
+     and when the worker says the file changed. Newer, and nothing half-typed on screen and nothing waiting to go up:
+     the app reloads itself onto it (a ?u= open goes past the shelf). Otherwise a bar says so; Update is one tap. */
+  function vqLive() {
+    return fetch("index.html?v=" + Date.now(), { cache: "no-store" }).then(function (r) { return r.ok ? r.text() : ""; })
+      .then(function (t) { var m = String(t).match(/var APP_VERSION = "([0-9.]+)"/); return m ? m[1] : ""; }).catch(function () { return ""; });
+  }
+  function vqNewer(a, b) { var x = String(a).split("."), y = String(b).split("."); for (var i = 0; i < 3; i++) { var d = (Number(x[i]) || 0) - (Number(y[i]) || 0); if (d) return d > 0; } return false; }
+  function vqBusy() { return !!(S.sheet || S.qz || (S.pv && (S.pv.name || S.pv.note)) || S.sl || S.sn || S.cn); }
+  function vqUpdate() {
+    try { localStorage.setItem("ew_vq_updated_from", APP_VERSION); } catch (e) { }
+    var go = function () { location.replace("./?u=" + Date.now()); };
+    try {
+      if (window.caches && caches.keys) {
+        caches.keys().then(function (ks) { return Promise.all(ks.filter(function (k) { return k.indexOf("ew-vq-") === 0; }).map(function (k) { return caches.delete(k); })); }).then(go, go);
+        return;
+      }
+    } catch (e) { }
+    go();
+  }
+  function vqCheck() {
+    if (!S.user) return;
+    vqLive().then(function (v) {
+      if (!v || !vqNewer(v, APP_VERSION)) return;
+      if (!vqBusy() && pendingN() === 0) { vqUpdate(); return; }
+      if (S.newVer !== v) { S.newVer = v; try { render(); } catch (e) { } }
+    });
+  }
+  setTimeout(vqCheck, 4000);
+  setInterval(vqCheck, 30 * 60000);
+  document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") vqCheck(); });
+  try { if (navigator.serviceWorker && navigator.serviceWorker.addEventListener) navigator.serviceWorker.addEventListener("message", function (e) { if (e && e.data && e.data.ew === "new-build") vqCheck(); }); } catch (e) { }
+  try { var _uf = localStorage.getItem("ew_vq_updated_from"); if (_uf && _uf !== APP_VERSION) { localStorage.removeItem("ew_vq_updated_from"); setTimeout(function () { toast("Updated to version " + APP_VERSION + "."); }, 1500); } } catch (e) { }
+  window.__vq = { S: S, render: render, pull: pull, vqCheck: vqCheck, vqNewer: vqNewer };
   boot();
 })();
 
