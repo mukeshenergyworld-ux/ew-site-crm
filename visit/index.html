@@ -61,6 +61,20 @@ input,select,textarea{width:100%;font:inherit;font-size:16px;border:1px solid #c
 textarea{min-height:84px}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 @media (max-width:420px){.grid2{grid-template-columns:1fr}}
+/* 1.1.0 - compact forms: two or four to a line */
+.g2{display:grid;grid-template-columns:1.4fr 1fr;gap:8px}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+@media (max-width:640px){.g4{grid-template-columns:1fr 1fr}}
+.g2 label,.g4 label{margin-top:8px}
+.hist{border:1px solid #fde68a;background:#fffbeb;border-radius:12px;padding:8px 10px;margin:8px 0;font-size:13px}
+.hist b.h{display:block;font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:#92400e;margin-bottom:4px}
+.hist .ln{padding:4px 0;border-top:1px solid #fef3c7}
+.hist .ln:first-of-type{border-top:0}
+.info{border:1px solid #bae6fd;background:#f0f9ff;border-radius:12px;padding:8px 10px;margin:8px 0;font-size:13px}
+.info .kv{display:flex;gap:6px;padding:3px 0}
+.info .kv span{color:#64748b;min-width:84px}
+table.t td img{width:40px;height:40px;object-fit:contain;border-radius:6px;background:#f8fafc}
+table.t td.pic{width:48px}
 .note{background:#f0f9ff;border:1px solid #bae6fd;border-radius:12px;padding:10px 12px;font-size:14px;margin:8px 0}
 .note.warn{background:#fffbeb;border-color:#fde68a}
 .note.bad{background:#fef2f2;border-color:#fecaca}
@@ -114,20 +128,20 @@ table.t td.r,table.t th.r{text-align:right;white-space:nowrap}
    ===================================================================================== */
 (function () {
   "use strict";
-  var APP_VERSION = "1.0.0";
+  var APP_VERSION = "1.1.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_vq_session", JRN = "ew_vq_journal_v1", CALLQ = "ew_vq_calls_v1", SNAPK = "ew_vq_snap_";
   var CAT_KEY = "ew_team_catalog", CAT_V = 2;   /* the CRM's own shelf copy of the price list - shared, same origin */
   var ALLOWED = ["admin", "sales", "accounts"];
   var FAST = ["clients", "sites", "sitevisits", "quotes", "associates", "discounts", "brands", "brandmap", "logos", "followups", "pitch", "team"];
-  var REST = ["audit"];
+  var REST = ["audit", "challans"];   /* 1.1.0 - his deliveries: "already our client for this brand" */
   var API_MS = { teamSave: 60000, teamAuth: 45000, teamGet: 60000, siteVisit: 45000, pdfHost: 240000, tgSend: 60000, quoteDup: 8000 };
   var S = { user: "", pin: "", tok: "", role: "", data: null, tab: "day", q: "", sheet: null, vk: "site", fq: "all", qz: null, busy: false, pullAt: 0, catAt: 0 };
   var KINDS = [["site", "Site"], ["plumber", "Plumber"], ["architect", "Architect"], ["showroom", "Showroom"]];
   var MET = ["Owner", "Plumber", "Architect", "Builder", "PMC", "Site only"];
   var MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-    /* ===== LIFTED FROM THE CRM (team/app.js 6.9.740) by visitapp/lift.py - do not edit here ===== */
+    /* ===== LIFTED FROM THE CRM (team/app.js 6.9.741) by visitapp/lift.py - do not edit here ===== */
   function idbOpen() {
     if (_idbP) return _idbP;
     _idbP = new Promise(function (res) {
@@ -1998,6 +2012,113 @@ table.t td.r,table.t th.r{text-align:right;white-space:nowrap}
   }
   function myVisits() { return vmAll().filter(function (v) { return isMe(v.by); }); }
 
+  /* ================= 1.1.0 - WHAT IS ALREADY KNOWN ABOUT HIM  (11 Oct 2026) =================
+     HIS WORDS: "show what previously given to him brand wise discount, only quoted brand ... on every step show which brand
+     already quoted and at what discount and by whom, also who registered this client ... same mobile also to be warned,
+     however one can enter duplicate with a different site address, intimate admin on CRM ... if any challan generated for that
+     client earlier show that also, that he is already our client for the brand at this discount ... selecting a client show his
+     full details, who is plumber, architect, he is our client of which brand ... selecting a plumber show how many ongoing sites."
+     Everything here is read from the book; the only writes are the client's plumber / architect when he fills a gap, and one
+     audit row (dup:mobile) when a mobile already on the book is entered for another site - the CRM shows those to the admin. */
+  function dl(id, arr) { return '<datalist id="' + id + '">' + (arr || []).map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join("") + '</datalist>'; }
+  function areasFor(dist) {
+    var m = {};
+    (S.data.clients || []).concat(S.data.sites || []).forEach(function (x) {
+      var d = String(x.location || "").trim(), a = String(x.area || x.city || "").trim();
+      if (a && (!dist || dkey(d) === dkey(dist))) m[a] = 1;
+    });
+    return Object.keys(m).sort(alpha);
+  }
+  function chItemsOf(c) { try { return JSON.parse(c.itemsJson || "[]") || []; } catch (e) { return []; } }
+  /* brand -> what he was quoted last, what he bought last, and his preset */
+  function brandHist(cn) {
+    var k = dkey(cn), out = {}; if (!k) return out;
+    (S.data.quotes || []).forEach(function (q) {
+      if (!q || dkey(q.client) !== k || isCancelled("quotes", q.id)) return;
+      qItems(q).forEach(function (i) {
+        var b = i.brand || productBrandByCode(i.code) || ""; if (!b) return;
+        var o = out[b] || (out[b] = {}), at = String(q.createdAt || "");
+        if (!o.q || at > o.q.at) o.q = { disc: qLineDisc(q, i), by: q.createdBy || "", at: at, no: q.quoteNo || "", st: q.status || "" };
+      });
+    });
+    (S.data.challans || []).forEach(function (c) {
+      if (!c || dkey(c.customerName) !== k || isCancelled("challans", c.id)) return;
+      chItemsOf(c).forEach(function (i) {
+        var b = i.brand || productBrandByCode(i.code) || c.brand || ""; if (!b) return;
+        var d = (i.disc != null && i.disc !== "") ? Number(i.disc) || 0 : clientDiscount(cn, b);
+        var o = out[b] || (out[b] = {}), at = String(c.createdAt || "");
+        if (!o.c || at > o.c.at) o.c = { disc: d, at: at, no: c.challanNo || "", by: c.createdBy || "" };
+      });
+    });
+    Object.keys(out).forEach(function (b) { out[b].pre = clientDiscount(cn, b); });
+    return out;
+  }
+  function histLine(b, o) {
+    return '<div class="ln"><b>' + esc(b) + '</b>' +
+      (o.c ? ' &middot; <span style="color:#166534;font-weight:700">our client &mdash; bought at ' + esc(o.c.disc) + '%</span> <span class="meta">(' + esc(o.c.no) + ', ' + esc(fd(o.c.at)) + ')</span>' : '') +
+      (o.q ? ' &middot; quoted ' + esc(o.q.disc) + '% by <b>' + esc(o.q.by) + '</b> <span class="meta">(' + esc(o.q.no) + ', ' + esc(fd(o.q.at)) + ', ' + esc(o.q.st) + ')</span>' : '') +
+      (o.pre ? ' &middot; preset ' + esc(o.pre) + '%' : '') + '</div>';
+  }
+  function histHtml(cn, brands) {
+    var H = brandHist(cn), ks = Object.keys(H).filter(function (b) { return !brands || brands.indexOf(b) >= 0; }).sort(alpha);
+    if (!ks.length) return brands ? '' : '<div class="hist"><b class="h">Before</b>Nothing quoted or delivered to him yet.</div>';
+    return '<div class="hist"><b class="h">' + (brands ? 'These brands, before' : 'Quoted and bought before') + '</b>' + ks.map(function (b) { return histLine(b, H[b]); }).join("") + '</div>';
+  }
+  function clientWho(c) {
+    if (!c) return "";
+    return 'Registered by <b>' + esc(c.createdBy || "-") + '</b>' + (c.createdAt ? ' on ' + esc(fd(c.createdAt)) : '') +
+      (c.ownedBy && dkey(c.ownedBy) !== dkey(c.createdBy) ? ' &middot; his executive <b>' + esc(c.ownedBy) + '</b>' : '');
+  }
+  /* the same mobile anywhere on the book this phone can see: sites (everyone's) and clients (his) */
+  function dupByMobile(m) {
+    if (!m || m.length !== 10) return [];
+    var out = [];
+    (S.data.sites || []).forEach(function (st) { if (mob10(st.mobile) === m) out.push({ kind: "site", id: st.id, what: st.name || st.client || "", client: st.client || "", by: siteOwner(st).by || st.createdBy || "", at: siteOwner(st).at || st.createdAt || "" }); });
+    (S.data.clients || []).forEach(function (c) { if (mob10(c.mobile) === m || mob10(c.mobile2) === m) out.push({ kind: "client", id: c.id, what: c.name, client: c.name, by: c.ownedBy || c.createdBy || "", at: c.createdAt || "" }); });
+    return out;
+  }
+  function dupHtml(list) {
+    return '<div class="note warn"><b>This mobile is already on the book</b>' + list.slice(0, 5).map(function (x) {
+      return '<div style="margin-top:4px">' + (x.kind === "site" ? 'Site ' : 'Client ') + '<b>' + esc(x.what) + '</b>' + (x.client && x.client !== x.what ? ' (' + esc(x.client) + ')' : '') + ' &mdash; entered by <b>' + esc(x.by || "-") + '</b>' + (x.at ? ' on ' + esc(fd(x.at)) : '') + '</div>';
+    }).join("") + '</div>';
+  }
+  function dupLog(mobile, kind, what, list) {
+    saveRow("audit", { id: "", createdAt: iso(), actor: S.user, action: "dup:mobile", target: mobile, detail: JSON.stringify({
+      mobile: mobile, kind: kind, what: what, by: S.user, existing: list.slice(0, 5).map(function (x) { return { kind: x.kind, what: x.what, by: x.by, at: x.at }; }) }), ip: "" });
+  }
+  /* a partner picked on a visit: his sites */
+  function partnerSites(name, kind) {
+    var k = dkey(name), f = kind === "architect" ? "architect" : "plumber";
+    return (S.data.sites || []).filter(function (st) { return st && dkey(st[f]) === k && String(st.status || "") !== "Lost" && String(st.stage || "") !== "Completed"; });
+  }
+  function pvInfoHtml(k, who, name) {
+    if (!name) return '';
+    if (k === "showroom" && who === "Client") {
+      var c = clientByName(name); if (!c) return '<div class="meta">New name &mdash; not on your book.</div>';
+      var H = brandHist(c.name), own = Object.keys(H).filter(function (b) { return H[b].c; });
+      var fix = function (f, lab, kind) {
+        return c[f] ? esc(c[f]) : '<span style="display:flex;gap:6px;flex:1"><input id="pv_c' + f + '" list="pv_l' + f + '" placeholder="Pick or add" style="min-height:44px;padding:6px 10px"/>' + dl('pv_l' + f, partners(kind).map(function (a) { return a.name; })) +
+          '<button class="btn sm" data-act="pv-cfix" data-k="' + f + '">Save</button></span>';
+      };
+      return '<div class="info">' +
+        '<div class="kv"><span>Mobile</span><b>' + esc(c.mobile || "-") + '</b>' + (mob10(c.mobile).length === 10 ? ' &nbsp;<a href="tel:' + mob10(c.mobile) + '">call</a>' : '') + '</div>' +
+        '<div class="kv"><span>Address</span>' + esc([c.address].concat([c.area, c.location].filter(function (x) { return x && lower(c.address).indexOf(lower(x)) < 0; })).filter(Boolean).join(", ") || "-") + '</div>' +
+        '<div class="kv"><span>Plumber</span>' + fix("plumber", "plumber", "plumber") + '</div>' +
+        '<div class="kv"><span>Architect</span>' + fix("architect", "architect", "architect") + '</div>' +
+        '<div class="kv"><span>Our client for</span>' + (own.length ? '<b>' + own.map(function (b) { return esc(b) + ' (' + esc(H[b].c.disc) + '%)'; }).join(", ") + '</b>' : 'nothing delivered yet') + '</div>' +
+        '<div class="meta">' + clientWho(c) + '</div></div>' + histHtml(c.name);
+    }
+    var p = partnerByName(name); if (!p) return '<div class="meta">New name &mdash; give his mobile and he is added as a partner.</div>';
+    var kind = k === "architect" ? "architect" : k === "plumber" ? "plumber" : (/archit/i.test(p.role || "") ? "architect" : "plumber");
+    var ss = partnerSites(p.name, kind), cl = (S.data.clients || []).filter(function (c) { return dkey(c[kind]) === dkey(p.name); });
+    return '<div class="info">' +
+      '<div class="kv"><span>Mobile</span><b>' + esc(p.mobile || "-") + '</b>' + (mob10(p.mobile).length === 10 ? ' &nbsp;<a href="tel:' + mob10(p.mobile) + '">call</a>' : '') + '</div>' +
+      '<div class="kv"><span>Area</span>' + esc([p.area, p.location].filter(Boolean).join(", ") || "-") + '</div>' +
+      '<div class="kv"><span>Clients</span>' + cl.length + ' on your book</div>' +
+      '<button class="btn sm gry" data-act="pv-sites" style="margin-top:4px">' + ss.length + ' ongoing site' + (ss.length === 1 ? '' : 's') + (ss.length ? (S.pvSitesOpen ? ' &#9650;' : ' &#9660;') : '') + '</button>' +
+      (S.pvSitesOpen && ss.length ? ss.slice(0, 20).map(siteRow).join("") : '') + '</div>';
+  }
+
   /* ================= MY DAY ================= */
   function viewDay() {
     var td = today(), mv = myVisits(), vt = mv.filter(function (v) { return dstr(v.at) === td; });
@@ -2061,10 +2182,12 @@ table.t td.r,table.t th.r{text-align:right;white-space:nowrap}
     var list = k === "showroom" && who === "Client" ? myClients().map(function (c) { return c.name; }) : partners(k === "showroom" ? "" : k).map(function (a) { return a.name; });
     var h = '<div class="card">';
     if (k === "showroom") h += '<label>Who came to the showroom</label><div class="chips">' + ["Client", "Plumber / partner"].map(function (x) { return '<button class="chip' + (who === x ? ' on' : '') + '" data-act="pv-who" data-k="' + esc(x) + '">' + esc(x) + '</button>'; }).join("") + '</div>';
-    h += '<label for="pv_name">' + (k === "showroom" ? esc(who) : (k === "plumber" ? "Plumber" : "Architect")) + '</label>' +
-      '<input id="pv_name" list="pv_list" value="' + esc(P.name || "") + '" placeholder="Type to pick from the list, or a new name" autocomplete="off"/>' +
-      '<datalist id="pv_list">' + list.slice(0, 600).map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join("") + '</datalist>' +
-      '<label for="pv_mob">Mobile (if new)</label><input id="pv_mob" inputmode="numeric" value="' + esc(P.mob || "") + '" placeholder="10 digits"/>' +
+    var known = P.name && (k === "showroom" && who === "Client" ? !!clientByName(P.name) : !!partnerByName(P.name));
+    h += '<div class="g2"><div><label for="pv_name">' + (k === "showroom" ? esc(who) : (k === "plumber" ? "Plumber" : "Architect")) + '</label>' +
+      '<input id="pv_name" list="pv_list" value="' + esc(P.name || "") + '" placeholder="Pick, or type a new name" autocomplete="off"/>' +
+      '<datalist id="pv_list">' + list.slice(0, 600).map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join("") + '</datalist></div>' +
+      '<div><label for="pv_mob">Mobile (if new)</label><input id="pv_mob" inputmode="numeric" value="' + esc(P.mob || "") + '" placeholder="10 digits"' + (known ? ' disabled' : '') + '/></div></div>' +
+      '<div id="pv_info">' + pvInfoHtml(k, who, P.name || "") + '</div>' +   /* 1.1.0 */
       '<label for="pv_note">What was discussed</label><textarea id="pv_note" placeholder="e.g. showed the Grohe range, he has two sites starting in Model Town">' + esc(P.note || "") + '</textarea>' +
       '<div class="acts"><button class="btn full" data-act="pv-save" data-k="' + k + '">Save the visit</button></div></div>';
     return h;
@@ -2192,37 +2315,52 @@ table.t td.r,table.t th.r{text-align:right;white-space:nowrap}
   function siteNewSheet() {
     var N = S.sn || (S.sn = {});
     var cl = myClients();
-    return '<h2>New site</h2><div class="meta">The site is yours from now on. If it is already on the book you will be told who entered it.</div>' +
-      '<label for="sn_name">Site name</label><input id="sn_name" value="' + esc(N.name || "") + '" placeholder="e.g. Sharma house, Sector 13"/>' +
-      '<label for="sn_client">Client / owner</label><input id="sn_client" list="sn_cl" value="' + esc(N.client || "") + '" placeholder="Name of the owner"/>' +
-      '<datalist id="sn_cl">' + cl.map(function (c) { return '<option value="' + esc(c.name) + '"></option>'; }).join("") + '</datalist>' +
-      '<label for="sn_mob">Mobile</label><input id="sn_mob" inputmode="numeric" value="' + esc(N.mobile || "") + '" placeholder="10 digits"/>' +
-      '<div class="grid2"><div><label for="sn_dist">District</label><select id="sn_dist">' + districts().map(function (d) { return '<option' + (N.dist === d ? ' selected' : '') + '>' + esc(d) + '</option>'; }).join("") + '</select></div>' +
-      '<div><label for="sn_city">Area / colony</label><input id="sn_city" value="' + esc(N.city || "") + '"/></div></div>' +
-      '<label for="sn_stage">Stage</label><select id="sn_stage">' + STAGES.map(function (s) { return '<option' + (N.stage === s ? ' selected' : '') + '>' + esc(s) + '</option>'; }).join("") + '</select>' +
-      '<div class="grid2"><div><label for="sn_pl">Plumber</label><input id="sn_pl" list="sn_pls" value="' + esc(N.plumber || "") + '"/></div><div><label for="sn_ar">Architect</label><input id="sn_ar" list="sn_ars" value="' + esc(N.architect || "") + '"/></div></div>' +
-      '<datalist id="sn_pls">' + partners("plumber").map(function (a) { return '<option value="' + esc(a.name) + '"></option>'; }).join("") + '</datalist>' +
-      '<datalist id="sn_ars">' + partners("architect").map(function (a) { return '<option value="' + esc(a.name) + '"></option>'; }).join("") + '</datalist>' +
-      '<label for="sn_notes">Note</label><input id="sn_notes" value="' + esc(N.notes || "") + '"/>' +
+    /* 1.1.0 - HIS FIELDS (11 Oct): site address, client name, mobile (must), district and area (pick, else add new), stage (must),
+       plumber and architect (pick, else add new) - two to a line, four to a line */
+    return '<h2>New site</h2><div class="meta">The site is yours. If the mobile is already on the book you are told who has it.</div>' +
+      '<label for="sn_name">Site address</label><input id="sn_name" value="' + esc(N.name || "") + '" placeholder="e.g. 96 R, Model Town"/>' +
+      '<div class="g2"><div><label for="sn_client">Client name</label><input id="sn_client" list="sn_cl" value="' + esc(N.client || "") + '" placeholder="Owner"/>' + dl("sn_cl", cl.map(function (c) { return c.name; })) + '</div>' +
+      '<div><label for="sn_mob">Mobile</label><input id="sn_mob" inputmode="numeric" value="' + esc(N.mobile || "") + '" placeholder="10 digits"/></div></div>' +
+      '<div class="g4"><div><label for="sn_dist">District</label><input id="sn_dist" list="sn_dists" value="' + esc(N.dist || "") + '" placeholder="Pick or add"/>' + dl("sn_dists", districts()) + '</div>' +
+      '<div><label for="sn_city">Area</label><input id="sn_city" list="sn_cities" value="' + esc(N.city || "") + '" placeholder="Pick or add"/><span id="sn_cdl">' + dl("sn_cities", areasFor(N.dist)) + '</span></div>' +
+      '<div><label for="sn_pl">Plumber</label><input id="sn_pl" list="sn_pls" value="' + esc(N.plumber || "") + '" placeholder="Pick or add"/>' + dl("sn_pls", partners("plumber").map(function (a) { return a.name; })) + '</div>' +
+      '<div><label for="sn_ar">Architect</label><input id="sn_ar" list="sn_ars" value="' + esc(N.architect || "") + '" placeholder="Pick or add"/>' + dl("sn_ars", partners("architect").map(function (a) { return a.name; })) + '</div></div>' +
+      '<div class="g2"><div><label for="sn_stage">Stage</label><select id="sn_stage"><option value="">&mdash; pick the stage &mdash;</option>' + STAGES.map(function (s) { return '<option' + (N.stage === s ? ' selected' : '') + '>' + esc(s) + '</option>'; }).join("") + '</select></div>' +
+      '<div><label for="sn_notes">Note</label><input id="sn_notes" value="' + esc(N.notes || "") + '"/></div></div>' +
       '<div class="acts"><button class="btn gry" data-act="close">Cancel</button><button class="btn" data-act="sn-save">Save the site</button></div>';
   }
   function snKeep() { var N = S.sn || (S.sn = {}); ["name", "client", "mobile", "dist", "city", "stage", "plumber", "architect", "notes"].forEach(function (k, i) { var id = ["sn_name", "sn_client", "sn_mob", "sn_dist", "sn_city", "sn_stage", "sn_pl", "sn_ar", "sn_notes"][i]; if (el(id)) N[k] = val(id); }); return N; }
   function snSave(btn) {
     var N = snKeep();
-    if (!N.name && !N.client) { toast("Give the site a name or the owner's name."); return; }
     var m = mob10(N.mobile);
-    if (N.mobile && m.length !== 10) { toast("The mobile number needs 10 digits."); return; }
+    if (N.name.length < 3) { toast("The site address."); return; }
+    if (N.client.length < 2) { toast("The client's name."); return; }
+    if (m.length !== 10) { toast("His 10-digit mobile number."); return; }
+    if (!N.dist) { toast("Pick the district, or type a new one."); return; }
+    if (!N.city) { toast("Pick the area, or type a new one."); return; }
+    if (!N.stage) { toast("Pick the stage."); return; }
     /* the same site entered twice: the first man keeps it */
-    var dup = (S.data.sites || []).filter(function (st) { return (m.length === 10 && mob10(st.mobile) === m) || (N.name && dkey(st.name) === dkey(N.name) && dkey(st.city) === dkey(N.city)); })[0];
-    if (dup && !N.dupOk) {
-      var o = siteOwner(dup); N.dupOk = true;
-      S.sheet = '<h2>Already on the book</h2><div class="note warn"><b>' + esc(dup.name || dup.client) + '</b> was entered by <b>' + esc(o.by || "-") + '</b>' + (o.at ? ' on ' + esc(fd(o.at)) : '') + '.</div>' +
+    var same = (S.data.sites || []).filter(function (st) { return dkey(st.name) === dkey(N.name) && (mob10(st.mobile) === m || dkey(st.city) === dkey(N.city)); })[0];
+    if (same) {
+      var o = siteOwner(same);
+      S.sheet = '<h2>Already on the book</h2><div class="note warn"><b>' + esc(same.name || same.client) + '</b> was entered by <b>' + esc(o.by || "-") + '</b>' + (o.at ? ' on ' + esc(fd(o.at)) : '') + '.</div>' +
         '<div class="meta">Open it and log your visit there, so the history stays on one site.</div>' +
-        '<div class="acts"><button class="btn" data-act="site-open" data-id="' + esc(dup.id) + '">Open that site</button><button class="btn gry" data-act="sn-back">It is a different site</button></div>';
+        '<div class="acts"><button class="btn" data-act="site-open" data-id="' + esc(same.id) + '">Open that site</button><button class="btn gry" data-act="sn-back">Back</button></div>';
+      render(); return;
+    }
+    /* 1.1.0 - the same mobile for ANOTHER site: allowed, warned, and the admin is told */
+    var dups = dupByMobile(m);
+    if (dups.length && !N.dupOk) {
+      var firstSite = dups.filter(function (x) { return x.kind === "site"; })[0];
+      S.sheet = '<h2>Same mobile, another site?</h2>' + dupHtml(dups) +
+        '<div class="meta">If this is a different site of the same person, save it &mdash; the office is told.</div>' +
+        '<div class="acts">' + (firstSite ? '<button class="btn gry" data-act="site-open" data-id="' + esc(firstSite.id) + '">Open that site</button>' : '') +
+        '<button class="btn gry" data-act="sn-back">Back</button><button class="btn" data-act="sn-dupok">A different site &mdash; save it</button></div>';
       render(); return;
     }
     if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
-    var row = { id: "", createdBy: S.user, name: N.name || N.client, client: N.client || N.name, mobile: m, city: N.city, location: N.dist, stage: N.stage, type: "", architect: N.architect, plumber: N.plumber, builder: "", owner: "", status: "Active", notes: N.notes || "" };
+    if (dups.length) dupLog(m, "site", N.name + " (" + N.client + ")", dups);
+    var row = { id: "", createdBy: S.user, name: N.name, client: N.client, mobile: m, city: N.city, location: N.dist, stage: N.stage, type: "", architect: N.architect, plumber: N.plumber, builder: "", owner: "", status: "Active", notes: N.notes || "" };
     if (N.plumber) ensurePartner(N.plumber, "Plumber", N.dist, N.city);
     if (N.architect) ensurePartner(N.architect, "Architect", N.dist, N.city);
     saveRow("sites", row).then(function (r) { if (r.refused) return; });
@@ -2234,23 +2372,34 @@ table.t td.r,table.t th.r{text-align:right;white-space:nowrap}
   function clNewSheet() {
     var N = S.cn || (S.cn = {});
     return '<h2>New client</h2><div class="meta">Needed to make a quote. He is yours; the office sees him in the CRM.</div>' +
-      '<label for="cn_name">Name</label><input id="cn_name" value="' + esc(N.name || "") + '"/>' +
-      '<label for="cn_mob">Mobile</label><input id="cn_mob" inputmode="numeric" value="' + esc(N.mobile || "") + '" placeholder="10 digits"/>' +
-      '<div class="grid2"><div><label for="cn_dist">District</label><select id="cn_dist">' + districts().map(function (d) { return '<option' + (N.dist === d ? ' selected' : '') + '>' + esc(d) + '</option>'; }).join("") + '</select></div>' +
-      '<div><label for="cn_area">Area / colony</label><input id="cn_area" value="' + esc(N.area || "") + '"/></div></div>' +
-      '<div class="grid2"><div><label for="cn_pl">Plumber</label><input id="cn_pl" list="cn_pls" value="' + esc(N.plumber || "") + '"/></div><div><label for="cn_ar">Architect</label><input id="cn_ar" list="cn_ars" value="' + esc(N.architect || "") + '"/></div></div>' +
-      '<datalist id="cn_pls">' + partners("plumber").map(function (a) { return '<option value="' + esc(a.name) + '"></option>'; }).join("") + '</datalist>' +
-      '<datalist id="cn_ars">' + partners("architect").map(function (a) { return '<option value="' + esc(a.name) + '"></option>'; }).join("") + '</datalist>' +
+      '<div class="g2"><div><label for="cn_name">Client name</label><input id="cn_name" value="' + esc(N.name || "") + '"/></div>' +
+      '<div><label for="cn_mob">Mobile</label><input id="cn_mob" inputmode="numeric" value="' + esc(N.mobile || "") + '" placeholder="10 digits"/></div></div>' +
+      '<label for="cn_addr">Address</label><input id="cn_addr" value="' + esc(N.addr || "") + '" placeholder="House / site address"/>' +
+      '<div class="g4"><div><label for="cn_dist">District</label><input id="cn_dist" list="cn_dists" value="' + esc(N.dist || "") + '" placeholder="Pick or add"/>' + dl("cn_dists", districts()) + '</div>' +
+      '<div><label for="cn_area">Area</label><input id="cn_area" list="cn_areas" value="' + esc(N.area || "") + '" placeholder="Pick or add"/><span id="cn_adl">' + dl("cn_areas", areasFor(N.dist)) + '</span></div>' +
+      '<div><label for="cn_pl">Plumber</label><input id="cn_pl" list="cn_pls" value="' + esc(N.plumber || "") + '" placeholder="Pick or add"/>' + dl("cn_pls", partners("plumber").map(function (a) { return a.name; })) + '</div>' +
+      '<div><label for="cn_ar">Architect</label><input id="cn_ar" list="cn_ars" value="' + esc(N.architect || "") + '" placeholder="Pick or add"/>' + dl("cn_ars", partners("architect").map(function (a) { return a.name; })) + '</div></div>' +
       '<div class="acts"><button class="btn gry" data-act="close">Cancel</button><button class="btn" data-act="cn-save">Save the client</button></div>';
   }
+  function cnKeep() { var N = S.cn || (S.cn = {}); if (el("cn_name")) { N.name = val("cn_name"); N.mobile = mob10(val("cn_mob")); N.addr = val("cn_addr"); N.dist = val("cn_dist"); N.area = val("cn_area"); N.plumber = val("cn_pl"); N.architect = val("cn_ar"); } return N; }
   function cnSave() {
-    var N = S.cn || {};
-    N.name = val("cn_name"); N.mobile = mob10(val("cn_mob")); N.dist = val("cn_dist"); N.area = val("cn_area"); N.plumber = val("cn_pl"); N.architect = val("cn_ar");
+    var N = cnKeep();
     if (N.name.length < 2) { toast("The client's name."); return; }
     if (N.mobile.length !== 10) { toast("His 10-digit mobile number."); return; }
-    var dup = (S.data.clients || []).filter(function (c) { return dkey(c.name) === dkey(N.name) || mob10(c.mobile) === N.mobile; })[0];
-    if (dup) { toast("Already on the book: " + dup.name + ". Pick him from the list."); return; }
-    var row = { id: "", createdBy: S.user, ownedBy: S.user, name: N.name, shortName: "", location: N.dist, area: N.area, mobile: N.mobile, mobile2: "", address: "", type: "", segment: "", architect: N.architect, plumber: N.plumber, builder: "", pmc: "", notes: "added from the Visit & Quote app", leadType: "", stage: "" };
+    if (!N.dist) { toast("Pick the district, or type a new one."); return; }
+    var same = (S.data.clients || []).filter(function (c) { return dkey(c.name) === dkey(N.name); })[0];
+    if (same) { toast("Already on your book: " + same.name + ". Pick him from the list."); return; }
+    var dups = dupByMobile(N.mobile);
+    if (dups.length && !N.dupOk) {   /* 1.1.0 */
+      var mineC = dups.filter(function (x) { return x.kind === "client"; })[0];
+      S.sheet = '<h2>Same mobile already on the book</h2>' + dupHtml(dups) +
+        '<div class="meta">If it is the same person for another site, save him &mdash; the office is told.</div>' +
+        '<div class="acts">' + (mineC ? '<button class="btn gry" data-act="qz-for" data-k="' + esc(mineC.what) + '">Quote ' + esc(mineC.what) + ' instead</button>' : '') +
+        '<button class="btn gry" data-act="cn-back">Back</button><button class="btn" data-act="cn-dupok">Another site &mdash; save him</button></div>';
+      render(); return;
+    }
+    if (dups.length) dupLog(N.mobile, "client", N.name + (N.addr ? " (" + N.addr + ")" : ""), dups);
+    var row = { id: "", createdBy: S.user, ownedBy: S.user, name: N.name, shortName: "", location: N.dist, area: N.area, mobile: N.mobile, mobile2: "", address: N.addr || "", type: "", segment: "", architect: N.architect, plumber: N.plumber, builder: "", pmc: "", notes: "added from the Visit & Quote app", leadType: "", stage: "" };
     if (N.plumber) ensurePartner(N.plumber, "Plumber", N.dist, N.area);
     if (N.architect) ensurePartner(N.architect, "Architect", N.dist, N.area);
     saveRow("clients", row);
@@ -2287,8 +2436,7 @@ table.t td.r,table.t th.r{text-align:right;white-space:nowrap}
     var h = '<h2>' + esc(q.client || "") + '</h2><div class="meta">' + esc(q.quoteNo || "") + ' &middot; ' + esc(fd(q.createdAt)) + ' &middot; by ' + esc(q.createdBy || "") + '</div>' +
       '<div style="margin:6px 0"><span class="pill ' + qTone(q.status) + '">' + esc(q.status || "Draft") + '</span> <span class="pill">' + esc(q.brand || "") + '</span></div>';
     h += lineTable(it.map(function (i) { return { i: i, d: qLineDisc(q, i), net: Math.round(qLineNet(q, i) * (Number(i.qty) || 0)) }; }));
-    h += '<div class="card"><div class="row"><span class="grow">List price</span><b>' + esc(money(q.gross)) + '</b></div><div class="row"><span class="grow">After discount (' + esc(q.discountPct || 0) + '%)</span><b>' + esc(money(q.net)) + '</b></div>' +
-      '<div class="row"><span class="grow">GST 18%</span><b>' + esc(money(q.gstAmt)) + '</b></div><div class="row"><span class="grow"><b>Total</b></span><b style="font-size:17px">' + esc(money(q.total)) + '</b></div></div>';
+    h += totCard({ gross: Number(q.gross) || 0, net: Number(q.net) || 0, gst: Number(q.gstAmt) || 0, total: Number(q.total) || 0 }, it.some(function (i) { return i.gst; }));   /* 1.1.0 - GST only when the quote says so */
     h += '<div class="acts"><button class="btn grn" data-act="q-wa" data-id="' + esc(q.id) + '">WhatsApp the PDF</button><button class="btn gry" data-act="q-pdf" data-id="' + esc(q.id) + '">Download PDF</button></div>';
     if (m.length === 10) h += '<div class="acts"><a class="btn gry" href="tel:' + m + '">Call ' + esc(q.client) + '</a></div>';
     if (mine && qOpen216(q)) h += '<h3 class="sec">What happened</h3><div class="acts">' +
@@ -2299,14 +2447,21 @@ table.t td.r,table.t th.r{text-align:right;white-space:nowrap}
     h += '<div class="acts"><button class="btn gry" data-act="close">Close</button></div>';
     return h;
   }
-  /* two columns, so it fits a phone without sliding sideways: the item with qty x rate and discount under it, and the amount */
+  /* 1.1.0 - HIS WORDS: "show in table like format ... show product pic also everywhere" */
   function lineTable(rows) {
-    return '<div class="card" style="padding:4px 12px">' + rows.map(function (r) {
+    return '<div class="tblw"><table class="t"><tr><th></th><th>Item</th><th class="r">Qty</th><th class="r">Rate</th><th class="r">Disc</th><th class="r">Amount</th></tr>' + rows.map(function (r) {
       var i = r.i;
-      return '<div class="row" style="padding:8px 0;border-top:1px solid #f1f5f9;align-items:flex-start"><div class="grow"><div style="font-weight:700;font-size:14px">' + esc(i.desc || "") + '</div>' +
-        '<div class="meta">' + esc(i.qty) + ' ' + esc(i.unit || "") + ' &times; ' + esc(money(i.price)) + (r.d ? ' &middot; ' + esc(r.d) + '% off' : '') + (i.optional ? ' &middot; option' : '') + '</div>' +
-        '<div class="meta">' + esc([i.code, i.brand].filter(Boolean).join(" · ")) + '</div></div><div class="amt">' + esc(money(r.net)) + '</div></div>';
-    }).join("") + '</div>';
+      return '<tr><td class="pic">' + (i.pic ? '<img src="' + esc(i.pic) + '" alt="" loading="lazy"/>' : '') + '</td>' +
+        '<td><b>' + esc(i.desc || "") + '</b><div class="meta">' + esc([i.code, i.brand].filter(Boolean).join(" · ")) + (i.optional ? ' &middot; option' : '') + '</div></td>' +
+        '<td class="r">' + esc(i.qty) + ' <span class="meta">' + esc(String(i.unit || "").replace(/^Per\s*/i, "")) + '</span></td><td class="r">' + esc(money(i.price)) + '</td>' +
+        '<td class="r">' + (r.d ? esc(r.d) + '%' : '&mdash;') + '</td><td class="r"><b>' + esc(money(r.net)) + '</b></td></tr>';
+    }).join("") + '</table></div>';
+  }
+  function totCard(t, gst) {
+    return '<div class="card"><div class="row"><span class="grow">List price</span><b>' + esc(money(t.gross)) + '</b></div>' +
+      (t.gross > t.net ? '<div class="row"><span class="grow">Discount</span><b>&minus; ' + esc(money(t.gross - t.net)) + '</b></div>' : '') +
+      '<div class="row"><span class="grow"><b>' + (gst ? 'After discount' : 'Total') + '</b></span><b style="font-size:' + (gst ? 15 : 17) + 'px">' + esc(money(t.net)) + '</b></div>' +
+      (gst ? '<div class="row"><span class="grow">GST 18%</span><b>' + esc(money(t.gst)) + '</b></div><div class="row"><span class="grow"><b>Total with GST</b></span><b style="font-size:17px">' + esc(money(t.total)) + '</b></div>' : '<div class="meta">GST extra, as applicable</div>') + '</div>';
   }
   function qSetStatus(q, st) {
     var row = Object.assign({}, q, { status: st }); delete row._lid;
@@ -2348,7 +2503,11 @@ table.t td.r,table.t th.r{text-align:right;white-space:nowrap}
     var h = '<div class="row"><h2 class="grow">New quote</h2><button class="btn sm gry" data-act="qz-cancel">Cancel</button></div>' +
       '<div class="steps">' + [1, 2, 3, 4].map(function (i) { return '<span class="' + (z.step >= i ? 'on' : '') + '"></span>'; }).join("") + '</div>' +
       '<div class="meta">' + ["", "Step 1 of 4 &middot; the client", "Step 2 of 4 &middot; products", "Step 3 of 4 &middot; discount", "Step 4 of 4 &middot; check and save"][z.step] + '</div>';
-    if (z.client && z.step > 1) h += '<div class="card"><div class="row"><div class="grow"><div class="ttl2">' + esc(z.client) + '</div><div class="meta">' + esc([(clientByName(z.client) || {}).area, (clientByName(z.client) || {}).location].filter(Boolean).join(", ")) + '</div></div><button class="btn sm gry" data-act="qz-step" data-k="1">Change</button></div></div>';
+    if (z.client && z.step > 1) { var _zc = clientByName(z.client) || {};
+      h += '<div class="card"><div class="row"><div class="grow"><div class="ttl2">' + esc(z.client) + '</div><div class="meta">' + esc([_zc.mobile, _zc.area, _zc.location].filter(Boolean).join(" · ")) +
+        ([_zc.plumber, _zc.architect].some(Boolean) ? '<br>' + esc([_zc.plumber ? "Plumber " + _zc.plumber : "", _zc.architect ? "Architect " + _zc.architect : ""].filter(Boolean).join(" · ")) : '') +
+        '<br>' + clientWho(_zc) + '</div></div><button class="btn sm gry" data-act="qz-step" data-k="1">Change</button></div></div>';
+      if (z.step === 2) h += histHtml(z.client); }   /* 1.1.0 - on every step: what he was quoted and bought, by whom */
     if (z.step === 1) h += qzClient();
     if (z.step === 2) h += qzProducts();
     if (z.step === 3) h += qzDisc();
@@ -2403,9 +2562,13 @@ table.t td.r,table.t th.r{text-align:right;white-space:nowrap}
   function qzDisc() {
     var z = S.qz, can = canQuoteDiscount();
     var h = '<div class="meta">' + (can ? 'His preset discount is filled in. Change it only if you must &mdash; your incentive moves with it.' : 'The client&rsquo;s preset discount applies.') + '</div>';
+    var _H = brandHist(z.client);
     h += qzBrandsOf(z).map(function (b) {
-      var bt = brandTotals(z, b), pre = clientDiscount(z.client, b);
-      return '<div class="card"><div class="row"><div class="grow"><div class="ttl2">' + esc(b || "Other") + '</div><div class="meta">List ' + esc(money(bt.gross)) + ' &middot; after discount ' + esc(money(bt.net)) + (pre ? ' &middot; preset ' + pre + '%' : '') + '</div></div>' +
+      var bt = brandTotals(z, b), pre = clientDiscount(z.client, b), o = _H[b] || {}, cur = z.brandDiscs[b] == null ? pre : Number(z.brandDiscs[b]) || 0;
+      var use = function (d, lab) { return d != null && Number(d) !== cur ? ' <button class="chip" data-act="qz-use" data-k="' + esc(b) + '" data-p="' + esc(d) + '" style="min-height:44px;padding:0 10px">Use ' + esc(d) + '%' + (lab ? ' (' + lab + ')' : '') + '</button>' : ''; };
+      return '<div class="card"><div class="row"><div class="grow"><div class="ttl2">' + esc(b || "Other") + '</div><div class="meta">List ' + esc(money(bt.gross)) + ' &middot; after discount ' + esc(money(bt.net)) + (pre ? ' &middot; preset ' + pre + '%' : '') + '</div>' +
+        (o.c ? '<div class="meta" style="color:#166534;font-weight:700">Our client &mdash; bought at ' + esc(o.c.disc) + '% (' + esc(o.c.no) + ', ' + esc(fd(o.c.at)) + ')' + use(o.c.disc, "") + '</div>' : '') +
+        (o.q ? '<div class="meta">Quoted ' + esc(o.q.disc) + '% by <b>' + esc(o.q.by) + '</b> (' + esc(o.q.no) + ', ' + esc(fd(o.q.at)) + ')' + use(o.q.disc, "") + '</div>' : '') + '</div>' +
         '<div style="width:110px"><label for="bd_' + esc(dkey(b).replace(/\W/g, "_")) + '" style="margin:0">Discount %</label><input class="qz-bd" id="bd_' + esc(dkey(b).replace(/\W/g, "_")) + '" data-k="' + esc(b) + '" inputmode="decimal" value="' + esc(z.brandDiscs[b] == null ? pre : z.brandDiscs[b]) + '"' + (can ? '' : ' readonly') + '/></div></div></div>';
     }).join("");
     var t = qzTot();
@@ -2415,10 +2578,10 @@ table.t td.r,table.t th.r{text-align:right;white-space:nowrap}
   }
   function qzReview() {
     var z = S.qz, t = qzTot();
-    var h = lineTable(z.items.map(function (i) { var d = lineDisc(i, z); return { i: i, d: d, net: Math.round(Math.round(i.price * (1 - d / 100)) * i.qty) }; })) +
-      '<div class="card"><div class="row"><span class="grow">List price</span><b>' + esc(money(t.gross)) + '</b></div><div class="row"><span class="grow">After discount</span><b>' + esc(money(t.net)) + '</b></div>' +
-      '<div class="row"><span class="grow">GST 18%</span><b>' + esc(money(t.gst)) + '</b></div><div class="row"><span class="grow"><b>Total</b></span><b style="font-size:17px">' + esc(money(t.total)) + '</b></div></div>' +
-      '<div class="chips"><button class="chip' + (z.gst ? ' on' : '') + '" data-act="qz-gst">' + (z.gst ? 'GST shown on the PDF' : 'Show GST on the PDF') + '</button></div>' +
+    var h = histHtml(z.client, qzBrandsOf(z)) +
+      lineTable(z.items.map(function (i) { var d = lineDisc(i, z); return { i: i, d: d, net: Math.round(Math.round(i.price * (1 - d / 100)) * i.qty) }; })) +
+      totCard(t, z.gst) +
+      '<div class="chips"><button class="chip' + (z.gst ? ' on' : '') + '" data-act="qz-gst">' + (z.gst ? '&#10003; GST 18% added' : 'Add GST 18%') + '</button></div>' +
       '<div class="acts"><button class="btn gry" data-act="qz-step" data-k="3">Back</button><button class="btn" data-act="qz-save">Save the quote</button></div>';
     return h;
   }
@@ -2509,9 +2672,20 @@ table.t td.r,table.t th.r{text-align:right;white-space:nowrap}
     if (act === "pv-who") { S.pv = S.pv || {}; S.pv.name = val("pv_name"); S.pv.note = val("pv_note"); S.pv.mob = val("pv_mob"); S.pv.whoKind = k; S.pv.name = ""; render(); return; }
     if (act === "pv-save") { pvSave(k, t); return; }
     if (act === "near") { nearMe(t); return; }
-    if (act === "site-new") { S.sn = { name: S.q || "", dist: districts()[0] }; S.sheet = siteNewSheet(); render(); return; }
+    if (act === "site-new") { S.sn = { client: S.q || "" }; S.sheet = siteNewSheet(); render(); return; }
     if (act === "sn-save") { snSave(t); return; }
     if (act === "sn-back") { S.sheet = siteNewSheet(); render(); return; }
+    if (act === "sn-dupok") { if (S.sn) S.sn.dupOk = true; S.sheet = siteNewSheet(); render(); snSave(null); return; }   /* 1.1.0 */
+    if (act === "cn-back") { S.sheet = clNewSheet(); render(); return; }
+    if (act === "cn-dupok") { if (S.cn) S.cn.dupOk = true; S.sheet = clNewSheet(); render(); cnSave(); return; }
+    if (act === "qz-use") { qzKeep(); S.qz.brandDiscs[k] = Number(t.getAttribute("data-p")) || 0; render(); return; }
+    if (act === "pv-sites") { S.pvSitesOpen = !S.pvSitesOpen; pvInfoPaint(); return; }
+    if (act === "pv-cfix") {
+      var _pc = clientByName(val("pv_name")), _pf = k, _pn = val("pv_c" + k); if (!_pc || !_pn) { toast("Pick or type the name first."); return; }
+      saveRow("clients", Object.assign({}, _pc, { [_pf]: _pn }));
+      ensurePartner(_pn, _pf === "architect" ? "Architect" : "Plumber", _pc.location, _pc.area);
+      toast(_pc.name + ": " + _pf + " " + _pn + " saved."); pvInfoPaint(); return;
+    }
     if (act === "site-open") { var st = siteById(id); if (!st) return; S.sl = null; S.sheet = siteSheet(st); render(); return; }
     if (act === "sv-log") { var st2 = siteById(id); if (!st2) return; S.sl = { id: st2.id, met: "", stage: st2.stage || "" }; S.sheet = svLogSheet(st2); render(); return; }
     if (act === "sl-met") { if (!S.sl) return; S.sl.note = val("sl_note"); S.sl.stage = val("sl_stage"); S.sl.met = k; S.sheet = svLogSheet(siteById(S.sl.id)); render(); return; }
@@ -2561,6 +2735,9 @@ table.t td.r,table.t th.r{text-align:right;white-space:nowrap}
   /* live typing repaints only the result box, so the keyboard stays up */
   document.addEventListener("input", function (ev) {
     var t = ev.target; if (!t || !S.data) return;
+    if (t.id === "pv_name") { S.pv = S.pv || {}; S.pv.name = t.value; S.pvSitesOpen = false; pvInfoPaint(); var _pm = el("pv_mob"); if (_pm) { var _k = S.vk, _w = _k === "showroom" ? (S.pv.whoKind || "Client") : ""; _pm.disabled = !!(_k === "showroom" && _w === "Client" ? clientByName(t.value) : partnerByName(t.value)); } return; }   /* 1.1.0 */
+    if (t.id === "sn_dist") { var _sd = el("sn_cdl"); if (_sd) _sd.innerHTML = dl("sn_cities", areasFor(t.value)); return; }
+    if (t.id === "cn_dist") { var _cd = el("cn_adl"); if (_cd) _cd.innerHTML = dl("cn_areas", areasFor(t.value)); return; }
     if (t.id === "sq") { S.q = t.value; S.near = null; var r = el("sres"); if (r) r.innerHTML = siteResults(); return; }
     if (t.id === "qq") { S.q = t.value; var r2 = el("qres"); if (r2) { var f = S.fq || "all", q = lower(S.q); var list = myQuotes().filter(function (x) { return fqOk(x, f); }).filter(function (x) { return !q || lower([x.client, x.quoteNo, x.brand, x.siteName].join(" ")).indexOf(q) >= 0; }); r2.innerHTML = list.length ? list.slice(0, 80).map(qRow).join("") : '<div class="empty">No quote here.</div>'; } return; }
     if (t.id === "qz_cq") { S.qz.cq = t.value; var q3 = lower(t.value), cl = myClients(); var hits = q3.length >= 2 ? cl.filter(function (c) { return lower([c.name, c.area, c.location, c.mobile].join(" ")).indexOf(q3) >= 0; }) : []; el("qz_hits").innerHTML = qzHits(hits, q3); return; }
@@ -2568,6 +2745,8 @@ table.t td.r,table.t th.r{text-align:right;white-space:nowrap}
     if (t.classList && (t.classList.contains("qz-qty") || t.classList.contains("qz-bd"))) { qzKeep(); return; }
     if (t.id === "pv_name" || t.id === "pv_note" || t.id === "pv_mob") { S.pv = S.pv || {}; S.pv.name = val("pv_name"); S.pv.note = val("pv_note"); S.pv.mob = val("pv_mob"); }
   });
+
+  function pvInfoPaint() { var b = el("pv_info"); if (!b) return; var k = S.vk, P = S.pv || {}; b.innerHTML = pvInfoHtml(k, k === "showroom" ? (P.whoKind || "Client") : "", val("pv_name")); }
 
   /* ================= START ================= */
   function boot() {
