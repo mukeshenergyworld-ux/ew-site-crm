@@ -319,7 +319,7 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
    Nothing here deletes anything, ever. A visit is a row added.
    ========================================================================== */
 
-  var APP_VERSION = "2.1.0";
+  var APP_VERSION = "2.2.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_service_session";
 
@@ -2292,7 +2292,9 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
        start and it caught the first cut of this change: "a missing price list may not invent
        money, which is the whole reason the number is not typed into the app". A client never
        visited gets an EMPTY box and a line saying so - not a number somebody made up. */
-    if (String(type || "") !== "Installation" && svWarrCover(ins, date)) return "";   /* 2.1.0 - in warranty */
+    if (String(type || "") !== "Installation" && svWarrCover(ins, date, type)) return "";   /* 2.1.0 - in warranty */
+    /* 2.2.0 - HIS RULE: "service charges will be prefixed by admin and not to be changed by technician" - the rate card first */
+    var rc = tkRateFor(type); if (rc && Number(rc) > 0) return rc;
     var r = clientVisitCharge(ins.client);
     if (r > 0) return String(r);
     /* 2.1.0 - "auto per visit charges": his first charged visit takes the office's rate card (CRM Complaints >
@@ -2425,7 +2427,12 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
   function svWarrList(ins) {
     var out = [], raw = [];
     try { raw = JSON.parse((ins && ins.productsJson) || "[]") || []; } catch (e) { raw = []; }
-    raw.forEach(function (p) { var e = svWarrEnd(p || {}); if (e) out.push({ brand: String(p.brand || ""), till: e }); });
+    raw.forEach(function (p) {
+      p = p || {};
+      var bs = sv2BrandSvc(p.brand), st = svYmd(p.commDate) || svYmd(p.installDate);
+      if (bs && bs.parts && st) { svParts(p.brand, st).forEach(function (w) { out.push({ brand: String(p.brand || ""), till: w.till, part: w.label }); }); return; }   /* 2.2.0 */
+      var e = svWarrEnd(p); if (e) out.push({ brand: String(p.brand || ""), till: e });
+    });
     if (out.length || !ins) return out;
     var n = String(ins.notes || ""), m = n.match(/warranty till (\d{2})\/(\d{2})\/(\d{4})/i), m2 = n.match(/warranty till (\d{4}-\d{2}-\d{2})/i);
     var till = m ? m[3] + "-" + m[2] + "-" + m[1] : (m2 ? m2[1] : "");
@@ -2433,8 +2440,22 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
     return out;
   }
   /* null when out of warranty; else what the engineer is told */
-  function svWarrCover(ins, date) {
+  /* 2.2.0 - what the engineer is told when it is NOT simply free: Pentair's periodic service, or Green Heat partly covered */
+  function svWarrNote(ins, type, date) {
     if (!ins) return null;
+    var d = String(date || today()).slice(0, 10), ws = svWarrList(ins), on = ws.filter(function (w) { return w.till >= d; });
+    if (!on.length) return null;
+    if (/^(Service|Salt refill)$/.test(String(type || "")) && on.some(function (w) { var b = sv2BrandSvc(w.brand); return b && b.periodicCharged; })) {
+      var b0 = sv2BrandSvc(on[0].brand);
+      return { k: "periodic", txt: "In warranty till " + dstr(on[0].till) + ", but " + (b0.rule || on[0].brand) + "’s periodic service is charged" };
+    }
+    var parted = ws.filter(function (w) { return w.part; });
+    if (parted.length && on.length < parted.length) return { k: "partial", on: on, txt: "Partly in warranty — " + on.map(function (w) { return w.part + " till " + dstr(w.till); }).join(", ") + ". A fault in those is free; other parts are charged" };
+    return null;
+  }
+  function svWarrCover(ins, date, type) {
+    if (!ins) return null;
+    if (svWarrNote(ins, type, date)) return null;   /* 2.2.0 - periodic or partial: not simply free */
     var d = String(date || today()).slice(0, 10);
     var on = svWarrList(ins).filter(function (w) { return w.till >= d; }).sort(function (a, b) { return b.till.localeCompare(a.till); })[0];
     if (!on) return null;
@@ -2632,6 +2653,12 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
       return tkDaysTo(p.amcEnd) >= 0 ? { t: "AMC" + (p.amcType ? " (" + p.amcType + ")" : "") + " till " + dstr(p.amcEnd), ok: 1, amc: 1 } : { t: "AMC ended " + dstr(p.amcEnd), c: "bad" };
     }
     if (p.kind === "comm") {
+      /* 2.2.0 - the CRM's 6.9.738: covered while new; after 60 days the warranty has started by itself; Green Heat by parts */
+      if (p.commissioned === false && !p.autoStarted && p.autoOn) return { t: "Not commissioned yet — covered; warranty starts at commissioning or by itself on " + dstr(p.autoOn), ok: 1 };
+      if (p.parts && p.parts.length) {
+        var _on = p.parts.filter(function (x) { return x.till >= today(); }), _tx = svPartsTxt(p.parts) + (p.autoStarted ? " (started by itself 60 days after delivery)" : "");
+        return _on.length === p.parts.length ? { t: _tx, ok: 1 } : (_on.length ? { t: _tx, c: "warn" } : { t: _tx, c: "bad" });
+      }
       if (p.commissioned === false || !(p.commissioned || p.date)) return { t: "Not commissioned yet", c: "warn" };   /* 2.0.0 - the CRM sends commissioned:false with the delivery date */
       if (!p.till) return { t: "Commissioned " + dstr(p.date) + " - no warranty date", c: "warn" };
       return tkDaysTo(p.till) >= 0 ? { t: "In warranty till " + dstr(p.till), ok: 1 } : { t: "Warranty over " + dstr(p.till), c: "bad" };
@@ -2746,7 +2773,7 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
       var act = String(a && a.action || "");
       if (act === "brand:svc") {
         var d = sv2J(a.detail), k = sv2Key(d.brand); if (!k) return;
-        if (!bAt[k] || String(a.createdAt || "") >= bAt[k]) { bAt[k] = String(a.createdAt || ""); brand[k] = { on: !!d.on, wm: Number(d.wm) || 0, cm: Number(d.cm) || 0, wby: d.wby === "brand" ? "brand" : "ew", help: String(d.help || "") }; }   /* 2.1.0 */
+        if (!bAt[k] || String(a.createdAt || "") >= bAt[k]) { bAt[k] = String(a.createdAt || ""); brand[k] = { on: !!d.on, wm: Number(d.wm) || 0, cm: Number(d.cm) || 0, wby: d.wby === "brand" ? "brand" : "ew", help: String(d.help || ""), at: String(a.createdAt || "") }; }   /* 2.1.0; 2.2.0 - at */
       } else if (act === "comm:done") {
         var c = sv2J(a.detail); if (!c.chId) return;
         var m = comm[c.chId] || (comm[c.chId] = {});
@@ -2756,7 +2783,49 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
     _sv2c = { brand: brand, comm: comm };
     return _sv2c;
   }
-  function sv2BrandSvc(b) { return sv2Cache().brand[sv2Key(b)] || null; }
+  /* ===== 2.2.0 - HIS SERVICE RULES PER BRAND (the CRM's 6.9.738, word for word) =====
+     LEO 2 years, Energy World. Grundfos 2 years, Grundfos services it in warranty, then Energy World. Pentair 2 years,
+     Energy World; its periodic softener / sand filter service is charged even in warranty. Green Heat: compressor 5 years,
+     hot water tank 5 years, other parts 2 years, Energy World. Warranty from commissioning, or by itself 60 days after
+     the challan. A brand form saved in the CRM after the rules were set overrides the months and who services it. */
+  var SVC_RULES = {
+    "leo":        { label: "LEO", wm: 24, wby: "ew" },
+    "grundfos":   { label: "Grundfos", wm: 24, wby: "brand" },
+    "pentair":    { label: "Pentair", wm: 24, wby: "ew", periodicCharged: 1 },
+    "green heat": { label: "Green Heat", wm: 24, wby: "ew", parts: [{ kw: ["compressor"], label: "Compressor", wm: 60 }, { kw: ["tank"], label: "Hot water tank", wm: 60 }, { kw: [], label: "Other parts", wm: 24 }] }
+  };
+  var SVC_RULES_AT = "2026-10-11T12:10:05", WARR_AUTO_DAYS = 60, SVC_BRANDS4 = ["LEO", "Grundfos", "Pentair", "Green Heat"];
+  function svRule(b) {
+    var k = sv2Key(b); if (!k) return null;
+    for (var r in SVC_RULES) if (SVC_RULES.hasOwnProperty(r) && (k === r || k.indexOf(r + " ") === 0)) return SVC_RULES[r];
+    return null;
+  }
+  function sv2BrandSvc(b) {
+    var row = sv2Cache().brand[sv2Key(b)] || null, R = svRule(b);
+    if (!R) return row;
+    var o = row ? Object.assign({}, row) : { on: false, wm: 0, cm: 0, wby: "ew", help: "" };
+    if (!row || String(row.at || "") < SVC_RULES_AT) { o.wm = R.wm; o.wby = R.wby; }
+    o.parts = R.parts || null; o.periodicCharged = !!R.periodicCharged; o.rule = R.label;
+    return o;
+  }
+  function svAddMonths(ymd, m) { var d = new Date(String(ymd).slice(0, 10) + "T00:00:00"); if (isNaN(d.getTime())) return ""; d.setMonth(d.getMonth() + (Number(m) || 0)); return ymdLocal(d); }
+  function svWarrStart(chDate, commDate) {
+    var auto = sv2AddDays(String(chDate || "").slice(0, 10), WARR_AUTO_DAYS), cd = String(commDate || "").slice(0, 10);
+    if (cd && (!auto || cd <= auto)) return { start: cd, auto: false, autoOn: auto };
+    return { start: auto, auto: true, autoOn: auto, started: !!auto && auto <= today() };
+  }
+  function svParts(brand, start, months) {
+    var bs = sv2BrandSvc(brand); if (!start) return [];
+    if (bs && bs.parts) return bs.parts.map(function (p) { return { label: p.label, till: svAddMonths(start, p.wm) }; });
+    var m = Number(months) || (bs && bs.wm) || 0;
+    return m ? [{ label: "", till: svAddMonths(start, m) }] : [];
+  }
+  function svPartsTxt(ps) {
+    var d = today(), on = ps.filter(function (p) { return p.till >= d; }), off = ps.filter(function (p) { return p.till < d; });
+    if (ps.length === 1 && !ps[0].label) return on.length ? "In warranty till " + dstr(ps[0].till) : "Warranty over " + dstr(ps[0].till);
+    return (on.length ? "In warranty: " + on.map(function (p) { return p.label + " till " + dstr(p.till); }).join(", ") : "") + (on.length && off.length ? "; " : "") +
+      (off.length ? "over: " + off.map(function (p) { return p.label + " " + dstr(p.till); }).join(", ") : "");
+  }
   function sv2CommCat(desc) {
     var d = " " + String(desc || "").toLowerCase() + " ";
     for (var i = 0; i < SV2_COMM.length; i++) if (SV2_COMM[i].kw.some(function (k) { return d.indexOf(k) >= 0; })) return SV2_COMM[i];
@@ -2767,7 +2836,7 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
     var bs = sv2BrandSvc(i && i.brand), cat = sv2CommCat(i && i.desc);
     if (!(bs && bs.on) && !cat) return null;
     return { label: cat ? cat.label : String((i && i.brand) || "Machine"),
-             wm: (bs && bs.on && bs.wm) || (cat && cat.months) || 12,
+             wm: (bs && (bs.on || bs.rule) && bs.wm) || (cat && cat.months) || 12,   /* 2.2.0 - the brand's rule */
              cm: (bs && bs.on && bs.cm) || (cat ? Math.max(1, Math.round(cat.cycle / 30)) : 6) };
   }
   function sv2Items(c) { try { return JSON.parse((c && c.itemsJson) || "[]") || []; } catch (e) { return []; } }
@@ -2809,8 +2878,11 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
     chs.forEach(function (c) {
       sv2CommLines(c).forEach(function (x) {
         if (x.st && x.st.skip) return;
+        var _cd = String(c.createdAt || "").slice(0, 10), _ws = svWarrStart(_cd, x.st && x.st.date), _wp = svParts(x.i.brand, (x.st && x.st.date) ? x.st.date : (_ws.started ? _ws.start : ""), (x.st && x.st.wm) || x.need.wm);   /* 2.2.0 */
+        if (x.st && x.st.till && _wp.length === 1) _wp[0].till = x.st.till;
         out.push({ key: c.id + ":" + x.idx, kind: "comm", desc: String(x.i.desc || x.need.label), brand: String(x.i.brand || ""), sn: (x.st && x.st.sn) || "",
-                   date: (x.st && x.st.date) || String(c.createdAt || "").slice(0, 10), till: (x.st && x.st.till) || "", ch: c.challanNo || "", commissioned: !!(x.st && x.st.date) });
+                   date: (x.st && x.st.date) || _cd, till: (x.st && x.st.till) || (_wp[0] ? _wp[0].till : ""), ch: c.challanNo || "", commissioned: !!(x.st && x.st.date),
+                   eng: (x.st && x.st.eng) || "", autoOn: _ws.autoOn, autoStarted: !(x.st && x.st.date) && _ws.started, parts: _wp });
       });
     });
     installs().filter(function (x) { return sv2Key(x.client) === k; }).forEach(function (x) {
@@ -3007,7 +3079,7 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
     var cv = tkCover(t);
     var h = '<h2>Finish &mdash; ' + esc(t.client || t.name || "") + '</h2><div class="muted">' + esc(t.ref || "") + ' &middot; ' + esc(cv.txt) + '</div>' +
       '<label>What was done</label><div class="chips">' + SV2_OUT.map(function (o) { return '<button class="chip bchip' + (F.out === o ? ' on' : '') + '" data-act="sv2-fo" data-k="' + esc(o) + '">' + esc(o) + '</button>'; }).join("") + '</div>' +
-      '<label>Service charge (&#8377;)</label><input id="sv2_chg" inputmode="numeric" value="' + esc(F.chg == null ? "" : F.chg) + '" placeholder="' + (cv.ok ? 'Nothing - ' + esc(cv.amc ? 'under AMC' : 'in warranty') : '0') + '"/>' +
+      '<label>Service charge (&#8377;)</label><input id="sv2_chg" inputmode="numeric" value="' + esc(F.chg == null ? "" : F.chg) + '" placeholder="' + (cv.ok ? 'Nothing - ' + esc(cv.amc ? 'under AMC' : 'in warranty') : '0') + '"' + (!cv.ok && !roleAny(["admin"]) && F.chg ? ' readonly style="background:#f1f5f9"' : '') + '/>' +   /* 2.2.0 - the owner's rate */
       (cv.ok ? '<div class="meta">' + esc(cv.txt) + ' &mdash; no charge, unless it was misuse.</div>' : '') +
       '<label>Service charge received?</label><div class="chips">' +
         '<button class="chip bchip' + (F.got === "yes" ? ' on' : '') + '" data-act="sv2-fg" data-k="yes">Yes</button>' +
@@ -3081,13 +3153,24 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
     var c = N.client ? clientByName(N.client) : null;
     var h = '<h2>New complaint</h2><div class="muted">The same clients as the CRM. It goes on the CRM board at once.</div>';
     if (!c && !N.newCaller) {
+      /* 2.2.0 - HIS WORDS: "pick a client from pre set, District, area then client name" */
+      var _all = clients(), _ds = [], _as = [], _cs;
+      _all.forEach(function (x) { var l = String(x.location || "").trim(); if (l && _ds.indexOf(l) < 0) _ds.push(l); });
+      _all.forEach(function (x) { var a = String(x.area || "").trim(); if (a && (!N.dist || String(x.location || "").trim() === N.dist) && _as.indexOf(a) < 0) _as.push(a); });
+      _ds.sort(alpha); _as.sort(alpha);
+      _cs = _all.filter(function (x) { return (!N.dist || String(x.location || "").trim() === N.dist) && (!N.ar || String(x.area || "").trim() === N.ar); }).map(function (x) { return x.name; }).filter(Boolean).sort(alpha);
+      var _o = function (v, cur, l) { return '<option value="' + esc(v) + '"' + (v === cur ? ' selected' : '') + '>' + esc(l == null ? v : l) + '</option>'; };
+      h += '<div class="grid2"><div><label>District</label><select id="sv2_nd">' + _o("", N.dist || "", "All districts") + _ds.map(function (x) { return _o(x, N.dist || ""); }).join("") + '</select></div>' +
+        '<div><label>Area</label><select id="sv2_na">' + _o("", N.ar || "", "All areas") + _as.map(function (x) { return _o(x, N.ar || ""); }).join("") + '</select></div></div>' +
+        '<label>Client</label><select id="sv2_nc">' + _o("", "", "— pick the client (" + _cs.length + ") —") + _cs.map(function (x) { return _o(x, ""); }).join("") + '</select>';
       var q = lower(N.cq || ""), hits = q.length >= 2 ? clients().filter(function (x) { return clientHay(x).indexOf(q) >= 0; }).slice(0, 8) : [];
-      h += '<label>Client</label><input id="sv2_cq" value="' + esc(N.cq || "") + '" placeholder="Type a name, mobile or area" autocomplete="off"/>' +
+      h += '<label>Or type a name, mobile or area</label><input id="sv2_cq" value="' + esc(N.cq || "") + '" placeholder="Type a name, mobile or area" autocomplete="off"/>' +
         '<div id="sv2_hits">' + sv2Hits(hits, q) + '</div>';
     } else if (c) {
       h += '<div class="card" style="margin:8px 0"><div class="row"><div class="grow"><b>' + esc(c.name) + '</b><div class="meta">' + esc([c.location, c.mobile].filter(Boolean).join(" · ")) + '</div></div>' +
         '<button class="btn gry sm" data-act="sv2-nc-clear">Change</button></div></div>';
       var ps = sv2Products(c.name);
+      h += svClientCard(c.name);   /* 2.2.0 - his machines, cover and money */
       h += '<label>Installed at his site &mdash; tick the product</label>' + (ps.length ? ps.map(function (p) {
         return '<label class="card sv2p"><input type="checkbox" class="sv2-pick" data-k="' + esc(p.key) + '"' + (N.picks[p.key] ? ' checked' : '') + '/>' +
           '<span class="grow"><b>' + esc(p.desc) + '</b>' + (p.brand ? ' <span class="meta">' + esc(p.brand) + '</span>' : '') + (p.sn ? ' <span class="meta">S/N ' + esc(p.sn) + '</span>' : '') +
@@ -3098,6 +3181,8 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
       h += '<div class="grid2"><div><label>Caller&rsquo;s name</label><input id="sv2_nm" value="' + esc(N.name || "") + '"/></div>' +
         '<div><label>Mobile</label><input id="sv2_mob" inputmode="numeric" value="' + esc(N.mobile || "") + '"/></div></div>' +
         '<label>Area</label><input id="sv2_area" value="' + esc(N.area || "") + '"/>' +
+        /* 2.2.0 - "if client is old, before CRM time, not in list ... ask to enter old installed product details with installation date, warranty status" */
+        svOldMachinesHtml(N) +
         '<div class="acts"><button class="btn gry sm" data-act="sv2-nc-clear">Pick a client instead</button></div>';
     }
     h += '<label>What is it about</label><div class="chips">' + SV2_CATS.map(function (x) { return '<button class="chip bchip' + (N.cat === x ? ' on' : '') + '" data-act="sv2-nc-cat" data-k="' + esc(x) + '">' + esc(x) + '</button>'; }).join("") + '</div>' +
@@ -3108,6 +3193,32 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
         sv2Engineers().map(function (e) { return '<option' + (lower(N.eng) === lower(e) ? ' selected' : '') + '>' + esc(e) + '</option>'; }).join("") + '</select>' +
       '<div class="acts"><button class="btn gry" data-act="close">Cancel</button><button class="btn grow" data-act="sv2-nc-save">Register the complaint</button></div>';
     return h;
+  }
+  /* 2.2.0 - the client card on a complaint: what is installed, in or out of warranty, AMC, who commissioned it, the fixed
+     charge when it is not covered, and what he owes (service, and the office's figure for goods - never added together) */
+  function svClientCard(name) {
+    var ins = installs().filter(function (x) { return sv2Key(x.client) === sv2Key(name); });
+    var h = '<div class="card" style="margin:6px 0">' + (moneyStrip(name) || '<div class="meta">Nothing pending on service' + (dueOnAcct(name) === null ? '' : ' or goods') + '.</div>');
+    if (ins.length) h += '<div class="meta" style="font-weight:700;margin-top:6px">MACHINES ON FILE</div>' + ins.map(function (x) {
+      var raw = []; try { raw = JSON.parse(x.productsJson || "[]") || []; } catch (e) { raw = []; }
+      var nm = raw.length ? raw.map(function (p) { return [p.brand, p.product, p.model].filter(Boolean).join(" ") + (p.installDate ? " · installed " + dstr(p.installDate) : ""); }).join("; ") : [x.product, x.model].filter(Boolean).join(" ") + (x.installDate ? " · installed " + dstr(x.installDate) : "");
+      var amc = amcLiveOn(x, today()) && amcKind(x) !== "None", wc = svWarrCover(x, today(), "Repair"), wn = svWarrNote(x, "Repair", today()), rc = tkRateFor("Repair");
+      return '<div style="padding:6px 0;border-top:1px solid #e2e8f0"><b>' + esc(nm || "Machine") + '</b>' + (x.engineer ? '<div class="meta">Commissioned / looked after by ' + esc(x.engineer) + '</div>' : '') +
+        '<div style="margin-top:3px">' + (amc ? '<span class="pill amc">Under AMC' + (x.amcEnd ? ' to ' + esc(dstr(x.amcEnd)) : '') + '</span>' : '<span class="pill" style="background:#fef3c7;color:#92400e">No AMC</span>') + ' ' +
+        (wc ? '<span class="pill grn" style="white-space:normal">' + esc(wc.txt) + '</span>' : wn ? '<span class="pill" style="white-space:normal;background:#fef3c7;color:#92400e">' + esc(wn.txt) + '</span>' : '<span class="pill red">Out of warranty</span>') + '</div>' +
+        (!amc && !wc && rc ? '<div class="meta">Fixed charge for a repair visit: <b>' + esc(money9(Number(rc))) + '</b></div>' : '') + '</div>';
+    }).join("");
+    return h + '</div>';
+  }
+  function svOldMachinesHtml(N) {
+    var L = N.old || (N.old = []);
+    return '<div class="card" style="margin:8px 0"><b>His machines from before</b><div class="meta">An old client, before the CRM? Enter what is installed &mdash; the brand sets the warranty. The office adds him as a client in the CRM.</div>' +
+      L.map(function (m, i) { var bs = sv2BrandSvc(m.brand), till = m.cd ? svParts(m.brand, m.cd).map(function (p) { return (p.label ? p.label + " " : "") + "till " + dstr(p.till); }).join(", ") : "";
+        return '<div class="meta" style="padding:4px 0;border-top:1px solid #f1f5f9"><b>' + esc(m.brand + " " + m.product) + '</b> &middot; installed ' + esc(dstr(m.cd)) + (till ? ' &middot; warranty ' + esc(till) : '') + ' <button class="btn gry sm" data-act="sv-old-del" data-i="' + i + '">Remove</button></div>'; }).join("") +
+      '<div class="grid2"><div><label>Brand</label><select id="sv_ob">' + SVC_BRANDS4.map(function (b) { return '<option>' + esc(b) + '</option>'; }).join("") + '<option>Other</option></select></div>' +
+      '<div><label>Product</label><select id="sv_op">' + ["Water Softener", "Sand Filter", "Carbon Filter", "RO / Purifier", "Heat Pump", "Pressure Pump", "Other"].map(function (p) { return '<option>' + esc(p) + '</option>'; }).join("") + '</select></div></div>' +
+      '<label>Installed / commissioned on</label><input id="sv_od" type="date" max="' + today() + '"/>' +
+      '<div class="acts"><button class="btn sm" data-act="sv-old-add">+ Add this machine</button></div></div>';
   }
   function sv2Hits(hits, q) {
     if (!q || q.length < 2) return '<div class="meta">Type two letters.</div><button class="btn gry sm" data-act="sv2-nc-newcaller" style="margin-top:6px">Not on the book &mdash; a new caller</button>';
@@ -3133,6 +3244,17 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
     if (!nm) { toast("Pick the client, or type the caller’s name."); return; }
     if (!c && mob.length !== 10) { toast("A new caller needs his 10-digit mobile number."); return; }
     if (!N.cat) { toast("Pick what it is about."); return; }
+    /* 2.2.0 - an old caller's machines become installations under his name, with the brand's warranty */
+    if (!c && N.old && N.old.length) {
+      N.old.forEach(function (m) {
+        var bs = sv2BrandSvc(m.brand) || {}, wm = bs.wm || 12, cyc = (bs.cm || 6);
+        saveRow("installs", { id: mintId("IN"), createdBy: S.user, client: nm, mobile: mob, address: "", area: String(N.area || ""), product: m.product, model: m.brand, serial: "",
+          installDate: m.cd, waterQuality: "", cycleDays: Math.round(cyc * 30), lastService: "", nextService: sv2AddMonths(m.cd, cyc), amcType: "None", amcAmount: "", amcEnd: "", engineer: S.user, status: "Active",
+          productsJson: JSON.stringify([{ brand: m.brand, product: m.product, model: m.product, serial: "", installDate: m.cd, commDate: m.cd, warrantyMonths: wm, serviceReq: 1, serviceMonths: cyc }]),
+          notes: "Old machine entered on a complaint (Service app) · the office to add him as a client" });
+      });
+      try { applyJournal(); } catch (e) { }
+    }
     if (String(N.desc || "").trim().length < 4) { toast("Write in a line what happened."); return; }
     var ps = c ? sv2Products(c.name).filter(function (p) { return N.picks[p.key]; }) : [];
     var pt = ps.map(function (p) { return p.desc + (p.sn ? " S/N " + p.sn : "") + " (" + tkWarr(p).t + ")"; }).join("; ");
@@ -3210,7 +3332,8 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
       var L = (K.l && K.l[x.idx]) || {};
       if (L.skip) return { idx: x.idx, code: x.i.code || "", desc: x.i.desc || "", brand: x.i.brand || "", skip: true };
       var wm = L.wm === "" || L.wm == null ? x.need.wm : num(L.wm), cm = L.cm === "" || L.cm == null ? x.need.cm : num(L.cm);
-      return { idx: x.idx, code: x.i.code || "", desc: x.i.desc || "", brand: x.i.brand || "", qty: num(x.i.qty) || 1, sn: L.sn || sv2AutoSn(c, x.idx), wm: wm, till: sv2AddMonths(date, wm), cm: cm };
+      var _ws = svWarrStart(String(c.createdAt || "").slice(0, 10), date);   /* 2.2.0 - commissioning, or challan + 60 days if that came first */
+      return { idx: x.idx, code: x.i.code || "", desc: x.i.desc || "", brand: x.i.brand || "", qty: num(x.i.qty) || 1, sn: L.sn || sv2AutoSn(c, x.idx), wm: wm, till: sv2AddMonths(_ws.start, wm), cm: cm, from: _ws.start };
     });
     var real = lines.filter(function (l) { return !l.skip; });
     if (real.length && !(K.pics || []).length) { toast("Take at least one photo of the installed machine."); return; }
@@ -3573,6 +3696,14 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
     if (_wc && _wc.ok && !_wc.amc && String(v.type || "") !== "Installation") return { visit: true, salt: amc.salt, parts: true, kind: "Warranty", live: true, warranty: true };
     return amc;
   }
+  /* 2.2.0 - the rate a technician may not change: the rate card's, on a visit that is charged, for anyone but the owner */
+  function svFixedRate(v) {
+    if (roleAny(["admin"])) return "";
+    if (!v || v.type === "Labour job") return "";
+    var ins = v.installId ? installById(v.installId) : null, cv = visCover(v, ins);
+    if (cv.visit) return "";
+    var rc = tkRateFor(v.type); return rc && Number(rc) > 0 ? rc : "";
+  }
   function sheetVisit(v) {
     var ins = v.installId ? installById(v.installId) : null;
     var pTot = partsTotal(v.parts);
@@ -3588,6 +3719,9 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
       (v.tkCover ? '<div class="note ' + (v.tkCover.ok ? 'ok' : 'warn-t') + '" style="margin:6px 0">' + esc(v.tkRef || "") + ' &middot; ' + esc(v.tkCover.txt) +
         (v.tkCover.ok ? (v.tkCover.amc ? ' &mdash; the AMC decides the charge' : ' &mdash; <b>no charge for the visit or parts</b> (salt is charged)') : ' &mdash; <b>charge the rate</b>') + '</div>' : '') +   /* 1.21.0 */
       (!v.tkCover && v.wCover && v.type !== "Installation" ? '<div class="note ok" id="v_wcover" style="margin:6px 0">' + esc(v.wCover.txt) + ' &mdash; <b>no charge for the visit or parts</b> (salt is charged)</div>' : '') +   /* 2.1.0 */
+      (!v.tkCover && v.wNote && v.type !== "Installation" ? '<div class="note warn-t" id="v_wnote" style="margin:6px 0">' + esc(v.wNote.txt) + '.' +   /* 2.2.0 */
+        (v.wNote.k === "partial" ? '<div style="margin-top:6px">Where was the fault?</div><div class="chips">' + v.wNote.on.map(function (w) { return '<button class="chip' + (v.fault === w.part ? ' on' : '') + '" data-act="v-fault" data-k="' + esc(w.part) + '">' + esc(w.part) + '</button>'; }).join("") +
+          '<button class="chip' + (v.fault === "other" ? ' on' : '') + '" data-act="v-fault" data-k="other">Other part</button></div>' : '') + '</div>' : '') +
       (function () {   /* 2.1.0 - "its under AMC or not, if not insist client for AMC" */
         if (!ins || v.type === "Installation" || cover.visit) return "";
         var A = v.amcAsk || "";
@@ -3669,7 +3803,8 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
 
     /* --- the charge --- */
     h += '<label>Visit / labour charge</label>' +
-      '<input id="v_charge" inputmode="numeric" value="' + esc(v.visitCharge || "") + '" placeholder="0"/>' +
+      '<input id="v_charge" inputmode="numeric" value="' + esc(v.visitCharge || "") + '" placeholder="0"' + (svFixedRate(v) ? ' readonly style="background:#f1f5f9"' : '') + '/>' +   /* 2.2.0 - the owner's rate */
+      (svFixedRate(v) ? '<div class="meta">' + esc(money9(Number(svFixedRate(v)))) + ' is the owner&rsquo;s fixed rate for ' + esc(TK_JOB[v.type] || "this job") + '. Only the owner changes it.</div>' : '') +
       (function () {
         /* 30 Aug 2026 - HIS rate, not a spares row. "once a service charge enteerd for a
            client first time , remember that for all future , pick highest if changed". */
@@ -4161,6 +4296,7 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
        half-typed note away, and everything below depends on these being current */
     v.date = val("v_date") || today();
     v.visitCharge = val("v_charge");
+    if (svFixedRate(v)) v.visitCharge = svFixedRate(v);   /* 2.2.0 - the owner's rate, whatever was in the box */
     v.saltBags = val("v_bags");
     v.saltAmt = val("v_saltamt");
     v.notes = (el("v_note") ? String(el("v_note").value || "") : "").trim();
@@ -4493,6 +4629,13 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
       S.sheet = sv2NewSheet(); render(); return;
     }
     if (act === "sv2-nc-save") { sv2NewSave(t); return; }
+    if (act === "sv-old-add") {   /* 2.2.0 */
+      sv2NewKeep(); var _N = S.nc; if (!_N) return;
+      var _od = val("sv_od"); if (!/^\d{4}-\d{2}-\d{2}$/.test(_od)) { toast("Put the date it was installed."); return; }
+      (_N.old = _N.old || []).push({ brand: val("sv_ob"), product: val("sv_op"), cd: _od });
+      S.sheet = sv2NewSheet(); render(); return;
+    }
+    if (act === "sv-old-del") { sv2NewKeep(); if (S.nc && S.nc.old) S.nc.old.splice(Number(t.getAttribute("data-i")) || 0, 1); S.sheet = sv2NewSheet(); render(); return; }
     if (act === "sv2-comm") {
       if (!canRecord()) { toast("Commissioning is the engineer's."); return; }
       S.cm = { id: id, date: today(), l: {}, pics: [] }; S.sheet = sv2CommSheet(); render(); return;
@@ -4531,7 +4674,7 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
          machine it opens as a labour job, which is exactly what it is. */
       S.vis = cIns
         ? { installId: cIns.id, type: "Repair", date: today(), parts: [], collected: "",
-            complaintRef: cRow.Ref, visitCharge: defaultCharge(cIns, "Repair", today()), wCover: (cIns && !amcCover(cIns, "Repair", today()).visit) ? svWarrCover(cIns, today()) : null }   /* 2.1.0 */
+            complaintRef: cRow.Ref, visitCharge: defaultCharge(cIns, "Repair", today()), wCover: (cIns && !amcCover(cIns, "Repair", today()).visit) ? svWarrCover(cIns, today(), "Repair") : null, wNote: cIns ? svWarrNote(cIns, "Repair", today()) : null }   /* 2.1.0; 2.2.0 */
         : { installId: "", type: "Labour job", date: today(), parts: [], collected: "",
             complaintRef: cRow.Ref,
             client: String(cRow.Name || ""), area: String(cRow.City || "") };
@@ -4547,7 +4690,15 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
       var i2 = installById(id); if (!i2) return;
       S.vis = { installId: i2.id, type: "Service", date: today(), parts: [], collected: "",
                 visitCharge: defaultCharge(i2, "Service", today()) };
-      if (!amcCover(i2, "Service", today()).visit) S.vis.wCover = svWarrCover(i2, today());   /* 2.1.0 */
+      if (!amcCover(i2, "Service", today()).visit) { S.vis.wCover = svWarrCover(i2, today(), "Service"); S.vis.wNote = svWarrNote(i2, "Service", today()); }   /* 2.1.0; 2.2.0 - the note */
+      S.sheet = sheetVisit(S.vis); render(); return;
+    }
+    if (act === "v-fault") {   /* 2.2.0 - a fault in a part still in warranty is free */
+      if (!S.vis) return; readVisitForm();
+      var _fk = t.getAttribute("data-k") || "", _fn = S.vis.wNote, _fw = _fn && _fn.on ? _fn.on.filter(function (w) { return w.part === _fk; })[0] : null;
+      S.vis.fault = _fk;
+      S.vis.wCover = _fw ? { ok: 1, amc: 0, warranty: 1, till: _fw.till, txt: _fw.part + " in warranty till " + dstr(_fw.till) + " — Energy World services it free" } : null;
+      S.vis.visitCharge = _fw ? "" : defaultCharge(installById(S.vis.installId), S.vis.type, S.vis.date);
       S.sheet = sheetVisit(S.vis); render(); return;
     }
     if (act === "v-amcask") {   /* 2.1.0 */
@@ -4607,6 +4758,14 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
   /* a quantity typed into a part row, kept without tearing the form down */
   document.addEventListener("change", function (e) {
     var t = e.target;
+    /* 2.2.0 - district > area > client on a new complaint */
+    if (t && S.nc && (t.id === "sv2_nd" || t.id === "sv2_na" || t.id === "sv2_nc")) {
+      sv2NewKeep();
+      if (t.id === "sv2_nd") { S.nc.dist = t.value; S.nc.ar = ""; }
+      else if (t.id === "sv2_na") S.nc.ar = t.value;
+      else if (t.value) { S.nc.client = t.value; S.nc.picks = {}; }
+      S.sheet = sv2NewSheet(); render(); return;
+    }
     /* v1.7.0 - a photograph, straight off the camera. Read into state, never into the DOM:
        the visit sheet repaints on every part added and every quantity changed, and a file
        input cannot be repopulated by a repaint - whatever was taken would simply be gone. */
