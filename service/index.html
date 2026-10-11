@@ -271,6 +271,17 @@ button.stat.sv2t{font-family:inherit;color:inherit;cursor:pointer;min-height:76p
 .sv2tab th{text-align:left;font-size:12px;color:#64748b;font-weight:700;padding:6px 4px}
 .sv2tab td{padding:8px 4px;border-top:1px solid #f1f5f9}
 .sv2tab td.bad{color:#b91c1c;font-weight:700}
+/* 2.4.0 - the complaint table and the product table; they scroll inside their box, never the page */
+.sv2wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;background:#fff;border:1px solid #e2e8f0;border-radius:12px;margin:8px 0}
+.sv2wrap table.sv2tab{min-width:860px}
+.sv2wrap table.sv2tab.ptab{min-width:720px}
+.sv2tab th{background:#f8fafc;position:sticky;top:0}
+.sv2tab td{vertical-align:top}
+.sv2tab tr.cr{cursor:pointer}
+.sv2tab tr.cr:hover td{background:#f8fafc}
+.sv2tab tr.cr.urg td:first-child{box-shadow:inset 3px 0 0 #dc2626}
+.sv2tab td .sub{display:block;font-size:12px;color:#64748b}
+.sv2tab th:first-child,.sv2tab td:first-child{padding-left:10px}
 label.sv2p{display:flex;gap:10px;align-items:flex-start;font-size:13px;font-weight:400;color:#0f172a;margin:6px 0;cursor:pointer;min-height:44px}
 label.sv2p input{margin-top:3px;width:20px;height:20px}
 .note.ok{border-color:#a7f3d0;background:#f0fdfa;color:#0f766e}
@@ -319,7 +330,7 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
    Nothing here deletes anything, ever. A visit is a row added.
    ========================================================================== */
 
-  var APP_VERSION = "2.3.0";
+  var APP_VERSION = "2.4.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_service_session";
 
@@ -2639,6 +2650,7 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
         var t = T[id]; if (!t) return;
         if (d.to) t.status = d.to;
         if (d.eng) t.eng = String(d.eng);
+        svTkProducts(t, d);   /* 2.4.0 */
       });
     _tkCache = order.map(function (k) { return T[k]; });
     return _tkCache;
@@ -2925,6 +2937,7 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
         var t = T[id]; if (!t) return;
         if (d.to) t.status = d.to;
         if (d.eng) t.eng = String(d.eng);
+        svTkProducts(t, d);   /* 2.4.0 */
         if (d.to === "Resolved") { t.charge = Number(d.charge) || 0; t.outcome = String(d.outcome || ""); t.visitId = String(d.visitId || ""); t.doneAt = a.createdAt; }
         if (Number(d.collected) > 0) { t.got += Number(d.collected); t.mode = String(d.mode || ""); }
         t.steps.push({ at: a.createdAt, by: a.actor || "", to: d.to || "", note: String(d.note || ""), eng: d.eng || "", charge: d.charge, got: d.collected, outcome: d.outcome || "" });
@@ -3006,6 +3019,130 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
     return h;
   }
 
+  /* ================= 2.4.0 - PRODUCT-WISE, IN TABLES  (11 Oct 2026) =================
+     HIS WORDS: "manage in table like format, again sanjeev khanna is new client, ask to enter details of installed
+     products ... proper product wise system, installed date, commissioned date, warranty terms, warranty status
+     everything, old pending amt if any".
+     A ticket registered with no product (Sanjeeb Khanna EWC-111026-002, before 2.3.0) now says so in red and asks
+     for his machines on the ticket itself: they are saved as his installations and joined to the ticket by one more
+     cmp:move row carrying the products - the CRM board reads the same row. "No product of ours" is an answer too.
+     OLD PENDING AMOUNT: what a client owed before the CRM. It is written down (audit client:olddue) and shown on the
+     ticket and in the list - it is NOT money on his account; the office sets his opening balance in the CRM. */
+  function svTkProducts(t, d) {
+    if (d.noProd) t.noProd = true;
+    if (!Array.isArray(d.products) || !d.products.length) return;
+    var have = {}; (t.products || []).forEach(function (p) { if (p && p.key) have[p.key] = 1; });
+    t.products = (t.products || []).concat(d.products.filter(function (p) { return p && (!p.key || !have[p.key]); }));
+    t.noProd = false;
+  }
+  function svOldDue(name, mobile) {
+    var k = sv2Key(name), m = cxMob(mobile), best = null;
+    ((S.data && S.data.audit) || []).forEach(function (a) {
+      if (String(a.action || "") !== "client:olddue") return;
+      var d = sv2J(a.detail);
+      if (!((k && sv2Key(d.name) === k) || (m && m.length === 10 && cxMob(d.mobile) === m))) return;
+      if (!best || String(a.createdAt || "") >= best.at) best = { amt: Number(d.amt) || 0, note: String(d.note || ""), at: String(a.createdAt || ""), by: a.actor || "" };
+    });
+    return best;
+  }
+  function svOldDueRow(name, mobile, amt, note, ref) {
+    var row = { id: mintId("OD"), createdAt: new Date().toISOString(), actor: S.user || "", action: "client:olddue", target: String(name || ""),
+      detail: JSON.stringify({ name: String(name || ""), mobile: cxMob(mobile), amt: Math.round(Number(amt) || 0), note: String(note || ""), ref: String(ref || "") }), ip: "" };
+    (S.data.audit = S.data.audit || []).push(row); saveRow("audit", row);
+  }
+  /* the warranty terms of a brand, in words */
+  function svTermsTxt(brand) {
+    var bs = sv2BrandSvc(brand); if (!bs) return "";
+    var yr = function (m) { return m % 12 === 0 ? (m / 12) + (m === 12 ? " year" : " years") : m + " months"; };
+    var R = svRule(brand), parts = R && R.parts ? R.parts.map(function (p) { return p.label + " " + yr(p.wm); }).join(", ") : (bs.wm ? yr(bs.wm) : "");
+    if (!parts) return "";
+    return parts + " from commissioning (or 60 days after delivery)" + (bs.wby === "brand" ? "; " + brand + " services it in warranty, then Energy World" : "; Energy World services it") +
+      (bs.periodicCharged ? "; periodic service charged" : "");
+  }
+  /* one product of a ticket, for the table */
+  function svProdInfo(p) {
+    var ins = p.insId ? installById(p.insId) : (String(p.key || "").indexOf("I:") === 0 ? installById(String(p.key).slice(2)) : null);
+    var raw = {}; if (ins) { try { raw = (JSON.parse(ins.productsJson || "[]") || [])[0] || {}; } catch (e) { raw = {}; } }
+    var brand = p.brand || raw.brand || "", name = p.desc || [raw.brand, raw.product, raw.model].filter(Boolean).join(" ") || (ins ? [ins.product, ins.model].filter(Boolean).join(" ") : "");
+    var inst = "", comm = "";
+    if (p.kind === "comm") { inst = (p.autoOn ? "Delivered " + dstr(sv2AddDays(p.autoOn, -WARR_AUTO_DAYS)) : "Delivered") + (p.ch ? " · " + p.ch : ""); comm = p.commissioned ? dstr(p.date) : "Not yet"; }
+    else { inst = dstr(raw.installDate || (ins && ins.installDate) || p.date || ""); comm = dstr(raw.commDate || raw.installDate || (ins && ins.installDate) || p.date || ""); }
+    var amcEnd = p.amcEnd || (ins && ins.amcEnd) || "", amcType = p.amcType || (ins && ins.amcType) || "";
+    var amc = amcEnd && amcType !== "None" ? (tkDaysTo(amcEnd) >= 0 ? { t: "AMC till " + dstr(amcEnd), c: "amc" } : { t: "AMC ended " + dstr(amcEnd), c: "red" }) : { t: "No AMC", c: "" };
+    var w = tkWarr(p);
+    return { name: name || "Product", brand: brand, sn: p.sn || (ins && ins.serial) || "", inst: inst || "-", comm: comm || "-", terms: svTermsTxt(brand) || (p.wtxt && /Out of warranty/.test(p.wtxt) ? "Out of warranty when entered" : "-"),
+      st: { t: w.t, c: w.ok ? "grn" : (w.c === "bad" ? "red" : w.c === "warn" ? "amb" : "") }, amc: amc, by: (ins && ins.engineer) || p.eng || "" };
+  }
+  function svProdTable(list) {
+    return '<div class="sv2wrap"><table class="sv2tab ptab"><tr><th>Product</th><th>Installed</th><th>Commissioned</th><th>Warranty terms</th><th>Warranty status</th><th>AMC</th></tr>' +
+      list.map(function (p) {
+        var x = svProdInfo(p || {});
+        return '<tr><td><b>' + esc(x.name) + '</b>' + (x.brand && x.name.indexOf(x.brand) < 0 ? '<span class="sub">' + esc(x.brand) + '</span>' : '') + (x.sn ? '<span class="sub">S/N ' + esc(x.sn) + '</span>' : '') + (x.by ? '<span class="sub">by ' + esc(x.by) + '</span>' : '') + '</td>' +
+          '<td>' + esc(x.inst) + '</td><td>' + esc(x.comm) + '</td><td style="min-width:170px">' + esc(x.terms) + '</td>' +
+          '<td style="min-width:170px"><span class="pill ' + x.st.c + '" style="white-space:normal">' + esc(x.st.t) + '</span></td>' +
+          '<td><span class="pill ' + x.amc.c + '" style="white-space:normal">' + esc(x.amc.t) + '</span></td></tr>';
+      }).join("") + '</table></div>';
+  }
+  /* the ticket's own "what is installed" - for a ticket that has none */
+  function sv2ProdSheet() {
+    var N = S.tm || {}, t = sv2Find(N.id); if (!t) return '<h2>Not found</h2><div class="acts"><button class="btn gry" data-act="close">Close</button></div>';
+    var nm = t.client || t.name, onFile = sv2Products(nm).filter(function (p) { return p.kind !== "item" && !(t.products || []).some(function (q) { return q.key === p.key; }); });
+    var od = svOldDue(nm, t.mobile);
+    var h = '<h2>Installed products &mdash; ' + esc(nm || "") + '</h2><div class="muted">' + esc(t.ref || "") + (t.mobile ? ' &middot; ' + esc(t.mobile) : '') + (t.area ? ' &middot; ' + esc(t.area) : '') + '</div>';
+    if (onFile.length) h += '<label>On file for him &mdash; tick what this complaint is about</label>' + onFile.map(function (p) {
+      return '<label class="card sv2p"><input type="checkbox" class="sv2-tpick" data-k="' + esc(p.key) + '"' + (N.picks[p.key] ? ' checked' : '') + '/><span class="grow"><b>' + esc(p.desc) + '</b> ' + sv2WarrPill(p) + '</span></label>';
+    }).join("");
+    h += svMachinesAsk(N, !onFile.length);
+    h += '<div class="card" style="margin:8px 0"><b>Old pending amount, if any</b><div class="meta">What he owed us from before the CRM. It is written down and shown on his complaints; the office puts it on his account in the CRM.' + (od ? ' Already noted: <b>' + esc(money(od.amt)) + '</b>' + (od.note ? ' (' + esc(od.note) + ')' : '') + '.' : '') + '</div>' +
+      '<div class="grid2"><div><label>Amount (&#8377;)</label><input id="sv_odue" inputmode="numeric" value="' + esc(N.due || "") + '" placeholder="0 if nothing"/></div>' +
+      '<div><label>For what</label><input id="sv_oduen" value="' + esc(N.dueNote || "") + '" placeholder="e.g. 2023 heat pump balance"/></div></div></div>' +
+      '<div class="acts"><button class="btn gry" data-act="close">Cancel</button><button class="btn grow" data-act="sv2-tsave">Save on the complaint</button></div>';
+    return h;
+  }
+  function sv2TmKeep() {
+    var N = S.tm; if (!N) return;
+    if (el("sv_odue")) N.due = val("sv_odue");
+    if (el("sv_oduen")) N.dueNote = val("sv_oduen");
+    Array.prototype.forEach.call(document.querySelectorAll(".sv2-tpick"), function (b) { if (b.checked) N.picks[b.getAttribute("data-k")] = 1; else delete N.picks[b.getAttribute("data-k")]; });
+  }
+  /* the machines entered on a form, saved as his installations; returns the ticket's product lines */
+  function svSaveMachines(L, nm, mob, addr, areaF, isClient) {
+    var out = [];
+    (L || []).forEach(function (m) {
+      var bs = sv2BrandSvc(m.brand) || {}, wm = m.w === "out" ? 0 : (bs.wm || 12), cyc = (bs.cm || 6), st = m.cc || m.cd;
+      var row = { id: mintId("IN"), createdBy: S.user, client: nm, mobile: mob, address: String(addr || ""), area: areaF, product: m.product, model: m.model || m.brand, serial: "",
+        installDate: m.cd, waterQuality: "", cycleDays: Math.round(cyc * 30), lastService: "", nextService: sv2AddMonths(st, cyc), amcType: m.w === "amc" ? "AMC without spares" : "None", amcAmount: "", amcEnd: m.w === "amc" ? m.amc : "", engineer: S.user, status: "Active",
+        productsJson: JSON.stringify([{ brand: m.brand, product: m.product, model: m.model || m.product, serial: "", installDate: m.cd, commDate: st, warrantyMonths: wm, serviceReq: 1, serviceMonths: cyc }]),
+        notes: "Machine entered on a complaint (Service app)" + (m.w === "out" ? " · out of warranty, as told" : "") + (isClient ? "" : " · the office to add him as a client") };
+      saveRow("installs", row);
+      var w = svMachineTill(m), ps0 = m.w === "auto" ? svParts(m.brand, st) : [];
+      out.push({ key: "I:" + row.id, kind: "install", desc: [m.brand, m.product, m.model].filter(Boolean).join(" "), brand: m.brand, date: m.cd,
+        amcType: row.amcType, amcEnd: row.amcEnd, insId: row.id, till: ps0.length ? ps0.map(function (p) { return p.till; }).sort().pop() : "", parts: ps0, wtxt: w.txt });
+    });
+    if (out.length) { try { applyJournal(); } catch (e) { } }
+    return out;
+  }
+  function sv2TSave() {
+    sv2TmKeep();
+    var N = S.tm || {}, t = sv2Find(N.id); if (!t) return;
+    var nm = t.client || t.name, picked = sv2Products(nm).filter(function (p) { return N.picks[p.key]; });
+    if (!N.hasM && !picked.length) { toast("Answer: are any of our products installed at his place?"); var _q = el("sv_mq"); if (_q) _q.scrollIntoView({ block: "center" }); return; }
+    if (N.hasM === "yes" && !(N.old || []).length && !picked.length) { toast("Enter his machine — brand, product, installed date, warranty — then + Add this machine."); var _q2 = el("sv_mq"); if (_q2) _q2.scrollIntoView({ block: "center" }); return; }
+    var due = num(N.due);
+    if (due < 0) { toast("The old pending amount cannot be below 0."); return; }
+    var c = clientByName(nm), addr = "", areaF = c ? [c.area, c.location].filter(Boolean).join(", ") : String(t.area || "");
+    var ps = picked.concat(N.hasM === "yes" ? svSaveMachines(N.old, nm, t.mobile, addr, areaF, !!c) : []);
+    var tk = tkAll().filter(function (x) { return x.id === t.id; })[0] || t;
+    tkMove(tk, ps.length ? { products: ps, note: ps.length + " installed product" + (ps.length === 1 ? "" : "s") + " entered" } : { noProd: 1, note: "no product of ours at his place" });
+    if (due > 0) svOldDueRow(nm, t.mobile, due, N.dueNote, t.ref);
+    S.tm = null; S.tmOn = false; bust(); sv2Bust(); S.sheet = sv2Sheet(sv2Find(t.id) || t); render();
+    toast(ps.length ? "Saved — " + ps.length + " product" + (ps.length === 1 ? "" : "s") + " on " + (t.ref || "the complaint") + "." : "Saved — no product of ours." + (due > 0 ? " Old pending " + money(due) + " noted." : ""));
+  }
+  /* the machines form is shared by the new-complaint sheet and the ticket's own sheet */
+  function svMN() { return S.tmOn ? S.tm : S.nc; }
+  function svMKeep() { if (S.tmOn) sv2TmKeep(); else sv2NewKeep(); }
+  function svMPaint() { S.sheet = S.tmOn ? sv2ProdSheet() : sv2NewSheet(); render(); }
+
   /* ================= COMPLAINTS ================= */
   function sv2Row(t) {
     var a = tkAge(t), p = (t.products || [])[0], b = sv2Bucket(t), due = sv2Due(t);
@@ -3027,17 +3164,43 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
     var f = S.sv2f || "pending", tk = sv2Tickets().filter(function (t) { return sv2Bucket(t) !== "cancelled" || f === "all"; });
     var cnt = { pending: 0, payment: 0, done: 0, all: tk.length };
     tk.forEach(function (t) { var b = sv2Bucket(t); if (cnt[b] != null) cnt[b]++; });
+    cnt.noprod = tk.filter(function (t) { return !(t.products || []).length && !t.noProd && sv2Bucket(t) !== "cancelled"; }).length;   /* 2.4.0 */
     var q = lower(S.q);
-    var list = tk.filter(function (t) { return f === "all" || sv2Bucket(t) === f; }).filter(function (t) {
+    var list = tk.filter(function (t) { return f === "all" || (f === "noprod" ? !(t.products || []).length && !t.noProd && sv2Bucket(t) !== "cancelled" : sv2Bucket(t) === f); }).filter(function (t) {
       return !q || lower([t.client, t.name, t.mobile, t.ref, t.area, t.cat, t.desc, t.eng].join(" ")).indexOf(q) >= 0;
     });
     list.sort(function (a, b) { return f === "pending" ? String(a.at).localeCompare(String(b.at)) : String(b.at).localeCompare(String(a.at)); });
     var chip = function (k, l) { return '<button class="chip bchip' + (f === k ? ' on' : '') + '" data-act="sv2-f" data-k="' + k + '">' + l + ' <b>' + cnt[k] + '</b></button>'; };
     return '<div class="sv2bar"><button class="btn" data-act="sv2-new">+ New complaint</button></div>' +
-      '<div class="chips">' + chip("pending", "Pending") + chip("payment", "Payment pending") + chip("done", "Completed") + chip("all", "All") + '</div>' +
+      '<div class="chips">' + chip("pending", "Pending") + chip("payment", "Payment pending") + chip("done", "Completed") + chip("all", "All") + (cnt.noprod ? chip("noprod", "No product entered") : '') + '</div>' +
       searchBox("Search a customer, mobile, ref or engineer") +
       (f === "payment" && list.length ? '<div class="note warn-t"><b>' + money(list.reduce(function (s, t) { return s + sv2Due(t); }, 0)) + '</b> to collect. Open one and tap <b>Payment received</b> when the money comes.</div>' : '') +
-      (list.length ? list.map(sv2Row).join("") : '<div class="empty">' + (f === "pending" ? "No pending complaint. " : "Nothing here.") + '</div>');
+      (list.length ? sv2Table(list) : '<div class="empty">' + (f === "pending" ? "No pending complaint. " : "Nothing here.") + '</div>');
+  }
+  /* 2.4.0 - one line per complaint; a complaint with no product says so in red */
+  function sv2Table(list) {
+    return '<div class="meta">' + list.length + ' complaint' + (list.length === 1 ? '' : 's') + ' &middot; tap a line to open it' + (innerWidth < 700 ? ' &middot; slide the table sideways for more' : '') + '</div>' +
+      '<div class="sv2wrap"><table class="sv2tab cmpt"><tr><th>Ref &middot; raised</th><th>Client</th><th>Product &amp; warranty</th><th>Problem</th><th>Priority &middot; age</th><th>Engineer &middot; status</th><th></th></tr>' +
+      list.map(function (t) {
+        var a = tkAge(t), b = sv2Bucket(t), due = sv2Due(t), ps = t.products || [], od = svOldDue(t.client || t.name, t.mobile);
+        var st = b === "payment" ? '<span class="pill amb">' + esc(money(due)) + ' to collect</span>'
+          : b === "done" ? '<span class="pill grn">' + esc(t.status) + '</span>'
+          : b === "cancelled" ? '<span class="pill">Cancelled</span>'
+          : '<span class="pill ' + (t.eng ? 'blu' : 'red') + '">' + esc(t.eng ? t.status : 'No engineer yet') + '</span>' + (t.eng ? '<span class="sub">' + esc(t.eng) + '</span>' : '');
+        var pr = ps.length ? ps.map(function (p) { return '<div><b>' + esc(p.desc || "") + '</b><br>' + sv2WarrPill(p) + '</div>'; }).join("")
+          : t.noProd ? '<span class="sub">No product of ours</span>' : '<span class="pill red">No product entered</span>';
+        var urg = b === "pending" && (t.pri === "High" || (a && a.late));
+        return '<tr class="cr' + (urg ? ' urg' : '') + '" data-act="sv2-open" data-id="' + esc(t.id) + '">' +
+          '<td><b>' + esc(t.ref || "") + '</b><span class="sub">' + esc(dstr(String(t.at || "").slice(0, 10))) + '</span></td>' +
+          '<td style="min-width:150px"><b>' + esc(t.client || t.name || "(no name)") + '</b>' + (t.mobile ? '<span class="sub">' + esc(t.mobile) + '</span>' : '') + (t.area ? '<span class="sub">' + esc(t.area) + '</span>' : '') +
+            (od && od.amt > 0 ? '<span class="sub" style="color:#b91c1c;font-weight:700">Old pending ' + esc(money(od.amt)) + '</span>' : '') + '</td>' +
+          '<td style="min-width:190px">' + pr + '</td>' +
+          '<td style="min-width:170px"><b>' + esc(t.cat || "Complaint") + '</b>' + (t.desc ? '<span class="sub">' + esc(t.desc.slice(0, 90)) + '</span>' : '') + '</td>' +
+          '<td><span class="pill' + (t.pri === "High" ? ' red' : '') + '">' + esc(t.pri) + '</span>' + (b === "pending" && a ? '<span class="sub"' + (a.late ? ' style="color:#b91c1c;font-weight:700"' : '') + '>' + esc(a.txt) + (a.late ? ' · late' : '') + '</span>' : '') + '</td>' +
+          '<td>' + st + '</td>' +
+          '<td>' + (b === "pending" && !t.eng && canRecord() ? '<button class="btn sm" data-act="tk-take" data-id="' + esc(t.id) + '">Take it</button>'
+            : !ps.length && !t.noProd && b === "pending" ? '<button class="btn sm gry" data-act="sv2-tprod" data-id="' + esc(t.id) + '">Add products</button>' : '<button class="btn sm gry" data-act="sv2-open" data-id="' + esc(t.id) + '">Open</button>') + '</td></tr>';
+      }).join("") + '</table></div>';
   }
   function sv2Sheet(t) {
     var a = tkAge(t), b = sv2Bucket(t), mob = cxMob(t.mobile);
@@ -3049,9 +3212,15 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
         (b === "pending" && a ? '<span class="pill' + (a.late ? ' red' : '') + '">' + esc(a.txt) + (a.late ? ' · past ' + (TK_PROMISE[t.pri] || 48) + ' h' : '') + '</span>' : '') + '</div>' +
       '<div class="card" style="margin:6px 0"><b>' + esc(t.cat || "Complaint") + '</b>' + (t.desc ? '<div style="margin-top:4px;white-space:pre-wrap">' + esc(t.desc) + '</div>' : '') +
         (t.area ? '<div class="meta" style="margin-top:6px">' + esc(t.area) + '</div>' : '') + '</div>';
-    if ((t.products || []).length) h += '<label>Product</label>' + t.products.map(function (p) {
-      return '<div class="card" style="margin:4px 0;padding:9px 11px"><b>' + esc(p.desc || "") + '</b>' + (p.sn ? ' <span class="meta">S/N ' + esc(p.sn) + '</span>' : '') + '<div style="margin-top:4px">' + sv2WarrPill(p) + '</div></div>';
-    }).join("");
+    /* 2.4.0 - product-wise, in a table; a ticket with none asks for them */
+    var _od = svOldDue(t.client || t.name, t.mobile);
+    if ((t.products || []).length) h += '<label>Installed products</label>' + svProdTable(t.products) +
+      (b === "pending" ? '<div class="acts"><button class="btn gry sm" data-act="sv2-tprod" data-id="' + esc(t.id) + '">+ Add another product</button></div>' : '');
+    else if (t.noProd) h += '<div class="note">No product of ours at his place (as told). <button class="btn gry sm" data-act="sv2-tprod" data-id="' + esc(t.id) + '">Enter products after all</button></div>';
+    else h += '<div class="card" style="margin:8px 0;border-color:#fca5a5;background:#fef2f2"><b style="color:#b91c1c">No product entered on this complaint</b>' +
+      '<div class="meta">Enter what is installed at his place &mdash; product by product, with the installed and commissioned dates and the warranty &mdash; and any old pending amount. Needed before it is finished.</div>' +
+      '<div class="acts"><button class="btn" data-act="sv2-tprod" data-id="' + esc(t.id) + '">Enter his installed products</button></div></div>';
+    if (_od && _od.amt > 0) h += '<div class="kv">' + kv("Old pending (before the CRM)", money(_od.amt) + (_od.note ? " · " + _od.note : "")) + '</div>';
     if (b === "payment" || b === "done") h += '<div class="kv">' + kv("Outcome", t.outcome || "-") + kv("Service charge", money(t.charge)) + kv("Collected", money(t.got)) + (b === "payment" ? kv("To collect", money(sv2Due(t))) : '') + '</div>';
     h += '<div class="acts">';
     if (mob.length === 10) h += '<a class="btn gry" href="tel:' + mob + '">Call ' + esc(mob) + '</a>';
@@ -3106,6 +3275,7 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
   function sv2FinSave() {
     sv2FinKeep();
     var F = S.fin || {}, t = sv2Find(F.id); if (!t) return;
+    if (!(t.products || []).length && !t.noProd) { toast("Enter his installed products on the complaint first (or: no product of ours)."); return; }   /* 2.4.0 */
     if (!F.out) { toast("Say what was done."); return; }
     if (!F.got) { toast("Was the service charge received? Pick Yes, No or No charge."); return; }
     var chg = F.got === "free" ? 0 : num(F.chg);
@@ -3200,6 +3370,9 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
         (N.narea === "__new__" ? '<label>The area</label><input id="sv2_area" value="' + esc(N.area || "") + '" placeholder="Colony / sector"/>' : '') +
         '<label>House / address</label><input id="sv2_addr" value="' + esc(N.addr || "") + '" placeholder="e.g. 96 R, Model Town"/>' +
         svMachinesAsk(N, true) +
+        '<div class="grid2"><div><label>Old pending amount, if any (&#8377;)</label><input id="sv2_odue" inputmode="numeric" value="' + esc(N.due || "") + '" placeholder="0 if nothing"/></div>' +
+        '<div><label>For what</label><input id="sv2_oduen" value="' + esc(N.dueNote || "") + '" placeholder="e.g. 2023 heat pump balance"/></div></div>' +
+        '<div class="meta">What he owed from before the CRM &mdash; noted on the complaint; the office puts it on his account.</div>' +   /* 2.4.0 */
         '<div class="acts"><button class="btn gry sm" data-act="sv2-nc-clear">Pick a client instead</button></div>';
     }
     h += '<label>What is it about</label><div class="chips">' + SV2_CATS.map(function (x) { return '<button class="chip bchip' + (N.cat === x ? ' on' : '') + '" data-act="sv2-nc-cat" data-k="' + esc(x) + '">' + esc(x) + '</button>'; }).join("") + '</div>' +
@@ -3288,6 +3461,8 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
     if (el("sv2_mob")) N.mobile = val("sv2_mob");
     if (el("sv2_area")) N.area = val("sv2_area");
     if (el("sv2_addr")) N.addr = val("sv2_addr");   /* 2.3.0 */
+    if (el("sv2_odue")) N.due = val("sv2_odue");      /* 2.4.0 */
+    if (el("sv2_oduen")) N.dueNote = val("sv2_oduen");
     if (el("sv2_cq")) N.cq = val("sv2_cq");
     Array.prototype.forEach.call(document.querySelectorAll(".sv2-pick"), function (b) { if (b.checked) N.picks[b.getAttribute("data-k")] = 1; else delete N.picks[b.getAttribute("data-k")]; });
   }
@@ -3306,24 +3481,10 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
     if (_askM && !c && !N.hasM) { toast("Answer: are any of our products installed at his place?"); var _q = el("sv_mq"); if (_q) _q.scrollIntoView({ block: "center" }); return; }
     if (N.hasM === "yes" && !(N.old || []).length) { toast("Enter his machine — brand, product and the date it was installed — then + Add this machine."); var _q2 = el("sv_mq"); if (_q2) _q2.scrollIntoView({ block: "center" }); return; }
     if (String(N.desc || "").trim().length < 4) { toast("Write in a line what happened."); return; }
-    var _newMach = [];
-    if (N.hasM === "yes" && (N.old || []).length) {
-      var _areaF = c ? [c.area, c.location].filter(Boolean).join(", ") : [_area, N.ndist].filter(Boolean).join(", ");
-      N.old.forEach(function (m, mi) {
-        var bs = sv2BrandSvc(m.brand) || {}, wm = m.w === "out" ? 0 : (bs.wm || 12), cyc = (bs.cm || 6), st = m.cc || m.cd;
-        var row = { id: mintId("IN"), createdBy: S.user, client: nm, mobile: mob, address: String(N.addr || ""), area: _areaF, product: m.product, model: m.model || m.brand, serial: "",
-          installDate: m.cd, waterQuality: "", cycleDays: Math.round(cyc * 30), lastService: "", nextService: sv2AddMonths(st, cyc), amcType: m.w === "amc" ? "AMC without spares" : "None", amcAmount: "", amcEnd: m.w === "amc" ? m.amc : "", engineer: S.user, status: "Active",
-          productsJson: JSON.stringify([{ brand: m.brand, product: m.product, model: m.model || m.product, serial: "", installDate: m.cd, commDate: st, warrantyMonths: wm, serviceReq: 1, serviceMonths: cyc }]),
-          notes: "Machine entered on a complaint (Service app)" + (m.w === "out" ? " · out of warranty, as told" : "") + (c ? "" : " · the office to add him as a client") };
-        saveRow("installs", row); _newMach.push(row);
-        var w = svMachineTill(m), ps0 = m.w === "auto" ? svParts(m.brand, st) : [];
-        N.picks["NI:" + mi] = 1;
-        _newMach[_newMach.length - 1]._p = { key: "I:" + row.id, kind: "install", desc: [m.brand, m.product, m.model].filter(Boolean).join(" "), brand: m.brand, date: m.cd,
-          amcType: row.amcType, amcEnd: row.amcEnd, insId: row.id, till: ps0.length ? ps0.map(function (p) { return p.till; }).sort().pop() : "", parts: ps0, wtxt: w.txt };
-      });
-      try { applyJournal(); } catch (e) { }
-    }
-    var ps = (c ? sv2Products(c.name).filter(function (p) { return N.picks[p.key]; }) : []).concat(_newMach.map(function (r) { return r._p; }));   /* 2.3.0 - the machines just entered are what the complaint is about */
+    if (num(N.due) < 0) { toast("The old pending amount cannot be below 0."); return; }
+    var _newMach = N.hasM === "yes" && (N.old || []).length
+      ? svSaveMachines(N.old, nm, mob, N.addr, c ? [c.area, c.location].filter(Boolean).join(", ") : [_area, N.ndist].filter(Boolean).join(", "), !!c) : [];   /* 2.4.0 - one saver */
+    var ps = (c ? sv2Products(c.name).filter(function (p) { return N.picks[p.key]; }) : []).concat(_newMach);   /* 2.3.0 - the machines just entered are what the complaint is about */
     var pt = ps.map(function (p) { return p.desc + (p.sn ? " S/N " + p.sn : "") + " (" + tkWarr(p).t + ")"; }).join("; ");
     if (btn) { btn.disabled = true; btn.textContent = "Registering…"; }
     api("complaint", { name: nm, mobile: mob, city: c ? (c.location || "") : [_area, N.ndist].filter(Boolean).join(", "), category: N.cat, orderNo: "", urgency: N.pri,
@@ -3335,10 +3496,11 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
           detail: JSON.stringify({ ref: ref, webRef: "", src: N.src, client: c ? c.name : "", clientId: c ? (c.id || "") : "", name: nm, mobile: mob,
             area: c ? [c.area, c.location].filter(Boolean).join(", ") : [String(N.addr || ""), _area, N.ndist].filter(Boolean).join(", "), products: ps, cat: N.cat, pri: N.pri, desc: String(N.desc || "").trim() }), ip: "" };
         (S.data.audit = S.data.audit || []).push(open); saveRow("audit", open);
+        if (num(N.due) > 0) svOldDueRow(nm, mob, num(N.due), N.dueNote, ref);   /* 2.4.0 */
         if (N.eng) { var mv = { id: mintId("TM"), createdAt: new Date(Date.now() + 1000).toISOString(), actor: S.user || "", action: "cmp:move", target: id, detail: JSON.stringify({ to: "Assigned", eng: N.eng }), ip: "" };
           S.data.audit.push(mv); saveRow("audit", mv); }
-        _tkCache = null; sv2Bust(); S.nc = null; S.sheet = null; S.tab = "complaints"; S.sv2f = "pending"; render();
-        toast("Complaint " + ref + " registered" + (N.eng ? " for " + N.eng : "") + (r && r.ok ? "." : " (no signal for the number — a local one was used; it is saved)."));
+        _tkCache = null; sv2Bust(); var _ndue = num(N.due); S.nc = null; S.sheet = null; S.tab = "complaints"; S.sv2f = "pending"; render();
+        toast("Complaint " + ref + " registered" + (N.eng ? " for " + N.eng : "") + (_ndue > 0 ? ", old pending " + money(_ndue) + " noted" : "") + (r && r.ok ? "." : " (no signal for the number — a local one was used; it is saved)."));
       });
   }
 
@@ -4607,7 +4769,7 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
       S.accOpen = (S.accOpen === ak) ? "" : ak;
       render(); return;
     }
-    if (act === "close")   { S.parts = false; S.sheet = null; S.vis = null; S.q = ""; S.fin = null; S.nc = null; S.cm = null; S.sv2id = ""; render(); return; }
+    if (act === "close")   { S.parts = false; S.sheet = null; S.vis = null; S.q = ""; S.fin = null; S.nc = null; S.cm = null; S.sv2id = ""; S.tm = null; S.tmOn = false; render(); return; }
     if (act === "refresh") { pull(true); return; }
     /* ================= FIVE BUTTONS THAT DID NOTHING  (v1.12.1, 3 Sep 2026) =================
        Found by scanning every data-act this app EMITS against the acts its router HANDLES.
@@ -4657,7 +4819,13 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
       S.q = ""; render(); try { window.scrollTo(0, 0); } catch (e) { } return;
     }
     if (act === "sv2-f") { S.sv2f = t.getAttribute("data-k") || "pending"; render(); return; }
-    if (act === "sv2-open") { var _so = sv2Find(id); if (!_so) return; S.sv2id = id; S.sheet = sv2Sheet(_so); render(); return; }
+    if (act === "sv2-open") { var _so = sv2Find(id); if (!_so) return; S.tmOn = false; S.sv2id = id; S.sheet = sv2Sheet(_so); render(); return; }
+    if (act === "sv2-tprod") {   /* 2.4.0 */
+      var _tp = sv2Find(id); if (!_tp) return;
+      var _has = sv2Products(_tp.client || _tp.name).some(function (p) { return p.kind !== "item"; });
+      S.tm = { id: id, picks: {}, old: [], hasM: _has ? "" : "yes" }; S.tmOn = true; S.sv2id = id; S.sheet = sv2ProdSheet(); render(); return;
+    }
+    if (act === "sv2-tsave") { sv2TSave(); return; }
     if (act === "tk-take" && S.sv2id) {
       if (!canRecord()) { toast("Taking a job is the engineer's."); return; }
       var _tt2 = tkAll().filter(function (x) { return x.id === id; })[0]; if (!_tt2) return;
@@ -4687,7 +4855,7 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
     if (act === "sv2-fsave") { sv2FinSave(); return; }
     if (act === "sv2-pay") { if (!canRecord()) return; S.fin = { id: id, view: "pay", mode: "Cash" }; S.sheet = sv2PaySheet(); render(); return; }
     if (act === "sv2-psave") { sv2PaySave(); return; }
-    if (act === "sv2-new") { S.nc = { src: roleIs("service") ? "Engineer" : "Phone call", pri: "Normal", picks: {} }; S.sheet = sv2NewSheet(); render(); return; }
+    if (act === "sv2-new") { S.tmOn = false; S.nc = { src: roleIs("service") ? "Engineer" : "Phone call", pri: "Normal", picks: {} }; S.sheet = sv2NewSheet(); render(); return; }
     if (act === "sv2-nc-pick") { sv2NewKeep(); S.nc.client = t.getAttribute("data-k"); S.nc.picks = {}; S.sheet = sv2NewSheet(); render(); return; }
     if (act === "sv2-nc-clear") { sv2NewKeep(); S.nc.client = ""; S.nc.newCaller = false; S.nc.picks = {}; S.sheet = sv2NewSheet(); render(); return; }
     if (act === "sv2-nc-newcaller") { sv2NewKeep(); S.nc.newCaller = true; S.nc.client = ""; S.sheet = sv2NewSheet(); render(); return; }
@@ -4697,16 +4865,16 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
     }
     if (act === "sv2-nc-save") { sv2NewSave(t); return; }
     if (act === "sv-old-add") {   /* 2.2.0 */
-      sv2NewKeep(); var _N = S.nc; if (!_N) return;
+      svMKeep(); var _N = svMN(); if (!_N) return;
       var _od = val("sv_od"); if (!/^\d{4}-\d{2}-\d{2}$/.test(_od)) { toast("Put the date it was installed."); return; }
       var _oc = val("sv_oc"), _ow = val("sv_ow") || "auto", _oa = val("sv_oa");
       if (_oc && _oc < _od) { toast("Commissioned before it was installed? Check the dates."); return; }
       if (_ow === "amc" && !/^\d{4}-\d{2}-\d{2}$/.test(_oa)) { toast("Put the date his AMC runs till."); return; }
       (_N.old = _N.old || []).push({ brand: val("sv_ob"), product: val("sv_op"), model: String(val("sv_om") || "").trim(), cd: _od, cc: _oc || _od, w: _ow, amc: _ow === "amc" ? _oa : "" });   /* 2.3.0 */
-      S.sheet = sv2NewSheet(); render(); return;
+      svMPaint(); return;
     }
-    if (act === "sv-hasm") { sv2NewKeep(); if (S.nc) S.nc.hasM = t.getAttribute("data-k") === "yes" ? "yes" : "no"; S.sheet = sv2NewSheet(); render(); return; }   /* 2.3.0 */
-    if (act === "sv-old-del") { sv2NewKeep(); if (S.nc && S.nc.old) S.nc.old.splice(Number(t.getAttribute("data-i")) || 0, 1); S.sheet = sv2NewSheet(); render(); return; }
+    if (act === "sv-hasm") { svMKeep(); var _NH = svMN(); if (_NH) _NH.hasM = t.getAttribute("data-k") === "yes" ? "yes" : "no"; svMPaint(); return; }   /* 2.3.0; 2.4.0 - also on a ticket */
+    if (act === "sv-old-del") { svMKeep(); var _ND = svMN(); if (_ND && _ND.old) _ND.old.splice(Number(t.getAttribute("data-i")) || 0, 1); svMPaint(); return; }
     if (act === "sv2-comm") {
       if (!canRecord()) { toast("Commissioning is the engineer's."); return; }
       S.cm = { id: id, date: today(), l: {}, pics: [] }; S.sheet = sv2CommSheet(); render(); return;
