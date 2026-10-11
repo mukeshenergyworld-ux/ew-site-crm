@@ -102,6 +102,17 @@ table.t td.r,table.t th.r{text-align:right;white-space:nowrap}
 .bar{display:flex;gap:8px;align-items:center;margin:10px 0}
 .bar input{flex:1}
 .who{font-size:13px;color:#92400e;font-weight:700}
+/* 1.2.0 - brand logos to tap */
+.btiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:6px;margin:4px 0}
+.btile{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:56px;padding:6px 4px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;font:inherit;color:#0f172a;cursor:pointer}
+.btile img{max-width:84px;max-height:24px;object-fit:contain}
+.btile span{font-size:12px;font-weight:600;line-height:1.15;text-align:center;word-break:break-word}
+.btile.on{border:2px solid #0e7490;background:#ecfeff}
+.btile.on::after{content:"\2713";position:absolute;top:2px;right:5px;font-size:12px;font-weight:800;color:#0e7490}
+.req{color:#b91c1c}
+.nrow{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.nrow input{flex:1 1 150px;width:auto}
+.nrow .chip{padding:0 10px}
 .sync{font-size:12px;color:#64748b;text-align:center;margin:14px 0}
 </style>
 </head>
@@ -128,7 +139,7 @@ table.t td.r,table.t th.r{text-align:right;white-space:nowrap}
    ===================================================================================== */
 (function () {
   "use strict";
-  var APP_VERSION = "1.1.0";
+  var APP_VERSION = "1.2.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_vq_session", JRN = "ew_vq_journal_v1", CALLQ = "ew_vq_calls_v1", SNAPK = "ew_vq_snap_";
   var CAT_KEY = "ew_team_catalog", CAT_V = 2;   /* the CRM's own shelf copy of the price list - shared, same origin */
@@ -1936,6 +1947,7 @@ table.t td.r,table.t th.r{text-align:right;white-space:nowrap}
     _pulling = flush().then(function () { return getBook(FAST); }).then(function (r) {
       if (r && r.ok === false && /pin|locked|not allowed|blocked|removed/i.test(String(r.error || ""))) { signOut(String(r.error)); return; }
       mergeBook(r, FAST); S.pullAt = Date.now(); render(); snapSave();
+      if (!S.logoAsk) { S.logoAsk = 1; try { logosReady().then(function () { if (S.tab === "visit" || S.sheet) { if (S.sl && siteById(S.sl.id)) S.sheet = svLogSheet(siteById(S.sl.id)); render(); } }).catch(function () { }); } catch (e) { } }   /* 1.2.0 */
       return getBook(REST).then(function (r2) { mergeBook(r2, REST); render(); snapSave(); }).catch(function () { });
     }).catch(function (e) { if (loud) toast("Could not update: " + ((e && e.message) || "no signal")); })
       .then(function () { _pulling = null; });
@@ -2101,7 +2113,7 @@ table.t td.r,table.t th.r{text-align:right;white-space:nowrap}
           '<button class="btn sm" data-act="pv-cfix" data-k="' + f + '">Save</button></span>';
       };
       return '<div class="info">' +
-        '<div class="kv"><span>Mobile</span><b>' + esc(c.mobile || "-") + '</b>' + (mob10(c.mobile).length === 10 ? ' &nbsp;<a href="tel:' + mob10(c.mobile) + '">call</a>' : '') + '</div>' +
+        '<div class="kv"><span>Mobile</span><b>' + esc(c.mobile || "-") + '</b>' + (mob10(c.mobile).length === 10 ? ' <a class="btn sm gry" style="margin-left:auto" href="tel:' + mob10(c.mobile) + '">Call</a>' : '') + '</div>' +
         '<div class="kv"><span>Address</span>' + esc([c.address].concat([c.area, c.location].filter(function (x) { return x && lower(c.address).indexOf(lower(x)) < 0; })).filter(Boolean).join(", ") || "-") + '</div>' +
         '<div class="kv"><span>Plumber</span>' + fix("plumber", "plumber", "plumber") + '</div>' +
         '<div class="kv"><span>Architect</span>' + fix("architect", "architect", "architect") + '</div>' +
@@ -2112,7 +2124,7 @@ table.t td.r,table.t th.r{text-align:right;white-space:nowrap}
     var kind = k === "architect" ? "architect" : k === "plumber" ? "plumber" : (/archit/i.test(p.role || "") ? "architect" : "plumber");
     var ss = partnerSites(p.name, kind), cl = (S.data.clients || []).filter(function (c) { return dkey(c[kind]) === dkey(p.name); });
     return '<div class="info">' +
-      '<div class="kv"><span>Mobile</span><b>' + esc(p.mobile || "-") + '</b>' + (mob10(p.mobile).length === 10 ? ' &nbsp;<a href="tel:' + mob10(p.mobile) + '">call</a>' : '') + '</div>' +
+      '<div class="kv"><span>Mobile</span><b>' + esc(p.mobile || "-") + '</b>' + (mob10(p.mobile).length === 10 ? ' <a class="btn sm gry" style="margin-left:auto" href="tel:' + mob10(p.mobile) + '">Call</a>' : '') + '</div>' +
       '<div class="kv"><span>Area</span>' + esc([p.area, p.location].filter(Boolean).join(", ") || "-") + '</div>' +
       '<div class="kv"><span>Clients</span>' + cl.length + ' on your book</div>' +
       '<button class="btn sm gry" data-act="pv-sites" style="margin-top:4px">' + ss.length + ' ongoing site' + (ss.length === 1 ? '' : 's') + (ss.length ? (S.pvSitesOpen ? ' &#9650;' : ' &#9660;') : '') + '</button>' +
@@ -2160,6 +2172,44 @@ table.t td.r,table.t th.r{text-align:right;white-space:nowrap}
       (v.note ? '<div class="meta" style="color:#334155">' + esc(String(v.note).slice(0, 160)) + '</div>' : '') + '</div></div></div>';
   }
 
+  /* ================= 1.2.0 - A CLIENT VISIT SAYS FOR WHICH BRAND, AND WHEN WE MEET HIM NEXT (11 Oct 2026) =================
+     HIS WORDS: "on marking visit, its mandatory to select next meeting date with client, it only applicable for client,
+     brand logo to be clicked that visit is for which brand specifically, not applicable in case of visit to any partner.
+     in marking showroom visit its mandatory to mark that client visited for which brand and interested in which brands ...
+     we can choose multiple brands."
+     So: a SITE visit and a SHOWROOM visit by a CLIENT cannot be saved without (a) at least one brand tapped and (b) the next
+     meeting date. A showroom client also marks the brands he is interested in. A plumber / architect / partner visit asks
+     for none of this. The next meeting becomes a follow-up (the same `followups` row the CRM makes), so it shows on his
+     My day and in the CRM on the day; the brands ride on the visit itself, readable in the CRM as written. */
+  function brandTiles(sel, act, grp) {
+    var bs = []; try { bs = brandList(); } catch (e) { bs = []; }
+    if (!bs.length) return '<div class="meta">The brand list is loading…</div>';
+    return '<div class="btiles" data-grp="' + grp + '">' + bs.map(function (b) {
+      var L = null; try { L = logoFor(b); } catch (e) { L = null; }
+      var on = sel.indexOf(b) >= 0;
+      return '<button type="button" class="btile' + (on ? ' on' : '') + '" data-act="' + act + '" data-k="' + esc(b) + '" aria-pressed="' + on + '">' +
+        (L && L.src ? '<img src="' + L.src + '" alt=""/>' : '') + '<span>' + esc(b) + '</span></button>';
+    }).join("") + '</div>';
+  }
+  function togIn(arr, b) { var i = arr.indexOf(b); if (i >= 0) arr.splice(i, 1); else arr.push(b); return i < 0; }
+  function addDays(n) { var d = new Date(); d.setDate(d.getDate() + n); return ymdLocal(d); }
+  function nextHtml(id, v) {
+    return '<label for="' + id + '">Next meeting with the client</label>' +
+      '<div class="nrow"><input id="' + id + '" type="date" min="' + today() + '" value="' + esc(v || "") + '"/>' +
+      '<div class="chips" style="margin:0;flex-wrap:nowrap">' + [[1, "Tomorrow"], [3, "3 days"], [7, "1 week"]].map(function (x) {
+        return '<button type="button" class="chip" data-act="nd" data-k="' + x[0] + '" data-id="' + id + '">' + x[1] + '</button>'; }).join("") + '</div></div>';
+  }
+  function nextOk(v) { return /^\d{4}-\d{2}-\d{2}$/.test(v || "") && v >= today(); }
+  /* the next meeting is a follow-up, as the CRM makes it - one row, nothing else touched */
+  function nextFollow(client, due, why) {
+    if (!client || !due) return;
+    save("followups", { id: "", createdBy: S.user, customerId: "", customerName: client, dueDate: due, note: why.slice(0, 300), status: "Open" });
+  }
+  /* written on the visit itself so the CRM reads it as it is shown today */
+  function brandLine(forB, intB, next) {
+    return [forB && forB.length ? "For: " + forB.join(", ") : "", intB && intB.length ? "Interested in: " + intB.join(", ") : "", next ? "Next meeting: " + fd(next) : ""].filter(Boolean).join(" · ");
+  }
+
   /* ================= MARK A VISIT ================= */
   function viewVisit() {
     var k = S.vk || "site";
@@ -2188,6 +2238,9 @@ table.t td.r,table.t th.r{text-align:right;white-space:nowrap}
       '<datalist id="pv_list">' + list.slice(0, 600).map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join("") + '</datalist></div>' +
       '<div><label for="pv_mob">Mobile (if new)</label><input id="pv_mob" inputmode="numeric" value="' + esc(P.mob || "") + '" placeholder="10 digits"' + (known ? ' disabled' : '') + '/></div></div>' +
       '<div id="pv_info">' + pvInfoHtml(k, who, P.name || "") + '</div>' +   /* 1.1.0 */
+      (k === "showroom" && who === "Client" ? '<label>Came for which brand <span class="req">*</span></label>' + brandTiles(P.came || (P.came = []), "pv-came", "came") +
+        '<label>Interested in <span class="req">*</span> <span class="meta">(tap all he liked)</span></label>' + brandTiles(P.int || (P.int = []), "pv-int", "int") +
+        nextHtml("pv_next", P.next) : '') +   /* 1.2.0 */
       '<label for="pv_note">What was discussed</label><textarea id="pv_note" placeholder="e.g. showed the Grohe range, he has two sites starting in Model Town">' + esc(P.note || "") + '</textarea>' +
       '<div class="acts"><button class="btn full" data-act="pv-save" data-k="' + k + '">Save the visit</button></div></div>';
     return h;
@@ -2210,14 +2263,21 @@ table.t td.r,table.t th.r{text-align:right;white-space:nowrap}
     var who = k === "showroom" ? (P.whoKind || "Client") : (k === "plumber" ? "Plumber" : "Architect");
     var known = k === "showroom" && who === "Client" ? !!clientByName(name) : !!partnerByName(name);
     if (!known && mob && mob.length !== 10) { toast("The mobile number needs 10 digits."); return; }
+    /* 1.2.0 - a client in the showroom: which brand he came for, what he liked, when we meet him next */
+    var isCl = k === "showroom" && who === "Client", came = (P.came || []).slice(), intr = (P.int || []).slice(), nx = val("pv_next");
+    if (isCl && !came.length) { toast("Tap the brand he came for."); return; }
+    if (isCl && !intr.length) { toast("Tap the brands he is interested in."); return; }
+    if (isCl && !nextOk(nx)) { toast("Pick the next meeting date."); return; }
     if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
     gps(5000).then(function (g) {
       var row = { id: "", createdAt: iso(), actor: S.user, action: "visit:mark", target: name,
-        detail: JSON.stringify({ kind: k, who: name, whoKind: k === "showroom" ? (who === "Client" ? "Client" : "Plumber") : who, note: note.slice(0, 500), lat: g.lat || "", lng: g.lng || "", acc: g.acc || "", mobile: known ? "" : mob, app: "visit" }), ip: "" };
+        detail: JSON.stringify({ kind: k, who: name, whoKind: k === "showroom" ? (who === "Client" ? "Client" : "Plumber") : who, note: (note + (isCl ? " · " + brandLine(came, intr, nx) : "")).slice(0, 700), lat: g.lat || "", lng: g.lng || "", acc: g.acc || "", mobile: known ? "" : mob, app: "visit",
+          brands: isCl ? came : [], interest: isCl ? intr : [], next: isCl ? nx : "" }), ip: "" };
       saveRow("audit", row);
       /* a plumber or architect not on the list becomes a partner, as the CRM does from a client form */
       if (!known && k !== "showroom" && mob.length === 10) save("associates", { id: "", name: name, role: who, mobile: mob, mobile2: "", location: "", area: "", address: "", birthday: "", anniversary: "", rate: "", notes: "added from a visit (Visit & Quote app)", ownedBy: S.user });
-      S.pv = {}; render(); toast("Visit saved — " + name + ".");
+      if (isCl) nextFollow(name, nx, "Next meeting (showroom visit) - " + brandLine(came, intr, "") + (note ? ": " + note : ""));
+      S.pv = {}; render(); toast("Visit saved — " + name + (isCl ? ". Next meeting " + fd(nx) + "." : "."));
     });
   }
 
@@ -2286,23 +2346,29 @@ table.t td.r,table.t th.r{text-align:right;white-space:nowrap}
     return '<h2>Log a visit</h2><div class="meta">' + esc(st.name || st.client || "") + '</div>' +
       '<label>Whom did you meet</label><div class="chips">' + MET.map(function (m) { return '<button class="chip' + (L.met === m ? ' on' : '') + '" data-act="sl-met" data-k="' + esc(m) + '">' + esc(m) + '</button>'; }).join("") + '</div>' +
       '<label for="sl_note">What happened</label><textarea id="sl_note" placeholder="e.g. slab done, plumbing starts in two weeks, owner wants a CPVC quote">' + esc(L.note || "") + '</textarea>' +
+      '<label>Visit for which brand <span class="req">*</span></label>' + brandTiles(L.brands || (L.brands = []), "sl-brand", "sl") +   /* 1.2.0 */
+      nextHtml("sl_next", L.next) +
       '<label>Stage now</label><select id="sl_stage"><option value="">(no change)</option>' + STAGES.map(function (s) { return '<option' + (L.stage === s ? ' selected' : '') + '>' + esc(s) + '</option>'; }).join("") + '</select>' +
       '<div class="meta" style="margin-top:6px">Your location is taken with the visit, to show you were at the site.</div>' +
       '<div class="acts"><button class="btn gry" data-act="site-open" data-id="' + esc(st.id) + '">Back</button><button class="btn" data-act="sl-save">Save the visit</button></div>';
   }
   function slSave(btn) {
     var L = S.sl || {}, st = siteById(L.id); if (!st) return;
-    L.note = val("sl_note"); L.stage = val("sl_stage");
+    L.note = val("sl_note"); L.stage = val("sl_stage"); L.next = val("sl_next");
     if (!L.met) { toast("Whom did you meet?"); return; }
     if (L.note.length < 3) { toast("Write a line about the visit."); return; }
+    if (!(L.brands || []).length) { toast("Tap the brand this visit is for."); return; }   /* 1.2.0 */
+    if (!nextOk(L.next)) { toast("Pick the next meeting date."); return; }
+    var _bl = brandLine(L.brands, null, L.next), _purp = (L.note + " · " + _bl).slice(0, 700), _brands = L.brands.slice(), _next = L.next;
     if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
     gps(5000).then(function (g) {
-      var extra = { siteId: st.id, setLocation: false, purpose: L.note, photoB64: "", visitType: L.met, lat: g.lat || "", lng: g.lng || "", accuracy: g.acc || "" };
+      var extra = { siteId: st.id, setLocation: false, purpose: _purp, photoB64: "", visitType: L.met, lat: g.lat || "", lng: g.lng || "", accuracy: g.acc || "" };
       /* shown at once; the server's own row replaces it on the next update */
-      var local = { id: "LV-" + Date.now(), siteId: st.id, siteName: st.name || "", client: st.client || "", createdBy: S.user, createdAt: iso(), date: today(), visitType: L.met, purpose: L.note, verified: "" };
+      var local = { id: "LV-" + Date.now(), siteId: st.id, siteName: st.name || "", client: st.client || "", createdBy: S.user, createdAt: iso(), date: today(), visitType: L.met, purpose: _purp, verified: "" };
       (S.data.sitevisits = S.data.sitevisits || []).push(local);
       var stageCh = L.stage && L.stage !== st.stage;
       if (stageCh) saveRow("sites", Object.assign({}, st, { stage: L.stage }));
+      nextFollow(st.client || st.name, _next, "Next meeting (site visit, " + (st.name || "") + ") - For: " + _brands.join(", ") + ": " + L.note);   /* 1.2.0 */
       api("siteVisit", extra).then(function (r) {
         if (r && r.ok) { local.verified = r.verified || ""; toast("Visit saved" + (r.verified === "Verified" ? " — at the site." : r.note ? " — " + r.note : ".")); }
         else toast("Not saved: " + ((r && r.error) || "the server refused it"));
@@ -2669,7 +2735,7 @@ table.t td.r,table.t th.r{text-align:right;white-space:nowrap}
     if (act === "go-visit") { S.tab = "visit"; S.vk = "site"; render(); return; }
     if (act === "go-quotes") { S.tab = "quotes"; S.fq = k === "Draft" ? "Draft" : k === "follow" ? "follow" : "all"; render(); return; }
     if (act === "vk") { S.vk = k; S.pv = {}; S.near = null; render(); return; }
-    if (act === "pv-who") { S.pv = S.pv || {}; S.pv.name = val("pv_name"); S.pv.note = val("pv_note"); S.pv.mob = val("pv_mob"); S.pv.whoKind = k; S.pv.name = ""; render(); return; }
+    if (act === "pv-who") { S.pv = S.pv || {}; S.pv.name = val("pv_name"); S.pv.note = val("pv_note"); S.pv.mob = val("pv_mob"); S.pv.whoKind = k; S.pv.name = ""; S.pv.came = []; S.pv.int = []; S.pv.next = ""; render(); return; }
     if (act === "pv-save") { pvSave(k, t); return; }
     if (act === "near") { nearMe(t); return; }
     if (act === "site-new") { S.sn = { client: S.q || "" }; S.sheet = siteNewSheet(); render(); return; }
@@ -2688,7 +2754,10 @@ table.t td.r,table.t th.r{text-align:right;white-space:nowrap}
     }
     if (act === "site-open") { var st = siteById(id); if (!st) return; S.sl = null; S.sheet = siteSheet(st); render(); return; }
     if (act === "sv-log") { var st2 = siteById(id); if (!st2) return; S.sl = { id: st2.id, met: "", stage: st2.stage || "" }; S.sheet = svLogSheet(st2); render(); return; }
-    if (act === "sl-met") { if (!S.sl) return; S.sl.note = val("sl_note"); S.sl.stage = val("sl_stage"); S.sl.met = k; S.sheet = svLogSheet(siteById(S.sl.id)); render(); return; }
+    if (act === "sl-brand") { if (!S.sl) return; S.sl.brands = S.sl.brands || []; var _on = togIn(S.sl.brands, k); t.classList.toggle("on", _on); t.setAttribute("aria-pressed", _on); return; }   /* 1.2.0 - in place, nothing typed is lost */
+    if (act === "pv-came" || act === "pv-int") { S.pv = S.pv || {}; var _a = act === "pv-came" ? (S.pv.came = S.pv.came || []) : (S.pv.int = S.pv.int || []); var _on2 = togIn(_a, k); t.classList.toggle("on", _on2); t.setAttribute("aria-pressed", _on2); return; }
+    if (act === "nd") { var _ni = el(id); if (_ni) { _ni.value = addDays(Number(k) || 1); if (id === "pv_next") { S.pv = S.pv || {}; S.pv.next = _ni.value; } else if (S.sl) S.sl.next = _ni.value; } return; }
+    if (act === "sl-met") { if (!S.sl) return; S.sl.note = val("sl_note"); S.sl.stage = val("sl_stage"); S.sl.next = val("sl_next"); S.sl.met = k; S.sheet = svLogSheet(siteById(S.sl.id)); render(); return; }
     if (act === "sl-save") { slSave(t); return; }
     if (act === "cl-new") { var s0 = k ? siteById(k) : null; S.cn = { name: s0 ? (s0.client || s0.name) : "", mobile: s0 ? s0.mobile : "", dist: s0 ? (s0.location || districts()[0]) : districts()[0], area: s0 ? s0.city : "", plumber: s0 ? s0.plumber : "", architect: s0 ? s0.architect : "", siteId: s0 ? s0.id : "" }; S.sheet = clNewSheet(); render(); return; }
     if (act === "cn-save") { cnSave(); return; }
@@ -2744,6 +2813,8 @@ table.t td.r,table.t th.r{text-align:right;white-space:nowrap}
     if (t.id === "qz_pq") { S.qz.pq = t.value; el("qz_pres").innerHTML = qzProdHits(); return; }
     if (t.classList && (t.classList.contains("qz-qty") || t.classList.contains("qz-bd"))) { qzKeep(); return; }
     if (t.id === "pv_name" || t.id === "pv_note" || t.id === "pv_mob") { S.pv = S.pv || {}; S.pv.name = val("pv_name"); S.pv.note = val("pv_note"); S.pv.mob = val("pv_mob"); }
+    if (t.id === "pv_next") { S.pv = S.pv || {}; S.pv.next = t.value; }
+    if (t.id === "sl_next" && S.sl) S.sl.next = t.value;
   });
 
   function pvInfoPaint() { var b = el("pv_info"); if (!b) return; var k = S.vk, P = S.pv || {}; b.innerHTML = pvInfoHtml(k, k === "showroom" ? (P.whoKind || "Client") : "", val("pv_name")); }
