@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.732";
+  var APP_VERSION = "6.9.733";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -578,8 +578,8 @@
   }
 
   var ROLE_TABS = {
-    admin:    ["dash","review","agent","report","scorecard","returns","tools","rates","clients","crlog","partners","pevents","quotes","leads","brandfollow","winloss","visits","followups","challans","register","paylog","freight","payments","paidout","billing","discounts","commission","complaints","service","spares","dues","payroll","products","catalogs","brandstory","pricelist","catalogue","rules","teampins","tally","plcheck","health","trouble","changelog","booksweep","dups","stock","brief"],
-    accounts: ["dash","review","agent","returns","tools","clients","crlog","partners","followups","challans","register","paylog","freight","payments","billing","complaints","service","spares","dues","products","catalogs","rates","pricelist","dups","stock","tally","trouble"],
+    admin:    ["dash","statements","review","agent","report","scorecard","returns","tools","rates","clients","crlog","partners","pevents","quotes","leads","brandfollow","winloss","visits","followups","challans","register","paylog","freight","payments","paidout","billing","discounts","commission","complaints","service","spares","dues","payroll","products","catalogs","brandstory","pricelist","catalogue","rules","teampins","tally","plcheck","health","trouble","changelog","booksweep","dups","stock","brief"],
+    accounts: ["dash","statements","review","agent","returns","tools","clients","crlog","partners","followups","challans","register","paylog","freight","payments","billing","complaints","service","spares","dues","products","catalogs","rates","pricelist","dups","stock","tally","trouble"],
     godown:   ["dash","agent","returns","tools","challans","freight","products","stock","trouble"],
     sales:    ["dash","review","agent","report","returns","tools","clients","crlog","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","register","paylog","freight","billing","payments","complaints","products","catalogs","dups","brief","trouble"],
     service:  ["dash","agent","tools","complaints","service","spares","dues","followups","products","catalogs","trouble"]
@@ -38698,7 +38698,7 @@ function viewCatalogue() {
      nothing else could reach it - so the usage counter would have had to keep a second copy
      of the same forty-two names, and a second copy is how the two quietly stop agreeing.
      Hoisted, not duplicated. render() still reads exactly this. */
-  var TAB_TABS = [["search", "Search"], ["dash", "Today"], ["review", "Twice-weekly review"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["register", "Challan log"], ["paylog", "Payment log"], ["freight", "Drivers & freight"], ["deliveries", "Deliveries"], ["collections", "Payments"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["crlog", "Client & lead log"], ["partners", "Partners"], ["pevents", "Partner events"], ["quotes", "Quotes"], ["commission", "Incentives"], ["complaints", "Complaints"], ["service", "Service"], ["spares", "Spares"], ["dues", "Service dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["paidout", "Paid out"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["catalogs", "Brand catalogues"], ["brandstory", "Brand stories"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["trouble", "Troubleshoot"], ["changelog", "Change log"], ["booksweep", "Book numbers"], ["dups", "Duplicate check"], ["stock", "Stock"], ["tally", "Tally"], ["plcheck", "Supplier price list"], ["brief", "The brief"]];
+  var TAB_TABS = [["search", "Search"], ["dash", "Today"], ["statements", "Statements"], ["review", "Twice-weekly review"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["register", "Challan log"], ["paylog", "Payment log"], ["freight", "Drivers & freight"], ["deliveries", "Deliveries"], ["collections", "Payments"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["crlog", "Client & lead log"], ["partners", "Partners"], ["pevents", "Partner events"], ["quotes", "Quotes"], ["commission", "Incentives"], ["complaints", "Complaints"], ["service", "Service"], ["spares", "Spares"], ["dues", "Service dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["paidout", "Paid out"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["catalogs", "Brand catalogues"], ["brandstory", "Brand stories"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["trouble", "Troubleshoot"], ["changelog", "Change log"], ["booksweep", "Book numbers"], ["dups", "Duplicate check"], ["stock", "Stock"], ["tally", "Tally"], ["plcheck", "Supplier price list"], ["brief", "The brief"]];
   var TAB_LABEL = (function () {
     var m = {}; TAB_TABS.forEach(function (t) { m[t[0]] = t[1]; }); return m;
   })();
@@ -44123,6 +44123,328 @@ function viewCatalogue() {
       cols.map(function (c) { return '<th style="padding:6px 8px;text-align:' + (c[1] || "left") + ';white-space:nowrap">' + c[0] + '</th>'; }).join("") + '</tr></thead><tbody>' +
       rows.map(function (r, i) { return '<tr style="border-top:1px solid #eef2f7;background:' + (i % 2 ? '#f8fafc' : '#fff') + '">' + r.map(function (v, j) { return '<td style="padding:5px 8px;text-align:' + (cols[j][1] || "left") + ';vertical-align:middle">' + v + '</td>'; }).join("") + '</tr>'; }).join("") +
       '</tbody></table></div>';
+  }
+  /* ===================== STATEMENTS  (6.9.733, 11 Oct 2026) =====================
+     HIS WORDS: "1. partner incentive statement (show what is total and what is not counted due to pending
+     payment), 2. executive incentive statement, 3. pending payment statement, tap to select executive wise,
+     can select more than one, can also be expanded view, 4. quote generated statement, 5. daily report
+     statement, 6. plumber approached statement, 7. win and loose statement, like a separate statement head
+     for one click all view" - and later "no statement tab any where".
+     One screen: the seven as chips, ONE period, ONE executive picker (tap several), Compact / Detailed, and
+     Excel + PDF of exactly what is on the screen. Every figure is read through the functions the rest of the
+     app already uses - partnerBook / execBook (incentive, with the per-bill paid share of 6.9.699),
+     hisabOutstanding + clientAging (HISAB), the quote book, the review's dispatch and collection rules, the
+     partner-contact sources - so a statement can never disagree with the screen it summarises. Nothing here
+     writes anything. */
+  var ST_KINDS = [
+    ["pinc", "Partner incentive", 1], ["einc", "Executive incentive", 1], ["pend", "Pending payments", 0],
+    ["quote", "Quotes made", 0], ["daily", "Daily report", 0], ["plumb", "Plumbers approached", 0], ["wl", "Won & lost", 0]
+  ];
+  function stKinds() { return ST_KINDS.filter(function (k) { return !k[2] || roleIs("admin"); }); }
+  function stYmd(d) { return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
+  var ST_PERIODS = [["today", "Today"], ["week", "This week"], ["month", "This month"], ["lmonth", "Last month"], ["q", "Last 3 months"], ["fy", "This year (Apr–Mar)"], ["all", "Everything"]];
+  function stRange() {
+    var t = today(), k = S.stPer || "month", d = new Date(t + "T00:00:00"), from = t, to = t;
+    if (k === "custom" && S.stFrom && S.stTo) return { k: k, from: S.stFrom <= S.stTo ? S.stFrom : S.stTo, to: S.stFrom <= S.stTo ? S.stTo : S.stFrom };
+    if (k === "today") from = t;
+    else if (k === "week") from = addDays(t, -((d.getDay() + 6) % 7));
+    else if (k === "month") from = t.slice(0, 8) + "01";
+    else if (k === "lmonth") { var m0 = new Date(d.getFullYear(), d.getMonth() - 1, 1), m1 = new Date(d.getFullYear(), d.getMonth(), 0); from = stYmd(m0); to = stYmd(m1); }
+    else if (k === "q") from = addDays(t, -90);
+    else if (k === "fy") from = (d.getMonth() >= 3 ? d.getFullYear() : d.getFullYear() - 1) + "-04-01";
+    else { k = "all"; from = "2000-01-01"; }
+    return { k: k, from: from, to: to };
+  }
+  function stRangeLabel(R) { return R.k === "all" ? "everything to " + dmy(R.to) : (R.from === R.to ? dmy(R.from) : dmy(R.from) + " – " + dmy(R.to)); }
+  function stExecList() {
+    var seen = {}, out = [];
+    var add = function (e) { e = String(e || "").trim(); if (e && !seen[e.toLowerCase()]) { seen[e.toLowerCase()] = 1; out.push(e); } };
+    try { scExecs().forEach(add); } catch (e) { }
+    try { rvExecs().forEach(add); } catch (e) { }
+    return out.sort(function (a, b) { return a.toLowerCase().localeCompare(b.toLowerCase()); });
+  }
+  function stExOk(e) { var sel = S.stEx || []; if (!sel.length) return true; e = String(e || "").trim() || "(no executive)"; return sel.indexOf(e) >= 0; }
+  function stIn(d, R) { return !!d && d >= R.from && d <= R.to; }
+  /* one place that knows each statement: its columns (k, t heading, m money, n number, w Excel width) and rows */
+  function stBuild(kind, R, detail) {
+    var cols, rows = [], note = "", title = (ST_KINDS.filter(function (k) { return k[0] === kind; })[0] || ["", ""])[1];
+    if (kind === "pinc" || kind === "einc") {
+      var isP = kind === "pinc";
+      var people = isP ? assocLive().map(function (a) { return { name: a.name, role: a.role || "", ex: a.ownedBy || "" }; })
+                       : stExecList().map(function (e) { return { name: e, role: "Executive", ex: e }; });
+      var paidIn = {};
+      (S.data.commpay || []).forEach(function (p) { var d = dstr(p.date || p.createdAt); if (stIn(d, R)) { var k2 = dkey(p.associate); paidIn[k2] = (paidIn[k2] || 0) + payAmt(p); } });
+      people.forEach(function (pp) {
+        if (!stExOk(pp.ex)) return;
+        var bk; try { bk = isP ? partnerBook(pp.name) : execBook(pp.name); } catch (e) { return; }
+        var lines = (bk.rows || []).filter(function (r) { return stIn(r.ymd, R); });
+        var biz = 0, inc = 0, rel = 0;
+        lines.forEach(function (r) { biz += Number(r.amount) || 0; inc += Number(r.inc) || 0; rel += Number(r.rel) || 0; });
+        var held = inc - rel, po = paidIn[dkey(pp.name)] || 0, still = Number(bk.pending) || 0;
+        if (!lines.length && !(po > 0.5) && !(still > 0.5)) return;
+        if (detail) {
+          lines.forEach(function (r) {
+            var hd = (Number(r.inc) || 0) - (Number(r.rel) || 0);
+            rows.push({ who: pp.name, role: pp.role, ex: pp.ex, d: r.ymd, no: r.no || "", cl: r.client || "", br: r.brand || "", biz: Number(r.amount) || 0,
+              pct: Math.round((Number(r.pct) || 0) * 10) / 10, inc: Number(r.inc) || 0, pd: r.ret ? "return" : Math.round((Number(r.paidShare) || 0) * 100) + "%",
+              cnt: Number(r.rel) || 0, held: hd });
+          });
+        } else rows.push({ who: pp.name, role: pp.role, ex: pp.ex, biz: biz, inc: inc, cnt: rel, held: held, po: po, still: still });
+      });
+      cols = detail
+        ? [{ k: "who", t: isP ? "PARTNER" : "EXECUTIVE", w: 22 }].concat(isP ? [{ k: "role", t: "ROLE", w: 11 }] : []).concat([{ k: "d", t: "DATE", w: 11, dt: 1 }, { k: "no", t: "CHALLAN / RETURN", w: 20 }, { k: "cl", t: "CLIENT", w: 26 }, { k: "br", t: "BRAND", w: 16 },
+           { k: "biz", t: "BUSINESS", m: 1, w: 13 }, { k: "pct", t: "%", n: 1, w: 6 }, { k: "inc", t: "INCENTIVE", m: 1, w: 12 }, { k: "pd", t: "CLIENT PAID", w: 11 }, { k: "cnt", t: "COUNTED", m: 1, w: 12 }, { k: "held", t: "NOT COUNTED (UNPAID)", m: 1, w: 16 }])
+        : [{ k: "who", t: isP ? "PARTNER" : "EXECUTIVE", w: 24 }].concat(isP ? [{ k: "role", t: "ROLE", w: 11 }, { k: "ex", t: "LOOKED AFTER BY", w: 16 }] : []).concat([{ k: "biz", t: "BUSINESS", m: 1, w: 14 },
+           { k: "inc", t: "INCENTIVE (TOTAL)", m: 1, w: 15 }, { k: "cnt", t: "COUNTED (CLIENT PAID)", m: 1, w: 17 }, { k: "held", t: "NOT COUNTED (PAYMENT PENDING)", m: 1, w: 20 }, { k: "po", t: "PAID OUT IN PERIOD", m: 1, w: 15 }, { k: "still", t: "STILL TO PAY (TODAY)", m: 1, w: 16 }]);
+      rows.sort(function (a, b) { return (b.inc || 0) - (a.inc || 0) || String(a.who).localeCompare(String(b.who)) || String(a.d || "").localeCompare(String(b.d || "")); });
+      note = "Incentive is counted only on the part of each bill the client has paid. NOT COUNTED is earned but waiting for the client's payment; it moves to COUNTED as the money comes in. STILL TO PAY is today's figure: counted, less everything paid out.";
+    } else if (kind === "pend") {
+      var out = hisabOutstanding().map(function (r) {
+        var ag = stAgePend(r.name);
+        var b = ag.b || {}, pl = []; try { pl = payLines(r.name); } catch (e) { pl = []; }
+        var cl = clientByName(r.name) || {};
+        return { cl: r.name, ex: String(r.owner || "").trim() || "(no executive)", mob: cl.mobile || "", net: r.net, paid: r.paid, ret: r.returned || 0, due: r.due,
+          cur: b.cur || 0, d30: b.d30 || 0, d60: b.d60 || 0, d90: b.d90 || 0, old: ag.oldest || 0, last: pl.length ? pl[pl.length - 1].date : "" };
+      }).filter(function (r) { return stExOk(r.ex); });
+      if (detail) {
+        rows = out.sort(function (a, b) { return a.ex.localeCompare(b.ex) || b.due - a.due; });
+        cols = [{ k: "ex", t: "EXECUTIVE", w: 16 }, { k: "cl", t: "CLIENT", w: 28 }, { k: "mob", t: "MOBILE", w: 13 }, { k: "net", t: "BILLED", m: 1, w: 13 }, { k: "paid", t: "RECEIVED", m: 1, w: 13 }, { k: "ret", t: "RETURNS", m: 1, w: 11 },
+                { k: "due", t: "PENDING", m: 1, w: 14 }, { k: "d90", t: "OF IT 90+ DAYS", m: 1, w: 13 }, { k: "old", t: "OLDEST (DAYS)", n: 1, w: 11 }, { k: "last", t: "LAST PAYMENT", w: 12, dt: 1 }];
+      } else {
+        var g = {};
+        out.forEach(function (r) { var x = g[r.ex] = g[r.ex] || { ex: r.ex, n: 0, due: 0, cur: 0, d30: 0, d60: 0, d90: 0, old: 0 }; x.n++; x.due += r.due; x.cur += r.cur; x.d30 += r.d30; x.d60 += r.d60; x.d90 += r.d90; if (r.old > x.old) x.old = r.old; });
+        rows = Object.keys(g).map(function (k) { return g[k]; }).sort(function (a, b) { return b.due - a.due; });
+        cols = [{ k: "ex", t: "EXECUTIVE", w: 18 }, { k: "n", t: "CLIENTS", n: 1, w: 9 }, { k: "due", t: "PENDING", m: 1, w: 15 }, { k: "cur", t: "0–30 DAYS", m: 1, w: 13 }, { k: "d30", t: "31–60", m: 1, w: 12 },
+                { k: "d60", t: "61–90", m: 1, w: 12 }, { k: "d90", t: "90+ DAYS", m: 1, w: 13 }, { k: "old", t: "OLDEST (DAYS)", n: 1, w: 12 }];
+      }
+      note = "As of today - the HISAB figure: finalised deliveries less received less returns, opening balances included. The age columns split that same figure: payments and returns clear the oldest bill first, and an opening balance counts as 90+ days. The period does not change this statement.";
+    } else if (kind === "quote" || kind === "wl") {
+      var isW = kind === "wl";
+      var qs = (S.data.quotes || []).filter(function (q) {
+        if (!q || isCancelled("quotes", q.id)) return false;
+        if (!seesAllClients() && q.createdBy !== S.user && !isMineClient(q.client)) return false;
+        var st = String(q.status || "");
+        if (isW) return (st === "Won" || st === "Lost") && stIn(dstr(q.updatedAt || q.createdAt), R);
+        return stIn(dstr(q.createdAt), R);
+      }).map(function (q) {
+        var l = isW && String(q.status) === "Lost" ? (lossOf(q.id) || {}) : {};
+        var d = dstr(isW ? (q.updatedAt || q.createdAt) : q.createdAt);
+        return { d: d, no: q.quoteNo || "", cl: q.client || "", ex: rvQExec(q) || "(no executive)", br: (function () { try { return quoteBrands(q).join(", "); } catch (e) { return q.brand || ""; } })(),
+          amt: nAmt(q.net) || nAmt(q.total), st: String(q.status || "Open"), why: l.reason || "", to: l.lostTo || "", note: l.note || "", age: d ? Math.max(0, -daysTo(dstr(q.createdAt))) : 0 };
+      }).filter(function (r) { return stExOk(r.ex); });
+      if (detail) {
+        rows = qs.sort(function (a, b) { return b.d.localeCompare(a.d); });
+        cols = isW
+          ? [{ k: "d", t: "DECIDED", w: 11, dt: 1 }, { k: "no", t: "QUOTE", w: 18 }, { k: "cl", t: "CLIENT", w: 26 }, { k: "ex", t: "EXECUTIVE", w: 16 }, { k: "br", t: "BRANDS", w: 18 }, { k: "amt", t: "VALUE", m: 1, w: 13 },
+             { k: "st", t: "RESULT", w: 9 }, { k: "why", t: "WHY LOST", w: 18 }, { k: "to", t: "LOST TO", w: 14 }, { k: "note", t: "NOTE", w: 30 }]
+          : [{ k: "d", t: "DATE", w: 11, dt: 1 }, { k: "no", t: "QUOTE", w: 18 }, { k: "cl", t: "CLIENT", w: 26 }, { k: "ex", t: "EXECUTIVE", w: 16 }, { k: "br", t: "BRANDS", w: 20 }, { k: "amt", t: "VALUE", m: 1, w: 13 },
+             { k: "st", t: "STATUS", w: 12 }, { k: "age", t: "DAYS OLD", n: 1, w: 9 }];
+      } else {
+        var gq = {};
+        qs.forEach(function (r) {
+          var x = gq[r.ex] = gq[r.ex] || { ex: r.ex, n: 0, amt: 0, open: 0, won: 0, lost: 0, wv: 0, lv: 0, why: {} };
+          x.n++; x.amt += r.amt;
+          if (r.st === "Won") { x.won++; x.wv += r.amt; } else if (r.st === "Lost") { x.lost++; x.lv += r.amt; if (r.why) x.why[r.why] = (x.why[r.why] || 0) + 1; } else x.open++;
+        });
+        rows = Object.keys(gq).map(function (k) { var x = gq[k]; var top = Object.keys(x.why).sort(function (a, b) { return x.why[b] - x.why[a]; })[0] || "";
+          x.rate = (x.won + x.lost) ? Math.round(x.won * 100 / (x.won + x.lost)) : 0; x.top = top; return x; }).sort(function (a, b) { return b.amt - a.amt; });
+        cols = isW
+          ? [{ k: "ex", t: "EXECUTIVE", w: 18 }, { k: "n", t: "DECIDED", n: 1, w: 9 }, { k: "won", t: "WON", n: 1, w: 7 }, { k: "lost", t: "LOST", n: 1, w: 7 }, { k: "rate", t: "WIN %", n: 1, w: 8 },
+             { k: "wv", t: "WON VALUE", m: 1, w: 14 }, { k: "lv", t: "LOST VALUE", m: 1, w: 14 }, { k: "top", t: "MAIN REASON LOST", w: 22 }]
+          : [{ k: "ex", t: "EXECUTIVE", w: 18 }, { k: "n", t: "QUOTES", n: 1, w: 9 }, { k: "amt", t: "VALUE", m: 1, w: 15 }, { k: "open", t: "STILL OPEN", n: 1, w: 10 }, { k: "won", t: "WON", n: 1, w: 7 },
+             { k: "lost", t: "LOST", n: 1, w: 7 }, { k: "wv", t: "WON VALUE", m: 1, w: 14 }];
+      }
+      note = isW ? "Quotes marked Won or Lost in the period, by the day they were decided. Reasons are what the executive wrote when he marked it Lost." : "Quotes made in the period, by the day they were made, with where each stands today.";
+    } else if (kind === "daily" || kind === "plumb") {
+      /* the events of the period, each with a day and an executive */
+      var ev = [];
+      var siteBy = {}; (S.data.sites || []).forEach(function (x) { if (x && x.id) siteBy[x.id] = x; });
+      var pRole = {}, pMob = {}; assocLive().forEach(function (a) { pRole[dkey(a.name)] = a.role || ""; pMob[dkey(a.name)] = a.mobile || ""; });
+      if (kind === "daily") {
+        dedupeChallans((S.data.challans || []).filter(function (c) { try { return !stkChDead(c); } catch (e) { return true; } })).forEach(function (c) {
+          var d = dstr(c.dispatchedAt) || (FR_DONE.indexOf(String(c.status || "")) >= 0 ? dstr(c.createdAt) : "");
+          if (stIn(d, R)) ev.push({ d: d, ex: rvOwner(c.customerName), k: "disp", amt: chValue(c) });
+        });
+        (S.data.payments || []).forEach(function (p) { var d = dstr(p.date || p.createdAt), a = payAmt(p); if (stIn(d, R) && a > 0) ev.push({ d: d, ex: rvOwner(p.client), k: "coll", amt: a }); });
+        (S.data.clients || []).forEach(function (c) { var d = dstr(c.createdAt); if (c && stIn(d, R) && !isCancelled("clients", c.id)) ev.push({ d: d, ex: rvOwner(c.name), k: "newCl" }); });
+        (S.data.quotes || []).forEach(function (q) {
+          if (!q || isCancelled("quotes", q.id)) return;
+          var d = dstr(q.createdAt); if (stIn(d, R)) ev.push({ d: d, ex: rvQExec(q), k: "newQ", amt: nAmt(q.net) || nAmt(q.total) });
+          var st = String(q.status || ""), d2 = dstr(q.updatedAt || q.createdAt);
+          if ((st === "Won" || st === "Lost") && stIn(d2, R)) ev.push({ d: d2, ex: rvQExec(q), k: st === "Won" ? "won" : "lost" });
+        });
+        (S.data.sitevisits || []).forEach(function (v) { var d = dstr(v.date || v.createdAt); if (stIn(d, R)) ev.push({ d: d, ex: v.createdBy || "", k: "visit" }); });
+        (S.data.followups || []).forEach(function (f) { var d = dstr(f.doneAt); if (String(f.status) === "Done" && stIn(d, R)) ev.push({ d: d, ex: f.createdBy || "", k: "fu" }); });
+      }
+      /* partner approaches - both statements read them */
+      (S.data.audit || []).forEach(function (a) {
+        if (!a || String(a.action || "") !== "partner:call") return;
+        var d = dstr(a.createdAt); if (stIn(d, R)) ev.push({ d: d, ex: a.actor || "", k: "call", who: a.target || "", how: "Called", note: "" });
+      });
+      (S.data.sitevisits || []).forEach(function (v) {
+        var st = siteBy[v.siteId], d = dstr(v.date || v.createdAt); if (!st || !stIn(d, R)) return;
+        [st.plumber, st.architect, st.builder].forEach(function (n) { if (String(n || "").trim()) ev.push({ d: d, ex: v.createdBy || "", k: "pvisit", who: n, how: "Met at site " + (st.name || st.client || ""), note: v.note || "" }); });
+      });
+      assocLive().forEach(function (a) { var d = dstr(a.createdAt); if (stIn(d, R)) ev.push({ d: d, ex: a.ownedBy || a.createdBy || "", k: "pnew", who: a.name, how: "Added as a new partner", note: "" }); });
+      try { pevEvents().forEach(function (e) { pevInv(e.eid).forEach(function (i) {
+        if (i.other) return;
+        if (i.preAt && stIn(dstr(i.preAt), R)) ev.push({ d: dstr(i.preAt), ex: i.preBy || "", k: "pevent", who: i.partner, how: "Event call before: " + e.name, note: i.preNote || "" });
+        if (i.postAt && stIn(dstr(i.postAt), R)) ev.push({ d: dstr(i.postAt), ex: i.postBy || "", k: "pevent", who: i.partner, how: "Event call after: " + e.name, note: i.postNote || "" });
+      }); }); } catch (e) { }
+      ev = ev.filter(function (x) { x.ex = String(x.ex || "").trim() || "(no executive)"; return stExOk(x.ex); });
+      if (kind === "plumb") {
+        var pe = ev.filter(function (x) { return x.who && /call|pvisit|pnew|pevent/.test(x.k) && /plumb/i.test(pRole[dkey(x.who)] || ""); });
+        if (detail) {
+          rows = pe.map(function (x) { return { d: x.d, who: x.who, mob: pMob[dkey(x.who)] || "", how: x.how, ex: x.ex, note: x.note }; }).sort(function (a, b) { return b.d.localeCompare(a.d) || a.who.localeCompare(b.who); });
+          cols = [{ k: "d", t: "DATE", w: 11, dt: 1 }, { k: "who", t: "PLUMBER", w: 22 }, { k: "mob", t: "MOBILE", w: 13 }, { k: "how", t: "HOW", w: 30 }, { k: "ex", t: "BY", w: 16 }, { k: "note", t: "WHAT WAS SAID", w: 34 }];
+        } else {
+          var gp = {};
+          pe.forEach(function (x) { var y = gp[x.ex] = gp[x.ex] || { ex: x.ex, n: 0, men: {}, call: 0, pvisit: 0, pnew: 0, pevent: 0 }; y.n++; y.men[dkey(x.who)] = 1; y[x.k]++; });
+          rows = Object.keys(gp).map(function (k) { var y = gp[k]; y.uniq = Object.keys(y.men).length; return y; }).sort(function (a, b) { return b.n - a.n; });
+          cols = [{ k: "ex", t: "EXECUTIVE", w: 18 }, { k: "n", t: "APPROACHES", n: 1, w: 11 }, { k: "uniq", t: "DIFFERENT PLUMBERS", n: 1, w: 13 }, { k: "call", t: "CALLED", n: 1, w: 9 }, { k: "pvisit", t: "MET AT SITE", n: 1, w: 11 }, { k: "pnew", t: "NEW PLUMBERS", n: 1, w: 12 }, { k: "pevent", t: "EVENT CALLS", n: 1, w: 11 }];
+        }
+        note = "A plumber counts as approached when he is called (Called on the review), met at a site visit, added as a new partner, or rung before or after an event.";
+      } else {
+        var gd = {};
+        ev.forEach(function (x) {
+          if (/pvisit|pnew/.test(x.k)) return;
+          var key = (detail ? x.d + "|" : "") + x.ex;
+          var y = gd[key] = gd[key] || { d: detail ? x.d : "", ex: x.ex, disp: 0, dispN: 0, coll: 0, newCl: 0, newQ: 0, qv: 0, won: 0, lost: 0, visit: 0, call: 0, fu: 0 };
+          if (x.k === "disp") { y.disp += x.amt; y.dispN++; } else if (x.k === "coll") y.coll += x.amt; else if (x.k === "newQ") { y.newQ++; y.qv += x.amt || 0; }
+          else if (x.k === "pevent") y.call++; else y[x.k]++;
+        });
+        rows = Object.keys(gd).map(function (k) { return gd[k]; }).sort(function (a, b) { return String(b.d).localeCompare(String(a.d)) || a.ex.localeCompare(b.ex); });
+        cols = (detail ? [{ k: "d", t: "DAY", w: 11, dt: 1 }] : []).concat([{ k: "ex", t: "EXECUTIVE", w: 16 }, { k: "dispN", t: "DELIVERIES", n: 1, w: 10 }, { k: "disp", t: "DISPATCHED", m: 1, w: 13 }, { k: "coll", t: "COLLECTED", m: 1, w: 13 },
+          { k: "newCl", t: "NEW CLIENTS", n: 1, w: 10 }, { k: "newQ", t: "QUOTES", n: 1, w: 8 }, { k: "qv", t: "QUOTE VALUE", m: 1, w: 13 }, { k: "won", t: "WON", n: 1, w: 6 }, { k: "lost", t: "LOST", n: 1, w: 6 },
+          { k: "visit", t: "SITE VISITS", n: 1, w: 9 }, { k: "call", t: "PARTNER CALLS", n: 1, w: 10 }, { k: "fu", t: "FOLLOW-UPS DONE", n: 1, w: 11 }]);
+        note = "Each executive's day from what is in the app: deliveries that left (dispatch date), money recorded, clients and quotes made, quotes decided, site visits, partner calls and follow-ups closed. Deliveries and money go to the client's executive.";
+      }
+    }
+    var tot = {};
+    cols.forEach(function (c) { if (c.m || (c.n && !/pct|rate|old|age/.test(c.k))) tot[c.k] = rows.reduce(function (a, r) { return a + (Number(r[c.k]) || 0); }, 0); });
+    if (kind === "wl" && !detail) tot.rate = (tot.won + tot.lost) ? Math.round(tot.won * 100 / (tot.won + tot.lost)) : 0;
+    return { kind: kind, title: title, cols: cols, rows: rows, tot: tot, note: note };
+  }
+  /* the pending figure itself, aged: hisabOutstanding's own deliveries and opening, payments and returns
+     cleared oldest first - so the age columns always add up to PENDING (clientAging answers the credit-control
+     question, which also counts deliveries not finalised yet, and does not add up to this figure) */
+  function stAgePend(nm) {
+    var fr = famRow(nm), items = [], credit = 0;
+    var op = famOpening(fr); if (op > 0) items.push({ age: 120, amt: op }); else credit += -op;
+    dedupeChallans((S.data.challans || []).filter(function (c) { return fr.has(c.customerName) && hisabOwed(c); })).forEach(function (c) {
+      var a = chValue(c); if (a > 0) items.push({ age: Math.max(0, -daysTo(localDay(c.createdAt || ""))), amt: a }); else credit += -a;
+    });
+    /* a refund (money paid back to him) is a minus payment: it raises what he owes, so it is aged from its own date */
+    var pTot = 0;
+    famPays(nm).forEach(function (p) { var a = payAmt(p); pTot += a; if (a < 0) items.push({ age: Math.max(0, -daysTo(dstr(p.date || p.createdAt) || today())), amt: -a }); else credit += a; });
+    var ledP = clientLedger(nm).paid || 0; if (Math.abs(ledP - pTot) > 0.5) credit += ledP - pTot;   /* the ledger's own figure wins if the two ever differ */
+    credit += famReturns(fr).reduce(function (a, r) { return a + returnNet(r); }, 0);
+    items.sort(function (a, b) { return b.age - a.age; });
+    var b = { cur: 0, d30: 0, d60: 0, d90: 0 }, oldest = 0;
+    items.forEach(function (it) { var u = Math.min(credit, it.amt); it.amt -= u; credit -= u;
+      if (it.amt <= 0.5) return; if (it.age > oldest) oldest = it.age;
+      if (it.age <= 30) b.cur += it.amt; else if (it.age <= 60) b.d30 += it.amt; else if (it.age <= 90) b.d60 += it.amt; else b.d90 += it.amt; });
+    return { b: b, oldest: oldest };
+  }
+  function stCell(c, v) {
+    if (c.m) return (Number(v) || 0) ? money(v) : '<span style="color:#94a3b8">—</span>';
+    if (c.dt) return v ? esc(dmy(v)) : '<span style="color:#94a3b8">—</span>';
+    if (c.k === "rate") return (v || 0) + "%";
+    return esc(v == null ? "" : String(v));
+  }
+  function viewStatements() {
+    var K = stKinds(); if (!K.length) return '<div class="empty">Statements are kept by the owner and accounts.</div>';
+    var kind = S.stK && K.some(function (k) { return k[0] === S.stK; }) ? S.stK : "pend";
+    var R = stRange(), detail = S.stView === "detail", sel = S.stEx || [], exs = stExecList();
+    var B = stBuild(kind, R, detail);
+    var chip = function (on, act, k, lbl) { return '<button class="btn sm' + (on ? '' : ' ghost') + '" style="min-height:44px" data-act="' + act + '" data-k="' + esc(k) + '">' + lbl + '</button>'; };
+    var h = '<div class="card"><h2 style="margin:0 0 6px">Statements</h2>' +
+      '<div class="acts" style="flex-wrap:wrap;gap:6px;margin:0">' + K.map(function (k) { return chip(k[0] === kind, "st-k", k[0], esc(k[1])); }).join("") + '</div>' +
+      '<div class="meta" style="font-size:12px;font-weight:700;margin-top:10px">PERIOD' + (kind === "pend" ? ' <span style="font-weight:500">(pending payments are always as of today)</span>' : '') + '</div>' +
+      '<div class="acts" style="flex-wrap:wrap;gap:6px;margin:4px 0 0;align-items:center">' + ST_PERIODS.map(function (p) { return chip(R.k === p[0], "st-per", p[0], esc(p[1])); }).join("") +
+        '<input type="date" id="st_from" value="' + esc(R.k === "all" ? "" : R.from) + '" style="min-height:44px;width:150px"/><span>to</span><input type="date" id="st_to" value="' + esc(R.to) + '" style="min-height:44px;width:150px"/>' +
+        '<button class="btn sm ghost" style="min-height:44px" data-act="st-range">Show</button></div>' +
+      '<div class="meta" style="font-size:12px;font-weight:700;margin-top:10px">EXECUTIVE <span style="font-weight:500">(tap several)</span></div>' +
+      '<div class="acts" style="flex-wrap:wrap;gap:6px;margin:4px 0 0">' + chip(!sel.length, "st-exall", "", "Everyone") +
+        exs.concat(["(no executive)"]).map(function (e) { return chip(sel.indexOf(e) >= 0, "st-ex", e, esc(e)); }).join("") + '</div>' +
+      '<div class="acts" style="flex-wrap:wrap;gap:6px;margin:10px 0 0;align-items:center">' + chip(!detail, "st-view", "compact", "Compact") + chip(detail, "st-view", "detail", "Detailed") +
+        '<span style="flex:1"></span><button class="btn sm" style="min-height:44px" data-act="st-xl">↓ Excel</button><button class="btn sm ghost" style="min-height:44px" data-act="st-pdf">↓ PDF</button></div></div>';
+    var sumBits = B.cols.filter(function (c) { return c.m && B.tot[c.k] != null; }).slice(0, 4).map(function (c) {
+      return '<div class="stat"><div class="n">' + money(B.tot[c.k]) + '</div><div class="l">' + esc(c.t.toLowerCase()) + '</div></div>'; }).join("");
+    h += '<div class="card"><h3 style="margin:0">' + esc(B.title) + ' &middot; ' + esc(kind === "pend" ? "as of " + dmy(today()) : stRangeLabel(R)) +
+      (sel.length ? ' &middot; ' + esc(sel.join(", ")) : '') + ' <span class="pill">' + plural(B.rows.length, detail ? "line" : "row") + '</span></h3>' +
+      (sumBits ? '<div class="cards" style="margin-top:8px">' + sumBits + '</div>' : '') +
+      '<div class="meta" style="font-size:12.5px;margin:6px 0">' + esc(B.note) + '</div>';
+    if (!B.rows.length) return h + '<div class="empty">Nothing in this period for ' + (sel.length ? esc(sel.join(", ")) : "anyone") + '.</div></div>';
+    var cols = B.cols.map(function (c) { return { k: c.k, t: c.t, n: (c.m || c.n) ? 1 : 0, r: (c.m || c.n) ? 1 : 0 }; });
+    var rows = B.rows.map(function (r) { var cells = {}; B.cols.forEach(function (c) { cells[c.k] = stCell(c, r[c.k]); });
+      if (r.held != null && r.held > 0.5) cells.held = '<b style="color:#b45309">' + money(r.held) + '</b>';
+      if (r.due != null && r.d90 > 0.5) cells.d90 = '<b style="color:#b91c1c">' + money(r.d90) + '</b>';
+      if (r.st === "Won") cells.st = '<span class="pill Won">Won</span>'; else if (r.st === "Lost") cells.st = '<span class="pill Lost">Lost</span>';
+      return { v: r, cells: cells }; });
+    var totRow = '<div style="display:flex;flex-wrap:wrap;gap:14px;margin-top:8px;font-size:13px"><b>TOTAL</b>' + B.cols.filter(function (c) { return B.tot[c.k] != null; }).map(function (c) {
+      return '<span>' + esc(c.t.toLowerCase()) + ': <b>' + (c.m ? money(B.tot[c.k]) : (c.k === "rate" ? B.tot[c.k] + "%" : B.tot[c.k])) + '</b></span>'; }).join("") + '</div>';
+    return h + xlTable("st_" + kind + (detail ? "_d" : "_c"), cols, rows, "every column") + totRow + '</div>';
+  }
+  function stFileName(B, R, ext) { return "Statement_" + B.title.replace(/[^\w]+/g, "_") + "_" + (B.kind === "pend" ? today() : R.from + "_to_" + R.to) + "." + ext; }
+  function stXlsx() {
+    var kind = S.stK || "pend", R = stRange(), detail = S.stView === "detail", B = stBuild(kind, R, detail), w = B.cols.length;
+    if (!B.rows.length) { toast("Nothing to download for this period."); return; }
+    var out = [rsFill("Energy World - " + B.title + " statement", XL.TITLE, w),
+               rsFill((kind === "pend" ? "As of " + dmy(today()) : stRangeLabel(R)) + ((S.stEx || []).length ? "  ·  " + S.stEx.join(", ") : "  ·  everyone") + "  ·  " + (detail ? "detailed" : "compact"), XL.SECT, w),
+               B.cols.map(function (c) { return { v: c.t, s: XL.HEAD }; })];
+    B.rows.forEach(function (r) { out.push(B.cols.map(function (c) { var v = r[c.k]; return c.m ? { v: Math.round(Number(v) || 0), s: XL.MONEY } : c.dt ? (v ? dmy(v) : "") : (c.k === "rate" ? (v || 0) + "%" : (v == null ? "" : v)); })); });
+    out.push(B.cols.map(function (c, i) { var v = B.tot[c.k]; return { v: i === 0 ? "TOTAL" : (v == null ? "" : (c.m ? Math.round(v) : (c.k === "rate" ? v + "%" : v))), s: c.m ? XL.MONEYB : XL.BAND }; }));
+    out.push([]); out.push([B.note]); out.push([rsMadeLine("Internal statement.")]);
+    dlXlsx(stFileName(B, R, "xlsx"), B.title.slice(0, 28), out, B.cols.map(function (c) { return c.w || 12; }), rsOpts(out, w, 3));
+  }
+  function stPdf() {
+    var kind = S.stK || "pend", R = stRange(), detail = S.stView === "detail", B = stBuild(kind, R, detail);
+    if (!B.rows.length) { toast("Nothing to print for this period."); return; }
+    toast("Building the PDF…");
+    loadLogo().then(function () {
+      var doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4", orientation: "landscape" });
+      var F = function (b) { doc.setFont(ppEmbed(doc), b ? "bold" : "normal"); };
+      var W = 297, L = 10, Rt = W - 10, HB = 20, RS = function (n) { var v = Math.round(nAmt(n)); return (v < 0 ? "-" : "") + "Rs." + Math.abs(v).toLocaleString("en-IN"); };
+      var tw = B.cols.reduce(function (a, c) { return a + (c.w || 12); }, 0), xs = [], acc = L;
+      var ws = B.cols.map(function (c) { return (c.w || 12) / tw * (Rt - L); });
+      ws.forEach(function (w) { xs.push(acc); acc += w; });
+      var fit = function (t, w) { t = String(t == null ? "" : t); if (doc.getTextWidth(t) <= w) return t; while (t.length > 1 && doc.getTextWidth(t + "…") > w) t = t.slice(0, -1); return t + "…"; };
+      var val = function (c, v) { return c.m ? ((Number(v) || 0) ? RS(v) : "-") : c.dt ? (v ? dmy(v) : "") : (c.k === "rate" ? (v || 0) + "%" : (v == null ? "" : String(v))); };
+      var page = 1, y;
+      var top = function () {
+        doc.setFillColor(11, 59, 54); doc.rect(0, 0, W, HB, "F");
+        if (LOGO_B64) { try { doc.addImage(LOGO_B64, "JPEG", L, 4, 24, 12); } catch (e) { } }
+        F(1); doc.setFontSize(11.5); doc.setTextColor(255, 255, 255); doc.text(B.title.toUpperCase() + " STATEMENT", Rt, 9, { align: "right" });
+        F(0); doc.setFontSize(7.6); doc.setTextColor(172, 212, 205);
+        doc.text((kind === "pend" ? "As of " + dmy(today()) : stRangeLabel(R)) + "   ·   " + ((S.stEx || []).length ? S.stEx.join(", ") : "everyone") + "   ·   " + (detail ? "detailed" : "compact") + "   ·   page " + page, Rt, 15, { align: "right" });
+        y = HB + 6;
+        doc.setFillColor(226, 232, 240); doc.rect(L, y - 3.6, Rt - L, 8.4, "F");
+        F(1); doc.setFontSize(6.4); doc.setTextColor(15, 23, 42);
+        B.cols.forEach(function (c, i) {   /* a heading may take two lines rather than be cut */
+          var ln = doc.splitTextToSize(c.t, ws[i] - 1.5).slice(0, 2);
+          if (ln.length === 2 && doc.splitTextToSize(c.t, ws[i] - 1.5).length > 2) ln[1] = fit(ln[1] + " …", ws[i] - 1.5);
+          ln.forEach(function (t, j) { if (c.m || c.n) doc.text(t, xs[i] + ws[i] - 1, y + j * 3, { align: "right" }); else doc.text(t, xs[i] + 1, y + j * 3); });
+        });
+        y += 9;
+      };
+      top();
+      F(0); doc.setFontSize(7);
+      B.rows.forEach(function (r, ri) {
+        if (y > 196) { doc.addPage(); page++; top(); F(0); doc.setFontSize(7); }
+        if (ri % 2) { doc.setFillColor(248, 250, 252); doc.rect(L, y - 3.3, Rt - L, 4.6, "F"); }
+        doc.setTextColor(15, 23, 42);
+        B.cols.forEach(function (c, i) { var t = fit(val(c, r[c.k]), ws[i] - 1.5); if (c.m || c.n) doc.text(t, xs[i] + ws[i] - 1, y, { align: "right" }); else doc.text(t, xs[i] + 1, y); });
+        y += 4.6;
+      });
+      if (y > 192) { doc.addPage(); page++; top(); }
+      doc.setFillColor(11, 59, 54); doc.rect(L, y - 3.3, Rt - L, 5, "F"); F(1); doc.setFontSize(7); doc.setTextColor(255, 255, 255);
+      B.cols.forEach(function (c, i) { var v = B.tot[c.k]; var t = i === 0 ? "TOTAL" : (v == null ? "" : (c.m ? RS(v) : (c.k === "rate" ? v + "%" : String(v)))); t = fit(t, ws[i] - 1.5);
+        if (c.m || c.n) doc.text(t, xs[i] + ws[i] - 1, y, { align: "right" }); else doc.text(t, xs[i] + 1, y); });
+      y += 8; F(0); doc.setFontSize(7); doc.setTextColor(71, 85, 105);
+      doc.splitTextToSize(B.note + "  Made " + dmy(today()) + " by " + String(S.user || "") + ". Internal statement.", Rt - L).forEach(function (ln) { if (y > 204) return; doc.text(ln, L, y); y += 3.6; });
+      pdfOut(doc, stFileName(B, R, "pdf"), B.title + " statement");
+    }).catch(function () { toast("Could not build the PDF on this device."); });
   }
   function viewPev() {
     if (!roleIs("admin")) return '<div class="empty">Partner events are kept by the owner.</div>';
@@ -51127,7 +51449,7 @@ function viewCatalogue() {
     /* v6.9.526 - "where is dedicated challan log under hisab". The register had no door: it was
        a sub-tab of the old Deliveries hub ("deliveries"), which no group names. It is a tab now,
        in both places a man would look. */
-    ["HISAB",      ["billing", "register", "paylog", "payments", "paidout", "dues", "review"]],   /* 6.9.667 - the Payment log beside the Challan log */   /* 6.9.635 - the twice-weekly review, in both places */
+    ["HISAB",      ["billing", "register", "paylog", "payments", "paidout", "dues", "review", "statements"]],   /* 6.9.667 - the Payment log beside the Challan log */   /* 6.9.635 - the twice-weekly review, in both places */
     ["Deliveries", ["challans", "register", "freight", "returns"]],
     /* v6.9.533 - his third list, item 13: "merge Leads and Clients into one tab with sub-tabs",
        and item 16: "remove Leads tab from header". One group; the lead board is its second
@@ -51135,7 +51457,7 @@ function viewCatalogue() {
     ["Clients",    ["clients", "leads", "crlog", "brandfollow", "followups", "quotes", "discounts", "pitch", "winloss", "review"]],
     ["Service",    ["complaints", "service"]],   /* 6.9.684 - complaints first */
     ["Products",   ["products", "pricelist", "catalogue", "catalogs", "brandstory", "stock", "tally", "plcheck"]],   /* 6.9.612 - price list and add-product back */   /* v6.9.581 - the catalogue library; v6.9.605 - Stock, on his "stock entry in CRM" */
-    ["Team",       ["partners", "pevents", "commission", "payroll", "scorecard", "report", "teampins"]],
+    ["Team",       ["partners", "pevents", "statements", "commission", "payroll", "scorecard", "report", "teampins"]],
     /* v6.9.539 - item 23: "Book numbers - what's the use, it's empty" (measured: 0 rows) - off
        the header; the screen still opens from the Health check. Item 25: The brief is a tab
        inside Agent now, so it is not here twice. */
@@ -51262,7 +51584,7 @@ function viewCatalogue() {
     catalogue: 1, partners: 1, scorecard: 1, report: 1, commission: 1, payroll: 1, teampins: 1, dash: 1,
     pending: 1, trouble: 1, dups: 1, health: 1, changelog: 1, tools: 1, brief: 1, rates: 1, rules: 1, booksweep: 1 };
   var HELP_ALIAS = { deliveries: "challans", collections: "payments", pricing: "pricelist", payrollhub: "commission",
-    dossier: "clients", matrix: "pitch", sites: "pitch", customers: "clients", paylog: "payments", complaints: "service", crlog: "clients", tally: "stock", plcheck: "stock", pevents: "partners" };   /* 6.9.667; 6.9.684 complaints -> the service section until it has its own */
+    dossier: "clients", matrix: "pitch", sites: "pitch", customers: "clients", paylog: "payments", complaints: "service", crlog: "clients", tally: "stock", plcheck: "stock", pevents: "partners", statements: "billing", statements: "billing" };   /* 6.9.667; 6.9.684 complaints -> the service section until it has its own */
   function helpHref(tab) {
     var k = HELP_AT[tab] ? tab : (HELP_ALIAS[tab] || "");
     return "../help/crm.html#t-" + (k || "start");
@@ -51492,7 +51814,7 @@ function viewCatalogue() {
       setTimeout(function () { try { preloadLogos(); } catch (e) { } }, 4000);
     }
     if (!S.pin && !S.tok) { renderLogin(); return; }
-    var views = { agent: viewAgent, search: viewSearch, dossier: viewDossier, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, complaints: viewComplaints, payments: viewPayments, paidout: viewPaidOut, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, catalogs: viewCatalogues, brandstory: viewBrandStories, clients: viewClients, crlog: viewCrLog, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, register: viewRegister, paylog: viewPayLog, freight: viewFreight, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, trouble: viewTrouble, changelog: viewChangeLog, booksweep: viewBookSweep, dups: viewDups, stock: viewStock, tally: viewTally, plcheck: viewPlCheck, pevents: viewPev, brief: viewBrief, review: viewReview };
+    var views = { statements: viewStatements, agent: viewAgent, search: viewSearch, dossier: viewDossier, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, complaints: viewComplaints, payments: viewPayments, paidout: viewPaidOut, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, catalogs: viewCatalogues, brandstory: viewBrandStories, clients: viewClients, crlog: viewCrLog, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, register: viewRegister, paylog: viewPayLog, freight: viewFreight, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, trouble: viewTrouble, changelog: viewChangeLog, booksweep: viewBookSweep, dups: viewDups, stock: viewStock, tally: viewTally, plcheck: viewPlCheck, pevents: viewPev, brief: viewBrief, review: viewReview };
     var tabs = TAB_TABS;
 
     var h = '<div class="top">' +
@@ -55966,6 +56288,14 @@ function viewCatalogue() {
       });
       return;
     }
+    if (act === "st-k") { S.stK = t.getAttribute("data-k"); render(); window.scrollTo(0, 0); return; }   /* 6.9.733 - statements */
+    if (act === "st-per") { S.stPer = t.getAttribute("data-k"); render(); return; }
+    if (act === "st-range") { var _sf = val("st_from"), _stt = val("st_to"); if (!_sf || !_stt) { toast("Pick both dates."); return; } S.stFrom = _sf; S.stTo = _stt; S.stPer = "custom"; render(); return; }
+    if (act === "st-exall") { S.stEx = []; render(); return; }
+    if (act === "st-ex") { var _se = t.getAttribute("data-k"), _sl = (S.stEx || []).slice(), _si = _sl.indexOf(_se); if (_si >= 0) _sl.splice(_si, 1); else _sl.push(_se); S.stEx = _sl; render(); return; }
+    if (act === "st-view") { S.stView = t.getAttribute("data-k") === "detail" ? "detail" : "compact"; render(); return; }
+    if (act === "st-xl") { stXlsx(); return; }
+    if (act === "st-pdf") { stPdf(); return; }
     if (act === "rgap-open") { if (!canFinalise()) return; S.modal = modalRateGap(); render(); return; }   /* 6.9.729 */
     if (act === "rgap-one") { if (!canFinalise()) return; S.modal = modalRateGapOne(t.getAttribute("data-id")); render(); return; }   /* 6.9.731 */
     if (act === "reprice-one") {
