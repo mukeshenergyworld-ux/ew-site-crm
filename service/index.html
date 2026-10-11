@@ -282,6 +282,14 @@ button.stat.sv2t{font-family:inherit;color:inherit;cursor:pointer;min-height:76p
 .sv2tab tr.cr.urg td:first-child{box-shadow:inset 3px 0 0 #dc2626}
 .sv2tab td .sub{display:block;font-size:12px;color:#64748b}
 .sv2tab th:first-child,.sv2tab td:first-child{padding-left:10px}
+/* 2.5.0 - tap the product that has the problem */
+.sv2fp{padding:0;margin:6px 0;overflow:hidden}
+.sv2fp.on{border-color:#0f766e;background:#f0fdfa}
+.sv2fpb{display:flex;gap:10px;align-items:center;width:100%;min-height:52px;padding:10px 12px;background:none;border:0;text-align:left;font:inherit;color:inherit;cursor:pointer}
+.sv2fpb .tk{flex:0 0 26px;height:26px;border-radius:50%;border:2px solid #94a3b8;display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff}
+.sv2fp.on .sv2fpb .tk{background:#0f766e;border-color:#0f766e}
+.sv2fp input.sv-fault{margin:0 12px 12px;width:calc(100% - 24px)}
+.fault{display:block;color:#b91c1c;font-weight:700;font-size:13px}
 label.sv2p{display:flex;gap:10px;align-items:flex-start;font-size:13px;font-weight:400;color:#0f172a;margin:6px 0;cursor:pointer;min-height:44px}
 label.sv2p input{margin-top:3px;width:20px;height:20px}
 .note.ok{border-color:#a7f3d0;background:#f0fdfa;color:#0f766e}
@@ -330,7 +338,7 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
    Nothing here deletes anything, ever. A visit is a row added.
    ========================================================================== */
 
-  var APP_VERSION = "2.4.0";
+  var APP_VERSION = "2.5.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_service_session";
 
@@ -2664,7 +2672,10 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
       /* 2.3.0 - its warranty first (a machine entered on the complaint carries it), then the AMC */
       if (p.amcEnd && tkDaysTo(p.amcEnd) >= 0) return { t: "AMC" + (p.amcType ? " (" + p.amcType + ")" : "") + " till " + dstr(p.amcEnd), ok: 1, amc: 1 };
       if (p.parts && p.parts.length) { var _po = p.parts.filter(function (x) { return x.till >= today(); }); var _pt = svPartsTxt(p.parts); return _po.length === p.parts.length ? { t: _pt, ok: 1 } : (_po.length ? { t: _pt, c: "warn" } : { t: _pt, c: "bad" }); }
-      if (p.insId) { var _ii = installById(p.insId); if (_ii) { var _wc = svWarrCover(_ii, today(), "Repair"); if (_wc) return { t: _wc.txt, ok: 1 }; var _wn = svWarrNote(_ii, "Repair", today()); if (_wn) return { t: _wn.txt, c: "warn" }; } }
+      if (p.insId) { var _ii = installById(p.insId); if (_ii) { var _wc = svWarrCover(_ii, today(), "Repair"); if (_wc) return { t: _wc.txt, ok: 1 }; var _wn = svWarrNote(_ii, "Repair", today()); if (_wn) return { t: _wn.txt, c: "warn" };
+        var _rj = {}; try { _rj = (JSON.parse(_ii.productsJson || "[]") || [])[0] || {}; } catch (e) { _rj = {}; }   /* 2.5.0 */
+        var _wp = svParts(_rj.brand || p.brand, _rj.commDate || _rj.installDate || _ii.installDate, Number(_rj.warrantyMonths) || 0);
+        if (_wp.length) { var _won = _wp.filter(function (x) { return x.till >= today(); }); return { t: svPartsTxt(_wp), c: _won.length ? "warn" : "bad", ok: _won.length === _wp.length ? 1 : 0 }; } } }
       if (!p.amcEnd) return { t: p.wtxt || "No warranty or AMC on file", c: "" };
       return tkDaysTo(p.amcEnd) >= 0 ? { t: "AMC" + (p.amcType ? " (" + p.amcType + ")" : "") + " till " + dstr(p.amcEnd), ok: 1, amc: 1 } : { t: "AMC ended " + dstr(p.amcEnd), c: "bad" };
     }
@@ -2902,7 +2913,8 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
       });
     });
     installs().filter(function (x) { return sv2Key(x.client) === k; }).forEach(function (x) {
-      out.push({ key: "I:" + x.id, kind: "install", desc: [x.product, x.model].filter(Boolean).join(" "), sn: x.serial || "", date: x.installDate || "", amcType: x.amcType || "", amcEnd: x.amcEnd || "" });
+      var _pj = {}; try { _pj = (JSON.parse(x.productsJson || "[]") || [])[0] || {}; } catch (e) { _pj = {}; }   /* 2.5.0 */
+      out.push({ key: "I:" + x.id, kind: "install", desc: [_pj.brand, x.product, x.model].filter(Boolean).join(" "), brand: String(_pj.brand || ""), insId: x.id, sn: x.serial || "", date: x.installDate || "", amcType: x.amcType || "", amcEnd: x.amcEnd || "" });
     });
     var rest = [];
     chs.forEach(function (c) {
@@ -3031,6 +3043,7 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
   function svTkProducts(t, d) {
     if (d.noProd) t.noProd = true;
     if (!Array.isArray(d.products) || !d.products.length) return;
+    if (d.replaceProducts) { t.products = d.products.slice(); t.noProd = false; return; }   /* 2.5.0 */
     var have = {}; (t.products || []).forEach(function (p) { if (p && p.key) have[p.key] = 1; });
     t.products = (t.products || []).concat(d.products.filter(function (p) { return p && (!p.key || !have[p.key]); }));
     t.noProd = false;
@@ -3050,6 +3063,44 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
       detail: JSON.stringify({ name: String(name || ""), mobile: cxMob(mobile), amt: Math.round(Number(amt) || 0), note: String(note || ""), ref: String(ref || "") }), ip: "" };
     (S.data.audit = S.data.audit || []).push(row); saveRow("audit", row);
   }
+  /* ================= 2.5.0 - ONLY THE PRODUCT WITH THE PROBLEM  (11 Oct 2026) =================
+     HIS WORDS: "pending complaint show only product marked for repair ... entering a client show his all installed product,
+     complaint registering person will click on product having issue and put remarks for that, no need to show all product
+     list here ... a proper system, simple, in less words, clean."
+     So: the client's products are listed once, to TAP. A tapped one asks "What is wrong with it?". Only the tapped ones go
+     on the complaint, each with its remark (product.fault). The rest stay his installations and are not repeated on the
+     complaint. An old complaint that carries all his products asks once which one has the problem (a move row with
+     replaceProducts - the CRM folds it the same way). */
+  function svFaultList(N, list, note) {
+    N.picks = N.picks || {}; N.fault = N.fault || {};
+    return (note ? '<label>' + note + '</label>' : '') + list.map(function (p) {
+      var on = !!N.picks[p.key], w = p.wtxt0 ? { t: p.wtxt0, ok: p.wok } : tkWarr(p);
+      return '<div class="card sv2fp' + (on ? ' on' : '') + '"><button class="sv2fpb" data-act="sv-fp" data-k="' + esc(p.key) + '"><span class="tk">' + (on ? '&#10003;' : '') + '</span>' +
+        '<span class="grow"><b>' + esc(p.desc || "") + '</b><span class="meta" style="display:block">' + esc(w.t || "") + '</span></span></button>' +
+        (on ? '<input class="sv-fault" data-k="' + esc(p.key) + '" value="' + esc(N.fault[p.key] || "") + '" placeholder="What is wrong with it?" autocomplete="off"/>' : '') + '</div>';
+    }).join("");
+  }
+  function svFaultKeep(N) {
+    if (!N) return; N.fault = N.fault || {};
+    Array.prototype.forEach.call(document.querySelectorAll("input.sv-fault"), function (e) { N.fault[e.getAttribute("data-k")] = String(e.value || ""); });
+  }
+  /* the machines typed on the form, as pickable lines (key NI:<index>) */
+  function svOldAsList(N) {
+    return (N.old || []).map(function (m, i) { var w = svMachineTill(m); return { key: "NI:" + i, desc: [m.brand, m.product, m.model].filter(Boolean).join(" "), wtxt0: w.txt, wok: w.c === "grn" }; });
+  }
+  /* picked, each with a remark - or a toast and null */
+  function svFaultCheck(N, list) {
+    var out = [];
+    for (var i = 0; i < list.length; i++) {
+      var p = list[i]; if (!N.picks[p.key]) continue;
+      var f = String(N.fault[p.key] || "").trim();
+      if (f.length < 3) { toast("Write what is wrong with " + (p.desc || "it") + "."); var e = document.querySelector('input.sv-fault[data-k="' + p.key + '"]'); if (e) e.focus(); return null; }
+      out.push(p);
+    }
+    return out;
+  }
+  function svFaultOf(t) { return (t.products || []).filter(function (p) { return p && p.fault; }); }
+  function svNeedsMark(t) { return (t.products || []).length > 1 && !svFaultOf(t).length; }
   /* the warranty terms of a brand, in words */
   function svTermsTxt(brand) {
     var bs = sv2BrandSvc(brand); if (!bs) return "";
@@ -3077,7 +3128,7 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
     return '<div class="sv2wrap"><table class="sv2tab ptab"><tr><th>Product</th><th>Installed</th><th>Commissioned</th><th>Warranty terms</th><th>Warranty status</th><th>AMC</th></tr>' +
       list.map(function (p) {
         var x = svProdInfo(p || {});
-        return '<tr><td><b>' + esc(x.name) + '</b>' + (x.brand && x.name.indexOf(x.brand) < 0 ? '<span class="sub">' + esc(x.brand) + '</span>' : '') + (x.sn ? '<span class="sub">S/N ' + esc(x.sn) + '</span>' : '') + (x.by ? '<span class="sub">by ' + esc(x.by) + '</span>' : '') + '</td>' +
+        return '<tr><td><b>' + esc(x.name) + '</b>' + (p && p.fault ? '<span class="fault">&ldquo;' + esc(p.fault) + '&rdquo;</span>' : '') + (x.brand && x.name.indexOf(x.brand) < 0 ? '<span class="sub">' + esc(x.brand) + '</span>' : '') + (x.sn ? '<span class="sub">S/N ' + esc(x.sn) + '</span>' : '') + (x.by ? '<span class="sub">by ' + esc(x.by) + '</span>' : '') + '</td>' +
           '<td>' + esc(x.inst) + '</td><td>' + esc(x.comm) + '</td><td style="min-width:170px">' + esc(x.terms) + '</td>' +
           '<td style="min-width:170px"><span class="pill ' + x.st.c + '" style="white-space:normal">' + esc(x.st.t) + '</span></td>' +
           '<td><span class="pill ' + x.amc.c + '" style="white-space:normal">' + esc(x.amc.t) + '</span></td></tr>';
@@ -3086,13 +3137,17 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
   /* the ticket's own "what is installed" - for a ticket that has none */
   function sv2ProdSheet() {
     var N = S.tm || {}, t = sv2Find(N.id); if (!t) return '<h2>Not found</h2><div class="acts"><button class="btn gry" data-act="close">Close</button></div>';
-    var nm = t.client || t.name, onFile = sv2Products(nm).filter(function (p) { return p.kind !== "item" && !(t.products || []).some(function (q) { return q.key === p.key; }); });
+    var nm = t.client || t.name;
+    var h = '<h2>' + (N.mode === "mark" ? 'Which product has the problem?' : 'His products') + '</h2><div class="muted">' + esc(nm || "") + ' &middot; ' + esc(t.ref || "") + '</div>';
+    if (N.mode === "mark") {   /* 2.5.0 - an old complaint carrying all his products */
+      return h + svFaultList(N, t.products || [], 'Tap it, and say what is wrong') +
+        '<div class="acts"><button class="btn gry" data-act="close">Cancel</button><button class="btn grow" data-act="sv2-tsave">Save</button></div>';
+    }
+    var onFile = sv2Products(nm).filter(function (p) { return p.kind !== "item" && !(t.products || []).some(function (q) { return q.key === p.key; }); });
     var od = svOldDue(nm, t.mobile);
-    var h = '<h2>Installed products &mdash; ' + esc(nm || "") + '</h2><div class="muted">' + esc(t.ref || "") + (t.mobile ? ' &middot; ' + esc(t.mobile) : '') + (t.area ? ' &middot; ' + esc(t.area) : '') + '</div>';
-    if (onFile.length) h += '<label>On file for him &mdash; tick what this complaint is about</label>' + onFile.map(function (p) {
-      return '<label class="card sv2p"><input type="checkbox" class="sv2-tpick" data-k="' + esc(p.key) + '"' + (N.picks[p.key] ? ' checked' : '') + '/><span class="grow"><b>' + esc(p.desc) + '</b> ' + sv2WarrPill(p) + '</span></label>';
-    }).join("");
+    if (onFile.length) h += svFaultList(N, onFile, 'Tap the one with the problem');
     h += svMachinesAsk(N, !onFile.length);
+    if ((N.old || []).length) h += svFaultList(N, svOldAsList(N), 'Now tap the one with the problem');
     h += '<div class="card" style="margin:8px 0"><b>Old pending amount, if any</b><div class="meta">What he owed us from before the CRM. It is written down and shown on his complaints; the office puts it on his account in the CRM.' + (od ? ' Already noted: <b>' + esc(money(od.amt)) + '</b>' + (od.note ? ' (' + esc(od.note) + ')' : '') + '.' : '') + '</div>' +
       '<div class="grid2"><div><label>Amount (&#8377;)</label><input id="sv_odue" inputmode="numeric" value="' + esc(N.due || "") + '" placeholder="0 if nothing"/></div>' +
       '<div><label>For what</label><input id="sv_oduen" value="' + esc(N.dueNote || "") + '" placeholder="e.g. 2023 heat pump balance"/></div></div></div>' +
@@ -3101,6 +3156,7 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
   }
   function sv2TmKeep() {
     var N = S.tm; if (!N) return;
+    svFaultKeep(N);   /* 2.5.0 */
     if (el("sv_odue")) N.due = val("sv_odue");
     if (el("sv_oduen")) N.dueNote = val("sv_oduen");
     Array.prototype.forEach.call(document.querySelectorAll(".sv2-tpick"), function (b) { if (b.checked) N.picks[b.getAttribute("data-k")] = 1; else delete N.picks[b.getAttribute("data-k")]; });
@@ -3125,15 +3181,27 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
   function sv2TSave() {
     sv2TmKeep();
     var N = S.tm || {}, t = sv2Find(N.id); if (!t) return;
-    var nm = t.client || t.name, picked = sv2Products(nm).filter(function (p) { return N.picks[p.key]; });
-    if (!N.hasM && !picked.length) { toast("Answer: are any of our products installed at his place?"); var _q = el("sv_mq"); if (_q) _q.scrollIntoView({ block: "center" }); return; }
-    if (N.hasM === "yes" && !(N.old || []).length && !picked.length) { toast("Enter his machine — brand, product, installed date, warranty — then + Add this machine."); var _q2 = el("sv_mq"); if (_q2) _q2.scrollIntoView({ block: "center" }); return; }
+    var nm = t.client || t.name, tk = tkAll().filter(function (x) { return x.id === t.id; })[0] || t;
+    if (N.mode === "mark") {   /* 2.5.0 */
+      var mk = svFaultCheck(N, t.products || []); if (!mk) return;
+      if (!mk.length) { toast("Tap the product that has the problem."); return; }
+      tkMove(tk, { replaceProducts: 1, products: mk.map(function (p) { return Object.assign({}, p, { fault: String(N.fault[p.key]).trim() }); }), note: "the product with the problem: " + mk.map(function (p) { return p.desc; }).join(", ") });
+      S.tm = null; S.tmOn = false; bust(); sv2Bust(); S.sheet = sv2Sheet(sv2Find(t.id) || t); render(); toast("Saved."); return;
+    }
+    var onFile = sv2Products(nm).filter(function (p) { return p.kind !== "item" && !(t.products || []).some(function (q) { return q.key === p.key; }); });
+    var oldL = svOldAsList(N);
+    if (!N.hasM && !onFile.length) { toast("Answer: are any of our products installed at his place?"); var _q = el("sv_mq"); if (_q) _q.scrollIntoView({ block: "center" }); return; }
+    if (N.hasM === "yes" && !oldL.length && !onFile.length) { toast("Enter his machine — brand, product, installed date, warranty — then + Add this machine."); var _q2 = el("sv_mq"); if (_q2) _q2.scrollIntoView({ block: "center" }); return; }
+    var pk1 = svFaultCheck(N, onFile); if (!pk1) return;
+    var pk2 = svFaultCheck(N, oldL); if (!pk2) return;
+    if ((onFile.length || oldL.length) && !pk1.length && !pk2.length) { toast("Tap the product that has the problem, and say what is wrong."); return; }
     var due = num(N.due);
     if (due < 0) { toast("The old pending amount cannot be below 0."); return; }
     var c = clientByName(nm), addr = "", areaF = c ? [c.area, c.location].filter(Boolean).join(", ") : String(t.area || "");
-    var ps = picked.concat(N.hasM === "yes" ? svSaveMachines(N.old, nm, t.mobile, addr, areaF, !!c) : []);
-    var tk = tkAll().filter(function (x) { return x.id === t.id; })[0] || t;
-    tkMove(tk, ps.length ? { products: ps, note: ps.length + " installed product" + (ps.length === 1 ? "" : "s") + " entered" } : { noProd: 1, note: "no product of ours at his place" });
+    var saved = N.hasM === "yes" ? svSaveMachines(N.old, nm, t.mobile, addr, areaF, !!c) : [];   /* all of them are his installations */
+    var ps = pk1.map(function (p) { return Object.assign({}, p, { fault: String(N.fault[p.key]).trim() }); })
+      .concat(saved.filter(function (p, i) { return N.picks["NI:" + i]; }).map(function (p) { var i = saved.indexOf(p); return Object.assign({}, p, { fault: String(N.fault["NI:" + i]).trim() }); }));
+    tkMove(tk, ps.length ? { products: ps, note: "the product with the problem: " + ps.map(function (p) { return p.desc; }).join(", ") } : { noProd: 1, note: "no product of ours at his place" });
     if (due > 0) svOldDueRow(nm, t.mobile, due, N.dueNote, t.ref);
     S.tm = null; S.tmOn = false; bust(); sv2Bust(); S.sheet = sv2Sheet(sv2Find(t.id) || t); render();
     toast(ps.length ? "Saved — " + ps.length + " product" + (ps.length === 1 ? "" : "s") + " on " + (t.ref || "the complaint") + "." : "Saved — no product of ours." + (due > 0 ? " Old pending " + money(due) + " noted." : ""));
@@ -3145,7 +3213,7 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
 
   /* ================= COMPLAINTS ================= */
   function sv2Row(t) {
-    var a = tkAge(t), p = (t.products || [])[0], b = sv2Bucket(t), due = sv2Due(t);
+    var a = tkAge(t), p = svFaultOf(t)[0] || (t.products || [])[0], b = sv2Bucket(t), due = sv2Due(t);   /* 2.5.0 */
     var st = b === "payment" ? '<span class="pill amb">' + esc(money(due)) + ' to collect</span>'
       : b === "done" ? '<span class="pill grn">' + esc(t.status === "Paid" ? "Paid" : t.status) + '</span>'
       : b === "cancelled" ? '<span class="pill">Cancelled</span>'
@@ -3154,8 +3222,8 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
       '<div class="row" style="align-items:flex-start"><div class="grow">' +
         '<div class="ttl">' + esc(t.client || t.name || "(no name)") + '</div>' +
         '<div class="meta">' + esc(t.cat || "Complaint") + ' &middot; ' + esc(t.pri) + (t.area ? ' &middot; ' + esc(t.area) : '') + '</div>' +
-        (p ? '<div class="meta"><b>' + esc(p.desc || "") + '</b> ' + sv2WarrPill(p) + '</div>' : '') +
-        (t.desc ? '<div class="cxsay">&ldquo;' + esc(t.desc.slice(0, 140)) + '&rdquo;</div>' : '') +
+        (p ? '<div class="meta"><b>' + esc(p.desc || "") + '</b> ' + sv2WarrPill(p) + '</div>' + (p.fault ? '<span class="fault">&ldquo;' + esc(p.fault) + '&rdquo;</span>' : '') : '') +
+        (t.desc && !(p && p.fault) ? '<div class="cxsay">&ldquo;' + esc(t.desc.slice(0, 140)) + '&rdquo;</div>' : '') +
       '</div><div class="right">' + (b === "pending" && a ? '<div class="amt' + (a.late ? ' bad' : '') + '">' + esc(a.txt) + '</div>' : '') + '</div></div>' +
       '<div class="row" style="margin-top:4px;flex-wrap:wrap"><span class="meta grow">' + esc(t.ref || "") + '</span>' + st +
         (b === "pending" && !t.eng && canRecord() ? '<button class="btn" data-act="tk-take" data-id="' + esc(t.id) + '" style="flex:0 0 auto;min-height:44px">Take it</button>' : '') + '</div></div>';
@@ -3187,8 +3255,9 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
           : b === "done" ? '<span class="pill grn">' + esc(t.status) + '</span>'
           : b === "cancelled" ? '<span class="pill">Cancelled</span>'
           : '<span class="pill ' + (t.eng ? 'blu' : 'red') + '">' + esc(t.eng ? t.status : 'No engineer yet') + '</span>' + (t.eng ? '<span class="sub">' + esc(t.eng) + '</span>' : '');
-        var pr = ps.length ? ps.map(function (p) { return '<div><b>' + esc(p.desc || "") + '</b><br>' + sv2WarrPill(p) + '</div>'; }).join("")
-          : t.noProd ? '<span class="sub">No product of ours</span>' : '<span class="pill red">No product entered</span>';
+        var pr = svNeedsMark(t) ? '<span class="pill amb">' + ps.length + ' products &mdash; mark the faulty one</span>'
+          : ps.length ? ps.map(function (p) { return '<div><b>' + esc(p.desc || "") + '</b>' + (p.fault ? '<span class="fault">&ldquo;' + esc(p.fault) + '&rdquo;</span>' : '') + sv2WarrPill(p) + '</div>'; }).join("")
+          : t.noProd ? '<span class="sub">No product of ours</span>' : '<span class="pill red">No product entered</span>';   /* 2.5.0 */
         var urg = b === "pending" && (t.pri === "High" || (a && a.late));
         return '<tr class="cr' + (urg ? ' urg' : '') + '" data-act="sv2-open" data-id="' + esc(t.id) + '">' +
           '<td><b>' + esc(t.ref || "") + '</b><span class="sub">' + esc(dstr(String(t.at || "").slice(0, 10))) + '</span></td>' +
@@ -3199,7 +3268,8 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
           '<td><span class="pill' + (t.pri === "High" ? ' red' : '') + '">' + esc(t.pri) + '</span>' + (b === "pending" && a ? '<span class="sub"' + (a.late ? ' style="color:#b91c1c;font-weight:700"' : '') + '>' + esc(a.txt) + (a.late ? ' · late' : '') + '</span>' : '') + '</td>' +
           '<td>' + st + '</td>' +
           '<td>' + (b === "pending" && !t.eng && canRecord() ? '<button class="btn sm" data-act="tk-take" data-id="' + esc(t.id) + '">Take it</button>'
-            : !ps.length && !t.noProd && b === "pending" ? '<button class="btn sm gry" data-act="sv2-tprod" data-id="' + esc(t.id) + '">Add products</button>' : '<button class="btn sm gry" data-act="sv2-open" data-id="' + esc(t.id) + '">Open</button>') + '</td></tr>';
+            : !ps.length && !t.noProd && b === "pending" ? '<button class="btn sm gry" data-act="sv2-tprod" data-id="' + esc(t.id) + '">Add products</button>'
+            : svNeedsMark(t) && b === "pending" ? '<button class="btn sm gry" data-act="sv2-tprod" data-k="mark" data-id="' + esc(t.id) + '">Mark it</button>' : '<button class="btn sm gry" data-act="sv2-open" data-id="' + esc(t.id) + '">Open</button>') + '</td></tr>';
       }).join("") + '</table></div>';
   }
   function sv2Sheet(t) {
@@ -3214,8 +3284,11 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
         (t.area ? '<div class="meta" style="margin-top:6px">' + esc(t.area) + '</div>' : '') + '</div>';
     /* 2.4.0 - product-wise, in a table; a ticket with none asks for them */
     var _od = svOldDue(t.client || t.name, t.mobile);
-    if ((t.products || []).length) h += '<label>Installed products</label>' + svProdTable(t.products) +
-      (b === "pending" ? '<div class="acts"><button class="btn gry sm" data-act="sv2-tprod" data-id="' + esc(t.id) + '">+ Add another product</button></div>' : '');
+    if (svNeedsMark(t) && b === "pending") h += '<div class="card" style="margin:8px 0;border-color:#fcd34d;background:#fffbeb"><b>' + t.products.length + ' products on this complaint</b>' +
+      '<div class="meta">Mark the one with the problem; the others stay on his record.</div>' +
+      '<div class="acts"><button class="btn" data-act="sv2-tprod" data-k="mark" data-id="' + esc(t.id) + '">Mark the faulty product</button></div></div>';   /* 2.5.0 */
+    else if ((t.products || []).length) h += '<label>Product with the problem</label>' + svProdTable(t.products) +
+      (b === "pending" ? '<div class="acts"><button class="btn gry sm" data-act="sv2-tprod" data-id="' + esc(t.id) + '">+ Another product</button></div>' : '');
     else if (t.noProd) h += '<div class="note">No product of ours at his place (as told). <button class="btn gry sm" data-act="sv2-tprod" data-id="' + esc(t.id) + '">Enter products after all</button></div>';
     else h += '<div class="card" style="margin:8px 0;border-color:#fca5a5;background:#fef2f2"><b style="color:#b91c1c">No product entered on this complaint</b>' +
       '<div class="meta">Enter what is installed at his place &mdash; product by product, with the installed and commissioned dates and the warranty &mdash; and any old pending amount. Needed before it is finished.</div>' +
@@ -3276,6 +3349,7 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
     sv2FinKeep();
     var F = S.fin || {}, t = sv2Find(F.id); if (!t) return;
     if (!(t.products || []).length && !t.noProd) { toast("Enter his installed products on the complaint first (or: no product of ours)."); return; }   /* 2.4.0 */
+    if (svNeedsMark(t)) { toast("Mark the product with the problem first."); return; }   /* 2.5.0 */
     if (!F.out) { toast("Say what was done."); return; }
     if (!F.got) { toast("Was the service charge received? Pick Yes, No or No charge."); return; }
     var chg = F.got === "free" ? 0 : num(F.chg);
@@ -3343,16 +3417,13 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
     } else if (c) {
       h += '<div class="card" style="margin:8px 0"><div class="row"><div class="grow"><b>' + esc(c.name) + '</b><div class="meta">' + esc([c.location, c.mobile].filter(Boolean).join(" · ")) + '</div></div>' +
         '<button class="btn gry sm" data-act="sv2-nc-clear">Change</button></div></div>';
-      var ps = sv2Products(c.name);
-      h += svClientCard(c.name);   /* 2.2.0 - his machines, cover and money */
-      h += '<label>Installed at his site &mdash; tick the product</label>' + (ps.length ? ps.map(function (p) {
-        return '<label class="card sv2p"><input type="checkbox" class="sv2-pick" data-k="' + esc(p.key) + '"' + (N.picks[p.key] ? ' checked' : '') + '/>' +
-          '<span class="grow"><b>' + esc(p.desc) + '</b>' + (p.brand ? ' <span class="meta">' + esc(p.brand) + '</span>' : '') + (p.sn ? ' <span class="meta">S/N ' + esc(p.sn) + '</span>' : '') +
-          (p.ch ? '<span class="meta" style="display:block">' + esc(p.ch) + ' · ' + esc(dstr(p.date)) + '</span>' : '') +
-          '<span style="display:block;margin-top:3px">' + sv2WarrPill(p) + '</span></span></label>';
-      }).join("") : '<div class="note">' + (Array.isArray(S.data && S.data.challans) ? 'Nothing delivered to him is on the book.' : 'The deliveries are not on this phone yet (server update V144).') + '</div>');
-      /* 2.3.0 - no machine of his on file: ask, as for a new caller */
-      if (!ps.some(function (p) { return p.kind !== "item"; })) h += svMachinesAsk(N, false);
+      var ps = sv2Products(c.name), mach = ps.filter(function (p) { return p.kind !== "item"; }), items = ps.filter(function (p) { return p.kind === "item"; });
+      h += '<div class="card" style="margin:6px 0">' + (moneyStrip(c.name) || '<div class="meta">Nothing pending.</div>') + '</div>';   /* 2.5.0 - the money, in one line */
+      if (mach.length) h += svFaultList(N, mach, 'Tap the product with the problem');
+      if (items.length) h += (N.showItems ? svFaultList(N, items, 'Other things delivered to him') : '<button class="btn gry sm" data-act="sv-items">Other things delivered to him (' + items.length + ')</button>');
+      if (!mach.length) h += svMachinesAsk(N, false);   /* 2.3.0 - nothing of his on file: ask */
+      if ((N.old || []).length) h += svFaultList(N, svOldAsList(N), 'Now tap the one with the problem');
+      if (mach.length || items.length || (N.old || []).length) h += '<div class="chips"><button class="chip bchip' + (N.notProd ? ' on' : '') + '" data-act="sv-notprod">Not about his products</button></div>';
     } else {
       /* 2.3.0 - HIS WORDS (11 Oct): "registering a new client is still not asking what product installed and what are their
          installation details". 2.2.0 offered a box he could skip. Now the question is asked and must be answered:
@@ -3370,6 +3441,7 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
         (N.narea === "__new__" ? '<label>The area</label><input id="sv2_area" value="' + esc(N.area || "") + '" placeholder="Colony / sector"/>' : '') +
         '<label>House / address</label><input id="sv2_addr" value="' + esc(N.addr || "") + '" placeholder="e.g. 96 R, Model Town"/>' +
         svMachinesAsk(N, true) +
+        ((N.old || []).length ? svFaultList(N, svOldAsList(N), 'Now tap the one with the problem') : '') +   /* 2.5.0 */
         '<div class="grid2"><div><label>Old pending amount, if any (&#8377;)</label><input id="sv2_odue" inputmode="numeric" value="' + esc(N.due || "") + '" placeholder="0 if nothing"/></div>' +
         '<div><label>For what</label><input id="sv2_oduen" value="' + esc(N.dueNote || "") + '" placeholder="e.g. 2023 heat pump balance"/></div></div>' +
         '<div class="meta">What he owed from before the CRM &mdash; noted on the complaint; the office puts it on his account.</div>' +   /* 2.4.0 */
@@ -3378,7 +3450,7 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
     h += '<label>What is it about</label><div class="chips">' + SV2_CATS.map(function (x) { return '<button class="chip bchip' + (N.cat === x ? ' on' : '') + '" data-act="sv2-nc-cat" data-k="' + esc(x) + '">' + esc(x) + '</button>'; }).join("") + '</div>' +
       '<label>How urgent</label><div class="chips">' + [["High", "High · 24 h"], ["Normal", "Normal · 48 h"], ["Low", "Low · 72 h"]].map(function (x) { return '<button class="chip bchip' + (N.pri === x[0] ? ' on' : '') + '" data-act="sv2-nc-pri" data-k="' + x[0] + '">' + x[1] + '</button>'; }).join("") + '</div>' +
       '<label>How it came</label><div class="chips">' + SV2_SRC.map(function (x) { return '<button class="chip bchip' + (N.src === x ? ' on' : '') + '" data-act="sv2-nc-src" data-k="' + esc(x) + '">' + esc(x) + '</button>'; }).join("") + '</div>' +
-      '<label>What happened</label><textarea id="sv2_desc" rows="3" placeholder="In the customer’s words">' + esc(N.desc || "") + '</textarea>' +
+      '<label>' + (Object.keys(N.picks || {}).length ? 'Anything else (optional)' : 'What happened') + '</label><textarea id="sv2_desc" rows="' + (Object.keys(N.picks || {}).length ? 2 : 3) + '" placeholder="In the customer’s words">' + esc(N.desc || "") + '</textarea>' +
       '<label>Engineer</label><select id="sv2_neng"><option value="">Leave it for whoever takes it</option>' +
         sv2Engineers().map(function (e) { return '<option' + (lower(N.eng) === lower(e) ? ' selected' : '') + '>' + esc(e) + '</option>'; }).join("") + '</select>' +
       '<div class="acts"><button class="btn gry" data-act="close">Cancel</button><button class="btn grow" data-act="sv2-nc-save">Register the complaint</button></div>';
@@ -3464,7 +3536,7 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
     if (el("sv2_odue")) N.due = val("sv2_odue");      /* 2.4.0 */
     if (el("sv2_oduen")) N.dueNote = val("sv2_oduen");
     if (el("sv2_cq")) N.cq = val("sv2_cq");
-    Array.prototype.forEach.call(document.querySelectorAll(".sv2-pick"), function (b) { if (b.checked) N.picks[b.getAttribute("data-k")] = 1; else delete N.picks[b.getAttribute("data-k")]; });
+    svFaultKeep(N);   /* 2.5.0 - picks are taps now */
   }
   function sv2NewSave(btn) {
     sv2NewKeep();
@@ -3480,12 +3552,20 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
     var _askM = !c || !sv2Products(c.name).some(function (p) { return p.kind !== "item"; });
     if (_askM && !c && !N.hasM) { toast("Answer: are any of our products installed at his place?"); var _q = el("sv_mq"); if (_q) _q.scrollIntoView({ block: "center" }); return; }
     if (N.hasM === "yes" && !(N.old || []).length) { toast("Enter his machine — brand, product and the date it was installed — then + Add this machine."); var _q2 = el("sv_mq"); if (_q2) _q2.scrollIntoView({ block: "center" }); return; }
+    /* 2.5.0 - the product with the problem, and what is wrong with it */
+    var _cand = c ? sv2Products(c.name).filter(function (p) { return p.kind !== "item" || N.showItems; }) : [], _oldL = svOldAsList(N);
+    var _pk1 = svFaultCheck(N, _cand); if (!_pk1) return;
+    var _pk2 = svFaultCheck(N, _oldL); if (!_pk2) return;
+    if ((_cand.length || _oldL.length) && !_pk1.length && !_pk2.length && !N.notProd) { toast("Tap the product that has the problem — or Not about his products."); return; }
+    var _rem = _pk1.concat(_pk2).map(function (p) { return p.desc + ": " + String(N.fault[p.key]).trim(); }).join("; ");
+    if (!String(N.desc || "").trim() && _rem) N.desc = _rem;
     if (String(N.desc || "").trim().length < 4) { toast("Write in a line what happened."); return; }
     if (num(N.due) < 0) { toast("The old pending amount cannot be below 0."); return; }
     var _newMach = N.hasM === "yes" && (N.old || []).length
       ? svSaveMachines(N.old, nm, mob, N.addr, c ? [c.area, c.location].filter(Boolean).join(", ") : [_area, N.ndist].filter(Boolean).join(", "), !!c) : [];   /* 2.4.0 - one saver */
-    var ps = (c ? sv2Products(c.name).filter(function (p) { return N.picks[p.key]; }) : []).concat(_newMach);   /* 2.3.0 - the machines just entered are what the complaint is about */
-    var pt = ps.map(function (p) { return p.desc + (p.sn ? " S/N " + p.sn : "") + " (" + tkWarr(p).t + ")"; }).join("; ");
+    var ps = _pk1.map(function (p) { return Object.assign({}, p, { fault: String(N.fault[p.key]).trim() }); })
+      .concat(_newMach.map(function (p, i) { return N.picks["NI:" + i] ? Object.assign({}, p, { fault: String(N.fault["NI:" + i]).trim() }) : null; }).filter(Boolean));   /* 2.5.0 - only the product with the problem */
+    var pt = ps.map(function (p) { return p.desc + (p.sn ? " S/N " + p.sn : "") + " (" + tkWarr(p).t + ")" + (p.fault ? " - " + p.fault : ""); }).join("; ");
     if (btn) { btn.disabled = true; btn.textContent = "Registering…"; }
     api("complaint", { name: nm, mobile: mob, city: c ? (c.location || "") : [_area, N.ndist].filter(Boolean).join(", "), category: N.cat, orderNo: "", urgency: N.pri,
       description: "[" + N.src + " · registered by " + S.user + " in the Service app]" + (pt ? "\nProduct: " + pt : "") + "\n" + N.desc }, 30000).catch(function () { return null; })
@@ -4823,9 +4903,16 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
     if (act === "sv2-tprod") {   /* 2.4.0 */
       var _tp = sv2Find(id); if (!_tp) return;
       var _has = sv2Products(_tp.client || _tp.name).some(function (p) { return p.kind !== "item"; });
-      S.tm = { id: id, picks: {}, old: [], hasM: _has ? "" : "yes" }; S.tmOn = true; S.sv2id = id; S.sheet = sv2ProdSheet(); render(); return;
+      S.tm = { id: id, picks: {}, fault: {}, old: [], hasM: _has ? "" : "yes", mode: t.getAttribute("data-k") === "mark" ? "mark" : "" }; S.tmOn = true; S.sv2id = id; S.sheet = sv2ProdSheet(); render(); return;
     }
     if (act === "sv2-tsave") { sv2TSave(); return; }
+    if (act === "sv-fp") {   /* 2.5.0 - tap the product with the problem */
+      svMKeep(); var _NF = svMN(); if (!_NF) return; _NF.picks = _NF.picks || {}; var _fk = t.getAttribute("data-k");
+      if (_NF.picks[_fk]) delete _NF.picks[_fk]; else { _NF.picks[_fk] = 1; _NF.notProd = false; }
+      svMPaint(); setTimeout(function () { var e = document.querySelector('input.sv-fault[data-k="' + _fk + '"]'); if (e && !e.value) e.focus(); }, 30); return;
+    }
+    if (act === "sv-notprod") { svMKeep(); var _NP = svMN(); if (_NP) { _NP.notProd = !_NP.notProd; if (_NP.notProd) _NP.picks = {}; } svMPaint(); return; }
+    if (act === "sv-items") { svMKeep(); if (S.nc) S.nc.showItems = true; svMPaint(); return; }
     if (act === "tk-take" && S.sv2id) {
       if (!canRecord()) { toast("Taking a job is the engineer's."); return; }
       var _tt2 = tkAll().filter(function (x) { return x.id === id; })[0]; if (!_tt2) return;
@@ -4874,7 +4961,7 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
       svMPaint(); return;
     }
     if (act === "sv-hasm") { svMKeep(); var _NH = svMN(); if (_NH) _NH.hasM = t.getAttribute("data-k") === "yes" ? "yes" : "no"; svMPaint(); return; }   /* 2.3.0; 2.4.0 - also on a ticket */
-    if (act === "sv-old-del") { svMKeep(); var _ND = svMN(); if (_ND && _ND.old) _ND.old.splice(Number(t.getAttribute("data-i")) || 0, 1); svMPaint(); return; }
+    if (act === "sv-old-del") { svMKeep(); var _ND = svMN(); if (_ND && _ND.old) { _ND.old.splice(Number(t.getAttribute("data-i")) || 0, 1); Object.keys(_ND.picks || {}).forEach(function (k) { if (/^NI:/.test(k)) delete _ND.picks[k]; }); } svMPaint(); return; }
     if (act === "sv2-comm") {
       if (!canRecord()) { toast("Commissioning is the engineer's."); return; }
       S.cm = { id: id, date: today(), l: {}, pics: [] }; S.sheet = sv2CommSheet(); render(); return;
