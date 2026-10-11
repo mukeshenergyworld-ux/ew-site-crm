@@ -177,7 +177,47 @@ table.ct td.wd{white-space:nowrap}
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.65.0";
+  var APP_VERSION = "1.66.0";
+  /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
+     HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
+     phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
+     turning pictures, logos and PDFs back, so every screen - including the thousands of colours written inline
+     over the years - changes at once and nothing can be left white-on-white. Red stays red, green stays green.
+     Changing it touches no data. */
+  (function () {
+    var K = "ewTheme";
+    function ewtGet() { try { var v = localStorage.getItem(K); return v === "light" || v === "dark" ? v : "auto"; } catch (e) { return "auto"; } }
+    function ewtOs() { try { return !!(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches); } catch (e) { return false; } }
+    function ewtDark() { var m = ewtGet(); return m === "dark" || (m === "auto" && ewtOs()); }
+    function ewtApply() {
+      var r = document.documentElement; if (!r) return;
+      r.setAttribute("data-ewdark", ewtDark() ? "1" : "0");
+      try { var mt = document.querySelector('meta[name="theme-color"]'); if (mt) { if (!mt.getAttribute("data-light")) mt.setAttribute("data-light", mt.getAttribute("content") || ""); mt.setAttribute("content", ewtDark() ? "#11161D" : mt.getAttribute("data-light")); } } catch (e) { }
+    }
+    try {
+      var st = document.createElement("style");
+      st.textContent = 'html{background:#fff}' +
+        'html[data-ewdark="1"]{filter:invert(.92) hue-rotate(180deg)}' +
+        'html[data-ewdark="1"] .top{filter:invert(1) hue-rotate(180deg)}' +   /* the navy bar stays navy, as on the card */
+        'html[data-ewdark="1"] img,html[data-ewdark="1"] video,html[data-ewdark="1"] canvas,html[data-ewdark="1"] iframe,html[data-ewdark="1"] embed,html[data-ewdark="1"] object,html[data-ewdark="1"] [data-noinvert]{filter:invert(1) hue-rotate(180deg)}' +
+        '.ewthm{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:44px;min-width:44px;padding:0 14px;border:1px solid #DCE3EA;border-radius:10px;background:#fff;color:#1F3A5F;font:inherit;font-size:14px;font-weight:700;cursor:pointer}';
+      (document.head || document.documentElement).appendChild(st);
+    } catch (e) { }
+    ewtApply();
+    try { var mq = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)"); if (mq) { if (mq.addEventListener) mq.addEventListener("change", ewtApply); else if (mq.addListener) mq.addListener(ewtApply); } } catch (e) { }
+    function ewtLabel() { var m = ewtGet(); return "&#9681; Theme: " + (m === "auto" ? "Auto (as the phone)" : m === "dark" ? "Dark" : "Light"); }
+    window.ewTheme = {
+      get: ewtGet, isDark: ewtDark, label: ewtLabel,
+      set: function (m) { try { localStorage.setItem(K, m); } catch (e) { } ewtApply(); },
+      next: function (btn) {
+        var m = ewtGet(), n = m === "auto" ? "light" : m === "light" ? "dark" : "auto";
+        window.ewTheme.set(n);
+        if (btn) btn.innerHTML = ewtLabel();
+      },
+      button: function () { return '<button type="button" class="ewthm" onclick="ewTheme.next(this)">' + ewtLabel() + '</button>'; }
+    };
+  })();
+
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_collect_session";
 
@@ -4614,6 +4654,7 @@ function cancelMap() {
       '<div class="acts" style="margin-top:12px">' +
       '<button class="btn gry" data-act="close">Close</button>' +
       '<div class="grow"></div>' +
+      window.ewTheme.button() + ' ' +
       '<button class="btn" data-act="signout" style="background:#b91c1c;border-color:#b91c1c">Sign out</button></div>';
   }
 
