@@ -319,7 +319,7 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
    Nothing here deletes anything, ever. A visit is a row added.
    ========================================================================== */
 
-  var APP_VERSION = "2.0.0";
+  var APP_VERSION = "2.1.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_service_session";
 
@@ -2292,8 +2292,12 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
        start and it caught the first cut of this change: "a missing price list may not invent
        money, which is the whole reason the number is not typed into the app". A client never
        visited gets an EMPTY box and a line saying so - not a number somebody made up. */
+    if (String(type || "") !== "Installation" && svWarrCover(ins, date)) return "";   /* 2.1.0 - in warranty */
     var r = clientVisitCharge(ins.client);
-    return r > 0 ? String(r) : "";
+    if (r > 0) return String(r);
+    /* 2.1.0 - "auto per visit charges": his first charged visit takes the office's rate card (CRM Complaints >
+       Service charges) - a figure the owner set, not one this app makes up. No card, no figure, as before. */
+    return tkRateFor(type) || "";
   }
 
   function spareByCode(code) {
@@ -2404,6 +2408,40 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
     });
   }
 
+  /* ===== 2.1.0 - IN WARRANTY, AND WHOSE (11 Oct 2026) =====
+     HIS RULE: "if product under warranty then service is under Energy World or brand, if product not under warranty
+     then service is on chargeable basis under Energy World". Until today only a visit opened from a complaint ticket
+     knew the warranty; a routine service on a machine in warranty was offered the client's usual charge. MEASURED
+     too: warrantyEnd() above builds its date from dstr(), which on this app returns "12 Apr 2027" - not a date - so
+     inWarranty() could never say yes. This reads the dates as dates.
+     The brand's answer (Energy World, or the brand's own engineer, and its helpline) is set in the CRM under
+     Products > Brands and arrives here on the brand:svc row. */
+  function svYmd(v) { var m = String(v == null ? "" : v).match(/^(\d{4}-\d{2}-\d{2})/); return m ? m[1] : ""; }
+  function svWarrEnd(p) {
+    var mo = Number(p && p.warrantyMonths) || 0; if (!mo) return "";
+    var base = svYmd(p.commDate) || svYmd(p.installDate); if (!base) return "";
+    var d = new Date(base + "T00:00:00"); d.setMonth(d.getMonth() + mo); return ymdLocal(d);
+  }
+  function svWarrList(ins) {
+    var out = [], raw = [];
+    try { raw = JSON.parse((ins && ins.productsJson) || "[]") || []; } catch (e) { raw = []; }
+    raw.forEach(function (p) { var e = svWarrEnd(p || {}); if (e) out.push({ brand: String(p.brand || ""), till: e }); });
+    if (out.length || !ins) return out;
+    var n = String(ins.notes || ""), m = n.match(/warranty till (\d{2})\/(\d{2})\/(\d{4})/i), m2 = n.match(/warranty till (\d{4}-\d{2}-\d{2})/i);
+    var till = m ? m[3] + "-" + m[2] + "-" + m[1] : (m2 ? m2[1] : "");
+    if (till) out.push({ brand: sv2BrandSvc(ins.model) ? String(ins.model) : "", till: till });
+    return out;
+  }
+  /* null when out of warranty; else what the engineer is told */
+  function svWarrCover(ins, date) {
+    if (!ins) return null;
+    var d = String(date || today()).slice(0, 10);
+    var on = svWarrList(ins).filter(function (w) { return w.till >= d; }).sort(function (a, b) { return b.till.localeCompare(a.till); })[0];
+    if (!on) return null;
+    var bs = sv2BrandSvc(on.brand), byB = !!(bs && bs.wby === "brand"), hp = byB ? (bs.help || "") : "";
+    return { ok: 1, amc: 0, warranty: 1, till: on.till, brand: on.brand, byBrand: byB, help: hp,
+      txt: "In warranty till " + dstr(on.till) + (byB ? " — " + on.brand + "’s own engineer services it" + (hp ? " (helpline " + hp + ")" : "") : " — Energy World services it free") };
+  }
   /* ---- WHAT A COMPLAINT VISIT COSTS ----
      "Free if under warranty or AMC, else normal."
 
@@ -2475,7 +2513,7 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
       '</div>' +
       '<div class="right">' +
         '<div class="due ' + cls + '">' + esc(dueSay(ins)) + '</div>' +
-        (a.live ? '<div class="pill amc">AMC</div>' : '') +
+        (a.live ? '<div class="pill amc">AMC</div>' : (svWarrCover(ins) ? '<div class="pill amc">Warranty</div>' : '<div class="pill" style="background:#fef3c7;color:#92400e">Charged</div>')) +   /* 2.1.0 */
       '</div></div></div>';
   }
 
@@ -2698,14 +2736,17 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
   }
   var _sv2c = null;
   function sv2Bust() { _sv2c = null; }
+  var _sv2N = -1;   /* 2.1.0 - rebuilt when the audit rows change (a refresh brought the brand switch after the first paint) */
   function sv2Cache() {
-    if (_sv2c) return _sv2c;
+    var _al = ((S.data && S.data.audit) || []).length;
+    if (_sv2c && _sv2N === _al) return _sv2c;
+    _sv2N = _al;
     var brand = {}, comm = {}, bAt = {};
     ((S.data && S.data.audit) || []).forEach(function (a) {
       var act = String(a && a.action || "");
       if (act === "brand:svc") {
         var d = sv2J(a.detail), k = sv2Key(d.brand); if (!k) return;
-        if (!bAt[k] || String(a.createdAt || "") >= bAt[k]) { bAt[k] = String(a.createdAt || ""); brand[k] = { on: !!d.on, wm: Number(d.wm) || 0, cm: Number(d.cm) || 0 }; }
+        if (!bAt[k] || String(a.createdAt || "") >= bAt[k]) { bAt[k] = String(a.createdAt || ""); brand[k] = { on: !!d.on, wm: Number(d.wm) || 0, cm: Number(d.cm) || 0, wby: d.wby === "brand" ? "brand" : "ew", help: String(d.help || "") }; }   /* 2.1.0 */
       } else if (act === "comm:done") {
         var c = sv2J(a.detail); if (!c.chId) return;
         var m = comm[c.chId] || (comm[c.chId] = {});
@@ -3143,7 +3184,7 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
       return '<div class="card"><div class="row" style="align-items:flex-start"><div class="grow"><b>' + esc(x.i.desc || x.need.label) + '</b><div class="meta">' + esc(x.i.brand || "") + ' &middot; qty ' + esc(String(x.i.qty || 1)) + '</div></div>' +
         '<label style="display:flex;align-items:center;gap:6px;margin:0;font-size:12.5px;min-height:44px"><input type="checkbox" class="cm2-skip" data-i="' + x.idx + '"' + (L.skip ? ' checked' : '') + '/> Not a machine</label></div>' +
         (L.skip ? '<div class="meta">Left out &mdash; no commissioning, no warranty card.</div>' :
-        '<div class="grid2"><div><label>Serial no. (if any)</label><input class="cm2-sn" data-i="' + x.idx + '" value="' + esc(L.sn || "") + '"/></div>' +
+        '<div class="grid2"><div><label>Serial no.</label><input class="cm2-sn" data-i="' + x.idx + '" value="' + esc(L.sn || sv2AutoSn(c, x.idx)) + '" style="font-family:ui-monospace,monospace"/></div>' +   /* 2.1.0 - ours, made for it */
         '<div class="grid2" style="gap:6px"><div><label>Warranty months</label><input class="cm2-wm" data-i="' + x.idx + '" inputmode="numeric" value="' + esc(L.wm == null ? x.need.wm : L.wm) + '"/></div>' +
         '<div><label>Service every (months)</label><input class="cm2-cm" data-i="' + x.idx + '" inputmode="numeric" value="' + esc(L.cm == null ? x.need.cm : L.cm) + '"/></div></div></div>') + '</div>';
     }).join("");
@@ -3159,6 +3200,8 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
     var put = function (cls, f, isBox) { Array.prototype.forEach.call(document.querySelectorAll(cls), function (e) { var i = e.getAttribute("data-i"); (K.l[i] = K.l[i] || {})[f] = isBox ? e.checked : String(e.value || "").trim(); }); };
     put(".cm2-skip", "skip", true); put(".cm2-sn", "sn"); put(".cm2-wm", "wm"); put(".cm2-cm", "cm");
   }
+  /* 2.1.0 - "there is not serial no on any product": EW-<challan>-<line>, the same as the CRM makes */
+  function sv2AutoSn(c, idx) { return "EW-" + String((c && c.challanNo) || (c && c.id) || "").replace(/[^A-Za-z0-9]/g, "") + "-" + (Number(idx) + 1); }
   function sv2CommSave() {
     sv2CommKeep();
     var K = S.cm || {}, c = sv2Challans().filter(function (x) { return x.id === K.id; })[0]; if (!c) return;
@@ -3167,7 +3210,7 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
       var L = (K.l && K.l[x.idx]) || {};
       if (L.skip) return { idx: x.idx, code: x.i.code || "", desc: x.i.desc || "", brand: x.i.brand || "", skip: true };
       var wm = L.wm === "" || L.wm == null ? x.need.wm : num(L.wm), cm = L.cm === "" || L.cm == null ? x.need.cm : num(L.cm);
-      return { idx: x.idx, code: x.i.code || "", desc: x.i.desc || "", brand: x.i.brand || "", qty: num(x.i.qty) || 1, sn: L.sn || "", wm: wm, till: sv2AddMonths(date, wm), cm: cm };
+      return { idx: x.idx, code: x.i.code || "", desc: x.i.desc || "", brand: x.i.brand || "", qty: num(x.i.qty) || 1, sn: L.sn || sv2AutoSn(c, x.idx), wm: wm, till: sv2AddMonths(date, wm), cm: cm };
     });
     var real = lines.filter(function (l) { return !l.skip; });
     if (real.length && !(K.pics || []).length) { toast("Take at least one photo of the installed machine."); return; }
@@ -3181,6 +3224,8 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
       saveRow("installs", { id: mintId("IN"), createdBy: S.user, client: c.customerName || "", mobile: cl.mobile || "", address: cl.address || "", area: cl.location || "",
         product: l.desc, model: l.brand, serial: l.sn, installDate: date, waterQuality: "", cycleDays: Math.round(l.cm * 30), lastService: date,
         nextService: sv2AddMonths(date, l.cm), amcType: "None", amcAmount: "", amcEnd: "", engineer: S.user, status: "Active",
+        /* 2.1.0 - the product, its brand and its warranty, read by both apps (it was only in the note) */
+        productsJson: JSON.stringify([{ brand: l.brand, product: l.desc, model: l.desc, serial: l.sn, installDate: date, commDate: date, warrantyMonths: num(l.wm), serviceReq: 1, serviceMonths: num(l.cm) || 1 }]),
         notes: "Commissioned on the Service app · Challan " + (c.challanNo || "") + " · warranty till " + dstr(l.till) + (l.qty > 1 ? " · qty " + l.qty : "") });
     });
     try { applyJournal(); } catch (e) { }
@@ -3457,7 +3502,17 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
       kv("Cycle", ins.cycleDays ? num(ins.cycleDays) + " days" : "not set") +
       kv("Last service", ins.lastService ? dstr(ins.lastService) : "none recorded") +
       kv("Next due", ins.nextService ? dstr(ins.nextService) + " — " + dueSay(ins) : "not set") +
-      '</div>';
+      '</div>' +
+      (function () {   /* 2.1.0 - what is installed, and what is in warranty */
+        var ps = []; try { ps = JSON.parse(ins.productsJson || "[]") || []; } catch (e) { ps = []; }
+        var wc = svWarrCover(ins), live = amcLiveOn(ins, today()) && amcKind(ins) !== "None";
+        return (ps.length ? '<div class="meta" style="margin:6px 0">' + ps.map(function (p) {
+            var e = svWarrEnd(p || {});
+            return '<b>' + esc([p.brand, p.product, p.model].filter(Boolean).join(" ")) + '</b>' + (p.serial ? ' &middot; #' + esc(p.serial) : '') +
+              (e ? (e >= today() ? ' &middot; <span style="color:#0f766e">in warranty to ' + esc(dstr(e)) + '</span>' : ' &middot; warranty ended ' + esc(dstr(e))) : ' &middot; no warranty on file');
+          }).join("<br>") + '</div>' : '') +
+          (live ? '' : (wc ? '<div class="note ok">' + esc(wc.txt) + '.</div>' : '<div class="note warn-t">Not in warranty and no AMC &mdash; visits are charged. Ask him to take an AMC.</div>'));
+      })();
 
     /* ---- THE CONTRACT (v1.4.0) ----
        "client under AMC, AMC with spare or without spare, AMC amt". A card rather than a line
@@ -3514,7 +3569,8 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
      charged as always; otherwise the contract decides, exactly as before */
   function visCover(v, ins) {
     var amc = amcCover(ins, v.type, v.date);
-    if (v && v.tkCover && v.tkCover.ok && !v.tkCover.amc && String(v.type || "") !== "Installation") return { visit: true, salt: amc.salt, parts: true, kind: "Warranty", live: true, warranty: true };
+    var _wc = v && (v.tkCover || v.wCover);   /* 2.1.0 - the machine's own warranty too */
+    if (_wc && _wc.ok && !_wc.amc && String(v.type || "") !== "Installation") return { visit: true, salt: amc.salt, parts: true, kind: "Warranty", live: true, warranty: true };
     return amc;
   }
   function sheetVisit(v) {
@@ -3531,6 +3587,14 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
     var h = '<h2>' + (ins ? esc(ins.client || "") : (v.client ? esc(v.client) : 'Labour job')) + '</h2>' +
       (v.tkCover ? '<div class="note ' + (v.tkCover.ok ? 'ok' : 'warn-t') + '" style="margin:6px 0">' + esc(v.tkRef || "") + ' &middot; ' + esc(v.tkCover.txt) +
         (v.tkCover.ok ? (v.tkCover.amc ? ' &mdash; the AMC decides the charge' : ' &mdash; <b>no charge for the visit or parts</b> (salt is charged)') : ' &mdash; <b>charge the rate</b>') + '</div>' : '') +   /* 1.21.0 */
+      (!v.tkCover && v.wCover && v.type !== "Installation" ? '<div class="note ok" id="v_wcover" style="margin:6px 0">' + esc(v.wCover.txt) + ' &mdash; <b>no charge for the visit or parts</b> (salt is charged)</div>' : '') +   /* 2.1.0 */
+      (function () {   /* 2.1.0 - "its under AMC or not, if not insist client for AMC" */
+        if (!ins || v.type === "Installation" || cover.visit) return "";
+        var A = v.amcAsk || "";
+        return '<div class="note warn-t" id="v_amcask" style="margin:6px 0"><b>Not under AMC and not in warranty &mdash; this visit is charged.</b> Ask him to take an AMC: every service after it is free, and the salt too. What did he say?' +
+          '<div class="chips" style="margin-top:6px"><button class="chip' + (A === "yes" ? ' on' : '') + '" data-act="v-amcask" data-a="yes">Interested</button>' +
+          '<button class="chip' + (A === "no" ? ' on' : '') + '" data-act="v-amcask" data-a="no">Not now</button></div></div>';
+      })() +
       '<div class="muted">' + (ins
         ? esc([ins.product, ins.model].filter(Boolean).join(" · ") || "machine not named")
         : 'Plumbing work with no machine behind it') + '</div>';
@@ -3800,7 +3864,8 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
           machine that says it was serviced with no evidence that it was. */
   function visitRowFrom(v, ins) {
     var pTot = partsTotal(v.parts);
-    var _wfree = !!(v.tkCover && v.tkCover.ok && !v.tkCover.amc && String(v.type || "") !== "Installation");   /* 1.21.0 */
+    var _wcv = v.tkCover || v.wCover;   /* 2.1.0 */
+    var _wfree = !!(_wcv && _wcv.ok && !_wcv.amc && String(v.type || "") !== "Installation");   /* 1.21.0 */
     /* v1.4.0 - `total` is now WHAT WAS CHARGEABLE, after the contract has had its say. The
        gross value of the work is not lost: visitCharge, saltAmt and partsAmt are each stored
        beside it, and visitTotal() adds them back whenever the office wants to know what an
@@ -3838,7 +3903,8 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
       total: total,
       collected: got,
       balance: total - got,   /* 1.18.0 - never clamped: a minus would be his credit */
-      notes: (_wfree && (num(v.visitCharge) || pTot) ? "Under warranty - not charged: " + [num(v.visitCharge) ? "visit " + money(num(v.visitCharge)) : "", pTot ? "parts " + money(pTot) : ""].filter(Boolean).join(", ") + ". " : "") + String(v.notes || ""),
+      notes: (_wfree && !(num(v.visitCharge) || pTot) && v.wCover ? "Under warranty (" + (v.wCover.byBrand ? v.wCover.brand : "Energy World") + ") - no charge. " : "") +   /* 2.1.0 */
+        (_wfree && (num(v.visitCharge) || pTot) ? "Under warranty - not charged: " + [num(v.visitCharge) ? "visit " + money(num(v.visitCharge)) : "", pTot ? "parts " + money(pTot) : ""].filter(Boolean).join(", ") + ". " : "") + String(v.notes || ""),
       updatedAt: new Date().toISOString()
     };
   }
@@ -4118,6 +4184,12 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
     ((v.pics) || []).forEach(function (p) { _rcGot[p.kind] = 1; });
     S.rcp = { visitId: row.id || "", installId: (ins && ins.id) || "", client: row.client || "",
               total: visitTotal(row), bags: num(row.saltBags), got: _rcGot, sent: {}, busy: {} };
+    /* 2.1.0 - what he said about an AMC goes to the office: the CRM moves him to Offered when he is interested */
+    if (v.amcAsk && ins) {
+      var _aq = { id: mintId("AQ"), createdAt: new Date().toISOString(), actor: S.user || "", action: "amc:ask", target: String(ins.client || ""),
+        detail: JSON.stringify({ installId: ins.id, client: ins.client || "", ans: v.amcAsk, by: S.user || "", visitId: row.id || "" }), ip: "" };
+      (S.data.audit = S.data.audit || []).push(_aq); saveRow("audit", _aq);
+    }
     S.sheet = sheetVisitReceipts(); S.vis = null;
     toast("Visit saved" + (row.collected ? " — " + money9(row.collected) + " on you." : "."));
     render();
@@ -4459,7 +4531,7 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
          machine it opens as a labour job, which is exactly what it is. */
       S.vis = cIns
         ? { installId: cIns.id, type: "Repair", date: today(), parts: [], collected: "",
-            complaintRef: cRow.Ref, visitCharge: defaultCharge(cIns, "Repair", today()) }
+            complaintRef: cRow.Ref, visitCharge: defaultCharge(cIns, "Repair", today()), wCover: (cIns && !amcCover(cIns, "Repair", today()).visit) ? svWarrCover(cIns, today()) : null }   /* 2.1.0 */
         : { installId: "", type: "Labour job", date: today(), parts: [], collected: "",
             complaintRef: cRow.Ref,
             client: String(cRow.Name || ""), area: String(cRow.City || "") };
@@ -4475,6 +4547,13 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
       var i2 = installById(id); if (!i2) return;
       S.vis = { installId: i2.id, type: "Service", date: today(), parts: [], collected: "",
                 visitCharge: defaultCharge(i2, "Service", today()) };
+      if (!amcCover(i2, "Service", today()).visit) S.vis.wCover = svWarrCover(i2, today());   /* 2.1.0 */
+      S.sheet = sheetVisit(S.vis); render(); return;
+    }
+    if (act === "v-amcask") {   /* 2.1.0 */
+      if (!S.vis) return;
+      readVisitForm();
+      S.vis.amcAsk = t.getAttribute("data-a") === "yes" ? "yes" : "no";
       S.sheet = sheetVisit(S.vis); render(); return;
     }
     if (act === "v-type") {
