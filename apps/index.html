@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
-<meta name="theme-color" content="#0f766e"/>
+<meta name="theme-color" content="#1F3A5F"/>
 <meta name="robots" content="noindex,nofollow"/>
 <title>Energy World — all the apps</title>
 <style>
@@ -12,7 +12,7 @@ html,body{margin:0;padding:0}
 body{font:15.5px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
   background:#f1f5f9;color:#0f172a}
 .wrap{max-width:660px;margin:0 auto;padding:0 14px 60px}
-.top{background:#0f766e;color:#fff;padding:calc(env(safe-area-inset-top) + 22px) 16px 20px}
+.top{background:#1F3A5F;color:#fff;padding:calc(env(safe-area-inset-top) + 22px) 16px 20px}
 .top .in{max-width:660px;margin:0 auto}
 .top h1{margin:0;font-size:20px;font-weight:800}
 .top p{margin:6px 0 0;font-size:13px;opacity:.92}
@@ -38,11 +38,54 @@ h2{font-size:11.5px;text-transform:uppercase;letter-spacing:.09em;color:#64748b;
    needs its refresh arrow. */
 .ver{display:inline-block;background:#f1f5f9;border:1px solid #e2e8f0;color:#475569;border-radius:6px;
   padding:1px 7px;font-size:10.5px;font-weight:800;margin-left:6px;vertical-align:middle;letter-spacing:.01em}
-.ver.on{background:#ccfbf1;border-color:#5eead4;color:#0f766e}
+.ver.on{background:#E8EEF5;border-color:#5eead4;color:#1F3A5F}
 .ver.no{background:#fef2f2;border-color:#fecaca;color:#b91c1c}
+.top{border-bottom:3px solid #C9A24A}
 </style>
 </head>
 <body>
+<script>
+  /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
+     HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
+     phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
+     turning pictures, logos and PDFs back, so every screen - including the thousands of colours written inline
+     over the years - changes at once and nothing can be left white-on-white. Red stays red, green stays green.
+     Changing it touches no data. */
+  (function () {
+    var K = "ewTheme";
+    function ewtGet() { try { var v = localStorage.getItem(K); return v === "light" || v === "dark" ? v : "auto"; } catch (e) { return "auto"; } }
+    function ewtOs() { try { return !!(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches); } catch (e) { return false; } }
+    function ewtDark() { var m = ewtGet(); return m === "dark" || (m === "auto" && ewtOs()); }
+    function ewtApply() {
+      var r = document.documentElement; if (!r) return;
+      r.setAttribute("data-ewdark", ewtDark() ? "1" : "0");
+      try { var mt = document.querySelector('meta[name="theme-color"]'); if (mt) { if (!mt.getAttribute("data-light")) mt.setAttribute("data-light", mt.getAttribute("content") || ""); mt.setAttribute("content", ewtDark() ? "#11161D" : mt.getAttribute("data-light")); } } catch (e) { }
+    }
+    try {
+      var st = document.createElement("style");
+      st.textContent = 'html{background:#fff}' +
+        'html[data-ewdark="1"]{filter:invert(.92) hue-rotate(180deg)}' +
+        'html[data-ewdark="1"] .top{filter:invert(1) hue-rotate(180deg)}' +   /* the navy bar stays navy, as on the card */
+        'html[data-ewdark="1"] img,html[data-ewdark="1"] video,html[data-ewdark="1"] canvas,html[data-ewdark="1"] iframe,html[data-ewdark="1"] embed,html[data-ewdark="1"] object,html[data-ewdark="1"] [data-noinvert]{filter:invert(1) hue-rotate(180deg)}' +
+        '.ewthm{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:44px;min-width:44px;padding:0 14px;border:1px solid #DCE3EA;border-radius:10px;background:#fff;color:#1F3A5F;font:inherit;font-size:14px;font-weight:700;cursor:pointer}';
+      (document.head || document.documentElement).appendChild(st);
+    } catch (e) { }
+    ewtApply();
+    try { var mq = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)"); if (mq) { if (mq.addEventListener) mq.addEventListener("change", ewtApply); else if (mq.addListener) mq.addListener(ewtApply); } } catch (e) { }
+    function ewtLabel() { var m = ewtGet(); return "&#9681; Theme: " + (m === "auto" ? "Auto (as the phone)" : m === "dark" ? "Dark" : "Light"); }
+    window.ewTheme = {
+      get: ewtGet, isDark: ewtDark, label: ewtLabel,
+      set: function (m) { try { localStorage.setItem(K, m); } catch (e) { } ewtApply(); },
+      next: function (btn) {
+        var m = ewtGet(), n = m === "auto" ? "light" : m === "light" ? "dark" : "auto";
+        window.ewTheme.set(n);
+        if (btn) btn.innerHTML = ewtLabel();
+      },
+      button: function () { return '<button type="button" class="ewthm" onclick="ewTheme.next(this)">' + ewtLabel() + '</button>'; }
+    };
+  })();
+</script>
+
 <div class="top"><div class="in">
   <h1>Energy World — all the apps<button id="hRef" title="Load this page fresh"
     style="float:right;background:rgba(255,255,255,.18);color:inherit;border:0;border-radius:10px;
@@ -96,13 +139,14 @@ h2{font-size:11.5px;text-transform:uppercase;letter-spacing:.09em;color:#64748b;
     <span class="who">Register a complaint — send this one to customers</span></span>
     <span class="go">&#8250;</span></a>
 
-  <h2>Not sure how one works?</h2>
-  <a class="app" href="../help/" data-app="help" style="background:#f0fdfa;border-color:#99f6e4">
-    <span class="txt"><span class="nm" style="color:#0f766e">How to use the apps</span>
+  <div style="margin:14px 0"><button type="button" class="ewthm" onclick="ewTheme.next(this)">&#9681; Theme</button></div>
+<h2>Not sure how one works?</h2>
+  <a class="app" href="../help/" data-app="help" style="background:#F4F6F9;border-color:#E9D9AE">
+    <span class="txt"><span class="nm" style="color:#1F3A5F">How to use the apps</span>
     <span class="who">One page for each &mdash; who it is for, and the job step by step. Made to print.</span></span>
     <span class="go">&#8250;</span></a>
 
-  <div class="note" style="background:#f0fdfa;border-color:#99f6e4;color:#0f766e">
+  <div class="note" style="background:#F4F6F9;border-color:#E9D9AE;color:#1F3A5F">
     <b>The number beside each app is what the server is serving now.</b>
     Open the app and look at its own header. If the two do not match, that phone is running an
     old copy &mdash; tap the refresh arrow inside that app and it will offer the update.
@@ -120,7 +164,7 @@ h2{font-size:11.5px;text-transform:uppercase;letter-spacing:.09em;color:#64748b;
        the way out belongs here: this page opens when the apps will not. -->
   <div class="note">
     <b>An app will not open at all?</b>
-    <a href="../fix/" style="color:#0f766e;font-weight:700">Open the fixer</a> &mdash; it clears the
+    <a href="../fix/" style="color:#1F3A5F;font-weight:700">Open the fixer</a> &mdash; it clears the
     copy of the app files kept on this phone and makes it fetch them again. It never touches
     anything you have typed, and it says first how much is still waiting to reach the sheet.
   </div>
