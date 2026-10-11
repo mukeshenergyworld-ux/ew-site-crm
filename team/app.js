@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.726";
+  var APP_VERSION = "6.9.727";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -30841,6 +30841,7 @@ function viewCatalogue() {
   }
   function moneyWaitStrip() {
     if (!roleAny(["admin", "accounts", "sales", "godown"])) return "";
+    if (S.tab === "billing" && !S.q) return "";   /* 6.9.727 - the HISAB home's tiles say it */
     var pap = [], ret = [];
     try { pap = mwPaperList(); } catch (e) { pap = []; }
     try { ret = mwRetList(); } catch (e) { ret = []; }
@@ -31054,6 +31055,40 @@ function viewCatalogue() {
     });
     return _ph;
   }
+
+  /* 6.9.727 - the tiles on the HISAB home: key, label, count, money, colour, and the list it opens */
+  function hsbTiles(outsAll, credits) {
+    var t = [], my = function (c) { return seesAllClients() || isMineClient(c.customerName); };
+    var due = outsAll.reduce(function (a, r) { return a + r.due; }, 0);
+    t.push({ k: "due", lbl: "Due now", n: outsAll.length, rs: due, sub: plural(outsAll.length, "client") + (credits.length ? ' · ' + credits.length + ' in credit' : ''), col: "#b91c1c", html: function () { return ""; } });
+    if (canFinalise()) {
+      var fin = hisabNotStamped().filter(my), fv = fin.reduce(function (a, c) { return a + chValue(c); }, 0);
+      t.push({ k: "fin", lbl: "Not finalised", n: fin.length, rs: fv, sub: fin.length ? "oldest " + mwOldest(fin) + " d" : "nothing waiting", col: "#b45309", html: function () { return hisabNotStampedBand() || '<div class="empty">Every received delivery is finalised.</div>'; } });
+    }
+    var all = dedupeChallans(S.data.challans || []).filter(function (c) { return isMineClient(c.customerName) && String(c.status || "") !== "Cancelled"; });
+    var toGo = all.filter(function (c) { var st = String(c.status || "Draft"); return st === "Draft" || st === "Approved"; }), pap = all.filter(chNoPaper);
+    var wait = toGo.concat(pap), wv = wait.reduce(function (a, c) { return a + chValue(c); }, 0);
+    t.push({ k: "wait", lbl: "Still waiting", n: wait.length, rs: wv, sub: (pap.length ? pap.length + " no paper" : "") + (toGo.length ? (pap.length ? " · " : "") + toGo.length + " not dispatched" : "") || "nothing waiting", col: "#b91c1c", html: function () { return hisabWaitingCard() || '<div class="empty">Every delivery has gone out and has its paper.</div>'; } });
+    var ret = mwRetList(), rv = ret.reduce(function (a, r) { return a + returnNet(r); }, 0);
+    t.push({ k: "ret", lbl: "Returns out", n: ret.length, rs: rv, sub: ret.length ? "oldest " + mwOldest(ret) + " d" : "none raised", col: "#b45309", html: function () { return retWaitingCard() || '<div class="empty">No return is waiting to come back.</div>'; } });
+    if (roleIs("admin")) {
+      var old = hdMissRows(), ov = old.reduce(function (a, r) { return a + r.due; }, 0);
+      t.push({ k: "old", lbl: "Old books", n: old.length, rs: ov, sub: old.length ? "no old hisab attached" : "all attached", col: "#92400e", html: function () { return hdMissCard() || '<div class="empty">Every old client with a balance has his old hisab attached.</div>'; } });
+    }
+    var hk = [hisabDayBand(), twinWaitingCard(), cxAskWaitingCard()].filter(Boolean);
+    t.push({ k: "house", lbl: "Housekeeping", n: hk.length, rs: 0, sub: hk.length ? plural(hk.length, "item") + " to tidy" : "nothing to tidy", col: "#475569", html: function () { return hk.join("") || '<div class="empty">Nothing to tidy.</div>'; } });
+    return t;
+  }
+  function hsbTileStrip(tiles, on) {
+    return '<div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 8px">' + tiles.map(function (t) {
+      var a = t.k === on, zero = !t.n;
+      return '<button data-act="hsb-tile" data-v="' + t.k + '" style="flex:1 1 130px;min-width:130px;min-height:64px;text-align:left;border-radius:12px;padding:8px 11px;cursor:pointer;font:inherit;' +
+        'background:' + (a ? '#0f172a' : '#fff') + ';color:' + (a ? '#fff' : (zero ? '#94a3b8' : t.col)) + ';border:2px solid ' + (a ? '#0f172a' : (zero ? '#e2e8f0' : t.col)) + '">' +
+        '<div style="font-size:18px;font-weight:800;line-height:1.1">' + (t.rs > 0.5 ? money(Math.round(t.rs)) : t.n) + (t.rs > 0.5 ? ' <span style="font-size:12.5px;font-weight:700;opacity:.85">· ' + t.n + '</span>' : '') + '</div>' +
+        '<div style="font-size:13px;font-weight:700;margin-top:2px">' + t.lbl + '</div>' +
+        '<div style="font-size:12px;opacity:.8">' + t.sub + '</div></button>';
+    }).join("") + '</div>';
+  }
   function viewBilling() {
     if (!S.billSel) S.billSel = {};
     var cl = hisabResolve(S.q);
@@ -31066,7 +31101,7 @@ function viewCatalogue() {
       '<datalist id="billclients">' + billNames.concat((S.data.clients || []).filter(function (c) {   /* 6.9.687 - every client on the book can be found */
         return c && c.name && billNames.indexOf(c.name) < 0 && !dupIsAlias(c.name) && (seesAllClients() || isMineClient(c.name)); }).map(function (c) { return c.name; }))
         .map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join("") + '</datalist>' +
-      hisabDayBand() + hisabNotStampedBand();
+      (S.q ? hisabDayBand() + hisabNotStampedBand() : "");   /* 6.9.727 - on the home these sit under their tiles */
     if (cl && !isMineClient(cl)) return h + '<div class="empty"><b>' + esc(cl) + '</b> is assigned to another sales executive, so their hisab is not open to you. You can view and follow up on the clients assigned to you.</div>';
     if (!S.q) {
       if (canSee("payments")) h += '<div class="acts" style="margin:8px 0">' + advNewBtn() + '</div>';   /* 6.9.665 */
@@ -31083,8 +31118,20 @@ function viewCatalogue() {
          attached. Partner only, and it empties itself: a name leaves this list either when the
          statement goes up or when the money clears, whichever happens first. */
       /* v6.9.463 - a work list with its figures, its Excel and an Attach that stays here */
-      if (roleIs("admin")) h += hdMissCard();
-      h += hisabWaitingCard() + retWaitingCard() + twinWaitingCard() + cxAskWaitingCard();
+      /* ===== 6.9.727 - ONE STRIP OF TILES, ONE LIST AT A TIME  (11 Oct 2026) =====
+         HIS WORDS over this screen: "redesign this hisab page more professionally simple, its confusing,
+         click tab and view detail will be good one". MEASURED: the home stacked thirteen blocks before the
+         outstanding table - two warning bands, "Today, besides the money", "not on any statement", Advance,
+         the 36-row old-book table, Still waiting, Returns, twin photos, customer questions, Due, Ageing, the
+         slab chips, then the table. Each was asked for on its own day; together nobody could read them.
+         Now: one strip of tiles, each with its count and money, and ONLY the tapped tile's list under it.
+         Nothing about the figures changed - every tile draws the same card it always drew. "Due now" opens
+         by default (HISAB is opened 14 times a week for that list). The tap is remembered on this device. */
+      var _tl = hsbTiles(outsAll, credits);
+      var _tk = S.hsbTile || (function () { try { return localStorage.getItem("ew_hsb_tile") || ""; } catch (e) { return ""; } })() || "due";
+      if (!_tl.some(function (t) { return t.k === _tk; })) _tk = "due";
+      h += hsbTileStrip(_tl, _tk);
+      if (_tk !== "due") return h + _tl.filter(function (t) { return t.k === _tk; })[0].html();
       if (!outs.length && !credits.length) return h + '<div class="empty">No outstanding balances &mdash; every received challan is fully paid. Type a client above to view their hisab.</div>';
       var oh = '';
       if (outs.length) {
@@ -52103,6 +52150,7 @@ function viewCatalogue() {
     if (act === "mw-go") {   /* 6.9.723 - HISAB, at the list */
       var _mto = t.getAttribute("data-to") || "hw_card";
       if (!roleAny(["admin", "accounts", "sales"])) { navGo(_mto === "rw_card" ? "returns" : "challans"); return; }   /* the godown has no HISAB */
+      S.hsbTile = _mto === "rw_card" ? "ret" : "wait"; try { localStorage.setItem("ew_hsb_tile", S.hsbTile); } catch (e) { }   /* 6.9.727 - the tile that holds it */
       navGo("billing");
       setTimeout(function () { var e2 = document.getElementById(_mto); if (e2) e2.scrollIntoView({ block: "start", behavior: "smooth" }); }, 120);
       return;
@@ -54018,7 +54066,8 @@ function viewCatalogue() {
     }
     if (act === "bf-mode") { S.bfMode = t.getAttribute("data-m") === "client" ? "client" : "lead"; render(); return; }
     if (act === "bill-go") { render(); return; }
-    if (act === "bill-open") { S.q = t.getAttribute("data-n"); render(); try { rcptWarm(hisabResolve(S.q)); } catch (e) { } return; }   /* v6.9.560 */
+    if (act === "hsb-tile") { S.hsbTile = t.getAttribute("data-v") || "due"; try { localStorage.setItem("ew_hsb_tile", S.hsbTile); } catch (e) { } keepScroll = true; render(); return; }   /* 6.9.727 */
+    if (act === "bill-open") { S.q = t.getAttribute("data-n"); if (S.tab !== "billing") S.tab = "billing"; render(); window.scrollTo(0, 0); try { rcptWarm(hisabResolve(S.q)); } catch (e) { } return; }   /* v6.9.560; 6.9.727 - to the top, where the account is */
     /* v6.9.332 - FLIP THE STATE THE ELEMENT WAS DRAWN WITH.
 
        This used to recompute the default (gk === S.user) and could not see the OTHER half of
@@ -58494,7 +58543,7 @@ function viewCatalogue() {
     /* "+ New" from inside a challan / return / old-delivery. Remember what the man had already
        typed, open the FULL client form, and when he saves, come straight back to where he was
        with the client filled in. Registering a client must never cost him the form he was on. */
-    if (act === "bill-clear") { S.q = ""; render(); return; }
+    if (act === "bill-clear") { S.q = ""; var _qb = el("q"); if (_qb) _qb.value = ""; render(); return; }   /* 6.9.727 - and the box empties */
     if (act === "bill-detail") {
       /* v6.9.444 - hiding a button is a courtesy, not a lock. The rule is here. */
       if (!canBill()) { toast("A GST bill is recorded by accounts or the owner."); return; }
