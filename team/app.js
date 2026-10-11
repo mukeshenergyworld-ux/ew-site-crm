@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.733";
+  var APP_VERSION = "6.9.734";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -27907,6 +27907,62 @@ function viewCatalogue() {
     return Object.keys(m).sort().reverse();
   }
 
+  /* 6.9.734 - HIS WORDS: "clicking a plumber will show his complete details, how many sites ongoing, under each
+     site under which executive, incentive details, all things in details, further inside also we can click and
+     go in deep". The partner page already carried the incentive statement (client -> challans) and his sites.
+     Added here: who he is and who looks after him, every client he is on with that client's executive, what
+     the client still owes, the incentive counted and the part still waiting for the client's payment, and the
+     events he was asked to. Each client opens its hisab, each event opens the event; Back returns here. */
+  function partnerMore(name, b) {
+    var a = assocLive().filter(function (x) { return dkey(x.name) === dkey(name); })[0] || {};
+    var sup = null; try { sup = pevSupport().filter(function (x) { return dkey(x.name) === dkey(name); })[0] || null; } catch (e) { }
+    var days = null; try { days = partnerLastContactDays(name); } catch (e) { }
+    var h = '<div class="card"><h3 style="margin:0 0 6px">Who he is</h3><div style="display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px">' +
+      '<span>Role <b>' + esc(a.role || "—") + '</b></span>' +
+      (a.mobile ? '<span>Mobile <a href="tel:' + esc(a.mobile) + '"><b>' + esc(a.mobile) + '</b></a></span>' : '<span style="color:#b45309">no mobile</span>') +
+      '<span>Looked after by ' + (a.ownedBy ? whoChip(a.ownedBy) : '<b style="color:#b45309">nobody</b>') + '</span>' +
+      ((a.area || a.location) ? '<span>Area <b>' + esc([a.area, a.location].filter(Boolean).join(", ")) + '</b></span>' : '') +
+      (sup ? '<span>Tier ' + pevTierPill(sup.tier) + '</span><span>Business, last 12 months <b>' + money(sup.b12) + '</b></span>' : '') +
+      '<span>Last in touch <b>' + (days === null ? 'never' : days === 0 ? 'today' : days + ' days ago') + '</b></span>' +
+      (a.birthday ? '<span>Birthday <b>' + esc(dmy(a.birthday)) + '</b></span>' : '') + (a.anniversary ? '<span>Anniversary <b>' + esc(dmy(a.anniversary)) + '</b></span>' : '') +
+      '</div></div>';
+    /* every client he is on - from the same rows the statement below is built from */
+    var g = {};
+    (b.rows || []).forEach(function (r) {
+      var k = dkey(r.client); if (!k) return;
+      var x = g[k] = g[k] || { cl: r.client, n: 0, biz: 0, inc: 0, rel: 0, last: "" };
+      if (!r.ret) { x.n++; x.biz += Number(r.base) || 0; if (String(r.ymd || "") > x.last) x.last = r.ymd; }
+      else x.biz += Number(r.base) || 0;
+      x.inc += Number(r.inc) || 0; x.rel += Number(r.rel) || 0;
+    });
+    var rows = Object.keys(g).map(function (k) { var x = g[k]; x.ex = rvOwner(x.cl); x.due = 0; try { x.due = Math.max(0, clientLedger(x.cl).due || 0); } catch (e) { } return x; })
+      .sort(function (p, q) { return q.biz - p.biz; });
+    if (rows.length) {
+      var cols = [{ k: "cl", t: "CLIENT", w: "150px" }, { k: "ex", t: "EXECUTIVE" }, { k: "n", t: "DELIVERIES", n: 1, r: 1 }, { k: "biz", t: "BUSINESS", n: 1, r: 1 },
+                  { k: "due", t: "CLIENT STILL OWES", n: 1, r: 1 }, { k: "inc", t: "INCENTIVE", n: 1, r: 1 }, { k: "rel", t: "COUNTED", n: 1, r: 1 }, { k: "wait", t: "WAITING FOR PAYMENT", n: 1, r: 1 }, { k: "last", t: "LAST DELIVERY" }];
+      h += '<div class="card"><h3 style="margin:0">His clients <span class="pill teal">' + rows.length + '</span></h3>' +
+        '<div class="meta" style="font-size:12.5px;margin:3px 0 6px">Tap a client for his hisab - every delivery, payment and return. The incentive WAITING is earned but counts only once that client pays.</div>' +
+        xlTable("p-clients", cols, rows.map(function (x) {
+          var w = x.inc - x.rel;
+          return { v: { cl: x.cl, ex: x.ex, n: x.n, biz: x.biz, due: x.due, inc: x.inc, rel: x.rel, wait: w, last: x.last },
+            cells: { cl: '<b data-act="bill-open" data-n="' + esc(x.cl) + '" style="cursor:pointer;color:#0d766c">' + esc(x.cl) + '</b>', ex: x.ex ? whoChip(x.ex) : '<span style="color:#b45309">nobody</span>',
+              n: x.n, biz: money(x.biz), due: x.due > 0.5 ? '<b style="color:#b91c1c">' + money(x.due) + '</b>' : '<span style="color:#94a3b8">—</span>',
+              inc: money(x.inc), rel: x.rel > 0.5 ? '<span style="color:#0f766e">' + money(x.rel) + '</span>' : '<span style="color:#94a3b8">—</span>',
+              wait: w > 0.5 ? '<b style="color:#b45309">' + money(w) + '</b>' : '<span style="color:#94a3b8">—</span>', last: x.last ? esc(dmy(x.last)) : '—' } };
+        }), "executive, money and incentive") + '</div>';
+    }
+    /* the events he was asked to */
+    var ev = [];
+    try { pevEvents().forEach(function (e) { pevInv(e.eid).forEach(function (i) { if (dkey(i.partner) === dkey(name)) ev.push({ e: e, i: i }); }); }); } catch (e) { }
+    if (ev.length) {
+      h += '<div class="card"><h3 style="margin:0 0 6px">Events <span class="pill teal">' + ev.length + '</span></h3>' +
+        pevTable([["Event"], ["Date"], ["Status"], ["Executive"], ["What he said"]], ev.map(function (x) {
+          return ['<b data-act="pev-open" data-id="' + esc(x.e.eid) + '" style="cursor:pointer;color:#0d766c">' + esc(x.e.name) + '</b>', esc(x.e.date ? dmy(x.e.date) : "—"), esc(x.i.st || ""),
+            x.i.exec ? whoChip(x.i.exec) : '—', esc([x.i.preNote ? "Before: " + x.i.preNote : "", x.i.postNote ? "After: " + x.i.postNote : ""].filter(Boolean).join(" · ") || "—")];
+        })) + '</div>';
+    }
+    return h;
+  }
   function viewPartnerCard(name) {
     /* v6.9.234 - one card for a partner and for a sales executive. They differ only in
        which book is read and what the sections are called; the statement, the reversal
@@ -27934,6 +27990,7 @@ function viewCatalogue() {
       '<br><i>Incentive is released <b>challan by challan</b>, in the share that challan&rsquo;s own bill has been paid &mdash; payments clear the oldest bill first, unless a payment was pointed at particular challans. A challan not yet finalised releases nothing. Booked-in material returns reverse the incentive on the goods that came back, at the same rate that earned it.</i></div>' +
       '<div class="acts"><button class="btn sm" data-act="pay-out" data-k="' + kind + '" data-n="' + esc(name) + '">Record payout</button></div></div>';
 
+    if (!isX) { try { h += partnerMore(name, b); } catch (e) { } }   /* 6.9.734 */
     /* v6.9.231 - the statement, client by client. Only what was earned, foldable,
        and downloadable for one month or for everything. */
     var _months = partnerMonths(b);
@@ -28025,7 +28082,7 @@ function viewCatalogue() {
         _byClient[ck] = _byClient[ck] || { base: 0, inc: 0 }; _byClient[ck].base += r.base || 0; _byClient[ck].inc += r.inc || 0;
       });
       h += xlTable("p-sites", [
-        { k: "site", t: "SITE", w: "130px" }, { k: "client", t: "CLIENT" }, { k: "stage", t: "STAGE", n: 1 },
+        { k: "site", t: "SITE", w: "130px" }, { k: "client", t: "CLIENT" }, { k: "ex", t: "EXECUTIVE" }, { k: "stage", t: "STAGE", n: 1 },
         { k: "added", t: "ADDED", n: 1 }, { k: "by", t: "BY" }, { k: "base", t: "DELIVERED", r: 1, n: 1 },
         { k: "inc", t: "INCENTIVE", r: 1, n: 1 }, { k: "quoted", t: "QUOTED", n: 1, r: 1 }, { k: "qbrands", t: "QUOTED FOR" }, { k: "go", t: "" }
       ], b.sites.map(function (st) {
@@ -28039,11 +28096,13 @@ function viewCatalogue() {
         var _qNet = _qs.reduce(function (a, q) { return a + (Number(q.net) || 0); }, 0);
         var _qB = {}; _qs.forEach(function (q) { quoteBrands(q).forEach(function (bb) { _qB[bb] = (q.status === "Won") ? "won" : (_qB[bb] || (qCatOf(q) === "In play" ? "open" : "lost")); }); });
         var added = String(st.createdAt || "").slice(0, 10);
-        return { v: { site: st.name, client: st.client || "", stage: stageNo(st) || 0, added: added, by: st.createdBy || "", base: m.base, inc: m.inc, quoted: _qs.length, qbrands: Object.keys(_qB).join(", ") },
+        var _sx = st.client ? rvOwner(st.client) : "";   /* 6.9.734 */
+        return { v: { site: st.name, client: st.client || "", ex: _sx, stage: stageNo(st) || 0, added: added, by: st.createdBy || "", base: m.base, inc: m.inc, quoted: _qs.length, qbrands: Object.keys(_qB).join(", ") },
           cells: {
             site: '<b data-act="site-open" data-id="' + esc(st.id) + '" style="cursor:pointer;color:#0f766e">' + esc(st.name) + '</b>' +
                   (al.open ? ' <span class="pill due">' + al.open + ' to pitch</span>' : ""),
-            client: esc(st.client || "\u2014"),
+            client: st.client ? '<b data-act="bill-open" data-n="' + esc(st.client) + '" style="cursor:pointer;color:#0d766c" title="His hisab">' + esc(st.client) + '</b>' : "\u2014",
+            ex: _sx ? whoChip(_sx) : '<span style="color:#b45309">nobody</span>',
             stage: '<span class="pill teal">' + esc(String(stageNo(st) || "?")) + '</span> <span style="color:#94a3b8;font-size:12px">' + esc(st.stage || "") + '</span>',
             added: added ? esc(dmy(added)) : '<span style="color:#94a3b8">\u2014</span>',
             by: esc(st.createdBy || "\u2014"),
@@ -44588,7 +44647,7 @@ function viewCatalogue() {
       (inv.length ? pevTable([["#", "right"], ["Guest"], ["Tier"], ["Business 12 m", "right"], ["Status"], ["Executive"], ["Follow-up"], [isG ? "Gift ₹" : "Own cost ₹", "right"], [""]],
         inv.map(function (p, k) {
           var i = p.i, x = p.x, mob = x.mob || "";
-          return ['<span style="color:#64748b">' + (k + 1) + '</span>', '<b>' + esc(i.partner) + '</b><div style="font-size:12px;color:#64748b">' + esc(x.role || "") + (mob ? ' · ' + esc(mob) : ' · <span style="color:#b45309">no mobile</span>') + '</div>',
+          return ['<span style="color:#64748b">' + (k + 1) + '</span>', (x.other ? '<b>' + esc(i.partner) + '</b>' : '<b data-act="p-open" data-n="' + esc(i.partner) + '" style="cursor:pointer;color:#0d766c;text-decoration:underline" title="His full page - sites, clients, incentive, events">' + esc(i.partner) + '</b>') + '<div style="font-size:12px;color:#64748b">' + esc(x.role || "") + (mob ? ' · ' + esc(mob) : ' · <span style="color:#b45309">no mobile</span>') + '</div>',
             x.other ? '<span style="display:inline-block;font-size:12px;font-weight:800;color:#3730a3;background:#e0e7ff;border-radius:6px;padding:1px 7px;white-space:nowrap">Guest</span>' : pevTierPill(x.tier), x.b12 ? money(x.b12) : '—',
             '<select class="pev-st" data-id="' + esc(e.eid) + '" data-p="' + esc(i.partner) + '" style="min-height:44px">' + sts.map(function (s2) { return '<option' + (s2 === i.st ? ' selected' : '') + '>' + esc(s2) + '</option>'; }).join("") + '</select>',
             '<select class="pev-exec" data-id="' + esc(e.eid) + '" data-p="' + esc(i.partner) + '" style="min-height:44px' + (i.exec ? '' : ';border-color:#fca5a5;color:#b91c1c') + '"><option value="">— nobody —</option>' +
@@ -48327,7 +48386,98 @@ function viewCatalogue() {
     } catch (e) { }
   }
 
+  /* ===================== BACK, ONE STEP AT A TIME  (6.9.734, 11 Oct 2026) =====================
+     HIS WORDS: "make provision everywhere to go back to previous window, a step by step go back option like
+     system". MEASURED: the app never touched the browser history (no pushState anywhere), so the phone's own
+     back button left the CRM instead of going back a screen, and the only way back from a deep screen was
+     each screen's own button, where it had one.
+     Now the app keeps its own trail - every screen he moves to (tab, the client open in HISAB, a partner's
+     page, an event, a HISAB tile, a statement) and every window opened on top of another. One history entry
+     guards it, so the phone's back button and the "Back" button in the header both step back through the
+     trail: the open window first (to the window under it, if there was one), then the screens, in order,
+     to where he was on each. A question sheet ("Save?", "Re-price?") is answered No by Back, as its own
+     Cancel would. A window he has typed into is not thrown away by one Back: the first press says so, the
+     second leaves it. Nothing is written by any of this. */
+  var NAV = { st: [], ms: [], last: null, lastModal: null, restoring: false, armed: false, dirtyAt: 0 };
+  function navSnap() {
+    return { tab: S.tab || "", q: S.tab === "billing" ? String(S.q || "") : "", partner: S.partner || "", pKind: S.pKind || "", pevOpen: S.pevOpen || "",
+             hsbTile: S.hsbTile || "", stK: S.stK || "", y: 0 };
+  }
+  function navKeyOf(x) {
+    return [x.tab, x.q, x.tab === "commission" ? x.partner + "|" + x.pKind : "", x.tab === "pevents" ? x.pevOpen : "",
+            x.tab === "billing" && !x.q ? x.hsbTile : "", x.tab === "statements" ? x.stK : ""].join("\u0001");
+  }
+  function navModalId(h) { var m = String(h || "").match(/<h2[^>]*>([\s\S]*?)<\/h2>/); return m ? m[1].replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim() : String(h || "").slice(0, 80); }
+  function navTransient(h) { return /data-act="ask-yes"/.test(String(h || "")) || /data-act="prompt-ok"/.test(String(h || "")); }
+  function navArm() { if (NAV.armed) return; try { history.pushState({ ewnav: 1 }, ""); NAV.armed = true; } catch (e) { } }
+  function navCanBack() { return !!S.modal || NAV.st.length > 0; }
+  function navTrack() {
+    if (!S.pin && !S.tok) { NAV.last = null; NAV.st = []; NAV.ms = []; NAV.lastModal = null; return; }
+    var cur = navSnap(), key = navKeyOf(cur);
+    if (NAV.restoring) { NAV.last = { k: key, s: cur }; NAV.lastModal = S.modal || null; return; }
+    if (NAV.last && NAV.last.k !== key) {
+      var prev = NAV.last.s; prev.y = window.scrollY || 0;   /* the page being left is still on screen */
+      /* a second search typed into the same HISAB box replaces the first rather than stacking */
+      if (!(prev.tab === "billing" && cur.tab === "billing" && prev.q && cur.q)) { NAV.st.push(prev); if (NAV.st.length > 40) NAV.st.shift(); }
+      NAV.ms = []; navArm();
+    }
+    NAV.last = { k: key, s: cur };
+    var m = S.modal || null;
+    if (m && NAV.lastModal && m !== NAV.lastModal && !navTransient(NAV.lastModal) && !navTransient(m) && navModalId(m) !== navModalId(NAV.lastModal)) {
+      NAV.ms.push(NAV.lastModal); if (NAV.ms.length > 20) NAV.ms.shift(); navArm();
+    } else if (m && !NAV.lastModal) navArm();
+    if (!m) NAV.ms = [];
+    NAV.lastModal = m;
+  }
+  /* has he typed into the open window? an input that no longer holds what it was drawn with */
+  function navDirty() {
+    var box = document.querySelector(".modal"); if (!box) return false;
+    return Array.prototype.some.call(box.querySelectorAll("input, textarea, select"), function (e) {
+      if (e.type === "file") return !!(e.files && e.files.length);
+      if (e.type === "checkbox" || e.type === "radio") return e.checked !== e.defaultChecked;
+      if (e.tagName === "SELECT") return Array.prototype.some.call(e.options, function (o) { return o.selected !== o.defaultSelected; }) && e.selectedIndex > 0;
+      return e.type !== "hidden" && String(e.value || "") !== String(e.defaultValue || "");
+    });
+  }
+  function navBack() {
+    if (S.modal) {
+      var h = String(S.modal);
+      if (!navTransient(h) && navDirty() && !(NAV.dirtyAt && Date.now() - NAV.dirtyAt < 8000)) {
+        NAV.dirtyAt = Date.now();
+        toast("You have typed in this window. Press Back again to leave it without saving - or Save first.");
+        return;
+      }
+      NAV.dirtyAt = 0;
+      if (navTransient(h) || !NAV.ms.length) {
+        /* the window's own Close, so a question is answered No and a half-made partner goes back to his client */
+        var cb = document.querySelector('.modal [data-act="close"]');
+        if (cb) { cb.click(); return; }
+        S.modal = null; render(); return;
+      }
+      NAV.restoring = true; S.modal = NAV.ms.pop(); render(); NAV.restoring = false;
+      return;
+    }
+    var x = NAV.st.pop(); if (!x) return;
+    NAV.restoring = true;
+    S.tab = x.tab; if (x.tab === "billing") S.q = x.q;
+    S.partner = x.partner; S.pKind = x.pKind; S.pevOpen = x.pevOpen; S.hsbTile = x.hsbTile; S.stK = x.stK;
+    render(); NAV.restoring = false;
+    setTimeout(function () { try { window.scrollTo(0, x.y || 0); } catch (e) { } }, 40);
+  }
+  try {
+    /* a link written as href="#" is a button: following it added a "#" step to the browser history, and that
+       step came back as a popstate - Back would have shut the window it had just opened. It never navigates now. */
+    document.addEventListener("click", function (ev) {
+      var a = ev.target && ev.target.closest ? ev.target.closest('a[href="#"]') : null;
+      if (a) ev.preventDefault();
+    }, true);
+    window.addEventListener("popstate", function () {
+      NAV.armed = false;
+      if (navCanBack()) { navBack(); if (navCanBack()) navArm(); }
+    });
+  } catch (e) { }
   function render() {
+    try { navTrack(); } catch (e) { }   /* 6.9.734 - before the paint: the screen being left is still there to measure */
     S.bgDefer = false;   /* 6.9.712 - any paint carries the waiting one */
     try { agClearCache(); } catch (e) { }   /* one agent scan per paint, always fresh */
     _bgCache = null;                        /* brand groups rebuilt if the catalogue changed */
@@ -51839,6 +51989,7 @@ function viewCatalogue() {
       'style="flex:1;min-width:110px;max-width:380px;margin:0 14px;padding:9px 14px;border:1px solid #cbd5e1;border-radius:20px;font-size:14px;outline:none;background:#fff"/>' +
       '<div class="who"><b>' + esc(S.user) + '</b><span class="pill teal">' + esc(S.role) + '</span>' +
       '<div style="margin-top:4px;display:flex;gap:4px;justify-content:flex-end">' +
+      (navCanBack() ? '<button class="btn sm ghost" data-act="nav-back" title="Back one step - the window or screen you came from">&#8592; Back</button>' : '') +   /* 6.9.734 */
       '<button class="btn sm" data-act="app-refresh" title="Fetch what changed in the book; load a new version of the app only when there is one">&#8635; Refresh</button>' +
       /* ================= ONE BUTTON WHERE THERE WERE FOUR  (v6.9.447, 8 Sep 2026) ==========
          Measured on the inspection of 8 Sep: at 390px about 43% of the first screen was chrome,
@@ -53336,7 +53487,7 @@ function viewCatalogue() {
       t.disabled = true; pevSaveRow("evt:ev", _pid, _pe).then(function () { S.modal = null; S.pevOpen = _pid; render(); toast("Event saved."); });
       return;
     }
-    if (act === "pev-open") { S.pevOpen = t.getAttribute("data-id"); render(); window.scrollTo(0, 0); return; }
+    if (act === "pev-open") { S.pevOpen = t.getAttribute("data-id"); if (S.tab !== "pevents" && canSee("pevents")) S.tab = "pevents"; render(); window.scrollTo(0, 0); return; }   /* 6.9.734 - also from a partner's page */
     if (act === "pev-back") { S.pevOpen = ""; render(); return; }
     if (act === "pev-role") { S.pevRole = t.getAttribute("data-v") || ""; keepScroll = true; render(); return; }
     if (act === "pev-tier") { S.pevTier = t.getAttribute("data-v") || ""; keepScroll = true; render(); return; }
@@ -56288,6 +56439,7 @@ function viewCatalogue() {
       });
       return;
     }
+    if (act === "nav-back") { navBack(); return; }   /* 6.9.734 */
     if (act === "st-k") { S.stK = t.getAttribute("data-k"); render(); window.scrollTo(0, 0); return; }   /* 6.9.733 - statements */
     if (act === "st-per") { S.stPer = t.getAttribute("data-k"); render(); return; }
     if (act === "st-range") { var _sf = val("st_from"), _stt = val("st_to"); if (!_sf || !_stt) { toast("Pick both dates."); return; } S.stFrom = _sf; S.stTo = _stt; S.stPer = "custom"; render(); return; }
