@@ -241,7 +241,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.128.0";
+  var APP_VERSION = "1.129.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -9778,11 +9778,17 @@ function discRowOn(client, brand, onYmd) {
                challan credited the line at today's catalogue price and the client's standing rate:
                delivered at 500 less 30% (350), credited at 650 less 20% (520). The delivery's own
                line wins when the code is on it; anything not on it falls back as before. */
+            /* 1.129.0 - A PHONE THAT HOLDS NO DISCOUNT ROWS DOES NOT FREEZE 0%. The godown and accounts
+               phones receive no ClientDiscounts (the server keeps money off them), so clientDiscountOn
+               answered 0 here and 1.92.0 froze that 0 on every line - 86 lines across 7 returns in his
+               book, credited at MRP against a 45-57% preset. The CRM re-derives a frozen 0 now (6.9.728);
+               this phone leaves the figure BLANK when it has no rows, so every reader asks the preset. */
+            var _know = ((S.data && S.data.discounts) || []).length > 0;
             var _src = (_agLines || []).filter(function (x) { return x && String(x.code) === String(l.code); })[0];
             if (_src) return { code:l.code, desc:l.desc, unit:l.unit, qty:num(l.qty), rate:num(_src.rate), brand:_src.brand || l.brand,
-                               disc: (_src.disc != null && _src.disc !== "") ? num(_src.disc) : clientDiscountOn(rc.name, _src.brand || l.brand || "", localDay(_agCh && _agCh.createdAt) || _dy) };
+                               disc: (_src.disc != null && _src.disc !== "" && num(_src.disc) > 0) ? num(_src.disc) : (_know ? clientDiscountOn(rc.name, _src.brand || l.brand || "", localDay(_agCh && _agCh.createdAt) || _dy) : "") };
             return { code:l.code, desc:l.desc, unit:l.unit, qty:num(l.qty), rate:num(l.rate), brand:l.brand,
-                     disc: (l.disc != null && l.disc !== "") ? num(l.disc) : clientDiscountOn(rc.name, l.brand || "", _dy) };
+                     disc: (l.disc != null && l.disc !== "" && num(l.disc) > 0) ? num(l.disc) : (_know ? clientDiscountOn(rc.name, l.brand || "", _dy) : "") };
           })),
           reason: rz.reason || "", status: "Raised",
           driver: rDrv.name || "", driverMobile: rDrv.mobile || "", vehicle: rDrv.vehicle || "",
