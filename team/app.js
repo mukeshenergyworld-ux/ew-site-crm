@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.735";
+  var APP_VERSION = "6.9.736";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -3378,6 +3378,7 @@ window.addEventListener("beforeunload", function (ev) {
       return;
     }
     if (t && t.id === "inc_q") { incFilter(); return; }
+    if (t && t.id === "p_find") { S.pFind = t.value; var _pr = document.getElementById("p_find_res"); if (_pr) _pr.innerHTML = pFindHtml(t.value); return; }   /* 6.9.736 */
     if (t && t.getAttribute && t.getAttribute("data-bdisc") != null) { hsbDiscPaint(); return; }   /* v6.9.565, by brand 6.9.567 */
     if (t && t.id === "hsb_extra") {
       var nx = document.getElementById("hsb_noextra");
@@ -7614,7 +7615,7 @@ window.addEventListener("beforeunload", function (ev) {
       if (act === "brand:svc") {
         var d = {}; try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
         var k = dkey(d.brand); if (!k) return;
-        if (!bAt[k] || String(r.createdAt || "") >= bAt[k]) { bAt[k] = String(r.createdAt || ""); brand[k] = { on: !!d.on, wm: Number(d.wm) || 0, cm: Number(d.cm) || 0 }; }
+        if (!bAt[k] || String(r.createdAt || "") >= bAt[k]) { bAt[k] = String(r.createdAt || ""); brand[k] = { on: !!d.on, wm: Number(d.wm) || 0, cm: Number(d.cm) || 0, wby: d.wby === "brand" ? "brand" : "ew", help: String(d.help || "") }; }   /* 6.9.736 - wby, help */
       } else if (act === "comm:done") {
         var c = {}; try { c = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
         if (!c.chId) return;
@@ -7690,7 +7691,7 @@ window.addEventListener("beforeunload", function (ev) {
       var wm = x.cat.months;
       return '<div class="acts" style="align-items:center;margin:6px 0"><div class="grow"><b>' + esc(x.i.desc) + '</b>' +
         '<br><span style="font-size:12px;color:#94a3b8">' + esc(x.cat.label) + ' &middot; qty ' + esc(qShow(x.i.qty || 1)) + '</span></div>' +
-        '<input class="cm-sn" data-idx="' + x.idx + '" placeholder="serial no." value="' + esc((x.i.comm && x.i.comm.sn) || "") + '" style="width:120px;padding:6px 8px;font-size:13px;font-family:ui-monospace,monospace"/>' +
+        '<input class="cm-sn" data-idx="' + x.idx + '" placeholder="serial no." value="' + esc((x.i.comm && x.i.comm.sn) || autoSerialCh(ch, x.idx)) + '" style="width:150px;padding:6px 8px;font-size:13px;font-family:ui-monospace,monospace"/>' +   /* 6.9.736 - auto serial */
         '<input class="cm-wm" data-idx="' + x.idx + '" inputmode="numeric" value="' + esc(wm) + '" style="width:60px;padding:6px 8px;font-size:13px"/>' +
         '<span style="font-size:12px;color:#64748b">months</span></div>';
     }).join("");
@@ -7699,7 +7700,7 @@ window.addEventListener("beforeunload", function (ev) {
       '<div class="grid2"><div><label>Commissioning date</label><input id="cm_date" type="date" value="' + today() + '"/></div>' +
       '<div><label>Engineer</label><select id="cm_eng">' + opts(SVC_ENGINEERS, SVC_ENGINEERS[0]) + '</select></div></div>' +
       '<label style="margin-top:8px">Serial number and warranty, per product</label>' +
-      '<div class="meta" style="font-size:12px;color:#94a3b8;margin:2px 0 6px">You are standing in front of the machine now &mdash; this is the only easy moment to read the serial off it. A warranty claim later is made against this number.</div>' + rows +
+      '<div class="meta" style="font-size:12px;color:#94a3b8;margin:2px 0 6px">Our own serial is filled in (EW-challan-line), because the machines carry none. If the plate has one, type it over ours. Warranty months come from the brand (Products &rsaquo; Brands) &mdash; change one here only for this machine.</div>' + rows +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
       '<button class="btn" data-act="comm-save" data-ch="' + esc(ch.id) + '">Certify &amp; generate</button></div>';
   }
@@ -7875,7 +7876,7 @@ window.addEventListener("beforeunload", function (ev) {
           exec: ins.createdBy || "",
           product: p.product || ins.product || "", model: p.model || ins.model || "", qty: 1,
           sn: String(p.serial || (pi === 0 ? (ins.serial || "") : "")),
-          date: idate, till: warrantyEnd(p) || "",
+          date: idate, till: warrantyEnd(p) || (pi === 0 ? ((insWarrList(ins)[0] || {}).till || "") : ""),   /* 6.9.736 - the note's warranty on older rows */
           wm: Number(p.warrantyMonths) || 0, eng: ins.engineer || "",
           cycle: Number(ins.cycleDays) || 180
         });
@@ -7996,9 +7997,13 @@ window.addEventListener("beforeunload", function (ev) {
       return { stage: "Won", at: "", by: "", amount: Number(ins.amcAmount) || 0,
         till: dstr(ins.amcEnd) || "", note: "", how: "already on the installation record" };
     }
+    /* 6.9.736 - "if not insist client for AMC": what the engineer heard at the door, then every machine with no cover */
+    var _ask = ins ? amcAskMap()[ins.id] : null;
+    if (_ask && _ask.ans === "yes") return { stage: "Offered", at: _ask.at, by: _ask.by, amount: 0, till: "", note: "Interested, the engineer says", how: "the engineer asked him" };
     if (u.till && daysTo(u.till) <= AMC_DUE_DAYS) {
-      return { stage: "Due", at: "", by: "", amount: 0, till: "", note: "", how: "warranty ending" };
+      return { stage: "Due", at: "", by: "", amount: 0, till: "", note: _ask ? "Said not now to the engineer, " + dmy(_ask.at) : "", how: daysTo(u.till) < 0 ? "warranty over" : "warranty ending" };
     }
+    if (!u.till) return { stage: "Due", at: "", by: "", amount: 0, till: "", note: _ask ? "Said not now to the engineer, " + dmy(_ask.at) : "", how: "no warranty and no AMC" };
     return { stage: "", at: "", by: "", amount: 0, till: "", note: "", how: "" };
   }
   function amcPipeline() {
@@ -8825,7 +8830,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       });
     });
     (S.data.installs || []).filter(function (x) { return dkey(x.client) === k; }).forEach(function (x) {
-      out.push({ key: "I:" + x.id, kind: "install", desc: [x.product, x.model].filter(Boolean).join(" "), sn: x.serial || "", date: x.installDate || "", amcType: x.amcType || "", amcEnd: x.amcEnd || "" });
+      out.push({ key: "I:" + x.id, kind: "install", desc: [x.product, x.model].filter(Boolean).join(" "), sn: x.serial || "", date: x.installDate || "", amcType: x.amcType || "", amcEnd: x.amcEnd || "", insId: x.id || "" });   /* 6.9.736 - insId */
     });
     var rest = [];
     chs.forEach(function (c) {
@@ -8840,6 +8845,10 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
   }
   function cmpWarr(p) {
     if (p.kind === "install") {
+      /* 6.9.736 - the installation's own warranty counts, not only its AMC (it was read as "No AMC" while in warranty) */
+      var _ic = p.insId ? insCover(installById(p.insId)) : null;
+      if (_ic && _ic.k === "warranty") return { t: _ic.txt, c: "#0f766e", ok: 1, amc: 0, byBrand: _ic.byBrand };
+      if (_ic && _ic.k === "amc") return { t: _ic.txt, c: "#0f766e", ok: 1, amc: 1 };
       if (!p.amcEnd) return { t: "No AMC", c: "#64748b" };
       var a = daysTo(p.amcEnd);
       return a >= 0 ? { t: "AMC" + (p.amcType ? " (" + p.amcType + ")" : "") + " till " + dmy(p.amcEnd), c: "#0f766e", ok: 1 } : { t: "AMC ended " + dmy(p.amcEnd), c: "#b91c1c" };
@@ -8848,7 +8857,8 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       if (!p.commissioned) return { t: "Not commissioned yet — warranty not started", c: "#b45309" };
       if (!p.till) return { t: "Commissioned " + dmy(p.date) + " · no warranty date", c: "#b45309" };
       var w = daysTo(p.till);
-      return w >= 0 ? { t: "In warranty till " + dmy(p.till), c: "#0f766e", ok: 1 } : { t: "Warranty over " + dmy(p.till), c: "#b91c1c" };
+      var _wb = p.brand && brandWby(p.brand) === "brand";   /* 6.9.736 - who services it in warranty */
+      return w >= 0 ? { t: "In warranty till " + dmy(p.till) + (_wb ? " — " + p.brand + "’s engineer services it" + (brandHelp(p.brand) ? " (" + brandHelp(p.brand) + ")" : "") : ""), c: "#0f766e", ok: 1, byBrand: _wb } : { t: "Warranty over " + dmy(p.till), c: "#b91c1c" };
     }
     return { t: "Delivered " + dmy(p.date) + (p.brand ? " · " + p.brand + " warranty" : ""), c: "#64748b" };
   }
@@ -9002,7 +9012,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     var ps = t.products || [];
     for (var i = 0; i < ps.length; i++) {
       var w = cmpWarr(ps[i]);
-      if (w.ok) return { ok: 1, txt: w.t, amc: ps[i].kind === "install", p: ps[i] };
+      if (w.ok) return { ok: 1, txt: w.t, amc: w.amc != null ? !!w.amc : ps[i].kind === "install", p: ps[i] };   /* 6.9.736 */
     }
     return ps.length ? { ok: 0, txt: cmpWarr(ps[0]).t, p: ps[0] } : { ok: 0, txt: "no product picked on the ticket" };
   }
@@ -9395,8 +9405,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
             mobile: x.mobile ? '<a href="tel:' + esc(x.mobile) + '">' + esc(x.mobile) + '</a>'
                              : '<span style="color:#dc2626">none</span>',
             bal: bal > 0.5 ? '<b style="color:#b91c1c">' + money(bal) + '</b>' : '<span style="color:#94a3b8">\u2014</span>',
-            amc: amcKind(x) === "None" ? '<span style="color:#94a3b8">\u2014</span>'
-                                       : '<span class="pill teal">' + (x.amcEnd ? esc(d10(x.amcEnd)) : "AMC") + '</span>',
+            amc: insCoverPill(x),   /* 6.9.736 - AMC, warranty (EW or the brand), or chargeable */
             go: '<button class="btn sm" data-act="visit-new" data-id="' + esc(x.id) + '" style="padding:2px 8px;font-size:12px">Log visit</button>'
           }
         };
@@ -9405,7 +9414,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         { k: "client", t: "CLIENT", w: "140px" }, { k: "due", t: "SERVICE DUE", n: 1 },
         { k: "mach", t: "MACHINE" }, { k: "eng", t: "ENGINEER" },
         { k: "bal", t: "OWED", r: 1, n: 1 }, { k: "area", t: "AREA" },
-        { k: "mobile", t: "MOBILE" }, { k: "amc", t: "AMC" }, { k: "go", t: "VISIT" }
+        { k: "mobile", t: "MOBILE" }, { k: "amc", t: "COVER" }, { k: "go", t: "VISIT" }
       ], _rows, "the area, the number and the AMC");
       /* and the exceptions keep their cards, above the list, where he cannot swipe past them */
       if (_flagged.length) {
@@ -9439,7 +9448,8 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
           });
           return lines.join("<br>");
         })() +
-        '<br>' + esc(x.area || "") + (x.mobile ? ' &middot; ' + esc(x.mobile) : "") +
+        insCoverHtml(insCover(x), 1) +   /* 6.9.736 */
+        esc(x.area || "") + (x.mobile ? ' &middot; ' + esc(x.mobile) : "") +
         '<br>Water: ' + esc(x.waterQuality || "-") + ' &middot; Engineer: ' + esc(x.engineer || "unassigned") +
         (x.lastService ? '<br>Last service: ' + esc(d10(x.lastService)) : "") +
         (function () { var m = svcMissingCount(x.id); return m ? '<br><span style="color:#b45309;font-weight:600">' + m + ' visit' + (m === 1 ? '' : 's') + ' without a signed receipt or salt slip</span>' : ''; })() + '</div>' +
@@ -9738,6 +9748,115 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     var d = new Date(base + "T00:00:00"); d.setMonth(d.getMonth() + m);
     return ymdLocal(d);
   }
+  /* ================= 6.9.736 - WHO SERVICES THIS MACHINE, AND WHAT A VISIT COSTS  (11 Oct 2026) =================
+     HIS WORDS: "admin must specify which products installed with installation and warranty details, means it will
+     clearly show to service team what installed and which are under warranty which are not / its under AMC or not,
+     if not insist client for AMC / auto per visit charges on marking visit by technician / there is 2 scenarios to be
+     pre set, if product under warranty then service is under Energy World or brand, if product in not under warranty
+     then service is on chargeable basis under Energy World".
+     MEASURED before writing it: the CRM's "Log a visit" filled the charge from the client's past visits ONLY - a
+     machine in warranty or on an AMC was offered the same Rs as one that was not, and Rs 0 was refused outright by the
+     Rs 500 minimum. The installs that commissioning writes carried the warranty only in their notes, so nothing read it.
+     ONE FUNCTION answers it now, in this order: an AMC that is running (Energy World, free - the contract decides the
+     parts); a product still in warranty (free; serviced by Energy World or by the brand, as the brand is set under
+     Products > Brands); otherwise chargeable, by Energy World. The charge follows: Rs 0 when covered, else the most
+     this client has paid for a visit, else the rate card (Complaints > Service charges). Nothing already saved moves:
+     a visit keeps the charge it was saved with. */
+  var VT_JOB = { "Periodic service": "Cleaning / servicing", "AMC visit": "Cleaning / servicing", "Complaint": "Visit / inspection",
+                 "Salt delivery": "Visit / inspection", "Repair": "Repair", "Installation": "Installation" };
+  function brandWby(b) { var s = brandSvc(b); return s && s.wby === "brand" ? "brand" : "ew"; }
+  function brandHelp(b) { var s = brandSvc(b); return (s && s.help) || ""; }
+  /* every product on the machine that has a warranty date - from its products, else from the commissioning note
+     ("... EW warranty till 12/04/2027" / "... warranty till 2027-04-12") the older rows carry */
+  function insWarrList(ins) {
+    if (!ins) return [];
+    var out = [];
+    var raw = []; try { raw = JSON.parse(ins.productsJson || "[]") || []; } catch (e) { raw = []; }
+    raw.forEach(function (p) { var e = warrantyEnd(p || {}); if (e) out.push({ brand: String(p.brand || ""), desc: String(p.model || p.product || ""), till: e }); });
+    if (out.length) return out;
+    var n = String(ins.notes || ""), m = n.match(/warranty till (\d{2})\/(\d{2})\/(\d{4})/i), m2 = n.match(/warranty till (\d{4}-\d{2}-\d{2})/i);
+    var till = m ? m[3] + "-" + m[2] + "-" + m[1] : (m2 ? m2[1] : "");
+    if (!till) return out;
+    var br = "", cm = n.match(/Challan ([^\s·]+)/);
+    if (cm) (S.data.challans || []).some(function (c) {
+      if (String(c.challanNo || "") !== cm[1]) return false;
+      chItems(c).some(function (i) { if (String(i.desc || "") === String(ins.model || "") || String(i.desc || "") === String(ins.product || "") || dkey(i.brand) === dkey(ins.model)) { br = String(i.brand || ""); return true; } return false; });
+      return true;
+    });
+    out.push({ brand: br || (brandSvc(ins.model) ? String(ins.model) : ""), desc: String(ins.model || ins.product || ""), till: till });
+    return out;
+  }
+  function insCover(ins, type, date) {
+    var d = String(date || today()).slice(0, 10);
+    if (!ins) return { k: "paid", free: false, by: "Energy World", txt: "No machine on file" };
+    if (String(type || "") === "Installation") return { k: "paid", free: false, by: "Energy World", txt: "Installation is charged" };
+    if (amcLiveOn(ins, d) && amcKind(ins) !== "None") {
+      var ak = amcKind(ins);
+      return { k: "amc", free: true, by: "Energy World", kind: ak, till: dstr(ins.amcEnd) || "",
+        txt: "Under AMC (" + ak.replace(/^AMC /, "") + ")" + (dstr(ins.amcEnd) ? " till " + fullDate(ins.amcEnd) : "") + " — Energy World services it, no visit charge" + (ak === "AMC with spares" ? "" : "; parts are billed") };
+    }
+    var ws = insWarrList(ins), on = ws.filter(function (w) { return w.till >= d; }).sort(function (a, b) { return b.till.localeCompare(a.till); });
+    if (on.length) {
+      var w = on[0], byB = brandWby(w.brand) === "brand", hp = byB ? brandHelp(w.brand) : "";
+      return { k: "warranty", free: true, by: byB ? w.brand : "Energy World", brand: w.brand, help: hp, till: w.till, byBrand: byB,
+        txt: "In warranty till " + fullDate(w.till) + " — " + (byB ? w.brand + "’s own engineer services it" + (hp ? " (helpline " + hp + ")" : "") + "; if we go, no charge" : "Energy World services it free") };
+    }
+    var last = ws.slice().sort(function (a, b) { return b.till.localeCompare(a.till); })[0];
+    return { k: "paid", free: false, by: "Energy World", ended: last ? last.till : "",
+      txt: (last ? "Warranty over " + fullDate(last.till) : "No warranty on file") + " and no AMC — chargeable, by Energy World" };
+  }
+  function insCoverHtml(cv, small) {
+    var col = cv.k === "paid" ? "#92400e" : "#0f766e", bg = cv.k === "paid" ? "#fffbeb" : "#f0fdfa";
+    return '<div class="ins-cover" data-k="' + cv.k + '" style="margin:' + (small ? '4px 0' : '6px 0 8px') + ';padding:7px 10px;border-radius:8px;font-size:12.5px;font-weight:700;background:' + bg + ';color:' + col + '">' + esc(cv.txt) + '</div>';
+  }
+  function insCoverPill(ins) {
+    var cv = insCover(ins);
+    if (cv.k === "amc") return '<span class="pill teal">AMC' + (cv.till ? ' to ' + esc(d10(cv.till)) : '') + '</span>';
+    if (cv.k === "warranty") return '<span class="pill teal">Warranty' + (cv.byBrand ? ' · ' + esc(cv.brand) : ' · EW') + ' to ' + esc(d10(cv.till)) + '</span>';
+    return '<span class="pill" style="background:#fef3c7;color:#92400e">Chargeable</span>';
+  }
+  /* what a visit is charged before the engineer types anything */
+  function visitChargeFor(ins, type) {
+    var cv = insCover(ins, type);
+    if (cv.free) return { amt: 0, why: "covered", cv: cv };
+    var r = cmpRates().r[VT_JOB[type] || "Visit / inspection"];
+    /* an installation or a repair is a job of its own, priced by the card first; a routine visit is his agreed rate */
+    if ((type === "Installation" || type === "Repair") && r != null && r !== "" && Number(r) > 0) return { amt: Number(r), why: "card", cv: cv };
+    var c = ins ? clientVisitCharge(ins.client) : 0;
+    if (c > 0) return { amt: c, why: "history", cv: cv };
+    if (r != null && r !== "" && Number(r) > 0) return { amt: Number(r), why: "card", cv: cv };
+    return { amt: "", why: "none", cv: cv };
+  }
+  /* the AMC pipeline unit for an installation - the Offer AMC button opens the stage form on it */
+  function insUnitKey(ins) {
+    if (!ins) return "";
+    var u = baseUnits().filter(function (x) { return x.instId === ins.id || ((amcInstallFor(x) || {}).id === ins.id); })[0];
+    return u ? u.key : "";
+  }
+  /* what the engineer heard at the door - amc:ask rows from the Service app, newest per installation */
+  function amcAskMap() {
+    var m = {};
+    (S.data.audit || []).forEach(function (r) {
+      if (!r || r.action !== "amc:ask") return;
+      var d = {}; try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
+      if (!d.installId) return;
+      if (!m[d.installId] || String(r.createdAt || "") >= String(m[d.installId].at)) m[d.installId] = { ans: d.ans === "yes" ? "yes" : "no", at: String(r.createdAt || ""), by: r.actor || d.by || "" };
+    });
+    return m;
+  }
+  /* 6.9.736 - "there is not serial no on any product": a serial is made for him. A delivered line is
+     EW-<challan>-<line>; a machine entered by hand is EW-M<yymmdd>-<n>. He can still type the plate's own. */
+  function autoSerialCh(ch, idx) { return "EW-" + String((ch && ch.challanNo) || (ch && ch.id) || "").replace(/[^A-Za-z0-9]/g, "") + "-" + (Number(idx) + 1); }
+  function autoSerialManual(ymd, taken) {
+    var pre = "EW-M" + String(ymd || today()).replace(/-/g, "").slice(2, 8) + "-", n = 1, used = {};
+    (S.data.installs || []).forEach(function (x) {
+      used[String(x.serial || "")] = 1;
+      try { JSON.parse(x.productsJson || "[]").forEach(function (p) { used[String((p && p.serial) || "")] = 1; }); } catch (e) { }
+    });
+    (taken || []).forEach(function (t) { used[t] = 1; });
+    while (used[pre + n]) n++;
+    return pre + n;
+  }
   /* Base serviceable brands + any brand already used on an existing install (so a once-added brand
      persists across sessions without a new store). */
   function svcBrands() {
@@ -9805,6 +9924,8 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       '<div><label>Model / capacity</label><input class="ip-model" value="' + esc(p.model || "") + '"/></div></div>' +
       '<div class="grid2"><div><label>Install date</label><input class="ip-idate" type="date" value="' + esc(dstr(p.installDate) || today()) + '"/></div>' +
       '<div><label>Commissioning date</label><input class="ip-cdate" type="date" value="' + esc(dstr(p.commDate)) + '"/></div></div>' +
+      '<div class="grid2"><div><label>Serial no.</label><input class="ip-sn" value="' + esc(p.serial || "") + '" placeholder="made for you if left blank" style="font-family:ui-monospace,monospace"/></div>' +   /* 6.9.736 */
+      '<div><label>Warranty in force?</label><div class="meta" style="font-size:12px;padding-top:8px">' + (function () { var e = warrantyEnd(p); if (!e) return 'Put the warranty months &mdash; from the commissioning date.'; var b = p.brand && brandWby(p.brand) === "brand"; return (e >= today() ? '<b style="color:#0f766e">Yes, till ' + esc(d10(e)) + '</b> &mdash; ' + (b ? esc(p.brand) + '&rsquo;s engineer' : 'Energy World, free') : '<b style="color:#92400e">Over ' + esc(d10(e)) + '</b> &mdash; chargeable unless on AMC'); })() + '</div></div></div>' +
       '<div class="grid2"><div><label>Warranty (months)</label><input class="ip-warr" inputmode="numeric" placeholder="12" value="' + esc(p.warrantyMonths || "") + '"/></div>' +
       '<div><label>Periodic service?</label><select class="ip-svc">' + opts(["No", "Yes"], (Number(p.serviceReq) ? "Yes" : "No")) + '</select></div></div>' +
       '<div class="grid2"><div><label>Service every (months)</label><input class="ip-svcm" inputmode="numeric" placeholder="2" value="' + esc(p.serviceMonths || "") + '"/></div>' +
@@ -9890,10 +10011,24 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       '<div class="grid2"><div><label>Date</label><input id="v_date" type="date" value="' + today() + '"/></div>' +
       '<div><label>Engineer</label><select id="v_eng">' + opts(SVC_ENGINEERS, inst.engineer || SVC_ENGINEERS[0]) + '</select></div></div>' +
       '<label>Type of visit</label><select id="v_type">' + opts(VISIT_TYPES, "Periodic service") + '</select>' +
-      '<div class="grid2"><div><label>Visit charge (Rs)</label><input id="v_charge" inputmode="numeric" value="' + (clientVisitCharge(inst.client) || "") + '"/>' +
-        (clientVisitCharge(inst.client)
-          ? '<div class="meta" style="font-size:12px">' + money(clientVisitCharge(inst.client)) + ' is the most ' + esc(String(inst.client || "this client")) + ' has been charged before.</div>'
-          : '<div class="meta" style="font-size:12px;color:#b45309">This client has never been charged for a visit \u2014 type what was agreed. Nothing is suggested, because nothing is known.</div>') + '</div>' +
+      (function () {   /* 6.9.736 - covered or chargeable, said before the charge, and the AMC asked for */
+        var vc = visitChargeFor(inst, "Periodic service"), cv = vc.cv, h0 = insCoverHtml(cv);
+        if (cv.k === "paid") {
+          var uk = insUnitKey(inst), ask = amcAskMap()[inst.id];
+          h0 += '<div class="card" id="v_amcask" style="border-color:#fde68a;background:#fffbeb;padding:8px 11px;margin:0 0 8px"><div class="meta" style="font-size:12.5px;color:#92400e"><b>Not under AMC.</b> Ask him to take one &mdash; every visit after this is free under it, and the salt too.' +
+            (ask ? ' Last asked ' + esc(dmy(ask.at)) + (ask.by ? ' by ' + esc(ask.by) : '') + ': <b>' + (ask.ans === "yes" ? 'interested' : 'not now') + '</b>.' : '') + '</div>' +
+            (uk ? '<button class="btn sm" data-act="amc-stage" data-k="' + esc(uk) + '" style="min-height:44px;margin-top:6px">Offer AMC</button>' : '') + '</div>';
+        }
+        return h0;
+      })() +
+      '<div class="grid2"><div><label>Visit charge (Rs)</label><input id="v_charge" inputmode="numeric" value="' + (function () { var vc = visitChargeFor(inst, "Periodic service"); return vc.amt === "" ? "" : String(vc.amt); })() + '"/>' +
+        (function () {
+          var vc = visitChargeFor(inst, "Periodic service");
+          if (vc.why === "covered") return '<div class="meta" style="font-size:12px;color:#0f766e">Rs 0 &mdash; covered. Salt is still charged; under an AMC without spares, parts are too.</div>';
+          if (vc.why === "history") return '<div class="meta" style="font-size:12px">' + money(vc.amt) + ' is the most ' + esc(String(inst.client || "this client")) + ' has been charged before.</div>';
+          if (vc.why === "card") return '<div class="meta" style="font-size:12px">' + money(vc.amt) + ' from the rate card (Complaints &rsaquo; Service charges) &mdash; his first charged visit.</div>';
+          return '<div class="meta" style="font-size:12px;color:#b45309">This client has never been charged for a visit and the rate card has no rate — type what was agreed.</div>';
+        })() + '</div>' +
       '<div><label>Salt bags</label><input id="v_salt" inputmode="numeric" value="" placeholder="0"/></div></div>' +
       '<label>Salt rate per bag (Rs)</label><input id="v_saltrate" inputmode="numeric" value="' + esc(saltBag || "") + '" placeholder="set the salt price in Spares or the catalogue"/>' +
       (saltBag
@@ -17328,6 +17463,27 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
             : '<div class="meta" style="margin-top:8px;color:#b45309">Save him first \u2014 then his old hisab can be attached here.</div>') +
           '</div>'
         : "") +
+      /* 6.9.736 - MACHINES AT HIS PLACE. "on entering a new client admin must specify which products installed with
+         installation and warranty details". A new client: the owner answers Yes / No (Yes opens the installation form
+         with him filled in, once he is saved). An existing one: what is on file, each with its cover. */
+      (function () {
+        if (!c.id) {
+          if (!roleIs("admin")) return "";
+          return '<div class="card" id="c_instq" style="margin-top:12px;border-color:#99f6e4;background:#f0fdfa">' +
+            '<h3 style="margin:0 0 2px;font-size:13px">Any of our machines already at his place?</h3>' +
+            '<div class="meta" style="font-size:12.5px;margin-bottom:4px">Softener, filter, pump, heat pump &mdash; anything we service. The service team sees exactly what is installed and what is in warranty.</div>' +
+            '<label style="display:flex;gap:9px;align-items:center;min-height:44px;margin:0;text-transform:none;letter-spacing:0;font-size:13.5px;color:#0f172a"><input type="radio" name="c_inst" value="yes" style="width:20px;height:20px"/> Yes &mdash; enter them after saving</label>' +
+            '<label style="display:flex;gap:9px;align-items:center;min-height:44px;margin:0;text-transform:none;letter-spacing:0;font-size:13.5px;color:#0f172a"><input type="radio" name="c_inst" value="no" style="width:20px;height:20px"/> No machine yet</label></div>';
+        }
+        var kk = null; try { kk = clientKeysOf(c.name); } catch (e) { kk = null; }
+        var ins = (S.data.installs || []).filter(function (x) { return x && (kk ? kk.insts[String(x.id)] : dkey(x.client) === dkey(c.name)); });
+        return '<div class="card" style="margin-top:12px;border-color:#99f6e4;background:#f0fdfa"><h3 style="margin:0 0 2px;font-size:13px">Machines at his place &middot; ' + ins.length + '</h3>' +
+          (ins.length ? ins.map(function (x) {
+            var ps = instProducts(x).map(function (p) { return esc([p.brand, p.product, p.model].filter(Boolean).join(" ")) + (p.serial ? ' <span style="font-family:ui-monospace,monospace;color:#64748b">' + esc(p.serial) + '</span>' : ''); }).join("<br>");
+            return '<div style="padding:6px 0;border-top:1px solid #ccfbf1"><div style="font-size:13px"><b data-act="inst-open" data-id="' + esc(x.id) + '" style="cursor:pointer;color:#0d766c">' + (ps || esc(x.product || "Machine")) + '</b></div>' + insCoverHtml(insCover(x), 1) + '</div>';
+          }).join("") : '<div class="meta" style="font-size:12.5px">None on file.</div>') +
+          (roleAny(["admin", "service"]) || roleIs("admin") ? '<button class="btn sm ghost" data-act="inst-for" data-id="' + esc(c.id) + '" style="min-height:44px;margin-top:6px">+ Add a machine</button>' : '') + '</div>';
+      })() +
       /* CREDIT TERMS (v6.9.193). A commercial decision, so only a partner sets it. Left blank
          the app behaves exactly as it always has - nobody is stopped, nothing changes. */
       (roleIs("admin")
@@ -18892,7 +19048,15 @@ function viewCatalogue() {
             '<input type="checkbox" id="b_svc"' + (bs.on ? ' checked' : '') + ' style="width:20px;height:20px"/> <b>Needs commissioning &amp; regular service</b></label>' +
           '<div class="meta" style="font-size:12.5px">Every delivered line of this brand waits as <b>Commissioning pending</b> in the Service app until the engineer commissions it with photos; then it goes on the service schedule.</div>' +
           '<div class="grid2" style="margin-top:6px"><div><label>Warranty (months)</label><input id="b_wm" inputmode="numeric" value="' + esc(bs.wm || "") + '" placeholder="12"/></div>' +
-          '<div><label>Service every (months)</label><input id="b_cm" inputmode="numeric" value="' + esc(bs.cm || "") + '" placeholder="6"/></div></div></div>';
+          '<div><label>Service every (months)</label><input id="b_cm" inputmode="numeric" value="' + esc(bs.cm || "") + '" placeholder="6"/></div></div>' +
+          /* 6.9.736 - HIS RULE: "if product under warranty then service is under Energy World or brand, if product
+             not under warranty then service is on chargeable basis under Energy World". Which of the two is the brand's
+             own answer, so it is asked here, once, beside the warranty months. */
+          '<div class="grid2" style="margin-top:6px"><div><label>In warranty, who services it</label><select id="b_wby">' +
+            '<option value="ew"' + (bs.wby === "brand" ? '' : ' selected') + '>Energy World (free)</option>' +
+            '<option value="brand"' + (bs.wby === "brand" ? ' selected' : '') + '>The brand&rsquo;s own engineer</option></select></div>' +
+          '<div><label>Brand service helpline</label><input id="b_help" inputmode="tel" value="' + esc(bs.help || "") + '" placeholder="1800 ..."/></div></div>' +
+          '<div class="meta" style="font-size:12.5px;margin-top:4px">After the warranty, every visit is <b>Energy World&rsquo;s, and charged</b> &mdash; unless the client has an AMC.</div></div>';
       })() +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
       '<button class="btn" data-act="br-save" data-id="' + esc(b.id || "") + '">Save</button></div>';
@@ -41428,6 +41592,10 @@ function viewCatalogue() {
       h += '</div></div>';
     }
 
+    /* 6.9.736 - HIS WORDS: "provide partner search bar". One box above the trades: a name, a mobile or an area finds
+       him in any trade and any town; only the results block repaints while he types, so the keyboard stays up. */
+    h += '<div class="card" style="padding:8px 10px;margin:6px 0"><input id="p_find" type="search" autocomplete="off" placeholder="Find a partner — name, mobile or area" value="' + esc(S.pFind || "") + '" style="min-height:44px;font-size:15px"/>' +
+      '<div id="p_find_res">' + pFindHtml(S.pFind) + '</div></div>';
     /* step 1 - the trade */
     h += '<div class="row" style="margin-top:6px">' + roles.map(function (r) {
       return '<button class="chip ' + (S.pRole === r ? "on" : "") + '" data-act="p-role" data-r="' + esc(r) + '">' +
@@ -41464,6 +41632,11 @@ function viewCatalogue() {
         return (y.st.live - x.st.live) || (y.st.open - x.st.open) || (y.st.clients - x.st.clients) ||
           String(x.p.name).localeCompare(String(y.p.name));
       });
+    /* 6.9.736 - HIS WORDS: "arrange all partners categories wise like platinum (alphabetically), Silver, base, never
+       quoted". The tier is the events screen's own (12-month business: Platinum top 10%, Gold next 20%, Silver next
+       30%, the rest Base); a man with no client, no quote and no business ever is "Never quoted". A to Z in each. */
+    list.forEach(function (row) { row.tier = pTierOf(row.p.name, row.st); });
+    list.sort(function (x, y) { return (P_GROUPS.indexOf(x.tier) - P_GROUPS.indexOf(y.tier)) || String(x.p.name).toLowerCase().localeCompare(String(y.p.name).toLowerCase()); });
 
     var _unas = inRole.filter(function (a2) { return !_ownOf(a2); }).length;
     h += '<div class="chips" style="margin-top:6px">' +
@@ -41472,7 +41645,7 @@ function viewCatalogue() {
       }).join("") + '</div>';
     h += '<div class="row" style="margin:10px 0 4px"><div class="meta"><b>' + list.length + '</b> ' +
       esc(S.pRole || "partner") + (list.length === 1 ? "" : "s") + (S.pLoc ? ' in ' + esc(S.pLoc) : "") +
-      ' &middot; most live sites first' + (seesAllClients() ? '' : ' (your clients)') + '</div>' +
+      ' &middot; by tier, A to Z' + (seesAllClients() ? '' : ' (your clients)') + '</div>' +
       '<div class="grow"></div>' + xlToggle("partners", !!S.pCards) +
       '<button class="btn sm" data-act="as-new">+ Add</button></div>';
     if (!list.length) return h + '<div class="empty">Nobody here yet.</div>';
@@ -41485,6 +41658,7 @@ function viewCatalogue() {
       var _adm = roleIs("admin");
       var _cols = [
         { k: "name", t: "PARTNER", w: "128px" },
+        { k: "tier", t: "TIER" },   /* 6.9.736 */
         { k: "mobile", t: "MOBILE" },
         { k: "area", t: "AREA" },
         { k: "clients", t: "CLIENTS", r: 1, n: 1 },
@@ -41502,10 +41676,12 @@ function viewCatalogue() {
         var _ps = partnerSites(p.name), _new = _ps.filter(function (x) { return String(x.createdAt || "").slice(0, 10) >= _since; });
         var _newest = _new.slice().sort(function (a, b) { return String(b.createdAt || "") < String(a.createdAt || "") ? -1 : 1; })[0];
         return {
-          v: { name: p.name, mobile: p.mobile || "", area: p.area || "", clients: st.clients,
+          tier: row.tier,
+          v: { name: p.name, tier: P_GROUPS.indexOf(row.tier) + " " + row.tier, mobile: p.mobile || "", area: p.area || "", clients: st.clients,
                live: st.live, open: st.open, inc: bk ? bk.pending : 0, new30: _new.length, newby: _newest ? String(_newest.createdBy || "") : "",
                owner: _ownOf(p) },
           cells: {
+            tier: pTierPill(row.tier),
             owner: _ownOf(p) ? whoChip(_ownOf(p)) : '<span style="color:#b45309;font-size:12px">not assigned</span>',
             /* the act is on the NAME, not the row - see the component's header for why.
                v6.9.524 - and it opens his BOOK (sites and incentives), not the edit form: his
@@ -41532,12 +41708,22 @@ function viewCatalogue() {
           }
         };
       });
-      return h + xlTable("partners", _cols, _rows,
-        "what he has quoted" + (_adm ? " and his incentive" : ""));
+      /* 6.9.736 - one sheet per tier, each with its count; a tapped heading sorts inside each tier */
+      var _first = true;
+      P_GROUPS.forEach(function (g) {
+        var gr = _rows.filter(function (r) { return r.tier === g; });
+        if (!gr.length) return;
+        h += '<h3 class="p-group" data-g="' + esc(g) + '" style="margin:14px 0 4px;font-size:14px;display:flex;align-items:center;gap:8px">' + pTierPill(g) + ' <span>' + gr.length + ' ' + (gr.length === 1 ? 'partner' : 'partners') + '</span></h3>' +
+          xlTable("partners", _cols, gr, _first ? "what he has quoted" + (_adm ? " and his incentive" : "") : "");
+        _first = false;
+      });
+      return h;
     }
 
+    var _lastG = "";
     list.forEach(function (row) {
       var p = row.p, st = row.st;
+      if (row.tier !== _lastG) { _lastG = row.tier; h += '<h3 class="p-group" data-g="' + esc(row.tier) + '" style="margin:14px 0 4px;font-size:14px">' + pTierPill(row.tier) + '</h3>'; }   /* 6.9.736 */
       h += '<div class="card"><h3>' + esc(p.name) +
         (p.flag ? ' <span class="pill Lost">needs number</span>' : "") +
         (st.live ? ' <span class="pill Won">' + st.live + ' live</span>' : "") +
@@ -41563,6 +41749,43 @@ function viewCatalogue() {
     return h;
   }
 
+  /* 6.9.736 - the partner groups, best first */
+  var P_GROUPS = ["Platinum", "Gold", "Silver", "Base", "Never quoted"];
+  var _pTierMap = null, _pTierSrc = null;
+  function pTierOf(name, st) {
+    var sup = null; try { sup = pevSupport(); } catch (e) { sup = null; }
+    if (sup !== _pTierSrc) { _pTierSrc = sup; _pTierMap = {}; (sup || []).forEach(function (x) { _pTierMap[dkey(x.name)] = x; }); }
+    var x = (_pTierMap || {})[dkey(name)];
+    st = st || partnerStats(name);
+    if (!(st.clients > 0) && !(st.open > 0) && !(st.live > 0) && !(x && x.life > 0)) return "Never quoted";
+    return (x && x.tier) || "Base";
+  }
+  function pTierPill(t) {
+    if (t === "Never quoted") return '<span style="display:inline-block;font-size:12px;font-weight:800;color:#b45309;background:#fef3c7;border-radius:6px;padding:1px 7px;white-space:nowrap">Never quoted</span>';
+    return pevTierPill(t);
+  }
+  /* the search: every partner, any trade, any town */
+  function pFindHtml(q) {
+    q = String(q || "").replace(/\s+/g, " ").trim().toLowerCase();
+    if (q.length < 2) return "";
+    var qd = q.replace(/\D/g, "");
+    var hits = assocLive().filter(function (a) {
+      var hay = (String(a.name || "") + " " + String(a.area || "") + " " + String(a.location || "") + " " + String(a.role || "")).toLowerCase();
+      return hay.indexOf(q) >= 0 || (qd.length >= 4 && String(a.mobile || "").replace(/\D/g, "").indexOf(qd) >= 0);
+    }).sort(function (x, y) { return String(x.name).toLowerCase().localeCompare(String(y.name).toLowerCase()); });
+    if (!hits.length) return '<div class="meta" style="font-size:12.5px;color:#b91c1c;margin-top:6px">Nobody matches “' + esc(q) + '”.</div>';
+    var more = hits.length > 30 ? hits.length - 30 : 0;
+    return '<div class="meta" style="font-size:12.5px;margin-top:6px">' + hits.length + ' found' + (more ? ' — the first 30; type more to narrow' : '') + '</div>' +
+      hits.slice(0, 30).map(function (a) {
+        var st = partnerStats(a.name), tr = pTierOf(a.name, st);
+        return '<div class="p-hit" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 0;border-top:1px solid #e2e8f0;font-size:13px;min-height:44px">' +
+          (canSee("commission") ? '<b data-act="p-open" data-n="' + esc(a.name) + '" style="cursor:pointer;color:#0f766e">' : '<b data-act="as-open" data-id="' + esc(a.id) + '" style="cursor:pointer;color:#0f766e">') + esc(a.name) + '</b>' +
+          pTierPill(tr) + '<span style="color:#64748b">' + esc([a.role, a.location, a.area].filter(Boolean).join(" · ")) + '</span>' +
+          (a.mobile ? '<a href="tel:' + esc(a.mobile) + '">' + esc(a.mobile) + '</a>' : '') +
+          '<span style="color:#64748b">' + st.clients + ' clients · ' + st.live + ' live</span>' +
+          '<span style="flex:1"></span><button class="btn sm ghost" data-act="as-open" data-id="' + esc(a.id) + '" style="min-height:44px">Edit</button></div>';
+      }).join("");
+  }
   function greetToday() {
     var md = today().slice(5);
     var out = [];
@@ -54218,11 +54441,12 @@ function viewCatalogue() {
       /* 6.9.702 - the service switch, as its own audit row, only when it changed */
       var _bsOld = brandSvc(bn) || { on: false, wm: 0, cm: 0 }, _bsBox = el("b_svc");
       if (_bsBox) {
-        var _bsNew = { on: !!_bsBox.checked, wm: Number(String(val("b_wm") || "").replace(/[^0-9]/g, "")) || 0, cm: Number(String(val("b_cm") || "").replace(/[^0-9]/g, "")) || 0 };
+        var _bsNew = { on: !!_bsBox.checked, wm: Number(String(val("b_wm") || "").replace(/[^0-9]/g, "")) || 0, cm: Number(String(val("b_cm") || "").replace(/[^0-9]/g, "")) || 0,
+          wby: val("b_wby") === "brand" ? "brand" : "ew", help: String(val("b_help") || "").trim().slice(0, 40) };   /* 6.9.736 */
         if (_bsNew.on && (!_bsNew.wm || !_bsNew.cm)) { toast("Put the warranty months and how often it is serviced."); return; }
-        if (_bsNew.on !== !!_bsOld.on || (_bsNew.on && (_bsNew.wm !== _bsOld.wm || _bsNew.cm !== _bsOld.cm))) {
+        if (_bsNew.on !== !!_bsOld.on || (_bsNew.on && (_bsNew.wm !== _bsOld.wm || _bsNew.cm !== _bsOld.cm || _bsNew.wby !== (_bsOld.wby || "ew") || _bsNew.help !== (_bsOld.help || "")))) {
           save("audit", { id: "", createdAt: new Date().toISOString(), actor: S.user, action: "brand:svc", target: bn,
-            detail: JSON.stringify({ brand: bn, on: _bsNew.on, wm: _bsNew.wm, cm: _bsNew.cm }), ip: "" }, true);
+            detail: JSON.stringify({ brand: bn, on: _bsNew.on, wm: _bsNew.wm, cm: _bsNew.cm, wby: _bsNew.wby, help: _bsNew.help }), ip: "" }, true);
           _svcAud = null;
         }
       }
@@ -54767,8 +54991,11 @@ function viewCatalogue() {
         /* read with everything else - creating a partner rebuilds this modal */
         stage: fld("c_stage", "stage"),
         /* v6.9.549 - the consent box; null when the box is not on the form (keep what is filed) */
-        waok: el("c_waok") ? !!el("c_waok").checked : null
+        waok: el("c_waok") ? !!el("c_waok").checked : null,
+        /* 6.9.736 - machines at his place: "yes" / "no" / "" (not asked) */
+        inst: (function () { var q = document.querySelector('input[name="c_inst"]:checked'); return q ? q.value : (el("c_instq") ? "?" : ""); })()
       };
+      if (f.inst === "?") { toast("Say whether any of our machines are already at his place — Yes or No."); var _iq = el("c_instq"); if (_iq) _iq.scrollIntoView({ block: "center" }); return; }
       /* Money owed from before the app means he is an OLD lead, whatever the dropdown says.
          Otherwise a migrated client quietly inflates next month's "new leads" figure. */
       if (Number(f.opAmt) > 0) f.leadType = "Old";
@@ -54853,6 +55080,9 @@ function viewCatalogue() {
           if (!f.loc) toast("Saved without a district \u2014 tap Set district & area to place him.");
           else if (!f.ar) toast("Saved without a colony \u2014 tap Set district & area to place him.");
           if (S.qz && S.qz.step === 1) { S.qz.client = r.name; S.qz.clientObj = r; }
+          /* 6.9.736 - his machines: Yes opens the installation form with him filled in; No is noted */
+          if (f.inst === "no") { try { save("audit", { id: "", createdAt: new Date().toISOString(), actor: S.user, action: "client:noinstall", target: r.name, detail: JSON.stringify({ client: r.name }), ip: "" }, true); } catch (e) { } }
+          if (f.inst === "yes" && !back) { S.modal = modalInstall({ client: r.name, mobile: r.mobile || f.mob || "", address: r.address || f.addr || "", area: r.area || f.ar || f.loc || "" }); render(); toast("Now his machines — one line each, with the warranty."); return; }
           /* came here from another form? go back to it, with the new client filled in */
           if (back) {
             S.clBack = null;
@@ -57157,7 +57387,7 @@ function viewCatalogue() {
       /* the serial is read off the machine at the same moment as the warranty - one screen, one trip */
       var _sn = {};
       [].slice.call(document.querySelectorAll(".cm-sn")).forEach(function (s2) {
-        _sn[String(s2.getAttribute("data-idx"))] = String(s2.value || "").trim();
+        _sn[String(s2.getAttribute("data-idx"))] = String(s2.value || "").trim() || autoSerialCh(commCh, s2.getAttribute("data-idx"));   /* 6.9.736 */
       });
       [].slice.call(document.querySelectorAll(".cm-wm")).forEach(function (inp) {
         var idx = Number(inp.getAttribute("data-idx")), wm = Number(inp.value) || 0;
@@ -57182,6 +57412,9 @@ function viewCatalogue() {
             installDate: cDate, waterQuality: "", cycleDays: cyc,
             lastService: "", nextService: addDays(cDate, cyc),
             amcType: "None", amcAmount: "", amcEnd: "", engineer: cEng, status: "Active",
+            /* 6.9.736 - the product, its brand and its warranty, so every screen can read the warranty (it was only in the note) */
+            productsJson: JSON.stringify([{ brand: it.brand || "", product: cat.label || it.desc, model: it.desc || "", serial: (it.comm && it.comm.sn) || "",
+              installDate: cDate, commDate: cDate, warrantyMonths: Number(it.comm && it.comm.wm) || 0, serviceReq: 1, serviceMonths: Math.max(1, Math.round(cyc / 30)) }]),
             notes: "Auto-created on commissioning · Challan " + (commCh.challanNo || "") + " · EW warranty till " + fullDate(it.comm.till)
           });
         });
@@ -57276,7 +57509,7 @@ function viewCatalogue() {
     if (act === "inst-save") {
       var ic = val("i_client");
       if (!ic) { toast("Pick a won client from the list."); return; }
-      if (!id && !isClient(ic)) { toast("Only a lead marked Won can get a service/AMC record. Win the quote or mark the pitch Won first."); return; }
+      if (!id && !isClient(ic) && !roleIs("admin")) { toast("Only a lead marked Won can get a service/AMC record. Win the quote or mark the pitch Won first."); return; }   /* 6.9.736 - the owner enters an old client's machines */
       var prods = [], _missBrand = false;
       (document.querySelectorAll("#i_products .ip-row") || []).forEach(function (row) {
         var g = function (cls) { var e2 = row.querySelector("." + cls); return e2 ? e2.value : ""; };
@@ -57284,8 +57517,11 @@ function viewCatalogue() {
         var br = g("ip-brand"); if (!br || br === "__newbrand__") { _missBrand = true; }
         prods.push({ brand: br, product: pr, model: g("ip-model"), installDate: g("ip-idate"), commDate: g("ip-cdate"),
           warrantyMonths: Number(g("ip-warr")) || 0, serviceReq: (g("ip-svc") === "Yes") ? 1 : 0,
-          serviceMonths: Number(g("ip-svcm")) || 0 });
+          serviceMonths: Number(g("ip-svcm")) || 0, serial: String(g("ip-sn") || "").trim() });
       });
+      /* 6.9.736 - "there is not serial no on any product": one is made for each that has none */
+      var _snTaken = [];
+      prods.forEach(function (p) { if (!p.serial) p.serial = autoSerialManual(p.commDate || p.installDate, _snTaken); _snTaken.push(p.serial); });
       if (!prods.length) { toast("Add at least one product."); return; }
       if (_missBrand) { toast("Pick a serviceable brand for each product (or register a new one)."); return; }
       /* derived, backward-compatible fields for the reminder engine + list view */
@@ -57302,13 +57538,18 @@ function viewCatalogue() {
       save("installs", {
         id: id || "", createdBy: (id ? (prev.createdBy || S.user) : S.user), client: ic,
         mobile: val("i_mobile"), address: val("i_addr"), area: val("i_area"),
-        product: prods[0].product, model: prods[0].model, installDate: prods[0].installDate,
+        product: prods[0].product, model: prods[0].model, installDate: prods[0].installDate, serial: prods[0].serial || "",   /* 6.9.736 */
         productsJson: JSON.stringify(prods), waterQuality: val("i_water"), cycleDays: cyc,
         lastService: prev.lastService || "", nextService: next, amcType: val("i_amc"),
         amcAmount: val("i_amcamt"), amcEnd: val("i_amcend"), engineer: val("i_eng"),
         status: "Active", notes: val("i_notes")
-      }).then(function (r) { if (r) closeAck(_gClick, "Installation saved."); });
+      }).then(function (r) { if (r) { closeAck(_gClick, "Installation saved."); S.instFor = null; } });
       return;
+    }
+    if (act === "inst-for") {   /* 6.9.736 - from a client: a new installation with him filled in */
+      var _ifc = clientById(id) || clientByName(t.getAttribute("data-n") || "");
+      if (!_ifc) { toast("That client is not on this device."); return; }
+      S.modal = modalInstall({ client: _ifc.name, mobile: _ifc.mobile || "", address: _ifc.address || "", area: _ifc.area || _ifc.location || "" }); render(); return;
     }
     if (act === "ip-add") {
       var box = el("i_products");
@@ -57324,7 +57565,18 @@ function viewCatalogue() {
     if (act === "visit-new") {
       var inst = installById(id);
       if (!inst) return;
-      S.installId = id; S.modal = modalVisit(inst); render(); return;
+      S.installId = id; S.modal = modalVisit(inst); render();
+      /* 6.9.736 - a change of type re-prices an untouched box: Installation is charged even in warranty */
+      setTimeout(function () {
+        var ty = el("v_type"), ch = el("v_charge"); if (!ty || !ch) return;
+        ch.addEventListener("input", function () { ch.setAttribute("data-typed", "1"); });
+        ty.addEventListener("change", function () {
+          if (ch.getAttribute("data-typed")) return;
+          var vc = visitChargeFor(inst, ty.value); ch.value = vc.amt === "" ? "" : String(vc.amt);
+          var cvb = document.querySelector(".modal .ins-cover"); if (cvb) cvb.outerHTML = insCoverHtml(vc.cv);
+        });
+      }, 0);
+      return;
     }
     if (act === "sv-add") {
       var box = el("v_lines");
@@ -57350,7 +57602,8 @@ function viewCatalogue() {
       var saltRate = nAmt(val("v_saltrate"));   /* 6.9.666 - "1,200" is 1200, not 0 */
       var saltAmt = bags * saltRate;
       var charge = nAmt(val("v_charge"));
-      if (charge < MIN_VISIT) { toast("Minimum visit charge is Rs " + MIN_VISIT + "."); return; }
+      var _vcv = insCover(ins, val("v_type"), val("v_date"));   /* 6.9.736 - a covered visit is Rs 0 */
+      if (charge < MIN_VISIT && !(_vcv.free && charge === 0)) { toast(_vcv.free ? "Covered visits are Rs 0. Anything charged is at least Rs " + MIN_VISIT + "." : "Minimum visit charge is Rs " + MIN_VISIT + "."); return; }
       var total = charge + saltAmt + partsAmt;
       var coll = nAmt(val("v_coll"));   /* 6.9.666 */
       var vdate = val("v_date");
@@ -57366,7 +57619,8 @@ function viewCatalogue() {
         id: "", createdBy: S.user, installId: ins.id, client: ins.client, area: ins.area || "",
         date: vdate, engineer: veng, type: val("v_type"), visitCharge: charge,
         saltBags: bags, saltAmt: saltAmt, partsUsed: parts.join(", "), partsAmt: partsAmt,
-        total: total, collected: coll, balance: total - coll, notes: val("v_notes")
+        total: total, collected: coll, balance: total - coll,
+        notes: (_vcv.free && charge === 0 ? (_vcv.k === "amc" ? "Under AMC - no visit charge. " : "Under warranty (" + _vcv.by + ") - no visit charge. ") : "") + val("v_notes")   /* 6.9.736 */
       };
       save("visits", vrow);              /* mints vrow.id on the way in */
       ins.lastService = vdate;
