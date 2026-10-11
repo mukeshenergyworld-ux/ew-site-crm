@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.728";
+  var APP_VERSION = "6.9.729";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -13283,23 +13283,130 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       esc(dmy(String(st.at).slice(0, 10)).slice(0, 5)) + '</span>' +
       (st.noProof && !chProofAny(r).has ? ' <span class="pill" style="background:#fef3c7;color:#92400e;font-size:12px" title="' + esc(st.noProof) + '">no paper</span>' : '');
   }
+  /* ===== 6.9.729 - A RETURN IS FINALISED THE WAY A DELIVERY IS  (11 Oct 2026) =====
+     HIS WORDS: "clicking on return finalised also open screen same like finalising challan, to cross
+     check preset discount, and return slip attaching". Until now Finalise on a return was a yes/no
+     sheet: it showed the credit total and nothing under it, which is how 86 lines credited at MRP
+     (6.9.728) went past his stamp unseen. This is the last look, line by line: the goods-in paper
+     (or the button that files it), every line with its MRP, the discount applied and where that
+     discount came from, a brand summary against the client's preset ON THAT DAY, and what comes
+     back off the incentive. A line credited with NO discount on a brand the client is not approved
+     at 0% for is red, and the stamp needs his tick that he checked it. Nothing here moves money -
+     the credit landed when the godown counted it in, exactly as before. */
+  function retCheckLines(r) {
+    var cl = (r && r.customerName) || "", day = localDay(r && r.createdAt);
+    return returnLines(r).map(function (x, ix) {
+      var row = (!x.job && x.brand && presRealBrand(x.brand)) ? discRow(cl, x.brand, day) : null;
+      var pre = row ? (Number(row.pct) || 0) : null;              /* null = no preset for this brand */
+      var ok0 = row && pre === 0;                                   /* 0% approved on purpose */
+      var flag = "";
+      if (!x.job && !x.lump && x.brand && presRealBrand(x.brand)) {
+        if (!(x.disc > 0) && !ok0) flag = pre === null ? "noset" : "zero";
+        else if (pre !== null && x.disc > 0 && Math.abs(x.disc - pre) >= 0.05) flag = "differs";
+      }
+      return Object.assign({ ix: ix, pre: pre, flag: flag }, x);
+    });
+  }
+  function retFlagged(r) { return retCheckLines(r).filter(function (x) { return x.flag === "noset" || x.flag === "zero"; }); }
   function modalRetFinal(id) {
     var r = (S.data.returns || []).filter(function (x) { return x.id === id; })[0];
     if (!r) return '<h2>Not found</h2><div class="foot"><button class="btn" data-act="close">Close</button></div>';
-    var rl = returnLines(r), amt = returnNet(r);
-    var paper = chProofAny(r).has;
-    return '<h2>Finalise return ' + esc(r.returnNo || "") + '</h2>' +
-      '<p class="sub">' + esc(r.customerName || "") + (r.challanNo ? ' &middot; against ' + esc(r.challanNo) : '') +
-      ' &middot; ' + plural(rl.length, "item") + ' &middot; credit &minus;' + money(amt) + '</p>' +
-      '<div class="card"><div class="meta" style="font-size:13px;line-height:1.55">' +
-      'Your stamp that this return is checked. The credit is already on his account from the day it was ' +
-      'booked in at the godown &mdash; finalising moves no money.</div></div>' +
-      (paper ? '' :
-        '<div class="card" style="border-color:#fecaca;background:#fef2f2"><div class="meta" style="color:#7f1d1d;font-size:13px">' +
-        '<b>No signed goods-in receipt.</b> Say in one line why it is being finalised without one.</div>' +
-        '<input id="rtf_noproof" type="text" placeholder="e.g. counted in front of me" style="width:100%;margin-top:6px"></div>') +
+    var cl = r.customerName || "", day = localDay(r.createdAt);
+    var rl = retCheckLines(r), amt = returnNet(r), gross = returnGross(r);
+    var p = chProofAny(r), paper = p.has;
+    var bad = rl.filter(function (x) { return x.flag === "noset" || x.flag === "zero"; });
+    var badAmt = bad.reduce(function (a, x) { return a + x.amt; }, 0);
+    var h = '<h2>Check the return &amp; finalise &mdash; ' + esc(r.returnNo || "") + '</h2>' +
+      '<p class="sub">' + esc(cl) + (r.challanNo ? ' &middot; against ' + esc(r.challanNo) : ' &middot; no challan named') +
+      ' &middot; back on ' + esc(dmy(String(r.receivedAt || r.createdAt || "").slice(0, 10))) +
+      ' &middot; goods-in paper ' + (!paper ? '<b style="color:#b45309">not on file</b>' : (p.queued ? '<b>on this phone, still uploading</b>' : '<b>on file</b>')) +
+      '. The credit of <b>&minus;' + money(amt) + '</b> is already on his account; this is the last look before your stamp.</p>';
+    /* 1. the paper, or the button that files it */
+    if (paper) h += hisabReceiptPic(p);
+    else h += '<div class="card" style="border-color:#fed7aa;background:#fff7ed;padding:9px 11px">' +
+      '<b style="color:#7c2d12">No signed goods-in slip on this return</b>' +
+      '<div class="meta" style="color:#7c2d12;font-size:12.5px;margin-top:3px">The slip the godown signed when the material was counted back in. Attach it now, or say in one line why it goes in without one.</div>' +
+      (canAttachProof() ? '<div class="acts" style="margin-top:7px"><button class="btn sm" data-act="ch-proof" data-id="' + esc(r.id) + '" style="background:#b45309;border-color:#b45309">&#128247; Attach the return slip</button></div>' : '') +
+      '<input id="rtf_noproof" maxlength="120" style="margin-top:8px;width:100%" placeholder="e.g. counted in front of me · slip coming Monday"/></div>';
+    /* 2. line by line - the discount applied and where it came from */
+    var _why = function (x) {
+      if (x.job) return '<span class="pill" style="background:#ede9fe;color:#5b21b6">job work</span>';
+      if (x.lump) return '<span class="pill" style="background:#e2e8f0;color:#334155" title="Typed as a total on the return form - credited as typed">as typed</span>';
+      if (x.flag === "noset") return '<span class="pill" style="background:#fee2e2;color:#b91c1c" title="No preset discount is saved for ' + esc(x.brand) + ' on this client - so nothing was taken off. Set the preset on his hisab, or approve 0%.">no preset</span>';
+      if (x.flag === "zero") return '<span class="pill" style="background:#fee2e2;color:#b91c1c" title="The client is at ' + x.pre + '% for ' + esc(x.brand) + ' but this line is credited with no discount.">at MRP</span>';
+      if (x.flag === "differs") return '<span class="pill" style="background:#fef3c7;color:#92400e" title="The challan line was priced at ' + x.disc + '%; the client’s preset on that day was ' + x.pre + '%. The credit follows what he was charged.">preset ' + x.pre + '%</span>';
+      if (x.est) return '<span class="pill" style="background:#fef3c7;color:#92400e" title="Not traced to a delivery of this client - MRP from today’s catalogue, discount from the preset.">estimated</span>';
+      return '<span style="color:#0f766e;font-size:12px" title="Matches the client’s preset on that day">&#10003; preset</span>';
+    };
+    h += '<div class="card" style="padding:10px 12px">' +
+      '<div class="meta" style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#475569"><b>Item by item &mdash; credited as this client is priced</b></div>' +
+      '<div style="overflow-x:auto;margin-top:6px"><table style="width:100%;border-collapse:collapse;font-size:12.5px">' +
+      '<tr style="color:#64748b;text-align:right"><th style="text-align:left;font-weight:600;padding:3px 6px 5px 0">Item</th>' +
+      '<th style="font-weight:600;padding:3px 6px 5px">Qty</th><th style="font-weight:600;padding:3px 6px 5px">MRP</th>' +
+      '<th style="font-weight:600;padding:3px 6px 5px">Disc</th><th style="font-weight:600;padding:3px 6px 5px">Net rate</th>' +
+      '<th style="font-weight:600;padding:3px 6px 5px">Credit</th><th style="text-align:left;font-weight:600;padding:3px 0 5px 6px">Check</th></tr>';
+    if (!rl.length) h += '<tr><td colspan="7" style="color:#94a3b8;padding:6px 0">No items on this return.</td></tr>';
+    rl.forEach(function (x) {
+      var red = x.flag === "noset" || x.flag === "zero";
+      h += '<tr style="border-top:1px solid #e2e8f0;text-align:right' + (red ? ';background:#fef2f2' : '') + '">' +
+        '<td style="text-align:left;padding:5px 6px 5px 0;min-width:170px">' + esc(x.desc || x.code || "") + (x.brand ? ' <span style="color:#94a3b8;font-size:12px;white-space:nowrap">' + esc(x.brand) + '</span>' : '') + '</td>' +
+        '<td style="padding:5px 6px">' + esc(String(x.qty)) + '</td>' +
+        '<td style="padding:5px 6px;color:' + (x.disc > 0 ? '#94a3b8;text-decoration:line-through' : '#334155') + '">' + money(x.rate) + '</td>' +
+        '<td style="padding:5px 6px;font-weight:700;color:' + (red ? '#b91c1c' : (x.disc > 0 ? '#0f766e' : '#94a3b8')) + '">' + (x.job ? '&mdash;' : (x.disc > 0 ? x.disc + '%' : (red ? 'NONE' : '&mdash;'))) + '</td>' +
+        '<td style="padding:5px 6px">' + money(x.dr) + '</td>' +
+        '<td style="padding:5px 6px;font-weight:700;color:#b91c1c">&minus;' + money(x.amt) + '</td>' +
+        '<td style="text-align:left;padding:5px 0 5px 6px;white-space:nowrap">' + _why(x) + '</td></tr>';
+    });
+    h += '</table></div>' +
+      '<div style="margin-top:8px;border-top:2px solid #cbd5e1;padding-top:7px">' +
+      '<div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline"><span style="font-size:12.5px;color:#475569">Goods back</span><span style="font-weight:700;font-size:13px">&minus;' + money(gross) + '</span></div>' +
+      (amt !== gross ? '<div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;margin-top:2px"><span style="font-size:12.5px;color:#475569">Less the same share the delivery was given off</span><span style="font-weight:700;font-size:13px">' + money(gross - amt) + '</span></div>' : '') +
+      '<div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;margin-top:5px;padding-top:5px;border-top:1px solid #e2e8f0"><span style="font-weight:800;font-size:13px;color:#0f172a">Credit to client</span><span style="font-weight:800;font-size:15px;color:#b91c1c;white-space:nowrap">&minus;' + money(amt) + '</span></div></div></div>';
+    /* 3. brand by brand, against the preset on the day of the return */
+    var bm = {}, bo = [];
+    rl.forEach(function (x) {
+      if (x.job) return;
+      var k = dkey(x.brand) || "\u0000";
+      if (!bm[k]) { bm[k] = { brand: x.brand || "No brand", amt: 0, discs: {}, pre: x.pre, real: !!(x.brand && presRealBrand(x.brand)), bad: 0 }; bo.push(k); }
+      bm[k].amt += x.amt; bm[k].discs[x.disc > 0 ? x.disc : 0] = 1;
+      if (x.flag === "noset" || x.flag === "zero") bm[k].bad += x.amt;
+    });
+    if (bo.length) {
+      h += '<div class="card" style="padding:10px 12px"><div class="meta" style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#475569"><b>Brand summary &mdash; applied vs the preset on ' + esc(dmy(day)) + '</b></div>' +
+        '<div style="overflow-x:auto;margin-top:7px"><table style="width:100%;border-collapse:collapse;font-size:12.5px">' +
+        '<tr style="color:#64748b;text-align:right"><th style="text-align:left;font-weight:600;padding:3px 6px 5px 0">Brand</th><th style="font-weight:600;padding:3px 6px 5px">Credit</th><th style="font-weight:600;padding:3px 6px 5px">Applied</th><th style="font-weight:600;padding:3px 6px 5px">Preset</th><th style="text-align:left;font-weight:600;padding:3px 0 5px 6px">Check</th></tr>';
+      bo.forEach(function (k) {
+        var b = bm[k], ap = Object.keys(b.discs).map(Number).sort(function (a, c) { return a - c; });
+        var apT = ap.map(function (d) { return d > 0 ? d + '%' : 'none'; }).join(' / ');
+        var chk = !b.real ? '<span style="color:#94a3b8">n/a</span>'
+          : b.pre === null ? '<b style="color:#b91c1c">NOT SET &mdash; set it on his hisab</b>'
+          : b.bad > 0 ? '<b style="color:#b91c1c">' + money(b.bad) + ' credited at MRP</b>'
+          : (ap.length === 1 && Math.abs(ap[0] - b.pre) < 0.05) ? '<span style="color:#0f766e">&#10003; matches</span>'
+          : '<span style="color:#92400e">follows the challan line, not the preset</span>';
+        h += '<tr style="border-top:1px solid #e2e8f0;text-align:right' + (b.bad > 0 || (b.real && b.pre === null) ? ';background:#fef2f2' : '') + '">' +
+          '<td style="text-align:left;padding:5px 6px 5px 0;font-weight:600">' + esc(b.brand) + '</td><td style="padding:5px 6px">&minus;' + money(b.amt) + '</td>' +
+          '<td style="padding:5px 6px;font-weight:700">' + esc(apT) + '</td>' +
+          '<td style="padding:5px 6px;font-weight:700;color:' + (b.pre === null ? (b.real ? '#b91c1c' : '#94a3b8') : (b.pre > 0 ? '#0f766e' : '#94a3b8')) + '">' + (b.pre === null ? (b.real ? 'not set' : 'n/a') : (b.pre > 0 ? b.pre + '%' : '0% approved')) + '</td>' +
+          '<td style="text-align:left;padding:5px 0 5px 6px">' + chk + '</td></tr>';
+      });
+      h += '</table></div></div>';
+    }
+    /* 4. what comes back off the incentive - owner only, the same strip the account card draws */
+    var _inc = admReturnStrip(r);
+    if (_inc) h += '<div class="card" style="padding:6px 12px 10px">' + _inc + '</div>';
+    /* 5. the red question, when there is one */
+    if (bad.length) {
+      h += '<div class="card" style="border-color:#fca5a5;background:#fef2f2;padding:10px 12px">' +
+        '<b style="color:#991b1b">' + plural(bad.length, "line") + ' credited with NO discount &mdash; &minus;' + money(badAmt) + '</b>' +
+        '<div class="meta" style="color:#7f1d1d;font-size:12.5px;margin-top:3px">A return credited at MRP gives back more than the client ever paid. ' +
+        'Set the preset for that brand on his hisab (the Discount pattern card at the top) and come back &mdash; the figures here follow it at once. ' +
+        'If the client really is at 0% for it, approve 0% there, and this goes quiet.</div>' +
+        '<label style="display:flex;gap:8px;align-items:flex-start;margin-top:8px;font-size:13px;color:#7f1d1d;cursor:pointer"><input type="checkbox" id="rtf_checked" style="width:20px;height:20px;margin-top:1px;flex:0 0 auto"> I have checked these lines and the credit is right as it stands.</label></div>';
+    }
+    h += '<div class="card"><div class="meta" style="font-size:13px;line-height:1.55">Your stamp that this return is checked: the lines, the rates and what comes back off the incentive. The credit is already on his account from the day it was booked in at the godown &mdash; finalising moves no money.</div></div>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Not now</button>' +
       '<button class="btn" data-act="rt-final-ok" data-id="' + esc(r.id) + '">Finalise</button></div>';
+    return h;
   }
   /* the HISAB SCREEN - book numbers, GSTIN, the receipt and bill columns. Unchanged. */
   function canHisabRole() { return roleAny(["admin", "accounts"]); }
@@ -15903,6 +16010,95 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
   /* v6.9.214, still: the same question asked at the moment it actually matters - while somebody
      is standing in that one man's account wondering where the balance came from. */
   function hisabAskCard(name) { return hdLine(name, { quiet: true }); }
+  /* ===== 6.9.729 - THE DISCOUNT PATTERN, ON TOP OF HIS HISAB  (11 Oct 2026) =====
+     HIS WORDS: "opening a client hisab always show on top, discount pattern for every brand, if any brand
+     without discount red mark it unless its approved, any return material without discount will also be
+     highlighted, make a proper system for cross checking all so that to avoid any money loss to me".
+     One table per client: every brand he was ever delivered or returned, what the preset is today and
+     since when, what was bought and what came back, and the check - RED where a brand has no preset at
+     all (nothing takes anything off, and a return credits at MRP), grey where 0% was approved on purpose
+     (a saved 0% row IS the approval), green where set. The owner sets a missing one right on the row.
+     Money flagged: returns credited with no discount (his loss) and deliveries billed with no discount on
+     a brand that has a preset (the client's complaint). Nothing here moves money. */
+  function discPatternRows(cl) {
+    var bm = {}, order = [];
+    var at = function (b) {
+      var k = dkey(b); if (!k) return null;
+      if (!bm[k]) { bm[k] = { brand: String(b).trim(), bought: 0, chZero: 0, retd: 0, retZero: 0, last: "" }; order.push(k); }
+      return bm[k];
+    };
+    famChallansIn(cl).forEach(function (c) {
+      if (String(c.status || "") === "Cancelled") return;
+      pricedLines(c, c.customerName).forEach(function (x) {
+        if (x.job || !x.brand) return;
+        var b = at(x.brand); if (!b) return;
+        b.bought += x.amt; if (!(x.disc > 0)) b.chZero += x.amt;
+        var d = String(c.createdAt || "").slice(0, 10); if (d > b.last) b.last = d;
+      });
+    });
+    famRets(cl).forEach(function (r) {
+      if (String(r.status || "") !== "Received") return;
+      returnLines(r).forEach(function (x) {
+        if (x.job || x.lump || !x.brand) return;
+        var b = at(x.brand); if (!b) return;
+        b.retd += x.amt; if (!(x.disc > 0)) b.retZero += x.amt;
+      });
+    });
+    var fam = {}; try { dupFamily(cl).forEach(function (n) { fam[dgKey(n)] = 1; }); } catch (e) { } fam[dgKey(cl)] = 1;
+    ((S.data && S.data.discounts) || []).forEach(function (x) {
+      if (!x || !x.brand || !fam[dgKey(x.client)] || String(x.client || "").charAt(0) === "#") return;
+      at(x.brand);
+    });
+    return order.map(function (k) {
+      var b = bm[k], real = presRealBrand(b.brand);
+      var row = real ? discRow(cl, b.brand) : null;
+      var pct = row ? (Number(row.pct) || 0) : null;
+      var from = row ? (discFrom(row) || "") : "";
+      var st = !real ? "na" : (row ? (pct > 0 ? "set" : "zero") : "none");
+      /* the client is approved at 0% - a return at MRP is then right; otherwise it is money out */
+      var lossRet = (st === "zero") ? 0 : b.retZero;
+      var overCh = (st === "set") ? b.chZero : 0;
+      return Object.assign({ real: real, pct: pct, from: from, st: st, lossRet: lossRet, overCh: overCh }, b);
+    }).sort(function (a, b) {
+      var ra = a.st === "none" ? 0 : 1, rb = b.st === "none" ? 0 : 1;
+      return ra - rb || (b.bought + b.retd) - (a.bought + a.retd);
+    });
+  }
+  function discPatternCard(cl) {
+    if (!cl) return "";
+    var rows = discPatternRows(cl); if (!rows.length) return "";
+    var none = rows.filter(function (r) { return r.st === "none"; });
+    var loss = rows.reduce(function (a, r) { return a + r.lossRet; }, 0), over = rows.reduce(function (a, r) { return a + r.overCh; }, 0);
+    var own = roleIs("admin"), red = none.length > 0 || loss > 0;
+    var cols = [{ k: "brand", t: "BRAND", w: "140px" }, { k: "pct", t: "PRESET", n: 1, r: 1 }, { k: "from", t: "SINCE" }, { k: "bought", t: "BOUGHT", n: 1, r: 1 }, { k: "retd", t: "RETURNED", n: 1, r: 1 }, { k: "chk", t: "CHECK" }, { k: "go", t: "" }];
+    var body = xlTable("dpat", cols, rows.map(function (r) {
+      var pctH = r.st === "na" ? '<span style="color:#94a3b8">n/a</span>'
+        : r.st === "none" ? '<b style="color:#b91c1c">NOT SET</b>'
+        : r.st === "zero" ? '<span style="color:#64748b" title="0% saved on purpose - approved">0% approved</span>'
+        : '<b style="color:#0f766e">' + r.pct + '%</b>';
+      var chk = [];
+      if (r.lossRet > 0) chk.push('<b style="color:#b91c1c" title="Returned material credited with no discount - the client gets back more than he paid">&minus;' + money(r.lossRet) + ' returned at MRP</b>');
+      if (r.overCh > 0) chk.push('<span style="color:#92400e" title="Delivered lines billed with no discount although the preset is ' + r.pct + '% - the client will dispute this">' + money(r.overCh) + ' billed at MRP</span>');
+      if (r.st === "none" && !chk.length) chk.push('<span style="color:#b91c1c">nothing taken off</span>');
+      if (!chk.length) chk.push('<span style="color:#0f766e">&#10003;</span>');
+      var go = "";
+      if (own && r.st === "none") go = '<span style="display:inline-flex;gap:4px;align-items:center;white-space:nowrap">' +
+        '<input class="dp-pct" data-brand="' + esc(r.brand) + '" inputmode="decimal" placeholder="%" style="width:58px;min-height:36px;padding:4px 6px;font-size:13px">' +
+        '<label style="font-size:12px;display:inline-flex;gap:3px;align-items:center;cursor:pointer"><input type="checkbox" class="dp-non" data-brand="' + esc(r.brand) + '" style="width:18px;height:18px"> 0%</label>' +
+        '<button class="btn sm" data-act="dpat-save" data-n="' + esc(cl) + '" data-brand="' + esc(r.brand) + '" style="min-height:36px;padding:2px 9px;font-size:12px">Save</button></span>';
+      return { v: { brand: r.brand, pct: r.pct == null ? -1 : r.pct, from: r.from, bought: r.bought, retd: r.retd, chk: chk.join(" ").replace(/<[^>]+>/g, "") },
+        cells: { brand: '<b' + (r.st === "none" ? ' style="color:#b91c1c"' : '') + '>' + esc(r.brand) + '</b>', pct: pctH, from: r.from ? esc(dmy(r.from)) : '<span style="color:#94a3b8">—</span>',
+          bought: r.bought ? money(r.bought) : '<span style="color:#94a3b8">—</span>', retd: r.retd ? '<span style="color:#b91c1c">&minus;' + money(r.retd) + '</span>' : '<span style="color:#94a3b8">—</span>',
+          chk: '<span style="white-space:nowrap">' + chk.join(' &middot; ') + '</span>', go: go } };
+    }), "bought, returned and the check");
+    return '<div class="card" id="dpat_card" style="border-color:' + (red ? '#fca5a5' : '#99f6e4') + ';background:' + (red ? '#fef2f2' : '#f0fdfa') + '">' +
+      '<h3 style="margin:0;color:' + (red ? '#991b1b' : '#134e4a') + '">Discount pattern &mdash; ' + esc(cl) +
+      (none.length ? ' <span class="pill due">' + plural(none.length, "brand") + ' not set</span>' : ' <span class="pill Won">every brand set</span>') +
+      (loss > 0 ? ' <span class="pill due">&minus;' + money(loss) + ' returned at MRP</span>' : '') +
+      (over > 0 ? ' <span class="pill" style="background:#fef3c7;color:#92400e">' + money(over) + ' billed at MRP</span>' : '') + '</h3>' +
+      '<div class="meta" style="font-size:12.5px;margin:3px 0 6px;color:' + (red ? '#7f1d1d' : '#475569') + '">Every brand this client was delivered or returned, and the preset it is priced at. ' +
+      (red ? '<b>Red means money can go wrong</b>: a brand with no preset takes nothing off and credits a return at MRP. Set it here, or approve 0% if that is right.' : 'Nothing is out of line.') + '</div>' + body + '</div>';
+  }
 
   /* ================= THE OLD HISABS STILL TO ATTACH, AS A WORK LIST  (v6.9.463) ============
      HIS WORDS, with the card on screen: "show in excel systematically and give option to attach
@@ -26327,7 +26523,7 @@ function viewCatalogue() {
       var netRate = Math.round(rate * (1 - disc / 100));
       var qty = Number(it.qty) || 0;
       /* desc/code/rate/disc/dr added for the HISAB return card; incentive code only reads brand/qty/amt. */
-      return { brand: brand, qty: qty, amt: qty * netRate, desc: it.desc || p.desc || it.code || "", code: it.code, rate: rate, disc: disc, dr: netRate, est: est, job: job };
+      return { brand: brand, qty: qty, amt: qty * netRate, desc: it.desc || p.desc || it.code || "", code: it.code, rate: rate, disc: disc, dr: netRate, est: est, job: job, lump: !!it.lump };   /* 6.9.729 - lump carried for the check */
     });
   }
   /* how many lines of this return could not be traced to a delivery - the screen says so */
@@ -28676,7 +28872,7 @@ function viewCatalogue() {
      were billed above what the customer was promised, whenever that happened". The arithmetic is
      identical and the words are not, and a money sheet that misdescribes what it is about to do
      is worse than no sheet at all. */
-  function repriceOffer(touched, fromYmd, standing) {
+  function repriceOffer(touched, fromYmd, standing, onlyId) {   /* 6.9.729 - onlyId: this one delivery, not the client's whole book */
     if (!touched || !touched.length || !roleIs("admin")) return;
     var rpNo = rpDeclined();      /* v6.9.489 - the sheet and the standing count must agree */
     var want = {};
@@ -28684,6 +28880,7 @@ function viewCatalogue() {
     var hits = [];
     (S.data.challans || []).forEach(function (c) {
       if (!want[dkey(c.customerName)]) return;
+      if (onlyId && c.id !== onlyId) return;   /* 6.9.729 */
       var ymd = String(c.createdAt || "").slice(0, 10);
       if (fromYmd && ymd < fromYmd) return;      /* a rate does not reach back past its own start */
       if (isCancelled && isCancelled("challans", c.id)) return;
@@ -31141,6 +31338,7 @@ function viewCatalogue() {
       '<datalist id="billclients">' + billNames.concat((S.data.clients || []).filter(function (c) {   /* 6.9.687 - every client on the book can be found */
         return c && c.name && billNames.indexOf(c.name) < 0 && !dupIsAlias(c.name) && (seesAllClients() || isMineClient(c.name)); }).map(function (c) { return c.name; }))
         .map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join("") + '</datalist>' +
+      ((cl && isMineClient(cl)) ? discPatternCard(cl) : "") +   /* 6.9.729 - the discount pattern, on top, always - above the chase bands */
       (S.q ? hisabDayBand() + hisabNotStampedBand() : "");   /* 6.9.727 - on the home these sit under their tiles */
     if (cl && !isMineClient(cl)) return h + '<div class="empty"><b>' + esc(cl) + '</b> is assigned to another sales executive, so their hisab is not open to you. You can view and follow up on the clients assigned to you.</div>';
     if (!S.q) {
@@ -44213,16 +44411,61 @@ function viewCatalogue() {
      Owner only - correcting a price is his act (canFinalise), and the card is an instruction
      to act, not a report. Nothing here changes a record: the Correct button on the finalise
      sheet does that, with his name on the audit row. */
-  function rateGapDashCard() {
-    if (!canFinalise()) return "";
+  /* 6.9.729 - HIS WORDS over this card: "whats mean of this? explain and make provision to click to view
+     complete details and do what needed". The rows come from here now, read by the card AND by the full
+     screen (modalRateGap) so the two can never count differently. */
+  function rateGapRows() {
     var rows = [];
     (S.data.challans || []).forEach(function (c) {
       if (!c || c.status === "Cancelled") return;
       var g; try { g = chDiscGap(c); } catch (e) { return; }
-      if (g && g.n) rows.push({ c: c, n: g.n, diff: g.diff, done: inHisab(c) });
+      if (g && g.n) rows.push({ c: c, g: g, n: g.n, diff: g.diff, done: inHisab(c) });
     });
-    if (!rows.length) return "";
     rows.sort(function (a, b) { return b.diff - a.diff; });
+    return rows;
+  }
+  function modalRateGap() {
+    var rows = rateGapRows();
+    if (!rows.length) return '<h2>Billed above the rate on file</h2><div class="empty ok">Nothing is billed above a client\u2019s preset.</div><div class="foot"><button class="btn" data-act="close">Close</button></div>';
+    var tot = rows.reduce(function (t, r) { return t + r.diff; }, 0), done = rows.filter(function (r) { return r.done; });
+    var cols = [{ k: "no", t: "CHALLAN", w: "150px" }, { k: "cl", t: "CLIENT" }, { k: "day", t: "DATE" }, { k: "n", t: "LINES", n: 1, r: 1 }, { k: "was", t: "BILLED", n: 1, r: 1 }, { k: "now", t: "SHOULD BE", n: 1, r: 1 }, { k: "diff", t: "OVER", n: 1, r: 1 }, { k: "st", t: "STATUS" }, { k: "go", t: "" }];
+    var t1 = xlTable("rgap", cols, rows.map(function (r) {
+      var day = String(r.c.createdAt || "").slice(0, 10);
+      return { v: { no: r.c.challanNo || "", cl: r.c.customerName || "", day: day, n: r.n, was: r.g.was, now: r.g.now, diff: r.diff, st: r.done ? "finalised" : "open" },
+        cells: { no: '<b>' + esc(r.c.challanNo || "") + '</b>', cl: esc(r.c.customerName || ""), day: esc(dmy(day)), n: r.n,
+          was: money(r.g.was), now: money(r.g.now), diff: '<b style="color:#b91c1c">' + money(r.diff) + '</b>',
+          st: r.done ? '<span class="pill Won" title="Already finalised - the client may hold this bill. Re-pricing it is the credit: the lines are corrected on his account and the statement, and the audit row says why.">finalised</span>' : '<span class="pill due">not finalised</span>',
+          go: '<button class="btn sm" data-act="reprice-one" data-id="' + esc(r.c.id) + '" style="padding:2px 9px;font-size:12px;min-height:36px">Re-price</button> ' +
+              '<button class="btn sm ghost" data-act="ch-open" data-id="' + esc(r.c.id) + '" style="padding:2px 9px;font-size:12px;min-height:36px">Open</button>' } };
+    }), "billed, should be, over and Re-price");
+    var lcols = [{ k: "no", t: "CHALLAN", w: "130px" }, { k: "item", t: "ITEM" }, { k: "brand", t: "BRAND" }, { k: "qty", t: "QTY", n: 1, r: 1 }, { k: "mrp", t: "MRP", n: 1, r: 1 }, { k: "ch", t: "CHARGED" }, { k: "agr", t: "AGREED", n: 1, r: 1 }, { k: "over", t: "OVER", n: 1, r: 1 }];
+    var lrows = [];
+    rows.forEach(function (r) {
+      r.g.lines.forEach(function (l) {
+        var was = l.qty * Math.round(l.rate * (1 - l.frozen / 100)), now = l.qty * Math.round(l.rate * (1 - l.preset / 100));
+        lrows.push({ v: { no: r.c.challanNo || "", item: l.desc, brand: l.brand, qty: l.qty, mrp: l.rate, ch: l.frozen, agr: l.preset, over: was - now },
+          cells: { no: esc(r.c.challanNo || ""), item: esc(l.desc), brand: esc(l.brand || ""), qty: l.qty, mrp: money(l.rate),
+            ch: '<b style="color:#b91c1c">' + (l.frozen > 0 ? l.frozen + '%' : 'none') + '</b>', agr: '<b style="color:#0f766e">' + l.preset + '%</b>', over: '<b style="color:#b91c1c">' + money(was - now) + '</b>' } });
+      });
+    });
+    var t2 = xlTable("rgapl", lcols, lrows, "MRP, charged, agreed and over");
+    return '<h2>Billed above the rate on file &mdash; ' + plural(rows.length, "delivery") + ' &middot; ' + money(tot) + ' over</h2>' +
+      '<div class="card" style="border-color:#fecaca;background:#fef2f2;padding:10px 12px;font-size:13px;line-height:1.55;color:#7f1d1d">' +
+      '<b>What it means.</b> On each of these deliveries at least one line was billed with <b>no discount</b> (MRP), although on the day it was written the client had a preset discount on file for that brand. So the client was charged more than you agreed with him. ' +
+      'Most of these were written before the preset was set, or on a phone that holds no discount rows and so froze 0% (the same fault 6.9.728 fixed on returns).<br>' +
+      '<b>What to do.</b> <b>Re-price</b> corrects the lines to the agreed discount: the client\u2019s account drops by the amount over, the statement shows the corrected lines, and an audit row with your name says what changed and why. Nothing is deleted. ' +
+      'On a delivery already <b>finalised</b> the client may be holding the old bill &mdash; the re-price is the credit note: tell him his account has been corrected by that amount. ' +
+      '<b>Leave them</b> on the sheet is also a decision: the delivery is written down as checked and not asked again unless the gap grows.</div>' +
+      (roleIs("admin") ? '<div class="acts" style="margin:8px 0"><button class="btn" data-act="reprice-scan" style="background:#7f1d1d;border-color:#7f1d1d">Re-price all ' + rows.length + ' at the agreed discount &middot; ' + money(tot) + '</button>' +
+        (done.length ? '<span class="meta" style="align-self:center;font-size:12px">' + done.length + ' already finalised &mdash; the sheet will say so.</span>' : '') + '</div>' : '') +
+      '<div class="card"><h3 style="margin:0 0 6px">By delivery</h3>' + t1 + '</div>' +
+      '<div class="card"><h3 style="margin:0 0 6px">Every line &mdash; ' + plural(lrows.length, "line") + '</h3>' + t2 + '</div>' +
+      '<div class="foot"><button class="btn" data-act="close">Close</button></div>';
+  }
+  function rateGapDashCard() {
+    if (!canFinalise()) return "";
+    var rows = rateGapRows();
+    if (!rows.length) return "";
     var tot = rows.reduce(function (t, r) { return t + r.diff; }, 0);
     var open = rows.filter(function (r) { return !r.done; }).length;
     var h = '<div class="card" style="border-color:#fca5a5;background:#fef2f2">' +
@@ -44232,7 +44475,8 @@ function viewCatalogue() {
       '<div class="meta" style="font-size:13px">Each has a line at 0% discount while a discount was agreed for that client and that brand on the day it was written, so the client was charged more than agreed. ' +
         'Finalise puts it right by itself &mdash; the line takes the rate on file and the audit trail says so; or open it and press <b>Do it now</b>. ' +
         (open < rows.length ? '<b>' + (rows.length - open) + '</b> ' + (rows.length - open === 1 ? 'is' : 'are') + ' already finalised and need' + (rows.length - open === 1 ? 's' : '') + ' a credit note instead. ' : '') +
-        'The check runs on every open, over the whole book, with the same reading finalise uses.</div>';
+        'The check runs on every open, over the whole book, with the same reading finalise uses.</div>' +
+      '<div class="acts" style="margin-top:8px"><button class="btn sm" data-act="rgap-open" style="background:#7f1d1d;border-color:#7f1d1d">See all ' + rows.length + ' &middot; every line &middot; re-price</button></div>';   /* 6.9.729 */
     rows.slice(0, 3).forEach(function (r) {   /* v6.9.539 - three, not six: compact */
       h += '<div class="row" style="align-items:center;gap:8px;margin-top:7px;flex-wrap:wrap;border-top:1px solid #fecaca;padding-top:7px">' +
         '<b style="flex:1 1 100%;font-size:13.5px">' + esc(r.c.customerName || "(client)") + '</b>' +
@@ -54775,6 +55019,30 @@ function viewCatalogue() {
       flushNow(); return;
     }
     if (act === "disc-edit") { S.q = t.getAttribute("data-n"); render(); return; }
+    if (act === "dpat-save") {   /* 6.9.729 - set a missing preset from the Discount pattern card */
+      if (!roleIs("admin")) { toast("Setting a client\u2019s discount is the owner\u2019s."); return; }
+      var _dpc = t.getAttribute("data-n") || "", _dpb = t.getAttribute("data-brand") || "";
+      var _dpq = function (sel) { return document.querySelector(sel + '[data-brand="' + _dpb.replace(/"/g, '\\"') + '"]'); };
+      var _dpi = _dpq("input.dp-pct"), _dpn = _dpq("input.dp-non");
+      var _raw = String((_dpi && _dpi.value) || "").trim(), _no = !!(_dpn && _dpn.checked);
+      if (!_no && !_raw) { toast("Put a % in, or tick 0%, for " + _dpb + "."); return; }
+      var _v = _no ? 0 : Number(_raw);
+      if (!_no && (!/^[0-9]+(\.[0-9]+)?$/.test(_raw) || _v > 100)) { toast(_dpb + ": a discount is a number from 0 to 100."); return; }
+      if (discRow(_dpc, _dpb)) { toast(_dpb + " already has a preset - change it on the Discounts screen."); return; }
+      askSheet({
+        title: "Set " + _dpb + " at " + (_v > 0 ? _v + "%" : "0% (no discount, approved)") + " for " + _dpc + "?",
+        sub: "Undated, so every delivery and return of this brand on his account reads it - the figures above change at once.",
+        body: '<div class="meta">Written to ClientDiscounts with your name. Nothing is deleted; a later dated change can follow on the Discounts screen.</div>',
+        yes: "Save", no: "Not now"
+      }).then(function (yes) {
+        if (!yes) return;
+        save("discounts", { id: mintId("D"), client: _dpc, brand: _dpb, pct: _v, notes: "" }, true);
+        _dscIdx = null; _rpgCache = null;
+        toast(_dpb + " set at " + (_v > 0 ? _v + "%" : "0%, approved") + " for " + _dpc + ".");
+        render();
+      });
+      return;
+    }
     /* ===== AND ITS TWIN, REMOVED THE SAME DAY =====
        `if (act === "disc-back") { S.q = ""; render(); return; }` - the version before the one
        1,400 lines above, which puts him back on the screen he came from AND re-opens the
@@ -55400,11 +55668,12 @@ function viewCatalogue() {
       });
       return;
     }
+    if (act === "rgap-open") { if (!canFinalise()) return; S.modal = modalRateGap(); render(); return; }   /* 6.9.729 */
     if (act === "reprice-one") {
       if (!roleIs("admin")) { toast("Re-pricing a delivery is the owner\u2019s."); return; }
       var _r1 = (S.data.challans || []).filter(function (x) { return x.id === id; })[0];
       if (!_r1) return;
-      repriceOffer([{ client: _r1.customerName, brand: "", pct: 0 }], "", true);
+      repriceOffer([{ client: _r1.customerName, brand: "", pct: 0 }], "", true, _r1.id);   /* 6.9.729 - "Do it now" / "Re-price" on a delivery means that delivery */
       return;
     }
     if (act === "reprice-scan") {
@@ -57522,13 +57791,16 @@ function viewCatalogue() {
         _rNo = String((el("rtf_noproof") && el("rtf_noproof").value) || "").trim();
         if (_rNo.length < 4) { toast("There is no signed goods-in receipt - say in one line why. Nothing was stamped."); return; }
       }
+      /* 6.9.729 - a line credited at MRP is not stamped past unseen */
+      var _rBad = retFlagged(_rk);
+      if (_rBad.length && !(el("rtf_checked") && el("rtf_checked").checked)) { toast(plural(_rBad.length, "line") + " credited with no discount - tick that you checked them, or set the preset first. Nothing was stamped."); return; }
       var _rNow = new Date().toISOString();
       _rtStampCache = null;
       save("audit", {
         id: "RH-" + Date.now() + "-" + Math.floor(Math.random() * 1000000),
         createdAt: _rNow, actor: S.user || "", action: "return:hisab",
         target: String(_rk.returnNo || _rk.id || "") + " / " + String(_rk.customerName || ""),
-        detail: JSON.stringify({ rtId: _rk.id, no: _rk.returnNo || "", client: _rk.customerName || "", by: S.user || "", at: _rNow, noProof: _rNo })
+        detail: JSON.stringify({ rtId: _rk.id, no: _rk.returnNo || "", client: _rk.customerName || "", by: S.user || "", at: _rNow, noProof: _rNo, checkedAtMrp: _rBad.length ? _rBad.reduce(function (a, x) { return a + x.amt; }, 0) : 0 })
       }, true);
       _rtStampCache = null;
       S.modal = null; toast((_rk.returnNo || "Return") + " finalised."); render(); return;
