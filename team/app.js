@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.736";
+  var APP_VERSION = "6.9.737";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -589,6 +589,12 @@
      desk's seven; the union is what "both" means. The order is kept from ROLE_TABS rather than
      sorted, because the FIRST tab in the list is the one the app opens on, and a man should
      land where his main work is - not on whatever happens to sort first. */
+  /* 6.9.737 - "#visits" in the address (the EW Visit link) lands on Site visits & quotes */
+  function landTab() {
+    var h = ""; try { h = String(location.hash || "").replace(/^#/, ""); } catch (e) { }
+    if (h === "visits" && canSee("visits")) { try { history.replaceState(history.state, "", location.pathname + location.search); } catch (e) { } return "visits"; }
+    return myTabs()[0] || "dash";
+  }
   function myTabs() {
     var mine = myRoles();
     if (!mine.length) return ["dash"];
@@ -3378,6 +3384,7 @@ window.addEventListener("beforeunload", function (ev) {
       return;
     }
     if (t && t.id === "inc_q") { incFilter(); return; }
+    if (t && t.id === "vl_q") { S.vlQ = t.value; var _vr = document.getElementById("vl_res"); if (_vr) _vr.innerHTML = vlFindHtml(t.value); return; }   /* 6.9.737 */
     if (t && t.id === "p_find") { S.pFind = t.value; var _pr = document.getElementById("p_find_res"); if (_pr) _pr.innerHTML = pFindHtml(t.value); return; }   /* 6.9.736 */
     if (t && t.getAttribute && t.getAttribute("data-bdisc") != null) { hsbDiscPaint(); return; }   /* v6.9.565, by brand 6.9.567 */
     if (t && t.id === "hsb_extra") {
@@ -21710,7 +21717,119 @@ function viewCatalogue() {
     return h;
   }
 
+  /* ================= 6.9.737 - SITE VISITS & QUOTES, ONE TOOL  (11 Oct 2026) =================
+     HIS WORDS: "want to be use it as simple site visit log tool, a executive go to site log its visit, site fall
+     under who entered firstly, another executive can also enter visit but it will be shown that previously its visited
+     by another executive, its will be proper quote log to be shown here, what quoted by whom at what price, means its
+     will be like visit cum quote making & viewing tool". And: the old EW Visit app signed in on a second server
+     (the incentive engine) where his number was never registered, and a phone kept its old Hindi copy.
+     So it lives here, on the CRM's own sign-in (name + PIN), over the CRM's own sites, visits and quotes:
+       - find a site (name, client, mobile, area, partner) or start a new one;
+       - a site is the executive's who ENTERED it first (the site row's createdBy, else the first visit or quote);
+       - anyone may log a visit; the page says who visited before, and a visit on another man's site says whose it is;
+       - every quote on the site, newest first: number, date, by whom, brands, value, status - and Make a quote.
+     A visit goes up through the same siteVisit call as the GPS check-in (and to the visits bot); the location is
+     sent when the phone gives it in a few seconds, and the visit is never held back for it. */
+  function vlOwner(st) {
+    if (!st) return { by: "", at: "" };
+    if (st.createdBy) return { by: String(st.createdBy), at: String(st.createdAt || "") };
+    var ev = [];
+    (S.data.sitevisits || []).forEach(function (v) { if (v.siteId === st.id) ev.push({ by: v.createdBy, at: String(v.createdAt || v.date || "") }); });
+    vlQuotes(st).forEach(function (q) { ev.push({ by: q.createdBy, at: String(q.createdAt || "") }); });
+    ev.sort(function (a, b) { return a.at.localeCompare(b.at); });
+    return ev[0] || { by: "", at: "" };
+  }
+  function vlVisits(st) {
+    return (S.data.sitevisits || []).filter(function (v) { return st && v.siteId === st.id; })
+      .sort(function (a, b) { return String(b.createdAt || b.date || "").localeCompare(String(a.createdAt || a.date || "")); });
+  }
+  function vlQuotes(st) {
+    if (!st) return [];
+    var cl = dkey(st.client);
+    return (S.data.quotes || []).filter(function (q) { return q.siteId === st.id || (!q.siteId && cl && dkey(q.client) === cl); })
+      .sort(function (a, b) { return String(b.createdAt || "").localeCompare(String(a.createdAt || "")); });
+  }
+  function vlSiteRow(st) {
+    var o = vlOwner(st), vs = vlVisits(st), qs = vlQuotes(st), lv = vs[0], lq = qs[0];
+    var mine = dkey(o.by) === dkey(S.user);
+    return '<div class="card vl-site" data-act="vl-open" data-id="' + esc(st.id) + '" style="cursor:pointer;padding:10px 12px;margin:6px 0">' +
+      '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b style="color:#0f766e;font-size:14.5px">' + esc(st.name || st.client || "(site)") + '</b>' +
+      (st.client && st.client !== st.name ? '<span style="color:#475569;font-size:13px">' + esc(st.client) + '</span>' : '') +
+      (st.stage ? '<span class="pill">' + esc(st.stage) + '</span>' : '') + '</div>' +
+      '<div class="meta" style="font-size:12.5px;margin-top:3px">' + (o.by ? (mine ? '<b>Your site</b>' : 'Site of <b>' + esc(o.by) + '</b>') : 'No owner on file') +
+        (st.city ? ' &middot; ' + esc(st.city) : '') +
+        ' &middot; ' + plural(vs.length, "visit") + (lv ? ' (last ' + esc(dmy(lv.createdAt || lv.date)) + ', ' + esc(lv.createdBy || "") + ')' : '') +
+        ' &middot; ' + plural(qs.length, "quote") + (lq ? ' (last ' + money(nAmt(lq.net)) + ', ' + esc(lq.createdBy || "") + ')' : '') + '</div></div>';
+  }
+  function vlFindHtml(q) {
+    q = String(q || "").replace(/\s+/g, " ").trim().toLowerCase();
+    var all = (S.data.sites || []).filter(function (x) { return x && x.id && String(x.status || "") !== "Lost"; });
+    var list;
+    if (q.length >= 2) {
+      var qd = q.replace(/\D/g, "");
+      list = all.filter(function (x) {
+        var hay = [x.name, x.client, x.city, x.architect, x.plumber, x.builder, x.code].join(" ").toLowerCase();
+        return hay.indexOf(q) >= 0 || (qd.length >= 4 && String(x.mobile || "").replace(/\D/g, "").indexOf(qd) >= 0);
+      }).slice(0, 40);
+      if (!list.length) return '<div class="empty">No site matches “' + esc(q) + '”. <button class="btn sm" data-act="site-new" style="min-height:44px;margin-left:6px">+ New site</button></div>';
+      return '<div class="meta" style="font-size:12.5px">' + list.length + ' found</div>' + list.map(vlSiteRow).join("");
+    }
+    /* nothing typed: the sites he touched last, newest first */
+    var last = {};
+    (S.data.sitevisits || []).forEach(function (v) { if (dkey(v.createdBy) === dkey(S.user) || roleIs("admin")) { var k = v.siteId, a = String(v.createdAt || v.date || ""); if (!last[k] || a > last[k]) last[k] = a; } });
+    all.forEach(function (x) { if (dkey(x.createdBy) === dkey(S.user)) { var a = String(x.updatedAt || x.createdAt || ""); if (!last[x.id] || a > last[x.id]) last[x.id] = a; } });
+    list = all.filter(function (x) { return last[x.id]; }).sort(function (a, b) { return last[b.id].localeCompare(last[a.id]); }).slice(0, 25);
+    return '<h3 style="margin:12px 0 4px;font-size:14px">' + (roleIs("admin") ? 'Sites visited lately' : 'Your sites, latest first') + '</h3>' +
+      (list.length ? list.map(vlSiteRow).join("") : '<div class="empty">Nothing yet. Find a site above, or start a new one.</div>');
+  }
+  function vlSitePage(st) {
+    var o = vlOwner(st), vs = vlVisits(st), qs = vlQuotes(st), mine = dkey(o.by) === dkey(S.user);
+    var others = {}; vs.forEach(function (v) { if (dkey(v.createdBy) !== dkey(S.user)) others[v.createdBy] = (others[v.createdBy] || 0) + 1; });
+    var cl = st.client ? clientByName(st.client) : null;
+    var h = '<div class="row" style="margin:4px 0 8px"><button class="btn sm ghost" data-act="vl-home" style="min-height:44px">&larr; All sites</button></div>' +
+      '<div class="card" style="border-color:#99f6e4;background:#f0fdfa"><h2 style="margin:0 0 2px;font-size:18px">' + esc(st.name || st.client || "(site)") + '</h2>' +
+      '<div class="meta" style="font-size:13px">' + [st.client, st.city, st.stage, st.mobile ? '<a href="tel:' + esc(st.mobile) + '">' + esc(st.mobile) + '</a>' : ''].filter(Boolean).map(function (x, i) { return i === 3 ? x : esc(x); }).join(" &middot; ") + '</div>' +
+      '<div style="margin-top:6px;font-size:13.5px">' + (o.by ? (mine ? '<b style="color:#0f766e">Your site</b>' : 'Site of <b>' + esc(o.by) + '</b> &mdash; he entered it first') + (o.at ? ' <span style="color:#64748b">(' + esc(dmy(o.at)) + ')</span>' : '') : '<span style="color:#b45309">No owner on file</span>') + '</div>' +
+      ([st.architect && "Architect " + st.architect, st.plumber && "Plumber " + st.plumber, st.builder && "Builder " + st.builder].filter(Boolean).length ? '<div class="meta" style="font-size:12.5px;margin-top:2px">' + esc([st.architect && "Architect " + st.architect, st.plumber && "Plumber " + st.plumber, st.builder && "Builder " + st.builder].filter(Boolean).join(" · ")) + '</div>' : '') +
+      (Object.keys(others).length ? '<div class="card" style="margin:8px 0 0;border-color:#fde68a;background:#fffbeb;padding:7px 10px"><div class="meta" style="font-size:12.5px;color:#92400e">Visited before by ' + Object.keys(others).map(function (n) { return '<b>' + esc(n) + '</b> (' + others[n] + ')'; }).join(", ") + '.</div></div>' : '') +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">' +
+        '<button class="btn" data-act="vl-visit" data-id="' + esc(st.id) + '" style="min-height:44px">Log a visit</button>' +
+        (cl ? '<button class="btn" data-act="qz-for" data-id="' + esc(cl.id) + '" style="min-height:44px;background:#1d4ed8;border-color:#1d4ed8">Make a quote</button>'
+            : '<span class="meta" style="font-size:12.5px;align-self:center;color:#b45309">No client record on this site yet &mdash; a quote needs one.</span>') +
+        '<button class="btn ghost" data-act="site-open" data-id="' + esc(st.id) + '" style="min-height:44px">Edit site</button></div></div>';
+    h += '<h3 style="margin:14px 0 4px;font-size:15px">Quotes &middot; ' + qs.length + '</h3>';
+    h += qs.length ? pevTable([["Date"], ["Quote"], ["By"], ["Brands"], ["Value", "right"], ["Status"], [""]], qs.map(function (q) {
+      return [esc(dmy(q.createdAt)), '<b>' + esc(q.quoteNo || "") + '</b>' + (Number(q.version) > 1 ? ' <span style="color:#64748b">v' + esc(q.version) + '</span>' : ''), esc(q.createdBy || ""),
+        esc(String(q.brand || "").slice(0, 60)), '<b>' + money(nAmt(q.net)) + '</b>' + (nAmt(q.discountPct) ? '<div style="font-size:12px;color:#64748b">' + esc(q.discountPct) + '% off ' + money(nAmt(q.gross)) + '</div>' : ''), esc(q.status || ""),
+        '<button class="btn sm ghost" data-act="q-pdf" data-id="' + esc(q.id) + '" style="min-height:44px">PDF</button>'];
+    })) : '<div class="empty">No quote on this site yet.</div>';
+    h += '<h3 style="margin:14px 0 4px;font-size:15px">Visits &middot; ' + vs.length + '</h3>';
+    h += vs.length ? pevTable([["Date"], ["By"], ["Met"], ["What happened"], ["Where"]], vs.map(function (v) {
+      return [esc(dmy(v.createdAt || v.date)) + ' <span style="color:#64748b">' + esc(String(v.createdAt || "").slice(11, 16)) + '</span>', '<b>' + esc(v.createdBy || "") + '</b>', esc(v.visitType || v.whom || ""), esc(v.purpose || v.note || ""),
+        v.lat ? '<a target="_blank" rel="noopener" href="https://maps.google.com/?q=' + esc(v.lat) + ',' + esc(v.lng) + '">' + esc(v.verified || "Map") + '</a>' : '<span style="color:#94a3b8">' + esc(v.verified || "—") + '</span>'];
+    })) : '<div class="empty">No visit logged yet.</div>';
+    return h;
+  }
+  function modalVlVisit(st) {
+    var o = vlOwner(st), mine = !o.by || dkey(o.by) === dkey(S.user);
+    return '<h2>Log a visit</h2><p class="sub">' + esc(st.name || st.client || "") + (st.client && st.client !== st.name ? ' &middot; ' + esc(st.client) : '') + '</p>' +
+      (mine ? '' : '<div class="card" style="border-color:#fde68a;background:#fffbeb;padding:7px 10px"><div class="meta" style="font-size:12.5px;color:#92400e">This is <b>' + esc(o.by) + '</b>&rsquo;s site &mdash; he entered it first. Your visit is logged under your name and he sees it.</div></div>') +
+      '<label>Whom did you meet?</label><div class="chips" id="vl_whom">' + ["Owner", "Plumber", "Architect", "Builder", "PMC", "Site only"].map(function (w, i) {
+        return '<button class="chip' + (i === 0 ? ' on' : '') + '" data-act="vl-whom" data-w="' + w + '" style="min-height:44px">' + w + '</button>'; }).join("") + '</div>' +
+      '<label>What happened <span style="color:#ef4444">*</span></label><textarea id="vl_note" placeholder="e.g. plumbing started, owner wants a CP quote by Friday"></textarea>' +
+      '<div class="meta" style="font-size:12px">Your location is sent if the phone gives it in a few seconds; the visit is saved either way.</div>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button><button class="btn" data-act="vl-save" data-id="' + esc(st.id) + '">Save visit</button></div>';
+  }
   function viewVisits() {
+    var st0 = S.vlSite ? siteById(S.vlSite) : null;
+    if (st0) return vlSitePage(st0);
+    return '<div class="card" style="padding:10px 12px"><h2 style="margin:0 0 6px;font-size:17px">Site visits &amp; quotes</h2>' +
+      '<input id="vl_q" type="search" autocomplete="off" placeholder="Find a site — name, client, mobile, area or partner" value="' + esc(S.vlQ || "") + '" style="min-height:44px;font-size:15px"/>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><button class="btn" data-act="site-new" style="min-height:44px">+ New site</button>' +
+      '<button class="btn ghost" data-act="vl-gps" style="min-height:44px">Sites near me (GPS)</button></div></div>' +
+      '<div id="vl_res">' + vlFindHtml(S.vlQ) + '</div>';
+  }
+  function viewVisitsOld() {
     var mine = roleIs("admin") ? S.data.sitevisits
       : S.data.sitevisits.filter(function (v) { return v.createdBy === S.user; });
     var day = S.calDay || today();
@@ -38969,7 +39088,7 @@ function viewCatalogue() {
      nothing else could reach it - so the usage counter would have had to keep a second copy
      of the same forty-two names, and a second copy is how the two quietly stop agreeing.
      Hoisted, not duplicated. render() still reads exactly this. */
-  var TAB_TABS = [["search", "Search"], ["dash", "Today"], ["statements", "Statements"], ["review", "Twice-weekly review"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["register", "Challan log"], ["paylog", "Payment log"], ["freight", "Drivers & freight"], ["deliveries", "Deliveries"], ["collections", "Payments"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["crlog", "Client & lead log"], ["partners", "Partners"], ["pevents", "Partner events"], ["quotes", "Quotes"], ["commission", "Incentives"], ["complaints", "Complaints"], ["service", "Service"], ["spares", "Spares"], ["dues", "Service dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["paidout", "Paid out"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["catalogs", "Brand catalogues"], ["brandstory", "Brand stories"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["trouble", "Troubleshoot"], ["changelog", "Change log"], ["booksweep", "Book numbers"], ["dups", "Duplicate check"], ["stock", "Stock"], ["tally", "Tally"], ["plcheck", "Supplier price list"], ["brief", "The brief"]];
+  var TAB_TABS = [["search", "Search"], ["dash", "Today"], ["statements", "Statements"], ["review", "Twice-weekly review"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits & quotes"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["register", "Challan log"], ["paylog", "Payment log"], ["freight", "Drivers & freight"], ["deliveries", "Deliveries"], ["collections", "Payments"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["crlog", "Client & lead log"], ["partners", "Partners"], ["pevents", "Partner events"], ["quotes", "Quotes"], ["commission", "Incentives"], ["complaints", "Complaints"], ["service", "Service"], ["spares", "Spares"], ["dues", "Service dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["paidout", "Paid out"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["catalogs", "Brand catalogues"], ["brandstory", "Brand stories"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["trouble", "Troubleshoot"], ["changelog", "Change log"], ["booksweep", "Book numbers"], ["dups", "Duplicate check"], ["stock", "Stock"], ["tally", "Tally"], ["plcheck", "Supplier price list"], ["brief", "The brief"]];
   var TAB_LABEL = (function () {
     var m = {}; TAB_TABS.forEach(function (t) { m[t[0]] = t[1]; }); return m;
   })();
@@ -40534,7 +40653,7 @@ function viewCatalogue() {
         S.user = r.user.name; S.role = r.user.role; S.pinSet = r.user.pinSet;
         try { beatStart(); } catch (e) {}          /* v6.9.314 - from here it asks on its own */
         try { waProbe(); } catch (e) {}            /* v6.9.548 - and asks once whether WhatsApp is on the server */
-        S.tab = myTabs()[0];
+        S.tab = landTab();
         loadCatalog(); refresh();
       /* v6.9.406 - the .catch below is on the WEBAUTHN promise, not on this call. Without a
          rejection handler here, a face that unlocked fine on a bad line left the login screen
@@ -42951,7 +43070,7 @@ function viewCatalogue() {
         try { waProbe(); } catch (e) {}            /* v6.9.548 - and asks once whether WhatsApp is on the server */
       try { credPut(STORE, { pin: pin, user: S.user, role: S.role, pinSet: S.pinSet }); } catch (e) {}
       if (String(S.pinSet).toUpperCase() !== "Y") { renderPinChange(); return; }
-      S.tab = myTabs()[0];
+      S.tab = landTab();
       loadCatalog();
       refresh();
     }).catch(function (e) { S.pin = ""; renderLogin(loginWhy(e)); });
@@ -48244,7 +48363,7 @@ function viewCatalogue() {
     /* v6.9.329 - NOT gated on canSee("sites"). That has been false for every role since
        v6.9.290 took Site off the menu, and this board is about clients, not sites. */
     tabs.push(["stage", "Stage board"]);
-    if (canSee("visits")) tabs.push(["visits", "Site visits"]);
+    if (canSee("visits")) tabs.push(["visits", "Site visits & quotes"]);
     var sub = S.leadsSub || tabs[0][0];
     if (!tabs.some(function (t) { return t[0] === sub; })) sub = tabs[0][0];
     var h = '<div class="row" style="margin-bottom:10px">' + tabs.map(function (t) {
@@ -51860,7 +51979,7 @@ function viewCatalogue() {
   /* 6.9.612 - his words, 25 Sep: "product price list and adding a product option not shown in CRM".
      Catalogue (where a product is added) and Price list PDF come back under Products, and the
      Products screen itself carries both buttons. */
-  var NAV_OFF = [["visits", "Site visits"], ["rules", "Pitch rules"], ["customers", "Customers"],
+  var NAV_OFF = [["rules", "Pitch rules"], ["customers", "Customers"],
                  ["spares", "Spares"], ["rates", "Rate revision"], ["tools", "Tools"]];
   var NAV_GROUPS = [
     /* item 27, v6.9.510 - HIS WORDS: "Put agent on master tab for everyone". It was a chip
@@ -51875,7 +51994,7 @@ function viewCatalogue() {
     /* v6.9.533 - his third list, item 13: "merge Leads and Clients into one tab with sub-tabs",
        and item 16: "remove Leads tab from header". One group; the lead board is its second
        chip. Every chip the two groups had is still here. */
-    ["Clients",    ["clients", "leads", "crlog", "brandfollow", "followups", "quotes", "discounts", "pitch", "winloss", "review"]],
+    ["Clients",    ["clients", "leads", "visits", "crlog", "brandfollow", "followups", "quotes", "discounts", "pitch", "winloss", "review"]],   /* 6.9.737 - site visits & quotes */
     ["Service",    ["complaints", "service"]],   /* 6.9.684 - complaints first */
     ["Products",   ["products", "pricelist", "catalogue", "catalogs", "brandstory", "stock", "tally", "plcheck"]],   /* 6.9.612 - price list and add-product back */   /* v6.9.581 - the catalogue library; v6.9.605 - Stock, on his "stock entry in CRM" */
     ["Team",       ["partners", "pevents", "statements", "commission", "payroll", "scorecard", "report", "teampins"]],
@@ -52284,7 +52403,7 @@ function viewCatalogue() {
        S.tab was somehow set to one. Derived/utility views (opened by handlers, not in ROLE_TABS)
        are whitelisted so legitimate flows aren't bounced. */
     var FREE_TAB = { dash: 1, brandboard: 1, matrix: 1, customers: 1, pitch: 1 };
-    if (!FREE_TAB[S.tab] && !canSee(S.tab)) S.tab = myTabs()[0] || "dash";
+    if (!FREE_TAB[S.tab] && !canSee(S.tab)) S.tab = landTab();
     var pick = (S.tab === 'dash' && roleIs("admin")) ? viewOwner : (views[S.tab] || viewDash);
     var body;
     try { body = pick(); }
@@ -53009,7 +53128,7 @@ function viewCatalogue() {
         try { credPut(STORE, { pin: p1, user: S.user }); } catch (e) {}
         try { api("teamAuth", { ua: navigator.userAgent }).catch(function () {}); } catch (e) {}
         toast("PIN updated.");
-        S.tab = myTabs()[0];
+        S.tab = landTab();
         loadCatalog(); refresh();
       /* v6.9.406 - renderPinChange was right here for saying what went wrong and was never
          wired to a dead line. A man must never be left unsure whether his PIN changed. */
@@ -58832,6 +58951,38 @@ function viewCatalogue() {
     }
 
     if (act === "visit-start") { startVisit(); return; }
+    /* 6.9.737 - the visit-cum-quote tool */
+    if (act === "vl-open") { S.vlSite = id; S.tab = "visits"; S.modal = null; render(); try { window.scrollTo(0, 0); } catch (e) { } return; }
+    if (act === "vl-home") { S.vlSite = ""; render(); return; }
+    if (act === "vl-gps") { S.vlSite = ""; startVisit(); return; }
+    if (act === "vl-visit") { var _vs = siteById(id); if (!_vs) { toast("That site is not on this device."); return; } S.vlWhom = "Owner"; S.modal = modalVlVisit(_vs); render(); return; }
+    if (act === "vl-whom") {
+      S.vlWhom = t.getAttribute("data-w") || "";
+      [].slice.call(document.querySelectorAll('#vl_whom .chip')).forEach(function (c) { c.classList.toggle("on", c === t); });
+      return;
+    }
+    if (act === "vl-save") {
+      var _vst = siteById(id); if (!_vst) return;
+      var _vn = String(val("vl_note") || "").trim();
+      if (_vn.length < 3) { toast("Say in a few words what happened on the visit."); return; }
+      var _vb = t, _vlbl = t.textContent; _vb.disabled = true; _vb.textContent = "Saving...";
+      var _go = function (g) {
+        api("siteVisit", { siteId: _vst.id, setLocation: false, purpose: _vn, photoB64: "", visitType: S.vlWhom || "Owner",
+          lat: g ? g.lat : "", lng: g ? g.lng : "", accuracy: g ? g.acc : "" }).then(function (r) {
+          if (!r || !r.ok) { btnBack(_vb, _vlbl); toast((r && r.error) || "Could not save the visit."); return; }
+          S.modal = null;
+          var _o = vlOwner(_vst);
+          toast("Visit logged." + (_o.by && dkey(_o.by) !== dkey(S.user) ? " " + _o.by + "’s site — he sees it." : ""));
+          refresh();
+        }).catch(function (e) { btnBack(_vb, _vlbl); toast("The visit was NOT logged — " + apiWhy(e) + ". Your note is still on the form — press Save again."); });
+      };
+      var _done = false, _tm = setTimeout(function () { if (!_done) { _done = true; _go(null); } }, 5000);
+      try {
+        navigator.geolocation.getCurrentPosition(function (p) { if (_done) return; _done = true; clearTimeout(_tm); _go({ lat: p.coords.latitude, lng: p.coords.longitude, acc: Math.round(p.coords.accuracy || 0) }); },
+          function () { if (_done) return; _done = true; clearTimeout(_tm); _go(null); }, { enableHighAccuracy: true, timeout: 4500, maximumAge: 60000 });
+      } catch (e) { if (!_done) { _done = true; clearTimeout(_tm); _go(null); } }
+      return;
+    }
     if (act === "cal-prev" || act === "cal-next") {
       var b0 = S.calMonth ? new Date(S.calMonth + "-01T00:00:00") : new Date();
       b0.setMonth(b0.getMonth() + (act === "cal-next" ? 1 : -1));
@@ -61827,7 +61978,7 @@ function viewCatalogue() {
       S.role = sess.role;
       S.pinSet = sess.pinSet;
       if (String(S.pinSet || "").toUpperCase() === "Y") {   // "Y" = PIN is set; anything else must reset it first
-        S.tab = myTabs()[0] || "dash";
+        S.tab = landTab();
         S.data = warm;
         /* v6.9.209: replay whatever is still journaled on this phone BEFORE painting. Without it a
            payment saved offline vanished off the screen on reopen - and a man who cannot see the
@@ -61927,7 +62078,7 @@ function viewCatalogue() {
         try { beatStart(); } catch (e) {}          /* v6.9.314 - from here it asks on its own */
         try { waProbe(); } catch (e) {}            /* v6.9.548 - and asks once whether WhatsApp is on the server */
         if (String(S.pinSet).toUpperCase() !== "Y") { renderPinChange(); return null; }
-        S.tab = myTabs()[0];
+        S.tab = landTab();
         loadCatalog();
         setTimeout(function () { try { if (canSee("stock")) ensureStock(); } catch (e) { } }, 6000);   /* 6.9.618 - ready before he searches */
         return dataP.then(function (d) {
