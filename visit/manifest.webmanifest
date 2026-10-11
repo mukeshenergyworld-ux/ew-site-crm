@@ -1,7 +1,7 @@
 {
-  "name": "EW Visit",
-  "short_name": "EW Visit",
-  "description": "Sales executives - log a site visit from the site",
+  "name": "EW Visit & Quote",
+  "short_name": "Visit & Quote",
+  "description": "Sales executives - mark visits, log site visits and make quotes in the field",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
@@ -9,6 +9,11 @@
   "background_color": "#f1f5f9",
   "theme_color": "#0e7490",
   "icons": [
+    {
+      "src": "icon-180.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    },
     {
       "src": "icon-192.png",
       "sizes": "192x192",
