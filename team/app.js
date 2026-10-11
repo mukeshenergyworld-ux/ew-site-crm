@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.721";
+  var APP_VERSION = "6.9.722";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -17997,7 +17997,15 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
           '<button class="btn ghost" data-act="cl-new">Not listed - register</button></div></div>';
         if (z.clientObj) {
           var c = z.clientObj;
-          h += '<div class="card"><h3>' + esc(c.name) + '</h3><div class="meta">' +
+          var _qOwn = String(c.ownedBy || c.createdBy || "").trim(), _qDue = 0;
+          try { _qDue = clientDue(c.name) || 0; } catch (e) { _qDue = 0; }
+          h += '<div class="card"><h3>' + esc(c.name) + '</h3>' +
+            '<div style="display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 6px;align-items:center">' +   /* 6.9.722 */
+              '<span style="display:inline-block;padding:4px 10px;border-radius:999px;background:#e0f2fe;color:#075985;font-size:13px;font-weight:700">Executive: ' + esc(_qOwn || "not assigned") + '</span>' +
+              (_qDue > 0.5
+                ? '<span style="display:inline-block;padding:4px 10px;border-radius:999px;background:#b91c1c;color:#fff;font-size:13px;font-weight:800">Pending payment ' + money(Math.round(_qDue)) + '</span>'
+                : '<span style="display:inline-block;padding:4px 10px;border-radius:999px;background:#dcfce7;color:#166534;font-size:13px;font-weight:700">No pending payment</span>') +
+            '</div><div class="meta">' +
             esc(c.mobile || "") + '<br>' + esc(c.address || "") +
             '<br>Arch: ' + esc(c.architect || "-") + ' - Plumber: ' + esc(c.plumber || "-") +
             '<br>Builder: ' + esc(c.builder || "-") + ' - PMC: ' + esc(c.pmc || "-") + '</div></div>';
