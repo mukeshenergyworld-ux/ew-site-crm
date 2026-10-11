@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.727";
+  var APP_VERSION = "6.9.728";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -13393,7 +13393,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     var list = hisabNotStamped().filter(function (c) {
       return seesAllClients() || isMineClient(c.customerName);
     });
-    if (!list.length) return "";
+    if (!list.length) return retNotStampedCard();   /* 6.9.728 */
     var worth = list.reduce(function (a, c) { return a + chValue(c); }, 0);
     var oldest = 0;
     list.forEach(function (c) {
@@ -13429,7 +13429,29 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
            'Still open: <b>who earns the incentive</b>, and whether a <b>further discount</b> was given. ' +
            'Finalising fixes both; until then a change of partner moves the earnings on ' + (list.length === 1 ? 'it' : 'all of them') + '.')) +
       (oldest ? ' The oldest has waited <b>' + oldest + (oldest === 1 ? ' day' : ' days') + '</b>.' : '') +
-      '<br><b>Tap to open the list</b> &mdash; just these, oldest first.</div></div>';
+      '<br><b>Tap to open the list</b> &mdash; just these, oldest first.</div></div>' + retNotStampedCard();   /* 6.9.728 */
+  }
+  /* 6.9.728 - HIS WORDS: "any return also not showing under yet to finalized tab, it must be shown" */
+  function retNotStamped() {
+    return (S.data.returns || []).filter(function (r) {
+      return r && String(r.status || "") === "Received" && !retStamp(r) && (seesAllClients() || isMineClient(r.customerName));
+    });
+  }
+  function retNotStampedCard() {
+    if (!canFinalise()) return "";
+    var list = retNotStamped(); if (!list.length) return "";
+    var tot = list.reduce(function (a, r) { return a + returnNet(r); }, 0);
+    var cols = [{ k: "no", t: "RETURN", w: "170px" }, { k: "cl", t: "CLIENT" }, { k: "ex", t: "EXECUTIVE" }, { k: "when", t: "BACK ON" }, { k: "amt", t: "CREDIT", n: 1, r: 1 }, { k: "go", t: "" }];
+    return '<div class="card" style="border-color:#fca5a5;background:#fef2f2"><h3 style="color:#991b1b;margin:0">' + list.length + ' return' + (list.length === 1 ? '' : 's') +
+      ' back in the godown, not finalised <span class="pill due">' + moneySgn(-tot) + '</span></h3>' +
+      '<div class="meta" style="color:#7f1d1d;font-size:12.5px;margin:4px 0 6px">The credit is on his account; finalising is your stamp that the lines and the rates are checked and what comes back off the incentive is settled.</div>' +
+      xlTable("retfin", cols, list.map(function (r) {
+        var ex = execForClient(r.customerName);
+        return { v: { no: r.returnNo || "", cl: r.customerName || "", ex: ex, when: String(r.receivedAt || r.createdAt || "").slice(0, 10), amt: returnNet(r) },
+          cells: { no: '<b>' + esc(r.returnNo || "") + '</b>', cl: esc(r.customerName || ""), ex: esc(ex || "—"), when: esc(dmy(String(r.receivedAt || r.createdAt || "").slice(0, 10))),
+            amt: '<b style="color:#b91c1c">' + moneySgn(-returnNet(r)) + '</b>',
+            go: retFinaliseBtn(r) + ' <button class="btn sm ghost" data-act="bill-open" data-n="' + esc(r.customerName || "") + '" style="padding:2px 8px;font-size:12px">Hisab</button>' } };
+      }), "the executive, the date and Finalise") + '</div>';
   }
   function hisabPendingList() {
     return (S.data.challans || []).filter(function (c) {
@@ -26273,6 +26295,23 @@ function viewCatalogue() {
         rate = Number(it.rate) || 0;
         /* v6.9.598 - the rate in force on the day of the return, not today's */
         disc = (it.disc != null && it.disc !== "") ? Number(it.disc) : clientDiscountOn(cl, brand, localDay(r.createdAt));
+        /* ===== 6.9.728 - A FROZEN 0% WRITTEN BY A PHONE THAT HAD NO DISCOUNTS IS NOT A DISCOUNT  (11 Oct 2026) =====
+           HIS WORDS, over ARMANISHGU/081026/R01 credited at MRP: "why return not picking preset discount,
+           this is huge loss to me". MEASURED on his book: 7 returns, 86 lines, every one frozen at disc 0
+           while the client holds a preset (45%, 47.5%, 55%...). The Challan app (1.92.0) freezes the
+           client's rate on each return line - but a godown or accounts phone receives NO discount rows
+           (server: money never reaches them), so it froze 0, and this reader trusted it. Rs 1,40,054
+           credited on that one return against about Rs 77,000 the client was ever charged.
+           A frozen 0 is now re-derived: the delivery line's own discount if it has one, else the client's
+           preset on the day of the return. A frozen figure ABOVE zero is kept as before. A client whose
+           preset really is 0 still comes out at 0. A return typed by its TOTAL (6.9.630, "old rate, total")
+           is credited as typed - that figure is already the net. */
+        if (!(disc > 0) && !it.lump && !job && p.code) {   /* a lump typed as a total, job work and an off-catalogue line stay as typed */
+          var src0 = retSourceLine(r, it.code);
+          var d0 = (src0 && src0.disc != null && src0.disc !== "") ? Number(src0.disc) : 0;
+          if (!(d0 > 0)) d0 = clientDiscountOn(cl, (src0 && src0.brand) || brand, localDay(r.createdAt));
+          if (d0 > 0) disc = d0;
+        }
       } else {
         var src = retSourceLine(r, it.code);
         if (src) {
@@ -30873,35 +30912,35 @@ function viewCatalogue() {
     var toPaper = all.filter(chNoPaper).sort(function (a, b) { return String(a.createdAt).localeCompare(String(b.createdAt)); });   /* 6.9.725 - Received and Billed too */
     if (!toGo.length && !toPaper.length) return '';
 
-    var strip = function (list, title, why, colour, wash) {
+    /* 6.9.728 - HIS WORDS: "show in table like, click to upload". One line per delivery, oldest first:
+       the number, the client, his executive, the value, the days, and Attach (the receipt photo) on
+       the no-paper lines - the same ch-proof door the Deliveries screen opens. Tap the number for the client. */
+    var tbl = function (list, key, title, why, colour, wash, paper) {
       if (!list.length) return '';
       var val = list.reduce(function (a, c) { return a + chValue(c); }, 0);
-      return '<div style="flex:1 1 280px;min-width:260px;background:' + wash + ';border-radius:10px;padding:11px 13px">' +
-        '<div style="font-size:19px;font-weight:800;color:' + colour + '">' + list.length +
-          ' <span style="font-size:12.5px;font-weight:600">&middot; ' + money(val) + '</span></div>' +
-        '<div style="font-size:12px;font-weight:700;color:' + colour + ';margin-top:1px">' + title + '</div>' +
-        '<div style="font-size:12px;color:' + colour + ';opacity:.85;margin-top:2px">' + why + '</div>' +
-        '<div style="margin-top:7px">' + list.slice(0, 10).map(function (c) {
-          /* daysTo() is negative for a date in the past, so the age is its negation. Using the
-             helper that already exists rather than adding a second one that could drift. */
-          var d = -daysTo(String(c.createdAt || "").slice(0, 10));
-          return '<div style="font-size:12px;padding:2px 0;cursor:pointer;color:' + colour + ';min-height:40px;display:flex;align-items:center;flex-wrap:wrap;gap:0 4px" ' +
-            'data-act="bill-open" data-n="' + esc(c.customerName || "") + '">' +
-            '<b>' + esc(c.challanNo || "") + '</b> &middot; ' + esc(c.customerName || "") +
-            (d >= 0 ? ' <span style="opacity:.7">&middot; ' + d + 'd</span>' : '') + '</div>';
-        }).join("") +
-        (list.length > 10 ? '<div style="font-size:12px;opacity:.7;margin-top:3px;color:' + colour + '">and ' +
-          (list.length - 10) + ' more</div>' : '') + '</div></div>';
+      var cols = [{ k: "no", t: "CHALLAN", w: "160px" }, { k: "cl", t: "CLIENT" }, { k: "ex", t: "EXECUTIVE" }, { k: "amt", t: "VALUE", n: 1, r: 1 }, { k: "d", t: "DAYS", n: 1, r: 1 }, { k: "st", t: "STATUS" }, { k: "go", t: "" }];
+      return '<div style="margin-top:8px;border-radius:10px;padding:9px 11px;background:' + wash + '">' +
+        '<div style="font-size:16px;font-weight:800;color:' + colour + '">' + list.length + ' <span style="font-size:12.5px;font-weight:600">&middot; ' + money(val) + '</span> <span style="font-size:13px">&middot; ' + title + '</span></div>' +
+        '<div style="font-size:12px;color:' + colour + ';opacity:.85;margin-bottom:6px">' + why + '</div>' +
+        xlTable("hw-" + key, cols, list.map(function (c) {
+          var d = -daysTo(String(c.createdAt || "").slice(0, 10)); if (!isFinite(d) || d < 0) d = 0;
+          var ex = execForClient(c.customerName), st = String(c.status || "Draft");
+          return { v: { no: c.challanNo || "", cl: c.customerName || "", ex: ex, amt: chValue(c), d: d, st: st },
+            cells: { no: '<b style="cursor:pointer;color:' + colour + '" data-act="bill-open" data-n="' + esc(c.customerName || "") + '">' + esc(c.challanNo || "no number yet") + '</b>',
+              cl: esc(c.customerName || ""), ex: esc(ex || "\u2014"), amt: money(chValue(c)), d: d ? d + 'd' : '\u2014',
+              st: '<span class="pill" style="font-size:12px">' + esc(paper ? (st === "Dispatched" ? "On the road" : st) : st) + '</span>',
+              go: (paper && canAttachProof() ? '<button class="btn sm" data-act="ch-proof" data-id="' + esc(c.id) + '" style="padding:2px 10px;font-size:12px;min-height:36px;background:#b45309;border-color:#b45309">&#8679; Attach</button> ' : '') +
+                  '<button class="btn sm ghost" data-act="bill-open" data-n="' + esc(c.customerName || "") + '" style="padding:2px 8px;font-size:12px;min-height:36px">Hisab</button>' } };
+        }), "the executive, the value and Attach") + '</div>';
     };
 
     return '<div class="card" id="hw_card" style="border-color:#cbd5e1"><h3 style="margin:0 0 3px">Still waiting</h3>' +
       '<div class="meta" style="font-size:12.5px;margin-bottom:9px">Deliveries that have not finished their ' +
       'journey. One not yet dispatched is not on his account. One with <b>no signed paper</b> may be on his account already (marked ' +
-      'Received, even finalised) but cannot be proved if he says he never got it &mdash; attach the paper. Tap one to open that client.</div>' +
-      '<div style="display:flex;gap:9px;flex-wrap:wrap">' +
-      strip(toGo, "waiting to be dispatched", "written, not yet released", "#92400e", "#fef9c3") +
-      strip(toPaper, "no signed paper on file", "gone out - dispatched, received or billed - nothing signed back", "#b91c1c", "#fee2e2") +
-      '</div></div>';
+      'Received, even finalised) but cannot be proved if he says he never got it &mdash; attach the paper. Tap a number to open that client.</div>' +
+      tbl(toPaper, "paper", "no signed paper on file", "gone out - dispatched, received or billed - nothing signed back. Attach the photo of the signed challan.", "#b91c1c", "#fee2e2", true) +
+      tbl(toGo, "go", "waiting to be dispatched", "written, not yet released", "#92400e", "#fef9c3", false) +
+      '</div>';
   }
 
   /* ============ THE DAY'S WORK, ON THE DOOR HE ACTUALLY WALKS THROUGH  (v6.9.412) ============
@@ -31063,7 +31102,8 @@ function viewCatalogue() {
     t.push({ k: "due", lbl: "Due now", n: outsAll.length, rs: due, sub: plural(outsAll.length, "client") + (credits.length ? ' · ' + credits.length + ' in credit' : ''), col: "#b91c1c", html: function () { return ""; } });
     if (canFinalise()) {
       var fin = hisabNotStamped().filter(my), fv = fin.reduce(function (a, c) { return a + chValue(c); }, 0);
-      t.push({ k: "fin", lbl: "Not finalised", n: fin.length, rs: fv, sub: fin.length ? "oldest " + mwOldest(fin) + " d" : "nothing waiting", col: "#b45309", html: function () { return hisabNotStampedBand() || '<div class="empty">Every received delivery is finalised.</div>'; } });
+      var frt = retNotStamped(), frv = frt.reduce(function (a, r) { return a + returnNet(r); }, 0);   /* 6.9.728 - and the returns */
+      t.push({ k: "fin", lbl: "Not finalised", n: fin.length + frt.length, rs: fv + frv, sub: (fin.length ? plural(fin.length, "delivery") : "") + (frt.length ? (fin.length ? " · " : "") + plural(frt.length, "return") : "") || "nothing waiting", col: "#b45309", html: function () { return hisabNotStampedBand() || '<div class="empty">Every received delivery and return is finalised.</div>'; } });
     }
     var all = dedupeChallans(S.data.challans || []).filter(function (c) { return isMineClient(c.customerName) && String(c.status || "") !== "Cancelled"; });
     var toGo = all.filter(function (c) { var st = String(c.status || "Draft"); return st === "Draft" || st === "Approved"; }), pap = all.filter(chNoPaper);
