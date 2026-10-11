@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.723";
+  var APP_VERSION = "6.9.724";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -3411,6 +3411,11 @@ window.addEventListener("beforeunload", function (ev) {
     }, 450);
   });
 
+  document.addEventListener("change", function (ev) {   /* 6.9.724 */
+    var t = ev && ev.target;
+    if (!t || !t.classList || !(t.classList.contains("hsb-pick") || t.classList.contains("ppk-d"))) return;
+    setTimeout(function () { try { hsbPickShow(); } catch (e) { } }, 0);
+  });
   /* 6.9.716 - Pcs / Boxes on the order sheet */
   document.addEventListener("input", function (ev) {
     var t = ev && ev.target;
@@ -13887,6 +13892,38 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       try { if (document.getElementById("hsb_extra")) hsbExtraPaint(); } catch (e) { }
     };
   }
+
+  /* ===== 6.9.724 - A PARTNER PICKED AT FINALISE SHOWS WHAT HE EARNS, AT ONCE  (11 Oct 2026) =====
+     HIS WORDS, over "Who earns on this delivery" with Plumber: Mahabir picked under the line-up:
+     "selecting a partner will immediately shown above with incentive % and amt".
+     The moment a partner (or executive) is picked, he appears under the ticked line-up with the
+     same figures it shows - his rate on each brand of this delivery and the amount - worked out the
+     same way incPreview works out the ticked ones (incRate / execRateFor on the priced lines, the
+     delivery's own day and each line's discount). incPreview itself is not touched: the Challan
+     app carries the same body and t_apps_agree holds them equal. Nothing is saved by picking;
+     Finalise writes him onto the delivery as before. */
+  function hsbPickShow() {
+    var box = document.getElementById("hsb_picked"); if (!box) return;
+    var c = (S.data.challans || []).filter(function (x) { return x.id === box.getAttribute("data-id"); })[0]; if (!c) { box.innerHTML = ""; return; }
+    var cl = c.customerName || "", day = localDay(c.createdAt || c.date), lines = pricedLines(c, cl), rows = [];
+    document.querySelectorAll(".hsb-pick").forEach(function (e) {
+      var n = String(e.value || "").trim(); if (!n || /^__/.test(n)) return;
+      var r = e.getAttribute("data-role") || "", amt = 0, pc = {};
+      lines.forEach(function (x) {
+        if (x.job) return;
+        var rt = (r === "exec") ? execRateFor(cl, x.brand, day, x.disc) : incRate(cl, x.brand, r, day, x.disc);
+        if (rt > 0) { amt += x.amt * rt / 100; pc[String(rt)] = 1; }
+      });
+      var ks = Object.keys(pc);
+      rows.push('<div style="display:flex;align-items:center;gap:9px;padding:8px 0 0;flex-wrap:wrap;min-height:44px">' +
+        '<span style="flex:0 0 19px;width:19px;height:19px;border-radius:4px;background:#2563eb;color:#fff;font-size:13px;font-weight:800;display:flex;align-items:center;justify-content:center">&#10003;</span>' +
+        '<span style="flex:1 1 200px;font-weight:600;color:#0f172a">' + esc(incRoleLabel(r)) + ' <span style="color:#475569;font-weight:500">&middot; ' + esc(n) + '</span>' +
+          ' <span style="font-size:12px;color:#64748b;font-weight:500">(named below, this delivery)</span></span>' +
+        '<span style="font-size:12.5px;color:' + (ks.length ? '#0f766e' : '#94a3b8') + ';white-space:nowrap">' +
+          (ks.length ? (ks.length > 1 ? 'mixed rates' : ks[0] + '%') + ' &middot; <b>' + money(amt) + '</b>' : 'no rate set &mdash; earns nothing') + '</span></div>');
+    });
+    box.innerHTML = rows.join("");
+  }
   function modalAddToHisab(id) {
     var c = (S.data.challans || []).filter(function (x) { return x.id === id; })[0];
     if (!c) return '<h2>Not found</h2><div class="foot"><button class="btn" data-act="close">Close</button></div>';
@@ -14199,6 +14236,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
           '</div>' + (_un.length ? hsbRatePanel(c, cl, m, mi, _un) : '');
       });
     }
+    h += '<div id="hsb_picked" data-id="' + esc(c.id) + '"></div>';   /* 6.9.724 - who is picked below, with his % and amount */
     /* v6.9.338 - AND NAME ONE NOW IF NOBODY IS NAMED.
        "also give option to select partner and executive at that time, motive is just to remind
        if anything left." Until today the only thing you could do here was UNTICK. A delivery
@@ -16806,6 +16844,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       var op = document.createElement("option"); op.value = name; op.textContent = name; t.insertBefore(op, t.options[1] || null);
     }
     t.value = name;
+    try { hsbPickShow(); } catch (e) { }   /* 6.9.724 */
   }
   /* what is picked on a sheet, kept across the partner form */
   function ppkSnap() {
@@ -47386,7 +47425,7 @@ function viewCatalogue() {
     _bgCache = null;                        /* brand groups rebuilt if the catalogue changed */
     var _fsnap = null; try { _fsnap = formSnap(); } catch (e) { }
     try { xlScrollSnap(); } catch (e) { }   /* v6.9.561 */
-    try { renderCore(); try { formRestore(_fsnap); } catch (e) { } try { stageResync(); } catch (e) { } try { syncBanner(); } catch (e) { } try { chDraftKeep(); } catch (e) { } try { xlScrollRestore(); } catch (e) { } }   /* v6.9.554, v6.9.560 */
+    try { renderCore(); try { formRestore(_fsnap); } catch (e) { } try { hsbPickShow(); } catch (e) { } try { stageResync(); } catch (e) { } try { syncBanner(); } catch (e) { } try { chDraftKeep(); } catch (e) { } try { xlScrollRestore(); } catch (e) { } }   /* v6.9.554, v6.9.560 */
     catch (err) {
       logCrash("render", err);
       try {
