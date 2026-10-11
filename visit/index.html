@@ -189,7 +189,7 @@ h3.sec{color:#1F3A5F}
       button: function () { return '<button type="button" class="ewthm" onclick="ewTheme.next(this)">' + ewtLabel() + '</button>'; }
     };
   })();
-  var APP_VERSION = "1.4.0";
+  var APP_VERSION = "1.4.1";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_vq_session", JRN = "ew_vq_journal_v1", CALLQ = "ew_vq_calls_v1", SNAPK = "ew_vq_snap_";
   var CAT_KEY = "ew_team_catalog", CAT_V = 2;   /* the CRM's own shelf copy of the price list - shared, same origin */
@@ -1970,10 +1970,32 @@ h3.sec{color:#1F3A5F}
 
   /* ---------------- the book ---------------- */
   function usable(r) { return !!(r && r.ok && Object.keys(r).some(function (k) { return Array.isArray(r[k]); })); }
+  /* ==EW-DELTA== the server (V137) sends only the tabs that changed - and for a tab that only grew, only its new
+     rows - when the app says what it already holds. Copied from the Challan app (1.10x), where it has run since
+     23 Sep: the first pull after opening is whole, every Refresh after it is the difference. */
+  var RAWB = { u: "", t: {}, h: {} };
+  function rawbReset() { RAWB = { u: String(S.user || ""), t: {}, h: {} }; }
+  function teamGetD(extra, again) {
+    if (RAWB.u !== String(S.user || "")) rawbReset();
+    var ask = Object.assign({}, extra || {}, { have: RAWB.h });
+    return api("teamGet", ask).then(function (r) {
+      if (!r || !r.ok) return r;
+      var dl = r._delta || null, hh = r._h || null, bad = false;
+      delete r._delta; delete r._h;
+      if (dl) Object.keys(dl).forEach(function (k) {
+        if (RAWB.t[k] == null) { bad = true; return; }
+        try { r[k] = JSON.parse(RAWB.t[k]).concat(dl[k] || []); } catch (e) { bad = true; }
+      });
+      if (!bad && hh) Object.keys(hh).forEach(function (k) { if (!Array.isArray(r[k]) || r[k].length !== Number(hh[k][0])) bad = true; });
+      if (bad) { rawbReset(); return again ? r : teamGetD(extra, true); }
+      if (hh) Object.keys(hh).forEach(function (k) { if (Array.isArray(r[k])) { RAWB.t[k] = JSON.stringify(r[k]); RAWB.h[k] = hh[k]; } });
+      return r;
+    });
+  }
   function getBook(only) {
-    return api("teamGet", { only: only }).then(function (r) {
+    return teamGetD({ only: only }).then(function (r) {   /* 1.4.1 - only what changed */
       if (usable(r)) return r;
-      return api("teamGet").then(function (r2) { return usable(r2) ? r2 : r; });
+      return teamGetD({}).then(function (r2) { return usable(r2) ? r2 : r; });
     });
   }
   function mergeBook(r, tabs) {
