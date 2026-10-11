@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.725";
+  var APP_VERSION = "6.9.726";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -42935,7 +42935,25 @@ function viewCatalogue() {
       }), ip: ""
     }, true);
   }
+  /* ===== 6.9.726 - ACCOUNTS PASSES WITHIN THE LIMIT; PAST IT, ONLY THE OWNER  (11 Oct 2026) =====
+     HIS DECISION, asked on the review of the apps: "should accounts be allowed to pass within-limit
+     challans - yes". MEASURED first: in 30 days he passed 167 of 185 challans himself; accounts
+     (Gautam, 137 logins) passed none, though canApprove has let him since v1.42. And the credit stop
+     let ANY passer "Release anyway" - 66 overrides in 30 days. So the stop now has two shapes:
+       an admin   - the figures, Hold it / Release anyway, the release written under his name (as before);
+       accounts   - the same figures and ONE button, Hold it: a challan past the client's limit or holding
+                    money past his days is the owner's to release, and the sheet says so.
+     The 6.9.553 rule (owes over a lakh or money older than six months -> his executive or an admin)
+     stands beside this: accounts passes what is easy AND within the limit; everything else comes up. */
   function askCreditStop(g, ch) {
+    if (!roleIs("admin")) {
+      return askSheet({
+        title: 'Credit stop — ' + esc(g.name),
+        sub: esc(String(ch.challanNo || "")) + (ch.site ? ' &middot; ' + esc(ch.site) : ''),
+        body: creditGateHtml(g, ch) + '<div style="margin-top:10px;padding:9px 11px;border-radius:9px;background:#fef2f2;border:1px solid #fecaca;color:#991b1b;font-weight:700">Past the limit: only the owner can release this one. It stays in his queue.</div>',
+        yes: 'Hold it', no: 'Close', danger: false
+      }).then(function () { return false; });
+    }
     return askSheet({
       title: 'Credit stop — ' + esc(g.name),
       sub: esc(String(ch.challanNo || "")) + (ch.site ? ' &middot; ' + esc(ch.site) : ''),
