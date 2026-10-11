@@ -50,7 +50,7 @@
   h2{margin:26px 0 8px;font-size:15px;color:#334155}
   p{margin:0 0 14px;color:#475569;font-size:14px}
   .card{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:16px 15px;margin:0 0 14px}
-  .safe{background:#f0fdfa;border-color:#99f6e4}
+  .safe{background:#F4F6F9;border-color:#E9D9AE}
   .warn{background:#fffbeb;border-color:#fde68a}
   .row{display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid #f1f5f9}
   .row:first-child{border-top:0}
@@ -64,8 +64,8 @@
   .mini{background:#e2e8f0;color:#0f172a;font-size:13px;padding:0 16px;min-height:44px;flex:0 0 auto}
   .mini:active{background:#cbd5e1}
   .mini[disabled]{opacity:.45}
-  .big{display:block;width:100%;background:#0f766e;color:#fff;font-size:15.5px;min-height:50px;padding:14px}
-  .big:active{background:#115e59}
+  .big{display:block;width:100%;background:#1F3A5F;color:#fff;font-size:15.5px;min-height:50px;padding:14px}
+  .big:active{background:#0D2340}
   .big[disabled]{background:#94a3b8}
   .links{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
   .links a{flex:1 1 44%;text-align:center;text-decoration:none;background:#fff;border:1px solid #e2e8f0;
@@ -73,7 +73,7 @@
            display:flex;align-items:center;justify-content:center}
   .links a:active{background:#f8fafc}
   .note{font-size:12.5px;color:#64748b;margin:10px 0 0}
-  b.ok{color:#0f766e}
+  b.ok{color:#1F3A5F}
   b.no{color:#b45309}
   /* it took 20px of blank page before it had anything to say */
   #say{font-size:13.5px;font-weight:700}
@@ -260,7 +260,7 @@
   function fix(keys, btn) {
     var label = btn ? btn.textContent : "";
     if (btn) { btn.disabled = true; btn.textContent = "…"; }
-    $("say").style.color = "#0f766e";
+    $("say").style.color = "#1F3A5F";
     $("say").textContent = "Clearing…";
 
     var jobs = [], all = keys.indexOf("*all*") >= 0;
@@ -299,7 +299,7 @@
       STATE = s;
       draw();
       if (btn && btn.parentNode) { btn.disabled = false; btn.textContent = label || "Fix"; }
-      $("say").style.color = "#0f766e";
+      $("say").style.color = "#1F3A5F";
       $("say").textContent = "Done. Close the app completely and open it again.";
     }).catch(function () {
       if (btn) { btn.disabled = false; btn.textContent = label || "Fix"; }
