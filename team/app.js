@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.739";
+  var APP_VERSION = "6.9.740";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -8863,10 +8863,25 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       if (d.to === "Resolved") t.resolvedAt = a.createdAt;
       if (d.to === "Paid") t.paidAt = a.createdAt;
       if (d.to === "Closed" || d.to === "Cancelled") t.closedAt = a.createdAt;
+      /* 6.9.740 - the Service app 2.4.0 enters a ticket's installed products later (one more move row), or "no product of ours" */
+      if (d.noProd) t.noProd = true;
+      if (Array.isArray(d.products) && d.products.length) { var _hv = {}; (t.products || []).forEach(function (p) { if (p && p.key) _hv[p.key] = 1; });
+        t.products = (t.products || []).concat(d.products.filter(function (p) { return p && (!p.key || !_hv[p.key]); })); t.noProd = false; }
     });
     return order.map(function (k) { return T[k]; }).sort(function (a, b) { return String(b.at).localeCompare(String(a.at)); });
   }
   /* hours it has been open, and whether that is past the promise for its priority */
+  /* 6.9.740 - what a client owed before the CRM, as noted on a complaint (audit client:olddue). Shown, never added to his account. */
+  function cmpOldDue(name, mobile) {
+    var k = dkey(name), m = String(mobile || "").replace(/\D/g, "").slice(-10), best = null;
+    (S.data.audit || []).forEach(function (a) {
+      if (a.action !== "client:olddue") return;
+      var d = cmpJ(a.detail), dm = String(d.mobile || "").replace(/\D/g, "").slice(-10);
+      if (!((k && dkey(d.name) === k) || (m.length === 10 && dm === m))) return;
+      if (!best || String(a.createdAt || "") >= best.at) best = { amt: Number(d.amt) || 0, note: String(d.note || ""), at: String(a.createdAt || ""), by: a.actor || "" };
+    });
+    return best;
+  }
   function cmpLate(t) {
     if (/^(Resolved|Paid|Closed|Cancelled)$/.test(t.status)) return null;
     var h = (Date.now() - new Date(t.at).getTime()) / 3600000, lim = CMP_PROMISE[t.pri] || 48;
@@ -9071,7 +9086,8 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       '<div class="card" style="padding:10px 12px"><div style="font-size:13px;white-space:pre-wrap">' + esc(t.desc || "") + '</div>' +
       '<div class="meta" style="font-size:12px;margin-top:6px">Raised by <b>' + esc(t.by || "") + '</b> (' + esc(t.src || "") + ') on ' + esc(dmy(t.at)) + '</div>' +
       ((t.products || []).length ? '<div class="meta" style="font-size:12px;font-weight:700;color:#475569;margin-top:8px">PRODUCT &mdash; warranty as it stood when raised</div>' +
-        t.products.map(function (p) { return cmpProdRow(p, false, false); }).join("") : '') +
+        t.products.map(function (p) { return cmpProdRow(p, false, false); }).join("") : (t.noProd ? '<div class="meta" style="font-size:12px;margin-top:8px">No product of ours at his place.</div>' : '<div style="font-size:13px;font-weight:700;color:#b91c1c;margin-top:8px">No product entered &mdash; the engineer enters his installed products on the Service app.</div>')) +
+      (function () { var _od = cmpOldDue(t.client || t.name, t.mobile); return _od && _od.amt > 0 ? '<div style="font-size:13px;margin-top:8px"><b style="color:#b91c1c">Old pending (before the CRM): ' + money(_od.amt) + '</b>' + (_od.note ? ' &middot; ' + esc(_od.note) : '') + ' <span style="color:#64748b;font-size:12px">noted by ' + esc(_od.by) + '; put it on his account as his opening balance if it is right</span></div>' : ''; })() +
       (c ? cmpPaperStrip(c.name, c.id, true) : '') + '</div>';
     if (web && /closed/i.test(web.Status || "")) h += '<div class="card" style="border-color:#99f6e4;background:#f0fdfa;padding:9px 12px;font-size:13px">The engineer closed it in the Service app' + (web.ClosedBy ? ' (' + esc(web.ClosedBy) + ')' : '') + (web.ClosedAt ? ' on ' + esc(dmy(web.ClosedAt)) : '') + (web.CloseNote ? ' &mdash; &ldquo;' + esc(web.CloseNote) + '&rdquo;' : '') + cmpVisitLine(web.VisitId) + '</div>';
     h += '<div class="card" style="padding:10px 12px"><div class="meta" style="font-size:12px;font-weight:700;color:#475569">STEPS</div>' +
@@ -9263,7 +9279,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
           age: L ? '<span style="font-weight:700;color:' + (L.late ? '#b91c1c' : '#0f766e') + '">' + cmpAgeTxt(L.h) + '</span>' : '<span style="color:#94a3b8">' + esc(dmy(t.at)) + '</span>',
           client: '<b>' + esc(t.client || t.name || "") + '</b>' + xlSub(esc(t.area || t.mobile || "")),
           issue: '<span class="xl1" title="' + esc((t.cat || "") + " — " + (t.desc || "")) + '">' + esc(t.cat || "") + ' <span class="pill" style="font-size:12px;' + (t.pri === "High" ? 'background:#fee2e2;color:#b91c1c' : t.pri === "Low" ? '' : 'background:#fef3c7;color:#92400e') + '">' + esc(t.pri || "Normal") + '</span>' +
-            (w ? xlSub(esc(w.desc) + ' &middot; <span style="color:' + cmpWarr(w).c + '">' + esc(cmpWarr(w).t) + '</span>') : '') + '</span>',
+            (w ? xlSub(esc(w.desc) + ' &middot; <span style="color:' + cmpWarr(w).c + '">' + esc(cmpWarr(w).t) + '</span>') : (t.noProd ? xlSub('no product of ours') : xlSub('<b style="color:#b91c1c">No product entered</b>'))) + '</span>',
           by: whoChip(t.by) + xlSub(esc(t.src || "")),
           eng: t.eng ? whoChip(t.eng) : '<span style="color:#b45309;font-size:12px">not assigned</span>',
           st: '<span class="pill" style="font-size:12px">' + esc(t.status) + '</span>' + (t.outcome ? xlSub(esc(t.outcome)) : ''),
