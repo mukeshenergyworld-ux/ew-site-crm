@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.734";
+  var APP_VERSION = "6.9.735";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -4641,7 +4641,7 @@ window.addEventListener("beforeunload", function (ev) {
       .sort(function (a, b) { return b.d.localeCompare(a.d) || b.amt - a.amt; });
     D.dispTot = D.disp.reduce(function (a, x) { return a + x.amt; }, 0);
 
-    D.coll = (S.data.payments || []).map(function (p) {
+    D.coll = (S.data.payments || []).filter(function (p) { return !payIsDisc(p); }).map(function (p) {   /* 6.9.735 - a discount is not money collected */
       return { d: dstr(p.date || p.createdAt), name: String(p.client || ""), exec: rvOwner(p.client), amt: payAmt(p), mode: String(p.mode || ""), ref: String(p.ref || "") };
     }).filter(function (x) { return inR(x.d) && x.amt > 0 && okC(x.name); })
       .sort(function (a, b) { return b.d.localeCompare(a.d) || b.amt - a.amt; });
@@ -27577,10 +27577,14 @@ function viewCatalogue() {
            now reads fully paid, where the gross base kept his partner short for ever. */
         var off = chFurtherOff(c, base), net = base - off;
         if (off > 0 && base > 0 && !_sh) inc = inc * net / base;   /* 6.9.694 - with the card it is already on its brand */
-        billed += net; earned += inc; clientNames[c.customerName] = 1;
-        clBilled += net; clFreight += chFreight(c);
+        clBilled += net; clFreight += chFreight(c);   /* the client's own figure: a discount is still a credit to him */
         var _sr = _walk && _walk.by ? _walk.by[String(c.id)] : null;   /* 6.9.699 - what this bill has been paid */
-        var _paid = _sr && _sr.amt > 0.4 ? Math.max(0, Math.min(1, _sr.paid / _sr.amt)) : 0;
+        /* 6.9.735 - the share of this bill a DISCOUNT cleared earns nobody anything, and is not money paid */
+        var _dsc = 0; if (_sr && _sr.from) _sr.from.forEach(function (f) { if (f && f.disc) _dsc += Number(f.amt) || 0; });
+        var _kf = (_dsc > 0.4 && _sr.amt > 0.4) ? Math.max(0, 1 - _dsc / _sr.amt) : 1;
+        if (_kf < 1) { inc = inc * _kf; net = net * _kf; }
+        billed += net; earned += inc; clientNames[c.customerName] = 1;
+        var _paid = _sr && _sr.amt > 0.4 ? Math.max(0, Math.min(1, (_sr.amt - _dsc) > 0.4 ? (_sr.paid - _dsc) / (_sr.amt - _dsc) : 0)) : 0;
         released += inc * _paid;
         rows.push({ no: c.challanNo, client: c.customerName, site: c.site, brand: c.brand,
           ymd: String(c.createdAt || "").slice(0, 10),
@@ -31400,7 +31404,7 @@ function viewCatalogue() {
       var old = hdMissRows(), ov = old.reduce(function (a, r) { return a + r.due; }, 0);
       t.push({ k: "old", lbl: "Old books", n: old.length, rs: ov, sub: old.length ? "no old hisab attached" : "all attached", col: "#92400e", html: function () { return hdMissCard() || '<div class="empty">Every old client with a balance has his old hisab attached.</div>'; } });
     }
-    var hk = [hisabDayBand(), twinWaitingCard(), cxAskWaitingCard()].filter(Boolean);
+    var hk = [payDiscCard(), hisabDayBand(), twinWaitingCard(), cxAskWaitingCard()].filter(Boolean);   /* 6.9.735 - payDiscCard */
     t.push({ k: "house", lbl: "Housekeeping", n: hk.length, rs: 0, sub: hk.length ? plural(hk.length, "item") + " to tidy" : "nothing to tidy", col: "#475569", html: function () { return hk.join("") || '<div class="empty">Nothing to tidy.</div>'; } });
     return t;
   }
@@ -33505,7 +33509,7 @@ function viewCatalogue() {
     famPays(client).forEach(function (p) {                 /* v6.9.461 */
       var a = payAmt(p), neg = a < 0;
       ev.push({ k: neg ? "D" : "C", d: String(p.date || p.createdAt || "").slice(0, 10), ord: 2,
-                kind: neg ? "refund" : "pay", amt: neg ? -a : a, id: String(p.id), row: p });
+                kind: neg ? "refund" : "pay", amt: neg ? -a : a, id: String(p.id), row: p, disc: !neg && payIsDisc(p) });   /* 6.9.735 */
     });
     famRets(client).forEach(function (r) {                 /* v6.9.461 */
       ev.push({ k: "C", d: String(r.createdAt || "").slice(0, 10), ord: 2, kind: "ret",
@@ -33533,7 +33537,7 @@ function viewCatalogue() {
         var t = Math.min(c.amt, h.open);
         c.amt -= t; h.open -= t; h.paid += t;
         c.src.hits.push({ id: h.id, no: h.no, kind: h.kind, amt: t });
-        h.from.push({ id: c.src.id, kind: c.src.kind, date: c.src.date, amt: t });
+        h.from.push({ id: c.src.id, kind: c.src.kind, date: c.src.date, amt: t, disc: !!c.src.disc });
         if (c.amt <= 0.4) pot.shift();
         if (h.open <= 0.4) { h.open = 0; q.shift(); }
       }
@@ -33544,7 +33548,7 @@ function viewCatalogue() {
         if (d && d.open > 0.4) { q.push(d); drain(); }
         return;
       }
-      var src = { id: e.id, no: e.no, kind: e.kind, date: e.d, amt: e.amt, hits: [], row: e.row };
+      var src = { id: e.id, no: e.no, kind: e.kind, date: e.d, amt: e.amt, hits: [], row: e.row, disc: !!e.disc };
       credits.push(src); byPay[e.id] = src;
       var rest = e.amt, ids = e.kind === "pay" ? allocFor(e.id) : null;
       /* HIS OVERRIDE. He asked for oldest-first "and you can override": a payment pointed at
@@ -33558,7 +33562,7 @@ function viewCatalogue() {
           var t = Math.min(rest, row.open);
           row.open -= t; row.paid += t; rest -= t;
           src.hits.push({ id: row.id, no: row.no, kind: row.kind, amt: t });
-          row.from.push({ id: src.id, kind: src.kind, date: src.date, amt: t });
+          row.from.push({ id: src.id, kind: src.kind, date: src.date, amt: t, disc: !!src.disc });
           if (row.open <= 0.4) { row.open = 0; var ix = q.indexOf(row); if (ix >= 0) q.splice(ix, 1); }
         });
       }
@@ -35105,13 +35109,26 @@ function viewCatalogue() {
     var TH = function (x, r) { return '<th style="padding:5px 7px;font-weight:700;font-size:12px;color:#fff;white-space:nowrap;text-align:' + (r ? "right" : "left") + '">' + esc(x) + '</th>'; };
     return '<tr style="background:#0b3b36">' + TH("DATE") + TH("RECEIPT") + (withClient ? TH("CLIENT") : "") + TH("MODE") + TH("AMOUNT", 1) + TH("REFERENCE / REMARK") + TH("ENTERED BY") + TH("CHECKED") + '</tr>';
   }
+  function payDiscCard() {
+    if (!roleAny(["admin", "accounts"])) return "";
+    var list = (S.data.payments || []).filter(payLooksDisc);
+    if (!list.length) return "";
+    var tot = list.reduce(function (a, p) { return a + payAmt(p); }, 0);
+    return '<div class="card" id="pdisc_card" style="border-color:#fde68a;background:#fffbeb"><h3 style="margin:0;color:#92400e">' + plural(list.length, "payment") + ' that say they were a discount &middot; ' + money(tot) + '</h3>' +
+      '<div class="meta" style="font-size:12.5px;color:#92400e;margin:3px 0 6px">Filed as money (cash or bank) but the narration says discount. As money they release the partner\u2019s and executive\u2019s incentive in full and count as cash collected. Press <b>It was a discount</b> to correct one &mdash; your PIN is asked; the amount, date and client stay; it is written to the audit trail.</div>' +
+      pevTable([["Date"], ["Client"], ["Amount", "right"], ["Filed as"], ["Narration"], [""]], list.map(function (p) {
+        return [esc(dmy(p.date || p.createdAt)), '<b data-act="bill-open" data-n="' + esc(p.client || "") + '" style="cursor:pointer;color:#0d766c">' + esc(p.client || "") + '</b>', money(payAmt(p)), esc(p.mode || "(blank)"),
+          esc(String(p.notes || p.ref || "").slice(0, 60)), '<button class="btn sm" style="min-height:44px" data-act="pm-todisc" data-p="' + esc(p.id) + '">It was a discount</button>'];
+      })) + '</div>';
+  }
   function viewPayLog() {
     if (!canSee("payments")) return '<div class="empty">The payment log is for the owner, accounts and the executive whose clients are on it.</div>';
     var rows = plRows(), live = rows.filter(function (r) { return !(r.cx && r.cx.on); });
-    var tot = live.reduce(function (a, r) { return a + payAmt(r.p); }, 0);
+    var _money = live.filter(function (r) { return !payIsDisc(r.p); });   /* 6.9.735 - the totals are money; a discount is listed, not added */
+    var tot = _money.reduce(function (a, r) { return a + payAmt(r.p); }, 0);
     var unchk = live.filter(function (r) { return !payVerified(r.p); }).length;
-    var mon = today().slice(0, 7), monTot = live.filter(function (r) { return String(r.p.date || "").slice(0, 7) === mon; }).reduce(function (a, r) { return a + payAmt(r.p); }, 0);
-    var h = '<div class="card"><h3 style="margin:0 0 2px">The payment log</h3>' +
+    var mon = today().slice(0, 7), monTot = _money.filter(function (r) { return String(r.p.date || "").slice(0, 7) === mon; }).reduce(function (a, r) { return a + payAmt(r.p); }, 0);
+    var h = payDiscCard() + '<div class="card"><h3 style="margin:0 0 2px">The payment log</h3>' +   /* 6.9.735 */
       '<div class="meta">Every payment on the book, one line each, like the challan log. Tap a receipt to open it, a client to open his HISAB, the mode to correct how it came in (your PIN is asked), and <b>Check \u2713</b> to say accounts has seen it \u2014 the same tick as the Verification screen.</div></div>' +
       '<div class="cards">' +
       '<div class="stat"><div class="n">' + money(tot) + '</div><div class="l">' + plural(live.length, "payment") + (plAny() ? ' \u00b7 filtered' : '') + '</div></div>' +
@@ -35175,7 +35192,9 @@ function viewCatalogue() {
     return '<h2>Change how it came in</h2>' +
       '<p class="sub">Receipt ' + esc(receiptNo(p)) + ' \u00b7 ' + esc(p.client || "") + ' \u00b7 <b>' + money(p.amount) + '</b> on ' + esc(fullDate(p.date)) + '</p>' +
       '<div class="grid2"><div><label>Now</label><div style="font-weight:800;min-height:44px;display:flex;align-items:center">' + esc(p.mode || "(blank)") + '</div></div>' +
-      '<div><label>Change to</label><select id="pm_mode"><option value="">\u2014 pick \u2014</option>' + opts(PAY_MODES, "") + '</select></div></div>' +
+      '<div><label>Change to</label><select id="pm_mode"><option value="">\u2014 pick \u2014</option>' + opts(PAY_MODES, "") +
+        '<option value="Discount"' + (S.pmToDisc === id ? ' selected' : '') + '>Discount (not money)</option></select></div></div>' +   /* 6.9.735 */
+      (S.pmToDisc === id ? '<div class="card" style="border-color:#fde68a;background:#fffbeb;padding:8px 11px;margin-top:6px"><div class="meta" style="font-size:12.5px;color:#92400e">Its narration says it was a discount. As a <b>Discount</b> it still clears his bill, but it stops counting as money collected, and the partner\u2019s and executive\u2019s incentive comes down by the share of the bill it cleared.</div></div>' : '') +
       '<label>Reference (cheque / UTR)</label><input id="pm_ref" value="' + esc(p.ref || "") + '"/>' +
       '<label>Your PIN</label><input id="pm_pin" type="password" inputmode="numeric" autocomplete="off" placeholder="Typed here, checked by the server, never stored"/>' +
       '<div id="pm_pin_note" class="meta" style="font-size:12.5px;color:#b91c1c"></div>' +
@@ -35341,9 +35360,27 @@ function viewCatalogue() {
   var PAY_KINDS = {
     "in":      { label: "Payment received", sign:  1, note: "" },
     "advance": { label: "Advance received", sign:  1, note: "Advance" },
-    "refund":  { label: "Refund \u2014 money returned to the client", sign: -1, note: "Refund to client" }
+    "refund":  { label: "Refund \u2014 money returned to the client", sign: -1, note: "Refund to client" },
+    /* ===== 6.9.735 - A DISCOUNT IS NOT MONEY  (11 Oct 2026) =====
+       HIS WORDS: "anything payment entered with extra discount narration will effect partner and executive
+       incentive". MEASURED on the live book: 4 payments, Rs 31,989, entered as Cash / Bank with the narration
+       "Extra Discount" - Deepak Jain 14,755 (08/08), Dr Suresh Rathi 1,922 (12/09), Rajesh Kalra - Orlov 8,161
+       (22/09), Pawan Narang 7,151 (11/10). Each was read as money received: the bill went to fully paid, so the
+       partner's and the executive's incentive was released in full - and on the full bill, the discounted part
+       included - and the reports counted it as cash collected.
+       Now a discount has its own kind and its own mode, "Discount". It still clears the bill (the client owes it
+       no more), but settleWalk marks the share of each bill it cleared, incentiveBook takes the incentive down by
+       that share and releases only on the money, and it is never counted as money collected. */
+    "discount": { label: "Discount allowed \u2014 not money", sign: 1, note: "Discount allowed" }
   };
+  function payIsDisc(p) { return String((p && p.mode) || "").trim().toLowerCase() === "discount" || /^discount allowed/i.test(String((p && p.notes) || "")); }
+  /* a payment row whose narration says it was a discount, still filed as money - for the owner to correct */
+  function payLooksDisc(p) {
+    if (!p || payIsDisc(p) || payAmt(p) <= 0) return false;
+    return /extra\s*dis|discount|\bdist\b|kasar|rebate/i.test(String(p.notes || "") + " " + String(p.ref || ""));
+  }
   function payKindOf(p) {
+    if (payIsDisc(p)) return "discount";                  /* 6.9.735 */
     if (payAmt(p) < 0) return "refund";                   /* v6.9.398 */
     return /^advance/i.test(String((p && p.notes) || "")) ? "advance" : "in";
   }
@@ -35351,7 +35388,9 @@ function viewCatalogue() {
     var K = PAY_KINDS[String(kind || "in")] || PAY_KINDS["in"];
     /* nAmt keeps the minus sign.  Stripping it turned a typed "-500" into a receipt for
        Rs 500 RECEIVED - money that never came in.  Now it is simply refused. */
-    if (!String(val("pi_mode") || "").trim()) return { err: "Pick how the money came in first \u2014 cash, bank, cheque or UPI." };   /* 6.9.667 */
+    var _isD = String(kind || "") === "discount";   /* 6.9.735 */
+    if (!_isD && !String(val("pi_mode") || "").trim()) return { err: "Pick how the money came in first \u2014 cash, bank, cheque or UPI." };   /* 6.9.667 */
+    if (_isD && String(val("pi_why") || "").trim().length < 3) return { err: "Say in a few words why the discount was given \u2014 it is printed on his statement." };
     var amt = Math.round(nAmt(val("pi_amt")));
     if (amt <= 0) return { err: K.sign < 0 ? "Enter the amount going back to the client." : "Enter the amount received." };
     var d = String(val("pi_date") || "");
@@ -35364,7 +35403,7 @@ function viewCatalogue() {
         id: mintId("P"), createdBy: S.user,
         siteId: st ? st.id : "", siteName: st ? st.name : "",
         client: client, date: d, amount: amt * K.sign,
-        mode: val("pi_mode"), ref: val("pi_ref"),
+        mode: _isD ? "Discount" : val("pi_mode"), ref: val("pi_ref"),
         /* the label first so payKindOf can read it back, then whatever he typed */
         notes: (K.note ? K.note + (val("pi_why") ? " \u2014 " + val("pi_why") : "") : String(val("pi_why") || "")).slice(0, 300)
       }
@@ -35672,6 +35711,11 @@ function viewCatalogue() {
           '<div class="meta" style="font-size:12.5px;color:#b91c1c">This is money going <b>OUT</b>, back to ' +
           esc(client) + '. It is filed as a payment with a minus, so his balance goes UP by this ' +
           'amount and every statement adds up without anybody adjusting anything.</div></div>'
+        : _pk === "discount"
+          ? '<div class="card" style="border-color:#fde68a;background:#fffbeb;padding:9px 12px">' +
+            '<div class="meta" style="font-size:12.5px;color:#92400e"><b>No money came in.</b> This clears that much of his bill, ' +
+            'and the partner\u2019s and executive\u2019s incentive comes down in the same share \u2014 they earn on what was actually paid. ' +
+            'It is never counted as cash collected and has no receipt.</div></div>'
         : _pk === "advance"
           ? '<div class="card" style="border-color:#99f6e4;background:#f0fdfa;padding:9px 12px">' +
             '<div class="meta" style="font-size:12.5px;color:#0f766e">Money in before the material. ' +
@@ -35684,15 +35728,17 @@ function viewCatalogue() {
       /* 6.9.667 - HIS ORDER: "MODE, DATE, AMT ... make mandatory to select mode first". The mode is
          blank until he picks it (cash was being filed as cheque because cheque was the default). */
       '<div style="display:flex;gap:6px;align-items:flex-end;flex-wrap:wrap">' +
-      '<div style="flex:0.9 1 110px;min-width:0"><label style="color:#b45309">Mode</label><select id="pi_mode"' +
+      (_pk === "discount" ? '<input type="hidden" id="pi_mode" value="Discount"/>' : '') +
+      '<div style="flex:0.9 1 110px;min-width:0' + (_pk === "discount" ? ';display:none' : '') + '"><label style="color:#b45309">Mode</label><select id="pi_mode' + (_pk === "discount" ? '_x' : '') + '"' +
         ' style="font-size:15px;min-height:44px;background:#fffbeb;border-color:#fcd34d;color:#78350f;font-weight:600">' +
         '<option value="">\u2014 pick \u2014</option>' + opts(PAY_MODES, "") + '</select></div>' +
       '<div style="flex:1 1 125px;min-width:0"><label style="color:#1d4ed8">Date</label><input id="pi_date" type="date" max="' + today() + '" value="' + today() + '"' +
         ' style="font-size:15px;min-height:44px;background:#eff6ff;border-color:#93c5fd;color:#1e3a8a;font-weight:600"/></div>' +
-      '<div style="flex:1.3 1 130px;min-width:0"><label style="color:' + (K.sign < 0 ? '#b91c1c' : '#047857') + '">' + (K.sign < 0 ? 'Amount going back' : 'Amount received') + '</label>' +
+      '<div style="flex:1.3 1 130px;min-width:0"><label style="color:' + (K.sign < 0 ? '#b91c1c' : '#047857') + '">' + (K.sign < 0 ? 'Amount going back' : _pk === "discount" ? 'Discount given' : 'Amount received') + '</label>' +
       '<input id="pi_amt" inputmode="numeric" style="font-size:18px;font-weight:800;min-height:44px;' +
         (K.sign < 0 ? 'background:#fef2f2;border-color:#fca5a5;color:#991b1b' : 'background:#ecfdf5;border-color:#6ee7b7;color:#065f46') + '" value="' +
         (_pk === "in" ? Math.round(_piDue > 0 ? _piDue : 0) : (K.sign < 0 && l.due < -0.5 ? Math.round(-l.due) : "")) + '"/></div></div>';
+    if (_pk === "discount") h = h.replace('<label style="color:#1d4ed8">Date</label>', '<label style="color:#1d4ed8">Date given</label>');
     if (_mstN) h += mstPayCard(client, _piDue);   /* 6.9.686 */
     /* Only asked when there is a real choice to make - one site needs no question. */
     if (sites.length > 1) {
@@ -35704,11 +35750,12 @@ function viewCatalogue() {
     return h + '<label>Reference (cheque / UTR)</label><input id="pi_ref"/>' +
       '<label>Why (optional)</label><input id="pi_why" placeholder="' +
         (_pk === "refund" ? 'e.g. excess received on the Sonipat site'
+         : _pk === "discount" ? 'e.g. extra discount for settlement till date'
          : _pk === "advance" ? 'e.g. advance against the Huliot order' : 'e.g. part payment') + '"/>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
       '<button class="btn" data-act="pi-save" data-n="' + esc(client) + '" data-k="' + esc(_pk) + '"' +
         (_pk === "refund" ? ' style="background:#b91c1c;border-color:#b91c1c"' : '') + '>' +
-        (_pk === "refund" ? 'Record the refund' : 'Save payment') + '</button></div>';
+        (_pk === "refund" ? 'Record the refund' : _pk === "discount" ? 'Record the discount' : 'Save payment') + '</button></div>';
   }
 
   /* ---------- PAYMENT RECEIPT (v6.9.193) ----------
@@ -35825,6 +35872,7 @@ function viewCatalogue() {
     return "RC-" + (d || "000000") + "-" + s;
   }
   function receiptPdf(p) {
+    if (payIsDisc(p)) return Promise.reject(new Error("A discount is not money received - it has no receipt."));   /* 6.9.735 */
     var cl = clientByName(p.client) || {}, led = clientLedger(p.client);
     return commPdfBase("PAYMENT RECEIPT", { customerName: p.client, site: p.siteName || "" }, p.date || today())
       .then(function (b) {
@@ -35986,7 +36034,7 @@ function viewCatalogue() {
         }
       });
       l.pays.forEach(function (p) {
-        lines.push({ d: dstr(p.date), p: "Payment received" + (p.mode ? " - " + p.mode : "") + (p.ref ? " [" + p.ref + "]" : ""), dr: 0, cr: payAmt(p) });
+        lines.push({ d: dstr(p.date), p: (payIsDisc(p) ? "Discount allowed" + (p.notes ? " - " + String(p.notes).replace(/^discount allowed\s*[\u2014-]?\s*/i, "") : "") : "Payment received" + (p.mode ? " - " + p.mode : "")) + (p.ref ? " [" + p.ref + "]" : ""), dr: 0, cr: payAmt(p) });   /* 6.9.735 */
       });
       lines.sort(function (a, b) { return String(a.d).localeCompare(String(b.d)); });
 
@@ -44324,7 +44372,7 @@ function viewCatalogue() {
           var d = dstr(c.dispatchedAt) || (FR_DONE.indexOf(String(c.status || "")) >= 0 ? dstr(c.createdAt) : "");
           if (stIn(d, R)) ev.push({ d: d, ex: rvOwner(c.customerName), k: "disp", amt: chValue(c) });
         });
-        (S.data.payments || []).forEach(function (p) { var d = dstr(p.date || p.createdAt), a = payAmt(p); if (stIn(d, R) && a > 0) ev.push({ d: d, ex: rvOwner(p.client), k: "coll", amt: a }); });
+        (S.data.payments || []).forEach(function (p) { var d = dstr(p.date || p.createdAt), a = payAmt(p); if (stIn(d, R) && a > 0 && !payIsDisc(p)) ev.push({ d: d, ex: rvOwner(p.client), k: "coll", amt: a }); });
         (S.data.clients || []).forEach(function (c) { var d = dstr(c.createdAt); if (c && stIn(d, R) && !isCancelled("clients", c.id)) ev.push({ d: d, ex: rvOwner(c.name), k: "newCl" }); });
         (S.data.quotes || []).forEach(function (q) {
           if (!q || isCancelled("quotes", q.id)) return;
@@ -58287,6 +58335,10 @@ function viewCatalogue() {
       if (!roleAny(["admin", "accounts"])) { toast("Correcting a receipt is the owner\u2019s or accounts\u2019."); return; }
       S.modal = modalPayModePin(t.getAttribute("data-p") || ""); render();
       setTimeout(function () { var x = el("pm_mode"); if (x) x.focus(); }, 0); return;
+    }
+    if (act === "pm-todisc") {   /* 6.9.735 - the PIN-checked correction, opened on Discount */
+      if (!roleAny(["admin", "accounts"])) { toast("Correcting a receipt is the owner\u2019s or accounts\u2019."); return; }
+      S.pmToDisc = t.getAttribute("data-p") || ""; S.modal = modalPayModePin(S.pmToDisc); render(); return;
     }
     if (act === "pm-go") {
       if (!roleAny(["admin", "accounts"])) { toast("Correcting a receipt is the owner\u2019s or accounts\u2019."); return; }
