@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.741";
+  var APP_VERSION = "6.9.742";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -45901,6 +45901,32 @@ function viewCatalogue() {
       (iPass ? 'Open the delivery book and pass them' : 'Open the delivery book') + '</button></div></div>';
   }
 
+  /* ===== 6.9.742 - THE SAME MOBILE FOR ANOTHER SITE (Visit & Quote 1.1.0) =====
+     HIS WORDS (11 Oct): "client with same mobile no also to be warned, however one can enter duplicate with different site
+     address, intimate admin on CRM if some executive entered same mobile no for another site". The field app writes one audit
+     row (dup:mobile) when an executive saves a site or client whose mobile is already on the book; the owner sees it here
+     until he marks it seen (dup:seen, a new row - nothing is changed or deleted). */
+  function dupMobileRows() {
+    var seen = {}, out = [];
+    (S.data.audit || []).forEach(function (a) { if (a && a.action === "dup:seen") seen[String(a.target)] = 1; });
+    (S.data.audit || []).forEach(function (a) {
+      if (!a || a.action !== "dup:mobile" || seen[String(a.id)]) return;
+      var d = {}; try { d = JSON.parse(a.detail || "{}") || {}; } catch (e) { d = {}; }
+      if (-daysTo(a.createdAt) > 30) return;
+      d.id = a.id; d.at = a.createdAt; d.by = d.by || a.actor; out.push(d);
+    });
+    return out.sort(function (x, y) { return String(y.at).localeCompare(String(x.at)); });
+  }
+  function dupMobileCard() {
+    if (!roleIs("admin")) return "";
+    var L = dupMobileRows(); if (!L.length) return "";
+    return '<div class="card" style="border-color:#fcd34d;background:#fffbeb"><b>Same mobile entered for another ' + (L.length === 1 ? 'site' : 'site &mdash; ' + L.length) + '</b>' +
+      L.slice(0, 8).map(function (d) {
+        return '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:7px 0;border-top:1px solid #fde68a;font-size:13px"><span style="flex:1 1 260px"><b>' + esc(d.mobile || "") + '</b> &middot; new ' + esc(d.kind || "") + ' <b>' + esc(d.what || "") + '</b> by ' + esc(d.by || "") + ' (' + esc(dmy(d.at)) + ')' +
+          '<span style="display:block;color:#64748b;font-size:12px">already: ' + (d.existing || []).map(function (x) { return esc(x.kind + " " + x.what + " (" + (x.by || "-") + ")"); }).join("; ") + '</span></span>' +
+          '<button class="btn sm ghost" data-act="dup-seen" data-id="' + esc(d.id) + '" style="min-height:44px">Seen</button></div>';
+      }).join("") + '</div>';
+  }
   function viewDash() {
     /* every figure on a sales exec's dashboard is THEIR book only: their reminders, their
        customers, their clients' challans. Admin/accounts still see the whole company. */
@@ -52788,7 +52814,8 @@ function viewCatalogue() {
     var _appr = ""; try { _appr = apprStrip(); } catch (eAp) { _appr = ""; }
     var _rst = ""; try { _rst = restartCard(); } catch (eRs) { _rst = ""; }   /* 6.9.631 */
     var _mw = ""; try { _mw = moneyWaitStrip(); } catch (eMw) { _mw = ""; }   /* 6.9.723 */
-    h += '<main>' + _rst + _appr + _mw + body +
+    var _dm = ""; try { _dm = dupMobileCard(); } catch (eDm) { _dm = ""; }   /* 6.9.742 - on every page, for the owner */
+    h += '<main>' + _rst + _appr + _mw + _dm + body +
       '<div class="foot-note">Energy World Team <span data-act="crash-log" style="cursor:pointer;border-bottom:1px dotted #cbd5e1;display:inline-block;padding:13px 6px;margin:-13px 0" title="View crash log">v' + APP_VERSION + '</span> &middot; data lives in your Google Sheet</div></main>';
 
     h += '</div>';
@@ -58031,6 +58058,7 @@ function viewCatalogue() {
       }).then(function (r) { if (r) { closeAck(_gClick, "Installation saved."); S.instFor = null; } });
       return;
     }
+    if (act === "dup-seen") { save("audit", { action: "dup:seen", actor: S.user, recId: t.getAttribute("data-id"), createdAt: new Date().toISOString(), detail: "{}" }, true); render(); return; }   /* 6.9.742 */
     if (act === "cmpn-fp") {   /* 6.9.741 */
       cmpKeep(); var _fn = S.cmpNew; if (!_fn) return; _fn.picks = _fn.picks || {}; var _fk = t.getAttribute("data-k");
       if (_fn.picks[_fk]) delete _fn.picks[_fk]; else { _fn.picks[_fk] = 1; _fn.notProd = false; }
