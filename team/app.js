@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.729";
+  var APP_VERSION = "6.9.730";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -5329,8 +5329,8 @@ window.addEventListener("beforeunload", function (ev) {
      The Scorecard screen's partner figures (scPartnerMetrics, scTier) - and NO incentive figure:
      this goes to a group. */
   function rsPartnerData() {
-    var list = (S.data.associates || []).filter(function (a) {
-      return a && String(a.name || "").trim() && /plumb|archit/i.test(String(a.role || "")) && !isCancelled("associates", a.id);
+    var list = assocLive().filter(function (a) {   /* 6.9.730 */
+      return /plumb|archit/i.test(String(a.role || ""));
     }).map(function (a) {
       var M = scPartnerMetrics(a.name);
       return { name: String(a.name), role: /archit/i.test(String(a.role)) ? "Architect" : "Plumber", mobile: String(a.mobile || ""), area: String(a.area || ""),
@@ -6657,6 +6657,32 @@ window.addEventListener("beforeunload", function (ev) {
   }
   function cancelInfo(tab, id) { return cancelMap()[String(tab) + "|" + String(id || "")] || null; }
   function isCancelled(tab, id) { var c = cancelInfo(tab, id); return !!(c && c.on); }
+  /* ===== 6.9.730 - ONE ROW PER PARTNER  (11 Oct 2026) =====
+     HIS WORDS over the event guest picker: "why showing name many times". MEASURED on the Associates
+     sheet: 346 rows, 301 names - "Sumit - Mahavir" 10 times, saved within 13 seconds on 26 Sep from
+     Imran's phone (journal ids L-2.. L-4..: the same tap replayed), Rohit Garg 5 times, 43 others twice
+     or thrice. Nothing is deleted, so every reader folds them here: the newest row of a name wins and
+     a blank on it (mobile, role, location, birthday...) is filled from an older one. Keyed by name the
+     way partnerBook and the incentive book already are, so the money was never doubled - only the
+     lists were. */
+  var _asLiveCache = null, _asLiveKey = "";
+  function assocLive() {
+    var all = S.data.associates || [], key = all.length + "|" + ((S.data.audit || []).length);
+    if (_asLiveCache && _asLiveKey === key) return _asLiveCache;
+    var by = {}, order = [];
+    all.forEach(function (a) {
+      if (!a || !String(a.name || "").trim() || isCancelled("associates", a.id)) return;
+      var k = dkey(a.name);
+      if (!by[k]) { by[k] = Object.assign({}, a); order.push(k); return; }
+      var cur = by[k], newer = String(a.createdAt || "") >= String(cur.createdAt || "");
+      var top = newer ? a : cur, low = newer ? cur : a, out = Object.assign({}, low);
+      Object.keys(top).forEach(function (f) { var v = top[f]; if (v !== undefined && v !== null && String(v).trim() !== "") out[f] = v; });
+      out.id = top.id || low.id; out._dups = (cur._dups || 1) + 1;
+      by[k] = out;
+    });
+    _asLiveKey = key; _asLiveCache = order.map(function (k) { return by[k]; });
+    return _asLiveCache;
+  }
 
   /* Rebuilt from live + held every time, so it is idempotent (running it twice changes nothing)
      and reversible (a record brought back walks straight back into the live list).  A row with
@@ -16514,7 +16540,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     var src = inp.getAttribute("data-ta");
     if (src === "client") return (S.data.clients || []).filter(function (c) { return c.name; }).map(function (c) {
       return { v: String(c.name).trim(), sub: [c.type, c.area, c.location].filter(Boolean).join(" · "), id: c.id, act: "cl-open" }; });
-    if (src === "partner") return (S.data.associates || []).filter(function (a) { return a.name; }).map(function (a) {
+    if (src === "partner") return assocLive().map(function (a) {   /* 6.9.730 */
       return { v: String(a.name).trim(), sub: [a.role, a.location, a.mobile].filter(Boolean).join(" · "), id: a.id, act: "as-open" }; });
     if (src === "brand") return (S.data.brands || []).filter(function (b) { return b.brand; }).map(function (b) {
       return { v: String(b.brand).trim(), sub: b.notes || "", id: b.id, act: "br-open" }; });
@@ -41276,7 +41302,7 @@ function viewCatalogue() {
 
   function viewPartners() {
     var q = S.q.toLowerCase();
-    var all = S.data.associates || [];
+    var all = assocLive();   /* 6.9.730 - one row per partner */
     /* only roles that actually exist, with counts - no empty buttons to click on */
     var roleCount = {};
     all.forEach(function (a2) { var r = a2.role || "Other"; roleCount[r] = (roleCount[r] || 0) + 1; });
@@ -43083,7 +43109,7 @@ function viewCatalogue() {
   /* ---- SEND THESE FIGURES TO SAATHI (the body of the saathi-push handler since v6.9.2xx, lifted
      unchanged in v6.9.453 so the sheet below can call it after the PIN is typed) ---- */
   function saathiPushRun() {
-    var list = (S.data.associates || []).slice();
+    var list = assocLive().slice();   /* 6.9.730 - a man is sent once */
     if (!list.length) { toast("No partner found."); return; }
     toast("Sending to Saathi - " + plural(list.length, "partner") + "...");
 
@@ -43986,7 +44012,7 @@ function viewCatalogue() {
         if (c) evCost[k] = (evCost[k] || 0) + c;
       });
     });
-    var list = (S.data.associates || []).filter(function (a) { return a && String(a.name || "").trim() && !isCancelled("associates", a.id); }).map(function (a) {
+    var list = assocLive().map(function (a) {   /* 6.9.730 - one row per partner */
       var bk = null; try { bk = partnerBook(a.name); } catch (e) { bk = null; }
       var rows = (bk && bk.rows) || [], b12 = 0, p12 = 0, last = "";
       rows.forEach(function (r) {
@@ -44070,17 +44096,44 @@ function viewCatalogue() {
     });
     return Math.round(tot);
   }
+  /* 6.9.730 - HIS WORDS: "make separate head for each partner category". One <optgroup> per role
+     (Plumbers, Architects, Contractors, ... then the rest), each sorted best supporter first. */
+  function pevPickGroups(pool) {
+    var g = {}, order = [];
+    pool.forEach(function (x) {
+      var r = String(x.role || "").trim() || "Other";
+      var k = /plumb/i.test(r) ? "Plumbers" : /archit/i.test(r) ? "Architects" : /contract/i.test(r) ? "Contractors" : /builder/i.test(r) ? "Builders" : /interior|design/i.test(r) ? "Interior designers" : /dealer/i.test(r) ? "Dealers" : (r.charAt(0).toUpperCase() + r.slice(1) + "s");
+      if (!g[k]) { g[k] = []; order.push(k); }
+      g[k].push(x);
+    });
+    var rank = { Plumbers: 0, Architects: 1, Contractors: 2, Builders: 3, "Interior designers": 4, Dealers: 5 };
+    order.sort(function (a, b) { return (rank[a] == null ? 9 : rank[a]) - (rank[b] == null ? 9 : rank[b]) || a.localeCompare(b); });
+    return order.map(function (k) {
+      return '<optgroup label="' + esc(k) + ' (' + g[k].length + ')">' + g[k].slice(0, 400).map(function (x) {
+        return '<option value="' + esc(x.name) + '">' + esc(x.name) + ' · ' + esc(x.tier) + (x.b12 ? ' · ' + money(x.b12) : '') + (x.loc ? ' · ' + esc(x.loc) : '') + '</option>';
+      }).join("") + '</optgroup>';
+    }).join("");
+  }
   function viewPevEvent(e) {
     var m = pevMoney(e.eid), sup = pevSupport(), byN = {}; sup.forEach(function (x) { byN[dkey(x.name)] = x; });
     var sts = PEV_ST[e.type] || PEV_ST.meet, isG = e.type === "greet";
-    var inv = m.inv.map(function (i) { return { i: i, x: byN[dkey(i.partner)] || { tier: "Base", rank: 3, b12: 0, role: "", mob: "" } }; })
-      .sort(function (p, q) { return p.x.rank - q.x.rank || q.x.b12 - p.x.b12; });
+    /* 6.9.730 - HIS WORDS: "so serial no, so know how many invited; also make option for adding other invitee like
+       company person, or some other, so that can have to final list to manage food and drink for them". An "other"
+       invitee is an evt:inv row with other:1 and who/mobile typed on the spot - a company man, a brand rep, a guest
+       of honour - never an Associates row, so the partner book stays partners only. Partners first (best supporter
+       first), then the others; the serial number runs down the whole list and the head count under the table is
+       what the caterer gets. */
+    var inv = m.inv.map(function (i) { return { i: i, x: i.other ? { tier: "Guest", rank: 4, b12: 0, role: String(i.who || "Other"), mob: String(i.mobile || "").replace(/\D/g, "").slice(-10), other: true }
+                                                              : (byN[dkey(i.partner)] || { tier: "Base", rank: 3, b12: 0, role: "", mob: "" }) }; })
+      .sort(function (p, q) { return p.x.rank - q.x.rank || q.x.b12 - p.x.b12 || String(p.i.partner).localeCompare(String(q.i.partner)); });
+    var nOther = inv.filter(function (p) { return p.x.other; }).length;
+    var came = m.inv.filter(function (i) { return /Confirmed|Attended|Travelled/.test(i.st || ""); }).length, declined = m.inv.filter(function (i) { return /Declined/.test(i.st || ""); }).length;
     var cnt = {}; m.inv.forEach(function (i) { cnt[i.st] = (cnt[i.st] || 0) + 1; });
     var h = '<div class="card"><div class="acts" style="align-items:center;margin:0;flex-wrap:wrap;gap:6px"><button class="btn sm ghost" style="min-height:44px" data-act="pev-back">← All events</button>' +
       '<h2 class="grow" style="margin:0">' + esc(e.name) + '</h2><button class="btn sm ghost" style="min-height:44px" data-act="pev-edit" data-id="' + esc(e.eid) + '">Edit</button></div>' +
       '<div class="meta" style="font-size:13px">' + esc((PEV_TYPES.filter(function (t) { return t[0] === e.type; })[0] || ["", ""])[1]) + (e.date ? ' · ' + esc(dmy(e.date)) : '') + (e.venue ? ' · ' + esc(e.venue) : '') + '</div>' +
       '<div class="cards" style="margin-top:8px">' +
-        '<div class="stat"><div class="n">' + m.inv.length + '</div><div class="l">guests</div></div>' +
+        '<div class="stat"><div class="n">' + m.inv.length + '</div><div class="l">on the list' + (nOther ? ' · ' + nOther + ' other' + (nOther === 1 ? '' : 's') : '') + '</div></div>' +
         sts.map(function (s2) { return '<div class="stat"><div class="n">' + (cnt[s2] || 0) + '</div><div class="l">' + esc(s2) + '</div></div>'; }).join("") +
         '<div class="stat"><div class="n">' + (m.budget ? money(m.budget) : '—') + '</div><div class="l">budget</div></div>' +
         '<div class="stat' + (m.budget && m.spent > m.budget ? ' alert' : '') + '"><div class="n">' + money(m.spent) + '</div><div class="l">spent</div></div>' +
@@ -44096,17 +44149,26 @@ function viewCatalogue() {
         '<div><label style="margin-top:0">tier at least</label><select id="pe_addtier" style="min-height:44px"><option>Platinum</option><option selected>Gold</option><option>Silver</option><option>Base</option></select></div>' +
         '<button class="btn sm" style="min-height:44px" data-act="pev-addrule" data-id="' + esc(e.eid) + '">Add them</button>' +
         '<div style="flex:1 1 200px"><label style="margin-top:0">or one partner</label><select id="pe_addone" style="min-height:44px;width:100%"><option value="">— pick —</option>' +
-          pool.slice(0, 400).map(function (x) { return '<option value="' + esc(x.name) + '">' + esc(x.name) + ' · ' + esc(x.tier) + (x.b12 ? ' · ' + money(x.b12) : '') + '</option>'; }).join("") + '</select></div>' +
+          '<option value="__new">+ New partner (not on the list)…</option>' +   /* 6.9.730 - his ask: "add new if not in list" */
+          pevPickGroups(pool) + '</select></div>' +
         '<button class="btn sm ghost" style="min-height:44px" data-act="pev-addone" data-id="' + esc(e.eid) + '">Add</button></div>' +
-      (inv.length ? pevTable([["Partner"], ["Tier"], ["Business 12 m", "right"], ["Status"], [isG ? "Gift ₹" : "Own cost ₹", "right"], [""]],
+      /* 6.9.730 - anyone who is not a partner: a company man, a brand rep, a guest of honour */
+      (isG ? '' : '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end;margin-top:8px;padding-top:8px;border-top:1px dashed #e2e8f0">' +
+        '<div style="flex:1 1 160px"><label style="margin-top:0">Other invitee (not a partner)</label><input id="pe_oname" placeholder="name" style="min-height:44px"/></div>' +
+        '<div><label style="margin-top:0">Who</label><select id="pe_owho" style="min-height:44px"><option>Company</option><option>Brand</option><option>Guest of honour</option><option>Family</option><option>Staff</option><option>Other</option></select></div>' +
+        '<div><label style="margin-top:0">Mobile</label><input id="pe_omob" inputmode="numeric" placeholder="optional" style="width:130px;min-height:44px"/></div>' +
+        '<button class="btn sm ghost" style="min-height:44px" data-act="pev-addother" data-id="' + esc(e.eid) + '">+ Add invitee</button></div>') +
+      (inv.length ? pevTable([["#", "right"], ["Guest"], ["Tier"], ["Business 12 m", "right"], ["Status"], [isG ? "Gift ₹" : "Own cost ₹", "right"], [""]],
         inv.map(function (p, k) {
           var i = p.i, x = p.x, mob = x.mob || "";
-          return ['<b>' + esc(i.partner) + '</b><div style="font-size:12px;color:#64748b">' + esc(x.role || "") + (mob ? ' · ' + esc(mob) : ' · <span style="color:#b45309">no mobile</span>') + '</div>', pevTierPill(x.tier), x.b12 ? money(x.b12) : '—',
+          return ['<span style="color:#64748b">' + (k + 1) + '</span>', '<b>' + esc(i.partner) + '</b><div style="font-size:12px;color:#64748b">' + esc(x.role || "") + (mob ? ' · ' + esc(mob) : ' · <span style="color:#b45309">no mobile</span>') + '</div>',
+            x.other ? '<span style="display:inline-block;font-size:12px;font-weight:800;color:#3730a3;background:#e0e7ff;border-radius:6px;padding:1px 7px;white-space:nowrap">Guest</span>' : pevTierPill(x.tier), x.b12 ? money(x.b12) : '—',
             '<select class="pev-st" data-id="' + esc(e.eid) + '" data-p="' + esc(i.partner) + '" style="min-height:44px">' + sts.map(function (s2) { return '<option' + (s2 === i.st ? ' selected' : '') + '>' + esc(s2) + '</option>'; }).join("") + '</select>',
             '<input class="pev-cost" data-id="' + esc(e.eid) + '" data-p="' + esc(i.partner) + '" inputmode="numeric" value="' + esc(i.cost || "") + '" placeholder="0" style="width:84px;font-size:14px;text-align:right;min-height:44px"/>',
             '<div style="display:flex;gap:6px;justify-content:flex-end">' + (mob ? '<a class="btn sm ghost" style="min-height:44px;display:inline-flex;align-items:center;text-decoration:none" target="_blank" rel="noopener" href="https://wa.me/91' + esc(mob) + '?text=' + encodeURIComponent(pevMsg(e, i.partner)) + '">WhatsApp</a>' : '') +
             '<button class="btn sm ghost" style="min-height:44px" data-act="pev-rm" data-id="' + esc(e.eid) + '" data-p="' + esc(i.partner) + '">Take off</button></div>'];
-        })) : '<div class="empty">No guest yet.</div>') + '</div>';
+        })) + (isG ? '' : '<div class="meta" style="font-size:13px;margin-top:8px"><b>Head count for food &amp; drink: ' + came + '</b> (confirmed' + (e.type === "trip" ? ', travelling' : ' or attended') + ') &middot; ' +
+          m.inv.length + ' on the list' + (nOther ? ' incl. ' + nOther + ' other' + (nOther === 1 ? '' : 's') : '') + (declined ? ' &middot; ' + declined + ' declined' : '') + '</div>') : '<div class="empty">No guest yet.</div>') + '</div>';
     /* brands */
     var brs = pevBrands(e.eid), bOpts = (S.data.brands || []).map(function (b) { return String(b.brand || "").trim(); }).filter(Boolean).sort();
     var gnames = m.inv.map(function (i) { return i.partner; });
@@ -52774,7 +52836,9 @@ function viewCatalogue() {
       var _eid = t.getAttribute("data-id"), _ev = pevEvent(_eid); if (!_ev) return;
       var _st0 = (PEV_ST[_ev.type] || PEV_ST.meet)[0], _have = {}; pevInv(_eid).forEach(function (i) { _have[dkey(i.partner)] = 1; });
       var _who = [];
-      if (act === "pev-addone") { var _one = val("pe_addone"); if (!_one) { toast("Pick a partner."); return; } _who = [_one]; }
+      if (act === "pev-addone") { var _one = val("pe_addone"); if (!_one) { toast("Pick a partner."); return; }
+        if (_one === "__new") { S.pevBackTo = _eid; S.modal = modalAssociate(null); render(); toast("Save the new partner, then pick him here - he is on the list at once."); return; }   /* 6.9.730 */
+        _who = [_one]; }
       else {
         var _rl = val("pe_addrole") || "", _mt = { Platinum: 0, Gold: 1, Silver: 2, Base: 3 }[val("pe_addtier") || "Gold"];
         _who = pevSupport().filter(function (x) { return x.rank <= _mt && (!_rl || new RegExp(_rl, "i").test(x.role)); }).map(function (x) { return x.name; });
@@ -52783,6 +52847,17 @@ function viewCatalogue() {
       if (!_who.length) { toast("Nobody new to add."); return; }
       t.disabled = true; toast("Adding " + plural(_who.length, "guest") + "…");
       Promise.all(_who.map(function (n) { return pevSaveRow("evt:inv", _eid, { eid: _eid, partner: n, st: _st0, cost: 0 }); })).then(function () { keepScroll = true; render(); toast(plural(_who.length, "guest") + " added."); });
+      return;
+    }
+    if (act === "pev-addother") {   /* 6.9.730 */
+      var _oe = t.getAttribute("data-id"), _oev = pevEvent(_oe); if (!_oev) return;
+      var _on = String(val("pe_oname") || "").trim(), _ow = String(val("pe_owho") || "Other"), _om = String(val("pe_omob") || "").replace(/\D/g, "");
+      if (_on.length < 2) { toast("Type the invitee\u2019s name."); return; }
+      if (_om && _om.length < 10) { toast("A mobile is 10 digits - or leave it blank."); return; }
+      var _oh = {}; pevInv(_oe).forEach(function (i) { _oh[dkey(i.partner)] = 1; });
+      if (_oh[dkey(_on)]) { toast(_on + " is already on the list."); return; }
+      pevSaveRow("evt:inv", _oe, { eid: _oe, partner: _on, st: (PEV_ST[_oev.type] || PEV_ST.meet)[0], cost: 0, other: 1, who: _ow, mobile: _om })
+        .then(function () { keepScroll = true; render(); toast(_on + " (" + _ow + ") added to the list."); });
       return;
     }
     if (act === "pev-rm") {
@@ -58267,6 +58342,11 @@ function viewCatalogue() {
           }
           toast("Partner saved — " + an + " selected. Finish the client and Save.");
         } else if (S.asReturn) { asComeBack(an, val("m_aloc")); toast("Partner saved \u2014 " + an + " picked."); }   /* 6.9.682 */
+        else if (S.pevBackTo && pevEvent(S.pevBackTo)) {   /* 6.9.730 - came from an event's guest list: he goes straight on it */
+          var _pe = S.pevBackTo, _pev = pevEvent(_pe); S.pevBackTo = null; _asLiveCache = null;
+          var _pst = (PEV_ST[_pev.type] || PEV_ST.meet)[0];
+          pevSaveRow("evt:inv", _pe, { eid: _pe, partner: an, st: _pst, cost: 0 }).then(function () { S.modal = null; render(); toast("Partner saved and added to the guest list."); });
+        }
         else { S.modal = null; toast("Partner saved."); render(); }
       });
       return;
