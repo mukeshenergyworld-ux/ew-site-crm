@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.738";
+  var APP_VERSION = "6.9.739";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -578,10 +578,10 @@
   }
 
   var ROLE_TABS = {
-    admin:    ["dash","statements","review","agent","report","scorecard","returns","tools","rates","clients","crlog","partners","pevents","quotes","leads","brandfollow","winloss","visits","followups","challans","register","paylog","freight","payments","paidout","billing","discounts","commission","complaints","service","spares","dues","payroll","products","catalogs","brandstory","pricelist","catalogue","rules","teampins","tally","plcheck","health","trouble","changelog","booksweep","dups","stock","brief"],
+    admin:    ["dash","myday","statements","review","agent","report","scorecard","returns","tools","rates","clients","crlog","partners","pevents","quotes","leads","brandfollow","winloss","visits","followups","challans","register","paylog","freight","payments","paidout","billing","discounts","commission","complaints","service","spares","dues","payroll","products","catalogs","brandstory","pricelist","catalogue","rules","teampins","tally","plcheck","health","trouble","changelog","booksweep","dups","stock","brief"],
     accounts: ["dash","statements","review","agent","returns","tools","clients","crlog","partners","followups","challans","register","paylog","freight","payments","billing","complaints","service","spares","dues","products","catalogs","rates","pricelist","dups","stock","tally","trouble"],
     godown:   ["dash","agent","returns","tools","challans","freight","products","stock","trouble"],
-    sales:    ["dash","review","agent","report","returns","tools","clients","crlog","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","register","paylog","freight","billing","payments","complaints","products","catalogs","dups","brief","trouble"],
+    sales:    ["myday","dash","review","agent","report","returns","tools","clients","crlog","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","register","paylog","freight","billing","payments","complaints","products","catalogs","dups","brief","trouble"],
     service:  ["dash","agent","tools","complaints","service","spares","dues","followups","products","catalogs","trouble"]
   };
   /* v6.9.320 - EVERY SCREEN EITHER OF HIS ROLES OPENS.
@@ -5068,7 +5068,8 @@ window.addEventListener("beforeunload", function (ev) {
     { k: "pitch", t: "Weekly pitch reminder", when: "every Monday" },
     { k: "pulse", t: "Owner's weekly pulse", when: "every Monday" },   /* 6.9.652 */
     { k: "partner", t: "Plumber & architect scorecard", when: "the 1st and the 16th" },
-    { k: "money", t: "Money check", when: "every day" }   /* 6.9.662 */
+    { k: "money", t: "Money check", when: "every day" },   /* 6.9.662 */
+    { k: "risk", t: "Morning money risk", when: "every day" }   /* 6.9.739 */
   ];
   /* the latest slot of each report on or before today, if it is still fresh enough to send */
   function rsSlots(t) {
@@ -5081,6 +5082,7 @@ window.addEventListener("beforeunload", function (ev) {
     var half = back(function (d) { var n = Number(d.slice(8, 10)); return n === 1 || n === 16; }, 4);
     if (half) out.push({ k: "partner", slot: "partner:" + half, day: half });
     out.push({ k: "money", slot: "money:" + t, day: t });   /* 6.9.662 - every day */
+    out.push({ k: "risk", slot: "risk:" + t, day: t });     /* 6.9.739 - every morning */
     return out;
   }
   function rsLocal() { try { return JSON.parse(localStorage.getItem("ew_rs_sent") || "{}") || {}; } catch (e) { return {}; } }
@@ -5136,6 +5138,7 @@ window.addEventListener("beforeunload", function (ev) {
     if (k === "pitch") return rsPitchSheet();
     if (k === "pulse") return rsPulseSheet();   /* 6.9.652 */
     if (k === "money") return rsMoneySheet();   /* 6.9.662 */
+    if (k === "risk") { var _rk = rsSetRisk().team.xlsx; return { rows: _rk.rows, cols: _rk.cols, opts: _rk.opts, file: _rk.file, text: "", caption: "" }; }   /* 6.9.739 */
     return rsPartnerReport();
   }
   function rsSend(k) {
@@ -5995,6 +5998,7 @@ window.addEventListener("beforeunload", function (ev) {
     if (k === "pitch") return rsSetPitch();
     if (k === "pulse") return rsSetPulse();   /* 6.9.652 */
     if (k === "money") return rsSetMoney();   /* 6.9.662 */
+    if (k === "risk") return rsSetRisk();      /* 6.9.739 */
     return rsSetPartner();
   }
 
@@ -8906,7 +8910,8 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
   function cmpWarr(p) {
     if (p.kind === "install") {
       /* 6.9.736 - the installation's own warranty counts, not only its AMC (it was read as "No AMC" while in warranty) */
-      var _ic = p.insId ? insCover(installById(p.insId)) : null;
+      var _ic = p.insId && installById(p.insId) ? insCover(installById(p.insId)) : null;
+      if (!_ic && p.parts && p.parts.length) { var _pon = p.parts.filter(function (x) { return x.till >= today(); }); return _pon.length === p.parts.length ? { t: warrPartsTxt(p.parts), c: "#0f766e", ok: 1, amc: 0 } : { t: warrPartsTxt(p.parts), c: _pon.length ? "#b45309" : "#b91c1c", partial: _pon.length ? 1 : 0 }; }   /* 6.9.739 */
       if (_ic && _ic.k === "warranty") return { t: _ic.txt, c: "#0f766e", ok: 1, amc: 0, byBrand: _ic.byBrand };
       if (_ic && _ic.k === "amc") return { t: _ic.txt, c: "#0f766e", ok: 1, amc: 1 };
       if (!p.amcEnd) return { t: "No AMC", c: "#64748b" };
@@ -8954,7 +8959,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
   /* the register sheet: S.cmpNew holds what is typed, so a redraw (client picked) keeps it */
   function cmpKeep() {
     var n = S.cmpNew; if (!n) return;
-    ["src", "pri", "cat", "desc", "eng", "name", "mobile", "district", "area", "client"].forEach(function (f) { var e = el("cmpn_" + f); if (e) n[f] = e.value; });   /* 6.9.738 - area */
+    ["src", "pri", "cat", "desc", "eng", "name", "mobile", "district", "area", "client", "addr", "areanew"].forEach(function (f) { var e = el("cmpn_" + f); if (e) n[f] = e.value; });   /* 6.9.738 - area; 6.9.739 - addr */
     n.picks = {}; Array.prototype.forEach.call(document.querySelectorAll("input.cmp-pk"), function (x) { if (x.checked) n.picks[x.getAttribute("data-k")] = 1; });
   }
   function modalCmpNew() {
@@ -8979,9 +8984,13 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     if (n.client === "__none__" || (!c && n.webRef)) {
       h += '<div class="grid2"><div><label>Name</label><input id="cmpn_name" value="' + esc(n.name || "") + '"/></div>' +
         '<div><label>Mobile</label><input id="cmpn_mobile" inputmode="numeric" value="' + esc(n.mobile || "") + '"/></div></div>' +
-        /* 6.9.738 - "if client is old, before CRM time, not in list ask to enter new, ask to enter old installed product details" */
-        '<div class="card" style="margin:8px 0 0;border-color:#99f6e4;background:#f0fdfa;padding:8px 11px"><div class="meta" style="font-size:12.5px">An old client from before the CRM? Register him once &mdash; then his machines with the installation date and warranty &mdash; and every complaint after this knows him.</div>' +
-        '<button class="btn sm" data-act="cmp-newclient" style="min-height:44px;margin-top:6px">+ Register him and his machines</button></div>';
+        /* 6.9.739 - HIS WORDS (11 Oct): "registering a new client is still not asking what product installed and what are their
+           installation details". The district and area are picked above; the house, and the machines question, here - and it
+           must be answered before the complaint is registered. */
+        (n.area ? '' : '<label>His area, if it is not in the list above</label><input id="cmpn_areanew" value="' + esc(n.areanew || "") + '" placeholder="Colony / sector"/>') +
+        '<label>House / address</label><input id="cmpn_addr" value="' + esc(n.addr || "") + '" placeholder="e.g. 96 R, Model Town"/>' +
+        cmpMachinesAsk(n, true) +
+        '<div class="meta" style="font-size:12.5px;margin-top:6px">Want him on the book as a client too? <button class="btn sm ghost" data-act="cmp-newclient" style="min-height:44px">+ Register him as a client</button></div>';
     }
     if (c) {
       var ps = cmpProducts(c.name), main = ps.filter(function (p) { return p.kind !== "item"; }), rest = ps.filter(function (p) { return p.kind === "item"; });
@@ -8992,6 +9001,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         (main.length ? main.map(function (p) { return cmpProdRow(p, n.picks && n.picks[p.key], true); }).join("") : '<div class="meta" style="font-size:12.5px">No commissioned product or installation recorded for him.</div>') +
         (rest.length ? '<details style="margin-top:6px"><summary style="cursor:pointer;font-size:12.5px;font-weight:700;min-height:44px;display:flex;align-items:center">Everything else delivered to him (' + rest.length + ')</summary>' +
           rest.slice(0, 60).map(function (p) { return cmpProdRow(p, n.picks && n.picks[p.key], true); }).join("") + '</details>' : '') +
+        (main.length ? '' : cmpMachinesAsk(n, false)) +   /* 6.9.739 - nothing of his on file: ask */
         cmpPaperStrip(c.name, c.id, true) + '<div style="margin-top:8px">' + custLinkBtn(c.name, '&#128241; Send him his own link') + '</div></div>';   /* 6.9.690 */
     }
     h += '<label>What is it about?</label><select id="cmpn_cat">' + opt("", n.cat, "— pick —") + CMP_CATS.map(function (x) { return opt(x, n.cat); }).join("") + '</select>' +
@@ -9016,6 +9026,33 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         return '<div style="padding:5px 0;border-top:1px solid #e2e8f0;font-size:12.5px"><b>' + esc(ps || x.product || "Machine") + '</b>' + (x.engineer ? ' <span style="color:#64748b">· engineer ' + esc(x.engineer) + '</span>' : '') +
           insCoverHtml(cv[i], 1) + (!cv[i].free && vc.amt !== "" ? '<div class="meta" style="font-size:12px">Fixed charge for a repair visit: <b>' + money(vc.amt) + '</b></div>' : '') + '</div>';
       }).join("") : '');
+  }
+  /* 6.9.739 - "Are any of our products installed at his place?" - the same question as the Service app's 2.3.0 */
+  function cmpMachTill(m) {
+    if (m.w === "out") return { txt: "Out of warranty", bad: 1 };
+    if (m.w === "amc") return { txt: "Under AMC" + (m.amc ? " till " + fullDate(m.amc) : "") };
+    var ps = warrParts(m.brand, m.product, m.cc || m.cd); if (!ps.length) return { txt: "No warranty rule for this brand" };
+    var on = ps.filter(function (p) { return p.till >= today(); }), bs = brandSvc(m.brand) || {};
+    return { txt: warrPartsTxt(ps) + (on.length ? (bs.wby === "brand" ? " — " + m.brand + " services it" : " — Energy World services it free") : ""), bad: !on.length, parts: ps };
+  }
+  function cmpMachinesAsk(n, must) {
+    var L = n.mach || (n.mach = []), yes = n.hasM === "yes";
+    var h = '<div class="card" id="cmpn_mq" style="margin:10px 0 0;border-color:#5eead4;background:#f0fdfa;padding:9px 11px"><b style="font-size:13.5px">Are any of our products installed at his place?</b>' +
+      '<div class="meta" style="font-size:12.5px">So the service team sees what is installed and what is in warranty.' + (must ? ' It must be answered.' : ' Nothing of his is on file yet.') + '</div>' +
+      '<div class="chips" style="margin-top:6px"><button class="chip' + (yes ? ' on' : '') + '" data-act="cmpn-hasm" data-k="yes" style="min-height:44px">Yes &mdash; enter them</button>' +
+      '<button class="chip' + (n.hasM === "no" ? ' on' : '') + '" data-act="cmpn-hasm" data-k="no" style="min-height:44px">No product of ours</button></div>';
+    if (!yes) return h + '</div>';
+    h += L.map(function (m, i) { var w = cmpMachTill(m);
+      return '<div style="padding:6px 0;border-top:1px solid #ccfbf1;font-size:13px"><b>' + esc([m.brand, m.product, m.model].filter(Boolean).join(" ")) + '</b> &middot; installed ' + esc(dmy(m.cd)) + (m.cc && m.cc !== m.cd ? ' &middot; commissioned ' + esc(dmy(m.cc)) : '') +
+        '<div style="font-size:12.5px;font-weight:700;color:' + (w.bad ? '#b91c1c' : '#0f766e') + '">' + esc(w.txt) + '</div><button class="btn sm ghost" data-act="cmpn-mdel" data-i="' + i + '" style="min-height:44px">Remove</button></div>'; }).join("") +
+      '<div style="border-top:1px dashed #94a3b8;margin-top:6px;padding-top:4px;font-size:13px"><b>' + (L.length ? 'Another machine' : 'The machine') + '</b></div>' +
+      '<div class="grid2"><div><label>Brand</label><select id="cmpm_b">' + ["LEO", "Grundfos", "Pentair", "Green Heat", "Other"].map(function (b) { return '<option>' + b + '</option>'; }).join("") + '</select></div>' +
+      '<div><label>Product</label><select id="cmpm_p">' + SVC_PRODUCTS.map(function (p) { return '<option>' + esc(p) + '</option>'; }).join("") + '</select></div></div>' +
+      '<label>Model / capacity</label><input id="cmpm_m" placeholder="e.g. 1054, 5 kW, 1 HP"/>' +
+      '<div class="grid2"><div><label>Installed on</label><input id="cmpm_d" type="date" max="' + today() + '"/></div><div><label>Commissioned on (if different)</label><input id="cmpm_c" type="date" max="' + today() + '"/></div></div>' +
+      '<div class="grid2"><div><label>Warranty</label><select id="cmpm_w"><option value="auto">As per the brand (worked out)</option><option value="out">Out of warranty</option><option value="amc">Under AMC</option></select></div><div><label>AMC till (if AMC)</label><input id="cmpm_a" type="date"/></div></div>' +
+      '<button class="btn sm" data-act="cmpn-madd" style="min-height:44px;margin-top:6px">+ Add this machine</button></div>';
+    return h;
   }
   function cmpEngineers() {
     var out = SVC_ENGINEERS.slice();
@@ -21983,6 +22020,82 @@ function viewCatalogue() {
       '<input id="vm_other" placeholder="Name and mobile, if not on the list" style="margin-top:6px"/>' +
       '<label>What happened <span style="color:#ef4444">*</span></label><textarea id="vm_note" placeholder="e.g. showed the new CP range; he has 2 sites starting in Sector 12"></textarea>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button><button class="btn" data-act="vm-save" data-k="' + esc(kind) + '">Save visit</button></div>';
+  }
+  /* ================= 6.9.739 - MY DAY  (11 Oct 2026) =================
+     One screen an executive opens in the morning: whom to call, what money to chase, which quotes have gone quiet,
+     and his visits. Nothing new is stored - every line is read from what is already in the book (follow-ups, partner
+     event calls, partners gone cold, his clients' dues and their age, the quote radar, visits). The owner sees anyone's
+     day from the chips at the top. */
+  function mdWho() { return roleIs("admin") ? (S.mdWho || S.user) : S.user; }
+  function mdMine(owner, who) { return dkey(owner) === dkey(who); }
+  function mdData(who) {
+    var d = { fu: [], ev: [], cold: [], money: [], quotes: [], visitsToday: 0, staleSites: [] };
+    var td = today();
+    d.fu = (openFollowups() || []).filter(function (f) { return (mdMine(f.createdBy, who) || mdMine(clientOwner(f.customerName), who)) && f.dueDate && dstr(f.dueDate) <= td; })
+      .sort(function (a, b) { return String(a.dueDate).localeCompare(String(b.dueDate)); });
+    try { d.ev = pevMyCalls(who).filter(function (x) { return !x.sg.due || String(x.sg.due) <= td; }); } catch (e) { d.ev = []; }
+    try { d.cold = (coldPartners() || []).filter(function (x) { return mdMine(x.a.ownedBy, who); }).slice(0, 8); } catch (e) { d.cold = []; }
+    try {
+      d.money = hisabOutstanding().filter(function (r) { return mdMine(r.owner, who); }).map(function (r) {
+        var ag = {}; try { ag = clientAging(r.name) || {}; } catch (e) { ag = {}; }
+        return { name: r.name, due: r.due, oldest: Number(ag.oldest) || 0, overdue: Number(ag.overdue) || 0 };
+      }).sort(function (a, b) { return (b.overdue > 0.5) - (a.overdue > 0.5) || b.oldest - a.oldest || b.due - a.due; });
+    } catch (e) { d.money = []; }
+    d.quotes = (S.data.quotes || []).filter(function (q) {
+      return ["Sent", "Negotiating", "Draft"].indexOf(q.status) >= 0 && (mdMine(q.createdBy, who) || mdMine(clientOwner(q.client), who)) && qSilentDays(q) >= RADAR_MIN && !quoteSnoozed(q);
+    }).sort(function (a, b) { return qSilentDays(b) - qSilentDays(a); });
+    try { d.visitsToday = vmAll().filter(function (v) { return mdMine(v.by, who) && v.at.slice(0, 10) === td; }).length; } catch (e) { d.visitsToday = 0; }
+    var lastV = {}; (S.data.sitevisits || []).forEach(function (v) { var a = String(v.createdAt || v.date || "").slice(0, 10); if (!lastV[v.siteId] || a > lastV[v.siteId]) lastV[v.siteId] = a; });
+    d.staleSites = (S.data.sites || []).filter(function (x) { return x && mdMine(x.createdBy, who) && String(x.status || "") !== "Lost" && (!lastV[x.id] || lastV[x.id] < addDays(td, -30)); })
+      .map(function (x) { return { s: x, last: lastV[x.id] || "" }; }).sort(function (a, b) { return String(a.last).localeCompare(String(b.last)); }).slice(0, 8);
+    return d;
+  }
+  function viewMyDay() {
+    var who = mdWho(), d = mdData(who), td = today();
+    var tile = function (n, l, warn) { return '<div class="stat' + (warn && n ? ' alert' : '') + '"><div class="n">' + n + '</div><div class="l">' + l + '</div></div>'; };
+    var calls = d.fu.length + d.ev.length;
+    var h = '<div class="card" style="padding:10px 12px"><h2 style="margin:0;font-size:18px">My day &middot; ' + esc(who) + '</h2><div class="meta" style="font-size:13px">' + esc(fullDate(td)) + '</div>';
+    if (roleIs("admin")) {
+      var ex = []; (S.data.team || []).forEach(function (u) { if (u && u.name && String(u.active == null ? "Y" : u.active).toUpperCase() !== "N" && /sales|admin/i.test(String(u.role || ""))) ex.push(u.name); });
+      if (ex.indexOf(S.user) < 0) ex.unshift(S.user);
+      h += '<div class="chips" style="margin-top:6px">' + ex.map(function (n) { return '<button class="chip' + (dkey(n) === dkey(who) ? ' on' : '') + '" data-act="md-who" data-n="' + esc(n) + '" style="min-height:44px">' + esc(n) + '</button>'; }).join("") + '</div>';
+    }
+    h += '</div><div class="cards">' + tile(calls, "Calls to make", 1) + tile(d.money.filter(function (m) { return m.overdue > 0.5; }).length, "Clients overdue", 1) + tile(d.quotes.length, "Quotes gone quiet", 1) + tile(d.visitsToday, "Visits today") + '</div>';
+    /* 1. calls */
+    h += '<h3 style="margin:14px 0 4px;font-size:15px">1. Calls to make today</h3>';
+    if (!calls && !d.cold.length) h += '<div class="empty">No call due. A good day to visit.</div>';
+    if (d.fu.length) h += pevTable([["Due"], ["Client"], ["What"], [""]], d.fu.slice(0, 15).map(function (f) {
+      var c = clientByName(f.customerName) || {}, late = dstr(f.dueDate) < td;
+      return ['<b style="color:' + (late ? '#b91c1c' : '#0f766e') + '">' + esc(dmy(f.dueDate)) + '</b>', '<b data-act="bill-open" data-n="' + esc(f.customerName || "") + '" style="cursor:pointer;color:#0d766c">' + esc(f.customerName || "") + '</b>' + (c.mobile ? ' <a href="tel:' + esc(c.mobile) + '">' + esc(c.mobile) + '</a>' : ''),
+        esc(String(f.note || f.notes || f.purpose || "").slice(0, 80)), '<button class="btn sm" data-act="fu-done" data-id="' + esc(f.id) + '" style="min-height:44px">Done</button>'];
+    }));
+    if (d.ev.length) h += '<div class="meta" style="font-size:12.5px;font-weight:700;margin-top:8px">Partner event calls</div>' + pevTable([["Due"], ["Partner"], ["Event"], ["To do"]], d.ev.slice(0, 10).map(function (x) {
+      var mob = String(x.i.mobile || "").replace(/\D/g, "").slice(-10);
+      return [esc(dmy(x.sg.due)), '<b>' + esc(x.i.partner) + '</b>' + (mob ? ' <a href="tel:' + mob + '">' + mob + '</a>' : ''), esc(x.e.name || ""), esc(x.sg.lbl || "")];
+    }));
+    if (d.cold.length) h += '<div class="meta" style="font-size:12.5px;font-weight:700;margin-top:8px">Your partners gone quiet (' + COLD_PARTNER + '+ days)</div>' + pevTable([["Partner"], ["Last in touch", "right"], [""]], d.cold.map(function (x) {
+      var mob = String(x.a.mobile || "").replace(/\D/g, "").slice(-10);
+      return ['<b data-act="p-open" data-n="' + esc(x.a.name) + '" style="cursor:pointer;color:#0d766c">' + esc(x.a.name) + '</b>' + (x.a.role ? ' <span style="color:#64748b">' + esc(x.a.role) + '</span>' : ''), x.days + ' days', mob ? '<a class="btn sm ghost" href="tel:' + mob + '" style="min-height:44px">Call</a>' : ''];
+    }));
+    /* 2. money */
+    h += '<h3 style="margin:14px 0 4px;font-size:15px">2. Money to chase &middot; ' + d.money.length + ' clients, ' + money(d.money.reduce(function (a, m) { return a + m.due; }, 0)) + '</h3>';
+    h += d.money.length ? pevTable([["Client"], ["Owes", "right"], ["Overdue", "right"], ["Oldest", "right"], [""]], d.money.slice(0, 12).map(function (m) {
+      var c = clientByName(m.name) || {};
+      return ['<b data-act="bill-open" data-n="' + esc(m.name) + '" style="cursor:pointer;color:#0d766c">' + esc(m.name) + '</b>', money(m.due), m.overdue > 0.5 ? '<b style="color:#b91c1c">' + money(m.overdue) + '</b>' : '—', m.oldest ? m.oldest + ' days' : '—',
+        c.mobile ? '<a class="btn sm ghost" href="tel:' + esc(c.mobile) + '" style="min-height:44px">Call</a>' : ''];
+    })) : '<div class="empty">None of your clients owes anything.</div>';
+    /* 3. quotes */
+    h += '<h3 style="margin:14px 0 4px;font-size:15px">3. Quotes gone quiet (' + RADAR_MIN + '+ days)</h3>';
+    h += d.quotes.length ? pevTable([["Quote"], ["Client"], ["Value", "right"], ["Status"], ["Quiet", "right"], [""]], d.quotes.slice(0, 12).map(function (q) {
+      return [esc(q.quoteNo || ""), '<b>' + esc(q.client || "") + '</b>', money(nAmt(q.net)), esc(q.status || ""), qSilentDays(q) + ' days', '<button class="btn sm ghost" data-act="q-pdf" data-id="' + esc(q.id) + '" style="min-height:44px">PDF</button>'];
+    })) : '<div class="empty">Every quote of yours has moved in the last ' + RADAR_MIN + ' days.</div>';
+    /* 4. visits */
+    h += '<h3 style="margin:14px 0 4px;font-size:15px">4. Visits</h3><div class="card" style="padding:8px 11px"><div class="meta" style="font-size:13px">' + plural(d.visitsToday, "visit") + ' marked today.</div>' +
+      '<button class="btn" data-act="tab" data-tab="visits" style="min-height:44px;margin-top:6px">Mark a visit</button></div>';
+    if (d.staleSites.length) h += '<div class="meta" style="font-size:12.5px;font-weight:700;margin-top:8px">Your sites not visited for 30+ days</div>' + pevTable([["Site"], ["Client"], ["Stage"], ["Last visit"]], d.staleSites.map(function (x) {
+      return ['<b data-act="vl-open" data-id="' + esc(x.s.id) + '" style="cursor:pointer;color:#0d766c">' + esc(x.s.name || "") + '</b>', esc(x.s.client || ""), esc(x.s.stage || ""), x.last ? esc(dmy(x.last)) : 'never'];
+    }));
+    return h;
   }
   function viewVisitsOld() {
     var mine = roleIs("admin") ? S.data.sitevisits
@@ -39243,7 +39356,7 @@ function viewCatalogue() {
      nothing else could reach it - so the usage counter would have had to keep a second copy
      of the same forty-two names, and a second copy is how the two quietly stop agreeing.
      Hoisted, not duplicated. render() still reads exactly this. */
-  var TAB_TABS = [["search", "Search"], ["dash", "Today"], ["statements", "Statements"], ["review", "Twice-weekly review"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits & quotes"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["register", "Challan log"], ["paylog", "Payment log"], ["freight", "Drivers & freight"], ["deliveries", "Deliveries"], ["collections", "Payments"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["crlog", "Client & lead log"], ["partners", "Partners"], ["pevents", "Partner events"], ["quotes", "Quotes"], ["commission", "Incentives"], ["complaints", "Complaints"], ["service", "Service"], ["spares", "Spares"], ["dues", "Service dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["paidout", "Paid out"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["catalogs", "Brand catalogues"], ["brandstory", "Brand stories"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["trouble", "Troubleshoot"], ["changelog", "Change log"], ["booksweep", "Book numbers"], ["dups", "Duplicate check"], ["stock", "Stock"], ["tally", "Tally"], ["plcheck", "Supplier price list"], ["brief", "The brief"]];
+  var TAB_TABS = [["search", "Search"], ["myday", "My day"], ["dash", "Today"], ["statements", "Statements"], ["review", "Twice-weekly review"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits & quotes"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["register", "Challan log"], ["paylog", "Payment log"], ["freight", "Drivers & freight"], ["deliveries", "Deliveries"], ["collections", "Payments"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["crlog", "Client & lead log"], ["partners", "Partners"], ["pevents", "Partner events"], ["quotes", "Quotes"], ["commission", "Incentives"], ["complaints", "Complaints"], ["service", "Service"], ["spares", "Spares"], ["dues", "Service dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["paidout", "Paid out"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["catalogs", "Brand catalogues"], ["brandstory", "Brand stories"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["trouble", "Troubleshoot"], ["changelog", "Change log"], ["booksweep", "Book numbers"], ["dups", "Duplicate check"], ["stock", "Stock"], ["tally", "Tally"], ["plcheck", "Supplier price list"], ["brief", "The brief"]];
   var TAB_LABEL = (function () {
     var m = {}; TAB_TABS.forEach(function (t) { m[t[0]] = t[1]; }); return m;
   })();
@@ -40469,6 +40582,63 @@ function viewCatalogue() {
       line: r.clients + " clients · owe " + rsInr(r.hTot) + " · " + tly,
       spec: { title: "Money check", sub: fullDate(today()) + " · version " + APP_VERSION, key: [["Good", "G"], ["Watch", "A"], ["Act now", "R"]], blocks: blocks },
       text: "", xlsx: { sheet: "Money check", rows: rows, cols: [22, 30, 14, 90], opts: { freeze: { r: 4, c: 0 } }, file: rsFileFor("Energy World", "money check") } };
+    return { team: team, men: [] };
+  }
+  /* ================= 6.9.739 - THE MORNING MONEY RISK  (11 Oct 2026) =================
+     One picture to the owners every morning (the first owner or accounts phone that opens the CRM sends it, like the
+     money check): where money can be lost today. Material out with no signed paper; returns not back in the godown;
+     clients 90+ days overdue; clients over their credit limit; payments whose narration says discount but are filed as
+     money; deliveries billed above the client's preset; service charges not collected. Read from the book; nothing stored. */
+  function riskData() {
+    var D = { pap: [], ret: [], o90: [], over: [], disc: [], gap: [], svc: 0 };
+    try { D.pap = mwPaperList(); } catch (e) { }
+    try { D.ret = mwRetList(); } catch (e) { }
+    try {
+      hisabOutstanding().forEach(function (r) {
+        var ag = {}; try { ag = clientAging(r.name) || {}; } catch (e) { }
+        var b90 = ag.b ? Number(ag.b.d90) || 0 : 0;
+        if (b90 > 0.5) D.o90.push({ name: r.name, owner: r.owner, amt: b90, due: r.due, oldest: Number(ag.oldest) || 0 });
+        var ct = creditTerms(r.name);
+        if (ct.limit > 0 && r.due > ct.limit + 0.5) D.over.push({ name: r.name, owner: r.owner, due: r.due, limit: ct.limit });
+      });
+    } catch (e) { }
+    D.o90.sort(function (a, b) { return b.amt - a.amt; }); D.over.sort(function (a, b) { return (b.due - b.limit) - (a.due - a.limit); });
+    try { D.disc = (S.data.payments || []).filter(payLooksDisc); } catch (e) { }
+    try { D.gap = rateGapRows().filter(function (x) { return x.diff > 0.5; }); } catch (e) { }
+    try { var seen = {}; (S.data.clients || []).forEach(function (c) { if (!c || seen[dkey(c.name)]) return; seen[dkey(c.name)] = 1; D.svc += svcSummary(c.name).pending || 0; }); } catch (e) { }
+    return D;
+  }
+  function rsSetRisk() {
+    var D = riskData(), sum = function (l, f) { return l.reduce(function (a, x) { return a + (f(x) || 0); }, 0); };
+    var pv = sum(D.pap, chValue), rv = sum(D.ret, returnNet), po = D.pap.length ? mwOldest(D.pap) : 0, ro = D.ret.length ? mwOldest(D.ret) : 0;
+    var lines = [
+      ["Material out, no signed paper", D.pap.length, pv, po ? "oldest " + po + " days" : "", po >= 3 ? "R" : D.pap.length ? "A" : "G"],
+      ["Returns raised, not back in the godown", D.ret.length, rv, ro ? "oldest " + ro + " days" : "", ro >= 3 ? "R" : D.ret.length ? "A" : "G"],
+      ["Clients 90+ days overdue", D.o90.length, sum(D.o90, function (x) { return x.amt; }), "", D.o90.length ? "R" : "G"],
+      ["Clients over their credit limit", D.over.length, sum(D.over, function (x) { return x.due - x.limit; }), "above the limit", D.over.length ? "R" : "G"],
+      ["Payments that say discount, filed as money", D.disc.length, sum(D.disc, payAmt), "correct them with your PIN", D.disc.length ? "A" : "G"],
+      ["Billed above the client's preset", D.gap.length, sum(D.gap, function (x) { return x.diff; }), "", D.gap.length ? "A" : "G"],
+      ["Service charges not collected", "", D.svc, "", D.svc > 0.5 ? "A" : "G"]];
+    var nBad = lines.filter(function (l) { return l[4] !== "G"; }).length;
+    var blocks = [{ h: nBad ? plural(nBad, "risk") + " today" : "Nothing at risk today" },
+      { cols: [["Where money can be lost", 48, "l", "w"], ["How many", 14, "r"], ["Amount", 20, "r"], ["", 18, "l", "w"]],
+        rows: lines.map(function (l) { return [rsC(l[0], "", true), l[1] === "" ? "" : String(l[1]), rsC(rsInr(Math.round(l[2])), l[4], true), l[3]]; }) }];
+    if (D.o90.length) blocks.push({ h: "90+ days overdue — call first" }, { cols: [["Client", 40, "l", "w"], ["Executive", 22, "l", "w"], ["90+ days", 19, "r"], ["Owes in all", 19, "r"]],
+      rows: D.o90.slice(0, 8).map(function (x) { return [rsC(x.name, "", true), x.owner || "—", rsC(rsInr(x.amt), "R", true), rsInr(x.due)]; }) });
+    if (D.over.length) blocks.push({ h: "Over the credit limit" }, { cols: [["Client", 40, "l", "w"], ["Executive", 22, "l", "w"], ["Owes", 19, "r"], ["Limit", 19, "r"]],
+      rows: D.over.slice(0, 6).map(function (x) { return [rsC(x.name, "", true), x.owner || "—", rsC(rsInr(x.due), "R", true), rsInr(x.limit)]; }) });
+    var rows = [[{ v: "Energy World – morning money risk", s: XL.TITLE }], [rsMadeLine("Read from the book; nothing changed.")], [], rsHead(["Where money can be lost", "How many", "Amount", "Note"])];
+    lines.forEach(function (l) { rows.push([{ v: l[0], s: XL[l[4]] || XL.G }, l[1], { v: Math.round(l[2]), s: XL.MONEY }, l[3]]); });
+    rows.push([], rsHead(["Client", "Executive", "Amount", "Why"]));
+    D.o90.forEach(function (x) { rows.push([x.name, x.owner, { v: x.amt, s: XL.MONEY }, "90+ days overdue; owes " + Math.round(x.due) + " in all"]); });
+    D.over.forEach(function (x) { rows.push([x.name, x.owner, { v: x.due - x.limit, s: XL.MONEY }, "over his limit of " + x.limit]); });
+    D.pap.forEach(function (c) { rows.push([c.customerName || "", c.createdBy || "", { v: chValue(c), s: XL.MONEY }, "challan " + (c.challanNo || "") + " out " + (-daysTo(String(c.createdAt || "").slice(0, 10))) + " days, no signed paper"]); });
+    D.disc.forEach(function (p) { rows.push([p.client || "", p.createdBy || "", { v: payAmt(p), s: XL.MONEY }, "filed as " + (p.mode || "money") + ", narration: " + String(p.notes || p.ref || "").slice(0, 60)]); });
+    D.gap.forEach(function (x) { rows.push([x.c.customerName || "", x.c.createdBy || "", { v: x.diff, s: XL.MONEY }, "challan " + (x.c.challanNo || "") + " billed above his preset"]); });
+    var team = { who: rsOwners(), head: nBad ? "Money risk – " + plural(nBad, "thing") + " to act on" : "Money risk – all clear",
+      line: (D.pap.length ? D.pap.length + " out without paper (" + rsInr(pv) + ") · " : "") + (D.o90.length ? D.o90.length + " clients 90+ days · " : "") + "service pending " + rsInr(D.svc),
+      spec: { title: "Morning money risk", sub: fullDate(today()) + " · version " + APP_VERSION, key: [["Fine", "G"], ["Watch", "A"], ["Act today", "R"]], blocks: blocks },
+      text: "", xlsx: { sheet: "Money risk", rows: rows, cols: [36, 20, 16, 70], opts: { freeze: { r: 4, c: 0 } }, file: rsFileFor("Energy World", "money risk") } };
     return { team: team, men: [] };
   }
   function rsMoneySheet() { var t = rsSetMoney().team.xlsx; return { rows: t.rows, cols: t.cols, opts: t.opts, file: t.file, text: "", caption: "" }; }
@@ -52156,7 +52326,7 @@ function viewCatalogue() {
     /* v6.9.539 - item 23: "Book numbers - what's the use, it's empty" (measured: 0 rows) - off
        the header; the screen still opens from the Health check. Item 25: The brief is a tab
        inside Agent now, so it is not here twice. */
-    ["Today",      ["dash", "pending", "health", "trouble", "changelog", "dups"]]
+    ["Today",      ["dash", "myday", "pending", "health", "trouble", "changelog", "dups"]]   /* 6.9.739 - My day, a chip under Today (an executive lands on it) */
   ];
   /* The four hub tabs (v6.9.330 and before) still render if something lands on them - the two
      "Open Deliveries" buttons do - so they must light the right group. They are not listed as
@@ -52279,7 +52449,7 @@ function viewCatalogue() {
     catalogue: 1, partners: 1, scorecard: 1, report: 1, commission: 1, payroll: 1, teampins: 1, dash: 1,
     pending: 1, trouble: 1, dups: 1, health: 1, changelog: 1, tools: 1, brief: 1, rates: 1, rules: 1, booksweep: 1 };
   var HELP_ALIAS = { deliveries: "challans", collections: "payments", pricing: "pricelist", payrollhub: "commission",
-    dossier: "clients", matrix: "pitch", sites: "pitch", customers: "clients", paylog: "payments", complaints: "service", crlog: "clients", tally: "stock", plcheck: "stock", pevents: "partners", statements: "billing", statements: "billing" };   /* 6.9.667; 6.9.684 complaints -> the service section until it has its own */
+    dossier: "clients", matrix: "pitch", sites: "pitch", customers: "clients", paylog: "payments", complaints: "service", crlog: "clients", tally: "stock", plcheck: "stock", pevents: "partners", myday: "dash", statements: "billing", statements: "billing" };   /* 6.9.667; 6.9.684 complaints -> the service section until it has its own */
   function helpHref(tab) {
     var k = HELP_AT[tab] ? tab : (HELP_ALIAS[tab] || "");
     return "../help/crm.html#t-" + (k || "start");
@@ -52509,7 +52679,7 @@ function viewCatalogue() {
       setTimeout(function () { try { preloadLogos(); } catch (e) { } }, 4000);
     }
     if (!S.pin && !S.tok) { renderLogin(); return; }
-    var views = { statements: viewStatements, agent: viewAgent, search: viewSearch, dossier: viewDossier, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, complaints: viewComplaints, payments: viewPayments, paidout: viewPaidOut, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, catalogs: viewCatalogues, brandstory: viewBrandStories, clients: viewClients, crlog: viewCrLog, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, register: viewRegister, paylog: viewPayLog, freight: viewFreight, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, trouble: viewTrouble, changelog: viewChangeLog, booksweep: viewBookSweep, dups: viewDups, stock: viewStock, tally: viewTally, plcheck: viewPlCheck, pevents: viewPev, brief: viewBrief, review: viewReview };
+    var views = { statements: viewStatements, agent: viewAgent, search: viewSearch, dossier: viewDossier, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, complaints: viewComplaints, payments: viewPayments, paidout: viewPaidOut, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, catalogs: viewCatalogues, brandstory: viewBrandStories, clients: viewClients, crlog: viewCrLog, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, register: viewRegister, paylog: viewPayLog, freight: viewFreight, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, trouble: viewTrouble, changelog: viewChangeLog, booksweep: viewBookSweep, dups: viewDups, stock: viewStock, tally: viewTally, plcheck: viewPlCheck, pevents: viewPev, brief: viewBrief, review: viewReview, myday: viewMyDay };   /* 6.9.739 - myday */
     var tabs = TAB_TABS;
 
     var h = '<div class="top">' +
@@ -57821,6 +57991,17 @@ function viewCatalogue() {
       }).then(function (r) { if (r) { closeAck(_gClick, "Installation saved."); S.instFor = null; } });
       return;
     }
+    if (act === "cmpn-hasm") { cmpKeep(); if (S.cmpNew) S.cmpNew.hasM = t.getAttribute("data-k") === "yes" ? "yes" : "no"; S.modal = modalCmpNew(); render(); return; }   /* 6.9.739 */
+    if (act === "cmpn-mdel") { cmpKeep(); if (S.cmpNew && S.cmpNew.mach) S.cmpNew.mach.splice(Number(t.getAttribute("data-i")) || 0, 1); S.modal = modalCmpNew(); render(); return; }
+    if (act === "cmpn-madd") {
+      cmpKeep(); var _cn0 = S.cmpNew; if (!_cn0) return;
+      var _md = String(val("cmpm_d") || ""), _mc = String(val("cmpm_c") || ""), _mw = val("cmpm_w") || "auto", _ma = String(val("cmpm_a") || "");
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(_md)) { toast("Put the date it was installed."); return; }
+      if (_mc && _mc < _md) { toast("Commissioned before it was installed? Check the dates."); return; }
+      if (_mw === "amc" && !/^\d{4}-\d{2}-\d{2}$/.test(_ma)) { toast("Put the date his AMC runs till."); return; }
+      (_cn0.mach = _cn0.mach || []).push({ brand: val("cmpm_b"), product: val("cmpm_p"), model: String(val("cmpm_m") || "").trim(), cd: _md, cc: _mc || _md, w: _mw, amc: _mw === "amc" ? _ma : "" });
+      S.modal = modalCmpNew(); render(); return;
+    }
     if (act === "cmp-newclient") {   /* 6.9.738 - an old client: register him, then his machines (the owner's form asks) */
       if (S.cmpNew) cmpKeep();
       var _cn = S.cmpNew || {};
@@ -59117,6 +59298,7 @@ function viewCatalogue() {
 
     if (act === "visit-start") { startVisit(); return; }
     /* 6.9.738 - mark a visit */
+    if (act === "md-who") { S.mdWho = t.getAttribute("data-n") || ""; render(); return; }   /* 6.9.739 */
     if (act === "vm-days") { S.vmDays = Number(t.getAttribute("data-d")) || 30; render(); return; }
     if (act === "vm-new") {
       var _vk = t.getAttribute("data-k") || "";
@@ -59767,8 +59949,25 @@ function viewCatalogue() {
       if (!_nm) { toast("Pick the client, or type the caller’s name."); return; }
       if (!_c && _mob.length !== 10) { toast("A new caller needs his 10-digit mobile number."); return; }
       if (!_n.cat) { toast("Pick what it is about."); return; }
+      /* 6.9.739 - a new caller: his district, area and the machines question, answered before anything is written */
+      if (!_c && !_n.webRef && !_n.district) { toast("Pick his district."); return; }
+      if (!_c && !_n.webRef && !_n.area && !String(_n.areanew || "").trim()) { toast("Pick his area, or type it if it is not in the list."); return; }
+      var _nArea = _n.area || String(_n.areanew || "").trim();
+      if (!_c && !_n.webRef && !_n.hasM) { toast("Answer: are any of our products installed at his place?"); var _mq = el("cmpn_mq"); if (_mq) _mq.scrollIntoView({ block: "center" }); return; }
+      if (_n.hasM === "yes" && !(_n.mach || []).length) { toast("Enter his machine — brand, product and the date it was installed — then + Add this machine."); return; }
       if (String(_n.desc || "").trim().length < 4) { toast("Write in a line what happened."); return; }
       var _ps = _c ? cmpProducts(_c.name).filter(function (p) { return _n.picks && _n.picks[p.key]; }) : [];
+      if (_n.hasM === "yes") (_n.mach || []).forEach(function (m) {   /* 6.9.739 - his machines become installations under his name */
+        var bs = brandSvc(m.brand) || {}, wm = m.w === "out" ? 0 : (bs.wm || 12), cyc = bs.cm || 6, st = m.cc || m.cd, w = cmpMachTill(m);
+        var row = { id: mintId("IN"), createdBy: S.user, client: _nm, mobile: _mob, address: String(_n.addr || ""), area: _c ? [_c.area, _c.location].filter(Boolean).join(", ") : [_nArea, _n.district].filter(Boolean).join(", "),
+          product: m.product, model: m.model || m.brand, serial: autoSerialManual(st), installDate: m.cd, waterQuality: "", cycleDays: Math.round(cyc * 30), lastService: "", nextService: addMonths(st, cyc),
+          amcType: m.w === "amc" ? "AMC without spares" : "None", amcAmount: "", amcEnd: m.w === "amc" ? m.amc : "", engineer: "", status: "Active",
+          productsJson: JSON.stringify([{ brand: m.brand, product: m.product, model: m.model || m.product, serial: "", installDate: m.cd, commDate: st, warrantyMonths: wm, serviceReq: 1, serviceMonths: cyc }]),
+          notes: "Machine entered on a complaint (CRM)" + (m.w === "out" ? " · out of warranty, as told" : "") };
+        save("installs", row);
+        _ps.push({ key: "I:" + row.id, kind: "install", desc: [m.brand, m.product, m.model].filter(Boolean).join(" "), brand: m.brand, date: m.cd, amcType: row.amcType, amcEnd: row.amcEnd, insId: row.id,
+          till: w.parts ? w.parts.map(function (p) { return p.till; }).sort().pop() : "", parts: w.parts || [], wtxt: w.txt });
+      });
       var _pt = _ps.map(function (p) { return p.desc + (p.sn ? " S/N " + p.sn : "") + " (" + cmpWarr(p).t + ")"; }).join("; ");
       t.disabled = true; t.textContent = "Registering…";
       var _refP = _n.webRef ? Promise.resolve({ ok: true, ref: _n.webRef }) :
@@ -59778,7 +59977,7 @@ function viewCatalogue() {
         var ref = (r && r.ok && r.ref) ? String(r.ref) : "C-" + today().replace(/-/g, "").slice(2) + "-" + String(Date.now()).slice(-4);
         var id = mintId("T"), at = new Date().toISOString();
         save("audit", { action: "cmp:open", actor: S.user, recId: id, createdAt: at, detail: JSON.stringify({ ref: ref, webRef: _n.webRef || "", src: _n.src, client: _c ? _c.name : "", clientId: _c ? _c.id : "", name: _nm, mobile: _mob,
-          area: _c ? [_c.area, _c.location].filter(Boolean).join(", ") : (_n.district || ""), products: _ps, cat: _n.cat, pri: _n.pri, desc: String(_n.desc || "").trim() }) }, true);
+          area: _c ? [_c.area, _c.location].filter(Boolean).join(", ") : [_n.addr, _n.area || _n.areanew, _n.district].filter(Boolean).join(", "), products: _ps, cat: _n.cat, pri: _n.pri, desc: String(_n.desc || "").trim() }) }, true);   /* 6.9.739 - address, area */
         if (_n.eng) save("audit", { action: "cmp:move", actor: S.user, recId: id, createdAt: new Date(Date.now() + 1000).toISOString(), detail: JSON.stringify({ to: "Assigned", eng: _n.eng }) }, true);
         S.cmpNew = null; S.modal = null; S.tab = "complaints"; S.cmpTab = _n.eng ? "pending" : "raised"; render();
         toast("Complaint " + ref + " registered" + (_n.eng ? " and sent to " + _n.eng : "") + (r && r.ok ? "." : " (the server did not answer — a local number was used; it is saved)."));
