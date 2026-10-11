@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
-<meta name="theme-color" content="#0f766e"/>
+<meta name="theme-color" content="#1F3A5F"/>
 <title>Energy World — Team</title>
 <link rel="manifest" href="manifest.webmanifest"/>
 <link rel="apple-touch-icon" href="icon-180.png"/>
@@ -18,7 +18,7 @@
 <script>if (!window.jspdf) document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"><\/script>');</script>
 <style>
   :root{
-    --teal:#14b8a6; --teal-d:#0f766e; --ink:#0f172a; --muted:#64748b;
+    --teal:#C9A24A; --teal-d:#1F3A5F;   /* 6.9.743 - the visiting card: gold accent, navy primary */ --ink:#0f172a; --muted:#64748b;
     --line:#e2e8f0; --bg:#f1f5f9; --card:#ffffff; --danger:#e11d48; --warn:#f59e0b;
   }
   *{box-sizing:border-box}
@@ -31,7 +31,7 @@
   }
   .boot{display:flex;align-items:center;justify-content:center;height:100vh;color:var(--muted);font-size:14px}
   .login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;
-    background:linear-gradient(160deg,#0f766e 0%,#134e4a 100%)}
+    background:linear-gradient(160deg,#1F3A5F 0%,#0D2340 100%)}
   .login{background:#fff;border-radius:18px;padding:28px;width:100%;max-width:380px;box-shadow:0 24px 60px rgba(0,0,0,.28)}
   .login .logo{width:84px;height:84px;object-fit:contain;border:3px solid var(--teal);border-radius:16px;padding:6px;display:block;margin:0 auto 14px}
   .login h1{font-size:19px;margin:0 0 4px;text-align:center}
@@ -61,7 +61,7 @@
     padding:11px 16px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;
     text-decoration:none;min-height:44px;   /* 6.9.666 - his 44px rule, measured: 19,109 of 23,208 taps were under it */
   }
-  .btn:hover{background:#115e59}
+  .btn:hover{background:#0D2340}
   .btn:disabled{opacity:.55;cursor:not-allowed}
   .btn.full{width:100%}
   .btn.ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}
@@ -88,7 +88,7 @@
   nav .navgrp:last-child{border-right:0}
   nav .grp{
     font-size:12px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;
-    color:var(--teal-d);background:#ccfbf1;border-radius:999px;
+    color:var(--teal-d);background:#F6EFD9;border-radius:999px;
     padding:3px 8px;margin-right:6px;white-space:nowrap;
   }
   nav button{
@@ -126,7 +126,7 @@
   .pill.Lost{background:#f1f5f9;color:#64748b}
   .pill.due{background:#fee2e2;color:#b91c1c}
   .pill.soon{background:#fef3c7;color:#b45309}
-  .pill.teal{background:#ccfbf1;color:#0f766e}
+  .pill.teal{background:#E8EEF5;color:#1F3A5F}
   .empty{text-align:center;color:var(--muted);padding:36px 12px;font-size:14px}
 
   /* quote builder: families as small horizontal chips, products as compact rows */
@@ -210,6 +210,18 @@
   .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:20px;background:var(--ink);color:#fff;
     padding:11px 16px;border-radius:10px;font-size:14px;z-index:60;box-shadow:0 10px 30px rgba(0,0,0,.3)}
   .foot-note{text-align:center;color:var(--muted);font-size:12px;padding:22px 0 8px}
+  /* 6.9.743 - the card's colours: a navy bar with a gold rule; slate text; red stays for money owed, green for done */
+  .top{background:#fff;border-bottom:3px solid #C9A24A;box-shadow:inset 6px 0 0 #1F3A5F}
+  .top > div > b{color:#1F3A5F}
+  .top img{border-color:#C9A24A}
+  nav{border-bottom-color:#DCE3EA}
+  h1,h2{color:#1F3A5F}
+  nav button.nvg.on,nav button.nvb.on,.cv-seg button.on,.ew-pickbtn.brand.on,.chip.on{background:#1F3A5F !important;border-color:#1F3A5F !important;color:#fff !important}
+  .chip.on b{color:#E9D9AE}
+  .ew-pickbtn.brand{border-color:#DCE3EA !important;color:#1F3A5F !important;background:#F4F6F9 !important}
+  .ew-picklabel{color:#1F3A5F !important}
+  input:focus,select:focus,textarea:focus{box-shadow:0 0 0 3px rgba(201,162,74,.22)}
+  :root{--muted:#5E6875;--bg:#F4F6F9;--line:#DCE3EA}
 </style>
 </head>
 <body>

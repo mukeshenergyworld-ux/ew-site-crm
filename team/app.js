@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.742";
+  var APP_VERSION = "6.9.743";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -470,6 +470,90 @@
     toastReflow();
   }
   try { window.__ewBottomSync = syncBottomVar; } catch (e) {}
+  window.__ewCodeSrc = function () { return S.data; };   /* 6.9.743 - the book the numbers are read from */
+  /* ==EW-CODES== 11 Oct 2026 - HIS NUMBER BESIDE EVERY NAME.
+     HIS WORDS: "give every lead a serial no as code like LD001 ... client CL001 ... plumber PL001, architect
+     AR001, builder BL001, PMC PMC001 ... show code everywhere with which everyone whenever mentioned names, in
+     every app, everywhere". The server writes the numbers (V146); this only READS them.
+     A name is drawn in hundreds of places in this app, so instead of touching each one, every piece of text
+     that IS a person's name - the whole text of its node, nothing more, nothing less - gets his number in a
+     small navy tag in front of it, as the screen is drawn (one MutationObserver, batched per frame).
+     Never inside a box you type in, a drop-down, a script or a PDF; a name shared by two different numbers is
+     left alone rather than guessed; a name under 5 letters with no space is left alone (too much like a word). */
+  (function () {
+    var MAP = null, KEY = "", pend = [], sched = false;
+    var SKIP = { SCRIPT: 1, STYLE: 1, TEXTAREA: 1, OPTION: 1, SELECT: 1, INPUT: 1, TITLE: 1, NOSCRIPT: 1, DATALIST: 1 };
+    function low(s) { return String(s == null ? "" : s).replace(/\s+/g, " ").trim().toLowerCase(); }
+    function data() { try { return window.__ewCodeSrc ? window.__ewCodeSrc() : null; } catch (e) { return null; } }
+    function build() {
+      var d = data(); if (!d) return MAP;
+      var cl = d.clients || [], as = d.associates || [];
+      var k = cl.length + ":" + as.length + ":" + cl.filter(function (c) { return c && c.code; }).length + ":" + as.filter(function (a) { return a && a.code; }).length;
+      if (k === KEY && MAP) return MAP;
+      KEY = k; var m = {}, bad = {};
+      function put(name, code) {
+        var n = low(name), c = String(code || "").trim(); if (!n || !c) return;
+        if (n.length < 5 && n.indexOf(" ") < 0) return;
+        if (m[n] && m[n] !== c) bad[n] = 1; else m[n] = c;
+      }
+      cl.forEach(function (c) { if (c) put(c.name, c.code); });
+      as.forEach(function (a) { if (a && !m[low(a.name)]) put(a.name, a.code); });   /* a client's number wins over his partner number */
+      Object.keys(bad).forEach(function (n) { delete m[n]; });
+      MAP = Object.keys(m).length ? m : null;
+      return MAP;
+    }
+    function skipEl(el) {
+      for (var e = el, i = 0; e && i < 12; e = e.parentElement, i++) {
+        if (SKIP[e.tagName] || e.isContentEditable || (e.hasAttribute && e.hasAttribute("data-nocode"))) return true;
+        if (e.classList && e.classList.contains("ewc")) return true;
+      }
+      return false;
+    }
+    function tag(root, m) {
+      if (!root || !m) return;
+      if (root.nodeType === 3) { one(root, m); return; }
+      if (root.nodeType !== 1 || SKIP[root.tagName]) return;
+      var w = document.createTreeWalker(root, 4, null), t, list = [];
+      while ((t = w.nextNode())) list.push(t);
+      for (var i = 0; i < list.length; i++) one(list[i], m);
+    }
+    function one(t, m) {
+      var v = t.nodeValue; if (!v || v.length > 80) return;
+      var code = m[low(v)]; if (!code) return;
+      var p = t.parentNode; if (!p || p.nodeType !== 1 || skipEl(p)) return;
+      var prev = t.previousSibling;
+      while (prev && prev.nodeType === 3 && !prev.nodeValue.trim()) prev = prev.previousSibling;
+      if (prev && prev.nodeType === 1 && prev.classList && (prev.classList.contains("ewc") || prev.classList.contains("code"))) return;
+      if (p.textContent.indexOf(code) >= 0) return;   /* the screen already says it */
+      var s = document.createElement("span"); s.className = "ewc"; s.textContent = code;
+      p.insertBefore(s, t);
+    }
+    function flush() {
+      sched = false; var m = build(); var l = pend; pend = [];
+      if (!m) return;
+      for (var i = 0; i < l.length; i++) { if (l[i].isConnected) tag(l[i], m); }
+    }
+    function kick(n) { pend.push(n); if (!sched) { sched = true; (window.requestAnimationFrame || setTimeout)(flush); } }
+    function start() {
+      if (!document.body || !window.MutationObserver) return;
+      try {
+        var st = document.createElement("style");
+        st.textContent = ".ewc{display:inline-block;font-size:12px;font-weight:800;line-height:1.35;color:#1F3A5F;background:#E8EEF5;border-radius:6px;padding:0 6px;margin-right:5px;vertical-align:1px;white-space:nowrap;letter-spacing:.02em}";
+        document.head.appendChild(st);
+      } catch (e) { }
+      new MutationObserver(function (recs) {
+        for (var i = 0; i < recs.length; i++) {
+          var a = recs[i].addedNodes;
+          for (var j = 0; j < a.length; j++) { var n = a[j]; if (n.nodeType === 1 && n.classList && n.classList.contains("ewc")) continue; kick(n); }
+        }
+      }).observe(document.body, { childList: true, subtree: true });
+      /* the book arrives after the first paint: tag the whole page each time the numbers change */
+      var last = "";
+      setInterval(function () { build(); if (MAP && KEY !== last) { last = KEY; kick(document.body); } }, 1500);
+    }
+    (function wait() { if (document.body) start(); else setTimeout(wait, 50); })();
+    window.__ewCodes = { map: function () { return build(); }, tag: function (r) { tag(r || document.body, build()); } };
+  })();
   function ensureToastCss() {
     if (document.getElementById("ew_toast_css")) return;
     var st = document.createElement("style");
@@ -12685,7 +12769,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
   function clientHay(c) {
     if (!c) return "";
     if (c.__hay !== undefined) return c.__hay;
-    var parts = ["name", "shortName", "mobile", "mobile2", "location", "area",
+    var parts = ["code", "oldCode", "name", "shortName", "mobile", "mobile2", "location", "area",   /* 6.9.743 - his number */
                  "plumber", "architect", "builder", "pmc", "address", "notes"]
       .map(function (k) { return String(c[k] || ""); });
     /* every firm he is billed under, and its GST number */
@@ -42254,7 +42338,7 @@ function viewCatalogue() {
     if (q.length < 2) return "";
     var qd = q.replace(/\D/g, "");
     var hits = assocLive().filter(function (a) {
-      var hay = (String(a.name || "") + " " + String(a.area || "") + " " + String(a.location || "") + " " + String(a.role || "")).toLowerCase();
+      var hay = (String(a.code || "") + " " + String(a.name || "") + " " + String(a.area || "") + " " + String(a.location || "") + " " + String(a.role || "")).toLowerCase();
       return hay.indexOf(q) >= 0 || (qd.length >= 4 && String(a.mobile || "").replace(/\D/g, "").indexOf(qd) >= 0);
     }).sort(function (x, y) { return String(x.name).toLowerCase().localeCompare(String(y.name).toLowerCase()); });
     if (!hits.length) return '<div class="meta" style="font-size:12.5px;color:#b91c1c;margin-top:6px">Nobody matches “' + esc(q) + '”.</div>';
@@ -44388,7 +44472,7 @@ function viewCatalogue() {
       CRL_ROLES.forEach(function (r) { incChanges(c.name, r[0]).forEach(function (x) { ch.push({ role: r[0], on: x.on, was: x.was, now: x.now, at: x.at }); }); });
       ch.sort(function (a, b) { return a.at < b.at ? 1 : a.at > b.at ? -1 : 0; });
       return { c: c, client: cl, why: why, exec: crlHolder(c, "exec"), ch: ch,
-        hay: [c.name, c.mobile, c.mobile2, c.area, c.location, crlHolder(c, "exec"), c.plumber, c.architect, c.builder, c.pmc].join(" ").toLowerCase() };
+        hay: [c.code, c.oldCode, c.name, c.mobile, c.mobile2, c.area, c.location, crlHolder(c, "exec"), c.plumber, c.architect, c.builder, c.pmc].join(" ").toLowerCase() };
     }).filter(function (r) { return !q || r.hay.indexOf(q) >= 0; });
   }
   function viewCrLog() {
