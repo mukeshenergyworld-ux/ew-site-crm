@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="theme-color" content="#0d5c56">
+<meta name="theme-color" content="#1F3A5F">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="EW Complaint"/>
 <title>Register a Complaint — Energy World</title>
@@ -14,8 +14,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap" rel="stylesheet">
 <style>
 :root{
-  --teal-900:#08423e; --teal-800:#0d5c56; --teal-700:#12756c; --teal-50:#e8f3f1;
-  --ink:#132420; --ink-60:#516560; --line:#dde6e3; --paper:#f6f8f7; --white:#ffffff;
+  --teal-900:#0D2340; --teal-800:#1F3A5F; --teal-700:#2B4C77; --teal-50:#E8EEF5;   /* 11 Oct 2026 - the visiting card */
+  --ink:#1A2230; --ink-60:#5E6875; --line:#DCE3EA; --paper:#F4F6F9; --white:#ffffff;
   --amber:#c8781e; --danger:#b3402f; --ok:#0d8a5f;
   --shadow:0 1px 2px rgba(8,66,62,.05), 0 12px 32px -12px rgba(8,66,62,.18);
   --r:16px;
@@ -200,9 +200,53 @@ a[href^="tel:"]{white-space:nowrap;}
 .btile.on{border-color:var(--teal-700);box-shadow:0 0 0 2px var(--teal-700) inset;}
 .btile.on::after{content:"\2713";position:absolute;top:-8px;right:-8px;width:22px;height:22px;border-radius:50%;background:var(--teal-700);color:#fff;font-size:13px;font-weight:800;display:flex;align-items:center;justify-content:center;}
 .bnote{font-size:12px;color:var(--ink-60);margin:0 0 8px;}
+.topbar{border-bottom:3px solid #C9A24A}
+html[data-ewdark="1"] .topbar{filter:invert(1) hue-rotate(180deg)}
 </style>
 </head>
 <body>
+<script>
+  /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
+     HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
+     phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
+     turning pictures, logos and PDFs back, so every screen - including the thousands of colours written inline
+     over the years - changes at once and nothing can be left white-on-white. Red stays red, green stays green.
+     Changing it touches no data. */
+  (function () {
+    var K = "ewTheme";
+    function ewtGet() { try { var v = localStorage.getItem(K); return v === "light" || v === "dark" ? v : "auto"; } catch (e) { return "auto"; } }
+    function ewtOs() { try { return !!(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches); } catch (e) { return false; } }
+    function ewtDark() { var m = ewtGet(); return m === "dark" || (m === "auto" && ewtOs()); }
+    function ewtApply() {
+      var r = document.documentElement; if (!r) return;
+      r.setAttribute("data-ewdark", ewtDark() ? "1" : "0");
+      try { var mt = document.querySelector('meta[name="theme-color"]'); if (mt) { if (!mt.getAttribute("data-light")) mt.setAttribute("data-light", mt.getAttribute("content") || ""); mt.setAttribute("content", ewtDark() ? "#11161D" : mt.getAttribute("data-light")); } } catch (e) { }
+    }
+    try {
+      var st = document.createElement("style");
+      st.textContent = 'html{background:#fff}' +
+        'html[data-ewdark="1"]{filter:invert(.92) hue-rotate(180deg)}' +
+        'html[data-ewdark="1"] .top{filter:invert(1) hue-rotate(180deg)}' +   /* the navy bar stays navy, as on the card */
+        'html[data-ewdark="1"] img,html[data-ewdark="1"] video,html[data-ewdark="1"] canvas,html[data-ewdark="1"] iframe,html[data-ewdark="1"] embed,html[data-ewdark="1"] object,html[data-ewdark="1"] [data-noinvert]{filter:invert(1) hue-rotate(180deg)}' +
+        '.ewthm{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:44px;min-width:44px;padding:0 14px;border:1px solid #DCE3EA;border-radius:10px;background:#fff;color:#1F3A5F;font:inherit;font-size:14px;font-weight:700;cursor:pointer}';
+      (document.head || document.documentElement).appendChild(st);
+    } catch (e) { }
+    ewtApply();
+    try { var mq = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)"); if (mq) { if (mq.addEventListener) mq.addEventListener("change", ewtApply); else if (mq.addListener) mq.addListener(ewtApply); } } catch (e) { }
+    function ewtLabel() { var m = ewtGet(); return "&#9681; Theme: " + (m === "auto" ? "Auto (as the phone)" : m === "dark" ? "Dark" : "Light"); }
+    window.ewTheme = {
+      get: ewtGet, isDark: ewtDark, label: ewtLabel,
+      set: function (m) { try { localStorage.setItem(K, m); } catch (e) { } ewtApply(); },
+      next: function (btn) {
+        var m = ewtGet(), n = m === "auto" ? "light" : m === "light" ? "dark" : "auto";
+        window.ewTheme.set(n);
+        if (btn) btn.innerHTML = ewtLabel();
+      },
+      button: function () { return '<button type="button" class="ewthm" onclick="ewTheme.next(this)">' + ewtLabel() + '</button>'; }
+    };
+  })();
+</script>
+
 <div class="topbar">
   <div class="brand">
     <div class="mark"><img src="../assets/logo.jpg" alt="Energy World" /></div>
