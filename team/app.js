@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.730";
+  var APP_VERSION = "6.9.731";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -43988,6 +43988,83 @@ function viewCatalogue() {
   function pevInv(eid) { return pevLatest("evt:inv", function (d) { return d.eid + "|" + dkey(d.partner); }).filter(function (d) { return d.eid === eid; }); }
   function pevBrands(eid) { return pevLatest("evt:br", function (d) { return d.bid; }).filter(function (d) { return d.eid === eid; }); }
   function pevExp(eid) { return pevLatest("evt:ex", function (d) { return d.xid; }).filter(function (d) { return d.eid === eid; }); }
+  /* ===== 6.9.731 - EVERY GUEST HAS AN EXECUTIVE, AND A CALL BEFORE AND AFTER  (11 Oct 2026) =====
+     HIS WORDS: "also make arrangement for post event followup for all and here also give option to assign
+     partner to executives here only, to manage every partner after and before event".
+     MEASURED the day it was written: the Followups sheet holds ONE row (a July quote chase), and 334 of the
+     346 Associates rows have no executive (12 say Imran). So a follow-up list that leans on either would be
+     empty. The follow-up therefore lives on the guest's own evt:inv row - exec, pre (confirm before the
+     event) and post (call after it), each with who / when / what he said - and those rows already reach
+     every phone. Picking the executive here ALSO sets the partner's standing owner (Associates.ownedBy), so
+     he is managed after the event too. Nothing is deleted: every change is a new row, the newest wins. */
+  function pevSetPartnerOwner(name, exec) {
+    var a = assocLive().filter(function (x) { return dkey(x.name) === dkey(name); })[0];
+    if (!a || String(a.ownedBy || "") === String(exec || "")) return null;
+    var row = Object.assign({}, a); delete row._dups;
+    row.ownedBy = exec || "";
+    _asLiveCache = null;
+    return save("associates", row);
+  }
+  function pevExecNames() {
+    var out = [];
+    (S.data.team || []).forEach(function (t2) {
+      if (!t2 || !t2.name || String(t2.active).toUpperCase() === "N") return;
+      if (!/sales|admin/i.test(String(t2.role || ""))) return;
+      if (out.indexOf(t2.name) < 0) out.push(t2.name);
+    });
+    return out.sort();
+  }
+  function pevAddDays(ymd, n) { var t = Date.parse(String(ymd || "").slice(0, 10) + "T00:00:00"); if (!isFinite(t)) return ""; return new Date(t + n * 86400000 + 43200000).toISOString().slice(0, 10); }
+  /* where one guest stands: pre = confirm him before the day, post = call him after it, done */
+  function pevStage(e, i) {
+    var day = String((e && e.date) || "").slice(0, 10), now = today(), st = String(i.st || "");
+    var held = /Attended|Travelled|Delivered|Greeted/.test(st) || (day && day < now);
+    if (i.postAt) return { k: "done", lbl: "Done", due: "", late: false };
+    if (e && e.type === "greet") return { k: "post", lbl: "Thank-you call", due: day || now, late: !!(day && day < now && pevAddDays(day, 2) < now) };
+    if (!held && !i.preAt && !/Declined/.test(st)) { var d1 = day ? pevAddDays(day, -2) : now; return { k: "pre", lbl: "Confirm before", due: d1, late: d1 < now }; }
+    if (!held) return { k: "wait", lbl: (i.preAt ? "Confirmed" : "Declined") + " · call after", due: day ? pevAddDays(day, 1) : "", late: false };
+    var d2 = day ? pevAddDays(day, 2) : now;
+    return { k: "post", lbl: "Call after", due: d2, late: d2 < now };
+  }
+  function pevStagePill(sg) {
+    var c = sg.k === "done" ? ["#166534", "#dcfce7"] : sg.late ? ["#991b1b", "#fee2e2"] : sg.k === "wait" ? ["#475569", "#f1f5f9"] : ["#92400e", "#fef3c7"];
+    return '<span style="display:inline-block;font-size:12px;font-weight:800;color:' + c[0] + ';background:' + c[1] + ';border-radius:6px;padding:1px 7px;white-space:nowrap">' +
+      esc(sg.lbl) + (sg.due && sg.k !== "done" ? ' ' + esc(dmy(sg.due).slice(0, 5)) : '') + '</span>';
+  }
+  /* the calls waiting on one executive (or on everyone, for the owner), across every event */
+  function pevMyCalls(who) {
+    var out = [], me = dkey(who || "");
+    pevEvents().forEach(function (e) {
+      pevInv(e.eid).forEach(function (i) {
+        if (me && dkey(i.exec) !== me) return;
+        var sg = pevStage(e, i);
+        if (sg.k === "pre" || sg.k === "post") out.push({ e: e, i: i, sg: sg });
+      });
+    });
+    return out.sort(function (a, b) { return String(a.sg.due).localeCompare(String(b.sg.due)); });
+  }
+  function pevCallsCard(who, title) {
+    var list = pevMyCalls(who); if (!list.length) return "";
+    var late = list.filter(function (x) { return x.sg.late; }).length;
+    var byN = {}; assocLive().forEach(function (a) { byN[dkey(a.name)] = a; });
+    var cols = [{ k: "due", t: "DUE", w: "80px" }, { k: "g", t: "GUEST" }, { k: "ev", t: "EVENT" }, { k: "st", t: "TO DO" }, { k: "note", t: "WHAT HE SAID" }, { k: "go", t: "" }];
+    var rows = list.map(function (x, n) {
+      var a = byN[dkey(x.i.partner)] || {}, mob = String(x.i.mobile || a.mobile || "").replace(/\D/g, "").slice(-10);
+      return { v: { due: x.sg.due, g: x.i.partner, ev: x.e.name, st: x.sg.lbl, note: "" },
+        cells: { due: '<b style="color:' + (x.sg.late ? '#b91c1c' : '#0f172a') + '">' + esc(dmy(x.sg.due).slice(0, 5)) + '</b>',
+          g: '<b>' + esc(x.i.partner) + '</b><div style="font-size:12px;color:#64748b">' + esc(x.i.other ? (x.i.who || "Guest") : (a.role || "")) + (mob ? ' · ' + esc(mob) : '') + (who ? '' : ' · ' + esc(x.i.exec || "unassigned")) + '</div>',
+          ev: esc(x.e.name) + (x.e.date ? '<div style="font-size:12px;color:#64748b">' + esc(dmy(x.e.date)) + '</div>' : ''),
+          st: pevStagePill(x.sg) + '<div style="font-size:12px;color:#64748b">' + esc(x.i.st || "") + '</div>',
+          note: '<input class="pev-funote" data-id="' + esc(x.e.eid) + '" data-p="' + esc(x.i.partner) + '" placeholder="' + (x.sg.k === "pre" ? 'coming? with how many?' : 'how was it, what next?') + '" style="min-width:180px;min-height:44px"/>',
+          go: '<div style="display:flex;gap:6px;justify-content:flex-end">' +
+            (mob ? '<a class="btn sm ghost" style="min-height:44px;display:inline-flex;align-items:center;text-decoration:none" href="tel:' + esc(mob) + '">Call</a>' : '') +
+            '<button class="btn sm" style="min-height:44px" data-act="pev-fudone" data-id="' + esc(x.e.eid) + '" data-p="' + esc(x.i.partner) + '" data-k="' + x.sg.k + '">Done</button></div>' } };
+    });
+    return '<div class="card" style="border-color:' + (late ? '#fca5a5' : '#fde68a') + ';background:' + (late ? '#fef2f2' : '#fffbeb') + '">' +
+      '<h3 style="margin:0">' + esc(title || "Partner events — your calls") + ' <span class="pill ' + (late ? 'due' : 'soon') + '">' + list.length + (late ? ' · ' + late + ' late' : '') + '</span></h3>' +
+      '<div class="meta" style="font-size:12.5px;margin:3px 0 6px">Before the event: ring and confirm he is coming. After it: thank him and ask what is next. Type one line of what he said and press Done &mdash; the owner sees it on the event.</div>' +
+      xlTable("pevcalls", cols, rows, "the event, what to do and Done") + '</div>';
+  }
   function pevSum(list, k) { return list.reduce(function (a, x) { return a + (Number(x[k]) || 0); }, 0); }
   /* what an event cost us, and who was there to share it */
   function pevMoney(eid) {
@@ -44114,6 +44191,26 @@ function viewCatalogue() {
       }).join("") + '</optgroup>';
     }).join("");
   }
+  /* 6.9.731 - the follow-up line over the guest table, and the two bulk buttons */
+  function pevFuStrip(e, inv) {
+    var c = { pre: 0, post: 0, wait: 0, done: 0 }, late = 0, un = 0, per = {};
+    inv.forEach(function (p) {
+      var sg = pevStage(e, p.i); c[sg.k] = (c[sg.k] || 0) + 1; if (sg.late) late++;
+      if (!p.i.exec) un++;
+      else { var k = p.i.exec; per[k] = per[k] || { open: 0, done: 0 }; if (sg.k === "done") per[k].done++; else if (sg.k === "pre" || sg.k === "post") per[k].open++; }
+    });
+    var noSaved = inv.filter(function (p) { return p.i._execFromPartner; }).length;
+    return '<div style="margin-top:10px;padding:9px 11px;border:1px solid ' + (late || un ? '#fca5a5' : '#e2e8f0') + ';border-radius:10px;background:' + (late || un ? '#fef2f2' : '#f8fafc') + '">' +
+      '<div style="font-size:13px"><b>Follow-up:</b> ' + (c.pre ? c.pre + ' to confirm before the day' : '') + (c.pre && c.post ? ' &middot; ' : '') + (c.post ? c.post + ' to call after' : '') +
+        (c.done ? ' &middot; <span style="color:#166534">' + c.done + ' done</span>' : '') + (late ? ' &middot; <b style="color:#b91c1c">' + late + ' late</b>' : '') +
+        (un ? ' &middot; <b style="color:#b91c1c">' + un + ' with no executive</b>' : '') + '</div>' +
+      (Object.keys(per).length ? '<div style="font-size:12.5px;color:#475569;margin-top:3px">' + Object.keys(per).sort().map(function (k) { return esc(k) + ' ' + per[k].open + ' open' + (per[k].done ? ' / ' + per[k].done + ' done' : ''); }).join(' &middot; ') + '</div>' : '') +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:7px">' +
+        (noSaved ? '<button class="btn sm ghost" style="min-height:44px" data-act="pev-execfill" data-id="' + esc(e.eid) + '" title="Write down, on this event, the executive each partner already has">Keep ' + noSaved + ' with their own executive</button>' : '') +
+        (un ? '<span style="font-size:13px">Give the ' + un + ' unassigned to</span><select id="pe_execall" style="min-height:44px"><option value="">— pick —</option>' + pevExecNames().map(function (n2) { return '<option>' + esc(n2) + '</option>'; }).join("") + '</select>' +
+          '<button class="btn sm" style="min-height:44px" data-act="pev-execall" data-id="' + esc(e.eid) + '">Assign</button>' : '') +
+      '</div></div>';
+  }
   function viewPevEvent(e) {
     var m = pevMoney(e.eid), sup = pevSupport(), byN = {}; sup.forEach(function (x) { byN[dkey(x.name)] = x; });
     var sts = PEV_ST[e.type] || PEV_ST.meet, isG = e.type === "greet";
@@ -44127,6 +44224,10 @@ function viewCatalogue() {
                                                               : (byN[dkey(i.partner)] || { tier: "Base", rank: 3, b12: 0, role: "", mob: "" }) }; })
       .sort(function (p, q) { return p.x.rank - q.x.rank || q.x.b12 - p.x.b12 || String(p.i.partner).localeCompare(String(q.i.partner)); });
     var nOther = inv.filter(function (p) { return p.x.other; }).length;
+    var _exN = pevExecNames();   /* 6.9.731 */
+    /* 6.9.731 - a guest with no executive on the event takes his partner's standing executive, as drawn */
+    var _own = {}; assocLive().forEach(function (a) { if (a.ownedBy) _own[dkey(a.name)] = a.ownedBy; });
+    inv.forEach(function (p) { if (!p.i.exec && !p.x.other && _own[dkey(p.i.partner)]) p.i = Object.assign({}, p.i, { exec: _own[dkey(p.i.partner)], _execFromPartner: 1 }); });
     var came = m.inv.filter(function (i) { return /Confirmed|Attended|Travelled/.test(i.st || ""); }).length, declined = m.inv.filter(function (i) { return /Declined/.test(i.st || ""); }).length;
     var cnt = {}; m.inv.forEach(function (i) { cnt[i.st] = (cnt[i.st] || 0) + 1; });
     var h = '<div class="card"><div class="acts" style="align-items:center;margin:0;flex-wrap:wrap;gap:6px"><button class="btn sm ghost" style="min-height:44px" data-act="pev-back">← All events</button>' +
@@ -44158,12 +44259,18 @@ function viewCatalogue() {
         '<div><label style="margin-top:0">Who</label><select id="pe_owho" style="min-height:44px"><option>Company</option><option>Brand</option><option>Guest of honour</option><option>Family</option><option>Staff</option><option>Other</option></select></div>' +
         '<div><label style="margin-top:0">Mobile</label><input id="pe_omob" inputmode="numeric" placeholder="optional" style="width:130px;min-height:44px"/></div>' +
         '<button class="btn sm ghost" style="min-height:44px" data-act="pev-addother" data-id="' + esc(e.eid) + '">+ Add invitee</button></div>') +
-      (inv.length ? pevTable([["#", "right"], ["Guest"], ["Tier"], ["Business 12 m", "right"], ["Status"], [isG ? "Gift ₹" : "Own cost ₹", "right"], [""]],
+      (inv.length ? pevFuStrip(e, inv) : '') +
+      (inv.length ? pevTable([["#", "right"], ["Guest"], ["Tier"], ["Business 12 m", "right"], ["Status"], ["Executive"], ["Follow-up"], [isG ? "Gift ₹" : "Own cost ₹", "right"], [""]],
         inv.map(function (p, k) {
           var i = p.i, x = p.x, mob = x.mob || "";
           return ['<span style="color:#64748b">' + (k + 1) + '</span>', '<b>' + esc(i.partner) + '</b><div style="font-size:12px;color:#64748b">' + esc(x.role || "") + (mob ? ' · ' + esc(mob) : ' · <span style="color:#b45309">no mobile</span>') + '</div>',
             x.other ? '<span style="display:inline-block;font-size:12px;font-weight:800;color:#3730a3;background:#e0e7ff;border-radius:6px;padding:1px 7px;white-space:nowrap">Guest</span>' : pevTierPill(x.tier), x.b12 ? money(x.b12) : '—',
             '<select class="pev-st" data-id="' + esc(e.eid) + '" data-p="' + esc(i.partner) + '" style="min-height:44px">' + sts.map(function (s2) { return '<option' + (s2 === i.st ? ' selected' : '') + '>' + esc(s2) + '</option>'; }).join("") + '</select>',
+            '<select class="pev-exec" data-id="' + esc(e.eid) + '" data-p="' + esc(i.partner) + '" style="min-height:44px' + (i.exec ? '' : ';border-color:#fca5a5;color:#b91c1c') + '"><option value="">— nobody —</option>' +
+              _exN.concat(i.exec && _exN.indexOf(i.exec) < 0 ? [i.exec] : []).map(function (n2) { return '<option' + (n2 === i.exec ? ' selected' : '') + '>' + esc(n2) + '</option>'; }).join("") + '</select>',
+            (function () { var sg = pevStage(e, i); return pevStagePill(sg) +
+              (i.preNote ? '<div style="font-size:12px;color:#475569;max-width:220px">Before: ' + esc(i.preNote) + ' <span style="color:#94a3b8">(' + esc(i.preBy || "") + ')</span></div>' : '') +
+              (i.postNote ? '<div style="font-size:12px;color:#475569;max-width:220px">After: ' + esc(i.postNote) + ' <span style="color:#94a3b8">(' + esc(i.postBy || "") + ')</span></div>' : ''); })(),
             '<input class="pev-cost" data-id="' + esc(e.eid) + '" data-p="' + esc(i.partner) + '" inputmode="numeric" value="' + esc(i.cost || "") + '" placeholder="0" style="width:84px;font-size:14px;text-align:right;min-height:44px"/>',
             '<div style="display:flex;gap:6px;justify-content:flex-end">' + (mob ? '<a class="btn sm ghost" style="min-height:44px;display:inline-flex;align-items:center;text-decoration:none" target="_blank" rel="noopener" href="https://wa.me/91' + esc(mob) + '?text=' + encodeURIComponent(pevMsg(e, i.partner)) + '">WhatsApp</a>' : '') +
             '<button class="btn sm ghost" style="min-height:44px" data-act="pev-rm" data-id="' + esc(e.eid) + '" data-p="' + esc(i.partner) + '">Take off</button></div>'];
@@ -44481,25 +44588,34 @@ function viewCatalogue() {
     (S.data.challans || []).forEach(function (c) {
       if (!c || c.status === "Cancelled") return;
       var g; try { g = chDiscGap(c); } catch (e) { return; }
-      if (g && g.n) rows.push({ c: c, g: g, n: g.n, diff: g.diff, done: inHisab(c) });
+      if (!g || !g.n) return;
+      /* 6.9.731 - HIS WORDS: "click to show me detail where the difference is in price or its in discount, do not just
+         click and reprice". A delivery can carry a lump discount (on the challan, or "further discount" at finalise)
+         that already gives back some or all of what the 0% lines over-charge. The lines alone said Rs 1,16,781; the
+         money the client actually paid too much is the net on his account less the bill at the agreed discount. */
+      var lump = 0, net = g.was; try { lump = hisabExtra(c); net = challanNet(c); } catch (e) { }
+      var real = Math.max(0, Math.min(g.diff, Math.round(net - g.now)));
+      rows.push({ c: c, g: g, n: g.n, diff: real, lines: g.diff, lump: lump, net: net, done: inHisab(c) });
     });
-    rows.sort(function (a, b) { return b.diff - a.diff; });
+    rows.sort(function (a, b) { return b.diff - a.diff || b.lines - a.lines; });
     return rows;
   }
   function modalRateGap() {
     var rows = rateGapRows();
     if (!rows.length) return '<h2>Billed above the rate on file</h2><div class="empty ok">Nothing is billed above a client\u2019s preset.</div><div class="foot"><button class="btn" data-act="close">Close</button></div>';
     var tot = rows.reduce(function (t, r) { return t + r.diff; }, 0), done = rows.filter(function (r) { return r.done; });
-    var cols = [{ k: "no", t: "CHALLAN", w: "150px" }, { k: "cl", t: "CLIENT" }, { k: "day", t: "DATE" }, { k: "n", t: "LINES", n: 1, r: 1 }, { k: "was", t: "BILLED", n: 1, r: 1 }, { k: "now", t: "SHOULD BE", n: 1, r: 1 }, { k: "diff", t: "OVER", n: 1, r: 1 }, { k: "st", t: "STATUS" }, { k: "go", t: "" }];
+    var linesTot = rows.reduce(function (t, r) { return t + r.lines; }, 0), lumpTot = rows.reduce(function (t, r) { return t + r.lump; }, 0);
+    var cols = [{ k: "no", t: "CHALLAN", w: "150px" }, { k: "cl", t: "CLIENT" }, { k: "day", t: "DATE" }, { k: "n", t: "LINES", n: 1, r: 1 }, { k: "was", t: "LINES BILLED", n: 1, r: 1 }, { k: "now", t: "AT AGREED", n: 1, r: 1 }, { k: "lump", t: "LUMP DISC GIVEN", n: 1, r: 1 }, { k: "diff", t: "REAL OVER", n: 1, r: 1 }, { k: "st", t: "STATUS" }, { k: "go", t: "" }];
     var t1 = xlTable("rgap", cols, rows.map(function (r) {
       var day = String(r.c.createdAt || "").slice(0, 10);
-      return { v: { no: r.c.challanNo || "", cl: r.c.customerName || "", day: day, n: r.n, was: r.g.was, now: r.g.now, diff: r.diff, st: r.done ? "finalised" : "open" },
-        cells: { no: '<b>' + esc(r.c.challanNo || "") + '</b>', cl: esc(r.c.customerName || ""), day: esc(dmy(day)), n: r.n,
-          was: money(r.g.was), now: money(r.g.now), diff: '<b style="color:#b91c1c">' + money(r.diff) + '</b>',
+      return { v: { no: r.c.challanNo || "", cl: r.c.customerName || "", day: day, n: r.n, was: r.g.was, now: r.g.now, lump: r.lump, diff: r.diff, st: r.done ? "finalised" : "open" },
+        cells: { no: '<b data-act="rgap-one" data-id="' + esc(r.c.id) + '" style="cursor:pointer;color:#0d766c">' + esc(r.c.challanNo || "") + '</b>', cl: esc(r.c.customerName || ""), day: esc(dmy(day)), n: r.n,
+          was: money(r.g.was), now: money(r.g.now), lump: r.lump > 0 ? '<span style="color:#0f766e">' + money(r.lump) + '</span>' : '<span style="color:#94a3b8">\u2014</span>',
+          diff: r.diff > 0 ? '<b style="color:#b91c1c">' + money(r.diff) + '</b>' : '<span style="color:#0f766e;font-weight:700" title="The lump discount already covers it">none</span>',
           st: r.done ? '<span class="pill Won" title="Already finalised - the client may hold this bill. Re-pricing it is the credit: the lines are corrected on his account and the statement, and the audit row says why.">finalised</span>' : '<span class="pill due">not finalised</span>',
-          go: '<button class="btn sm" data-act="reprice-one" data-id="' + esc(r.c.id) + '" style="padding:2px 9px;font-size:12px;min-height:36px">Re-price</button> ' +
+          go: '<button class="btn sm" data-act="rgap-one" data-id="' + esc(r.c.id) + '" style="padding:2px 9px;font-size:12px;min-height:36px">Details</button> ' +
               '<button class="btn sm ghost" data-act="ch-open" data-id="' + esc(r.c.id) + '" style="padding:2px 9px;font-size:12px;min-height:36px">Open</button>' } };
-    }), "billed, should be, over and Re-price");
+    }), "billed, the lump given, the real over and Details");
     var lcols = [{ k: "no", t: "CHALLAN", w: "130px" }, { k: "item", t: "ITEM" }, { k: "brand", t: "BRAND" }, { k: "qty", t: "QTY", n: 1, r: 1 }, { k: "mrp", t: "MRP", n: 1, r: 1 }, { k: "ch", t: "CHARGED" }, { k: "agr", t: "AGREED", n: 1, r: 1 }, { k: "over", t: "OVER", n: 1, r: 1 }];
     var lrows = [];
     rows.forEach(function (r) {
@@ -44511,18 +44627,73 @@ function viewCatalogue() {
       });
     });
     var t2 = xlTable("rgapl", lcols, lrows, "MRP, charged, agreed and over");
-    return '<h2>Billed above the rate on file &mdash; ' + plural(rows.length, "delivery") + ' &middot; ' + money(tot) + ' over</h2>' +
+    return '<h2>Billed above the rate on file &mdash; ' + plural(rows.length, "delivery") + ' &middot; ' + money(tot) + ' really over</h2>' +
+      '<div class="meta" style="font-size:13px;margin-bottom:6px">Lines at 0% come to ' + money(linesTot) + ' over the agreed discount' + (lumpTot > 0 ? '; lump discounts already given on these deliveries: ' + money(lumpTot) + '. What is left is ' + money(tot) + '.' : '.') + '</div>' +
       '<div class="card" style="border-color:#fecaca;background:#fef2f2;padding:10px 12px;font-size:13px;line-height:1.55;color:#7f1d1d">' +
       '<b>What it means.</b> On each of these deliveries at least one line was billed with <b>no discount</b> (MRP), although on the day it was written the client had a preset discount on file for that brand. So the client was charged more than you agreed with him. ' +
       'Most of these were written before the preset was set, or on a phone that holds no discount rows and so froze 0% (the same fault 6.9.728 fixed on returns).<br>' +
-      '<b>What to do.</b> <b>Re-price</b> corrects the lines to the agreed discount: the client\u2019s account drops by the amount over, the statement shows the corrected lines, and an audit row with your name says what changed and why. Nothing is deleted. ' +
+      '<b>What to do.</b> Open <b>Details</b> first. <b>Re-price</b> there corrects the lines to the agreed discount: the client\u2019s account drops by the amount over, the statement shows the corrected lines, and an audit row with your name says what changed and why. Nothing is deleted. ' +
       'On a delivery already <b>finalised</b> the client may be holding the old bill &mdash; the re-price is the credit note: tell him his account has been corrected by that amount. ' +
       '<b>Leave them</b> on the sheet is also a decision: the delivery is written down as checked and not asked again unless the gap grows.</div>' +
-      (roleIs("admin") ? '<div class="acts" style="margin:8px 0"><button class="btn" data-act="reprice-scan" style="background:#7f1d1d;border-color:#7f1d1d">Re-price all ' + rows.length + ' at the agreed discount &middot; ' + money(tot) + '</button>' +
-        (done.length ? '<span class="meta" style="align-self:center;font-size:12px">' + done.length + ' already finalised &mdash; the sheet will say so.</span>' : '') + '</div>' : '') +
+      '<div class="meta" style="font-size:13px;margin:8px 0">Tap a challan, or <b>Details</b>, to see line by line whether the difference is in the <b>price</b> or in the <b>discount</b>, and what lump discount was already given. Re-pricing is done from there, one delivery at a time.</div>' +
       '<div class="card"><h3 style="margin:0 0 6px">By delivery</h3>' + t1 + '</div>' +
       '<div class="card"><h3 style="margin:0 0 6px">Every line &mdash; ' + plural(lrows.length, "line") + '</h3>' + t2 + '</div>' +
       '<div class="foot"><button class="btn" data-act="close">Close</button></div>';
+  }
+  function modalRateGapOne(id) {
+    var c = (S.data.challans || []).filter(function (x) { return x.id === id; })[0];
+    if (!c) return '<h2>Not found</h2><div class="foot"><button class="btn" data-act="close">Close</button></div>';
+    var cl = c.customerName || "", day = String(c.createdAt || "").slice(0, 10), g = chDiscGap(c);
+    var r = rateGapRows().filter(function (x) { return x.c.id === id; })[0] || { diff: 0, lump: 0, net: g.was, lines: g.diff };
+    var items = []; try { items = JSON.parse(c.itemsJson || "[]"); } catch (e) { items = []; }
+    var nPrice = 0, nDisc = 0, nOk = 0;
+    var cols = [{ k: "item", t: "ITEM", w: "170px" }, { k: "brand", t: "BRAND" }, { k: "qty", t: "QTY", n: 1, r: 1 }, { k: "rate", t: "RATE ON CHALLAN", n: 1, r: 1 }, { k: "mrp", t: "CATALOGUE MRP", n: 1, r: 1 },
+                { k: "dc", t: "DISC CHARGED", n: 1, r: 1 }, { k: "da", t: "AGREED THAT DAY", n: 1, r: 1 }, { k: "amt", t: "CHARGED", n: 1, r: 1 }, { k: "ag", t: "AT AGREED", n: 1, r: 1 }, { k: "over", t: "OVER", n: 1, r: 1 }, { k: "why", t: "WHERE THE DIFFERENCE IS" }];
+    var rows = items.map(function (i, ix) {
+      var rate = Number(i.rate) || 0, qty = Number(i.qty) || 0, brand = lineBrand(i, c);
+      var job = chNoReprice(i), list = productListByCode(i.code);
+      var dc = (i.disc != null && i.disc !== "") ? Number(i.disc) || 0 : clientDiscountOn(cl, brand, day);
+      var row = (!job && brand) ? discRowOn(cl, brand, day) : null;
+      var agreed = (!job && lineStoredZero(i)) ? rateOnFileOn(cl, brand, c.createdAt || day) : dc;
+      var amt = qty * Math.round(rate * (1 - dc / 100));
+      var isMrp = !list || Math.abs(list - rate) <= 1;
+      var ag = qty * Math.round(rate * (1 - (agreed > dc && isMrp ? agreed : dc) / 100));
+      var why, over = amt - ag;
+      if (job) why = '<span style="color:#64748b">job work / hand-priced line &mdash; never touched</span>';
+      else if (agreed > dc && !isMrp) { nPrice++; why = '<b style="color:#92400e">PRICE</b> &mdash; the rate on the challan (' + money(rate) + ') is not the catalogue MRP (' + money(list) + '), so the discount was probably already inside the rate. Not counted, never re-priced.'; }
+      else if (agreed > dc) { nDisc++; why = '<b style="color:#b91c1c">DISCOUNT</b> &mdash; MRP is right; charged ' + (dc > 0 ? dc + '%' : 'no discount') + ' where ' + agreed + '% was agreed'; }
+      else if (list && !isMrp) { why = '<span style="color:#64748b">rate differs from MRP by ' + money(rate - list) + ' &mdash; typed on purpose, discount as charged</span>'; nOk++; }
+      else { nOk++; why = '<span style="color:#0f766e">&#10003; as agreed</span>'; }
+      var since = row ? (discFrom(row) ? 'from ' + dmy(discFrom(row)) : 'undated') : 'no preset';
+      return { v: { item: i.desc || i.code || "", brand: brand, qty: qty, rate: rate, mrp: list || 0, dc: dc, da: agreed, amt: amt, ag: ag, over: over, why: why.replace(/<[^>]+>/g, "") },
+        cells: { item: esc(i.desc || i.code || ""), brand: esc(brand || "—"), qty: qty, rate: money(rate),
+          mrp: list ? (isMrp ? '<span style="color:#0f766e">' + money(list) + '</span>' : '<b style="color:#92400e">' + money(list) + '</b>') : '<span style="color:#94a3b8">not in catalogue</span>',
+          dc: '<b style="color:' + (agreed > dc ? '#b91c1c' : '#334155') + '">' + (dc > 0 ? dc + '%' : 'none') + '</b>',
+          da: job ? '—' : '<b>' + (agreed > 0 ? agreed + '%' : (row ? '0%' : 'none')) + '</b><div style="font-size:12px;color:#94a3b8">' + esc(since) + '</div>',
+          amt: money(amt), ag: money(ag), over: over > 0 ? '<b style="color:#b91c1c">' + money(over) + '</b>' : '<span style="color:#94a3b8">—</span>', why: why } };
+    });
+    var lumpLbl = ""; try { lumpLbl = chOffLabel(c); } catch (e) { lumpLbl = "Lump discount"; }
+    var st = hisabStamp(c);
+    var verdict = r.diff > 0 && r.lump > 0
+      ? '<b style="color:#b91c1c">The client paid ' + money(r.diff) + ' more than agreed</b>, after the lump discount of ' + money(r.lump) + '. Re-pricing the lines would take ' + money(r.lines) + ' off &mdash; ' + money(r.lines - r.diff) + ' too much, because the lump stays. Give him a credit of <b>' + money(r.diff) + '</b> instead (a payment-side credit on his hisab), and the account is right.'
+      : r.diff > 0
+      ? '<b style="color:#b91c1c">The client paid ' + money(r.diff) + ' more than agreed.</b> Re-pricing lowers his account by that much and the statement shows the corrected lines.'
+      : (r.lump > 0 ? '<b style="color:#0f766e">No real over-charge.</b> The lines are at 0%, but the lump discount of ' + money(r.lump) + ' already gives it back. Re-pricing the lines as well would give the discount twice &mdash; leave it.'
+                    : '<b style="color:#0f766e">Nothing to correct.</b>');
+    var row = function (lab, val, strong, col) { return '<div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;' + (strong ? 'border-top:1px solid #cbd5e1;margin-top:4px;padding-top:4px' : '') + '"><span style="font-size:13px;color:#475569">' + lab + '</span><span style="font-weight:' + (strong ? 800 : 700) + ';font-size:' + (strong ? 15 : 13) + 'px;white-space:nowrap' + (col ? ';color:' + col : '') + '">' + val + '</span></div>'; };
+    return '<h2>' + esc(c.challanNo || "") + ' &mdash; where the difference is</h2>' +
+      '<p class="sub">' + esc(cl) + ' &middot; ' + esc(dmy(day) || "no date") + ' &middot; written by ' + esc(c.createdBy || "?") + ' &middot; ' + (st ? 'finalised by ' + esc(st.by || "") + (st.at ? ' on ' + esc(dmy(String(st.at).slice(0, 10))) : '') : 'not finalised') + '</p>' +
+      '<div class="card" style="padding:10px 12px;border-color:' + (r.diff > 0 ? '#fca5a5' : '#99f6e4') + ';background:' + (r.diff > 0 ? '#fef2f2' : '#f0fdfa') + '">' +
+        '<div style="font-size:13px;margin-bottom:6px">' + plural(items.length, "line") + ': <b style="color:#b91c1c">' + nDisc + ' in the discount</b> &middot; <b style="color:#92400e">' + nPrice + ' in the price</b> &middot; ' + nOk + ' as agreed</div>' +
+        row('Lines as charged', money(g.was)) + row('Lines at the agreed discount', money(g.now)) + row('Difference in the lines', money(g.diff), false, '#b91c1c') +
+        row(esc(lumpLbl || "Lump discount") + ' already given', r.lump > 0 ? '&minus;' + money(r.lump) : 'none', false, '#0f766e') +
+        row('On his account now', money(r.net)) + row('Real over-charge', money(r.diff), true, r.diff > 0 ? '#b91c1c' : '#0f766e') +
+        '<div style="font-size:13px;margin-top:8px">' + verdict + '</div></div>' +
+      '<div class="card"><h3 style="margin:0 0 6px">Line by line</h3>' + xlTable("rgap1", cols, rows, "MRP, discount and where the difference is") + '</div>' +
+      '<div class="foot"><button class="btn ghost" data-act="rgap-open">← All deliveries</button>' +
+        '<button class="btn ghost" data-act="ch-open" data-id="' + esc(c.id) + '">Open the challan</button>' +
+        (r.diff > 0 && !(r.lump > 0) && roleIs("admin") ? '<button class="btn" data-act="reprice-one" data-id="' + esc(c.id) + '" style="background:#7f1d1d;border-color:#7f1d1d">Re-price this delivery &middot; ' + money(r.diff) + '</button>' : '') +
+      '</div>';
   }
   function rateGapDashCard() {
     if (!canFinalise()) return "";
@@ -44532,6 +44703,7 @@ function viewCatalogue() {
     var open = rows.filter(function (r) { return !r.done; }).length;
     var h = '<div class="card" style="border-color:#fca5a5;background:#fef2f2">' +
       '<div class="meta" style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#b91c1c"><b>Billed above the rate on file</b></div>' +
+      /* 6.9.731 - the figure is what is left after any lump discount given on the delivery */
       '<h3 style="font-size:16px;margin:4px 0 2px">' + rows.length + ' deliver' + (rows.length === 1 ? 'y' : 'ies') +
         ' ' + (rows.length === 1 ? 'has' : 'have') + ' a line with less discount than was agreed &middot; the client' + (rows.length === 1 ? '' : 's') + ' charged ' + esc(money(tot)) + ' more</h3>' +   /* 6.9.668 - said plainly ("what meaning of this") */
       '<div class="meta" style="font-size:13px">Each has a line at 0% discount while a discount was agreed for that client and that brand on the day it was written, so the client was charged more than agreed. ' +
@@ -44545,7 +44717,7 @@ function viewCatalogue() {
         '<span class="meta" style="font-size:12px;white-space:nowrap;flex:1 1 auto">' + esc(r.c.challanNo || "") + '</span>' +
         '<span class="pill ' + (r.done ? '' : 'due') + '" style="white-space:nowrap">' + r.n + ' line' + (r.n === 1 ? '' : 's') + (r.done ? ' &middot; finalised' : '') + '</span>' +
         '<span style="font-size:12.5px;white-space:nowrap"><b>' + esc(money(r.diff)) + '</b></span>' +
-        '<button class="btn sm ghost" data-act="ch-open" data-id="' + esc(r.c.id) + '">Open</button></div>';
+        '<button class="btn sm" data-act="rgap-one" data-id="' + esc(r.c.id) + '">Details</button> <button class="btn sm ghost" data-act="ch-open" data-id="' + esc(r.c.id) + '">Open</button></div>';   /* 6.9.731 */
     });
     if (rows.length > 3) h += '<div class="meta" style="font-size:12px;margin-top:6px">and ' + (rows.length - 3) + ' more &mdash; <a href="#" data-act="tab" data-tab="billing" style="color:#b91c1c;font-weight:700">all on HISAB</a></div>';
     return h + '</div>';
@@ -44619,7 +44791,7 @@ function viewCatalogue() {
        nobody acts on, and 88 unstamped deliveries is what that costs. */
     /* v6.9.497 - his item 17. Above the tiles for the reason v6.9.374 wrote down when it moved
        the unstamped band up here, and the number is the larger of the two. */
-    var h = hisabNotStampedBand() + unsentDashCard() + '<div class="cards">' +
+    var h = hisabNotStampedBand() + unsentDashCard() + (roleIs("admin") ? "" : (function () { try { return pevCallsCard(S.user); } catch (e) { return ""; } })()) + '<div class="cards">' +   /* 6.9.731 - an executive sees his event calls the moment he opens the app */
       '<div class="stat"><div class="n">' + liveClients.length + '</div><div class="l">Clients</div></div>' +
       '<div class="stat ' + (overdue.length ? 'alert' : '') + '"><div class="n">' + overdue.length + '</div><div class="l">Follow-ups overdue</div></div>' +
       '<div class="stat"><div class="n">' + due.length + '</div><div class="l">Due today</div></div>' +
@@ -44696,6 +44868,7 @@ function viewCatalogue() {
 
   function viewFollowups() {
     var h = '';
+    try { h += roleIs("admin") ? pevCallsCard("", "Partner events \u2014 calls waiting, everyone") : pevCallsCard(S.user); } catch (e) { }   /* 6.9.731 */
 
     /* ---- Follow-up radar: quotes that need chasing ---- */
     var radarAll = radarQuotes();
@@ -49237,6 +49410,16 @@ function viewCatalogue() {
   /* 6.9.717 - a guest's status or gift cost, saved as he changes it */
   document.addEventListener("change", function (ev) {
     var tg = ev && ev.target; if (!tg || !tg.classList) return;
+    if (tg.classList.contains("pev-exec")) {   /* 6.9.731 */
+      if (!roleIs("admin")) return;
+      var _ee = tg.getAttribute("data-id"), _ep = tg.getAttribute("data-p");
+      var _ec = pevInv(_ee).filter(function (i) { return dkey(i.partner) === dkey(_ep); })[0] || { eid: _ee, partner: _ep };
+      var _en = Object.assign({}, _ec); delete _en._at; delete _en._by; delete _en.at; _en.exec = tg.value;
+      pevSaveRow("evt:inv", _ee, _en).then(function () { keepScroll = true; renderBg(); });
+      var _ew = !_ec.other ? pevSetPartnerOwner(_ep, tg.value) : null;
+      toast(_ep + ": " + (tg.value ? tg.value + " looks after him" + (_ew ? " \u2014 on this event and on his partner record" : " on this event") : "no executive") + ".");
+      return;
+    }
     if (!tg.classList.contains("pev-st") && !tg.classList.contains("pev-cost")) return;
     var eid = tg.getAttribute("data-id"), pn = tg.getAttribute("data-p");
     var cur = pevInv(eid).filter(function (i) { return dkey(i.partner) === dkey(pn); })[0] || { eid: eid, partner: pn };
@@ -52849,6 +53032,43 @@ function viewCatalogue() {
       Promise.all(_who.map(function (n) { return pevSaveRow("evt:inv", _eid, { eid: _eid, partner: n, st: _st0, cost: 0 }); })).then(function () { keepScroll = true; render(); toast(plural(_who.length, "guest") + " added."); });
       return;
     }
+    if (act === "pev-fudone") {   /* 6.9.731 - the executive's one line, before or after */
+      var _fe = t.getAttribute("data-id"), _fp = t.getAttribute("data-p"), _fk = t.getAttribute("data-k");
+      var _fcur = pevInv(_fe).filter(function (i) { return dkey(i.partner) === dkey(_fp); })[0];
+      if (!_fcur || (_fk !== "pre" && _fk !== "post")) { toast("That guest is not on this phone yet - pull down to refresh."); return; }
+      var _fin = Array.prototype.filter.call(document.querySelectorAll("input.pev-funote"), function (x) { return x.getAttribute("data-id") === _fe && x.getAttribute("data-p") === _fp; })[0];
+      var _fnote = String((_fin && _fin.value) || "").trim();
+      if (_fnote.length < 3) { toast("Type one line of what he said, then Done."); if (_fin) _fin.focus(); return; }
+      var _fnx = Object.assign({}, _fcur); delete _fnx._at; delete _fnx._by; delete _fnx.at;
+      _fnx[_fk + "At"] = new Date().toISOString(); _fnx[_fk + "By"] = S.user || ""; _fnx[_fk + "Note"] = _fnote;
+      if (_fk === "pre" && /\b(coming|yes|confirm(ed)?|will come)\b/i.test(_fnote) && /Invited|Shortlisted/.test(String(_fcur.st || ""))) _fnx.st = "Confirmed";
+      t.disabled = true;
+      pevSaveRow("evt:inv", _fe, _fnx).then(function () { keepScroll = true; render(); toast(_fp + ": " + (_fk === "pre" ? "confirmed call" : "follow-up") + " written down."); });
+      return;
+    }
+    if (act === "pev-execfill" || act === "pev-execall") {   /* 6.9.731 - bulk */
+      if (!roleIs("admin")) return;
+      var _xe = t.getAttribute("data-id"), _xev = pevEvent(_xe); if (!_xev) return;
+      var _xown = {}; assocLive().forEach(function (a) { if (a.ownedBy) _xown[dkey(a.name)] = a.ownedBy; });
+      var _xto = act === "pev-execall" ? String(val("pe_execall") || "") : "";
+      if (act === "pev-execall" && !_xto) { toast("Pick the executive."); return; }
+      var _xjobs = pevInv(_xe).filter(function (i) { return !i.exec && (act === "pev-execall" ? !_xown[dkey(i.partner)] || i.other : !!_xown[dkey(i.partner)] && !i.other); });
+      if (!_xjobs.length) { toast("Nobody to assign."); return; }
+      askSheet({ title: act === "pev-execall" ? "Give " + plural(_xjobs.length, "guest") + " to " + _xto + "?" : "Keep " + plural(_xjobs.length, "guest") + " with their own executive?",
+        sub: esc(_xev.name),
+        body: '<div class="meta">' + (act === "pev-execall" ? esc(_xto) + ' confirms each before the day and calls each after it. The partners among them are put on ' + esc(_xto) + '’s book too (the partner record’s executive), so he manages them after the event.' : 'Each partner already has an executive on his record; this writes it on the event so the calls land on that man’s phone.') + ' Nothing is deleted.</div>',
+        yes: "Assign", no: "Not now" }).then(function (yes) {
+        if (!yes) return;
+        var ps = _xjobs.map(function (i) {
+          var nx = Object.assign({}, i); delete nx._at; delete nx._by; delete nx.at; delete nx._execFromPartner;
+          nx.exec = _xto || _xown[dkey(i.partner)];
+          return pevSaveRow("evt:inv", _xe, nx);
+        });
+        if (_xto) _xjobs.forEach(function (i) { if (!i.other) pevSetPartnerOwner(i.partner, _xto); });
+        Promise.all(ps).then(function () { keepScroll = true; render(); toast(plural(_xjobs.length, "guest") + " assigned."); });
+      });
+      return;
+    }
     if (act === "pev-addother") {   /* 6.9.730 */
       var _oe = t.getAttribute("data-id"), _oev = pevEvent(_oe); if (!_oev) return;
       var _on = String(val("pe_oname") || "").trim(), _ow = String(val("pe_owho") || "Other"), _om = String(val("pe_omob") || "").replace(/\D/g, "");
@@ -55744,10 +55964,14 @@ function viewCatalogue() {
       return;
     }
     if (act === "rgap-open") { if (!canFinalise()) return; S.modal = modalRateGap(); render(); return; }   /* 6.9.729 */
+    if (act === "rgap-one") { if (!canFinalise()) return; S.modal = modalRateGapOne(t.getAttribute("data-id")); render(); return; }   /* 6.9.731 */
     if (act === "reprice-one") {
       if (!roleIs("admin")) { toast("Re-pricing a delivery is the owner\u2019s."); return; }
       var _r1 = (S.data.challans || []).filter(function (x) { return x.id === id; })[0];
       if (!_r1) return;
+      var _r1g = rateGapRows().filter(function (x) { return x.c.id === _r1.id; })[0];
+      if (_r1g && !(_r1g.diff > 0)) { toast("The lump discount on this delivery already covers the 0% lines - re-pricing would give the discount twice. Nothing changed."); return; }   /* 6.9.731 */
+      if (_r1g && _r1g.lump > 0) { toast("This delivery carries a lump discount - re-pricing its lines would take off too much. Give the credit shown on Details instead. Nothing changed."); return; }
       repriceOffer([{ client: _r1.customerName, brand: "", pct: 0 }], "", true, _r1.id);   /* 6.9.729 - "Do it now" / "Re-price" on a delivery means that delivery */
       return;
     }
