@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.722";
+  var APP_VERSION = "6.9.723";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -30751,7 +30751,7 @@ function viewCatalogue() {
     }).sort(function (a, b) { return String(a.createdAt).localeCompare(String(b.createdAt)); });
     if (!list.length) return "";
     var tot = list.reduce(function (a, r) { return a + returnNet(r); }, 0);
-    return '<div class="card" style="border-color:#fdba74;background:#fffbeb">' +
+    return '<div class="card" id="rw_card" style="border-color:#fdba74;background:#fffbeb">' +
       '<h3 style="margin:0 0 2px;font-size:13px">' + list.length + ' return' +
       (list.length === 1 ? '' : 's') + ' raised, not yet back in the godown</h3>' +
       '<div class="meta" style="color:#92400e;margin-bottom:6px">' + money(tot) + ' in all. ' +
@@ -30771,6 +30771,54 @@ function viewCatalogue() {
           '</div>';
       }).join("") +
       (list.length > 10 ? '<div class="meta" style="margin-top:6px">and ' + (list.length - 10) + ' more.</div>' : "") +
+      '</div>';
+  }
+
+  /* ===== 6.9.723 - MONEY STILL WAITING, ON TOP OF EVERY SCREEN  (11 Oct 2026) =====
+     HIS WORDS, over HISAB's "Still waiting" (16 deliveries, Rs 3,23,992 gone out with no signed
+     paper back, the oldest 15 days) and "3 returns raised, not yet back in the godown" (Rs 3,19,018):
+     "show these warning on top everywhere, as they are not visible without scrolling down, delaying
+     will be huge money loss for me".
+     The same two lists HISAB draws (hisabWaitingCard / retWaitingCard - same filters, so the figures
+     always agree) are summed into one short band under the "waiting to be passed" band, on every
+     screen, for every role that works with deliveries or money. Red when the oldest has waited 3 days
+     or more, amber before that. "See them" opens HISAB at that list. Nothing is drawn when nothing waits. */
+  function mwPaperList() {
+    return dedupeChallans(S.data.challans || []).filter(function (c) {
+      return isMineClient(c.customerName) && String(c.status || "") === "Dispatched" && !chProofAny(c).has;
+    });
+  }
+  function mwRetList() {
+    return (S.data.returns || []).filter(function (r) {
+      var st = String(r.status || "").trim().toLowerCase();
+      return st !== "received" && st !== "cancelled";
+    });
+  }
+  function mwOldest(list) {
+    var d = 0;
+    list.forEach(function (x) { var a = -daysTo(String(x.createdAt || "").slice(0, 10)); if (isFinite(a) && a > d) d = a; });
+    return d;
+  }
+  function moneyWaitStrip() {
+    if (!roleAny(["admin", "accounts", "sales", "godown"])) return "";
+    var pap = [], ret = [];
+    try { pap = mwPaperList(); } catch (e) { pap = []; }
+    try { ret = mwRetList(); } catch (e) { ret = []; }
+    if (!pap.length && !ret.length) return "";
+    var row = function (n, val, words, old, go) {
+      var bad = old >= 3, col = bad ? '#991b1b' : '#92400e';
+      return '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 0">' +
+        '<span style="display:inline-block;min-width:34px;text-align:center;padding:3px 8px;border-radius:8px;background:' + (bad ? '#b91c1c' : '#b45309') + ';color:#fff;font-weight:800;font-size:15px">' + n + '</span>' +
+        '<span style="flex:1 1 220px;min-width:0;color:' + col + ';font-size:13.5px;line-height:1.4"><b>' + money(Math.round(val)) + '</b> ' + words +
+          (old > 0 ? ' &middot; oldest <b>' + old + ' day' + (old === 1 ? '' : 's') + '</b>' : '') + '</span>' +
+        '<button class="btn sm" style="min-height:44px;background:' + (bad ? '#b91c1c' : '#b45309') + ';border-color:' + (bad ? '#b91c1c' : '#b45309') + '" data-act="mw-go" data-to="' + go + '">See them &rarr;</button></div>';
+    };
+    var pv = pap.reduce(function (a, c) { return a + chValue(c); }, 0), rv = ret.reduce(function (a, r) { return a + returnNet(r); }, 0);
+    var po = mwOldest(pap), ro = mwOldest(ret), bad = po >= 3 || ro >= 3;
+    return '<div class="card" style="border:2px solid ' + (bad ? '#dc2626' : '#fbbf24') + ';background:' + (bad ? '#fef2f2' : '#fffbeb') + ';padding-top:8px;padding-bottom:8px">' +
+      '<div style="font-weight:800;font-size:14px;color:' + (bad ? '#991b1b' : '#92400e') + ';margin-bottom:2px">&#9888; Money still waiting &mdash; not on any account yet</div>' +
+      (pap.length ? row(pap.length, pv, (pap.length === 1 ? 'delivery' : 'deliveries') + ' gone out, <b>no signed paper back</b>', po, "hw_card") : '') +
+      (ret.length ? row(ret.length, rv, (ret.length === 1 ? 'return' : 'returns') + ' raised, <b>not back in the godown</b>', ro, "rw_card") : '') +
       '</div>';
   }
   function hisabWaitingCard() {
@@ -30807,7 +30855,7 @@ function viewCatalogue() {
           (list.length - 10) + ' more</div>' : '') + '</div></div>';
     };
 
-    return '<div class="card" style="border-color:#cbd5e1"><h3 style="margin:0 0 3px">Still waiting</h3>' +
+    return '<div class="card" id="hw_card" style="border-color:#cbd5e1"><h3 style="margin:0 0 3px">Still waiting</h3>' +
       '<div class="meta" style="font-size:12.5px;margin-bottom:9px">Deliveries that have not finished their ' +
       'journey. None of this money is in the account below yet &mdash; HISAB counts a delivery only once its ' +
       'receipt is confirmed. Tap one to open that client.</div>' +
@@ -50876,7 +50924,8 @@ function viewCatalogue() {
        room for it. It draws nothing when nothing is waiting. */
     var _appr = ""; try { _appr = apprStrip(); } catch (eAp) { _appr = ""; }
     var _rst = ""; try { _rst = restartCard(); } catch (eRs) { _rst = ""; }   /* 6.9.631 */
-    h += '<main>' + _rst + _appr + body +
+    var _mw = ""; try { _mw = moneyWaitStrip(); } catch (eMw) { _mw = ""; }   /* 6.9.723 */
+    h += '<main>' + _rst + _appr + _mw + body +
       '<div class="foot-note">Energy World Team <span data-act="crash-log" style="cursor:pointer;border-bottom:1px dotted #cbd5e1;display:inline-block;padding:13px 6px;margin:-13px 0" title="View crash log">v' + APP_VERSION + '</span> &middot; data lives in your Google Sheet</div></main>';
 
     h += '</div>';
@@ -51995,6 +52044,13 @@ function viewCatalogue() {
       chQueueEnter("hisab"); return;
     }
     if (act === "tab") { navGo(t.getAttribute("data-tab")); return; }
+    if (act === "mw-go") {   /* 6.9.723 - HISAB, at the list */
+      var _mto = t.getAttribute("data-to") || "hw_card";
+      if (!roleAny(["admin", "accounts", "sales"])) { navGo(_mto === "rw_card" ? "returns" : "challans"); return; }   /* the godown has no HISAB */
+      navGo("billing");
+      setTimeout(function () { var e2 = document.getElementById(_mto); if (e2) e2.scrollIntoView({ block: "start", behavior: "smooth" }); }, 120);
+      return;
+    }
     if (act === "disc-jump") {
       /* v6.9.291 - the tab action clears S.q, which is the very thing the Discounts screen
          filters on, so this does not go through it. Set the tab and the filter together. */
