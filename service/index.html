@@ -349,7 +349,47 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
    Nothing here deletes anything, ever. A visit is a row added.
    ========================================================================== */
 
-  var APP_VERSION = "2.6.0";
+  var APP_VERSION = "2.7.0";
+  /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
+     HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
+     phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
+     turning pictures, logos and PDFs back, so every screen - including the thousands of colours written inline
+     over the years - changes at once and nothing can be left white-on-white. Red stays red, green stays green.
+     Changing it touches no data. */
+  (function () {
+    var K = "ewTheme";
+    function ewtGet() { try { var v = localStorage.getItem(K); return v === "light" || v === "dark" ? v : "auto"; } catch (e) { return "auto"; } }
+    function ewtOs() { try { return !!(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches); } catch (e) { return false; } }
+    function ewtDark() { var m = ewtGet(); return m === "dark" || (m === "auto" && ewtOs()); }
+    function ewtApply() {
+      var r = document.documentElement; if (!r) return;
+      r.setAttribute("data-ewdark", ewtDark() ? "1" : "0");
+      try { var mt = document.querySelector('meta[name="theme-color"]'); if (mt) { if (!mt.getAttribute("data-light")) mt.setAttribute("data-light", mt.getAttribute("content") || ""); mt.setAttribute("content", ewtDark() ? "#11161D" : mt.getAttribute("data-light")); } } catch (e) { }
+    }
+    try {
+      var st = document.createElement("style");
+      st.textContent = 'html{background:#fff}' +
+        'html[data-ewdark="1"]{filter:invert(.92) hue-rotate(180deg)}' +
+        'html[data-ewdark="1"] .top{filter:invert(1) hue-rotate(180deg)}' +   /* the navy bar stays navy, as on the card */
+        'html[data-ewdark="1"] img,html[data-ewdark="1"] video,html[data-ewdark="1"] canvas,html[data-ewdark="1"] iframe,html[data-ewdark="1"] embed,html[data-ewdark="1"] object,html[data-ewdark="1"] [data-noinvert]{filter:invert(1) hue-rotate(180deg)}' +
+        '.ewthm{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:44px;min-width:44px;padding:0 14px;border:1px solid #DCE3EA;border-radius:10px;background:#fff;color:#1F3A5F;font:inherit;font-size:14px;font-weight:700;cursor:pointer}';
+      (document.head || document.documentElement).appendChild(st);
+    } catch (e) { }
+    ewtApply();
+    try { var mq = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)"); if (mq) { if (mq.addEventListener) mq.addEventListener("change", ewtApply); else if (mq.addListener) mq.addListener(ewtApply); } } catch (e) { }
+    function ewtLabel() { var m = ewtGet(); return "&#9681; Theme: " + (m === "auto" ? "Auto (as the phone)" : m === "dark" ? "Dark" : "Light"); }
+    window.ewTheme = {
+      get: ewtGet, isDark: ewtDark, label: ewtLabel,
+      set: function (m) { try { localStorage.setItem(K, m); } catch (e) { } ewtApply(); },
+      next: function (btn) {
+        var m = ewtGet(), n = m === "auto" ? "light" : m === "light" ? "dark" : "auto";
+        window.ewTheme.set(n);
+        if (btn) btn.innerHTML = ewtLabel();
+      },
+      button: function () { return '<button type="button" class="ewthm" onclick="ewTheme.next(this)">' + ewtLabel() + '</button>'; }
+    };
+  })();
+
   window.__ewCodeSrc = function () { return S.data; };   /* 2.6.0 - the book the numbers are read from */
   /* ==EW-CODES== 11 Oct 2026 - HIS NUMBER BESIDE EVERY NAME.
      HIS WORDS: "give every lead a serial no as code like LD001 ... client CL001 ... plumber PL001, architect
@@ -363,44 +403,44 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
   (function () {
     var MAP = null, KEY = "", pend = [], sched = false;
     var SKIP = { SCRIPT: 1, STYLE: 1, TEXTAREA: 1, OPTION: 1, SELECT: 1, INPUT: 1, TITLE: 1, NOSCRIPT: 1, DATALIST: 1 };
-    function low(s) { return String(s == null ? "" : s).replace(/\s+/g, " ").trim().toLowerCase(); }
-    function data() { try { return window.__ewCodeSrc ? window.__ewCodeSrc() : null; } catch (e) { return null; } }
-    function build() {
-      var d = data(); if (!d) return MAP;
+    function ewcLow(s) { return String(s == null ? "" : s).replace(/\s+/g, " ").trim().toLowerCase(); }
+    function ewcData() { try { return window.__ewCodeSrc ? window.__ewCodeSrc() : null; } catch (e) { return null; } }
+    function ewcBuild() {
+      var d = ewcData(); if (!d) return MAP;
       var cl = d.clients || [], as = d.associates || [];
       var k = cl.length + ":" + as.length + ":" + cl.filter(function (c) { return c && c.code; }).length + ":" + as.filter(function (a) { return a && a.code; }).length;
       if (k === KEY && MAP) return MAP;
       KEY = k; var m = {}, bad = {};
-      function put(name, code) {
-        var n = low(name), c = String(code || "").trim(); if (!n || !c) return;
+      function ewcPut(name, code) {
+        var n = ewcLow(name), c = String(code || "").trim(); if (!n || !c) return;
         if (n.length < 5 && n.indexOf(" ") < 0) return;
         if (m[n] && m[n] !== c) bad[n] = 1; else m[n] = c;
       }
-      cl.forEach(function (c) { if (c) put(c.name, c.code); });
-      as.forEach(function (a) { if (a && !m[low(a.name)]) put(a.name, a.code); });   /* a client's number wins over his partner number */
+      cl.forEach(function (c) { if (c) ewcPut(c.name, c.code); });
+      as.forEach(function (a) { if (a && !m[ewcLow(a.name)]) ewcPut(a.name, a.code); });   /* a client's number wins over his partner number */
       Object.keys(bad).forEach(function (n) { delete m[n]; });
       MAP = Object.keys(m).length ? m : null;
       return MAP;
     }
-    function skipEl(el) {
+    function ewcSkip(el) {
       for (var e = el, i = 0; e && i < 12; e = e.parentElement, i++) {
-        if (SKIP[e.tagName] || e.isContentEditable || (e.hasAttribute && e.hasAttribute("data-nocode"))) return true;
+        if (SKIP[e.tagName] || e.isContentEditable || (e.hasAttribute && e.hasAttribute("ewcData-nocode"))) return true;
         if (e.classList && e.classList.contains("ewc")) return true;
       }
       return false;
     }
-    function tag(root, m) {
+    function ewcTag(root, m) {
       if (!root || !m) return;
-      if (root.nodeType === 3) { one(root, m); return; }
+      if (root.nodeType === 3) { ewcOne(root, m); return; }
       if (root.nodeType !== 1 || SKIP[root.tagName]) return;
       var w = document.createTreeWalker(root, 4, null), t, list = [];
       while ((t = w.nextNode())) list.push(t);
-      for (var i = 0; i < list.length; i++) one(list[i], m);
+      for (var i = 0; i < list.length; i++) ewcOne(list[i], m);
     }
-    function one(t, m) {
+    function ewcOne(t, m) {
       var v = t.nodeValue; if (!v || v.length > 80) return;
-      var code = m[low(v)]; if (!code) return;
-      var p = t.parentNode; if (!p || p.nodeType !== 1 || skipEl(p)) return;
+      var code = m[ewcLow(v)]; if (!code) return;
+      var p = t.parentNode; if (!p || p.nodeType !== 1 || ewcSkip(p)) return;
       var prev = t.previousSibling;
       while (prev && prev.nodeType === 3 && !prev.nodeValue.trim()) prev = prev.previousSibling;
       if (prev && prev.nodeType === 1 && prev.classList && (prev.classList.contains("ewc") || prev.classList.contains("code"))) return;
@@ -408,13 +448,13 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
       var s = document.createElement("span"); s.className = "ewc"; s.textContent = code;
       p.insertBefore(s, t);
     }
-    function flush() {
-      sched = false; var m = build(); var l = pend; pend = [];
+    function ewcFlush() {
+      sched = false; var m = ewcBuild(); var l = pend; pend = [];
       if (!m) return;
-      for (var i = 0; i < l.length; i++) { if (l[i].isConnected) tag(l[i], m); }
+      for (var i = 0; i < l.length; i++) { if (l[i].isConnected) ewcTag(l[i], m); }
     }
-    function kick(n) { pend.push(n); if (!sched) { sched = true; (window.requestAnimationFrame || setTimeout)(flush); } }
-    function start() {
+    function ewcKick(n) { pend.push(n); if (!sched) { sched = true; (window.requestAnimationFrame || setTimeout)(ewcFlush); } }
+    function ewcStart() {
       if (!document.body || !window.MutationObserver) return;
       try {
         var st = document.createElement("style");
@@ -424,15 +464,15 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
       new MutationObserver(function (recs) {
         for (var i = 0; i < recs.length; i++) {
           var a = recs[i].addedNodes;
-          for (var j = 0; j < a.length; j++) { var n = a[j]; if (n.nodeType === 1 && n.classList && n.classList.contains("ewc")) continue; kick(n); }
+          for (var j = 0; j < a.length; j++) { var n = a[j]; if (n.nodeType === 1 && n.classList && n.classList.contains("ewc")) continue; ewcKick(n); }
         }
       }).observe(document.body, { childList: true, subtree: true });
       /* the book arrives after the first paint: tag the whole page each time the numbers change */
       var last = "";
-      setInterval(function () { build(); if (MAP && KEY !== last) { last = KEY; kick(document.body); } }, 1500);
+      setInterval(function () { ewcBuild(); if (MAP && KEY !== last) { last = KEY; ewcKick(document.body); } }, 1500);
     }
-    (function wait() { if (document.body) start(); else setTimeout(wait, 50); })();
-    window.__ewCodes = { map: function () { return build(); }, tag: function (r) { tag(r || document.body, build()); } };
+    (function wait() { if (document.body) ewcStart(); else setTimeout(wait, 50); })();
+    window.__ewCodes = { map: function () { return ewcBuild(); }, ewcTag: function (r) { ewcTag(r || document.body, ewcBuild()); } };
   })();
 
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
@@ -5260,6 +5300,7 @@ textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;fon
       '<div class="acts col">' +
       '<button class="btn gry grow" data-act="refresh">Fetch the book again</button>' +
       '<a class="btn gry grow" href="' + CRM_URL + '">Open the CRM</a>' +
+      window.ewTheme.button() + ' ' +
       '<button class="btn red grow" data-act="signout">Sign out</button>' +
       '<button class="btn gry grow" data-act="close">Close</button></div>';
   }
