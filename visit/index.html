@@ -189,7 +189,7 @@ h3.sec{color:#1F3A5F}
       button: function () { return '<button type="button" class="ewthm" onclick="ewTheme.next(this)">' + ewtLabel() + '</button>'; }
     };
   })();
-  var APP_VERSION = "1.4.4";
+  var APP_VERSION = "1.4.5";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_vq_session", JRN = "ew_vq_journal_v1", CALLQ = "ew_vq_calls_v1", SNAPK = "ew_vq_snap_";
   var CAT_KEY = "ew_team_catalog", CAT_V = 2;   /* the CRM's own shelf copy of the price list - shared, same origin */
@@ -2026,10 +2026,11 @@ h3.sec{color:#1F3A5F}
   function pull(loud) {
     if (_pulling) return _pulling;
     if (loud) toast("Updating…");
-    _pulling = flush().then(function () { return getBook(FAST); }).then(function (r) {
+    _pulling = flush().then(function () { return getBook(FAST.concat(REST)); }).then(function (r) {   /* 1.4.5 - one call (p750) */
       if (r && r.ok === false && /pin|locked|not allowed|blocked|removed/i.test(String(r.error || ""))) { signOut(String(r.error)); return; }
       mergeBook(r, FAST); S.pullAt = Date.now(); render(); snapSave();
       if (!S.logoAsk) { S.logoAsk = 1; try { logosReady().then(function () { if (S.tab === "visit" || S.sheet) { if (S.sl && siteById(S.sl.id)) S.sheet = svLogSheet(siteById(S.sl.id)); render(); } }).catch(function () { }); } catch (e) { } }   /* 1.2.0 */
+      if (REST.every(function (k) { return r && Array.isArray(r[k]); })) { mergeBook(r, REST); render(); snapSave(); return; }   /* 1.4.5 - it came in the one call */
       return getBook(REST).then(function (r2) { mergeBook(r2, REST); render(); snapSave(); }).catch(function () { });
     }).catch(function (e) { if (loud) toast("Could not update: " + ((e && e.message) || "no signal")); })
       .then(function () { _pulling = null; });
