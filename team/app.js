@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.756";
+  var APP_VERSION = "6.9.757";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -19009,6 +19009,10 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       }
 
       h += '<div style="margin-top:10px;border-top:1px solid #99f6e4;padding-top:8px">';
+
+        var _nof = (z.items || []).filter(function (i) { return (Number(qzRq(i)[""]) || 0) > 0; }).length;   /* 6.9.757 */
+        if (_nof && (z.items || []).length) h += '<div class="meta" style="color:#92400e;margin-bottom:4px"><b>' + _nof + ' line' + (_nof === 1 ? '' : 's') +
+          ' on this quote ' + (_nof === 1 ? 'has' : 'have') + ' no room yet.</b> Press <b>+ Bathroom</b> (or open a room), then use <b>+1 here</b> on the lines below — or the <b>Room</b> button on a line.</div>';
       if (!qzSel) {
         h += '<div class="meta">Press <b>+ Bathroom</b> and everything you add next is filed under it. ' +
           'Nothing here is compulsory - a quote with no rooms prices and prints exactly as before.</div>';
@@ -20633,6 +20637,41 @@ function viewCatalogue() {
           y += 9.4;
         }
       });
+
+      /* ---- 6.9.757 - ROOM-WISE SUMMARY: every room, its items and its amount, then all rooms together ---- */
+      if (grouped && groups.length > 1) {
+        var smH = 12 + groups.length * 6.6 + 9;
+        if (y + smH > 276) { doc.addPage(); y = 22; }
+        y += 3;
+        var smTop = y;
+        fill([246, 250, 249]); doc.roundedRect(L, smTop, Rt - L, smH, 2, 2, "F");
+        doc.setDrawColor(214, 232, 228); doc.setLineWidth(0.3); doc.roundedRect(L, smTop, Rt - L, smH, 2, 2, "S"); doc.setLineWidth(0.2);
+        fill(MINT); doc.rect(L, smTop, 1.4, smH, "F");
+        col(DEEP); F("bold"); doc.setFontSize(10);
+        doc.text("ROOM-WISE SUMMARY", L + 6, smTop + 6.4);
+        col(GREY); F("bold"); doc.setFontSize(8);
+        doc.text("ITEMS", X.dprice, smTop + 6.4, { align: "right" });
+        doc.text("AMOUNT", X.amt, smTop + 6.4, { align: "right" });
+        var sy0 = smTop + 12.4, smAll = 0, smN = 0;
+        groups.forEach(function (g, k) {
+          var gt = g.rows.reduce(function (a2, r) { return a2 + (r.optional ? 0 : r.total); }, 0);
+          var gq = g.rows.filter(function (r) { return !r.optional; }).reduce(function (a2, r) { return a2 + (Number(r.qty) || 0); }, 0);
+          smAll += gt; smN += gq;
+          if (k % 2 === 0) { fill([255, 255, 255]); doc.rect(L + 3, sy0 - 4.4, Rt - L - 5, 6.6, "F"); }
+          col(GREY); F("normal"); doc.setFontSize(9); doc.text(String(k + 1) + ".", L + 6, sy0);
+          col(INK); F("bold"); doc.setFontSize(9.5);
+          doc.text(fitCell(doc, F, g.room || "Not assigned to a room", X.dis - L - 14, 1, "bold", 9.5)[0], L + 12, sy0);
+          col(GREY); F("normal"); doc.setFontSize(9); doc.text(qShow(gq) + (gq === 1 ? " pc" : " pcs"), X.dprice, sy0, { align: "right" });
+          col(INK); F("bold"); doc.setFontSize(10); doc.text(R(gt), X.amt, sy0, { align: "right" });
+          sy0 += 6.6;
+        });
+        doc.setDrawColor(13, 118, 108); doc.setLineWidth(0.5); doc.line(L + 4, sy0 - 3.6, Rt - 2, sy0 - 3.6); doc.setLineWidth(0.2);
+        col(DEEP); F("bold"); doc.setFontSize(10.5);
+        doc.text("TOTAL OF ALL ROOMS" + (showGst ? "  (before GST)" : ""), L + 12, sy0 + 1.6);
+        doc.setFontSize(9); col(GREY); doc.text(qShow(smN) + " pcs", X.dprice, sy0 + 1.6, { align: "right" });
+        col(DEEP); F("bold"); doc.setFontSize(11.5); doc.text(R(smAll), X.amt, sy0 + 1.6, { align: "right" });
+        y = smTop + smH + 4;
+      }
 
       /* ---- sub-total. Either "{ GST as Actual }" (default) or a spelled-out 18% GST block. ----
          The box HEIGHT is known up-front per branch, so we advance y to a single deterministic
@@ -48595,10 +48634,19 @@ function viewCatalogue() {
              bathroom was open */
           tableQcls: "qz-qt", tableMinus: "qz-qtm",
           /* the picked table's second line: code, price, brand, and the rooms the line is in */
-          lineNote: function (i) {
+          lineNote: function (i, z) {
+            /* 6.9.757 - the room of every line, and a way to file it, right here on the Products step */
+            var free = Number(qzRq(i)[""]) || 0, open = (z && z.room) || "";
             return '<span style="font-size:12px;color:#94a3b8">' + esc(i.code) + ' · ' + money(i.price) + (i.brand ? ' · ' + esc(i.brand) : '') +
               (i.optional ? ' · <span style="color:#b45309">option</span>' : '') + '</span>' +
-              (qzRoomsOf(i).length ? '<br><span style="font-size:12px;color:#0f766e">' + esc(qzRoomLabel(i)) + '</span>' : '');
+              '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:4px;font-size:12px">' +
+              (qzRoomsOf(i).length ? '<span style="color:#0f766e;font-weight:600">' + esc(qzRoomLabel(i)) + '</span>'
+                                   : '<span style="color:#b45309;font-weight:600">No room set</span>') +
+              (open && free > 0
+                ? '<button class="btn sm" data-act="qz-room-move" data-code="' + esc(i.code) + '" data-n="1" style="min-height:44px;font-size:12px">+1 here (' + esc(open) + ')</button>' +
+                  (free > 1 ? '<button class="btn sm ghost" data-act="qz-room-move" data-code="' + esc(i.code) + '" data-n="all" style="min-height:44px;font-size:12px">All ' + esc(qShow(free)) + ' here</button>' : '')
+                : '') +
+              '<button class="btn sm ghost" data-act="qz-room-edit" data-code="' + esc(i.code) + '" style="min-height:44px;font-size:12px">Room</button></div>';
           },
           /* the preset discount on the chip; amber on the open (teal) chip, orange on a white one -
              measured on the first render: orange on teal was the one thing on the row hard to read */
@@ -57882,6 +57930,17 @@ function viewCatalogue() {
       qzRoomAdd(rItem, S.qz.room, Number(t.getAttribute("data-d")) || 0);
       /* a line that has run out everywhere leaves the quote entirely */
       if (!Number(rItem.qty)) S.qz.items = (S.qz.items || []).filter(function (x) { return x.code !== rc; });
+      keepScroll = true; render(); return;
+    }
+    /* 6.9.757 - pieces of a line already on the quote, from "no room" into the room that is open */
+    if (act === "qz-room-move") {
+      var mvc = t.getAttribute("data-code"), mvIt = (S.qz.items || []).filter(function (x) { return x.code === mvc; })[0];
+      if (!mvIt || !S.qz.room) return;
+      var mvFree = Number(qzRq(mvIt)[""]) || 0;
+      var mvN = t.getAttribute("data-n") === "all" ? mvFree : Math.min(1, mvFree);
+      if (!(mvN > 0)) return;
+      qzRoomAdd(mvIt, "", -mvN); qzRoomAdd(mvIt, S.qz.room, mvN);
+      toast(qShow(mvN) + " × " + (descLines(mvIt.desc).title || mvIt.code) + " → " + S.qz.room);
       keepScroll = true; render(); return;
     }
     if (act === "qz-room-edit") {
