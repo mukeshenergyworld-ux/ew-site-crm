@@ -421,7 +421,7 @@ function ewmBuild(n, pre) {
    Nothing here deletes anything, ever. A visit is a row added.
    ========================================================================== */
 
-  var APP_VERSION = "2.9.0";
+  var APP_VERSION = "2.9.1";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -5674,7 +5674,7 @@ function ewmBuild(n, pre) {
   function pull(loud) {
     if (_pulling) { if (loud) toast("Already fetching…"); return _pulling; }
     S.busy = true; if (loud) render();
-    _pulling = getBook(KEEP_FAST).then(function (r) {
+    _pulling = getBook((loud || restStale()) ? KEEP_FAST.concat(KEEP_REST) : KEEP_FAST).then(function (r) {   /* 2.9.1 - one call (p749) */
       if (!usableBook(r)) {
         S.busy = false; _pulling = null;
         toast(bookSay(r)); render(); return false;
