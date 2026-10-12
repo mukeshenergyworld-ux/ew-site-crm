@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.761";
+  var APP_VERSION = "6.9.762";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -19982,11 +19982,14 @@ function viewCatalogue() {
        is crisp. Catalogue photos stay at =w200 / 300 - they sit in a 10mm box and the smaller
        fetch keeps on-screen data light on 4G. */
     var raw = url;
-    url = driveImg(url, trim ? 700 : 200);
+    /* 6.9.762 - trim "prod": a product photo for the quote - white border trimmed, 400 px fetched, 360 px kept */
+    var prod = trim === "prod";
+    url = driveImg(url, prod ? 400 : (trim ? 700 : 200));
     if (!url) return Promise.resolve(null);
     /* v6.9.502 - and the stamp, so the cap evicts the ones he stopped quoting rather than
        whichever happened to be added last. */
-    if (PIC_CACHE[url] !== undefined) { PIC_USED[url] = Date.now(); return Promise.resolve(PIC_CACHE[url]); }
+    var ck = prod ? "P|" + url : url;   /* 6.9.762 - the trimmed quote copy is cached apart from the plain thumbnail */
+    if (PIC_CACHE[ck] !== undefined) { PIC_USED[ck] = Date.now(); return Promise.resolve(PIC_CACHE[ck]); }
     /* v6.9.488 - A MISS IS NEVER CACHED. The note below used to say the miss is not cached and
        that was only true of the timeout: both the not-ok branch and the catch wrote null into
        PIC_CACHE, and the race's null resolved while `fetched` kept running underneath and cached
@@ -19995,22 +19998,22 @@ function viewCatalogue() {
        picture for the rest of the session. Only a real picture is remembered now. */
     var once = function () {
       /* 6.9.645 - the phone asks Google itself first; the server only when that fails */
-      return picDirect(url, trim ? 600 : 300, trim ? 0.85 : 0.75, trim).then(function (d) {
+      var MX = prod ? 360 : (trim ? 600 : 300), QQ = prod ? 0.8 : (trim ? 0.85 : 0.75);
+      return picDirect(url, MX, QQ, !!trim).then(function (d) {
         if (d) return d;
         return api("imgB64", { url: url }).then(function (r) {
           if (!r || !r.ok) return null;
-          return shrinkPic("data:" + r.mime + ";base64," + r.b64, trim ? 600 : 300, trim ? 0.85 : 0.75, trim);
+          return shrinkPic("data:" + r.mime + ";base64," + r.b64, MX, QQ, !!trim);
         });
       }).then(function (p) {
         /* v6.9.488 - hits only. v6.9.502 - and it survives the session now. */
-        if (p && p.src) { PIC_CACHE[url] = p.src; PIC_USED[url] = Date.now(); savePicCacheSoon(); }
+        if (p && p.src) { PIC_CACHE[ck] = p.src; PIC_USED[ck] = Date.now(); savePicCacheSoon(); }
         var dim = p ? { w: p.w, h: p.h } : null;
         /* Store the real pixel dimensions under BOTH the fetched (=w700) key and the ORIGINAL
            url. logosReady() and the quote table look dims up by the original url; keying only
            by the transformed url made every lookup miss and fall back to a fixed {100,40},
            which squashed every logo to the box aspect and stretched the wide ones tall. */
-        PIC_DIM[url] = dim;
-        PIC_DIM[raw] = dim;
+        if (!prod) { PIC_DIM[url] = dim; PIC_DIM[raw] = dim; }   /* 6.9.762 - the quote reads its own picture's size */
         return (p && p.src) || null;
       }).catch(function () { return null; });                /* v6.9.488 - a miss is not cached */
     };
@@ -20128,7 +20131,7 @@ function viewCatalogue() {
     return (i && i.pic) || "";
   }
   function picsForQuote(items) {
-    return picsForList(items, function (i) { return qPicNow(i); }, picName);
+    return picsForList(items, function (i) { return qPicNow(i); }, picName, function (u) { return loadPic(u, "prod"); });   /* 6.9.762 */
   }
   /* v6.9.505 - said in one place, so three documents phrase it the same way */
   function picMissSay(miss) {
@@ -20526,7 +20529,7 @@ function viewCatalogue() {
       /* 6.9.673 - re-spaced for 9-10 pt figures (they were 6.2-6.6 pt): every money column is wide
          enough for a lakh figure at its new size, and the description gives up the room. Checked
          by drawing a lakh figure in every column and looking at it (audit/print/prints.js). */
-      var X = { n: L + 1, pic: L + 4.5, item: L + 18, unit: 117, qty: 127, price: 146, dis: 158, dprice: 177, amt: Rt - 1 };
+      var X = { n: L + 1, pic: L + 4.5, item: L + 21, unit: 117, qty: 127, price: 146, dis: 158, dprice: 177, amt: Rt - 1 };   /* 6.9.762 - picture column 3 mm wider */
       var UNIT_W = 15;                       /* "Per Set", "Per 3 Mtr" at 9pt */
       var DESC_W = X.unit - UNIT_W - X.item - 2;
       var head = function () {
@@ -20566,7 +20569,7 @@ function viewCatalogue() {
         var bBlocks = _feat ? [fitCell(doc, F, _feat, BUL_W, 3, "italic", 7.5)] : [];
         var bCount = bBlocks.reduce(function (a, x) { return a + x.length; }, 0);
         var hasB = bCount ? 1 : 0;
-        var hgt = Math.max(r.pic ? 11.5 : 8.5, 6 + (tLines.length - 1) * 3.7 + (hasB ? 0.6 : 0) + bCount * 3.1);   /* 6.9.760 - tighter */
+        var hgt = Math.max(r.pic ? 13 : 8.5, 6 + (tLines.length - 1) * 3.7 + (hasB ? 0.6 : 0) + bCount * 3.1);   /* 6.9.760 - tighter */
         /* Page-break FIRST, then derive mid from the post-break y. If mid were computed
            before the break, a row that wraps to a new page would draw its serial # and
            figures at the old bottom-of-page y (off the printable area) while the
@@ -20589,8 +20592,10 @@ function viewCatalogue() {
           try {
             /* 6.9.759 - the box IS the cell: from the serial column to the description, and the row's own
                height less a margin, so a picture can never reach the row above or below */
-            var BOXW = X.item - X.pic - 2.5, BOXH = Math.min(14, hgt - 1.6);
-            var dm = (r.dim && r.dim.w && r.dim.h) ? r.dim : { w: BOXW, h: BOXH };
+            var BOXW = X.item - X.pic - 2.5, BOXH = Math.min(17, hgt - 1.4);
+            var dm = null;
+            try { var _ip = doc.getImageProperties(r.pic); if (_ip && _ip.width && _ip.height) dm = { w: _ip.width, h: _ip.height }; } catch (e3) { }   /* 6.9.762 - the picture's own size */
+            if (!dm) dm = (r.dim && r.dim.w && r.dim.h) ? r.dim : { w: BOXW, h: BOXH };
             var psc = Math.min(BOXW / dm.w, BOXH / dm.h);
             var pw = dm.w * psc, ph = dm.h * psc;
             /* Centre the photo in the FULL row height, not just the top 9mm box. A tall row
