@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.750";
+  var APP_VERSION = "6.9.751";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -9637,47 +9637,56 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       if (String(a && a.action || "") !== "inst:step") return;
       var d = {}; try { d = JSON.parse(a.detail || "{}") || {}; } catch (e) { return; }
       if (!d.chId || !/^(install|handover)$/.test(d.step)) return;
-      var x = m[d.chId] || (m[d.chId] = {}), cur = x[d.step];
-      if (!cur || String(a.createdAt || "") >= String(cur.at || "")) x[d.step] = { id: d.id || a.id, date: String(d.date || ""), by: d.by || a.actor || "", at: String(a.createdAt || "") };
+      var x = m[d.chId] || (m[d.chId] = { install: {}, handover: {} }), box = x[d.step];
+      var rec = { id: d.id || a.id, date: String(d.date || ""), by: d.by || a.actor || "", at: String(a.createdAt || "") };
+      (Array.isArray(d.lines) && d.lines.length ? d.lines.map(String) : ["*"]).forEach(function (k) { if (!box[k] || rec.at >= String(box[k].at || "")) box[k] = rec; });
     });
     return m;
   }
+  function ewiShortCrm(i) {
+    var d = String((i && (i.desc || i.code)) || "").replace(/\s+/g, " ").trim();
+    var cut = d.search(/\s[—–-]\s|[☀-➿]|:|\{|\(|\s\|\s/);
+    if (cut > 6) d = d.slice(0, cut).trim();
+    return d.length > 46 ? d.slice(0, 44).trim() + "…" : d;
+  }
+  /* one row per product */
   function ewiCrmRows() {
     var steps = ewiStepsCrm(), aud = svcAud().comm, out = [];
     (S.data.challans || []).forEach(function (c) {
-      if (isCancelled && isCancelled("challans", c.id)) return;
-      var raw = chItems(c), st = steps[c.id] || {}, stamps = aud[c.id] || {};
-      var ls = []; raw.forEach(function (i, idx) { if (commNeed(i)) ls.push({ i: i, idx: idx, st: (i.comm && i.comm.date) ? { date: i.comm.date, at: "crm" } : (stamps[String(idx)] || null) }); });
-      if (!ls.length) return;
-      var stamped = ls.filter(function (l) { return l.st; }), comm = stamped.length === ls.length;
-      var cds = stamped.filter(function (l) { return !l.st.skip; }).map(function (l) { return String(l.st.date || "").slice(0, 10); }).filter(Boolean).sort();
-      var commDate = comm ? (cds[cds.length - 1] || "") : "", inst = st.install ? st.install.date : (cds[0] || ""), hand = st.handover ? st.handover.date : "";
-      var legacy = !st.install && !st.handover && comm && stamped.every(function (l) { return l.st.at === "crm" || !l.st.at || String(l.st.at || "") < EWI_LAUNCH; });
-      if (legacy) { hand = commDate; inst = inst || commDate; }
-      out.push({ c: c, ls: ls, inst: inst, comm: comm, commDate: commDate, hand: hand, st: st, stage: !inst ? "install" : !comm ? "comm" : !hand ? "hand" : "done" });
+      if (isCancelled("challans", c.id)) return;
+      var st = steps[c.id] || { install: {}, handover: {} }, stamps = aud[c.id] || {};
+      chItems(c).forEach(function (i, idx) {
+        if (!commNeed(i)) return;
+        var cs = (i.comm && i.comm.date) ? { date: i.comm.date, at: "crm" } : (stamps[String(idx)] || null);
+        if (cs && cs.skip) return;
+        var ins = st.install[String(idx)] || st.install["*"] || null, ho = st.handover[String(idx)] || st.handover["*"] || null;
+        var commDate = cs ? String(cs.date || "").slice(0, 10) : "", inst = ins ? ins.date : commDate, hand = ho ? ho.date : "";
+        if (!ins && !ho && cs && (cs.at === "crm" || !cs.at || String(cs.at) < EWI_LAUNCH)) { hand = commDate; inst = inst || commDate; }
+        out.push({ c: c, i: i, idx: idx, name: ewiShortCrm(i), inst: inst, comm: !!cs, commDate: commDate, hand: hand, ins: ins, ho: ho,
+                   stage: !inst ? "install" : !cs ? "comm" : !hand ? "hand" : "done" });
+      });
     });
     return out;
   }
   function ewiCrmCard() {
     var rows = ewiCrmRows(), n = { install: 0, comm: 0, hand: 0, done: 0 };
     rows.forEach(function (x) { n[x.stage]++; });
-    var open = rows.filter(function (x) { return x.stage !== "done"; }).sort(function (a, b) { return String(a.c.createdAt || "").localeCompare(String(b.c.createdAt || "")); });
     if (!rows.length) return "";
+    var open = rows.filter(function (x) { return x.stage !== "done"; }).sort(function (a, b) { return String(a.c.createdAt || "").localeCompare(String(b.c.createdAt || "")); });
     var d = function (v) { return v ? esc(fullDate(v)) : '<span style="color:#b45309">&mdash;</span>'; };
-    var pics = function (id, kind) { var p = id ? svcPics(kind, id) : []; return p.length ? ' <a href="' + esc(p[0].url) + '" target="_blank" rel="noopener" style="font-size:12px">' + p.length + ' photo' + (p.length === 1 ? '' : 's') + '</a>' : ''; };
-    var h = '<div class="card" style="border-color:#c7d2fe"><h3>Installation &amp; handover <span class="pill soon">' + (n.install + n.comm + n.hand) + ' open</span></h3>' +
-      '<div class="meta" style="margin:0 0 6px">Marked on the Service app by Manoj or the office: <b>' + n.install + '</b> to install &middot; <b>' + n.comm + '</b> to commission &middot; <b>' + n.hand + '</b> to hand over &middot; <b>' + n.done + '</b> handed over.</div>';
-    if (!open.length) return h + '<div class="empty">Every delivery is handed over.</div></div>';
+    var pics = function (rec, kind) { var p = rec ? svcPics(kind, rec.id) : []; return p.length ? ' <a href="' + esc(p[0].url) + '" target="_blank" rel="noopener" style="font-size:12px">photo</a>' : ''; };
+    var h = '<div class="card" style="border-color:#c7d2fe"><h3>Installation &amp; handover <span class="pill soon">' + (n.install + n.comm + n.hand) + ' products open</span></h3>' +
+      '<div class="meta" style="margin:0 0 6px">Marked product by product on the Service app by Manoj or the office: <b>' + n.install + '</b> to install &middot; <b>' + n.comm + '</b> to commission &middot; <b>' + n.hand + '</b> to hand over &middot; <b>' + n.done + '</b> handed over.</div>';
+    if (!open.length) return h + '<div class="empty">Every product is handed over.</div></div>';
     h += xlTable("svc-ewi", [
-      { k: "client", t: "CLIENT", w: "140px" }, { k: "no", t: "DELIVERY" }, { k: "what", t: "MACHINES" },
+      { k: "client", t: "CLIENT", w: "140px" }, { k: "no", t: "DELIVERY" }, { k: "what", t: "PRODUCT" }, { k: "qty", t: "QTY", n: 1, r: 1 },
       { k: "inst", t: "INSTALLED" }, { k: "comm", t: "COMMISSIONED" }, { k: "hand", t: "HANDED OVER" }
-    ], open.slice(0, 200).map(function (x) {
-      var what = x.ls.filter(function (l) { return !(l.st && l.st.skip); }).map(function (l) { return (l.i.brand ? l.i.brand + " " : "") + (l.i.desc || ""); }).join(", ");
-      return { v: { client: x.c.customerName || "", no: x.c.challanNo || "", what: what, inst: x.inst, comm: x.commDate, hand: x.hand }, cells: {
-        client: '<b>' + esc(x.c.customerName || "") + '</b>', no: esc(x.c.challanNo || ""), what: esc(what.slice(0, 90)),
-        inst: d(x.inst) + pics(x.st.install && x.st.install.id, "install"), comm: x.comm ? d(x.commDate) : d(""), hand: d(x.hand) + pics(x.st.handover && x.st.handover.id, "handover")
+    ], open.slice(0, 300).map(function (x) {
+      return { v: { client: x.c.customerName || "", no: x.c.challanNo || "", what: x.name, qty: Number(x.i.qty) || 1, inst: x.inst, comm: x.commDate, hand: x.hand }, cells: {
+        client: '<b>' + esc(x.c.customerName || "") + '</b>', no: esc(x.c.challanNo || ""), what: esc(x.name) + (x.i.brand ? ' <span class="meta">' + esc(x.i.brand) + '</span>' : ''), qty: esc(String(x.i.qty || 1)),
+        inst: d(x.inst) + pics(x.ins, "install"), comm: x.comm ? d(x.commDate) : d(""), hand: d(x.hand) + pics(x.ho, "handover")
       } };
-    }), "each delivery and its three steps") + '</div>';
+    }), "each product and its three steps") + '</div>';
     return h;
   }
   function commissioningSection() {
