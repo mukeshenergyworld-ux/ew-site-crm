@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.746";
+  var APP_VERSION = "6.9.747";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -11159,7 +11159,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
      Excludes accessory / net-price buckets, which are catalogue groups, not brands. */
   function followBrandList() {
     return S.data.brands
-      .filter(function (b) { return String(b.active).toUpperCase() !== "N" && isRealBrandName(b.brand); })
+      .filter(function (b) { return String(b.active).toUpperCase() !== "N" && isRealBrandName(b.brand) && isMainBrand(b.brand); })   /* p747 */
       .map(function (b) { return b.brand; })
       .sort(alpha);
   }
@@ -11483,6 +11483,16 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
   }
   function alphaBy(f) { return function (x, y) { return alpha(f(x), f(y)); }; }
 
+  /* ==MAIN-BRANDS== p747 12 Oct 2026 - his standard rule: only the main brands are offered anywhere except the
+     challan. The associated brands (Grundfos, IONCARE, DRP, SANITAAR, CPVC / DWC Pipes, Drain Chambers, Accessory,
+     Net Price Items...) are for the challan only. Whole-word on the name: "Huliot HT PRO" is Huliot. */
+  var MAIN_BRAND_KEYS = ["huliot", "heliroma", "fima", "toto", "oyster", "pentair", "adani", "geberit",
+    "green heat", "greenheat", "inair", "leo", "lunos", "mea", "stellar"];
+  function isMainBrand(b) {
+    var s = " " + String(b == null ? "" : b).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim() + " ";
+    for (var i = 0; i < MAIN_BRAND_KEYS.length; i++) if (s.indexOf(" " + MAIN_BRAND_KEYS[i] + " ") > -1) return true;
+    return false;
+  }
   var BRAND_GROUP_ORDER = ["HULIOT", "HELIROMA", "FIMA", "TOTO", "STELLAR", "GRUNDFOS",
     "PENTAIR", "GREEN HEAT", "GEBERIT", "INAIR", "OYSTER", "MEA", "IONCARE", "ADANI"];
   var BRAND_GROUP_RULES = [
@@ -11532,7 +11542,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
   }
   /* v6.9.300 - BRAND_GROUP_ORDER is still what decides which groups EXIST and how brands map
      into them; only the order they are SHOWN in is now alphabetical. */
-  function brandGroupList() { return brandGroupIndex().order.slice().sort(alpha); }
+  function brandGroupList() { return brandGroupIndex().order.filter(isMainBrand).sort(alpha); }   /* p747 main brands only */
   function groupMembers(g) { return brandGroupIndex().byGroup[g] || []; }
   /* A group is only as parked as its best member: won > live > lost > untouched, and
      "not required" shows only when EVERY sub-brand in the group is marked so. */
@@ -18868,7 +18878,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       ensurePickerCss();
       /* the client's preset discount stays on the chip: on THIS screen it is the thing that
          decides which brand to open. */
-      h += '<div class="chips">' + brandList().map(function (b) {
+      h += '<div class="chips">' + brandList().filter(isMainBrand).map(function (b) {   /* p747 */
         var d = clientDiscount(z.client, b);
         return '<button class="chip bchip" data-act="qz-brand" data-brand="' + esc(b) + '">' +
           brandDot(b) + esc(b) + '<b>' + brandProducts(b).length + '</b>' +
@@ -37058,7 +37068,7 @@ function viewCatalogue() {
        being printed on the Pitched line of every lead card as though a brand called Accessory had
        been pitched, which made the line useless for deciding who to call. Same test the brand
        board and the follow-up list have always used. */
-    function add(k, g) { if (!g || !isRealBrandName(g)) return; var b = box(k); if (!b.seen[g]) { b.seen[g] = 1; b.groups.push(g); } }
+    function add(k, g) { if (!g || !isRealBrandName(g) || !isMainBrand(g)) return; var b = box(k); if (!b.seen[g]) { b.seen[g] = 1; b.groups.push(g); } }
     var gm = clientGroupMap();
     Object.keys(gm).forEach(function (k) {
       var e = gm[k];
@@ -42515,7 +42525,7 @@ function viewCatalogue() {
       esc([c.area, c.location].filter(Boolean).join(", ")) + '<br>' + esc(c.mobile || "") + '</div></div>';
     h += '<div class="empty" style="text-align:left;padding:0 0 10px">Mark every brand as you go. <b>Quoted</b> is amber, <b>Won</b> green, <b>Lost</b> red with the brand that beat us. This is what the Brand leads screen reads.</div>';
     var won = 0, lost = 0, quoted = 0;
-    brandList().forEach(function (b) {
+    brandList().filter(isMainBrand).forEach(function (b) {   /* p747 */
       var p = clientPitch(cn, b);
       var st = (p && p.status) || "Not pitched";
       if (st === "Won") won++; else if (st === "Lost") lost++; else if (st === "Quoted" || st === "Negotiating") quoted++;
@@ -45590,7 +45600,7 @@ function viewCatalogue() {
         })) + (isG ? '' : '<div class="meta" style="font-size:13px;margin-top:8px"><b>Head count for food &amp; drink: ' + came + '</b> (confirmed' + (e.type === "trip" ? ', travelling' : ' or attended') + ') &middot; ' +
           m.inv.length + ' on the list' + (nOther ? ' incl. ' + nOther + ' other' + (nOther === 1 ? '' : 's') : '') + (declined ? ' &middot; ' + declined + ' declined' : '') + '</div>') : '<div class="empty">No guest yet.</div>') + '</div>';
     /* brands */
-    var brs = pevBrands(e.eid), bOpts = (S.data.brands || []).map(function (b) { return String(b.brand || "").trim(); }).filter(Boolean).sort();
+    var brs = pevBrands(e.eid), bOpts = (S.data.brands || []).map(function (b) { return String(b.brand || "").trim(); }).filter(isMainBrand).sort();
     var gnames = m.inv.map(function (i) { return i.partner; });
     h += '<div class="card"><h3 style="margin:0">Brands — contribution</h3>' +
       '<div class="meta" style="font-size:12.5px">Ask each brand for a share. The letter carries what this event’s guests bought of that brand in the last 12 months.</div>' +
@@ -45627,7 +45637,8 @@ function viewCatalogue() {
   }
   function modalPevBrand(eid, b) {
     b = b || {};
-    var bOpts = (S.data.brands || []).map(function (x) { return String(x.brand || "").trim(); }).filter(Boolean).sort();
+    var bOpts = (S.data.brands || []).map(function (x) { return String(x.brand || "").trim(); }).filter(isMainBrand).sort();
+    if (b.brand && bOpts.indexOf(b.brand) < 0) bOpts.push(b.brand);   /* p747: an old row keeps its brand */
     return '<h2>' + (b.bid ? 'Update ' + esc(b.brand) : 'Ask a brand') + '</h2>' +
       '<label>Brand</label><select id="pb_brand" style="min-height:44px">' + bOpts.map(function (o) { return '<option' + (o === b.brand ? ' selected' : '') + '>' + esc(o) + '</option>'; }).join("") + '</select>' +
       '<div class="grid2"><div><label>Asked ₹</label><input id="pb_ask" inputmode="numeric" value="' + esc(b.ask || "") + '"/></div><div><label>They get</label><input id="pb_gives" value="' + esc(b.gives || "") + '" placeholder="stall, 10-minute talk, logo on backdrop"/></div></div>' +
@@ -48526,7 +48537,7 @@ function viewCatalogue() {
     }
     /* v6.9.303 - "manage alphabatically everywhere". Sorted on a COPY - the sheet order is untouched. */
     var brands = (S.data.brands || []).filter(function (br) {
-      return String(br.active || "Y").toUpperCase() !== "N" && brandProducts(br.brand).length;
+      return String(br.active || "Y").toUpperCase() !== "N" && brandProducts(br.brand).length && (P.pre !== "qz" || isMainBrand(br.brand));   /* p747: the quote offers main brands; challan, return, delivery offer all */
     }).slice().sort(alphaBy(function (br) { return br.brand; }));
     /* v6.9.391 - gated on PRODUCTS, not on brands.length: a man with no brands set up and a
        man whose price list has not arrived need different sentences. */
@@ -52890,6 +52901,7 @@ function viewCatalogue() {
       ".pv-b{padding:6px 7px 8px}}";
     document.head.appendChild(s);
   }
+  var _noBookT = null;   /* p747b */
   function renderCore() {
     /* The band under the group chips has to describe the screen he is actually on.
        act "tab" follows the group already, but every in-screen jump - Open the installed
@@ -52914,11 +52926,20 @@ function viewCatalogue() {
        teamGet for the same connections. Four seconds later the boot is done and the line is
        idle, which is the right moment to fill a cache. quotePdf still calls logosReady()
        directly and still waits on it, so a PDF asked for sooner is not affected. */
-    if (!LOGO_PRE && S.data.logos && S.data.logos.length) {
+    if (!LOGO_PRE && S.data && S.data.logos && S.data.logos.length) {
       LOGO_PRE = 1;
       setTimeout(function () { try { preloadLogos(); } catch (e) { } }, 4000);
     }
     if (!S.pin && !S.tok) { renderLogin(); return; }
+    /* p747b 12 Oct 2026 - signed in but no book on this device yet: say so, never draw a view that reads it */
+    if (!S.data) {
+      document.getElementById("root").innerHTML = '<div style="max-width:520px;margin:12vh auto;padding:24px;text-align:center;font-size:16px;color:#0f172a">' +
+        '<div style="font-size:20px;font-weight:800;margin-bottom:8px">Loading your book&hellip;</div>' +
+        '<div style="color:#475569;margin-bottom:18px">Signed in as <b>' + esc(S.user || "") + '</b>. The book is on its way from the server; this screen opens by itself when it lands.</div>' +
+        '<button class="btn" data-act="book-retry" style="min-height:44px;padding:0 22px">Try again now</button></div>';
+      if (!_noBookT) _noBookT = setTimeout(function () { _noBookT = null; if (!S.data && (S.pin || S.tok)) { try { refresh(); } catch (e) { } } }, 6000);
+      return;
+    }
     var views = { statements: viewStatements, agent: viewAgent, search: viewSearch, dossier: viewDossier, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, complaints: viewComplaints, payments: viewPayments, paidout: viewPaidOut, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, catalogs: viewCatalogues, brandstory: viewBrandStories, clients: viewClients, crlog: viewCrLog, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, register: viewRegister, paylog: viewPayLog, freight: viewFreight, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, trouble: viewTrouble, changelog: viewChangeLog, booksweep: viewBookSweep, dups: viewDups, stock: viewStock, tally: viewTally, plcheck: viewPlCheck, pevents: viewPev, brief: viewBrief, review: viewReview, myday: viewMyDay };   /* 6.9.739 - myday */
     var tabs = TAB_TABS;
 
@@ -53679,6 +53700,7 @@ function viewCatalogue() {
     if (WRITE_ACTS[act] && !lockBtn(t)) { toast("Still saving \u2014 one moment."); return; }
 
     if (act === "login") { doLogin(); return; }
+    if (act === "book-retry") { toast("Fetching your book\u2026"); try { refresh(); } catch (e2) { } return; }   /* p747b */
     if (act === "pin-change") { renderPinChange(); return; }
     if (act === "bio-on") { bioEnrol(); return; }
     if (act === "bio-off") { bioForget(); return; }
