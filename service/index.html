@@ -320,11 +320,19 @@ var EWM_BRAND_PRODUCTS = {
   "LEO": ["Recirculation Pump", "Pressure Pump"],
   "Grundfos": ["Pressure Pump", "Recirculation Pump"]
 };
-function ewmCustom() { try { var c = JSON.parse(localStorage.getItem("ew_mach_custom") || "{}"); return { b: c.b || [], p: c.p || [] }; } catch (e) { return { b: [], p: [] }; } }
+function ewmCustom() {
+  var o = { b: [], p: [] };
+  try { var c = JSON.parse(localStorage.getItem("ew_mach_custom") || "{}"); o.b = c.b || []; o.p = c.p || []; } catch (e) { }
+  /* p752 - and what any phone typed (audit mach:custom), via the app's own hook */
+  try { var sh = window.ewmSharedGet ? window.ewmSharedGet() : null; if (sh) ["b", "p"].forEach(function (k) { (sh[k] || []).forEach(function (v) { if (o[k].map(function (x) { return x.toLowerCase(); }).indexOf(String(v).toLowerCase()) < 0) o[k].push(String(v)); }); }); } catch (e) { }
+  return o;
+}
 function ewmRemember(kind, v) {
   v = String(v || "").trim(); if (!v) return;
-  var c = ewmCustom(), l = c[kind]; if (l.map(function (x) { return x.toLowerCase(); }).indexOf(v.toLowerCase()) < 0) l.push(v);
+  var c = ewmCustom(), l = c[kind], isNew = l.map(function (x) { return x.toLowerCase(); }).indexOf(v.toLowerCase()) < 0;
+  if (isNew) l.push(v);
   try { localStorage.setItem("ew_mach_custom", JSON.stringify(c)); } catch (e) { }
+  if (isNew) { try { if (window.ewmSharedPut) window.ewmSharedPut(kind, v); } catch (e) { } }   /* p752 - for every phone */
 }
 function ewmEsc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
 function ewmToday() { var d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
@@ -421,7 +429,7 @@ function ewmBuild(n, pre) {
    Nothing here deletes anything, ever. A visit is a row added.
    ========================================================================== */
 
-  var APP_VERSION = "2.9.1";
+  var APP_VERSION = "2.9.2";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -2127,6 +2135,9 @@ function ewmBuild(n, pre) {
     }
 
 
+  /* p752 - the machine form's shared brands / products */
+  window.ewmSharedGet = function () { var o = { b: [], p: [] }; ((S.data && S.data.audit) || []).forEach(function (a) { if (String(a && a.action || "") !== "mach:custom") return; var d = {}; try { d = JSON.parse(a.detail || "{}") || {}; } catch (e) { return; } if ((d.kind === "b" || d.kind === "p") && String(d.name || "").trim()) o[d.kind].push(String(d.name).trim()); }); return o; };
+  window.ewmSharedPut = function (kind, v) { var row = { id: mintId("MC"), createdAt: new Date().toISOString(), actor: S.user || "", action: "mach:custom", target: String(v), detail: JSON.stringify({ kind: kind, name: String(v) }), ip: "" }; (S.data.audit = S.data.audit || []).push(row); saveRow("audit", row); };
   function mintId(p) {
     mintId.n = (mintId.n || 0) + 1;
     return String(p) + "-" + mintId.n + "-" + Date.now() + "-" + Math.floor(Math.random() * 1000000);
