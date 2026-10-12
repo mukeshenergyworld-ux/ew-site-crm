@@ -252,7 +252,7 @@ body{background:#F4F6F9}
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.131.1";
+  var APP_VERSION = "1.131.2";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -10303,7 +10303,7 @@ function discRowOn(client, brand, onYmd) {
 
     /* PART ONE - names, sites, drivers, rates. A client added on the MacBook is in here, and
        this is the call the man is actually waiting on. */
-    _pulling = Promise.all([getBook(KEEP_FAST), loadCatalog()]).then(function (arr) {
+    _pulling = Promise.all([getBook((loud || restStale()) ? KEEP_FAST.concat(KEEP_REST) : KEEP_FAST), loadCatalog()]).then(function (arr) {   /* 1.131.2 - one call (p749) */
       var r = arr[0];
       if (!usableBook(r)) {
         if (!S.data) {
