@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.760";
+  var APP_VERSION = "6.9.761";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -20654,51 +20654,79 @@ function viewCatalogue() {
           y += 6.4 + (_gl.length - 1) * 4;
         }
         g.rows.forEach(function (r) { drawRow(r, _sn++); });
-        if (grouped && false) {   /* 6.9.760 - "show only summary": no total row under each group */
+        if (grouped) {   /* 6.9.761 - one slim total line under each group, as on his supplier's quote */
           var gTot = g.rows.reduce(function (a, r) { return a + (r.optional ? 0 : r.total); }, 0);
-          if (y + 9 > 278) { doc.addPage(); y = 20; head(); }
-          fill([248, 250, 252]); doc.rect(L, y - 3.2, Rt - L, 7, "F");
-          doc.setDrawColor(203, 213, 225); doc.line(L, y - 3.2, Rt, y - 3.2);
-          col(SLATE); F("bold"); doc.setFontSize(9);
-          doc.text(pdfSafe((g.room || "Other items") + " \u2014 total"), X.item, y + 1.2);
-          col(INK); F("bold"); doc.setFontSize(10);
-          doc.text(R(gTot), X.amt, y + 1.2, { align: "right" });
-          y += 9.4;
+          var gPcs = g.rows.filter(function (r) { return !r.optional; }).reduce(function (a, r) { return a + (Number(r.qty) || 0); }, 0);
+          if (y + 7 > 278) { doc.addPage(); y = 20; head(); }
+          doc.setDrawColor(94, 234, 212); doc.setLineWidth(0.3); doc.line(X.unit - 14, y - 2.6, Rt, y - 2.6); doc.setLineWidth(0.2);
+          col(TEALD); F("italic"); doc.setFontSize(8.5); doc.text("Total", X.unit - 14, y + 1.0);
+          F("normal"); col(INK); doc.setFontSize(8.5); doc.text(qShow(gPcs), X.qty, y + 1.0, { align: "right" });
+          doc.setFontSize(9.5); doc.text(R(gTot), X.amt, y + 1.0, { align: "right" });
+          y += 7.4;
         }
       });
 
-      /* ---- 6.9.757 - ROOM-WISE SUMMARY: every room, its items and its amount, then all rooms together ---- */
+      /* ---- 6.9.761 - SUMMARY: each group's pieces, MRP value and amount; GST and total only when GST is shown extra ---- */
       if (grouped && groups.length > 1) {
-        var smH = 12 + groups.length * 6.6 + 9;
+        var sumRows = groups.map(function (g) {
+          var live = g.rows.filter(function (r) { return !r.optional; });
+          return { name: g.room || "Other items",
+            pcs: live.reduce(function (a2, r) { return a2 + (Number(r.qty) || 0); }, 0),
+            mrp: live.reduce(function (a2, r) { return a2 + Math.round((Number(r.price) || 0) * (Number(r.qty) || 0)); }, 0),
+            amt: live.reduce(function (a2, r) { return a2 + r.total; }, 0) };
+        });
+        var smAll = sumRows.reduce(function (a2, x) { return a2 + x.amt; }, 0);
+        var smN = sumRows.reduce(function (a2, x) { return a2 + x.pcs; }, 0);
+        var smMrp = sumRows.reduce(function (a2, x) { return a2 + x.mrp; }, 0);
+        var smGst = showGst ? Math.round(smAll * 18 / 100) : 0;
+        if (showGst) {   /* the groups' GST adds up to exactly the box's GST: largest remainder */
+          var _raw = sumRows.map(function (x) { return x.amt * 18 / 100; });
+          sumRows.forEach(function (x, k) { x.gst = Math.floor(_raw[k]); });
+          var _left = smGst - sumRows.reduce(function (a2, x) { return a2 + x.gst; }, 0);
+          _raw.map(function (v, k) { return [v - Math.floor(v), k]; }).sort(function (p, q) { return q[0] - p[0]; })
+            .slice(0, Math.max(0, _left)).forEach(function (p) { sumRows[p[1]].gst += 1; });
+        }
+        var C = showGst ? { pcs: 104, mrp: 128, amt: 151, gst: 172, tot: X.amt } : { pcs: 127, mrp: 158, amt: X.amt };
+        var NAME_W = (showGst ? C.pcs - 12 : C.pcs - 14) - (L + 12);
+        F("normal"); doc.setFontSize(9);
+        sumRows.forEach(function (x) { x.lines = fitCell(doc, F, x.name, NAME_W, 2, "normal", 9); x.h = 6.4 + (x.lines.length - 1) * 3.6; });   /* a long group name wraps, never cut */
+        var smH = 12 + sumRows.reduce(function (a2, x) { return a2 + x.h; }, 0) + 9;
         if (y + smH > 276) { doc.addPage(); y = 22; }
         y += 3;
         var smTop = y;
         fill([246, 250, 249]); doc.roundedRect(L, smTop, Rt - L, smH, 2, 2, "F");
         doc.setDrawColor(214, 232, 228); doc.setLineWidth(0.3); doc.roundedRect(L, smTop, Rt - L, smH, 2, 2, "S"); doc.setLineWidth(0.2);
         fill(MINT); doc.rect(L, smTop, 1.4, smH, "F");
-        col(DEEP); F("bold"); doc.setFontSize(10);
+        col(DEEP); F("normal"); doc.setFontSize(10);
         doc.text("SUMMARY", L + 6, smTop + 6.4);
-        col(GREY); F("bold"); doc.setFontSize(8);
-        doc.text("QTY", X.dprice, smTop + 6.4, { align: "right" });
-        doc.text("AMOUNT", X.amt, smTop + 6.4, { align: "right" });
-        var sy0 = smTop + 12.4, smAll = 0, smN = 0;
-        groups.forEach(function (g, k) {
-          var gt = g.rows.reduce(function (a2, r) { return a2 + (r.optional ? 0 : r.total); }, 0);
-          var gq = g.rows.filter(function (r) { return !r.optional; }).reduce(function (a2, r) { return a2 + (Number(r.qty) || 0); }, 0);
-          smAll += gt; smN += gq;
-          if (k % 2 === 0) { fill([255, 255, 255]); doc.rect(L + 3, sy0 - 4.4, Rt - L - 5, 6.6, "F"); }
-          col(GREY); F("normal"); doc.setFontSize(9); doc.text(String(k + 1) + ".", L + 6, sy0);
-          col(INK); F("bold"); doc.setFontSize(9.5);
-          doc.text(fitCell(doc, F, g.room || "Other items", X.dis - L - 14, 1, "normal", 9.5)[0], L + 12, sy0);
-          col(GREY); F("normal"); doc.setFontSize(9); doc.text(qShow(gq) + (gq === 1 ? " pc" : " pcs"), X.dprice, sy0, { align: "right" });
-          col(INK); F("bold"); doc.setFontSize(10); doc.text(R(gt), X.amt, sy0, { align: "right" });
-          sy0 += 6.6;
+        col(GREY); F("normal"); doc.setFontSize(7.5);
+        doc.text("QTY", C.pcs, smTop + 6.4, { align: "right" });
+        doc.text("MRP VALUE", C.mrp, smTop + 6.4, { align: "right" });
+        doc.text("AMOUNT", C.amt, smTop + 6.4, { align: "right" });
+        if (showGst) { doc.text("GST 18%", C.gst, smTop + 6.4, { align: "right" }); doc.text("TOTAL", C.tot, smTop + 6.4, { align: "right" }); }
+        var sy0 = smTop + 12.2;
+        sumRows.forEach(function (x, k) {
+          if (k % 2 === 0) { fill([255, 255, 255]); doc.rect(L + 3, sy0 - 4.3, Rt - L - 5, x.h, "F"); }
+          col(GREY); F("normal"); doc.setFontSize(8.5); doc.text(String(k + 1) + ".", L + 6, sy0);
+          col(INK); doc.setFontSize(9);
+          x.lines.forEach(function (ln, j) { doc.text(ln, L + 12, sy0 + j * 3.6); });
+          col(GREY); doc.setFontSize(8.5);
+          doc.text(qShow(x.pcs), C.pcs, sy0, { align: "right" });
+          doc.text(R(x.mrp), C.mrp, sy0, { align: "right" });
+          col(INK); doc.setFontSize(9); doc.text(R(x.amt), C.amt, sy0, { align: "right" });
+          if (showGst) { col(GREY); doc.setFontSize(8.5); doc.text(R(x.gst), C.gst, sy0, { align: "right" });
+            col(INK); doc.setFontSize(9); doc.text(R(x.amt + x.gst), C.tot, sy0, { align: "right" }); }
+          sy0 += x.h;
         });
-        doc.setDrawColor(13, 118, 108); doc.setLineWidth(0.5); doc.line(L + 4, sy0 - 3.6, Rt - 2, sy0 - 3.6); doc.setLineWidth(0.2);
-        col(DEEP); F("bold"); doc.setFontSize(10.5);
-        doc.text("TOTAL" + (showGst ? "  (before GST)" : ""), L + 12, sy0 + 1.6);
-        doc.setFontSize(9); col(GREY); doc.text(qShow(smN) + " pcs", X.dprice, sy0 + 1.6, { align: "right" });
-        col(DEEP); F("bold"); doc.setFontSize(11.5); doc.text(R(smAll), X.amt, sy0 + 1.6, { align: "right" });
+        doc.setDrawColor(13, 118, 108); doc.setLineWidth(0.4); doc.line(L + 4, sy0 - 3.6, Rt - 2, sy0 - 3.6); doc.setLineWidth(0.2);
+        col(DEEP); F("normal"); doc.setFontSize(10);
+        doc.text("TOTAL", L + 12, sy0 + 1.6);
+        doc.setFontSize(9); col(GREY);
+        doc.text(qShow(smN), C.pcs, sy0 + 1.6, { align: "right" });
+        doc.text(R(smMrp), C.mrp, sy0 + 1.6, { align: "right" });
+        col(DEEP); doc.setFontSize(10); doc.text(R(smAll), C.amt, sy0 + 1.6, { align: "right" });
+        if (showGst) { doc.setFontSize(9); col(GREY); doc.text(R(smGst), C.gst, sy0 + 1.6, { align: "right" });
+          col(DEEP); doc.setFontSize(10.5); doc.text(R(smAll + smGst), C.tot, sy0 + 1.6, { align: "right" }); }
         y = smTop + smH + 4;
       }
 
@@ -20741,6 +20769,13 @@ function viewCatalogue() {
         doc.text(R(subTotal), X.amt, y + 3.6, { align: "right" });
       }
       y = boxTop + boxH + 5;   /* single, deterministic point clear of the total box */
+      if (!noTotal) {   /* 6.9.761 - amount in words, as on his supplier's quote: the figure the customer pays */
+        var _payN = showGst ? subTotal + Math.round(subTotal * 18 / 100) : subTotal;
+        col(GREY); F("italic"); doc.setFontSize(8);
+        var _wl = fitCell(doc, F, "Amount in words: Rupees " + amountWords(_payN) + " Only" + (showGst ? " (incl. GST)" : ""), Rt - TBL, 2, "italic", 8);
+        _wl.forEach(function (wl, k) { doc.text(wl, Rt, y - 1 + k * 3.4, { align: "right" }); });
+        y += _wl.length * 3.4 + 1;
+      }
 
       /* Footnote whenever any line is an alternative option — a bordered amber strip drawn BELOW
          the total box (never over it). Text is wrapped and the box is sized to the wrapped lines. */
