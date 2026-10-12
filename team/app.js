@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.763";
+  var APP_VERSION = "6.9.764";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -17981,6 +17981,13 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
   }
   /* v6.9.303: rounded, because the parts are now fractions - three lots of 0.1 must
      total 0.3 on the quote, not 0.30000000000000004. */
+  /* 6.9.764 - pieces of a line that are in no group: the blank bucket, or what the line's quantity has beyond its groups */
+  function qzFree(i) {
+    var rq = qzRq(i), named = 0;
+    for (var k in rq) if (k) named += Number(rq[k]) || 0;
+    var rest = Math.round(((Number(i.qty) || 0) - named) * 1000) / 1000;
+    return Math.max(Number(rq[""]) || 0, rest, 0);
+  }
   function qzRqSum(i) { var rq = qzRq(i), n = 0; for (var k in rq) n += Number(rq[k]) || 0; return Math.round(n * 1000) / 1000; }
   function qzRqSync(i) { i.qty = qzRqSum(i); return i.qty; }
   /* the named rooms on a line, blank bucket excluded, in a stable order */
@@ -19013,9 +19020,26 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
 
       h += '<div style="margin-top:10px;border-top:1px solid #99f6e4;padding-top:8px">';
 
-        var _nof = (z.items || []).filter(function (i) { return (Number(qzRq(i)[""]) || 0) > 0; }).length;   /* 6.9.757 */
-        if (_nof && (z.items || []).length) h += '<div class="meta" style="color:#92400e;margin-bottom:4px"><b>' + _nof + ' line' + (_nof === 1 ? '' : 's') +
-          ' on this quote ' + (_nof === 1 ? 'has' : 'have') + ' no room yet.</b> Press <b>+ Bathroom</b> (or open a room), then use <b>+1 here</b> on the lines below — or the <b>Room</b> button on a line.</div>';
+        var _freeLines = (z.items || []).filter(function (i) { return qzFree(i) > 0; });   /* 6.9.764 */
+        var _nof = _freeLines.length;
+        if (_nof && (z.items || []).length) {
+          h += '<div class="meta" style="color:#92400e;margin-bottom:4px"><b>' + _nof + ' line' + (_nof === 1 ? '' : 's') +
+            ' on this quote ' + (_nof === 1 ? 'has' : 'have') + ' pieces in no group.</b> ' +
+            (qzSel ? 'Move them into <b>' + esc(qzSel) + '</b> here:' : 'Tap a group above first, then move them in from here.') + '</div>';
+          if (qzSel) {
+            h += '<div style="border:1px solid #fde68a;background:#fffbeb;border-radius:8px;padding:4px 8px;margin-bottom:8px">' +
+              _freeLines.map(function (i) {
+                var fr = qzFree(i);
+                return '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;justify-content:space-between;padding:4px 0;border-bottom:1px solid #fef3c7">' +
+                  '<span style="font-size:13px"><b>' + esc(i.code) + '</b> ' + esc(descLines(i.desc).title || "") +
+                  ' <span class="meta">· ' + esc(qShow(fr)) + ' not in a group</span></span>' +
+                  '<span style="display:flex;gap:6px">' +
+                  '<button class="btn sm" data-act="qz-room-move" data-code="' + esc(i.code) + '" data-n="all" style="min-height:44px">All ' + esc(qShow(fr)) + ' here</button>' +
+                  (fr > 1 ? '<button class="btn sm ghost" data-act="qz-room-move" data-code="' + esc(i.code) + '" data-n="1" style="min-height:44px">+1 here</button>' : '') +
+                  '</span></div>';
+              }).join("") + '</div>';
+          }
+        }
       if (!qzSel) {
         h += '<div class="meta">Press <b>+ Bathroom</b> and everything you add next is filed under it. ' +
           'Nothing here is compulsory - a quote with no rooms prices and prints exactly as before.</div>';
@@ -48710,7 +48734,7 @@ function viewCatalogue() {
           /* the picked table's second line: code, price, brand, and the rooms the line is in */
           lineNote: function (i, z) {
             /* 6.9.757 - the room of every line, and a way to file it, right here on the Products step */
-            var free = Number(qzRq(i)[""]) || 0, open = (z && z.room) || "";
+            var free = qzFree(i), open = (z && z.room) || "";   /* 6.9.764 */
             return '<span style="font-size:12px;color:#94a3b8">' + esc(i.code) + ' · ' + money(i.price) + (i.brand ? ' · ' + esc(i.brand) : '') +
               (i.optional ? ' · <span style="color:#b45309">option</span>' : '') + '</span>' +
               '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:4px;font-size:12px">' +
@@ -58010,7 +58034,7 @@ function viewCatalogue() {
     if (act === "qz-room-move") {
       var mvc = t.getAttribute("data-code"), mvIt = (S.qz.items || []).filter(function (x) { return x.code === mvc; })[0];
       if (!mvIt || !S.qz.room) return;
-      var mvFree = Number(qzRq(mvIt)[""]) || 0;
+      var mvFree = qzFree(mvIt);   /* 6.9.764 */
       var mvN = t.getAttribute("data-n") === "all" ? mvFree : Math.min(1, mvFree);
       if (!(mvN > 0)) return;
       qzRoomAdd(mvIt, "", -mvN); qzRoomAdd(mvIt, S.qz.room, mvN);
