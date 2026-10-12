@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.755";
+  var APP_VERSION = "6.9.756";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -19264,6 +19264,8 @@ function viewPriceList() {
   h += '</div>';
   if (tot > 400) h += '<p class="sub" style="color:#b45309">That is ' + tot + ' products - the PDF will take a while and be a large file. Consider fewer brands.</p>';
   h += '</div>';
+  if (picked.length === 1 && roleIs("admin")) h += plCatCard(picked[0]);   /* 6.9.756 */
+  else if (roleIs("admin")) h += '<p class="meta" style="font-size:12px;margin:4px 2px">Pick one brand to see and arrange its categories.</p>';
   return h;
 }
 
@@ -19272,7 +19274,41 @@ function viewPriceList() {
 function plRank(fam) {
   var f = String(fam || "").toUpperCase();
   if (/\bPIPE\b|\bPIPES\b/.test(f)) return 0;
-  return 1;
+  /* 6.9.756 - a bathroom brand reads in the order a bathroom is bought: the WC first, spares last */
+  var k = PL_SAN_ORDER.indexOf(String(fam || "").trim().toLowerCase());
+  return k >= 0 ? 1 + k : 50;
+}
+var PL_SAN_ORDER = ["wc", "washlet", "seat cover", "cistern", "flush plate", "urinal", "wash basin", "basin faucet",
+  "waste & trap", "bath & shower", "grab bar", "accessories", "fittings & spares"];
+/* 6.9.756 - the categories of one brand, with a drop-down on every product to move it (owner only) */
+function plCatCard(brand) {
+  var list = PRODUCTS.filter(function (p) { return String(p.brand || "").trim() === brand; });
+  if (!list.length) return "";
+  var fams = [];
+  list.forEach(function (p) { var f = String(p.family || "").trim() || "(no category)"; if (fams.indexOf(f) < 0) fams.push(f); });
+  fams.sort(function (a, b) { return plRank(a) - plRank(b) || a.localeCompare(b); });
+  S.plcOpen = S.plcOpen || {};
+  var opts = function (cur) {
+    return fams.filter(function (f) { return f !== "(no category)"; }).map(function (f) {
+      return '<option value="' + esc(f) + '"' + (f === cur ? " selected" : "") + '>' + esc(f) + '</option>';
+    }).join("") + (cur ? "" : '<option value="" selected>(no category)</option>') + '<option value="__new">+ New category\u2026</option>';
+  };
+  var h = '<div class="card" style="border-color:#99f6e4"><h3 style="margin:0 0 4px">Categories in ' + esc(brand) + '</h3>' +
+    '<p class="sub" style="font-size:13px">The price list is printed in these sections. Open one and use the drop-down to move a product, or make a new category.</p>';
+  fams.forEach(function (f) {
+    var its = list.filter(function (p) { return (String(p.family || "").trim() || "(no category)") === f; });
+    var open = !!S.plcOpen[brand + "|" + f];
+    h += '<button class="btn ghost" data-act="plc-tog" data-f="' + esc(brand + "|" + f) + '" style="width:100%;justify-content:space-between;min-height:44px;margin-top:6px;font-size:14px">' +
+      '<span><b>' + esc(f) + '</b></span><span class="mut">' + its.length + (open ? " \u25b4" : " \u25be") + '</span></button>';
+    if (!open) return;
+    its.forEach(function (p) {
+      var nm = String(p.desc || "").split("\n")[0];
+      h += '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:6px 2px;border-bottom:1px solid #eef2f7">' +
+        '<div style="flex:1 1 180px;min-width:0;font-size:13px"><b>' + esc(p.code) + '</b> <span class="mut" style="font-size:12px">' + esc(nm.length > 60 ? nm.slice(0, 58) + "\u2026" : nm) + '</span></div>' +
+        '<select class="plc-fam" data-code="' + esc(p.code) + '" data-was="' + esc(String(p.family || "")) + '" style="flex:0 1 190px;min-height:44px;font-size:13px">' + opts(String(p.family || "").trim()) + '</select></div>';
+    });
+  });
+  return h + '</div>';
 }
 
 async function priceListPdf(brands) {
@@ -50989,6 +51025,37 @@ function viewCatalogue() {
     if (tg.classList.contains("pev-st")) nx.st = tg.value; else nx.cost = nAmt(tg.value) || 0;
     pevSaveRow("evt:inv", eid, nx).then(function () { keepScroll = true; renderBg(); toast(pn + ": " + (tg.classList.contains("pev-st") ? tg.value : money(nx.cost)) + " saved."); });
   });
+  /* 6.9.756 - move a product to another category: column C only, through catalogCode (server V156) */
+  document.addEventListener("change", function (ev) {
+    var tg = ev && ev.target; if (!tg || !tg.classList || !tg.classList.contains("plc-fam")) return;
+    if (!roleIs("admin")) return;
+    var code = tg.getAttribute("data-code"), was = tg.getAttribute("data-was") || "", to = String(tg.value || "");
+    var go = function (fam) {
+      fam = String(fam || "").replace(/\s+/g, " ").trim();
+      if (!fam || fam === was) { tg.value = was; return; }
+      tg.disabled = true;
+      plOps([{ op: "family", code: code, family: fam }], "Moving " + code).then(function (res) {
+        var r = res[0] || {};
+        if (r.ok) {
+          PRODUCTS.forEach(function (p) { if (String(p.code) === code) p.family = fam; });
+          var at = 0; try { at = (JSON.parse(bigGet(CAT_KEY) || "null") || {}).at || 0; } catch (e) { }
+          bigSet(CAT_KEY, JSON.stringify({ v: CAT_V, at: at || Date.now(), items: PRODUCTS }));
+          var _b = (PRODUCTS.filter(function (p) { return String(p.code) === code; })[0] || {}).brand || "";
+          S.plcOpen = S.plcOpen || {}; S.plcOpen[String(_b).trim() + "|" + fam] = true;
+          S.plMsg = ""; keepScroll = true; render(); toast(code + " moved to " + fam + ".");
+        } else {
+          tg.disabled = false; tg.value = was;
+          toast(/unknown change/i.test(r.error || "") ? "The server does not know this move yet - server V156 has to be deployed." : "Not moved: " + (r.error || "no answer") + ".");
+        }
+      });
+    };
+    if (to === "__new") {
+      promptSheet({ title: "New category", sub: "For " + code + ". It becomes a section of the price list.", placeholder: "e.g. Cistern, Flush Plate", ok: "Move here" })
+        .then(function (v) { if (v == null) { tg.value = was; return; } go(v); });
+      return;
+    }
+    go(to);
+  });
   /* 6.9.711 - the supplier price list */
   document.addEventListener("change", function (ev) {
     var tg = ev && ev.target; if (!tg) return;
@@ -60602,6 +60669,7 @@ function viewCatalogue() {
     return;
   }
   if (act === "pl-clear") { S.pl = {}; render(); return; }
+  if (act === "plc-tog") { S.plcOpen = S.plcOpen || {}; var _pf = t.getAttribute("data-f"); S.plcOpen[_pf] = !S.plcOpen[_pf]; keepScroll = true; render(); return; }   /* 6.9.756 */
   if (act === "pl-pdf") {
     var bs = Object.keys(S.pl || {}).filter(function (k) { return S.pl[k]; });
     if (!bs.length) { toast("Pick a brand first."); return; }
