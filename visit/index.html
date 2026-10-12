@@ -189,7 +189,7 @@ h3.sec{color:#1F3A5F}
       button: function () { return '<button type="button" class="ewthm" onclick="ewTheme.next(this)">' + ewtLabel() + '</button>'; }
     };
   })();
-  var APP_VERSION = "1.4.2";
+  var APP_VERSION = "1.4.3";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_vq_session", JRN = "ew_vq_journal_v1", CALLQ = "ew_vq_calls_v1", SNAPK = "ew_vq_snap_";
   var CAT_KEY = "ew_team_catalog", CAT_V = 2;   /* the CRM's own shelf copy of the price list - shared, same origin */
@@ -724,6 +724,16 @@ h3.sec{color:#1F3A5F}
       .filter(function (b) { return String(b.active).toUpperCase() !== "N" && (live[b.brand] || isRealBrandName(b.brand)); })
       .map(function (b) { return b.brand; })
       .sort(alpha);                     /* v6.9.300 - was sheet-row order */
+  }
+  /* ==MAIN-BRANDS== p747 12 Oct 2026 - his standard rule: only the main brands are offered anywhere except the
+     challan. The associated brands (Grundfos, IONCARE, DRP, SANITAAR, CPVC / DWC Pipes, Drain Chambers, Accessory,
+     Net Price Items...) are for the challan only. Whole-word on the name: "Huliot HT PRO" is Huliot. */
+  var MAIN_BRAND_KEYS = ["huliot", "heliroma", "fima", "toto", "oyster", "pentair", "adani", "geberit",
+    "green heat", "greenheat", "inair", "leo", "lunos", "mea", "stellar"];
+  function isMainBrand(b) {
+    var s = " " + String(b == null ? "" : b).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim() + " ";
+    for (var i = 0; i < MAIN_BRAND_KEYS.length; i++) if (s.indexOf(" " + MAIN_BRAND_KEYS[i] + " ") > -1) return true;
+    return false;
   }
   var NON_BRANDS = ["accessory", "accessories", "net price items", "net price item", "net price", "misc", "miscellaneous"];
   function isRealBrandName(name) {
@@ -2272,7 +2282,7 @@ h3.sec{color:#1F3A5F}
   function cardLogo(b) { var k = lower(b); for (var i = 0; i < CARD_LOGO.length; i++) { if (k === CARD_LOGO[i][0] || k.indexOf(CARD_LOGO[i][0] + " ") === 0 || k.indexOf(CARD_LOGO[i][0]) === 0) return "../assets/brands/" + CARD_LOGO[i][1] + ".webp"; } return ""; }
   function brandTiles(sel, act, grp) {
     var bs = []; try { bs = brandList(); } catch (e) { bs = []; }
-    bs = bs.filter(function (b) { return !/^(accessor|net price)/i.test(String(b)); });   /* not brands a client comes for */
+    bs = bs.filter(function (b) { return !/^(accessor|net price)/i.test(String(b)) && isMainBrand(b); });   /* p747 */   /* not brands a client comes for */
     if (!bs.length) return '<div class="meta">The brand list is loading…</div>';
     return '<div class="btiles" data-grp="' + grp + '">' + bs.map(function (b) {
       var L = null; var cl = cardLogo(b); if (cl) L = { src: cl }; else { try { L = logoFor(b); } catch (e) { L = null; } }
@@ -2700,7 +2710,7 @@ h3.sec{color:#1F3A5F}
     return hits.slice(0, 12).map(function (c) { return '<div class="card tap" data-act="qz-client" data-k="' + esc(c.name) + '"><div class="ttl2">' + codeTag(c.name) + esc(c.name) + '</div><div class="meta">' + esc([c.area, c.location, c.mobile].filter(Boolean).join(" · ")) + '</div></div>'; }).join("");
   }
   function qzProducts() {
-    var z = S.qz, brands = brandList(), b = z.brand;
+    var z = S.qz, brands = brandList().filter(isMainBrand), b = z.brand;   /* p747 */
     var h = '<label>Brand</label><div class="chips">' + '<button class="chip' + (!b ? ' on' : '') + '" data-act="qz-brand" data-k="">All</button>' +
       brands.map(function (x) { return '<button class="chip' + (b === x ? ' on' : '') + '" data-act="qz-brand" data-k="' + esc(x) + '">' + esc(x) + '</button>'; }).join("") + '</div>' +
       '<label for="qz_pq">Find a product</label><input id="qz_pq" value="' + esc(z.pq || "") + '" placeholder="Code, name or family" autocomplete="off"/>' +
