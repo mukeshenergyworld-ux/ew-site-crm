@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.762";
+  var APP_VERSION = "6.9.763";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -20411,10 +20411,15 @@ function viewCatalogue() {
           });
           if (list.length) groups.push({ room: rm, rows: list });
         });
-        var loose = ordered.filter(function (r) {
-          if (!r.rq) return true;
-          for (var k in r.rq) if (k && (Number(r.rq[k]) || 0) > 0) return false;
-          return true;
+        /* 6.9.763 - the part of each line that is in no group, at its own quantity (was: a line with any piece in a
+           group was dropped here whole, so its other pieces printed nowhere but were still in the Sub-Total) */
+        var loose = [];
+        ordered.forEach(function (r) {
+          var named = 0;
+          if (r.rq) for (var k in r.rq) if (k) named += Number(r.rq[k]) || 0;
+          var rest = Math.round(((Number(r.qty) || 0) - named) * 1000) / 1000;
+          if (!named) loose.push(r);
+          else if (rest > 0) loose.push(Object.assign({}, r, { qty: rest, total: Math.round(r.net * rest) }));
         });
         if (loose.length) groups.push({ room: "", rows: loose });
       } else {
