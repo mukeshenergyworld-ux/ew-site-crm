@@ -421,7 +421,7 @@ function ewmBuild(n, pre) {
    Nothing here deletes anything, ever. A visit is a row added.
    ========================================================================== */
 
-  var APP_VERSION = "2.8.1";
+  var APP_VERSION = "2.9.0";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -3034,7 +3034,7 @@ function ewmBuild(n, pre) {
       } else if (act === "comm:done") {
         var c = sv2J(a.detail); if (!c.chId) return;
         var m = comm[c.chId] || (comm[c.chId] = {});
-        (c.lines || []).forEach(function (l) { m[String(l.idx)] = { date: c.date || "", eng: c.eng || a.actor || "", sn: l.sn || "", wm: l.wm, till: l.till || "", cm: l.cm, skip: !!l.skip, id: c.id || a.id, by: a.actor || "" }; });
+        (c.lines || []).forEach(function (l) { m[String(l.idx)] = { date: c.date || "", eng: c.eng || a.actor || "", sn: l.sn || "", wm: l.wm, till: l.till || "", cm: l.cm, skip: !!l.skip, id: c.id || a.id, by: a.actor || "", at: String(a.createdAt || "") }; });
       }
     });
     _sv2c = { brand: brand, comm: comm };
@@ -3099,13 +3099,13 @@ function ewmBuild(n, pre) {
   function sv2Items(c) { try { return JSON.parse((c && c.itemsJson) || "[]") || []; } catch (e) { return []; } }
   /* the stamp on one line: the CRM's own (itemsJson comm) or this app's (comm:done) */
   function sv2Stamp(c, idx, i) {
-    if (i && i.comm && i.comm.date) return { date: i.comm.date, sn: i.comm.sn || "", till: i.comm.till || "", wm: i.comm.wm, eng: i.comm.eng || "" };
+    if (i && i.comm && i.comm.date) return { date: i.comm.date, sn: i.comm.sn || "", till: i.comm.till || "", wm: i.comm.wm, eng: i.comm.eng || "", at: "crm" };
     var m = sv2Cache().comm[c.id]; return m ? (m[String(idx)] || null) : null;
   }
   function sv2CommLines(c) {
     var out = [];
     sv2Items(c).forEach(function (i, idx) {
-      var n = sv2Need(i); if (!n) return;
+      var n = sv2Need(i) || ewiNeed(i); if (!n) return;   /* 2.9.0 - his installation brands too */
       out.push({ i: i, idx: idx, need: n, st: sv2Stamp(c, idx, i) });
     });
     return out;
@@ -3214,7 +3214,7 @@ function ewmBuild(n, pre) {
     var late = pend.filter(function (t) { var a = tkAge(t); return a && a.late; });
     var pay = tk.filter(function (t) { return sv2Bucket(t) === "payment"; }), payAmt = pay.reduce(function (s, t) { return s + sv2Due(t); }, 0);
     var mon = sv2Month(today()), doneM = tk.filter(function (t) { return sv2Bucket(t) === "done" && t.doneAt && sv2Month(String(t.doneAt).slice(0, 10)) === mon; }).length;
-    var cp = sv2CommPending(), over = installs().filter(function (x) { return dueBand(x) === "over"; }).length, soon = installs().filter(function (x) { return dueBand(x) === "soon"; }).length;
+    var _ewa = ewiAll(), _ewn = ewiCounts(_ewa), cp = _ewa.filter(function (x) { return x.stage !== 'done'; }), over = installs().filter(function (x) { return dueBand(x) === "over"; }).length, soon = installs().filter(function (x) { return dueBand(x) === "soon"; }).length;
     var web = openComplaints().filter(function (c) { return !tkRefs()[String(c.Ref || "")]; });
     var h = '<div class="sv2bar">' +
       '<button class="btn" data-act="sv2-new">+ New complaint</button>' +
@@ -3223,7 +3223,7 @@ function ewmBuild(n, pre) {
     h += '<div class="stats sv2g">' +
       sv2Tile(pend.length, 'Pending complaints', pend.length ? 'bad' : 'good', 'sv2-go', 'pending', late.length ? late.length + ' past the promise' : '') +
       sv2Tile(money(payAmt), 'Payment pending', pay.length ? 'warn' : 'good', 'sv2-go', 'payment', pay.length ? pay.length + ' customer' + (pay.length === 1 ? '' : 's') : '') +
-      sv2Tile(cp.length, 'Commissioning pending', cp.length ? 'warn' : 'good', 'sv2-go', 'commission', '') +
+      sv2Tile(_ewn.open, 'Installation &amp; commissioning', _ewn.open ? 'warn' : 'good', 'sv2-go', 'commission', _ewn.open ? _ewn.install + ' install &middot; ' + _ewn.comm + ' commission &middot; ' + _ewn.hand + ' hand over' : '') +
       sv2Tile(over, 'Service overdue', over ? 'bad' : 'good', 'sv2-go', 'over', soon ? soon + ' due this week' : '') +
       sv2Tile(doneM, 'Completed this month', 'good', 'sv2-go', 'done', '') +
       sv2Tile(web.length, 'From the website', web.length ? 'bad' : 'good', 'sv2-go', 'web', '') +
@@ -3239,7 +3239,7 @@ function ewmBuild(n, pre) {
     if (mine.length) h += '<h3 class="sec">My jobs &mdash; ' + mine.length + '</h3>' + mine.map(function (t) { return sv2Row(t); }).join("");
     if (web.length) h += '<h3 class="sec bad">Raised on the website &mdash; ' + web.length + '</h3>' +
       '<div class="note warn-t">The customer raised these himself. Open one and it becomes a visit; saving that visit closes the complaint.</div>' + web.map(cxRow).join("");
-    if (cp.length) h += '<h3 class="sec warn">Commissioning pending &mdash; ' + cp.length + '</h3>' + cp.slice(0, 4).map(sv2CommRow).join("") +
+    if (cp.length) h += '<h3 class="sec warn">Pending installation &amp; commissioning &mdash; ' + cp.length + '</h3>' + cp.slice(0, 4).map(ewiRow).join("") +
       (cp.length > 4 ? '<button class="btn gry full" data-act="sv2-go" data-k="commission">See all ' + cp.length + '</button>' : '');
     /* the team, for the office */
     if (seesAllMoney()) {
@@ -3817,7 +3817,204 @@ function ewmBuild(n, pre) {
       ls.map(function (x) { return '<div class="meta"><b>' + esc(x.i.desc || x.need.label) + '</b>' + (x.i.brand ? ' &middot; ' + esc(x.i.brand) : '') + ' &middot; qty ' + esc(String(x.i.qty || 1)) + '</div>'; }).join("") +
       '</div><div class="right">' + (isFinite(d) ? '<div class="amt' + (d > 7 ? ' bad' : '') + '">' + d + ' day' + (d === 1 ? '' : 's') + '</div>' : '') + '</div></div></div>';
   }
+
+  /* ==EWI== 2.9.0 - INSTALLATION & COMMISSIONING, STEP BY STEP (12 Oct 2026). See p290 for his words. */
+  var EWI_BRANDS = ["grundfos", "pentair", "leo", "green heat", "greenheat", "adani", "inair", "lunos"];
+  var EWI_LAUNCH = "2026-10-12";
+  function ewiBrandHit(b) {
+    var s = " " + String(b == null ? "" : b).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim() + " ";
+    for (var i = 0; i < EWI_BRANDS.length; i++) if (s.indexOf(" " + EWI_BRANDS[i] + " ") > -1) return true;
+    return false;
+  }
+  function ewiNeed(i) {
+    if (!i || !ewiBrandHit(i.brand)) return null;
+    var R = svRule(i.brand);
+    return { label: String(i.desc || i.brand || "Machine"), wm: (R && R.wm) || 12, cm: 6 };
+  }
+  function ewiCanMark() { return roleIs("admin") || /\bmanoj\b/i.test(String(S.user || "")); }
+  var _ewiC = null, _ewiN = -1;
+  function ewiSteps() {
+    var al = ((S.data && S.data.audit) || []).length;
+    if (_ewiC && _ewiN === al) return _ewiC;
+    _ewiN = al; _ewiC = {};
+    ((S.data && S.data.audit) || []).forEach(function (a) {
+      if (String(a && a.action || "") !== "inst:step") return;
+      var d = sv2J(a.detail); if (!d.chId || !/^(install|handover)$/.test(d.step)) return;
+      var m = _ewiC[d.chId] || (_ewiC[d.chId] = {}), cur = m[d.step];
+      if (!cur || String(a.createdAt || "") >= String(cur.at || "")) m[d.step] = { id: d.id || a.id, date: String(d.date || ""), by: d.by || a.actor || "", at: String(a.createdAt || ""), note: d.note || "" };
+    });
+    return _ewiC;
+  }
+  /* where one delivery stands: install -> comm -> hand -> done */
+  function ewiState(c) {
+    var ls = sv2CommLines(c); if (!ls.length) return null;
+    var st = ewiSteps()[c.id] || {}, stamped = ls.filter(function (x) { return x.st; });
+    var comm = stamped.length === ls.length, real = stamped.filter(function (x) { return !x.st.skip; });
+    var cDates = real.map(function (x) { return String(x.st.date || "").slice(0, 10); }).filter(Boolean).sort();
+    var commDate = comm ? (cDates[cDates.length - 1] || (stamped[0] && String(stamped[0].st.date || "").slice(0, 10)) || "") : "";
+    var inst = st.install ? st.install.date : (cDates[0] || "");
+    var hand = st.handover ? st.handover.date : "";
+    var legacy = false;
+    if (!st.install && !st.handover && comm && stamped.every(function (x) { return x.st.at === "crm" || String(x.st.at || "") < EWI_LAUNCH; })) { legacy = true; hand = commDate; inst = inst || commDate; }
+    var stage = !inst ? "install" : !comm ? "comm" : !hand ? "hand" : "done";
+    var commId = (stamped.filter(function (x) { return x.st.id; })[0] || { st: {} }).st.id || "";
+    return { c: c, lines: ls, stage: stage, inst: inst, comm: comm, commDate: commDate, hand: hand, legacy: legacy,
+             instId: st.install ? st.install.id : "", handId: st.handover ? st.handover.id : "", commId: commId,
+             delivered: String(c.receiptReceived || "").toUpperCase() === "Y" };
+  }
+  function ewiAll() {
+    return sv2Challans().map(ewiState).filter(Boolean)
+      .sort(function (a, b) { return String(a.c.createdAt || "").localeCompare(String(b.c.createdAt || "")); });
+  }
+  function ewiCounts(all) {
+    var n = { install: 0, comm: 0, hand: 0, done: 0 };
+    (all || ewiAll()).forEach(function (x) { n[x.stage]++; });
+    n.open = n.install + n.comm + n.hand; return n;
+  }
+  var EWI_STAGE = { install: "To install", comm: "To commission", hand: "To hand over", done: "Handed over" };
+  function ewiPill(on, label, date) {
+    return '<span class="pill ' + (on ? 'grn' : '') + '" style="margin-right:4px">' + (on ? '&#10003; ' : '&#9675; ') + esc(label) + (on && date ? ' ' + esc(dstr(date)) : '') + '</span>';
+  }
+  function ewiRow(x) {
+    var c = x.c, d = Math.max(0, Math.round((Date.now() - Date.parse(String(c.createdAt || ""))) / 86400000));
+    var ls = x.lines.filter(function (l) { return !(l.st && l.st.skip); });
+    return '<div class="card" data-act="ewi-open" data-id="' + esc(c.id) + '"><div class="row" style="align-items:flex-start"><div class="grow">' +
+      '<div class="ttl">' + esc(c.customerName || "") + '</div><div class="meta">' + esc(c.challanNo || "") + (c.site ? ' &middot; ' + esc(c.site) : '') + ' &middot; ' + esc(dstr(String(c.createdAt || "").slice(0, 10))) + '</div>' +
+      ls.slice(0, 4).map(function (l) { return '<div class="meta"><b>' + esc(l.i.desc || l.need.label) + '</b>' + (l.i.brand ? ' &middot; ' + esc(l.i.brand) : '') + ' &middot; qty ' + esc(String(l.i.qty || 1)) + '</div>'; }).join("") +
+      (ls.length > 4 ? '<div class="meta">+ ' + (ls.length - 4) + ' more</div>' : '') +
+      '<div style="margin-top:6px">' + ewiPill(!!x.inst, "Installed", x.inst) + ewiPill(x.comm, "Commissioned", x.commDate) + ewiPill(!!x.hand, "Handed over", x.hand) +
+      (x.delivered ? '' : '<span class="pill amb">Delivery not confirmed</span>') + '</div>' +
+      '</div><div class="right">' + (x.stage !== "done" && isFinite(d) ? '<div class="amt' + (d > 15 ? ' bad' : '') + '">' + d + ' day' + (d === 1 ? '' : 's') + '</div>' : '') + '</div></div></div>';
+  }
   function viewCommission() {
+    var h = '<div class="note">Every delivery of <b>Grundfos, Pentair, LEO, Green Heat, Adani, INAIR or Lunos</b> (and any machine the CRM commissions) waits here until it is <b>installed</b>, <b>commissioned</b> and <b>handed over</b> &mdash; each with its date and photos. The steps can be days apart or all on one day. ' +
+      (ewiCanMark() ? 'Tap a delivery to mark a step.' : 'Manoj or the office marks the steps.') + ' After handover it is regular service: warranty, AMC and the service schedule.</div>';
+    if (!Array.isArray(S.data && S.data.challans)) return h + '<div class="empty">The deliveries are not on this phone yet. Refresh once the book has loaded.</div>';
+    var all = ewiAll(), n = ewiCounts(all);
+    var f = S.ewiF && EWI_STAGE[S.ewiF] ? S.ewiF : (n.install ? "install" : n.comm ? "comm" : n.hand ? "hand" : "done");
+    h += '<div class="chips">' + ["install", "comm", "hand", "done"].map(function (k) {
+      return '<button type="button" class="chip bchip' + (f === k ? ' on' : '') + '" data-act="ewi-f" data-k="' + k + '">' + EWI_STAGE[k] + ' <b>' + n[k] + '</b></button>';
+    }).join("") + '</div>';
+    h += '<input id="ewi_q" placeholder="Find a client, challan, site or brand" value="' + esc(S.ewiQ || "") + '" autocomplete="off" style="margin-bottom:8px"/>';
+    var q = sv2Key(S.ewiQ || ""), list = all.filter(function (x) {
+      if (x.stage !== f) return false;
+      if (!q) return true;
+      return sv2Key([x.c.customerName, x.c.challanNo, x.c.site].concat(x.lines.map(function (l) { return l.i.brand + " " + l.i.desc; })).join(" ")).indexOf(q) >= 0;
+    });
+    if (f === "done") list = list.slice().reverse();
+    var lim = S.ewiLim || 40;
+    h += list.length ? list.slice(0, lim).map(ewiRow).join("") + (list.length > lim ? '<button class="btn gry full" data-act="ewi-more">Show ' + Math.min(40, list.length - lim) + ' more of ' + (list.length - lim) + '</button>' : '')
+                     : '<div class="empty ok">' + (q ? 'Nothing matches.' : 'Nothing ' + EWI_STAGE[f].toLowerCase() + '.') + '</div>';
+    return h;
+  }
+  function ewiFind(id) { var c = sv2Challans().filter(function (x) { return x.id === id; })[0]; return c ? ewiState(c) : null; }
+  function ewiDone(label, date, by, pics) {
+    return '<div class="card"><div class="ttl">&#10003; ' + esc(label) + ' &mdash; ' + esc(dstr(date)) + '</div>' + (by ? '<div class="meta">by ' + esc(by) + '</div>' : '') + picStrip(pics || [], "Photos") + '</div>';
+  }
+  function ewiSheet() {
+    var E = S.ew || {}, x = ewiFind(E.id);
+    if (!x) return '<h2>Not found</h2><div class="acts"><button class="btn gry" data-act="close">Close</button></div>';
+    var c = x.c, can = ewiCanMark(), st = ewiSteps()[c.id] || {};
+    var h = '<h2>' + esc(c.customerName || "") + '</h2><div class="muted">' + esc(c.challanNo || "") + (c.site ? ' &middot; ' + esc(c.site) : '') + ' &middot; challan ' + esc(dstr(String(c.createdAt || "").slice(0, 10))) +
+      (x.delivered ? '' : ' &middot; <span class="pill amb">delivery not confirmed</span>') + '</div>';
+    h += '<div class="meta" style="margin:6px 0">' + x.lines.map(function (l) { return esc((l.i.brand ? l.i.brand + ' ' : '') + (l.i.desc || l.need.label)) + ' &times; ' + esc(String(l.i.qty || 1)); }).join('<br>') + '</div>';
+    if (x.legacy) h += '<div class="note ok">Commissioned before this section existed, so it is counted as handed over.</div>';
+    var block = function (k, label, hint, extra) {
+      var B = E[k] || {};
+      return '<div class="card"><label style="display:flex;align-items:center;gap:8px;margin:0;min-height:44px;font-size:15px;font-weight:700;text-transform:none;letter-spacing:0;color:#0f172a">' +
+        '<input type="checkbox" class="ewi-on" data-k="' + k + '"' + (B.on ? ' checked' : '') + '/> ' + label + ' done</label>' +
+        (B.on ? '<div class="meta">' + hint + '</div><label>Date</label><input type="date" class="ewi-date" data-k="' + k + '" max="' + today() + '" value="' + esc(B.date || today()) + '"/>' + (extra || '') +
+          '<label>Photos &mdash; at least one</label><input type="file" accept="image/*" capture="environment" class="ewi-pic" data-k="' + k + '" multiple/>' +
+          ((B.pics || []).length ? '<div class="note ok">' + B.pics.length + ' photo' + (B.pics.length === 1 ? '' : 's') + ' ready &mdash; ' + (B.pics.length === 1 ? 'it goes' : 'they go') + ' up when you save.</div>' : '') : '') + '</div>';
+    };
+    /* step 1 */
+    if (x.inst) h += ewiDone("Installed", x.inst, st.install ? st.install.by : "", st.install ? picsOf("install", st.install.id) : []);
+    else if (can) h += block("install", "Installation", "The machine fixed in place and plumbed / wired.");
+    else h += '<div class="card"><div class="ttl">&#9675; Installation pending</div></div>';
+    /* step 2 */
+    if (x.comm) h += ewiDone("Commissioned", x.commDate, "", x.commId ? picsOf("commission", x.commId) : []);
+    else if (can) {
+      var K = S.ew.l || {}, ls = x.lines.filter(function (l) { return !l.st; });
+      var lines = (E.comm && E.comm.on) ? ls.map(function (l) {
+        var L = K[l.idx] || {};
+        return '<div class="card" style="margin:8px 0"><div class="row" style="align-items:flex-start"><div class="grow"><b>' + esc(l.i.desc || l.need.label) + '</b><div class="meta">' + esc(l.i.brand || "") + ' &middot; qty ' + esc(String(l.i.qty || 1)) + '</div></div>' +
+          '<label style="display:flex;align-items:center;gap:6px;margin:0;font-size:13px;min-height:44px;text-transform:none;letter-spacing:0"><input type="checkbox" class="cm2-skip" data-i="' + l.idx + '"' + (L.skip ? ' checked' : '') + '/> Not a machine</label></div>' +
+          (L.skip ? '<div class="meta">Left out &mdash; no warranty card.</div>' :
+          '<div class="grid2"><div><label>Serial no.</label><input class="cm2-sn" data-i="' + l.idx + '" value="' + esc(L.sn || sv2AutoSn(c, l.idx)) + '"/></div>' +
+          '<div class="grid2" style="gap:6px"><div><label>Warranty months</label><input class="cm2-wm" data-i="' + l.idx + '" inputmode="numeric" value="' + esc(L.wm == null ? l.need.wm : L.wm) + '"/></div>' +
+          '<div><label>Service every (months)</label><input class="cm2-cm" data-i="' + l.idx + '" inputmode="numeric" value="' + esc(L.cm == null ? l.need.cm : L.cm) + '"/></div></div></div>') + '</div>';
+      }).join("") : "";
+      h += block("comm", "Commissioning (testing)", "Running and tested. Its warranty starts this day and it goes on the service schedule.", lines);
+    } else h += '<div class="card"><div class="ttl">&#9675; Commissioning pending</div></div>';
+    /* step 3 */
+    if (x.hand) h += ewiDone("Handed over to the client", x.hand, st.handover ? st.handover.by : "", st.handover ? picsOf("handover", st.handover.id) : []);
+    else if (can) h += block("hand", "Handover to the client", "Shown to the client and handed over. From here it is regular service.");
+    else h += '<div class="card"><div class="ttl">&#9675; Handover pending</div></div>';
+    var any = can && (["install", "comm", "hand"].some(function (k) { return E[k] && E[k].on; }));
+    h += '<div class="acts"><button class="btn gry" data-act="close">' + (any ? 'Cancel' : 'Close') + '</button>' + (any ? '<button class="btn grow" data-act="ewi-save">Save</button>' : '') + '</div>';
+    return h;
+  }
+  function ewiKeep() {
+    var E = S.ew; if (!E) return;
+    Array.prototype.forEach.call(document.querySelectorAll(".ewi-date"), function (e) { var k = e.getAttribute("data-k"); (E[k] = E[k] || {}).date = String(e.value || ""); });
+    E.l = E.l || {};
+    var put = function (cls, f, isBox) { Array.prototype.forEach.call(document.querySelectorAll(cls), function (e) { var i = e.getAttribute("data-i"); (E.l[i] = E.l[i] || {})[f] = isBox ? e.checked : String(e.value || "").trim(); }); };
+    put(".cm2-skip", "skip", true); put(".cm2-sn", "sn"); put(".cm2-wm", "wm"); put(".cm2-cm", "cm");
+  }
+  function ewiOpen(id) {
+    var x = ewiFind(id); if (!x) return;
+    var first = x.stage === "install" ? "install" : x.stage === "comm" ? "comm" : x.stage === "hand" ? "hand" : "";
+    S.ew = { id: id, l: {} };
+    if (first && ewiCanMark()) S.ew[first] = { on: true, date: today(), pics: [] };
+    S.sheet = ewiSheet(); render();
+  }
+  /* returns an error sentence, or "" */
+  function ewiCheck(x, E) {
+    var on = function (k) { return !!(E[k] && E[k].on); }, dt = function (k) { return String((E[k] && E[k].date) || ""); };
+    var ymd = /^\d{4}-\d{2}-\d{2}$/;
+    if (!on("install") && !on("comm") && !on("hand")) return "Tick the step you are marking.";
+    var names = { install: "installation", comm: "commissioning", hand: "handover" };
+    for (var k in names) if (on(k)) {
+      if (!ymd.test(dt(k))) return "Put the date of " + names[k] + ".";
+      if (dt(k) > today()) return "The " + names[k] + " date is in the future.";
+      var real = k !== "comm" || x.lines.some(function (l) { return !l.st && !((E.l || {})[l.idx] || {}).skip; });
+      if (real && !((E[k].pics || []).length)) return "Take at least one photo of the " + names[k] + ".";
+    }
+    var iD = on("install") ? dt("install") : x.inst, cD = on("comm") ? dt("comm") : (x.comm ? x.commDate : ""), hD = on("hand") ? dt("hand") : x.hand;
+    if (on("comm") && !iD) return "Mark the installation first (tick it too if it was the same day).";
+    if (on("hand") && !cD) return "Mark the commissioning first (tick it too if it was the same day).";
+    if (iD && cD && cD < iD) return "Commissioned before it was installed? Check the dates.";
+    if (cD && hD && hD < cD) return "Handed over before it was commissioned? Check the dates.";
+    return "";
+  }
+  function ewiStepRow(x, step, date, n) {
+    var id = mintId(step === "install" ? "IS" : "HO"), c = x.c;
+    var arow = { id: id, createdAt: new Date().toISOString(), actor: S.user || "", action: "inst:step", target: String(c.challanNo || c.id),
+      detail: JSON.stringify({ id: id, chId: c.id, no: c.challanNo || "", client: c.customerName || "", site: c.site || "", step: step, date: date, by: S.user || "", photos: n }), ip: "" };
+    (S.data.audit = S.data.audit || []).push(arow); saveRow("audit", arow);
+    return id;
+  }
+  function ewiSave() {
+    ewiKeep();
+    var E = S.ew || {}, x = ewiFind(E.id); if (!x) return;
+    if (!ewiCanMark()) { toast("Only Manoj or the office marks these."); return; }
+    var err = ewiCheck(x, E); if (err) { toast(err); return; }
+    var c = x.c, sent = [], said = [];
+    if (E.install && E.install.on) { var i1 = ewiStepRow(x, "install", E.install.date, E.install.pics.length); sent.push([E.install.pics, i1]); said.push("installed"); }
+    if (E.comm && E.comm.on) {
+      S.cm = { id: c.id, date: E.comm.date, l: E.l || {}, pics: E.comm.pics || [] };
+      var r = sv2CommWrite(); if (r && r.err) { toast(r.err); return; }
+      if (r && r.id && r.pics.length) sent.push([r.pics, r.id]);
+      said.push("commissioned");
+    }
+    if (E.hand && E.hand.on) { var i3 = ewiStepRow(x, "handover", E.hand.date, E.hand.pics.length); sent.push([E.hand.pics, i3]); said.push("handed over"); }
+    try { applyJournal(); } catch (e) { }
+    S.ew = null; S.cm = null; S.sheet = null; _ewiC = null; sv2Bust(); bust(); render();
+    toast(String(c.customerName || "") + ": " + said.join(", ") + ".");
+    sent.forEach(function (p) { try { picSend(p[0], p[1], "", c.customerName || ""); } catch (e) { toast("Saved. The photos could not be sent."); } });
+  }
+
+  function viewCommissionOld() {
     var p = sv2CommPending(), done = sv2CommDone();
     var h = '<div class="note">A delivery waits here when it carries a brand the office has marked <b>needs service</b> in the CRM, or a machine the CRM commissions (softener, filters, pumps, heat pump, RO). Commission it on site with photos; its warranty starts that day and it goes on the service schedule.</div>';
     if (!Array.isArray(S.data && S.data.challans)) return h + '<div class="empty">The deliveries are not on this phone yet. The owner pastes server update V144 once, then they come with every refresh.</div>';
@@ -3859,7 +4056,14 @@ function ewmBuild(n, pre) {
   function sv2AutoSn(c, idx) { return "EW-" + String((c && c.challanNo) || (c && c.id) || "").replace(/[^A-Za-z0-9]/g, "") + "-" + (Number(idx) + 1); }
   function sv2CommSave() {
     sv2CommKeep();
-    var K = S.cm || {}, c = sv2Challans().filter(function (x) { return x.id === K.id; })[0]; if (!c) return;
+    var r = sv2CommWrite(); if (!r) return; if (r.err) { toast(r.err); return; }
+    S.cm = null; S.sheet = null; sv2Bust(); bust(); render();
+    toast("Commissioned " + r.n + " machine" + (r.n === 1 ? "" : "s") + (r.n ? " — on the service schedule from today." : "."));
+    if (r.pics.length) { try { picSend(r.pics, r.id, "", r.client); } catch (e) { toast("Saved. The photos could not be sent."); } }
+  }
+  /* 2.9.0 - the write itself, used by the old sheet and by the step sheet */
+  function sv2CommWrite() {
+    var K = S.cm || {}, c = sv2Challans().filter(function (x) { return x.id === K.id; })[0]; if (!c) return null;
     var ls = sv2CommLines(c).filter(function (x) { return !x.st; }), date = K.date || today();
     var lines = ls.map(function (x) {
       var L = (K.l && K.l[x.idx]) || {};
@@ -3869,8 +4073,8 @@ function ewmBuild(n, pre) {
       return { idx: x.idx, code: x.i.code || "", desc: x.i.desc || "", brand: x.i.brand || "", qty: num(x.i.qty) || 1, sn: L.sn || sv2AutoSn(c, x.idx), wm: wm, till: sv2AddMonths(_ws.start, wm), cm: cm, from: _ws.start };
     });
     var real = lines.filter(function (l) { return !l.skip; });
-    if (real.length && !(K.pics || []).length) { toast("Take at least one photo of the installed machine."); return; }
-    if (!lines.length) { toast("Nothing left to commission on this delivery."); return; }
+    if (real.length && !(K.pics || []).length) return { err: "Take at least one photo of the installed machine." };
+    if (!lines.length) return { err: "Nothing left to commission on this delivery." };
     var id = mintId("CM"), at = new Date().toISOString();
     var arow = { id: id, createdAt: at, actor: S.user || "", action: "comm:done", target: String(c.challanNo || c.id),
       detail: JSON.stringify({ id: id, chId: c.id, no: c.challanNo || "", client: c.customerName || "", site: c.site || "", date: date, eng: S.user || "", lines: lines, photos: (K.pics || []).length }), ip: "" };
@@ -3885,10 +4089,7 @@ function ewmBuild(n, pre) {
         notes: "Commissioned on the Service app · Challan " + (c.challanNo || "") + " · warranty till " + dstr(l.till) + (l.qty > 1 ? " · qty " + l.qty : "") });
     });
     try { applyJournal(); } catch (e) { }
-    var pics = (K.pics || []).slice();
-    S.cm = null; S.sheet = null; sv2Bust(); bust(); render();
-    toast("Commissioned " + real.length + " machine" + (real.length === 1 ? "" : "s") + (real.length ? " — on the service schedule from today." : "."));
-    if (pics.length) { try { picSend(pics, id, "", c.customerName || ""); } catch (e) { toast("Saved. The photos could not be sent."); } }
+    return { id: id, n: real.length, pics: (K.pics || []).slice(), client: c.customerName || "" };
   }
   function viewToday() {
     var _tkr = tkRefs(), due = dueList(), ending = amcEnding(45), cx = openComplaints().filter(function (c) { return !_tkr[String(c.Ref || "")]; });   /* 1.21.0 - a ticket shows once, as a job */
@@ -4652,6 +4853,7 @@ function ewmBuild(n, pre) {
     { k: "salt",    t: "Salt bags signed for", hint: "The slip the customer signed for the bags of salt delivered - how many, and his signature." },
     { k: "fault",   t: "The fault",        hint: "What was wrong — the leak, the burnt card, the cracked housing." },
     { k: "done",    t: "Work done",        hint: "The machine running after the job. Your proof it was finished." },
+    { k: "install", t: "Installation", hint: "" }, { k: "commission", t: "Commissioning", hint: "" }, { k: "handover", t: "Handover", hint: "" },   /* 2.9.0 */
     { k: "machine", t: "Machine & serial", hint: "The unit and its serial plate. Kept on the machine, not this visit — every future visit sees it." }
   ];
   function picKind(k) {
@@ -4938,7 +5140,7 @@ function ewmBuild(n, pre) {
   var NAV = [   /* 2.0.0 - the desk: Labour job and My work are buttons on Home now */
     { k: "home",       t: "Home" },
     { k: "complaints", t: "Complaints" },
-    { k: "commission", t: "Commission" },
+    { k: "commission", t: "Install" },
     { k: "jobs",       t: "Machines" },
     { k: "account",    t: "Account" }
   ];
@@ -5026,7 +5228,31 @@ function ewmBuild(n, pre) {
       try { cq.focus({ preventScroll: true }); cq.setSelectionRange(cq.value.length, cq.value.length); } catch (e) { }
     }
     Array.prototype.forEach.call(document.querySelectorAll(".cm2-skip"), function (b) {
-      b.addEventListener("change", function () { sv2CommKeep(); S.sheet = sv2CommSheet(); render(); });
+      b.addEventListener("change", function () { if (S.ew) return; sv2CommKeep(); S.sheet = sv2CommSheet(); render(); });   /* 2.9.0 - the step sheet has its own */
+    });
+    /* 2.9.0 - the step sheet */
+    Array.prototype.forEach.call(document.querySelectorAll(".ewi-on"), function (b) {
+      b.addEventListener("change", function () { ewiKeep(); var k = b.getAttribute("data-k"); S.ew[k] = S.ew[k] || { date: today(), pics: [] }; S.ew[k].on = b.checked; if (!S.ew[k].date) S.ew[k].date = today(); S.ew[k].pics = S.ew[k].pics || []; S.sheet = ewiSheet(); render(); });
+    });
+    if (S.ew) Array.prototype.forEach.call(document.querySelectorAll(".cm2-skip"), function (b) {
+      b.addEventListener("change", function () { ewiKeep(); S.sheet = ewiSheet(); render(); });
+    });
+    Array.prototype.forEach.call(document.querySelectorAll(".ewi-pic"), function (inp) {
+      inp.addEventListener("change", function () {
+        ewiKeep();
+        var k = inp.getAttribute("data-k"), kind = k === "install" ? "install" : k === "comm" ? "commission" : "handover";
+        var fs = [].slice.call(inp.files || []);
+        Promise.all(fs.map(function (f) { return picRead(f, kind).catch(function () { return null; }); })).then(function (list) {
+          if (!S.ew || !S.ew[k]) return;
+          S.ew[k].pics = (S.ew[k].pics || []).concat(list.filter(Boolean));
+          S.sheet = ewiSheet(); render();
+        });
+      });
+    });
+    var ewq = el("ewi_q");
+    if (ewq) ewq.addEventListener("input", function () {
+      S.ewiQ = ewq.value; S.ewiLim = 40; render();
+      var q2 = el("ewi_q"); if (q2) { try { q2.focus({ preventScroll: true }); q2.setSelectionRange(q2.value.length, q2.value.length); } catch (e) { } }
     });
     var cp = el("cm2_pic");
     if (cp) cp.addEventListener("change", function () {
@@ -5073,7 +5299,7 @@ function ewmBuild(n, pre) {
       S.accOpen = (S.accOpen === ak) ? "" : ak;
       render(); return;
     }
-    if (act === "close")   { S.parts = false; S.sheet = null; S.vis = null; S.q = ""; S.fin = null; S.nc = null; S.cm = null; S.sv2id = ""; S.tm = null; S.tmOn = false; render(); return; }
+    if (act === "close")   { S.parts = false; S.sheet = null; S.vis = null; S.q = ""; S.fin = null; S.nc = null; S.cm = null; S.ew = null; S.sv2id = ""; S.tm = null; S.tmOn = false; render(); return; }
     if (act === "refresh") { pull(true); return; }
     /* ================= FIVE BUTTONS THAT DID NOTHING  (v1.12.1, 3 Sep 2026) =================
        Found by scanning every data-act this app EMITS against the acts its router HANDLES.
@@ -5191,6 +5417,10 @@ function ewmBuild(n, pre) {
     }
     if (act === "sv-hasm") { svMKeep(); var _NH = svMN(); if (_NH) _NH.hasM = t.getAttribute("data-k") === "yes" ? "yes" : "no"; svMPaint(); return; }   /* 2.3.0; 2.4.0 - also on a ticket */
     if (act === "sv-old-del") { svMKeep(); var _ND = svMN(); if (_ND && _ND.old) { _ND.old.splice(Number(t.getAttribute("data-i")) || 0, 1); Object.keys(_ND.picks || {}).forEach(function (k) { if (/^NI:/.test(k)) delete _ND.picks[k]; }); } svMPaint(); return; }
+    if (act === "ewi-open") { ewiOpen(id); return; }   /* 2.9.0 */
+    if (act === "ewi-f") { S.ewiF = t.getAttribute("data-k"); S.ewiLim = 40; render(); return; }
+    if (act === "ewi-more") { S.ewiLim = (S.ewiLim || 40) + 40; render(); return; }
+    if (act === "ewi-save") { ewiSave(); return; }
     if (act === "sv2-comm") {
       if (!canRecord()) { toast("Commissioning is the engineer's."); return; }
       S.cm = { id: id, date: today(), l: {}, pics: [] }; S.sheet = sv2CommSheet(); render(); return;
