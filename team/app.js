@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.757";
+  var APP_VERSION = "6.9.758";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -20534,12 +20534,18 @@ function viewCatalogue() {
         /* DESC_W is derived from the column positions, not guessed. The unit column is
            right-aligned at X.unit, so its text grows leftwards - reserve room for it. */
         var BUL_W = DESC_W - 4;
-        var tLines = fitCell(doc, F, r.title, DESC_W, 40, "bold", 10);
+        var _code = String(r.code || "");   /* 6.9.758 - the code is a tag; the name starts beside it */
+        F("bold"); doc.setFontSize(8.5);
+        var _cw = _code ? doc.getTextWidth(_code) + 3.2 : 0;
+        F("bold"); doc.setFontSize(10);
+        var _w1 = DESC_W - _cw - 1.8, _words = String(r.title || "").split(/\s+/).filter(Boolean), _l1 = "";
+        while (_words.length && doc.getTextWidth((_l1 ? _l1 + " " : "") + _words[0]) <= _w1) _l1 = (_l1 ? _l1 + " " : "") + _words.shift();
+        var tLines = [_l1].concat(_words.length ? fitCell(doc, F, _words.join(" "), DESC_W, 40, "bold", 10) : []);
         var bBlocks = (r.bullets || []).map(function (b) { return fitCell(doc, F, b, BUL_W, 6, "normal", 8.5); });
         var bCount = bBlocks.reduce(function (a, x) { return a + x.length; }, 0);
         var hasB = (r.bullets && r.bullets.length) ? 1 : 0;
         /* 6.9.673 - code 9pt, name 10pt (4.1mm a line), features 8.5pt (3.5mm a line) */
-        var hgt = Math.max(14, 11 + (tLines.length - 1) * 4.1 + (hasB ? 1.4 : 0) + bCount * 3.5 + (hasB ? 0.6 : 0));
+        var hgt = Math.max(10.5, 7 + (tLines.length - 1) * 4.1 + (hasB ? 1.4 : 0) + bCount * 3.5 + (hasB ? 0.6 : 0));
         /* Page-break FIRST, then derive mid from the post-break y. If mid were computed
            before the break, a row that wraps to a new page would draw its serial # and
            figures at the old bottom-of-page y (off the printable area) while the
@@ -20572,11 +20578,14 @@ function viewCatalogue() {
           } catch (e) { }
         }
 
-        col(GREY); F("normal"); doc.setFontSize(9);
-        doc.text(String(r.code || ""), X.item, y + 0.4);
-        /* product name (bold) on top, then each feature as a small teal bullet beneath it */
+        /* 6.9.758 - code tag, then the name on the same line */
+        var _ty = y + 0.9;
+        if (_code) {
+          fill([224, 242, 238]); doc.roundedRect(X.item, _ty - 3.3, _cw, 4.5, 0.9, 0.9, "F");
+          col(TEALD); F("bold"); doc.setFontSize(8.5); doc.text(_code, X.item + 1.6, _ty);
+        }
         col(r.optional ? [146, 64, 14] : INK); F("bold"); doc.setFontSize(10);
-        var _ty = y + 4.8; doc.text(tLines, X.item, _ty, { lineHeightFactor: 1.15 });
+        tLines.forEach(function (tl, k) { if (tl) doc.text(tl, k === 0 ? X.item + _cw + 1.8 : X.item, _ty + k * 4.1); });
         _ty += tLines.length * 4.1 + (hasB ? 1.4 : 0) - 0.6;
         F("normal"); doc.setFontSize(8.5);
         bBlocks.forEach(function (bl) {
