@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.748";
+  var APP_VERSION = "6.9.750";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -2463,6 +2463,9 @@
     var hit = monthLocked(ymWas) ? ymWas : monthLocked(ymNew) ? ymNew : "";
     return hit ? ymLabel(hit) + " is locked — its statements have gone out, so this " + what + "'s money cannot change. Make the correction as an entry this month." : null;
   }
+  /* p752 - the machine form's shared brands / products */
+  window.ewmSharedGet = function () { var o = { b: [], p: [] }; ((S.data && S.data.audit) || []).forEach(function (a) { if (String(a && a.action || "") !== "mach:custom") return; var d = {}; try { d = JSON.parse(a.detail || "{}") || {}; } catch (e) { return; } if ((d.kind === "b" || d.kind === "p") && String(d.name || "").trim()) o[d.kind].push(String(d.name).trim()); }); return o; };
+  window.ewmSharedPut = function (kind, v) { save("audit", { id: "", createdAt: new Date().toISOString(), actor: S.user || "", action: "mach:custom", target: String(v), detail: JSON.stringify({ kind: kind, name: String(v) }), ip: "" }, true); };
   function save(tab, row, quiet) {
     var _lk = null; try { _lk = lockRefusal(tab, row); } catch (eLk) { _lk = null; }
     if (_lk) { try { toast(_lk); S.lockSay = _lk; setTimeout(function () { if (S.lockSay === _lk) { S.lockSay = ""; } }, 12000); } catch (e) { } return Promise.resolve(null); }   /* 6.9.744 */
@@ -7851,8 +7854,16 @@ window.addEventListener("beforeunload", function (ev) {
            (on.length && off.length ? "; " : "") + (off.length ? "over: " + off.map(function (p) { return p.label + " " + fullDate(p.till); }).join(", ") : "");
   }
   /* the cat a delivered line is commissioned under: the product type's, with the brand's months over it */
+  /* 6.9.749 - his installation brands (Service 2.9.0): every line of these waits for installation & commissioning */
+  var EWI_BRANDS = ["grundfos", "pentair", "leo", "green heat", "greenheat", "adani", "inair", "lunos"];
+  function ewiBrandHit(b) {
+    var s = " " + String(b == null ? "" : b).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim() + " ";
+    for (var i = 0; i < EWI_BRANDS.length; i++) if (s.indexOf(" " + EWI_BRANDS[i] + " ") > -1) return true;
+    return false;
+  }
   function commNeed(i) {
     var cat = commCat(i && i.desc), bs = brandSvc(i && i.brand);
+    if (!(bs && bs.on) && !cat && i && ewiBrandHit(i.brand)) { var _r = svcRule(i.brand); return { kw: [], label: String(i.desc || i.brand || "Machine"), months: (_r && _r.wm) || 12, cycle: 180, brand: true }; }
     if (!(bs && bs.on) && !cat) return null;
     if (!(bs && bs.on)) return bs && bs.rule ? Object.assign({}, cat, { months: bs.wm || cat.months }) : cat;   /* 6.9.738 - the brand's warranty */
     return { kw: [], label: cat ? cat.label : String(i.brand || "Machine"), months: bs.wm || (cat && cat.months) || 12,
@@ -9617,8 +9628,61 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
      and left them as cards: eleven men to certify, two lines and a button each, a screen and a
      half. The same component the register and the installations use, one line per man, the
      button in the last column. Nothing dropped - the same names, dates, products and buttons. */
+
+  /* ===== 6.9.749 - WHERE EACH DELIVERY STANDS: INSTALLED -> COMMISSIONED -> HANDED OVER (marked on the Service app) ===== */
+  var EWI_LAUNCH = "2026-10-12";
+  function ewiStepsCrm() {
+    var m = {};
+    ((S.data && S.data.audit) || []).forEach(function (a) {
+      if (String(a && a.action || "") !== "inst:step") return;
+      var d = {}; try { d = JSON.parse(a.detail || "{}") || {}; } catch (e) { return; }
+      if (!d.chId || !/^(install|handover)$/.test(d.step)) return;
+      var x = m[d.chId] || (m[d.chId] = {}), cur = x[d.step];
+      if (!cur || String(a.createdAt || "") >= String(cur.at || "")) x[d.step] = { id: d.id || a.id, date: String(d.date || ""), by: d.by || a.actor || "", at: String(a.createdAt || "") };
+    });
+    return m;
+  }
+  function ewiCrmRows() {
+    var steps = ewiStepsCrm(), aud = svcAud().comm, out = [];
+    (S.data.challans || []).forEach(function (c) {
+      if (isCancelled && isCancelled("challans", c.id)) return;
+      var raw = chItems(c), st = steps[c.id] || {}, stamps = aud[c.id] || {};
+      var ls = []; raw.forEach(function (i, idx) { if (commNeed(i)) ls.push({ i: i, idx: idx, st: (i.comm && i.comm.date) ? { date: i.comm.date, at: "crm" } : (stamps[String(idx)] || null) }); });
+      if (!ls.length) return;
+      var stamped = ls.filter(function (l) { return l.st; }), comm = stamped.length === ls.length;
+      var cds = stamped.filter(function (l) { return !l.st.skip; }).map(function (l) { return String(l.st.date || "").slice(0, 10); }).filter(Boolean).sort();
+      var commDate = comm ? (cds[cds.length - 1] || "") : "", inst = st.install ? st.install.date : (cds[0] || ""), hand = st.handover ? st.handover.date : "";
+      var legacy = !st.install && !st.handover && comm && stamped.every(function (l) { return l.st.at === "crm" || !l.st.at || String(l.st.at || "") < EWI_LAUNCH; });
+      if (legacy) { hand = commDate; inst = inst || commDate; }
+      out.push({ c: c, ls: ls, inst: inst, comm: comm, commDate: commDate, hand: hand, st: st, stage: !inst ? "install" : !comm ? "comm" : !hand ? "hand" : "done" });
+    });
+    return out;
+  }
+  function ewiCrmCard() {
+    var rows = ewiCrmRows(), n = { install: 0, comm: 0, hand: 0, done: 0 };
+    rows.forEach(function (x) { n[x.stage]++; });
+    var open = rows.filter(function (x) { return x.stage !== "done"; }).sort(function (a, b) { return String(a.c.createdAt || "").localeCompare(String(b.c.createdAt || "")); });
+    if (!rows.length) return "";
+    var d = function (v) { return v ? esc(fullDate(v)) : '<span style="color:#b45309">&mdash;</span>'; };
+    var pics = function (id, kind) { var p = id ? svcPics(kind, id) : []; return p.length ? ' <a href="' + esc(p[0].url) + '" target="_blank" rel="noopener" style="font-size:12px">' + p.length + ' photo' + (p.length === 1 ? '' : 's') + '</a>' : ''; };
+    var h = '<div class="card" style="border-color:#c7d2fe"><h3>Installation &amp; handover <span class="pill soon">' + (n.install + n.comm + n.hand) + ' open</span></h3>' +
+      '<div class="meta" style="margin:0 0 6px">Marked on the Service app by Manoj or the office: <b>' + n.install + '</b> to install &middot; <b>' + n.comm + '</b> to commission &middot; <b>' + n.hand + '</b> to hand over &middot; <b>' + n.done + '</b> handed over.</div>';
+    if (!open.length) return h + '<div class="empty">Every delivery is handed over.</div></div>';
+    h += xlTable("svc-ewi", [
+      { k: "client", t: "CLIENT", w: "140px" }, { k: "no", t: "DELIVERY" }, { k: "what", t: "MACHINES" },
+      { k: "inst", t: "INSTALLED" }, { k: "comm", t: "COMMISSIONED" }, { k: "hand", t: "HANDED OVER" }
+    ], open.slice(0, 200).map(function (x) {
+      var what = x.ls.filter(function (l) { return !(l.st && l.st.skip); }).map(function (l) { return (l.i.brand ? l.i.brand + " " : "") + (l.i.desc || ""); }).join(", ");
+      return { v: { client: x.c.customerName || "", no: x.c.challanNo || "", what: what, inst: x.inst, comm: x.commDate, hand: x.hand }, cells: {
+        client: '<b>' + esc(x.c.customerName || "") + '</b>', no: esc(x.c.challanNo || ""), what: esc(what.slice(0, 90)),
+        inst: d(x.inst) + pics(x.st.install && x.st.install.id, "install"), comm: x.comm ? d(x.commDate) : d(""), hand: d(x.hand) + pics(x.st.handover && x.st.handover.id, "handover")
+      } };
+    }), "each delivery and its three steps") + '</div>';
+    return h;
+  }
   function commissioningSection() {
     var pend = commPending(), done = commDone(), cs = "";
+    try { cs += ewiCrmCard(); } catch (eE) { }   /* 6.9.749 */
     var exp = warrantyExpiring(60);
     var meta = function (t) { return '<div class="meta" style="margin:0 0 6px">' + t + '</div>'; };
     if (exp.length) {

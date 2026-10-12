@@ -238,11 +238,19 @@ var EWM_BRAND_PRODUCTS = {
   "LEO": ["Recirculation Pump", "Pressure Pump"],
   "Grundfos": ["Pressure Pump", "Recirculation Pump"]
 };
-function ewmCustom() { try { var c = JSON.parse(localStorage.getItem("ew_mach_custom") || "{}"); return { b: c.b || [], p: c.p || [] }; } catch (e) { return { b: [], p: [] }; } }
+function ewmCustom() {
+  var o = { b: [], p: [] };
+  try { var c = JSON.parse(localStorage.getItem("ew_mach_custom") || "{}"); o.b = c.b || []; o.p = c.p || []; } catch (e) { }
+  /* p752 - and what any phone typed (audit mach:custom), via the app's own hook */
+  try { var sh = window.ewmSharedGet ? window.ewmSharedGet() : null; if (sh) ["b", "p"].forEach(function (k) { (sh[k] || []).forEach(function (v) { if (o[k].map(function (x) { return x.toLowerCase(); }).indexOf(String(v).toLowerCase()) < 0) o[k].push(String(v)); }); }); } catch (e) { }
+  return o;
+}
 function ewmRemember(kind, v) {
   v = String(v || "").trim(); if (!v) return;
-  var c = ewmCustom(), l = c[kind]; if (l.map(function (x) { return x.toLowerCase(); }).indexOf(v.toLowerCase()) < 0) l.push(v);
+  var c = ewmCustom(), l = c[kind], isNew = l.map(function (x) { return x.toLowerCase(); }).indexOf(v.toLowerCase()) < 0;
+  if (isNew) l.push(v);
   try { localStorage.setItem("ew_mach_custom", JSON.stringify(c)); } catch (e) { }
+  if (isNew) { try { if (window.ewmSharedPut) window.ewmSharedPut(kind, v); } catch (e) { } }   /* p752 - for every phone */
 }
 function ewmEsc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
 function ewmToday() { var d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
