@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.754";
+  var APP_VERSION = "6.9.755";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -20705,6 +20705,12 @@ function viewCatalogue() {
       });
       y = tcPy + TC_PANH + 2;
 
+      /* 6.9.755 - the bank details, bottom left, beside the sign-off */
+      if (y + 29 > 286) { doc.addPage(); y = 22; }
+      var _payY = y + 3;
+      ewPayBox(doc, L, _payY, Math.min(118, Rt - L - 68));
+      y = _payY - 3;   /* the sign-off sits level with it on the right */
+
       /* ---- sign-off, bottom right of the last page. A quotation is a document a person
            stands behind, so the name goes where a signature goes - not in a header box. ---- */
       var me = (S.data.team || []).filter(function (t2) { return t2.name === q.createdBy; })[0] || {};
@@ -21050,6 +21056,34 @@ function viewCatalogue() {
       }
     }
     return true;
+  }
+  /* ---- 6.9.755 - THE BANK DETAILS (his words: "add this account detail to every quote we made, to every hisab pdf
+     or excel we generated, not for challan pdf"). The QR is the bank's own standee code, read off his photo and
+     re-drawn exactly - same payload, same account. One box, one set of facts, wherever money is asked for. ---- */
+  var EW_PAY = { holder: "Energy World", bank: "IndusInd Bank", branch: "Faridpur, Panipat", acno: "201031712906",
+                 ifsc: "INDB0000660", upi: "Pos.11363629@indus",
+                 qr: "upi://pay?pa=Pos.11363629@indus&pn=Indus%20Merchant&cu=INR" };
+  function ewPayBox(doc, x, y, w) {
+    var H = 26, Q = 22, drew = false;
+    doc.setFillColor(255, 255, 255); doc.setDrawColor(13, 118, 108); doc.setLineWidth(0.35);
+    doc.roundedRect(x, y, w, H, 1.6, 1.6, "FD"); doc.setLineWidth(0.2);
+    try { drew = pdfQr(doc, EW_PAY.qr, x + 2, y + 2, Q); } catch (e) { drew = false; }
+    var tx = x + (drew ? Q + 5 : 4), vx = tx + 19;
+    doc.setFont("helvetica", "bold"); doc.setFontSize(8.4); doc.setTextColor(13, 118, 108);
+    doc.text("PAYMENT DETAILS" + (drew ? "  -  scan to pay by UPI" : ""), tx, y + 5.6);
+    [["A/c holder", EW_PAY.holder], ["Bank", EW_PAY.bank + ", " + EW_PAY.branch], ["A/c no", EW_PAY.acno],
+     ["IFSC", EW_PAY.ifsc], ["UPI", EW_PAY.upi]].forEach(function (r, i) {
+      var yy = y + 10 + i * 3.6;
+      doc.setFont("helvetica", "normal"); doc.setFontSize(7.8); doc.setTextColor(100, 116, 139); doc.text(r[0], tx, yy);
+      doc.setFont("helvetica", "bold"); doc.setTextColor(17, 34, 45); doc.text(r[1], vx, yy);
+    });
+    return H;
+  }
+  /* 6.9.755 - the same bank details at the foot of every hisab Excel */
+  function ewPayXlRows() {
+    return [[{ v: "PAYMENT DETAILS", s: XL.HEAD }, { v: "", s: XL.HEAD }],
+            ["A/c holder", EW_PAY.holder], ["Bank", EW_PAY.bank + ", " + EW_PAY.branch], ["A/c no", EW_PAY.acno],
+            ["IFSC", EW_PAY.ifsc], ["UPI", EW_PAY.upi]];
   }
   function quotePresPdf(q) {
     var items = [];
@@ -21683,6 +21717,7 @@ function viewCatalogue() {
         });
       });
 
+      ewPayBox(doc, L, 137, 186 - 14 - L - 8);   /* 6.9.755 - bank details under the steps */
       var CX = 186;
       draw([38, 94, 88]); doc.setLineWidth(0.4); doc.line(CX - 14, 58, CX - 14, 146); doc.setLineWidth(0.2);
       col(MINT); F("bold"); doc.setFontSize(7);
@@ -31625,6 +31660,7 @@ function viewCatalogue() {
     out.push([]);
     out.push(["Energy World · " + cl + " · built " + fullDate(today()) +
               " · every delivery, return and payment on this account."]);
+    out.push([]); ewPayXlRows().forEach(function (r) { out.push(r); });   /* 6.9.755 */
     dlXlsx("Hisab_" + String(cl).replace(/[^\w.-]/g, "_") + "_" + today() + ".xlsx",
            String(cl).slice(0, 28), out, [11, 24, 30, 13, 16, 12, 13, 13, 14]);
   }
@@ -31682,6 +31718,7 @@ function viewCatalogue() {
     out.push([]);
     out.push(["Energy World \u00b7 " + cl + " \u00b7 built " + fullDate(today()) +
               " \u00b7 every delivery, return and payment on this account, each with its own lines and a link to its signed receipt."]);
+    out.push([]); ewPayXlRows().forEach(function (r) { out.push(r); });   /* 6.9.755 */
     dlXlsx("Hisab_full_" + String(cl).replace(/[^\w.-]/g, "_") + "_" + today() + ".xlsx",
            String(cl).slice(0, 28), out, [11, 24, 30, 13, 16, 12, 13, 13, 14, 14, 30, 14, 8, 10, 8, 14, 40]);
   }
@@ -33814,6 +33851,9 @@ function viewCatalogue() {
         F("normal"); doc.setFontSize(6.9); ink(GREY);
         doc.text("The pages that follow show each delivery and return listed above, with the signed receipt beside it.", cP, y);
       }
+
+      /* 6.9.755 - the bank details under the balance */
+      y += 7; need(29); ewPayBox(doc, L, y, 150); y += 28;
 
       /* the letterhead strip, on page one - the brand logos come from the persistent cache, so
          nothing is downloaded while this is built; until it is warm the names print as text */
@@ -36899,6 +36939,8 @@ function viewCatalogue() {
       doc.text(_ld < -0.5 ? "In credit (paid ahead)" : "Balance due", 116, y + 1.4);
       doc.setFontSize(11);
       doc.text(R2(Math.abs(_ld) < 0.5 ? 0 : Math.abs(_ld)), Rt - 2, y + 1.6, { align: "right" });
+      y += 14; if (y + 27 > 284) { doc.addPage(); y = 20; }
+      ewPayBox(doc, L, y, Math.min(130, Rt - L));   /* 6.9.755 */
       F("normal"); doc.setFontSize(6.4); doc.setTextColor(150, 163, 175);
       doc.text("Energy World  |  Panipat \u00b7 Sonipat \u00b7 Karnal", L, 290);
       return doc;
