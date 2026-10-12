@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.747";
+  var APP_VERSION = "6.9.748";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -6902,12 +6902,11 @@ window.addEventListener("beforeunload", function (ev) {
   function chDateLost(c) { return String((c && c.__dFrom) || ""); }
   /* The mark on the card. Amber, tiny, and it names its source - so a man checking a delivery
      against his paper book can see at a glance which date he is being shown. */
-  function chDatePill(c) {
+  function chDatePill(c, short) {
     var f = chDateLost(c);
-    return f ? ' <span class="pill" style="background:#fef3c7;color:#92400e;font-size:12px" ' +
+    return f ? ' <span class="pill" style="background:#fef3c7;color:#92400e;font-size:12px;white-space:nowrap" ' +
       'title="This delivery has no date of its own on the sheet. The date shown is taken from its ' +
-      'challan number. It will be written back the next time this challan is saved.">date from ' +
-      esc(f) + '</span>' : '';
+      'challan number. It will be written back the next time this challan is saved.">' + (short ? 'from no.' : 'date from ' + esc(f)) + '</span>' : '';   /* p748 - short in the register */
   }
 
   function splitCancelled() {
@@ -25120,11 +25119,12 @@ function viewCatalogue() {
         /* the date beside it only when the number does not already say it (an old-book number, or a
            challan dated other than its number) - the room the one line needed */
         (function () { var _d = regDMY(regDate(c)), _n = String(c.challanNo || "");
+          /* p748 - his words: "put date from number text below challan date cum sr.no" - under the number, not beside it */
           return (_n.indexOf(_d) === 0 && !chDatePill(c)) ? '' :
-            ' <span style="font-size:12px;color:#64748b;margin-left:4px">' + esc(_d.replace(/\/(\d\d)(\d\d)$/, "/$2")) + chDatePill(c) + '</span>'; })() + '</td>' +
-      '<td style="' + regCell(";max-width:160px;overflow:hidden;text-overflow:ellipsis") + '">' +
+            '<div style="font-size:12px;color:#64748b;margin-top:2px;white-space:nowrap">' + esc(_d.replace(/\/(\d\d)(\d\d)$/, "/$2")) + chDatePill(c, true) + '</div>'; })() + '</td>' +
+      '<td style="' + regCell(";min-width:120px;max-width:200px;white-space:normal;font-size:12.5px;line-height:1.3") + '">' +   /* p748 - the whole name, on two lines if it must */
         '<a href="#" data-act="ch-hisab" data-cl="' + esc(c.customerName || "") + '" ' +
-        'style="font-weight:700;color:#0b3b36;text-decoration:none;white-space:nowrap" title="' +
+        'style="font-weight:700;color:#0b3b36;text-decoration:none;word-break:break-word" title="' +
         (cl.mobile ? esc(cl.mobile) + ' · ' : '') + 'Open this client’s full HISAB, where the complete statement downloads">' +
         esc(c.customerName || "—") + '</a>' +
         '</td>' +
@@ -52833,6 +52833,7 @@ function viewCatalogue() {
       "border-bottom:1px solid #e2e8f0;border-radius:18px 18px 0 0}" +
       ".modalx .btn{padding:5px 12px;font-size:12.5px}" +
       /* 6.9.675 - the register on a laptop: one line a row (his ask); a phone keeps 44px taps */
+      ".regtbl .pill{white-space:nowrap}" +   /* p748 - "finalised" / "no paper" never broken across lines */
       "@media(min-width:640px) and (pointer:fine){.regtbl .btn.sm{min-height:28px;min-width:0;padding:2px 9px}.regtbl td{padding-top:4px!important;padding-bottom:4px!important;vertical-align:middle!important}}" +
       /* 6.9.679 - HIS WORDS, 2 Oct 2026: "inspect all things and do all single liner". Every screen was
          measured at 1440 wide with a mouse: in eleven tables the one thing making a row 55px instead of
