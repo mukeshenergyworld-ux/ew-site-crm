@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.752";
+  var APP_VERSION = "6.9.754";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -521,7 +521,7 @@
      Never inside a box you type in, a drop-down, a script or a PDF; a name shared by two different numbers is
      left alone rather than guessed; a name under 5 letters with no space is left alone (too much like a word). */
   (function () {
-    var MAP = null, KEY = "", pend = [], sched = false;
+    var MAP = null, KEY = "", pend = [], sched = false, SHORT = {};
     var SKIP = { SCRIPT: 1, STYLE: 1, TEXTAREA: 1, OPTION: 1, SELECT: 1, INPUT: 1, TITLE: 1, NOSCRIPT: 1, DATALIST: 1 };
     function ewcLow(s) { return String(s == null ? "" : s).replace(/\s+/g, " ").trim().toLowerCase(); }
     function ewcData() { try { return window.__ewCodeSrc ? window.__ewCodeSrc() : null; } catch (e) { return null; } }
@@ -530,10 +530,10 @@
       var cl = d.clients || [], as = d.associates || [];
       var k = cl.length + ":" + as.length + ":" + cl.filter(function (c) { return c && c.code; }).length + ":" + as.filter(function (a) { return a && a.code; }).length;
       if (k === KEY && MAP) return MAP;
-      KEY = k; var m = {}, bad = {};
+      KEY = k; var m = {}, bad = {}; SHORT = {};
       function ewcPut(name, code) {
         var n = ewcLow(name), c = String(code || "").trim(); if (!n || !c) return;
-        if (n.length < 5 && n.indexOf(" ") < 0) return;
+        if (n.length < 5 && n.indexOf(" ") < 0) { if (SHORT[n] && SHORT[n] !== c) SHORT[n] = "\u0000"; else SHORT[n] = c; return; }   /* 6.9.754 - kept apart, used only on a marked name */
         if (m[n] && m[n] !== c) bad[n] = 1; else m[n] = c;
       }
       cl.forEach(function (c) { if (c) ewcPut(c.name, c.code); });
@@ -559,8 +559,12 @@
     }
     function ewcOne(t, m) {
       var v = t.nodeValue; if (!v || v.length > 80) return;
-      var code = m[ewcLow(v)]; if (!code) return;
-      var p = t.parentNode; if (!p || p.nodeType !== 1 || ewcSkip(p)) return;
+      var code = m[ewcLow(v)], p = t.parentNode;
+      /* 6.9.754 - "Prem", "Anil": under 5 letters, so never matched in running text - but where the screen itself marks
+         the element as a person's name (data-n / data-cl carrying exactly that name), it is his */
+      if (!code && p && p.nodeType === 1 && p.getAttribute) { var dn = p.getAttribute("data-n") || p.getAttribute("data-cl"); if (dn && ewcLow(dn) === ewcLow(v)) { var sc = SHORT[ewcLow(v)]; if (sc && sc !== "\u0000") code = sc; } }
+      if (!code) return;
+      if (!p || p.nodeType !== 1 || ewcSkip(p)) return;
       var prev = t.previousSibling;
       while (prev && prev.nodeType === 3 && !prev.nodeValue.trim()) prev = prev.previousSibling;
       if (prev && prev.nodeType === 1 && prev.classList && (prev.classList.contains("ewc") || prev.classList.contains("code"))) return;
@@ -45661,7 +45665,7 @@ function viewCatalogue() {
       (inv.length ? pevTable([["#", "right"], ["Guest"], ["Tier"], ["Business 12 m", "right"], ["Status"], ["Executive"], ["Follow-up"], [isG ? "Gift ₹" : "Cost ₹", "right"], [""]],
         inv.map(function (p, k) {
           var i = p.i, x = p.x, mob = x.mob || "";
-          return ['<span style="color:#64748b">' + (k + 1) + '</span>', '<span style="display:inline-block;max-width:210px;overflow:hidden;text-overflow:ellipsis;vertical-align:middle" title="' + esc(i.partner) + (mob ? ' \u00b7 ' + esc(mob) : '') + '"><b data-act="pev-ed" data-id="' + esc(e.eid) + '" data-n="' + esc(i.partner) + '" data-o="' + (x.other ? 1 : 0) + '" style="cursor:pointer;color:#0d766c;text-decoration:underline dotted" title="Tap to change the name">' + esc(i.partner) + '</b>' + ' <span style="font-size:12px;color:#64748b">' + (x.other ? '· ' + esc(x.role || "") + ' ' : '') + (mob ? '· ' + esc(mob) : '· <span style="color:#b45309">no mobile</span>') + '</span></span>',   /* p754 - his code (PL / AR / BL) already says the role */
+          return ['<span style="color:#64748b">' + (k + 1) + '</span>', '<span style="display:inline-block;max-width:210px;overflow:hidden;text-overflow:ellipsis;vertical-align:middle" title="' + esc(i.partner) + (mob ? ' \u00b7 ' + esc(mob) : '') + '"><b data-act="pev-ed" data-id="' + esc(e.eid) + '" data-n="' + esc(i.partner) + '" data-o="' + (x.other ? 1 : 0) + '" style="cursor:pointer;color:#0d766c;text-decoration:underline dotted" title="Tap to change the name">' + (function () { if (x.other) return ''; var _a = (S.data.associates || []).filter(function (a) { return dkey(a.name) === dkey(i.partner); }); var _c = _a.length === 1 ? String(_a[0].code || "") : "";   /* two partners by one name: no guess */ return _c ? '<span class="ewc">' + esc(_c) + '</span>' : ''; })() + esc(i.partner) + '</b>' + ' <span style="font-size:12px;color:#64748b">' + (x.other ? '· ' + esc(x.role || "") + ' ' : '') + (mob ? '· ' + esc(mob) : '· <span style="color:#b45309">no mobile</span>') + '</span></span>',   /* p754 - his code (PL / AR / BL) already says the role */
             x.other ? '<span style="display:inline-block;font-size:12px;font-weight:800;color:#3730a3;background:#e0e7ff;border-radius:6px;padding:1px 7px;white-space:nowrap">Guest</span>' : pevTierPill(x.tier), x.b12 ? money(x.b12) : '—',
             '<select class="pev-st" data-id="' + esc(e.eid) + '" data-p="' + esc(i.partner) + '" style="min-height:44px;font-size:13px;padding:4px 2px;width:96px">' + sts.map(function (s2) { return '<option' + (s2 === i.st ? ' selected' : '') + '>' + esc(s2) + '</option>'; }).join("") + '</select>',
             '<select class="pev-exec" data-id="' + esc(e.eid) + '" data-p="' + esc(i.partner) + '" style="min-height:44px;font-size:13px;padding:4px 2px;width:112px' + (i.exec ? '' : ';border-color:#fca5a5;color:#b91c1c') + '"><option value="">— nobody —</option>' +
@@ -60237,20 +60241,39 @@ function viewCatalogue() {
          not a partner. 10 digits minimum, always. */
       var am = String(val("m_amobile") || "").replace(/\D/g, "");
       if (am.length < 10) { toast("Partner mobile number is required (10 digits) — no partner without a phone."); return; }
-      /* p754 - a NEW NAME for a partner already on clients or deliveries would split his incentive history */
+      /* 6.9.753 - his words: "yes full name, what changed should changed everywhere". A new name for a partner goes
+         through the server's partnerRename (V154): clients, deliveries, incentive rates and payouts, sites, visits, tools
+         and the audit facts that name him - all in one request, the amounts untouched. Then this form saves as usual. */
       var _was = id ? (S.data.associates || []).filter(function (x) { return x.id === id; })[0] : null, _old = _was ? String(_was.name || "") : "";
       if (_was && dkey(_old) !== dkey(an)) {
-        var _k = dkey(_old);
-        var _nc = (S.data.clients || []).filter(function (c) { return ["architect", "plumber", "builder", "pmc"].some(function (f) { return dkey(c[f]) === _k; }); }).length;
-        var _nd = (S.data.challans || []).filter(function (c) { return dkey(c.associate) === _k; }).length;
-        if (_nc || _nd) { toast(_old + " is on " + _nc + " client" + (_nc === 1 ? "" : "s") + " and " + _nd + " deliver" + (_nd === 1 ? "y" : "ies") + " by this name. Changing it here would split his incentive history — keep the name, or ask for a full rename."); return; }
-      }
-      if (_was && dkey(_old) !== dkey(an)) {   /* nothing else carries the old name: his guest-list lines move with him */
-        pevLatest("evt:inv", function (d) { return d.eid + "|" + dkey(d.partner); }).filter(function (d) { return dkey(d.partner) === dkey(_old); }).forEach(function (d) {
-          var nd = {}; Object.keys(d).forEach(function (k) { if (k.charAt(0) !== "_" && k !== "at" && k !== "removed") nd[k] = d[k]; });
-          nd.partner = an; nd.renamedFrom = _old;
-          pevSaveRow("evt:inv", d.eid, nd).then(function () { return pevSaveRow("evt:inv", d.eid, { eid: d.eid, partner: _old, removed: 1, renamedTo: an }); });
+        if (!roleIs("admin")) { toast("Only the owner can change a partner's name."); return; }
+        var _k = dkey(_old), _cnt = function (rows, fs) { return (rows || []).filter(function (r) { return fs.some(function (f2) { return dkey(r[f2]) === _k; }); }).length; };
+        var _nc = _cnt(S.data.clients, ["architect", "plumber", "builder", "pmc"]), _nd = _cnt(S.data.challans, ["associate"]),
+            _np = _cnt(S.data.commpay, ["associate"]) + _cnt(S.data.commrates, ["associate"]), _ns = _cnt(S.data.sites, ["architect", "plumber", "builder"]) + _cnt(S.data.sitevisits, ["whom"]),
+            _na = (S.data.audit || []).filter(function (a) { if (dkey(a.target) === _k) return true; var d2 = {}; try { d2 = JSON.parse(a.detail || "{}"); } catch (e) { return false; } return ["partner", "name", "was", "now", "associate", "whom", "person"].some(function (f2) { return typeof d2[f2] === "string" && dkey(d2[f2]) === _k; }); }).length;
+        if ((S.data.associates || []).some(function (x) { return x.id !== id && dkey(x.name) === dkey(an); })) { toast(an + " is another partner already — that would be a merge, not a rename."); return; }
+        var _tw = (S.data.associates || []).filter(function (x) { return x.id !== id && dkey(x.name) === _k; });   /* 6.9.754 - two men, one name */
+        if (_tw.length) { toast("Another partner is also named " + _old + " (" + _tw.map(function (x) { return x.code || x.mobile || "?"; }).join(", ") + "). Their clients and deliveries cannot be told apart by name, so nothing was renamed \u2014 tell me which clients are whose."); return; }
+        var _li = function (n, w) { return n ? '<li><b>' + n + '</b> ' + w + '</li>' : ''; };
+        /* the rest of the form, read now - the question replaces the form on screen */
+        var _pl = { id: id, name: an, role: val("m_arole"), mobile: val("m_amobile"), mobile2: val("m_amobile2"), location: val("m_aloc"), area: val("m_aarea"), address: val("m_aaddr"),
+          birthday: val("m_abday"), anniversary: val("m_aanniv"), rate: val("m_arate"), notes: val("m_anotes"), ownedBy: val("m_aowner") };
+        askSheet({ title: "Rename everywhere?", sub: esc(_old) + " &rarr; <b>" + esc(an) + "</b>",
+          body: '<ul style="margin:6px 0 8px 18px;padding:0">' + _li(1, "partner list") + _li(_nc, "client" + (_nc === 1 ? "" : "s") + " (plumber / architect / builder / PMC)") + _li(_nd, "deliver" + (_nd === 1 ? "y" : "ies")) +
+            _li(_np, "incentive rate / payout row" + (_np === 1 ? "" : "s")) + _li(_ns, "site / visit row" + (_ns === 1 ? "" : "s")) + _li(_na, "record" + (_na === 1 ? "" : "s") + " (partner changes, calls, event lists)") + '</ul>' +
+            'Every amount stays as it is &mdash; only the name changes. A record of the rename is kept.', yes: "Rename everywhere" }).then(function (yes) {
+          if (!yes) return;
+          toast("Renaming " + _old + " everywhere\u2026");
+          api("partnerRename", { id: id, from: _old, to: an }).then(function (r) {
+            if (!r || !r.ok) { toast("Not renamed: " + ((r && r.error) || "no answer") + "."); return; }
+            var n = 0; Object.keys(r.counts || {}).forEach(function (k2) { n += Number(r.counts[k2]) || 0; });
+            _was.name = an;   /* this phone, until the pull lands */
+            save("associates", _pl, true);   /* and whatever else he changed on the form */
+            toast("Renamed to " + an + " \u2014 " + n + " place" + (n === 1 ? "" : "s") + " changed.");
+            refresh();
+          });
         });
+        return;
       }
       save("associates", {
         id: id || "", name: an, role: val("m_arole"),
