@@ -111,8 +111,8 @@ table.t td.r,table.t th.r{text-align:right;white-space:nowrap}
 .btile.on::after{content:"\2713";position:absolute;top:2px;right:5px;font-size:12px;font-weight:800;color:#1F3A5F}
 .req{color:#b91c1c}
 /* 1.4.0 - Pending / Won / Lost on the quote line */
-.qst{display:flex;gap:6px;margin-top:8px}
-.qst button{flex:1;min-height:44px;border:1px solid #DCE3EA;background:#fff;border-radius:10px;font:inherit;font-size:13px;font-weight:700;color:#5E6875;cursor:pointer}
+.qst{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}   /* p748 - his words: "pending won lost are very big boxes, compact them" */
+.qst button{flex:0 0 auto;min-width:84px;padding:0 14px;min-height:44px;border:1px solid #DCE3EA;background:#fff;border-radius:10px;font:inherit;font-size:13px;font-weight:700;color:#5E6875;cursor:pointer}
 .qst button.pending.on{background:#FEF3C7;border-color:#F59E0B;color:#92400E}
 .qst button.won.on{background:#15803d;border-color:#15803d;color:#fff}
 .qst button.lost.on{background:#b91c1c;border-color:#b91c1c;color:#fff}
@@ -189,7 +189,7 @@ h3.sec{color:#1F3A5F}
       button: function () { return '<button type="button" class="ewthm" onclick="ewTheme.next(this)">' + ewtLabel() + '</button>'; }
     };
   })();
-  var APP_VERSION = "1.4.3";
+  var APP_VERSION = "1.4.4";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_vq_session", JRN = "ew_vq_journal_v1", CALLQ = "ew_vq_calls_v1", SNAPK = "ew_vq_snap_";
   var CAT_KEY = "ew_team_catalog", CAT_V = 2;   /* the CRM's own shelf copy of the price list - shared, same origin */
