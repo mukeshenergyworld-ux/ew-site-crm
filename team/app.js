@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.751";
+  var APP_VERSION = "6.9.752";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -42543,6 +42543,7 @@ function viewCatalogue() {
       '<p class="sub">Plumbers, architects, builders and PMCs. Incentive % is set per client &amp; brand on the Discounts screen — a partner earns only where you set a rate there.</p>' +
       /* v6.9.586 - who looks after him, asked first, as on the client form */
       ownerBanner("m_aowner", a.ownedBy, !a.id) +
+      (S.pevEdit && a.id ? '<div style="margin:-4px 0 6px"><button class="btn sm ghost" style="min-height:44px" data-act="pev-page">His page &rarr;</button></div>' : '') +   /* p754 */
       '<label>Name</label><input id="m_aname" data-ta="partner"' + (a.id ? '' : ' data-ta-new="1"') + ' autocomplete="off" value="' + esc(a.name) + '"/>' +   /* 6.9.685 */
       '<div class="grid2">' +
       '<div><label>Role</label><select id="m_arole">' + opts(["Architect", "Plumber", "Builder", "PMC", "Contractor", "Dealer", "Other"], a.role || "Plumber") + '</select></div>' +
@@ -45082,7 +45083,7 @@ function viewCatalogue() {
     var held = /Attended|Travelled|Delivered|Greeted/.test(st) || (day && day < now);
     if (i.postAt) return { k: "done", lbl: "Done", due: "", late: false };
     if (e && e.type === "greet") return { k: "post", lbl: "Thank-you call", due: day || now, late: !!(day && day < now && pevAddDays(day, 2) < now) };
-    if (!held && !i.preAt && !/Declined/.test(st)) { var d1 = day ? pevAddDays(day, -2) : now; return { k: "pre", lbl: "Confirm before", due: d1, late: d1 < now }; }
+    if (!held && !i.preAt && !/Declined/.test(st)) { var d1 = day ? pevAddDays(day, -2) : now; return { k: "pre", lbl: "Confirm by", due: d1, late: d1 < now }; }
     if (!held) return { k: "wait", lbl: (i.preAt ? "Confirmed" : "Declined") + " · call after", due: day ? pevAddDays(day, 1) : "", late: false };
     var d2 = day ? pevAddDays(day, 2) : now;
     return { k: "post", lbl: "Call after", due: d2, late: d2 < now };
@@ -45176,7 +45177,8 @@ function viewCatalogue() {
     var c = { Platinum: ["#1e293b", "#e2e8f0"], Gold: ["#92400e", "#fde68a"], Silver: ["#334155", "#e5e7eb"], Base: ["#64748b", "#f1f5f9"] }[t] || ["#64748b", "#f1f5f9"];
     return '<span style="display:inline-block;font-size:12px;font-weight:800;color:' + c[0] + ';background:' + c[1] + ';border-radius:6px;padding:1px 7px;white-space:nowrap">' + esc(t) + '</span>';
   }
-  function pevTable(cols, rows) {
+  function pevTable(cols, rows, one) {   /* p754 - one: every cell on one line, 12.5px */
+    if (one) return pevTable(cols, rows).replace('font-size:13px">', 'font-size:12.5px">').replace(/vertical-align:middle">/g, 'vertical-align:middle;white-space:nowrap">').replace(/padding:5px 8px;/g, 'padding:3px 4px;').replace(/padding:6px 8px;/g, 'padding:6px 4px;');
     return '<div style="overflow-x:auto;border:1px solid #e2e8f0;border-radius:10px;margin-top:8px"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="background:#0b3b36;color:#fff">' +
       cols.map(function (c) { return '<th style="padding:6px 8px;text-align:' + (c[1] || "left") + ';white-space:nowrap">' + c[0] + '</th>'; }).join("") + '</tr></thead><tbody>' +
       rows.map(function (r, i) { return '<tr style="border-top:1px solid #eef2f7;background:' + (i % 2 ? '#f8fafc' : '#fff') + '">' + r.map(function (v, j) { return '<td style="padding:5px 8px;text-align:' + (cols[j][1] || "left") + ';vertical-align:middle">' + v + '</td>'; }).join("") + '</tr>'; }).join("") +
@@ -45656,21 +45658,21 @@ function viewCatalogue() {
         '<div><label style="margin-top:0">Mobile</label><input id="pe_omob" inputmode="numeric" placeholder="optional" style="width:130px;min-height:44px"/></div>' +
         '<button class="btn sm ghost" style="min-height:44px" data-act="pev-addother" data-id="' + esc(e.eid) + '">+ Add invitee</button></div>') +
       (inv.length ? pevFuStrip(e, inv) : '') +
-      (inv.length ? pevTable([["#", "right"], ["Guest"], ["Tier"], ["Business 12 m", "right"], ["Status"], ["Executive"], ["Follow-up"], [isG ? "Gift ₹" : "Own cost ₹", "right"], [""]],
+      (inv.length ? pevTable([["#", "right"], ["Guest"], ["Tier"], ["Business 12 m", "right"], ["Status"], ["Executive"], ["Follow-up"], [isG ? "Gift ₹" : "Cost ₹", "right"], [""]],
         inv.map(function (p, k) {
           var i = p.i, x = p.x, mob = x.mob || "";
-          return ['<span style="color:#64748b">' + (k + 1) + '</span>', (x.other ? '<b>' + esc(i.partner) + '</b>' : '<b data-act="p-open" data-n="' + esc(i.partner) + '" style="cursor:pointer;color:#0d766c;text-decoration:underline" title="His full page - sites, clients, incentive, events">' + esc(i.partner) + '</b>') + '<div style="font-size:12px;color:#64748b">' + esc(x.role || "") + (mob ? ' · ' + esc(mob) : ' · <span style="color:#b45309">no mobile</span>') + '</div>',
+          return ['<span style="color:#64748b">' + (k + 1) + '</span>', '<span style="display:inline-block;max-width:210px;overflow:hidden;text-overflow:ellipsis;vertical-align:middle" title="' + esc(i.partner) + (mob ? ' \u00b7 ' + esc(mob) : '') + '"><b data-act="pev-ed" data-id="' + esc(e.eid) + '" data-n="' + esc(i.partner) + '" data-o="' + (x.other ? 1 : 0) + '" style="cursor:pointer;color:#0d766c;text-decoration:underline dotted" title="Tap to change the name">' + esc(i.partner) + '</b>' + ' <span style="font-size:12px;color:#64748b">' + (x.other ? '· ' + esc(x.role || "") + ' ' : '') + (mob ? '· ' + esc(mob) : '· <span style="color:#b45309">no mobile</span>') + '</span></span>',   /* p754 - his code (PL / AR / BL) already says the role */
             x.other ? '<span style="display:inline-block;font-size:12px;font-weight:800;color:#3730a3;background:#e0e7ff;border-radius:6px;padding:1px 7px;white-space:nowrap">Guest</span>' : pevTierPill(x.tier), x.b12 ? money(x.b12) : '—',
-            '<select class="pev-st" data-id="' + esc(e.eid) + '" data-p="' + esc(i.partner) + '" style="min-height:44px">' + sts.map(function (s2) { return '<option' + (s2 === i.st ? ' selected' : '') + '>' + esc(s2) + '</option>'; }).join("") + '</select>',
-            '<select class="pev-exec" data-id="' + esc(e.eid) + '" data-p="' + esc(i.partner) + '" style="min-height:44px' + (i.exec ? '' : ';border-color:#fca5a5;color:#b91c1c') + '"><option value="">— nobody —</option>' +
+            '<select class="pev-st" data-id="' + esc(e.eid) + '" data-p="' + esc(i.partner) + '" style="min-height:44px;font-size:13px;padding:4px 2px;width:96px">' + sts.map(function (s2) { return '<option' + (s2 === i.st ? ' selected' : '') + '>' + esc(s2) + '</option>'; }).join("") + '</select>',
+            '<select class="pev-exec" data-id="' + esc(e.eid) + '" data-p="' + esc(i.partner) + '" style="min-height:44px;font-size:13px;padding:4px 2px;width:112px' + (i.exec ? '' : ';border-color:#fca5a5;color:#b91c1c') + '"><option value="">— nobody —</option>' +
               _exN.concat(i.exec && _exN.indexOf(i.exec) < 0 ? [i.exec] : []).map(function (n2) { return '<option' + (n2 === i.exec ? ' selected' : '') + '>' + esc(n2) + '</option>'; }).join("") + '</select>',
             (function () { var sg = pevStage(e, i); return pevStagePill(sg) +
               (i.preNote ? '<div style="font-size:12px;color:#475569;max-width:220px">Before: ' + esc(i.preNote) + ' <span style="color:#94a3b8">(' + esc(i.preBy || "") + ')</span></div>' : '') +
               (i.postNote ? '<div style="font-size:12px;color:#475569;max-width:220px">After: ' + esc(i.postNote) + ' <span style="color:#94a3b8">(' + esc(i.postBy || "") + ')</span></div>' : ''); })(),
-            '<input class="pev-cost" data-id="' + esc(e.eid) + '" data-p="' + esc(i.partner) + '" inputmode="numeric" value="' + esc(i.cost || "") + '" placeholder="0" style="width:84px;font-size:14px;text-align:right;min-height:44px"/>',
-            '<div style="display:flex;gap:6px;justify-content:flex-end">' + (mob ? '<a class="btn sm ghost" style="min-height:44px;display:inline-flex;align-items:center;text-decoration:none" target="_blank" rel="noopener" href="https://wa.me/91' + esc(mob) + '?text=' + encodeURIComponent(pevMsg(e, i.partner)) + '">WhatsApp</a>' : '') +
-            '<button class="btn sm ghost" style="min-height:44px" data-act="pev-rm" data-id="' + esc(e.eid) + '" data-p="' + esc(i.partner) + '">Take off</button></div>'];
-        })) + (isG ? '' : '<div class="meta" style="font-size:13px;margin-top:8px"><b>Head count for food &amp; drink: ' + came + '</b> (confirmed' + (e.type === "trip" ? ', travelling' : ' or attended') + ') &middot; ' +
+            '<input class="pev-cost" data-id="' + esc(e.eid) + '" data-p="' + esc(i.partner) + '" inputmode="numeric" value="' + esc(i.cost || "") + '" placeholder="0" style="width:60px;font-size:13px;text-align:right;min-height:44px;padding:4px 6px"/>',
+            '<div style="display:flex;gap:6px;justify-content:flex-end">' + (mob ? '<a class="btn sm ghost" title="WhatsApp him the invitation" style="min-height:44px;min-width:44px;padding:0 8px;display:inline-flex;align-items:center;justify-content:center;text-decoration:none;color:#15803d;font-weight:800" target="_blank" rel="noopener" href="https://wa.me/91' + esc(mob) + '?text=' + encodeURIComponent(pevMsg(e, i.partner)) + '">WA</a>' : '') +
+            '<button class="btn sm ghost" title="Take off the list (kept in the record)" style="min-height:44px;min-width:44px;padding:0 8px;white-space:nowrap" data-act="pev-rm" data-id="' + esc(e.eid) + '" data-p="' + esc(i.partner) + '">Off</button></div>'];
+        }), true) + (isG ? '' : '<div class="meta" style="font-size:13px;margin-top:8px"><b>Head count for food &amp; drink: ' + came + '</b> (confirmed' + (e.type === "trip" ? ', travelling' : ' or attended') + ') &middot; ' +
           m.inv.length + ' on the list' + (nOther ? ' incl. ' + nOther + ' other' + (nOther === 1 ? '' : 's') : '') + (declined ? ' &middot; ' + declined + ' declined' : '') + '</div>') : '<div class="empty">No guest yet.</div>') + '</div>';
     /* brands */
     var brs = pevBrands(e.eid), bOpts = (S.data.brands || []).map(function (b) { return String(b.brand || "").trim(); }).filter(isMainBrand).sort();
@@ -54608,6 +54610,25 @@ function viewCatalogue() {
         .then(function () { keepScroll = true; render(); toast(_on + " (" + _ow + ") added to the list."); });
       return;
     }
+    if (act === "pev-ed") {   /* p754 - tap a guest's name to change it */
+      var _ee = t.getAttribute("data-id"), _en = t.getAttribute("data-n");
+      if (t.getAttribute("data-o") === "1") {
+        promptSheet({ title: "Change the name", sub: "On this guest list. The old line is kept in the record.", value: _en, ok: "Save" }).then(function (nv) {
+          nv = String(nv || "").trim(); if (!nv || nv === _en) return;
+          var cur = pevInv(_ee).filter(function (d) { return dkey(d.partner) === dkey(_en); })[0] || { eid: _ee };
+          if (pevInv(_ee).some(function (d) { return dkey(d.partner) === dkey(nv); })) { toast(nv + " is already on this list."); return; }
+          var nd = {}; Object.keys(cur).forEach(function (k) { if (k.charAt(0) !== "_" && k !== "at" && k !== "removed") nd[k] = cur[k]; });
+          nd.partner = nv; nd.renamedFrom = _en;
+          pevSaveRow("evt:inv", _ee, nd).then(function () { return pevSaveRow("evt:inv", _ee, { eid: _ee, partner: _en, removed: 1, renamedTo: nv }); })
+            .then(function () { keepScroll = true; render(); toast("Now " + nv + "."); });
+        });
+        return;
+      }
+      var _pa = (S.data.associates || []).filter(function (a) { return dkey(a.name) === dkey(_en); })[0];
+      if (!_pa) { toast(_en + " is not on the partner list."); return; }
+      S.pevEdit = { eid: _ee, name: _pa.name }; S.modal = modalAssociate(_pa); render(); return;
+    }
+    if (act === "pev-page") { var _pp = S.pevEdit && S.pevEdit.name; S.modal = null; S.pevEdit = null; if (_pp) { var _b = document.createElement("b"); _b.setAttribute("data-act", "p-open"); _b.setAttribute("data-n", _pp); document.body.appendChild(_b); _b.click(); _b.remove(); } return; }
     if (act === "pev-rm") {
       var _re = t.getAttribute("data-id"), _rp = t.getAttribute("data-p");
       pevSaveRow("evt:inv", _re, { eid: _re, partner: _rp, removed: 1 }).then(function () { keepScroll = true; render(); toast(_rp + " taken off the list (kept in the record)."); });
@@ -60216,6 +60237,21 @@ function viewCatalogue() {
          not a partner. 10 digits minimum, always. */
       var am = String(val("m_amobile") || "").replace(/\D/g, "");
       if (am.length < 10) { toast("Partner mobile number is required (10 digits) — no partner without a phone."); return; }
+      /* p754 - a NEW NAME for a partner already on clients or deliveries would split his incentive history */
+      var _was = id ? (S.data.associates || []).filter(function (x) { return x.id === id; })[0] : null, _old = _was ? String(_was.name || "") : "";
+      if (_was && dkey(_old) !== dkey(an)) {
+        var _k = dkey(_old);
+        var _nc = (S.data.clients || []).filter(function (c) { return ["architect", "plumber", "builder", "pmc"].some(function (f) { return dkey(c[f]) === _k; }); }).length;
+        var _nd = (S.data.challans || []).filter(function (c) { return dkey(c.associate) === _k; }).length;
+        if (_nc || _nd) { toast(_old + " is on " + _nc + " client" + (_nc === 1 ? "" : "s") + " and " + _nd + " deliver" + (_nd === 1 ? "y" : "ies") + " by this name. Changing it here would split his incentive history — keep the name, or ask for a full rename."); return; }
+      }
+      if (_was && dkey(_old) !== dkey(an)) {   /* nothing else carries the old name: his guest-list lines move with him */
+        pevLatest("evt:inv", function (d) { return d.eid + "|" + dkey(d.partner); }).filter(function (d) { return dkey(d.partner) === dkey(_old); }).forEach(function (d) {
+          var nd = {}; Object.keys(d).forEach(function (k) { if (k.charAt(0) !== "_" && k !== "at" && k !== "removed") nd[k] = d[k]; });
+          nd.partner = an; nd.renamedFrom = _old;
+          pevSaveRow("evt:inv", d.eid, nd).then(function () { return pevSaveRow("evt:inv", d.eid, { eid: d.eid, partner: _old, removed: 1, renamedTo: an }); });
+        });
+      }
       save("associates", {
         id: id || "", name: an, role: val("m_arole"),
         mobile: val("m_amobile"), mobile2: val("m_amobile2"),
@@ -60245,7 +60281,7 @@ function viewCatalogue() {
           var _pst = (PEV_ST[_pev.type] || PEV_ST.meet)[0];
           pevSaveRow("evt:inv", _pe, { eid: _pe, partner: an, st: _pst, cost: 0 }).then(function () { S.modal = null; render(); toast("Partner saved and added to the guest list."); });
         }
-        else { S.modal = null; toast("Partner saved."); render(); }
+        else { S.modal = null; S.pevEdit = null; toast("Partner saved."); render(); }
       });
       return;
     }
