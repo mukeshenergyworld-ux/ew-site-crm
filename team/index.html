@@ -224,6 +224,78 @@
   input:focus,select:focus,textarea:focus{box-shadow:0 0 0 3px rgba(201,162,74,.22)}
   :root{--muted:#5E6875;--bg:#F4F6F9;--line:#DCE3EA}
 </style>
+<script>
+/* ===== ewmach - SEVERAL MACHINES OF ONE BRAND IN ONE GO (12 Oct 2026) =====
+   HIS WORDS: "give option to select multiple product, as under Pentair its multiple products - Sand
+   Filter, Softener, Carbon filter; under Green Heat its Leo as recirculation pump - a heat pump and a
+   Leo pump make a complete heat pump set; if any product is not in the drop down, give option to add
+   a new brand or new product".
+   One brand, the products ticked (each becomes its own machine with its own model), one install date,
+   one warranty. A brand or product not in the list is typed once and offered again on this phone. */
+var EWM_BRAND_PRODUCTS = {
+  "Pentair": ["Water Softener", "Sand Filter", "Carbon Filter", "RO / Purifier"],
+  "Green Heat": ["Heat Pump", "Recirculation Pump (Leo)"],
+  "LEO": ["Recirculation Pump", "Pressure Pump"],
+  "Grundfos": ["Pressure Pump", "Recirculation Pump"]
+};
+function ewmCustom() { try { var c = JSON.parse(localStorage.getItem("ew_mach_custom") || "{}"); return { b: c.b || [], p: c.p || [] }; } catch (e) { return { b: [], p: [] }; } }
+function ewmRemember(kind, v) {
+  v = String(v || "").trim(); if (!v) return;
+  var c = ewmCustom(), l = c[kind]; if (l.map(function (x) { return x.toLowerCase(); }).indexOf(v.toLowerCase()) < 0) l.push(v);
+  try { localStorage.setItem("ew_mach_custom", JSON.stringify(c)); } catch (e) { }
+}
+function ewmEsc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+function ewmToday() { var d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
+/* what is typed on screen goes into n.mf before every repaint, so a tap never loses it */
+function ewmKeep(n, pre) {
+  var f = n.mf || (n.mf = { brand: "", prods: [], models: {} });
+  var g = function (id) { var e = document.getElementById(pre + id); return e ? String(e.value || "") : undefined; };
+  [["_bn", "brandNew"], ["_pn", "prodNew"], ["_d", "od"], ["_c", "oc"], ["_w", "ow"], ["_a", "oa"]].forEach(function (x) { var v = g(x[0]); if (v !== undefined) f[x[1]] = v; });
+  (f.prods || []).forEach(function (p, i) { var v = g("_m" + i); if (v !== undefined) f.models[p] = v; });
+  return f;
+}
+function ewmHtml(n, pre, act, brands, products, chip) {
+  var f = n.mf || (n.mf = { brand: "", prods: [], models: {} }), c = ewmCustom(), b = f.brand;
+  var allB = brands.concat(c.b.filter(function (x) { return brands.indexOf(x) < 0; }));
+  var sug = (EWM_BRAND_PRODUCTS[b] || []).slice(), rest = products.concat(c.p).filter(function (p, i, a) { return sug.indexOf(p) < 0 && a.indexOf(p) === i && p !== "Other"; });
+  var ch = function (on, a, k, lab) { return '<button type="button" class="' + chip + (on ? ' on' : '') + '" data-act="' + act + '-' + a + '" data-k="' + ewmEsc(k) + '" style="min-height:44px">' + ewmEsc(lab) + '</button>'; };
+  var h = '<label>Brand</label><div class="chips" style="flex-wrap:wrap">' + allB.map(function (x) { return ch(b === x, "mb", x, x); }).join("") + ch(b === "__new__", "mb", "__new__", "+ New brand") + '</div>';
+  if (b === "__new__") h += '<input id="' + pre + '_bn" placeholder="Type the brand name" value="' + ewmEsc(f.brandNew || "") + '"/>';
+  if (!b) return h + '<div class="meta">Tap the brand first.</div>';
+  h += '<label>Products' + (sug.length ? ' &mdash; usual for ' + ewmEsc(b === "__new__" ? "this brand" : b) + ' first' : '') + ' (tap all that are installed)</label><div class="chips" style="flex-wrap:wrap">' +
+    sug.concat(rest).concat(f.prods.filter(function (p) { return sug.indexOf(p) < 0 && rest.indexOf(p) < 0; })).map(function (p) { return ch(f.prods.indexOf(p) >= 0, "mp", p, p); }).join("") + '</div>' +
+    '<div class="grid2"><div><input id="' + pre + '_pn" placeholder="Not in the list? Type the product" value="' + ewmEsc(f.prodNew || "") + '"/></div><div><button type="button" class="btn sm" data-act="' + act + '-mpn" style="min-height:44px">+ Add this product</button></div></div>';
+  h += f.prods.map(function (p, i) { return '<label>Model / capacity &mdash; ' + ewmEsc(p) + '</label><input id="' + pre + '_m' + i + '" placeholder="e.g. 1054, 5 kW, 1 HP" value="' + ewmEsc(f.models[p] || "") + '"/>'; }).join("");
+  h += '<div class="grid2"><div><label>Installed on</label><input id="' + pre + '_d" type="date" max="' + ewmToday() + '" value="' + ewmEsc(f.od || "") + '"/></div>' +
+    '<div><label>Commissioned on (if different)</label><input id="' + pre + '_c" type="date" max="' + ewmToday() + '" value="' + ewmEsc(f.oc || "") + '"/></div></div>' +
+    '<div class="grid2"><div><label>Warranty</label><select id="' + pre + '_w">' + [["auto", "As per the brand (worked out)"], ["out", "Out of warranty"], ["amc", "Under AMC"]].map(function (o) { return '<option value="' + o[0] + '"' + ((f.ow || "auto") === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join("") + '</select></div>' +
+    '<div><label>AMC till (if AMC)</label><input id="' + pre + '_a" type="date" value="' + ewmEsc(f.oa || "") + '"/></div></div>';
+  return h;
+}
+/* a tap on a brand / product chip, or "+ Add this product". true = handled (the caller repaints) */
+function ewmTap(n, pre, act, a, k) {
+  var f = ewmKeep(n, pre);
+  if (a === act + "-mb") { if (f.brand !== k) { f.brand = k; f.prods = []; } return true; }
+  if (a === act + "-mp") { var i = f.prods.indexOf(k); if (i >= 0) f.prods.splice(i, 1); else f.prods.push(k); return true; }
+  if (a === act + "-mpn") { var p = String(f.prodNew || "").trim(); if (!p) return "Type the product's name first."; if (f.prods.indexOf(p) < 0) f.prods.push(p); f.prodNew = ""; return true; }
+  return false;
+}
+/* the machines to add, or a sentence saying what is missing */
+function ewmBuild(n, pre) {
+  var f = ewmKeep(n, pre), brand = f.brand === "__new__" ? String(f.brandNew || "").trim() : f.brand;
+  if (!brand) return f.brand === "__new__" ? "Type the brand name." : "Tap the brand.";
+  if (!f.prods.length) return "Tap the product(s) installed.";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(f.od || "")) return "Put the date it was installed.";
+  if (f.oc && f.oc < f.od) return "Commissioned before it was installed? Check the dates.";
+  var w = f.ow || "auto";
+  if (w === "amc" && !/^\d{4}-\d{2}-\d{2}$/.test(f.oa || "")) return "Put the date his AMC runs till.";
+  if (f.brand === "__new__") ewmRemember("b", brand);
+  f.prods.forEach(function (p) { if (!EWM_BRAND_PRODUCTS[brand] || EWM_BRAND_PRODUCTS[brand].indexOf(p) < 0) ewmRemember("p", p); });
+  var out = f.prods.map(function (p) { return { brand: brand, product: p, model: String(f.models[p] || "").trim(), cd: f.od, cc: f.oc || f.od, w: w, amc: w === "amc" ? f.oa : "" }; });
+  n.mf = { brand: "", prods: [], models: {} };
+  return out;
+}
+</script>
 </head>
 <body>
 <div id="root"><div class="boot">Loading Energy World Team…</div></div>

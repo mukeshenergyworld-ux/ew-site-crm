@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.744";
+  var APP_VERSION = "6.9.745";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -9157,6 +9157,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
   /* the register sheet: S.cmpNew holds what is typed, so a redraw (client picked) keeps it */
   function cmpKeep() {
     var n = S.cmpNew; if (!n) return;
+    ewmKeep(n, "cmpm");   /* 6.9.745 */
     ["src", "pri", "cat", "desc", "eng", "name", "mobile", "district", "area", "client", "addr", "areanew"].forEach(function (f) { var e = el("cmpn_" + f); if (e) n[f] = e.value; });   /* 6.9.738 - area; 6.9.739 - addr */
     n.picks = n.picks || {}; n.fault = n.fault || {};   /* 6.9.741 - picks are taps; the remarks are typed */
     Array.prototype.forEach.call(document.querySelectorAll("input.cmp-fault"), function (x) { n.fault[x.getAttribute("data-k")] = String(x.value || ""); });
@@ -9248,12 +9249,8 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       return '<div style="padding:6px 0;border-top:1px solid #ccfbf1;font-size:13px"><b>' + esc([m.brand, m.product, m.model].filter(Boolean).join(" ")) + '</b> &middot; installed ' + esc(dmy(m.cd)) + (m.cc && m.cc !== m.cd ? ' &middot; commissioned ' + esc(dmy(m.cc)) : '') +
         '<div style="font-size:12.5px;font-weight:700;color:' + (w.bad ? '#b91c1c' : '#0f766e') + '">' + esc(w.txt) + '</div><button class="btn sm ghost" data-act="cmpn-mdel" data-i="' + i + '" style="min-height:44px">Remove</button></div>'; }).join("") +
       '<div style="border-top:1px dashed #94a3b8;margin-top:6px;padding-top:4px;font-size:13px"><b>' + (L.length ? 'Another machine' : 'The machine') + '</b></div>' +
-      '<div class="grid2"><div><label>Brand</label><select id="cmpm_b">' + ["LEO", "Grundfos", "Pentair", "Green Heat", "Other"].map(function (b) { return '<option>' + b + '</option>'; }).join("") + '</select></div>' +
-      '<div><label>Product</label><select id="cmpm_p">' + SVC_PRODUCTS.map(function (p) { return '<option>' + esc(p) + '</option>'; }).join("") + '</select></div></div>' +
-      '<label>Model / capacity</label><input id="cmpm_m" placeholder="e.g. 1054, 5 kW, 1 HP"/>' +
-      '<div class="grid2"><div><label>Installed on</label><input id="cmpm_d" type="date" max="' + today() + '"/></div><div><label>Commissioned on (if different)</label><input id="cmpm_c" type="date" max="' + today() + '"/></div></div>' +
-      '<div class="grid2"><div><label>Warranty</label><select id="cmpm_w"><option value="auto">As per the brand (worked out)</option><option value="out">Out of warranty</option><option value="amc">Under AMC</option></select></div><div><label>AMC till (if AMC)</label><input id="cmpm_a" type="date"/></div></div>' +
-      '<button class="btn sm" data-act="cmpn-madd" style="min-height:44px;margin-top:6px">+ Add this machine</button></div>';
+      ewmHtml(n, "cmpm", "cmpn", ["LEO", "Grundfos", "Pentair", "Green Heat"], SVC_PRODUCTS, "chip") +   /* 6.9.745 - several products of one brand; a new brand or product typed in */
+      '<button class="btn sm" data-act="cmpn-madd" style="min-height:44px;margin-top:6px">+ Add ' + ((n.mf && n.mf.prods.length > 1) ? 'these ' + n.mf.prods.length + ' machines' : 'this machine') + '</button></div>';
     return h;
   }
   function cmpEngineers() {
@@ -58254,13 +58251,18 @@ function viewCatalogue() {
     if (act === "cmpn-notprod") { cmpKeep(); if (S.cmpNew) { S.cmpNew.notProd = !S.cmpNew.notProd; if (S.cmpNew.notProd) S.cmpNew.picks = {}; } S.modal = modalCmpNew(); render(); return; }
     if (act === "cmpn-hasm") { cmpKeep(); if (S.cmpNew) S.cmpNew.hasM = t.getAttribute("data-k") === "yes" ? "yes" : "no"; S.modal = modalCmpNew(); render(); return; }   /* 6.9.739 */
     if (act === "cmpn-mdel") { cmpKeep(); if (S.cmpNew && S.cmpNew.mach) { S.cmpNew.mach.splice(Number(t.getAttribute("data-i")) || 0, 1); Object.keys(S.cmpNew.picks || {}).forEach(function (k) { if (/^NM:/.test(k)) delete S.cmpNew.picks[k]; }); } S.modal = modalCmpNew(); render(); return; }
-    if (act === "cmpn-madd") {
+    if (act === "cmpn-mb" || act === "cmpn-mp" || act === "cmpn-mpn") {   /* 6.9.745 */
+      cmpKeep(); if (!S.cmpNew) return;
+      var _tr = ewmTap(S.cmpNew, "cmpm", "cmpn", act, t.getAttribute("data-k"));
+      if (typeof _tr === "string") { toast(_tr); return; }
+      S.modal = modalCmpNew(); render(); return;
+    }
+    if (act === "cmpn-madd") {   /* 6.9.745 - one machine per product ticked */
       cmpKeep(); var _cn0 = S.cmpNew; if (!_cn0) return;
-      var _md = String(val("cmpm_d") || ""), _mc = String(val("cmpm_c") || ""), _mw = val("cmpm_w") || "auto", _ma = String(val("cmpm_a") || "");
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(_md)) { toast("Put the date it was installed."); return; }
-      if (_mc && _mc < _md) { toast("Commissioned before it was installed? Check the dates."); return; }
-      if (_mw === "amc" && !/^\d{4}-\d{2}-\d{2}$/.test(_ma)) { toast("Put the date his AMC runs till."); return; }
-      (_cn0.mach = _cn0.mach || []).push({ brand: val("cmpm_b"), product: val("cmpm_p"), model: String(val("cmpm_m") || "").trim(), cd: _md, cc: _mc || _md, w: _mw, amc: _mw === "amc" ? _ma : "" });
+      var _ms = ewmBuild(_cn0, "cmpm");
+      if (typeof _ms === "string") { toast(_ms); return; }
+      (_cn0.mach = _cn0.mach || []).push.apply(_cn0.mach, _ms);
+      if (_ms.length > 1) toast(_ms.length + " machines added.");
       S.modal = modalCmpNew(); render(); return;
     }
     if (act === "cmp-newclient") {   /* 6.9.738 - an old client: register him, then his machines (the owner's form asks) */
