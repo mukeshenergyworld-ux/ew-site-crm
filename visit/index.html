@@ -189,7 +189,7 @@ h3.sec{color:#1F3A5F}
       button: function () { return '<button type="button" class="ewthm" onclick="ewTheme.next(this)">' + ewtLabel() + '</button>'; }
     };
   })();
-  var APP_VERSION = "1.4.7";
+  var APP_VERSION = "1.4.8";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_vq_session", JRN = "ew_vq_journal_v1", CALLQ = "ew_vq_calls_v1", SNAPK = "ew_vq_snap_";
   var CAT_KEY = "ew_team_catalog", CAT_V = 2;   /* the CRM's own shelf copy of the price list - shared, same origin */
@@ -1669,7 +1669,7 @@ h3.sec{color:#1F3A5F}
         var bCount = bBlocks.reduce(function (a, x) { return a + x.length; }, 0);
         var hasB = (r.bullets && r.bullets.length) ? 1 : 0;
         /* 6.9.673 - code 9pt, name 10pt (4.1mm a line), features 8.5pt (3.5mm a line) */
-        var hgt = Math.max(10.5, 7 + (tLines.length - 1) * 4.1 + (hasB ? 1.4 : 0) + bCount * 3.5 + (hasB ? 0.6 : 0));
+        var hgt = Math.max(r.pic ? 13 : 10.5, 7 + (tLines.length - 1) * 4.1 + (hasB ? 1.4 : 0) + bCount * 3.5 + (hasB ? 0.6 : 0));   /* 1.4.8 */
         /* Page-break FIRST, then derive mid from the post-break y. If mid were computed
            before the break, a row that wraps to a new page would draw its serial # and
            figures at the old bottom-of-page y (off the printable area) while the
@@ -1681,7 +1681,7 @@ h3.sec{color:#1F3A5F}
         if (r.optional) {
           fill([255, 236, 209]); doc.setDrawColor(217, 119, 6); doc.setLineWidth(0.5);
           doc.roundedRect(L + 0.4, y - 3.4, Rt - L - 0.8, hgt - 0.3, 1, 1, "FD"); doc.setLineWidth(0.2);
-        } else if (i % 2 === 1) { fill(SOFT); doc.rect(L, y - 3.6, Rt - L, hgt, "F"); }
+        }   /* 1.4.8 - no shading on alternate rows */
 
         col(GREY); F("normal"); doc.setFontSize(8.5);
         doc.text(String(i + 1), X.n, mid);   /* serial # centred in the row, level with the figures */
@@ -1690,7 +1690,7 @@ h3.sec{color:#1F3A5F}
            it. Products with no photo in the catalogue simply leave the cell blank. */
         if (r.pic) {
           try {
-            var BOXW = 11.5, BOXH = 11;
+            var BOXW = X.item - X.pic - 1.5, BOXH = Math.min(16, hgt - 2.2);   /* 1.4.8 - the box is the cell */
             var dm = (r.dim && r.dim.w && r.dim.h) ? r.dim : { w: BOXW, h: BOXH };
             var psc = Math.min(BOXW / dm.w, BOXH / dm.h);
             var pw = dm.w * psc, ph = dm.h * psc;
