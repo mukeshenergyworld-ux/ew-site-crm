@@ -177,7 +177,7 @@ table.ct td.wd{white-space:nowrap}
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.66.1";
+  var APP_VERSION = "1.66.2";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -5589,7 +5589,7 @@ function cancelMap() {
        and returns arrive on ONE call and are merged in ONE step, because a figure computed
        from three fresh tabs and one stale one is a wrong figure, and this app exists to tell
        a man what somebody owes. */
-    _pulling = getBook(KEEP_FAST).then(function (r) {
+    _pulling = getBook((loud || restStale()) ? KEEP_FAST.concat(KEEP_REST) : KEEP_FAST).then(function (r) {   /* 1.66.2 - one call (p749) */
       if (!usableBook(r)) {
         if (!S.data) {
           S.busy = false; _pulling = null;
