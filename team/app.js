@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.758";
+  var APP_VERSION = "6.9.759";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -20112,8 +20112,20 @@ function viewCatalogue() {
   }
   /* and a line that says what a picture is called, once, for every document that draws one */
   function picName(i, n) { return i && (i.code || i.desc) ? (i.code || i.desc) : ("line " + (n + 1)); }
+  /* 6.9.759 - a saved quote keeps the picture link of the day the line was added; when the catalogue's
+     picture for that code has since been replaced (a dead link re-hosted), print the catalogue's */
+  function qPicNow(i) {
+    var c = String((i && i.code) || "").trim().toUpperCase();
+    if (c) {
+      for (var k = 0; k < PRODUCTS.length; k++) {
+        var p = PRODUCTS[k];
+        if (p && String(p.code || "").trim().toUpperCase() === c && p.pic) return p.pic;
+      }
+    }
+    return (i && i.pic) || "";
+  }
   function picsForQuote(items) {
-    return picsForList(items, function (i) { return i.pic; }, picName);
+    return picsForList(items, function (i) { return qPicNow(i); }, picName);
   }
   /* v6.9.505 - said in one place, so three documents phrase it the same way */
   function picMissSay(miss) {
@@ -20343,14 +20355,14 @@ function viewCatalogue() {
           }
           _rooms.sort();
         }
-        var _bul = _dl.bullets.map(function (b) { return pdfSafe(b); });
+        var _bul = _dl.bullets.map(function (b) { return pdfSafe(String(b).replace(/^[\s\u00b7\u2022\u2219\u30fb'"\-\u2013]+/, "")); }).filter(Boolean);   /* 6.9.759 - no double bullet */
         /* v6.9.459 - the "For: ..." bullet is how the room reached the paper when there was one
            flat table. With the table drawn room by room the band above the line already says it,
            so it would be the same words twice; it is added below only if nothing is grouped. */
         return { title: pdfSafe(_dl.title) + (i.optional ? "   [OPTIONAL - NOT ADDED TO VALUE]" : ""),
           bullets: _bul, roomBul: _rooms.length ? pdfSafe("For: " + _rooms.join(", ")) : "",
           rq: _rq,
-          code: pdfSafe(i.code), pic: pics[idx], dim: PIC_DIM[i.pic] || null,
+          code: pdfSafe(i.code), pic: pics[idx], dim: PIC_DIM[qPicNow(i)] || PIC_DIM[i.pic] || null,
           unit: i.unit || "No's", optional: i.optional ? 1 : 0,
           qty: i.qty, price: i.price, disc: d, net: net, total: Math.round(net * i.qty) };   /* v6.9.303 */
       });
@@ -20370,6 +20382,9 @@ function viewCatalogue() {
          roomOrder is empty when not one line names a room - and then nothing below changes what
          the paper has always looked like. */
       var roomOrder = [], roomSeen = {};
+      ((items[0] && Array.isArray(items[0].ro)) ? items[0].ro : []).forEach(function (k) {   /* 6.9.759 - his order */
+        if (k && !roomSeen[k]) { roomSeen[k] = 1; roomOrder.push(k); }
+      });
       ordered.forEach(function (r) {
         if (!r.rq) return;
         for (var k in r.rq) {
@@ -20545,7 +20560,7 @@ function viewCatalogue() {
         var bCount = bBlocks.reduce(function (a, x) { return a + x.length; }, 0);
         var hasB = (r.bullets && r.bullets.length) ? 1 : 0;
         /* 6.9.673 - code 9pt, name 10pt (4.1mm a line), features 8.5pt (3.5mm a line) */
-        var hgt = Math.max(10.5, 7 + (tLines.length - 1) * 4.1 + (hasB ? 1.4 : 0) + bCount * 3.5 + (hasB ? 0.6 : 0));
+        var hgt = Math.max(r.pic ? 13 : 10.5, 7 + (tLines.length - 1) * 4.1 + (hasB ? 1.4 : 0) + bCount * 3.5 + (hasB ? 0.6 : 0));   /* 6.9.759 - a row with a picture is tall enough to show it */
         /* Page-break FIRST, then derive mid from the post-break y. If mid were computed
            before the break, a row that wraps to a new page would draw its serial # and
            figures at the old bottom-of-page y (off the printable area) while the
@@ -20557,7 +20572,7 @@ function viewCatalogue() {
         if (r.optional) {
           fill([255, 236, 209]); doc.setDrawColor(217, 119, 6); doc.setLineWidth(0.5);
           doc.roundedRect(L + 0.4, y - 3.4, Rt - L - 0.8, hgt - 0.3, 1, 1, "FD"); doc.setLineWidth(0.2);
-        } else if (i % 2 === 1) { fill(SOFT); doc.rect(L, y - 3.6, Rt - L, hgt, "F"); }
+        }   /* 6.9.759 - no shading on alternate rows ("background color not needed") */
 
         col(GREY); F("normal"); doc.setFontSize(8.5);
         doc.text(String(i + 1), X.n, mid);   /* serial # centred in the row, level with the figures */
@@ -20566,7 +20581,9 @@ function viewCatalogue() {
            it. Products with no photo in the catalogue simply leave the cell blank. */
         if (r.pic) {
           try {
-            var BOXW = 11.5, BOXH = 11;
+            /* 6.9.759 - the box IS the cell: from the serial column to the description, and the row's own
+               height less a margin, so a picture can never reach the row above or below */
+            var BOXW = X.item - X.pic - 1.5, BOXH = Math.min(16, hgt - 2.2);
             var dm = (r.dim && r.dim.w && r.dim.h) ? r.dim : { w: BOXW, h: BOXH };
             var psc = Math.min(BOXW / dm.w, BOXH / dm.h);
             var pw = dm.w * psc, ph = dm.h * psc;
@@ -58145,8 +58162,21 @@ function viewCatalogue() {
           if (z.gst) o.gst = 1;
           if (i.optional) o.optional = 1;   /* alternative option line — shown, not summed */
           if (z.noTotal) o.noTotal = 1;      /* item-wise quote — hide the consolidated total */
+          /* 6.9.759 - the rooms. They were never saved: every room made on the quote was lost at Save. */
+          if (i.rq && typeof i.rq === "object") {
+            var _srq = {}, _named = 0;
+            for (var _rk in i.rq) { var _rv = Number(i.rq[_rk]) || 0; if (_rv > 0) { _srq[_rk] = _rv; if (_rk) _named++; } }
+            if (_named) o.rq = _srq;
+          }
           return o;
         });
+        /* 6.9.759 - the order he made the rooms in rides on the first line, so the PDF prints them in that order */
+        try {
+          var _ro = (z.rooms || []).slice();
+          qzRoomList({ items: z.items }).forEach(function (r) { if (_ro.indexOf(r) < 0) _ro.push(r); });
+          _ro = _ro.filter(function (r) { return savedItems.some(function (o) { return o.rq && Number(o.rq[r]) > 0; }); });
+          if (_ro.length && savedItems[0]) savedItems[0].ro = _ro;
+        } catch (e) { }
         var blended = tot.gross > 0 ? Math.round((tot.gross - tot.net) / tot.gross * 100) : 0;
         /* save() adds the quote to the list and repaints SYNCHRONOUSLY, then syncs to the server
            behind the scenes. So the instant the row is in, we leave the wizard and show the saved
