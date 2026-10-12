@@ -429,7 +429,7 @@ function ewmBuild(n, pre) {
    Nothing here deletes anything, ever. A visit is a row added.
    ========================================================================== */
 
-  var APP_VERSION = "2.9.2";
+  var APP_VERSION = "2.9.3";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -3225,7 +3225,7 @@ function ewmBuild(n, pre) {
     var late = pend.filter(function (t) { var a = tkAge(t); return a && a.late; });
     var pay = tk.filter(function (t) { return sv2Bucket(t) === "payment"; }), payAmt = pay.reduce(function (s, t) { return s + sv2Due(t); }, 0);
     var mon = sv2Month(today()), doneM = tk.filter(function (t) { return sv2Bucket(t) === "done" && t.doneAt && sv2Month(String(t.doneAt).slice(0, 10)) === mon; }).length;
-    var _ewa = ewiAll(), _ewn = ewiCounts(_ewa), cp = _ewa.filter(function (x) { return x.stage !== 'done'; }), over = installs().filter(function (x) { return dueBand(x) === "over"; }).length, soon = installs().filter(function (x) { return dueBand(x) === "soon"; }).length;
+    var _ewa = ewiAll(), _ewn = ewiCounts(_ewa), cp = _ewa.filter(function (x) { return x.open > 0; }), over = installs().filter(function (x) { return dueBand(x) === "over"; }).length, soon = installs().filter(function (x) { return dueBand(x) === "soon"; }).length;
     var web = openComplaints().filter(function (c) { return !tkRefs()[String(c.Ref || "")]; });
     var h = '<div class="sv2bar">' +
       '<button class="btn" data-act="sv2-new">+ New complaint</button>' +
@@ -3250,7 +3250,7 @@ function ewmBuild(n, pre) {
     if (mine.length) h += '<h3 class="sec">My jobs &mdash; ' + mine.length + '</h3>' + mine.map(function (t) { return sv2Row(t); }).join("");
     if (web.length) h += '<h3 class="sec bad">Raised on the website &mdash; ' + web.length + '</h3>' +
       '<div class="note warn-t">The customer raised these himself. Open one and it becomes a visit; saving that visit closes the complaint.</div>' + web.map(cxRow).join("");
-    if (cp.length) h += '<h3 class="sec warn">Pending installation &amp; commissioning &mdash; ' + cp.length + '</h3>' + cp.slice(0, 4).map(ewiRow).join("") +
+    if (cp.length) h += '<h3 class="sec warn">Pending installation &amp; commissioning &mdash; ' + cp.length + '</h3>' + cp.slice(0, 4).map(function (x) { return ewiRow(x, x.stage); }).join("") +
       (cp.length > 4 ? '<button class="btn gry full" data-act="sv2-go" data-k="commission">See all ' + cp.length + '</button>' : '');
     /* the team, for the office */
     if (seesAllMoney()) {
@@ -3844,6 +3844,7 @@ function ewmBuild(n, pre) {
   }
   function ewiCanMark() { return roleIs("admin") || /\bmanoj\b/i.test(String(S.user || "")); }
   var _ewiC = null, _ewiN = -1;
+  /* 2.9.3 - chId -> { install: {idx|"*": rec}, handover: {...} }; a row with no product list covers every product */
   function ewiSteps() {
     var al = ((S.data && S.data.audit) || []).length;
     if (_ewiC && _ewiN === al) return _ewiC;
@@ -3851,157 +3852,189 @@ function ewmBuild(n, pre) {
     ((S.data && S.data.audit) || []).forEach(function (a) {
       if (String(a && a.action || "") !== "inst:step") return;
       var d = sv2J(a.detail); if (!d.chId || !/^(install|handover)$/.test(d.step)) return;
-      var m = _ewiC[d.chId] || (_ewiC[d.chId] = {}), cur = m[d.step];
-      if (!cur || String(a.createdAt || "") >= String(cur.at || "")) m[d.step] = { id: d.id || a.id, date: String(d.date || ""), by: d.by || a.actor || "", at: String(a.createdAt || ""), note: d.note || "" };
+      var m = _ewiC[d.chId] || (_ewiC[d.chId] = { install: {}, handover: {} }), box = m[d.step];
+      var rec = { id: d.id || a.id, date: String(d.date || ""), by: d.by || a.actor || "", at: String(a.createdAt || "") };
+      (Array.isArray(d.lines) && d.lines.length ? d.lines.map(String) : ["*"]).forEach(function (k) {
+        if (!box[k] || rec.at >= String(box[k].at || "")) box[k] = rec;
+      });
     });
     return _ewiC;
   }
-  /* where one delivery stands: install -> comm -> hand -> done */
+  /* the product's short name: the catalogue paragraph cut at its first separator */
+  function ewiShort(i) {
+    var d = String((i && (i.desc || i.code)) || "").replace(/\s+/g, " ").trim();
+    var cut = d.search(/\s[—–-]\s|[☀-➿]|:|\{|\(|\s\|\s/);
+    if (cut > 6) d = d.slice(0, cut).trim();
+    return d.length > 46 ? d.slice(0, 44).trim() + "…" : d;
+  }
+  function ewiLine(c, l, st) {
+    var ins = (st.install[String(l.idx)] || st.install["*"]) || null, ho = (st.handover[String(l.idx)] || st.handover["*"]) || null;
+    var comm = !!l.st, commDate = l.st ? String(l.st.date || "").slice(0, 10) : "";
+    var inst = ins ? ins.date : commDate, hand = ho ? ho.date : "", legacy = false;
+    if (!ins && !ho && l.st && (l.st.at === "crm" || String(l.st.at || "") < EWI_LAUNCH)) { legacy = true; hand = commDate; inst = inst || commDate; }
+    return { idx: l.idx, i: l.i, need: l.need, st: l.st, name: ewiShort(l.i), qty: l.i.qty || 1, brand: String(l.i.brand || ""),
+             inst: inst, comm: comm, commDate: commDate, hand: hand, legacy: legacy, insRec: ins, hoRec: ho,
+             stage: !inst ? "install" : !comm ? "comm" : !hand ? "hand" : "done" };
+  }
   function ewiState(c) {
-    var ls = sv2CommLines(c); if (!ls.length) return null;
-    var st = ewiSteps()[c.id] || {}, stamped = ls.filter(function (x) { return x.st; });
-    var comm = stamped.length === ls.length, real = stamped.filter(function (x) { return !x.st.skip; });
-    var cDates = real.map(function (x) { return String(x.st.date || "").slice(0, 10); }).filter(Boolean).sort();
-    var commDate = comm ? (cDates[cDates.length - 1] || (stamped[0] && String(stamped[0].st.date || "").slice(0, 10)) || "") : "";
-    var inst = st.install ? st.install.date : (cDates[0] || "");
-    var hand = st.handover ? st.handover.date : "";
-    var legacy = false;
-    if (!st.install && !st.handover && comm && stamped.every(function (x) { return x.st.at === "crm" || String(x.st.at || "") < EWI_LAUNCH; })) { legacy = true; hand = commDate; inst = inst || commDate; }
-    var stage = !inst ? "install" : !comm ? "comm" : !hand ? "hand" : "done";
-    var commId = (stamped.filter(function (x) { return x.st.id; })[0] || { st: {} }).st.id || "";
-    return { c: c, lines: ls, stage: stage, inst: inst, comm: comm, commDate: commDate, hand: hand, legacy: legacy,
-             instId: st.install ? st.install.id : "", handId: st.handover ? st.handover.id : "", commId: commId,
+    var raw = sv2CommLines(c); if (!raw.length) return null;
+    var st = ewiSteps()[c.id] || { install: {}, handover: {} };
+    var ls = raw.filter(function (l) { return !(l.st && l.st.skip); }).map(function (l) { return ewiLine(c, l, st); });
+    if (!ls.length) return null;
+    var n = { install: 0, comm: 0, hand: 0, done: 0 }; ls.forEach(function (x) { n[x.stage]++; });
+    return { c: c, lines: ls, n: n, open: n.install + n.comm + n.hand, legacy: ls.every(function (x) { return x.legacy; }),
+             stage: n.install ? "install" : n.comm ? "comm" : n.hand ? "hand" : "done",
              delivered: String(c.receiptReceived || "").toUpperCase() === "Y" };
   }
   function ewiAll() {
     return sv2Challans().map(ewiState).filter(Boolean)
       .sort(function (a, b) { return String(a.c.createdAt || "").localeCompare(String(b.c.createdAt || "")); });
   }
+  /* products at each step (a delivery may sit at several) */
   function ewiCounts(all) {
     var n = { install: 0, comm: 0, hand: 0, done: 0 };
-    (all || ewiAll()).forEach(function (x) { n[x.stage]++; });
+    (all || ewiAll()).forEach(function (x) { ["install", "comm", "hand", "done"].forEach(function (k) { n[k] += x.n[k]; }); });
     n.open = n.install + n.comm + n.hand; return n;
   }
   var EWI_STAGE = { install: "To install", comm: "To commission", hand: "To hand over", done: "Handed over" };
-  function ewiPill(on, label, date) {
-    return '<span class="pill ' + (on ? 'grn' : '') + '" style="margin-right:4px">' + (on ? '&#10003; ' : '&#9675; ') + esc(label) + (on && date ? ' ' + esc(dstr(date)) : '') + '</span>';
+  function ewiD(v) { var d = String(v || "").slice(0, 10); if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return ""; var m = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][Number(d.slice(5, 7)) - 1]; return Number(d.slice(8, 10)) + " " + m; }
+  function ewiCell(on, date) { return on ? '<span style="color:#0f766e;font-weight:700;white-space:nowrap">&#10003; ' + esc(ewiD(date)) + '</span>' : '<span style="color:#b45309">&mdash;</span>'; }
+  var EWI_CSS = '<style>.ewt{width:100%;border-collapse:collapse;margin-top:6px;font-size:13px;table-layout:auto}.ewt td:first-child b{word-break:break-word}@media(max-width:480px){.ewt th,.ewt td{padding:4px 3px}}.ewt th{font-size:12px;color:#64748b;font-weight:700;text-align:left;padding:4px 6px;border-bottom:1px solid #e2e8f0;white-space:nowrap}.ewt td{padding:5px 6px;border-bottom:1px solid #f1f5f9;vertical-align:top}.ewt td.q{text-align:right;white-space:nowrap}.ewt tr.now td{background:#fffbeb}</style>';
+  function ewiTable(x, hl) {
+    return '<table class="ewt"><tr><th>Product</th><th style="text-align:right">Qty</th><th>Installed</th><th>Comm.</th><th>Handed</th></tr>' +
+      x.lines.map(function (l) {
+        return '<tr' + (hl && l.stage === hl ? ' class="now"' : '') + '><td><b>' + esc(l.name) + '</b>' + (l.brand ? '<div class="meta" style="font-size:12px">' + esc(l.brand) + '</div>' : '') + '</td>' +
+          '<td class="q">' + esc(String(l.qty)) + '</td><td>' + ewiCell(!!l.inst, l.inst) + '</td><td>' + ewiCell(l.comm, l.commDate) + '</td><td>' + ewiCell(!!l.hand, l.hand) + '</td></tr>';
+      }).join("") + '</table>';
   }
-  function ewiRow(x) {
+  function ewiRow(x, hl) {
     var c = x.c, d = Math.max(0, Math.round((Date.now() - Date.parse(String(c.createdAt || ""))) / 86400000));
-    var ls = x.lines.filter(function (l) { return !(l.st && l.st.skip); });
     return '<div class="card" data-act="ewi-open" data-id="' + esc(c.id) + '"><div class="row" style="align-items:flex-start"><div class="grow">' +
-      '<div class="ttl">' + esc(c.customerName || "") + '</div><div class="meta">' + esc(c.challanNo || "") + (c.site ? ' &middot; ' + esc(c.site) : '') + ' &middot; ' + esc(dstr(String(c.createdAt || "").slice(0, 10))) + '</div>' +
-      ls.slice(0, 4).map(function (l) { return '<div class="meta"><b>' + esc(l.i.desc || l.need.label) + '</b>' + (l.i.brand ? ' &middot; ' + esc(l.i.brand) : '') + ' &middot; qty ' + esc(String(l.i.qty || 1)) + '</div>'; }).join("") +
-      (ls.length > 4 ? '<div class="meta">+ ' + (ls.length - 4) + ' more</div>' : '') +
-      '<div style="margin-top:6px">' + ewiPill(!!x.inst, "Installed", x.inst) + ewiPill(x.comm, "Commissioned", x.commDate) + ewiPill(!!x.hand, "Handed over", x.hand) +
-      (x.delivered ? '' : '<span class="pill amb">Delivery not confirmed</span>') + '</div>' +
-      '</div><div class="right">' + (x.stage !== "done" && isFinite(d) ? '<div class="amt' + (d > 15 ? ' bad' : '') + '">' + d + ' day' + (d === 1 ? '' : 's') + '</div>' : '') + '</div></div></div>';
+      '<div class="ttl">' + esc(c.customerName || "") + '</div><div class="meta">' + esc(c.challanNo || "") + (c.site ? ' &middot; ' + esc(c.site) : '') + ' &middot; ' + esc(dstr(String(c.createdAt || "").slice(0, 10))) +
+      (x.delivered ? '' : ' &middot; <span class="pill amb">delivery not confirmed</span>') + '</div></div>' +
+      '<div class="right">' + (x.open && isFinite(d) ? '<div class="amt' + (d > 15 ? ' bad' : '') + '">' + d + ' day' + (d === 1 ? '' : 's') + '</div>' : '') + '</div></div>' +
+      ewiTable(x, hl) + '</div>';
   }
   function viewCommission() {
-    var h = '<div class="note">Every delivery of <b>Grundfos, Pentair, LEO, Green Heat, Adani, INAIR or Lunos</b> (and any machine the CRM commissions) waits here until it is <b>installed</b>, <b>commissioned</b> and <b>handed over</b> &mdash; each with its date and photos. The steps can be days apart or all on one day. ' +
-      (ewiCanMark() ? 'Tap a delivery to mark a step.' : 'Manoj or the office marks the steps.') + ' After handover it is regular service: warranty, AMC and the service schedule.</div>';
+    var h = EWI_CSS + '<div class="note">Every product of <b>Grundfos, Pentair, LEO, Green Heat, Adani, INAIR or Lunos</b> waits here until it is <b>installed</b>, <b>commissioned</b> and <b>handed over</b> &mdash; product by product, each step with its date and photos. ' +
+      (ewiCanMark() ? 'Tap a delivery to mark a step.' : 'Manoj or the office marks the steps.') + '</div>';
     if (!Array.isArray(S.data && S.data.challans)) return h + '<div class="empty">The deliveries are not on this phone yet. Refresh once the book has loaded.</div>';
     var all = ewiAll(), n = ewiCounts(all);
     var f = S.ewiF && EWI_STAGE[S.ewiF] ? S.ewiF : (n.install ? "install" : n.comm ? "comm" : n.hand ? "hand" : "done");
     h += '<div class="chips">' + ["install", "comm", "hand", "done"].map(function (k) {
       return '<button type="button" class="chip bchip' + (f === k ? ' on' : '') + '" data-act="ewi-f" data-k="' + k + '">' + EWI_STAGE[k] + ' <b>' + n[k] + '</b></button>';
-    }).join("") + '</div>';
+    }).join("") + '</div><div class="meta" style="margin:-6px 0 8px">Counts are products.</div>';
     h += '<input id="ewi_q" placeholder="Find a client, challan, site or brand" value="' + esc(S.ewiQ || "") + '" autocomplete="off" style="margin-bottom:8px"/>';
     var q = sv2Key(S.ewiQ || ""), list = all.filter(function (x) {
-      if (x.stage !== f) return false;
+      if (!x.n[f]) return false;
       if (!q) return true;
-      return sv2Key([x.c.customerName, x.c.challanNo, x.c.site].concat(x.lines.map(function (l) { return l.i.brand + " " + l.i.desc; })).join(" ")).indexOf(q) >= 0;
+      return sv2Key([x.c.customerName, x.c.challanNo, x.c.site].concat(x.lines.map(function (l) { return l.brand + " " + l.i.desc; })).join(" ")).indexOf(q) >= 0;
     });
     if (f === "done") list = list.slice().reverse();
     var lim = S.ewiLim || 40;
-    h += list.length ? list.slice(0, lim).map(ewiRow).join("") + (list.length > lim ? '<button class="btn gry full" data-act="ewi-more">Show ' + Math.min(40, list.length - lim) + ' more of ' + (list.length - lim) + '</button>' : '')
+    h += list.length ? list.slice(0, lim).map(function (x) { return ewiRow(x, f); }).join("") + (list.length > lim ? '<button class="btn gry full" data-act="ewi-more">Show ' + Math.min(40, list.length - lim) + ' more of ' + (list.length - lim) + '</button>' : '')
                      : '<div class="empty ok">' + (q ? 'Nothing matches.' : 'Nothing ' + EWI_STAGE[f].toLowerCase() + '.') + '</div>';
     return h;
   }
   function ewiFind(id) { var c = sv2Challans().filter(function (x) { return x.id === id; })[0]; return c ? ewiState(c) : null; }
-  function ewiDone(label, date, by, pics) {
-    return '<div class="card"><div class="ttl">&#10003; ' + esc(label) + ' &mdash; ' + esc(dstr(date)) + '</div>' + (by ? '<div class="meta">by ' + esc(by) + '</div>' : '') + picStrip(pics || [], "Photos") + '</div>';
+  /* which selected products a step applies to (those that have not had it) */
+  function ewiFor(x, E, k) {
+    var sel = E.sel || {};
+    return x.lines.filter(function (l) { return sel[l.idx] && (k === "install" ? !l.inst : k === "comm" ? !l.comm : !l.hand); });
   }
   function ewiSheet() {
     var E = S.ew || {}, x = ewiFind(E.id);
     if (!x) return '<h2>Not found</h2><div class="acts"><button class="btn gry" data-act="close">Close</button></div>';
-    var c = x.c, can = ewiCanMark(), st = ewiSteps()[c.id] || {};
-    var h = '<h2>' + esc(c.customerName || "") + '</h2><div class="muted">' + esc(c.challanNo || "") + (c.site ? ' &middot; ' + esc(c.site) : '') + ' &middot; challan ' + esc(dstr(String(c.createdAt || "").slice(0, 10))) +
+    var c = x.c, can = ewiCanMark(), sel = E.sel || {};
+    var h = EWI_CSS + '<h2>' + esc(c.customerName || "") + '</h2><div class="muted">' + esc(c.challanNo || "") + (c.site ? ' &middot; ' + esc(c.site) : '') + ' &middot; challan ' + esc(dstr(String(c.createdAt || "").slice(0, 10))) +
       (x.delivered ? '' : ' &middot; <span class="pill amb">delivery not confirmed</span>') + '</div>';
-    h += '<div class="meta" style="margin:6px 0">' + x.lines.map(function (l) { return esc((l.i.brand ? l.i.brand + ' ' : '') + (l.i.desc || l.need.label)) + ' &times; ' + esc(String(l.i.qty || 1)); }).join('<br>') + '</div>';
     if (x.legacy) h += '<div class="note ok">Commissioned before this section existed, so it is counted as handed over.</div>';
-    var block = function (k, label, hint, extra) {
-      var B = E[k] || {};
+    /* the products, each with its own three steps; tick the ones you are marking */
+    h += '<table class="ewt"><tr>' + (can ? '<th></th>' : '') + '<th>Product</th><th style="text-align:right">Qty</th><th>Installed</th><th>Comm.</th><th>Handed</th></tr>' +
+      x.lines.map(function (l) {
+        var done = l.stage === "done";
+        return '<tr>' + (can ? '<td style="width:44px">' + (done ? '' : '<label style="display:flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;margin:0"><input type="checkbox" class="ewi-ln" data-i="' + l.idx + '"' + (sel[l.idx] ? ' checked' : '') + '/></label>') + '</td>' : '') +
+          '<td><b>' + esc(l.name) + '</b>' + (l.brand ? '<div class="meta" style="font-size:12px">' + esc(l.brand) + '</div>' : '') + '</td><td class="q">' + esc(String(l.qty)) + '</td>' +
+          '<td>' + ewiCell(!!l.inst, l.inst) + '</td><td>' + ewiCell(l.comm, l.commDate) + '</td><td>' + ewiCell(!!l.hand, l.hand) + '</td></tr>';
+      }).join("") + '</table>';
+    /* the photos already filed, step by step */
+    var filed = [];
+    x.lines.forEach(function (l) { if (l.insRec && filed.indexOf(l.insRec.id) < 0) filed.push(l.insRec.id); if (l.hoRec && filed.indexOf(l.hoRec.id) < 0) filed.push(l.hoRec.id); if (l.st && l.st.id && filed.indexOf(l.st.id) < 0) filed.push(l.st.id); });
+    var pics = []; filed.forEach(function (id) { pics = pics.concat(picsOf("install", id)); });
+    if (pics.length) h += picStrip(pics, "Photos filed");
+    if (!can) return h + '<div class="meta" style="margin-top:8px">Manoj or the office marks the steps.</div><div class="acts"><button class="btn gry" data-act="close">Close</button></div>';
+    if (x.stage === "done") return h + '<div class="acts"><button class="btn gry" data-act="close">Close</button></div>';
+    var block = function (k, label, extra) {
+      var B = E[k] || {}, n = ewiFor(x, E, k).length;
+      if (!n && !B.on) return '';
       return '<div class="card"><label style="display:flex;align-items:center;gap:8px;margin:0;min-height:44px;font-size:15px;font-weight:700;text-transform:none;letter-spacing:0;color:#0f172a">' +
-        '<input type="checkbox" class="ewi-on" data-k="' + k + '"' + (B.on ? ' checked' : '') + '/> ' + label + ' done</label>' +
-        (B.on ? '<div class="meta">' + hint + '</div><label>Date</label><input type="date" class="ewi-date" data-k="' + k + '" max="' + today() + '" value="' + esc(B.date || today()) + '"/>' + (extra || '') +
+        '<input type="checkbox" class="ewi-on" data-k="' + k + '"' + (B.on ? ' checked' : '') + '/> ' + label + ' done' + (n ? ' &mdash; ' + n + ' product' + (n === 1 ? '' : 's') : '') + '</label>' +
+        (B.on ? '<label>Date</label><input type="date" class="ewi-date" data-k="' + k + '" max="' + today() + '" value="' + esc(B.date || today()) + '"/>' + (extra || '') +
           '<label>Photos &mdash; at least one</label><input type="file" accept="image/*" capture="environment" class="ewi-pic" data-k="' + k + '" multiple/>' +
           ((B.pics || []).length ? '<div class="note ok">' + B.pics.length + ' photo' + (B.pics.length === 1 ? '' : 's') + ' ready &mdash; ' + (B.pics.length === 1 ? 'it goes' : 'they go') + ' up when you save.</div>' : '') : '') + '</div>';
     };
-    /* step 1 */
-    if (x.inst) h += ewiDone("Installed", x.inst, st.install ? st.install.by : "", st.install ? picsOf("install", st.install.id) : []);
-    else if (can) h += block("install", "Installation", "The machine fixed in place and plumbed / wired.");
-    else h += '<div class="card"><div class="ttl">&#9675; Installation pending</div></div>';
-    /* step 2 */
-    if (x.comm) h += ewiDone("Commissioned", x.commDate, "", x.commId ? picsOf("commission", x.commId) : []);
-    else if (can) {
-      var K = S.ew.l || {}, ls = x.lines.filter(function (l) { return !l.st; });
-      var lines = (E.comm && E.comm.on) ? ls.map(function (l) {
-        var L = K[l.idx] || {};
-        return '<div class="card" style="margin:8px 0"><div class="row" style="align-items:flex-start"><div class="grow"><b>' + esc(l.i.desc || l.need.label) + '</b><div class="meta">' + esc(l.i.brand || "") + ' &middot; qty ' + esc(String(l.i.qty || 1)) + '</div></div>' +
-          '<label style="display:flex;align-items:center;gap:6px;margin:0;font-size:13px;min-height:44px;text-transform:none;letter-spacing:0"><input type="checkbox" class="cm2-skip" data-i="' + l.idx + '"' + (L.skip ? ' checked' : '') + '/> Not a machine</label></div>' +
-          (L.skip ? '<div class="meta">Left out &mdash; no warranty card.</div>' :
-          '<div class="grid2"><div><label>Serial no.</label><input class="cm2-sn" data-i="' + l.idx + '" value="' + esc(L.sn || sv2AutoSn(c, l.idx)) + '"/></div>' +
-          '<div class="grid2" style="gap:6px"><div><label>Warranty months</label><input class="cm2-wm" data-i="' + l.idx + '" inputmode="numeric" value="' + esc(L.wm == null ? l.need.wm : L.wm) + '"/></div>' +
-          '<div><label>Service every (months)</label><input class="cm2-cm" data-i="' + l.idx + '" inputmode="numeric" value="' + esc(L.cm == null ? l.need.cm : L.cm) + '"/></div></div></div>') + '</div>';
-      }).join("") : "";
-      h += block("comm", "Commissioning (testing)", "Running and tested. Its warranty starts this day and it goes on the service schedule.", lines);
-    } else h += '<div class="card"><div class="ttl">&#9675; Commissioning pending</div></div>';
-    /* step 3 */
-    if (x.hand) h += ewiDone("Handed over to the client", x.hand, st.handover ? st.handover.by : "", st.handover ? picsOf("handover", st.handover.id) : []);
-    else if (can) h += block("hand", "Handover to the client", "Shown to the client and handed over. From here it is regular service.");
-    else h += '<div class="card"><div class="ttl">&#9675; Handover pending</div></div>';
-    var any = can && (["install", "comm", "hand"].some(function (k) { return E[k] && E[k].on; }));
+    var K = E.l || {};
+    var commExtra = (E.comm && E.comm.on) ? ewiFor(x, E, "comm").map(function (l) {
+      var L = K[l.idx] || {};
+      return '<div style="border-top:1px solid #f1f5f9;padding-top:6px;margin-top:6px"><div class="row" style="align-items:center"><div class="grow"><b>' + esc(l.name) + '</b></div>' +
+        '<label style="display:flex;align-items:center;gap:6px;margin:0;font-size:13px;min-height:44px;text-transform:none;letter-spacing:0"><input type="checkbox" class="cm2-skip" data-i="' + l.idx + '"' + (L.skip ? ' checked' : '') + '/> Not a machine</label></div>' +
+        (L.skip ? '<div class="meta">Left out &mdash; no warranty card.</div>' :
+        '<div class="grid2"><div><label>Serial no.</label><input class="cm2-sn" data-i="' + l.idx + '" value="' + esc(L.sn || sv2AutoSn(c, l.idx)) + '"/></div>' +
+        '<div class="grid2" style="gap:6px"><div><label>Warranty months</label><input class="cm2-wm" data-i="' + l.idx + '" inputmode="numeric" value="' + esc(L.wm == null ? l.need.wm : L.wm) + '"/></div>' +
+        '<div><label>Service every (months)</label><input class="cm2-cm" data-i="' + l.idx + '" inputmode="numeric" value="' + esc(L.cm == null ? l.need.cm : L.cm) + '"/></div></div></div>') + '</div>';
+    }).join("") : "";
+    var steps = block("install", "Installation") + block("comm", "Commissioning (testing)", commExtra) + block("hand", "Handover to the client");
+    h += steps || '<div class="meta" style="margin-top:8px">Tick the products you are marking.</div>';
+    var any = ["install", "comm", "hand"].some(function (k) { return E[k] && E[k].on; });
     h += '<div class="acts"><button class="btn gry" data-act="close">' + (any ? 'Cancel' : 'Close') + '</button>' + (any ? '<button class="btn grow" data-act="ewi-save">Save</button>' : '') + '</div>';
     return h;
   }
   function ewiKeep() {
     var E = S.ew; if (!E) return;
     Array.prototype.forEach.call(document.querySelectorAll(".ewi-date"), function (e) { var k = e.getAttribute("data-k"); (E[k] = E[k] || {}).date = String(e.value || ""); });
+    E.sel = E.sel || {};
+    Array.prototype.forEach.call(document.querySelectorAll(".ewi-ln"), function (e) { E.sel[e.getAttribute("data-i")] = e.checked; });
     E.l = E.l || {};
     var put = function (cls, f, isBox) { Array.prototype.forEach.call(document.querySelectorAll(cls), function (e) { var i = e.getAttribute("data-i"); (E.l[i] = E.l[i] || {})[f] = isBox ? e.checked : String(e.value || "").trim(); }); };
     put(".cm2-skip", "skip", true); put(".cm2-sn", "sn"); put(".cm2-wm", "wm"); put(".cm2-cm", "cm");
   }
   function ewiOpen(id) {
     var x = ewiFind(id); if (!x) return;
-    var first = x.stage === "install" ? "install" : x.stage === "comm" ? "comm" : x.stage === "hand" ? "hand" : "";
-    S.ew = { id: id, l: {} };
-    if (first && ewiCanMark()) S.ew[first] = { on: true, date: today(), pics: [] };
+    S.ew = { id: id, l: {}, sel: {} };
+    if (ewiCanMark() && x.stage !== "done") {
+      x.lines.forEach(function (l) { if (l.stage === x.stage) S.ew.sel[l.idx] = true; });
+      S.ew[x.stage] = { on: true, date: today(), pics: [] };
+    }
     S.sheet = ewiSheet(); render();
   }
   /* returns an error sentence, or "" */
   function ewiCheck(x, E) {
     var on = function (k) { return !!(E[k] && E[k].on); }, dt = function (k) { return String((E[k] && E[k].date) || ""); };
-    var ymd = /^\d{4}-\d{2}-\d{2}$/;
+    var ymd = /^\d{4}-\d{2}-\d{2}$/, names = { install: "installation", comm: "commissioning", hand: "handover" };
+    var sel = x.lines.filter(function (l) { return (E.sel || {})[l.idx]; });
+    if (!sel.length) return "Tick the products you are marking.";
     if (!on("install") && !on("comm") && !on("hand")) return "Tick the step you are marking.";
-    var names = { install: "installation", comm: "commissioning", hand: "handover" };
     for (var k in names) if (on(k)) {
+      if (!ewiFor(x, E, k).length) return "None of the ticked products is waiting for " + names[k] + ".";
       if (!ymd.test(dt(k))) return "Put the date of " + names[k] + ".";
       if (dt(k) > today()) return "The " + names[k] + " date is in the future.";
-      var real = k !== "comm" || x.lines.some(function (l) { return !l.st && !((E.l || {})[l.idx] || {}).skip; });
+      var real = k !== "comm" || ewiFor(x, E, "comm").some(function (l) { return !((E.l || {})[l.idx] || {}).skip; });
       if (real && !((E[k].pics || []).length)) return "Take at least one photo of the " + names[k] + ".";
     }
-    var iD = on("install") ? dt("install") : x.inst, cD = on("comm") ? dt("comm") : (x.comm ? x.commDate : ""), hD = on("hand") ? dt("hand") : x.hand;
-    if (on("comm") && !iD) return "Mark the installation first (tick it too if it was the same day).";
-    if (on("hand") && !cD) return "Mark the commissioning first (tick it too if it was the same day).";
-    if (iD && cD && cD < iD) return "Commissioned before it was installed? Check the dates.";
-    if (cD && hD && hD < cD) return "Handed over before it was commissioned? Check the dates.";
+    for (var i = 0; i < sel.length; i++) {
+      var l = sel[i];
+      var iD = (on("install") && !l.inst) ? dt("install") : l.inst, cD = (on("comm") && !l.comm) ? dt("comm") : (l.comm ? l.commDate : ""), hD = (on("hand") && !l.hand) ? dt("hand") : l.hand;
+      if (on("comm") && !l.comm && !iD) return l.name + ": mark the installation first (tick it too if it was the same day).";
+      if (on("hand") && !l.hand && !cD) return l.name + ": mark the commissioning first (tick it too if it was the same day).";
+      if (iD && cD && cD < iD) return l.name + ": commissioned before it was installed? Check the dates.";
+      if (cD && hD && hD < cD) return l.name + ": handed over before it was commissioned? Check the dates.";
+    }
     return "";
   }
-  function ewiStepRow(x, step, date, n) {
+  function ewiStepRow(x, step, date, n, lines) {
     var id = mintId(step === "install" ? "IS" : "HO"), c = x.c;
     var arow = { id: id, createdAt: new Date().toISOString(), actor: S.user || "", action: "inst:step", target: String(c.challanNo || c.id),
-      detail: JSON.stringify({ id: id, chId: c.id, no: c.challanNo || "", client: c.customerName || "", site: c.site || "", step: step, date: date, by: S.user || "", photos: n }), ip: "" };
+      detail: JSON.stringify({ id: id, chId: c.id, no: c.challanNo || "", client: c.customerName || "", site: c.site || "", step: step, date: date, by: S.user || "", photos: n, lines: lines }), ip: "" };
     (S.data.audit = S.data.audit || []).push(arow); saveRow("audit", arow);
     return id;
   }
@@ -4011,14 +4044,16 @@ function ewmBuild(n, pre) {
     if (!ewiCanMark()) { toast("Only Manoj or the office marks these."); return; }
     var err = ewiCheck(x, E); if (err) { toast(err); return; }
     var c = x.c, sent = [], said = [];
-    if (E.install && E.install.on) { var i1 = ewiStepRow(x, "install", E.install.date, E.install.pics.length); sent.push([E.install.pics, i1]); said.push("installed"); }
+    var ids = function (k) { return ewiFor(x, E, k).map(function (l) { return l.idx; }); };
+    if (E.install && E.install.on) { var li = ids("install"); var i1 = ewiStepRow(x, "install", E.install.date, E.install.pics.length, li); sent.push([E.install.pics, i1, "install"]); said.push(li.length + " installed"); }
     if (E.comm && E.comm.on) {
-      S.cm = { id: c.id, date: E.comm.date, l: E.l || {}, pics: E.comm.pics || [] };
+      var lc = ids("comm");
+      S.cm = { id: c.id, date: E.comm.date, l: E.l || {}, pics: E.comm.pics || [], only: lc };
       var r = sv2CommWrite(); if (r && r.err) { toast(r.err); return; }
-      if (r && r.id && r.pics.length) sent.push([r.pics, r.id]);
-      said.push("commissioned");
+      if (r && r.id && r.pics.length) sent.push([r.pics, r.id, "commission"]);
+      said.push(lc.length + " commissioned");
     }
-    if (E.hand && E.hand.on) { var i3 = ewiStepRow(x, "handover", E.hand.date, E.hand.pics.length); sent.push([E.hand.pics, i3]); said.push("handed over"); }
+    if (E.hand && E.hand.on) { var lh = ids("hand"); var i3 = ewiStepRow(x, "handover", E.hand.date, E.hand.pics.length, lh); sent.push([E.hand.pics, i3, "handover"]); said.push(lh.length + " handed over"); }
     try { applyJournal(); } catch (e) { }
     S.ew = null; S.cm = null; S.sheet = null; _ewiC = null; sv2Bust(); bust(); render();
     toast(String(c.customerName || "") + ": " + said.join(", ") + ".");
@@ -4075,7 +4110,7 @@ function ewmBuild(n, pre) {
   /* 2.9.0 - the write itself, used by the old sheet and by the step sheet */
   function sv2CommWrite() {
     var K = S.cm || {}, c = sv2Challans().filter(function (x) { return x.id === K.id; })[0]; if (!c) return null;
-    var ls = sv2CommLines(c).filter(function (x) { return !x.st; }), date = K.date || today();
+    var ls = sv2CommLines(c).filter(function (x) { return !x.st && (!K.only || K.only.indexOf(x.idx) >= 0); }), date = K.date || today();   /* 2.9.3 - only the ticked products */
     var lines = ls.map(function (x) {
       var L = (K.l && K.l[x.idx]) || {};
       if (L.skip) return { idx: x.idx, code: x.i.code || "", desc: x.i.desc || "", brand: x.i.brand || "", skip: true };
@@ -5244,6 +5279,9 @@ function ewmBuild(n, pre) {
     /* 2.9.0 - the step sheet */
     Array.prototype.forEach.call(document.querySelectorAll(".ewi-on"), function (b) {
       b.addEventListener("change", function () { ewiKeep(); var k = b.getAttribute("data-k"); S.ew[k] = S.ew[k] || { date: today(), pics: [] }; S.ew[k].on = b.checked; if (!S.ew[k].date) S.ew[k].date = today(); S.ew[k].pics = S.ew[k].pics || []; S.sheet = ewiSheet(); render(); });
+    });
+    Array.prototype.forEach.call(document.querySelectorAll(".ewi-ln"), function (b) {   /* 2.9.3 */
+      b.addEventListener("change", function () { ewiKeep(); S.sheet = ewiSheet(); render(); });
     });
     if (S.ew) Array.prototype.forEach.call(document.querySelectorAll(".cm2-skip"), function (b) {
       b.addEventListener("change", function () { ewiKeep(); S.sheet = ewiSheet(); render(); });
