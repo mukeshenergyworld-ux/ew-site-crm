@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.764";
+  var APP_VERSION = "6.9.765";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -7356,7 +7356,7 @@ window.addEventListener("beforeunload", function (ev) {
       return h;
     }
     h += '<div class="meta" style="margin-bottom:8px">Nothing is deleted. This record is set aside &mdash; it drops out of every count, total, due and stock figure, and ' +
-        (own ? 'you can bring it back any time from <b>Health &rarr; Cancelled records</b>'
+        (own ? 'it waits in the <b>Bin</b> for 30 days (Quotes or Challans screen) and you can bring it back with your PIN'
              : 'the owner can bring it back any time') + '. ' +
         (own ? '' : '<b>The challan number stays used</b>, so the paper book and the app never disagree.') + '</div>';
     if (b.warn.length) {
@@ -7391,21 +7391,45 @@ window.addEventListener("beforeunload", function (ev) {
   }
 
   /* The one place everything cancelled can be seen and brought back. */
-  function cancelledCardHtml() {
-    var rows = cancelledRows();
-    var h = '<div class="ch-client" style="border-left-color:#64748b;color:#475569">Cancelled records<span class="sub" style="color:#475569">' + rows.length + '</span></div>';
+  /* v6.9.765 - THE BIN. His words: "file deleted will stay for 30 days ... revived by admin only
+     with pin". Asked what happens at 30 days he chose: it LEAVES THE BIN, the record is kept.
+     Nothing here wipes anything - the age only decides which list a cancelled record sits in. */
+  var BIN_DAYS = 30;
+  function binAge(r) {
+    var t = Date.parse(String((r && r.at) || ""));
+    return isNaN(t) ? 0 : Math.floor((Date.now() - t) / 86400000);
+  }
+  function binRows() { return cancelledRows().filter(function (r) { return binAge(r) < BIN_DAYS; }); }
+  function binCount() { try { return binRows().length; } catch (e) { return 0; } }
+  function binBtn() {
+    if (!roleIs("admin")) return "";
+    var n = binCount();
+    return '<button class="btn sm ghost" data-act="bin-open">Bin' + (n ? ' (' + n + ')' : '') + '</button>';
+  }
+  function modalBin() {
+    return '<h2>Bin</h2>' + cancelledCardHtml(true) +
+      '<div class="foot"><button class="btn ghost" data-act="close">Close</button></div>';
+  }
+  function cancelledCardHtml(inModal) {
+    var all = cancelledRows(), rows = binRows(), older = all.length - rows.length;
+    if (S.binOld) rows = all;
+    var h = inModal ? '' : '<div class="ch-client" style="border-left-color:#64748b;color:#475569">Bin<span class="sub" style="color:#475569">' + binRows().length + '</span></div>';
+    var oldBtn = older ? '<div class="acts" style="margin:4px 0 8px"><button class="btn sm ghost" data-act="bin-old">' +
+      (S.binOld ? 'Show only the last 30 days' : 'Show older (' + older + ') &mdash; kept, not deleted') + '</button></div>' : '';
     if (!rows.length) {
-      return h + '<div class="empty" style="text-align:left;padding:0 0 8px">Nothing has been cancelled. A challan, client, site or material return that was cancelled is set aside here &mdash; never deleted &mdash; and can be brought back in one press.</div>';
+      return h + '<div class="empty" style="text-align:left;padding:0 0 8px">The Bin is empty. A quote, challan or other record that is cancelled waits here for 30 days and the owner can bring it back with his PIN. Nothing is ever deleted.</div>' + oldBtn;
     }
-    h += '<div class="empty" style="text-align:left;padding:0 0 8px">These are out of every count, total, due and stock figure. Bringing one back puts it straight back into all of them.</div>';
+    h += '<div class="empty" style="text-align:left;padding:0 0 8px">Cancelled records wait here for 30 days. They are out of every count, total, due and stock figure. Only the owner can bring one back, with his PIN. After 30 days they leave the Bin but the record is kept.</div>' + oldBtn;
     rows.forEach(function (r) {
+      var left = BIN_DAYS - binAge(r);
       h += '<div class="card" style="padding:8px 13px;margin-bottom:6px">' +
         '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">' +
         '<div style="flex:1 1 175px;min-width:0">' +
         '<b style="font-size:13px">' + esc(r.label) + '</b> <span class="pill cx">' + esc(CANCEL_TABS[r.tab]) + '</span>' +
         (r.sub ? '<div class="meta" style="font-size:12px">' + esc(r.sub) + '</div>' : '') +
         '<div class="meta" style="font-size:12px">' + esc(r.reason || "no reason recorded") + (r.note ? ' &mdash; ' + esc(r.note) : '') + '</div>' +
-        '<div class="meta" style="font-size:12px;color:#94a3b8">' + esc(d10(r.at)) + (r.by ? ' by ' + esc(r.by) : '') + '</div></div>' +
+        '<div class="meta" style="font-size:12px;color:#94a3b8">' + esc(d10(r.at)) + (r.by ? ' by ' + esc(r.by) : '') +
+          (left > 0 ? ' &middot; ' + left + ' day' + (left === 1 ? '' : 's') + ' left in the Bin' : ' &middot; out of the Bin, record kept') + '</div></div>' +
         (roleIs("admin") ? '<button class="btn sm ghost" data-act="cx-undo" data-tab="' + esc(r.tab) + '" data-id="' + esc(r.id) + '">Bring back</button>' : '') +
         '</div></div>';
     });
@@ -18627,7 +18651,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     ensureCompactCss(); ensureQuoteCss();
     ensurePickerCss();   /* exec band (.ch-exec) + sub-strip (.ch-client) styling */
     /* v6.9.534 - his item 15: no Compact / Expand here; the log below filters and opens */
-    var h = '<div class="row"><div class="grow"></div><button class="btn" data-act="qz-new">+ New quote</button></div>';
+    var h = '<div class="row">' + binBtn() + '<div class="grow"></div><button class="btn" data-act="qz-new">+ New quote</button></div>';
     h += unsentBandHtml();
     var all = quoteAllList();
     if (!all.length) { h += '<div class="empty">No quotes yet. Every quote is versioned - revising keeps the old one.</div>'; return h; }
@@ -27352,7 +27376,7 @@ function viewCatalogue() {
       (roleIs("admin") ? '<button class="btn sm ghost" data-act="oc-new">Enter an old delivery</button>' : "") +
       /* v6.9.483 - this opened a modal listing the same rows flatter and worse; it is the
          screen he photographed to show what was wrong with it. One tap to the real section. */
-      '<button class="btn sm ghost" data-act="prf-list">Receipts pending</button>' +
+      '<button class="btn sm ghost" data-act="prf-list">Receipts pending</button>' + binBtn() +
       '<div class="grow"></div><button class="btn" data-act="ch-new">+ New challan</button></div>';
     if (!list.length) h += '<div class="empty">No challans yet.</div>';
 
@@ -54304,6 +54328,7 @@ function viewCatalogue() {
     if (act === "prompt-ok") { var _pv = el("prompt_in"); promptDone(_pv ? String(_pv.value) : ""); return; }
     if (act === "prompt-alt") { promptDone(_prmAlt == null ? "" : _prmAlt); return; }   /* v6.9.453 */
     if (act === "close") {
+      S.binOpen = false; S.binPend = null;   /* v6.9.765 */
       /* v6.9.448 - a question closed any way but Yes is a "no", and the caller is told */
       if (_ask) { askDone(false); return; }
       if (S.asReturn && !_ask) { var _cbk = S.asReturn; if (String(S.modal || "").indexOf('data-act="as-save"') >= 0) { asComeBack("", ""); return; } S.asReturn = null; }   /* 6.9.682 - x on the partner form goes back to the sheet */
@@ -59306,7 +59331,7 @@ function viewCatalogue() {
          reading would be lifted out of S.data by splitCancelled() a moment later. */
       if (_cxask) cxAskWrite(_cxt, _cxi, _cxr, _cxask.reason, String(val("cx_note") || "").slice(0, 400), "approved");
       cxWrite(_cxt, _cxi, _cxr, _cxrs, String(val("cx_note") || "").slice(0, 400), false);
-      toast(CANCEL_TABS[_cxt] + " cancelled. It is on Health - Cancelled records if you ever need it back.");
+      toast(CANCEL_TABS[_cxt] + " cancelled. It waits in the Bin for 30 days if you ever need it back.");
       return;
     }
     if (act === "cx-undo") {
@@ -59314,9 +59339,58 @@ function viewCatalogue() {
       var _cut = t.getAttribute("data-tab"), _cui = t.getAttribute("data-id");
       var _cur = ((S.cancelled || {})[_cut] || []).filter(function (x) { return x.id === _cui; })[0];
       if (!_cur) { toast("That record is not on the cancelled list."); return; }
-      t.disabled = true; t.textContent = "Bringing back...";
-      cxWrite(_cut, _cui, _cur, "", "", true);
-      toast(CANCEL_TABS[_cut] + " is back. Every count and total includes it again.");
+      /* v6.9.765 - his words: "revived by admin only with pin". The PIN is typed on the app's
+         own sheet, checked by the SERVER through teamAuth against his own row, and kept nowhere. */
+      S.binPend = { tab: _cut, id: _cui, from: S.binOpen ? "bin" : "" };
+      S.modal = sheetMoneyPin("Your PIN to bring this back",
+        '<b>' + esc(cancelLabel(_cut, _cur)) + '</b> <span class="pill cx">' + esc(CANCEL_TABS[_cut]) + '</span><br>' +
+        'It goes straight back into every count, total, due and stock figure.<br>' +
+        '<span style="color:#64748b">Checked by the server against your own record. Cancelling changes nothing.</span>',
+        "bin_pin", "bin-pin-go", "Bring it back", "bin-pin-back");
+      render();
+      return;
+    }
+    if (act === "bin-open") {
+      if (!roleIs("admin")) { toast("Only the owner can open the Bin."); return; }
+      S.binOpen = true; S.binOld = false; S.modal = modalBin(); render(); return;
+    }
+    if (act === "bin-old") {
+      S.binOld = !S.binOld;
+      if (S.binOpen && S.modal) S.modal = modalBin();
+      keepScroll = true; render(); return;
+    }
+    if (act === "bin-pin-back") {
+      var _bb = S.binPend; S.binPend = null;
+      S.modal = (_bb && _bb.from === "bin") ? modalBin() : null;
+      if (!S.modal) S.binOpen = false;
+      render(); return;
+    }
+    if (act === "bin-pin-go") {
+      if (!roleIs("admin")) { toast("Only the owner can bring a record back."); return; }
+      var _bp = S.binPend;
+      if (!_bp) { S.modal = null; render(); return; }
+      var _brow = ((S.cancelled || {})[_bp.tab] || []).filter(function (x) { return x.id === _bp.id; })[0];
+      if (!_brow) { toast("That record is not in the Bin any more."); S.binPend = null; S.modal = null; render(); return; }
+      var _bpin = el("bin_pin") ? String(el("bin_pin").value || "").trim() : "";
+      if (!_bpin) { pinNote("bin_pin", "Type your PIN first. Nothing was changed."); return; }
+      var _bbtn = t; if (_bbtn) { _bbtn.disabled = true; _bbtn.textContent = "Checking\u2026"; }
+      api("teamAuth", { pin: _bpin, ua: navigator.userAgent }).then(function (r) {
+        if (!r || !r.ok) {
+          if (_bbtn) { _bbtn.disabled = false; _bbtn.textContent = "Bring it back"; }
+          pinNote("bin_pin", (r && r.error) || "Wrong PIN. Nothing was changed."); return;
+        }
+        var sRole = String((r.user && r.user.role) || "").toLowerCase();
+        if (sRole.indexOf("admin") < 0) {
+          if (_bbtn) { _bbtn.disabled = false; _bbtn.textContent = "Bring it back"; }
+          pinNote("bin_pin", "The server says this sign-in is not the owner's. Nothing was changed."); return;
+        }
+        S.binPend = null; S.binOpen = false;
+        cxWrite(_bp.tab, _bp.id, _brow, "", "", true);
+        toast(CANCEL_TABS[_bp.tab] + " is back. Every count and total includes it again.");
+      }).catch(function () {
+        if (_bbtn) { _bbtn.disabled = false; _bbtn.textContent = "Bring it back"; }
+        pinNote("bin_pin", "Could not reach the server. Nothing was changed - try again.");
+      });
       return;
     }
     if (act === "p-open") {
