@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.745";
+  var APP_VERSION = "6.9.746";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -149,7 +149,7 @@
     var K = "ewTheme";
     function ewtGet() { try { var v = localStorage.getItem(K); return v === "light" || v === "dark" ? v : "auto"; } catch (e) { return "auto"; } }
     function ewtOs() { try { return !!(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches); } catch (e) { return false; } }
-    function ewtDark() { var m = ewtGet(); return m === "dark" || (m === "auto" && ewtOs()); }
+    function ewtDark() { return false; } /* p746 12 Oct 2026: light only - his call, the inverted dark looked muddy */
     function ewtApply() {
       var r = document.documentElement; if (!r) return;
       r.setAttribute("data-ewdark", ewtDark() ? "1" : "0");
@@ -157,7 +157,7 @@
     }
     try {
       var st = document.createElement("style");
-      st.textContent = 'html{background:#fff}' +
+      st.textContent = 'html{background:#fff}.ewthm{display:none!important}' +
         'html[data-ewdark="1"]{filter:invert(.92) hue-rotate(180deg)}' +
         'html[data-ewdark="1"] .top{filter:invert(1) hue-rotate(180deg)}' +   /* the navy bar stays navy, as on the card */
         'html[data-ewdark="1"] img,html[data-ewdark="1"] video,html[data-ewdark="1"] canvas,html[data-ewdark="1"] iframe,html[data-ewdark="1"] embed,html[data-ewdark="1"] object,html[data-ewdark="1"] [data-noinvert]{filter:invert(1) hue-rotate(180deg)}' +
