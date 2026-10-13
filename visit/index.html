@@ -189,7 +189,7 @@ h3.sec{color:#1F3A5F}
       button: function () { return '<button type="button" class="ewthm" onclick="ewTheme.next(this)">' + ewtLabel() + '</button>'; }
     };
   })();
-  var APP_VERSION = "1.4.12";
+  var APP_VERSION = "1.4.13";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_vq_session", JRN = "ew_vq_journal_v1", CALLQ = "ew_vq_calls_v1", SNAPK = "ew_vq_snap_";
   var CAT_KEY = "ew_team_catalog", CAT_V = 2;   /* the CRM's own shelf copy of the price list - shared, same origin */
@@ -2285,7 +2285,7 @@ h3.sec{color:#1F3A5F}
       '<label for="qp_name">' + lab + '</label><input id="qp_name" list="qp_list" placeholder="Pick or type the name" autocomplete="off"/>' + dl("qp_list", partners(f).map(function (a) { return a.name; })) +
       '<div class="acts"><button class="btn gry" data-act="close">Cancel</button><button class="btn" data-act="qp-save" data-k="' + f + '" data-id="' + esc(c.name) + '">Save</button></div>';
   }
-  function qTable(list) {
+  function qTable(list) {   /* 1.4.13 - his columns (as CRM 6.9.777) */
     var byId = {}; (S.data.quotes || []).forEach(function (q) { if (q) byId[q.id] = q; });
     var fams = {}, order = [];
     list.forEach(function (q) {
@@ -2295,32 +2295,37 @@ h3.sec{color:#1F3A5F}
     });
     var newest = function (f) { return f.reduce(function (m, q) { var d = String(q.createdAt || ""); return d > m ? d : m; }, ""); };
     order.sort(function (a, b) { return newest(fams[b]).localeCompare(newest(fams[a])); });
-    var th = function (t, r) { return '<th style="padding:7px 8px;text-align:' + (r ? "right" : "left") + ';white-space:nowrap;font-size:12px;color:#fff">' + t + '</th>'; };
-    var h = '<div style="overflow-x:auto;border:1px solid #DCE3EA;border-radius:12px;background:#fff;margin-top:8px"><table style="border-collapse:collapse;width:100%;min-width:960px;font-size:13px">' +
-      '<thead><tr style="background:#0F2A44">' + th("QUOTE NO.") + th("CLIENT") + th("PHONE") + th("EXECUTIVE") + th("BRANDS") + th("DATE") + th("TIME") + th("PLUMBER") + th("ARCHITECT") + th("STATUS") + th("NET", 1) + '</tr></thead><tbody>';
+    var th = function (t) { return '<th style="padding:8px;text-align:left;white-space:nowrap;font-size:12px;color:#fff">' + t + '</th>'; };
+    var h = '<div style="overflow-x:auto;border:1px solid #DCE3EA;border-radius:12px;background:#fff;margin-top:8px"><table style="border-collapse:collapse;width:100%;min-width:1000px;font-size:13px">' +
+      '<thead><tr style="background:#0F2A44">' + th("QT CODE") + th("EXECUTIVE") + th("CLIENT") + th("PHONE") + th("BRANDS (DISC.)") + th("MADE") + th("STATUS · PDF") + '</tr></thead><tbody>';
     order.forEach(function (k) {
       var f = fams[k].slice().sort(function (a, b) { return (Number(a.version) || 1) - (Number(b.version) || 1) || String(a.createdAt || "").localeCompare(String(b.createdAt || "")); });
       var base = f[0], revs = f.slice(1).reverse();
       [base].concat(revs).forEach(function (q, i) {
-        var sub = i > 0, c = clientByName(q.client) || {}, w = qWhen(q.createdAt), st = q.status || "Draft";
-        var grp = st === "Won" ? "Won" : st === "Lost" ? "Lost" : "Pending", mine = isMe(q.createdBy) || !q.createdBy;
-        var td = function (x, r, pad) { return '<td style="padding:6px 8px;border-top:1px solid ' + (sub ? "#F1F5F9" : "#DCE3EA") + ';vertical-align:top;text-align:' + (r ? "right" : "left") + (pad ? ";padding-left:18px" : "") + '">' + x + '</td>'; };
+        var sub = i > 0, c = clientByName(q.client) || {}, st = q.status || "Draft", mine = isMe(q.createdBy) || !q.createdBy;
+        var rt = qRootOf(q, byId), isRev = rt && rt.id !== q.id;
+        var td = function (x, extra) { return '<td style="padding:7px 8px;border-top:1px solid ' + (sub ? "#F1F5F9" : "#DCE3EA") + ';vertical-align:top' + (extra || "") + '">' + x + '</td>'; };
+        var sm = function (x) { return '<div class="meta" style="margin-top:2px">' + x + '</div>'; };
+        var bd = qBrandDiscs(q);
+        var btn = function (kk, lab, solid) { return '<button type="button" class="btn sm ' + (solid ? '' : 'gry') + '" data-act="qr-st" data-k="' + kk + '" data-id="' + esc(q.id) + '" style="min-height:44px;padding:0 10px;font-size:12px;white-space:nowrap">' + lab + '</button>'; };
         h += '<tr style="background:' + (sub ? "#F8FAFC" : "#fff") + '">' +
           td((sub ? '<span class="meta">↳</span> ' : '') + '<button type="button" class="btn sm gry" data-act="q-open" data-id="' + esc(q.id) + '" style="min-height:44px;padding:0 10px;font-size:13px;font-weight:700;white-space:nowrap">' + esc(qNo(q) || "open") + '</button>' +
-             (sub ? '<div class="meta">' + esc(qRevLabel(q)) + '</div>' : (revs.length ? '<div class="meta">' + revs.length + ' revision' + (revs.length > 1 ? "s" : "") + '</div>' : '')), false, sub) +
-          td('<b>' + esc(q.client || "") + '</b>') +
+             (sub ? sm(esc(qRevLabel(q))) : (revs.length ? sm(revs.length + ' revision' + (revs.length > 1 ? "s" : "")) : '')), sub ? ";padding-left:18px" : "") +
+          td(esc(c.ownedBy || c.createdBy || "")) +
+          td('<b style="color:' + (sub ? '#5E6875' : 'inherit') + '">' + esc(q.client || "") + '</b>' + (sub ? '' :
+             '<div class="meta" style="display:flex;flex-wrap:wrap;gap:2px 10px;align-items:center;margin-top:3px"><span>Plumber: ' + qPartnerCell(c, "plumber") + '</span><span>Architect: ' + qPartnerCell(c, "architect") + '</span></div>'), ';min-width:170px') +
           td(mob10(c.mobile).length === 10 ? '<a href="tel:' + mob10(c.mobile) + '" style="white-space:nowrap">' + esc(c.mobile) + '</a>' : esc(c.mobile || "")) +
-          td(esc(c.ownedBy || c.createdBy || "") + (q.createdBy && q.createdBy !== (c.ownedBy || c.createdBy) ? '<div class="meta">made by ' + esc(q.createdBy) + '</div>' : '')) +
-          td(esc(q.brand || "")) +
-          td('<span style="white-space:nowrap">' + esc(w.d) + '</span>') + td('<span style="white-space:nowrap">' + esc(w.t) + '</span>') +
-          td(qPartnerCell(c, "plumber")) + td(qPartnerCell(c, "architect")) +
-          td('<span class="pill ' + qTone(st) + '">' + esc(st) + '</span>' + (mine ? '<div style="display:flex;gap:4px;margin-top:4px">' + [["Pending", "Pend."], ["Won", "Won"], ["Lost", "Lost"]].map(function (x) {
-              return '<button type="button" class="btn sm ' + (grp === x[0] ? "" : "gry") + '" data-act="qr-st" data-k="' + x[0] + '" data-id="' + esc(q.id) + '" style="min-height:44px;padding:0 8px;font-size:12px" aria-pressed="' + (grp === x[0]) + '">' + x[1] + '</button>'; }).join("") + '</div>' : '')) +
-          td('<b style="white-space:nowrap">' + esc(money(q.net)) + '</b>', true) + '</tr>';
+          td(bd.length ? bd.map(function (y) { return '<div style="white-space:nowrap"><b>' + esc(y.b) + '</b> <b style="color:#0F766E">' + esc(String(y.d)) + '%</b>' + (y.mixed ? ' <span class="meta">mixed</span>' : '') + '</div>'; }).join("") : esc(q.brand || "")) +
+          td(isRev ? '<b style="color:#1E3A8A">Revised</b> <span style="white-space:nowrap">' + esc(qStamp(q.createdAt)) + '</span>' + sm('by ' + esc(q.createdBy || "")) + sm('First made ' + esc(qStamp(rt.createdAt)) + ' by ' + esc(rt.createdBy || ""))
+                   : '<span style="white-space:nowrap">' + esc(qStamp(q.createdAt)) + '</span>' + sm('by ' + esc(q.createdBy || "")), ';min-width:140px') +
+          td('<span class="pill ' + qTone(st) + '">' + esc(st) + '</span> <button type="button" class="btn sm gry" data-act="q-pdf" data-id="' + esc(q.id) + '" style="min-height:44px;padding:0 10px;font-size:12px;margin-left:4px">PDF</button>' +
+             (mine ? '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px">' + (st !== "Won" ? btn("Won", "Won", true) : '') + (st !== "Lost" ? btn("Lost", "Lost") + btn("Lost", "Not required") : '') + '</div>' : ''), ';min-width:205px') +
+          '</tr>';
       });
     });
     return h + '</tbody></table></div>';
   }
+
   function viewQuotes() {
     var f = S.fq || "all", all = myQuotes(), q = lower(S.q);
     var cnt = function (k) { return all.filter(function (x) { return fqOk(x, k); }).length; };
@@ -2733,7 +2738,7 @@ h3.sec{color:#1F3A5F}
     };
   })();
 
-  /* ======== SHARED QUOTE PDF - BUILT FROM THE CRM'S team/app.js 6.9.776 BY sharedpdf/build_visit_pdf.py - DO NOT EDIT HERE ========
+  /* ======== SHARED QUOTE PDF - BUILT FROM THE CRM'S team/app.js 6.9.777 BY sharedpdf/build_visit_pdf.py - DO NOT EDIT HERE ========
      Edit the CRM, then run the script again. Later declarations win, so these replace the Visit
      app's own older copies of the same functions. */
   var QX_BASE = "../team/";
@@ -2746,6 +2751,30 @@ h3.sec{color:#1F3A5F}
   function qCode(q) { return String((q && q.code) || "").trim().replace(/^Quote(?=\d)/i, "QT"); }
 
   function qNo(q) { return qCode(q) || String((q && q.quoteNo) || ""); }
+
+  function qStamp(v) {   /* "13/10/26 - 4:05 PM" */
+    var s0 = String(v || "").trim(); if (!s0) return "";
+    var ms = Date.parse(s0); if (!ms || s0.indexOf("T") < 0) return d10(s0);
+    var x = new Date(ms), hh = x.getHours();
+    return String(x.getDate()).padStart(2, "0") + "/" + String(x.getMonth() + 1).padStart(2, "0") + "/" + String(x.getFullYear()).slice(2) +
+      " - " + ((hh % 12) || 12) + ":" + String(x.getMinutes()).padStart(2, "0") + " " + (hh < 12 ? "AM" : "PM");
+  }
+
+  function qBrandDiscs(q) {
+    var its = []; try { its = JSON.parse(q.items || "[]"); } catch (e) { its = []; }
+    var by = {}, order = [];
+    its.forEach(function (i) {
+      if (i.optional) return;
+      var b = String(i.brand || "").trim() || "Other";
+      if (!by[b]) { by[b] = {}; order.push(b); }
+      var d = Math.round(qLineDisc(q, i) * 10) / 10;
+      by[b][d] = (by[b][d] || 0) + 1;
+    });
+    return order.map(function (b) {
+      var best = null; Object.keys(by[b]).forEach(function (d) { if (best === null || by[b][d] > by[b][best]) best = d; });
+      return { b: b, d: Number(best) || 0, mixed: Object.keys(by[b]).length > 1 };
+    });
+  }
 
   function descLines(raw) {
     raw = String(raw || "").trim();
