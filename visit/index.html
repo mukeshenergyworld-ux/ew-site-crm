@@ -189,7 +189,7 @@ h3.sec{color:#1F3A5F}
       button: function () { return '<button type="button" class="ewthm" onclick="ewTheme.next(this)">' + ewtLabel() + '</button>'; }
     };
   })();
-  var APP_VERSION = "1.4.8";
+  var APP_VERSION = "1.4.9";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_vq_session", JRN = "ew_vq_journal_v1", CALLQ = "ew_vq_calls_v1", SNAPK = "ew_vq_snap_";
   var CAT_KEY = "ew_team_catalog", CAT_V = 2;   /* the CRM's own shelf copy of the price list - shared, same origin */
@@ -2877,7 +2877,11 @@ h3.sec{color:#1F3A5F}
     return hits.slice(0, 12).map(function (c) { return '<div class="card tap" data-act="qz-client" data-k="' + esc(c.name) + '"><div class="ttl2">' + codeTag(c.name) + esc(c.name) + '</div><div class="meta">' + esc([c.area, c.location, c.mobile].filter(Boolean).join(" · ")) + '</div></div>'; }).join("");
   }
   function qzProducts() {
-    var z = S.qz, brands = brandList().filter(isMainBrand), b = z.brand;   /* p747 */
+    /* 1.4.9 - his words (13 Oct): "while making quote and challan every brand have to be shown, accessory not
+       shown here". Every brand, plus every group a product is mapped to (Accessory, Net Price Items, Huliot). */
+    var z = S.qz, brands = brandList().slice(), b = z.brand;
+    PRODUCTS.forEach(function (p) { var rb = realBrand(p); if (rb && brands.indexOf(rb) < 0) brands.push(rb); });
+    brands = brands.filter(function (x) { return brandProducts(x).length; }).sort(alpha);
     var h = '<label>Brand</label><div class="chips">' + '<button class="chip' + (!b ? ' on' : '') + '" data-act="qz-brand" data-k="">All</button>' +
       brands.map(function (x) { return '<button class="chip' + (b === x ? ' on' : '') + '" data-act="qz-brand" data-k="' + esc(x) + '">' + esc(x) + '</button>'; }).join("") + '</div>' +
       '<label for="qz_pq">Find a product</label><input id="qz_pq" value="' + esc(z.pq || "") + '" placeholder="Code, name or family" autocomplete="off"/>' +
