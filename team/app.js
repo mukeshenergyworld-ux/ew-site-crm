@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.783";
+  var APP_VERSION = "6.9.784";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -9782,14 +9782,90 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     if (!open.length) return h + '<div class="empty">Every product is handed over.</div></div>';
     h += xlTable("svc-ewi", [
       { k: "client", t: "CLIENT", w: "140px" }, { k: "no", t: "DELIVERY" }, { k: "what", t: "PRODUCT" }, { k: "qty", t: "QTY", n: 1, r: 1 },
-      { k: "inst", t: "INSTALLED" }, { k: "comm", t: "COMMISSIONED" }, { k: "hand", t: "HANDED OVER" }
+      { k: "inst", t: "INSTALLED" }, { k: "comm", t: "COMMISSIONED" }, { k: "hand", t: "HANDED OVER" }, { k: "go", t: "" }
     ], open.slice(0, 300).map(function (x) {
       return { v: { client: x.c.customerName || "", no: x.c.challanNo || "", what: x.name, qty: Number(x.i.qty) || 1, inst: x.inst, comm: x.commDate, hand: x.hand }, cells: {
         client: '<b>' + esc(x.c.customerName || "") + '</b>', no: esc(x.c.challanNo || ""), what: esc(x.name) + (x.i.brand ? ' <span class="meta">' + esc(x.i.brand) + '</span>' : ''), qty: esc(String(x.i.qty || 1)),
-        inst: d(x.inst) + pics(x.ins, "install"), comm: x.comm ? d(x.commDate) : d(""), hand: d(x.hand) + pics(x.ho, "handover")
+        inst: d(x.inst) + pics(x.ins, "install"), comm: x.comm ? d(x.commDate) : d(""), hand: d(x.hand) + pics(x.ho, "handover"),
+        go: ewmBtn(x)   /* 6.9.784 */
       } };
     }), "each product and its three steps") + '</div>';
     return h;
+  }
+  /* ===== 6.9.784 - MARK INSTALLED / HANDED OVER FROM THE CRM (the Service app's rows, see p784) ===== */
+  function ewmCan() { return roleIs("admin") || /^manoj\b/i.test(String(S.user || "")); }
+  function ewmBtn(x) {
+    if (!ewmCan()) return "";
+    var b = function (act, label, extra) { return '<button class="btn sm" data-act="' + act + '" data-ch="' + esc(x.c.id) + '"' + (extra || "") + ' style="padding:2px 9px;font-size:12px;white-space:nowrap">' + label + '</button>'; };
+    if (x.stage === "install") return b("ewm-open", "Installed", ' data-s="install" data-i="' + x.idx + '"');
+    if (x.stage === "comm") return b("comm-open", "Commission");
+    if (x.stage === "hand") return b("ewm-open", "Handed over", ' data-s="handover" data-i="' + x.idx + '"');
+    return "";
+  }
+  function ewmLines(chId, step) {
+    var want = step === "install" ? "install" : "hand";
+    return ewiCrmRows().filter(function (x) { return x.c.id === chId && x.stage === want; });
+  }
+  function modalEwm() {
+    var M = S.ewm; if (!M) return "";
+    var ls = ewmLines(M.ch, M.step), c = ls.length ? ls[0].c : null;
+    if (!c) return '<h2>Nothing waiting here</h2><div class="foot"><button class="btn" data-act="close">Close</button></div>';
+    var lab = M.step === "install" ? "Installed" : "Handed over", word = M.step === "install" ? "installation" : "handover";
+    return '<h2>' + lab + '</h2><p class="sub">' + esc(c.customerName || "") + (c.site ? ' &middot; ' + esc(c.site) : '') + ' &middot; ' + esc(c.challanNo || "") + '</p>' +
+      '<label>Products</label>' + ls.map(function (x) {
+        return '<label style="display:flex;gap:8px;align-items:center;min-height:44px;font-weight:400;text-transform:none;letter-spacing:0;font-size:14px;color:#0f172a"><input type="checkbox" class="ewm-ln" data-i="' + x.idx + '"' + (M.sel[x.idx] ? ' checked' : '') + ' style="width:20px;height:20px"/>' +
+          esc(x.name) + ' <span class="meta">' + esc(x.i.brand || "") + ' &middot; qty ' + esc(String(x.i.qty || 1)) + (M.step === "handover" && x.commDate ? ' &middot; commissioned ' + esc(fullDate(x.commDate)) : '') + '</span></label>';
+      }).join("") +
+      '<div class="grid2"><div><label>Date of ' + word + '</label><input id="ewm_date" type="date" max="' + today() + '" value="' + esc(M.date || today()) + '"/></div>' +
+      '<div><label>Photo of the ' + word + ' (at least one)</label><input type="file" accept="image/*" multiple class="ewm-pic"/>' +
+      '<div class="meta" style="font-size:12px;margin-top:4px">' + (M.reading ? 'Reading the photo…' : (M.pics.length ? M.pics.length + ' photo' + (M.pics.length > 1 ? 's' : '') + ' ready' : 'No photo yet')) + '</div></div></div>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button><button class="btn" data-act="ewm-save"' + (M.busy ? ' disabled' : '') + '>' + (M.busy ? 'Saving…' : 'Save') + '</button></div>';
+  }
+  function ewmKeep() {
+    var M = S.ewm; if (!M) return;
+    var d = document.getElementById("ewm_date"); if (d) M.date = String(d.value || "");
+    Array.prototype.forEach.call(document.querySelectorAll(".ewm-ln"), function (e) { M.sel[e.getAttribute("data-i")] = e.checked; });
+  }
+  function ewmSave() {
+    ewmKeep();
+    var M = S.ewm; if (!M || M.busy) return;
+    if (!ewmCan()) { toast("Only the owner or Manoj marks these."); return; }
+    var ls = ewmLines(M.ch, M.step).filter(function (x) { return M.sel[x.idx]; });
+    var word = M.step === "install" ? "installation" : "handover";
+    if (!ls.length) { toast("Tick the products you are marking."); return; }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(M.date || "")) { toast("Put the date of " + word + "."); return; }
+    if (M.date > today()) { toast("The " + word + " date is in the future."); return; }
+    if (M.reading) { toast("Wait a moment - the photo is still being read."); return; }
+    if (!M.pics.length) { toast("Add at least one photo of the " + word + "."); return; }
+    for (var k = 0; k < ls.length; k++) {
+      if (M.step === "handover" && ls[k].commDate && M.date < ls[k].commDate) { toast(ls[k].name + ": handed over before it was commissioned? Check the date."); return; }
+      if (M.step === "install" && ls[k].commDate && M.date > ls[k].commDate) { toast(ls[k].name + ": installed after it was commissioned? Check the date."); return; }
+    }
+    var c = ls[0].c, id = mintId(M.step === "install" ? "IS" : "HO"), lines = ls.map(function (x) { return x.idx; });
+    var arow = { id: id, createdAt: new Date().toISOString(), actor: S.user || "", action: "inst:step", target: String(c.challanNo || c.id),
+      detail: JSON.stringify({ id: id, chId: c.id, no: c.challanNo || "", client: c.customerName || "", site: c.site || "", step: M.step, date: M.date, by: S.user || "", photos: M.pics.length, lines: lines }), ip: "" };
+    M.busy = true; S.modal = modalEwm(); render();
+    var pics = M.pics.slice(), stepKind = M.step, client = c.customerName || "";
+    save("audit", arow, true).then(function () {
+      var up = 0, fail = 0;
+      var next = function (i) {
+        if (i >= pics.length) return Promise.resolve();
+        var nm = (stepKind + "-" + id + "-" + Date.now() + ".jpg").replace(/[^\w.-]+/g, "_");
+        return api("pdfHost", { pdfBase64: pics[i].b64, filename: nm, mime: "image/jpeg" }, 240000).then(function (h) {
+          if (!h || !h.ok || !h.url) { fail++; return; }
+          var at = new Date().toISOString();
+          return save("audit", { id: "", createdAt: at, actor: S.user || "", action: "service:photo", target: client + " · " + (stepKind === "install" ? "Installation" : "Handover"),
+            detail: JSON.stringify({ visitId: id, installId: "", kind: stepKind, url: h.url, thumb: pics[i].thumb || "", client: client, by: S.user || "", at: at }), ip: "" }, true).then(function () { up++; });
+        }).catch(function () { fail++; }).then(function () { return next(i + 1); });
+      };
+      return next(0).then(function () {
+        S.ewm = null; S.modal = null; render();
+        toast(client + ": " + lines.length + " product" + (lines.length > 1 ? "s" : "") + " marked " + (stepKind === "install" ? "installed" : "handed over") + "." + (fail ? " " + fail + " photo(s) did not go up." : ""));
+      });
+    }).catch(function (e) {
+      if (S.ewm) { S.ewm.busy = false; S.modal = modalEwm(); render(); }
+      toast("Not saved - " + apiWhy(e) + ". Try again.");
+    });
   }
   function commissioningSection() {
     var pend = commPending(), done = commDone(), cs = "";
@@ -59156,6 +59232,13 @@ function viewCatalogue() {
       render();
       return;
     }
+    /* 6.9.784 */
+    if (act === "ewm-open") {
+      var _ei = t.getAttribute("data-i"), _es = t.getAttribute("data-s") === "handover" ? "handover" : "install";
+      S.ewm = { ch: t.getAttribute("data-ch"), step: _es, sel: {}, date: today(), pics: [], busy: false, reading: 0 };
+      S.ewm.sel[_ei] = true; S.modal = modalEwm(); render(); return;
+    }
+    if (act === "ewm-save") { ewmSave(); return; }
     if (act === "comm-open") { S.modal = modalCommission(t.getAttribute("data-ch")); render(); return; }
     if (act === "comm-save") {
       var commCh = (S.data.challans || []).filter(function (x) { return x.id === t.getAttribute("data-ch"); })[0];
@@ -63210,6 +63293,21 @@ function viewCatalogue() {
       t.value = "";
       S.modal = modalAssociate({ role: _pr === "pmc" ? "PMC" : _pr.charAt(0).toUpperCase() + _pr.slice(1), location: (_pd && _pd.value) || "" });
       render(); return;
+    }
+    /* 6.9.784 - photos for an installation / handover mark, read and shrunk at once */
+    if (t && t.classList && t.classList.contains("ewm-pic") && S.ewm) {
+      ewmKeep();
+      var _ef = Array.prototype.slice.call(t.files || []), _M = S.ewm;
+      if (!_ef.length) return;
+      _M.reading = (_M.reading || 0) + _ef.length; S.modal = modalEwm(); render();
+      _ef.forEach(function (f) {
+        Promise.all([shrinkPhoto(f, 1400, 0.7), shrinkPhoto(f, 96, 0.5)]).then(function (pair) {
+          if (pair[0]) _M.pics.push({ b64: pair[0], thumb: pair[1] || "" });
+        }).catch(function () { toast("That photo could not be read."); }).then(function () {
+          _M.reading--; if (S.ewm === _M) { S.modal = modalEwm(); render(); }
+        });
+      });
+      return;
     }
     /* v6.9.402 - a receipt photographed on the screen after a visit is saved goes up at once */
     if (t && t.classList && t.classList.contains("rc-pic") && S.rcp) {
