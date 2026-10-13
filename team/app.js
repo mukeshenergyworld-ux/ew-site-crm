@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.766";
+  var APP_VERSION = "6.9.768";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -397,6 +397,8 @@
     return Math.round(n * 1000) / 1000;
   }
   /* 2 prints as "2" and 1.5 as "1.5" - never "2.000". Used wherever a quantity is shown. */
+  /* v6.9.768 - a rate to the paisa when it has paise (Rs 83 at 37% off is Rs 52.29, not Rs 52) */
+  function rs2(n) { var v = Math.round((Number(n) || 0) * 100) / 100; return "\u20B9" + v.toLocaleString("en-IN", { minimumFractionDigits: (v % 1) ? 2 : 0, maximumFractionDigits: 2 }); }
   function qShow(v) { return String(Math.round((Number(v) || 0) * 1000) / 1000); }
   /* v6.9.398 - nAmt, not Number. This is the function that puts a figure in front of a man,
      and Number("25,000") is NaN, which `|| 0` drew as Rs 0. Challan and Service have read it
@@ -11278,6 +11280,112 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     (PRODUCTS || []).forEach(function (p) { var b = realBrand(p); if (b && !seen[b]) { seen[b] = 1; out.push(b); } });
     return out.sort(alpha);
   }
+  /* ============ TOTO: COMPLETE THE SET, AND WHAT FITS WHAT (v6.9.767) ============
+     His words: "as we select a WC code it will suggest additional item to choose to make a
+     complete product" and "a seat cover is compatible with which model of WC ... a smart system
+     for TOTO". The knowledge is TOTO's own, read from the Price Booklet FY2026 into toto_kb.json:
+     its "Total" sets, its "Required Concealed Part" notes and its two combination tables. */
+  var _tkb = null, _tkbAsk = 0, _tkbIx = null;
+  function totoKb() {
+    if (_tkb) return _tkb;
+    if (Date.now() - _tkbAsk < 30000) return null;
+    _tkbAsk = Date.now();
+    try {
+      fetch("toto_kb.json?v=" + APP_VERSION).then(function (r) { return r.json(); })
+        .then(function (j) { _tkb = j; _tkbIx = null; try { if (S.qz && S.qz.step === 3) { keepScroll = true; render(); } } catch (e) { } })
+        .catch(function () { });
+    } catch (e) { }
+    return null;
+  }
+  function totoIx() {
+    var kb = totoKb(); if (!kb) return null;
+    if (_tkbIx) return _tkbIx;
+    var ix = { sets: {}, wc: {}, seat: {} };
+    (kb.sets || []).forEach(function (st, i) { (st.c || []).forEach(function (c) { (ix.sets[c] = ix.sets[c] || []).push(i); }); });
+    Object.keys(kb.fit || {}).forEach(function (seat) {
+      var f = kb.fit[seat];
+      (f.ok || []).forEach(function (w) { (ix.wc[w] = ix.wc[w] || []).push({ c: seat, cct: false }); });
+      (f.cct || []).forEach(function (w) { (ix.wc[w] = ix.wc[w] || []).push({ c: seat, cct: true }); });
+      ix.seat[seat] = (f.ok || []).concat(f.cct || []);
+    });
+    return (_tkbIx = ix);
+  }
+  function prodByCode(c) {
+    for (var i = 0; i < PRODUCTS.length; i++) if (PRODUCTS[i].code === c) return PRODUCTS[i];
+    return null;
+  }
+  function isTotoLine(it) { return /\btoto\b/i.test(String((it && it.brand) || "")); }
+  /* what each picked TOTO line still needs - only codes that are in the price list */
+  function qzCompanions(z) {
+    var ix = totoIx(); if (!ix) return [];
+    var kb = _tkb, have = {}, out = [];
+    (z.items || []).forEach(function (i) { have[i.code] = 1; });
+    (z.items || []).forEach(function (it) {
+      if (!isTotoLine(it)) return;
+      var g = { it: it, need: [], sets: [], fits: [] };
+      ((kb.req || {})[it.code] || []).forEach(function (c) { if (!have[c] && prodByCode(c)) g.need.push(c); });
+      var seenMiss = {};
+      (ix.sets[it.code] || []).map(function (k) { return kb.sets[k]; }).forEach(function (st) {
+        var miss = st.c.filter(function (c) { return c !== it.code && !have[c] && prodByCode(c) && g.need.indexOf(c) < 0; });
+        var key = miss.slice().sort().join("|");
+        if (!miss.length || seenMiss[key]) return;
+        seenMiss[key] = 1; g.sets.push({ st: st, miss: miss });
+      });
+      g.sets.sort(function (a, b) { return a.miss.length - b.miss.length; });
+      g.sets = g.sets.slice(0, 3);
+      /* seats that fit this WC - only while no seat / washlet that fits it is on the quote yet */
+      var fitsW = ix.wc[it.code] || [];
+      if (fitsW.length && !fitsW.some(function (f) { return have[f.c]; })) {
+        fitsW.forEach(function (f) { if (prodByCode(f.c)) g.fits.push(f); });
+      }
+      /* a seat / washlet picked: which toilets it fits (information, not a suggestion) */
+      g.fitsWc = (ix.seat[it.code] || []).slice();
+      if (g.need.length || g.sets.length || g.fits.length || g.fitsWc.length) out.push(g);
+    });
+    return out;
+  }
+  function qzCompRow(c, parent, label) {
+    var p = prodByCode(c); if (!p) return "";
+    var nm = (_tkb && _tkb.names && _tkb.names[c]) || descLines(p.desc).title || c;
+    return '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-top:1px dashed #e2e8f0">' +
+      (p.pic ? '<img src="' + esc(p.pic) + '" alt="" loading="lazy" style="width:40px;height:40px;object-fit:contain;flex:0 0 40px;background:#fff;border-radius:6px"/>' : '') +
+      '<div style="flex:1;min-width:0;font-size:13px"><b>' + esc(c) + '</b> ' + esc(nm) +
+        (label ? ' <span style="font-size:12px;color:#b45309">' + label + '</span>' : '') +
+        '<div class="meta" style="font-size:12px">' + esc(money(p.price)) + '</div></div>' +
+      '<button class="btn sm" data-act="qz-addset" data-codes="' + esc(c) + '" data-parent="' + esc(parent) + '">+ Add</button></div>';
+  }
+  function qzCompanionsHtml(z) {
+    var gs = qzCompanions(z);
+    if (!gs.length) return "";
+    var h = '<div class="card" style="border-color:#c7d2fe;background:#f8faff;padding:10px 12px;margin:8px 0">' +
+      '<h3 style="margin:0 0 2px">Complete the set &mdash; TOTO</h3>' +
+      '<div class="meta" style="font-size:12px;margin-bottom:6px">From TOTO’s price booklet FY2026. + Add puts it in at the same quantity and rooms as the line above it.</div>';
+    gs.forEach(function (g) {
+      var it = g.it;
+      h += '<div style="margin-top:8px"><div style="font-size:13px"><b>For ' + esc(it.code) + '</b> ' +
+        esc(descLines(it.desc).title || "") + ' <span class="meta">&times; ' + qShow(it.qty) + '</span></div>';
+      if (g.need.length) {
+        h += '<div style="font-size:12px;font-weight:700;color:#b91c1c;margin-top:4px">Needs (required concealed part)</div>' +
+          g.need.map(function (c) { return qzCompRow(c, it.code, ""); }).join("");
+      }
+      g.sets.forEach(function (x) {
+        h += '<div style="display:flex;align-items:center;gap:8px;margin-top:6px"><div style="flex:1;font-size:12px;font-weight:700;color:#334155">' +
+          'Goes with (' + esc(x.st.n || "set") + ' set, booklet total ' + esc(money(x.st.t)) + ')</div>' +
+          (x.miss.length > 1 ? '<button class="btn sm ghost" data-act="qz-addset" data-codes="' + esc(x.miss.join(",")) + '" data-parent="' + esc(it.code) + '">Add all ' + x.miss.length + '</button>' : '') + '</div>' +
+          x.miss.map(function (c) { return qzCompRow(c, it.code, ""); }).join("");
+      });
+      if (g.fits.length) {
+        h += '<div style="font-size:12px;font-weight:700;color:#334155;margin-top:6px">Seats that fit this toilet</div>' +
+          g.fits.map(function (f) { return qzCompRow(f.c, it.code, f.cct ? "(fits with CCT)" : ""); }).join("");
+      }
+      if (g.fitsWc.length) {
+        h += '<div class="meta" style="font-size:12px;margin-top:4px">Fits these toilets: ' + g.fitsWc.map(esc).join(", ") + '</div>';
+      }
+      h += '</div>';
+    });
+    return h + '</div>';
+  }
+
   function brandProducts(brand) {
     return PRODUCTS.filter(function (p) { return realBrand(p) === brand; });
   }
@@ -19114,6 +19222,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       /* v6.9.454 - the one picker (prodPicker): the brand row, the tinted categories, the live
          search and the rows are the challan's. The quote's own meta line, per-room quantity and
          preset-discount chip ride on PICKERS.qz; qz-qty and qz-q write exactly as before. */
+      h += qzCompanionsHtml(z);   /* v6.9.767 - TOTO: complete the set */
       h += '<div id="qz_pick">' + prodPicker(z, PICKERS.qz) + '</div>' + pickedTable(z, PICKERS.qz);
       return h;
     }
@@ -19169,10 +19278,13 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
             h += '<div class="prow" style="background:#f8fafc"><div class="pinfo"><b>' + esc(b) + '</b> <span class="pmeta">(brand ' + esc(z.brandDiscs && z.brandDiscs[b] != null ? z.brandDiscs[b] : 0) + '%)</span></div></div>';
             (z.items || []).filter(function (i) { return (i.brand || brandByCode(i.code)) === b; }).forEach(function (i) {
               var d = lineDisc(i, z);
-              var lineNet = Math.round(i.qty * i.price * (1 - (Number(d) || 0) / 100));
+              var netRate = Math.round(i.price * (1 - (Number(d) || 0) / 100));   /* v6.9.768 - as qzTotals and the PDF */
+              var lineNet = Math.round(netRate * i.qty);
               h += '<div class="prow">' +
                 '<div class="pinfo"><div class="pname">' + esc(i.desc) + '</div>' +
-                '<div class="pmeta">' + qShow(i.qty) + ' \u00d7 ' + money(i.price) + '  \u2192  <b>' + money(lineNet) + '</b>' +
+                /* v6.9.768 - his words: "must show what rate before disc and what after disc" */
+                '<div class="pmeta">Rate ' + rs2(i.price) + (Number(d) ? ' &rarr; <b>' + rs2(netRate) + '</b> after ' + esc(pctTxt(Number(d))) : ' (no discount)') +
+                '<br>' + qShow(i.qty) + ' \u00d7 ' + rs2(netRate) + ' = <b>' + money(lineNet) + '</b>' +
                 (qzRoomsOf(i).length ? '<br><span style="color:#0f766e">' + esc(qzRoomLabel(i)) + '</span>' : '') + '</div></div>' +
                 '<div class="pqty">' +
                 /* v6.9.455 - the quantity is a box here too (the line's total) */
@@ -58114,6 +58226,28 @@ function viewCatalogue() {
       }
       qzRoomAdd(tmIt, tmB[0] || "", -1);
       if (tmIt.qty <= 0) S.qz.items = S.qz.items.filter(function (x) { return x.code !== tmCode; });
+      keepScroll = true; render(); return;
+    }
+    /* v6.9.767 - + Add / Add all from "Complete the set": same quantity and rooms as the parent line */
+    if (act === "qz-addset") {
+      var _asP = (S.qz.items || []).filter(function (x) { return x.code === t.getAttribute("data-parent"); })[0];
+      var _asRq = _asP ? JSON.parse(JSON.stringify(qzRq(_asP))) : null;
+      var _asQ = _asP ? (Number(_asP.qty) || 1) : 1;
+      if (!_asRq || !Object.keys(_asRq).length) { _asRq = {}; _asRq[String(S.qz.room || "")] = _asQ; }
+      var _asN = 0;
+      String(t.getAttribute("data-codes") || "").split(",").forEach(function (c) {
+        c = String(c || "").trim(); if (!c) return;
+        if ((S.qz.items || []).some(function (x) { return x.code === c; })) return;
+        var p = PRODUCTS.filter(function (x) { return x.code === c; })[0]; if (!p) return;
+        var qb3 = realBrand(p);
+        S.qz.items.push({ code: p.code, desc: p.desc, family: p.family, price: p.price, qty: _asQ,
+                          pic: p.pic, unit: p.unit, brand: qb3, cat: p.cat || "",
+                          specs: p.specs || "", rq: JSON.parse(JSON.stringify(_asRq)) });
+        S.qz.brandDiscs = S.qz.brandDiscs || {};
+        if (qb3 && S.qz.brandDiscs[qb3] === undefined) S.qz.brandDiscs[qb3] = clientDiscount(S.qz.client, qb3);
+        _asN++;
+      });
+      toast(_asN ? (_asN === 1 ? "Added" : _asN + " added") + " at " + qShow(_asQ) + " each, in the same rooms." : "Already on the quote.");
       keepScroll = true; render(); return;
     }
     if (act === "qz-qty") {
