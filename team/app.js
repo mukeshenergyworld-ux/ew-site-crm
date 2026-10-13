@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.781";
+  var APP_VERSION = "6.9.782";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -263,7 +263,7 @@
     "Post-Handover / AMC":         { lines:["AMC / extended warranty","Salt & filter refills","Solar / inverter upgrade","Ask for a referral"], win:false }
   };
 
-  var LOCATIONS = ["Panipat", "Sonipat", "Karnal"];
+  var LOCATIONS = ["Panipat", "Sonipat", "Karnal", "Rohtak"];   /* 6.9.782 - Rohtak (his answer, 13 Oct 2026: "Yes, add Rohtak now") */
   var CLIENT_TYPES = ["Builder", "Architect", "Plumber", "Contractor", "Home owner", "Dealer", "PMC"];
   var QSTATUS = ["Draft", "Sent", "Negotiating", "Won", "Lost", "Revised"];
   var GST = 0.18;
@@ -42159,7 +42159,8 @@ function viewCatalogue() {
   var AREA_SEED = {
     "Panipat": ["Model Town", "Sector 11-12", "Ansal Sushant City", "Eldeco"],
     "Sonipat": [],
-    "Karnal": []
+    "Karnal": [],
+    "Rohtak": []   /* 6.9.782 */
   };
   /* One colony, one spelling. Longest pattern first so "sec 13/17" wins over "sec 13". */
   var AREA_ALIAS = [

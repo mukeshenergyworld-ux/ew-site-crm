@@ -101,7 +101,7 @@
     "Pentair"
    ],
    "tagline": "Global water treatment expertise since 1966",
-   "about": "Pentair started in Minnesota, USA, in 1966 and is today a New York Stock Exchange-listed water company working worldwide. It makes filtration vessels, softeners, control valves and pool equipment used in homes and businesses. A Pentair system gives you cleaner, softer water that protects your skin, fittings and appliances from hard-water scale, backed by a company with decades in water treatment.",
+   "about": "Pentair started in Minnesota, USA, in 1966 and is today a New York Stock Exchange-listed water company working worldwide. Its softeners, sand filters and multiport control valves are used in homes and businesses across the world. A Pentair system gives you cleaner, softer water that protects your skin, fittings and appliances from hard-water scale.",
    "origin": "United States (origin)",
    "web": "pentair.com",
    "hold": 0,
@@ -120,11 +120,12 @@
    "about": "Green Heat Plus is a Delhi-based supplier of air-source heat pumps for homes, along with swimming-pool heat pumps and solar water heating. A heat pump draws warmth from the surrounding air rather than heating water directly with an element, so it delivers plenty of hot water for a fraction of the electricity a conventional geyser uses.",
    "origin": "India",
    "web": "greenheatplus.in",
-   "hold": 1,
+   "hold": 0,
    "src": [
     "https://greenheatplus.in/",
     "https://www.greenheatplus.in/swimming-pool-heating-heat-pumps"
-   ]
+   ],
+   "confirmed": "13 Oct 2026 by Mukesh"
   },
   {
    "brand": "Stellar",
@@ -165,10 +166,11 @@
    "about": "Oyster is the brand of Oyster Bath Concepts, a New Delhi company founded in 2003 that supplies shower columns, rain showers, steam cabins, enclosures and spa products. Its range is built around the shower experience, from overhead rain panels to full steam enclosures, letting you create a spa-like bathroom at home with a single, specialist brand.",
    "origin": "India",
    "web": "oysterbath.yolasite.com",
-   "hold": 1,
+   "hold": 0,
    "src": [
     "https://oysterbath.yolasite.com/"
-   ]
+   ],
+   "confirmed": "13 Oct 2026 by Mukesh"
   },
   {
    "brand": "Adani Solar",
@@ -268,11 +270,12 @@
    "about": "LEO pumps are made by Leo Group Co., Ltd., founded in 1995 in Wenling, China, and listed on the Shenzhen Stock Exchange. The company produces pumps for domestic water supply, pressure boosting, agriculture and drainage, sold in many countries. LEO offers practical, cost-effective pumps for everyday household water needs, backed by a large, established manufacturer.",
    "origin": "China",
    "web": "",
-   "hold": 1,
+   "hold": 0,
    "src": [
     "https://finance.yahoo.com/quote/002131.SZ/profile",
     "https://www.elettronew.com/en/leo-pumps-1070"
-   ]
+   ],
+   "confirmed": "13 Oct 2026 by Mukesh"
   },
   {
    "brand": "Astral",
@@ -280,13 +283,15 @@
     "Astral"
    ],
    "tagline": "India's CPVC plumbing pioneer",
-   "about": "Astral was founded in Ahmedabad in 1996 and brought CPVC piping to India in 1998. It was also the first in India to gain NSF approval for CPVC pipes. CPVC handles both hot and cold water, does not rust or scale and is joined with solvent cement, giving your home a durable, leak-resistant water supply system backed by one of India's leading pipe makers.",
+   "about": "Astral was founded in Ahmedabad in 1996 and brought CPVC piping to India in 1998. It was also the first in India to gain NSF approval for CPVC pipes. CPVC handles both hot and cold water, does not rust or scale and is joined with solvent cement. Astral also makes inspection chambers for underground drainage, giving your home a durable, leak-resistant system from one of India's leading pipe makers.",
    "origin": "India",
    "web": "astralpipes.com",
-   "hold": 0,
+   "hold": 1,
    "src": [
     "https://www.astralpipes.com/about-us"
-   ]
+   ],
+   "holdWhy": "13 Oct 2026: not a primary brand - Energy World is a sub-dealer; no introduction on quotes"
   }
- ]
+ ],
+ "updated": "2026-10-13"
 }
