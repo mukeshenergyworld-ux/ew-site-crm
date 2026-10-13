@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.776";
+  var APP_VERSION = "6.9.777";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -18668,56 +18668,101 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
   }
   /* THE QUOTE TABLE: one row per quotation, the latest at the top; its revisions sit under it as
      sub-rows, newest revision first. Dates and times are the server's, shown in this phone's time. */
+  /* ===== 6.9.777 - THE QUOTE ROWS, AS HE READS THEM (see p777) ===== */
+  function qStamp(v) {   /* "13/10/26 - 4:05 PM" */
+    var s0 = String(v || "").trim(); if (!s0) return "";
+    var ms = Date.parse(s0); if (!ms || s0.indexOf("T") < 0) return d10(s0);
+    var x = new Date(ms), hh = x.getHours();
+    return String(x.getDate()).padStart(2, "0") + "/" + String(x.getMonth() + 1).padStart(2, "0") + "/" + String(x.getFullYear()).slice(2) +
+      " - " + ((hh % 12) || 12) + ":" + String(x.getMinutes()).padStart(2, "0") + " " + (hh < 12 ? "AM" : "PM");
+  }
+  /* each brand on the quote with the discount it was quoted at: [{b, d}] - the most common line discount of that brand */
+  function qBrandDiscs(q) {
+    var its = []; try { its = JSON.parse(q.items || "[]"); } catch (e) { its = []; }
+    var by = {}, order = [];
+    its.forEach(function (i) {
+      if (i.optional) return;
+      var b = String(i.brand || "").trim() || "Other";
+      if (!by[b]) { by[b] = {}; order.push(b); }
+      var d = Math.round(qLineDisc(q, i) * 10) / 10;
+      by[b][d] = (by[b][d] || 0) + 1;
+    });
+    return order.map(function (b) {
+      var best = null; Object.keys(by[b]).forEach(function (d) { if (best === null || by[b][d] > by[b][best]) best = d; });
+      return { b: b, d: Number(best) || 0, mixed: Object.keys(by[b]).length > 1 };
+    });
+  }
+  function qRowsTable(rows, o) {
+    o = o || {};
+    var qMine = o.qMine || function () { return true; };
+    var byId = {}; (S.data.quotes || []).forEach(function (q) { if (q) byId[q.id] = q; });
+    var th = function (t) { return '<th style="text-align:left;padding:8px;font-size:12px;letter-spacing:.04em;color:#fff;white-space:nowrap">' + t + '</th>'; };
+    var h = '<div style="overflow-x:auto;border:1px solid #e2e8f0;border-radius:10px;background:#fff">' +
+      '<table style="border-collapse:collapse;width:100%;min-width:1040px;font-size:13px">' +
+      '<thead><tr style="background:#0b3b36">' + th("QT CODE") + th("EXECUTIVE") + th("CLIENT") + th("PHONE") + th("BRANDS (DISC.)") + th("MADE") + th("STATUS \u00b7 PDF") + '</tr></thead><tbody>';
+    rows.forEach(function (x) {
+      var q = x.q, sub = !!x.sub, revs = x.revs || 0;
+      var cl = clientByName(q.client) || {};
+      var exec = String(cl.ownedBy || cl.createdBy || "").trim() || "Unassigned";
+      var st = String(q.status || "Draft"), mine = qMine(q);
+      var rt = qRootOf(q, byId), isRev = rt && rt.id !== q.id;
+      var td = function (v, extra) { return '<td style="padding:7px 8px;border-top:1px solid ' + (sub ? "#f1f5f9" : "#e2e8f0") + ';vertical-align:top' + (extra || "") + '">' + v + '</td>'; };
+      var sm = function (v) { return '<div style="font-size:12px;color:#64748b;margin-top:2px">' + v + '</div>'; };
+      var no = (sub ? '<span style="color:#94a3b8">↳</span> ' : '') +
+        (mine ? '<button class="btn sm ghost" data-act="q-card" data-id="' + esc(q.id) + '" style="padding:2px 8px;font-size:13px;font-weight:700;white-space:nowrap" title="Open this quote’s card">' + esc(qNo(q) || "open") + '</button>'
+              : '<b style="white-space:nowrap">' + esc(qNo(q)) + '</b>') +
+        (sub ? sm(esc(qRevLabel(q))) : (revs ? sm(revs + ' revision' + (revs > 1 ? "s" : "")) : ''));
+      /* one line, and not repeated on a revision's row (same client) */
+      var partners = sub ? '' : '<div style="font-size:12px;color:#64748b;margin-top:3px;display:flex;flex-wrap:wrap;gap:2px 10px;align-items:center">' +
+        '<span>Plumber: ' + qPartnerCell(cl, "plumber") + '</span><span>Architect: ' + qPartnerCell(cl, "architect") + '</span></div>';
+      var bd = qBrandDiscs(q);
+      var brands = bd.length ? bd.map(function (y) {
+        return '<div style="white-space:nowrap"><b>' + esc(y.b) + '</b> <span style="color:#0f766e;font-weight:700">' + esc(String(y.d)) + '%</span>' + (y.mixed ? ' <span style="font-size:12px;color:#94a3b8">mixed</span>' : '') + '</div>';
+      }).join("") : esc(q.brand || "—");
+      var made = isRev
+        ? '<b style="color:#1e3a8a">Revised</b> <span style="white-space:nowrap">' + esc(qStamp(q.createdAt)) + '</span>' + sm('by ' + esc(q.createdBy || "—")) +
+          sm('First made ' + esc(qStamp(rt.createdAt)) + ' by ' + esc(rt.createdBy || "—"))
+        : '<span style="white-space:nowrap">' + esc(qStamp(q.createdAt)) + '</span>' + sm('by ' + esc(q.createdBy || "—"));
+      var pill = '<span class="pill ' + (st === "Won" ? "Won" : st === "Lost" ? "Lost" : st === "Draft" ? "" : "teal") + '" style="font-size:12px">' + esc(st) + '</span>';
+      var btn = function (act, label, on, solid) {
+        return '<button class="btn sm ' + (solid ? "" : "ghost") + '" data-act="' + act + '" data-id="' + esc(q.id) + '" style="padding:2px 9px;font-size:12px;white-space:nowrap' + (on ? ';outline:2px solid #0f766e' : '') + '">' + label + '</button>';
+      };
+      var acts = mine ? '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px">' +
+          (o.unsent ? btn("q-sent", "Sent", false, true) : '') +
+          (st !== "Won" ? btn("q-win", "Won", false, !o.unsent) : '') +
+          (st !== "Lost" ? btn("q-lose", "Lost") + btn("q-notreq", "Not required") : '') + '</div>' : '';
+      h += '<tr style="background:' + (sub ? "#f8fafc" : "#fff") + '">' +
+        td(no, sub ? ";padding-left:18px" : "") +
+        td(esc(exec)) +
+        td('<a href="#" data-act="cl-open" data-id="' + esc(cl.id || "") + '" style="font-weight:700;color:' + (sub ? '#64748b' : '#0b3b36') + ';text-decoration:none">' + esc(q.client || "") + '</a>' + partners, ';min-width:170px') +
+        td(phDigits(cl.mobile || "").length >= 10 ? '<a href="tel:' + esc(phDigits(cl.mobile).slice(-10)) + '" style="white-space:nowrap">' + esc(cl.mobile) + '</a>' : esc(cl.mobile || "")) +
+        td(brands) + td(made, ';min-width:140px') + td(pill + ' <button class="btn sm ghost" data-act="q-pdf" data-id="' + esc(q.id) + '" style="padding:2px 9px;font-size:12px;margin-left:4px">PDF</button>' + acts, ';min-width:205px') +   /* PDF beside the status: one column less */
+        '</tr>';
+    });
+    return h + '</tbody></table></div>';
+  }
+  /* the quote book: families, the latest at the top, revisions under their quote (newest first) */
   function quotesTableHtml(list, stPill, qMine) {
     var byId = {}; (S.data.quotes || []).forEach(function (q) { if (q) byId[q.id] = q; });
     var fams = {}, order = [];
     list.forEach(function (q) {
-      var rt = qRootOf(q, byId), k = qCode(rt).replace(/-R\d+$/i, "") || ("id:" + rt.id);
-      var k2 = qCode(q).replace(/-R\d+$/i, "") || k;
-      if (!fams[k2]) { fams[k2] = []; order.push(k2); }
-      fams[k2].push(q);
+      var rt = qRootOf(q, byId);
+      var k = qCode(q).replace(/-R\d+$/i, "") || qCode(rt).replace(/-R\d+$/i, "") || ("id:" + rt.id);
+      if (!fams[k]) { fams[k] = []; order.push(k); }
+      fams[k].push(q);
     });
     var newest = function (f) { return f.reduce(function (m, q) { var d = String(q.createdAt || ""); return d > m ? d : m; }, ""); };
     order.sort(function (a, b) { return newest(fams[b]).localeCompare(newest(fams[a])); });
-    var th = function (t, al) { return '<th style="text-align:' + (al || "left") + ';padding:7px 8px;font-size:12px;letter-spacing:.04em;color:#fff;white-space:nowrap">' + t + '</th>'; };
-    var h = '<div style="overflow-x:auto;border:1px solid #e2e8f0;border-radius:10px;background:#fff">' +
-      '<table style="border-collapse:collapse;width:100%;min-width:1000px;font-size:13px">' +
-      '<thead><tr style="background:#0b3b36">' + th("QUOTE NO.") + th("CLIENT") + th("PHONE") + th("EXECUTIVE") + th("BRANDS") +
-      th("DATE") + th("TIME") + th("PLUMBER") + th("ARCHITECT") + th("STATUS") + th("INCL GST", "right") + '</tr></thead><tbody>';
+    var rows = [];
     order.forEach(function (k) {
       var f = fams[k].slice().sort(function (a, b) { return (Number(a.version) || 1) - (Number(b.version) || 1) || String(a.createdAt || "").localeCompare(String(b.createdAt || "")); });
-      var base = f[0], revs = f.slice(1).reverse();
-      [base].concat(revs).forEach(function (q, i) {
-        var sub = i > 0;
-        var cl = clientByName(q.client) || {};
-        var exec = String(cl.ownedBy || cl.createdBy || "").trim() || "Unassigned";
-        var w = qWhen(q.createdAt), st = String(q.status || "Draft");
-        var td = function (x, al, extra) { return '<td style="padding:6px 8px;border-top:1px solid ' + (sub ? "#f1f5f9" : "#e2e8f0") + ';vertical-align:top;text-align:' + (al || "left") + (extra || "") + '">' + x + '</td>'; };
-        /* 6.9.776 - one column: the number (QT113, QT113-R1) opens the card; revisions sit under it */
-        var _nb = qMine(q)
-          ? '<button class="btn sm ghost" data-act="q-card" data-id="' + esc(q.id) + '" style="padding:2px 8px;font-size:13px;font-weight:700;white-space:nowrap" title="Open this quote\u2019s card">' + esc(qNo(q) || "open") + '</button>'
-          : '<b style="white-space:nowrap">' + esc(qNo(q)) + '</b>';
-        var noCell = (sub ? '<span style="color:#94a3b8">\u21b3</span> ' : '') + _nb +
-          (sub ? '<div style="font-size:12px;color:#64748b">' + esc(qRevLabel(q)) + '</div>'
-               : (revs.length ? '<div style="font-size:12px;color:#64748b">' + revs.length + ' revision' + (revs.length > 1 ? "s" : "") + '</div>' : ''));
-        h += '<tr style="background:' + (sub ? "#f8fafc" : "#fff") + '">' +
-          td(noCell, "left", sub ? ";padding-left:18px" : "") +
-          td('<a href="#" data-act="cl-open" data-id="' + esc(cl.id || "") + '" style="font-weight:700;color:#0b3b36;text-decoration:none">' + esc(q.client || "") + '</a>') +
-          td('<span style="white-space:nowrap">' + esc(cl.mobile || "") + '</span>') +
-          td(esc(exec) + (String(q.createdBy || "").trim() && String(q.createdBy).trim() !== exec ? '<div style="font-size:12px;color:#64748b">made by ' + esc(q.createdBy) + '</div>' : '')) +
-          td(esc(quoteBrands(q).join(", ") || q.brand || "—")) +
-          td('<span style="white-space:nowrap">' + esc(w.d) + '</span>') + td('<span style="white-space:nowrap">' + esc(w.t) + '</span>') +
-          td(qPartnerCell(cl, "plumber")) + td(qPartnerCell(cl, "architect")) +
-          td(stPill(q) + '<div style="margin-top:3px;white-space:nowrap">' +
-            (qMine(q) && st !== "Won" ? '<button class="btn sm" data-act="q-win" data-id="' + esc(q.id) + '" style="padding:2px 7px;font-size:12px">Won</button> ' : "") +
-            (qMine(q) && st !== "Lost" ? '<button class="btn sm ghost" data-act="q-lose" data-id="' + esc(q.id) + '" style="padding:2px 7px;font-size:12px">Lost</button> ' : "") +
-            '<button class="btn sm ghost" data-act="q-pdf" data-id="' + esc(q.id) + '" style="padding:2px 7px;font-size:12px">PDF</button></div>') +
-          td('<b style="white-space:nowrap">' + money(q.total) + '</b><div style="font-size:12px;color:#64748b;white-space:nowrap">net ' + money(q.net) + '</div>', "right") +
-          '</tr>';
-      });
+      var revs = f.slice(1).reverse();
+      rows.push({ q: f[0], revs: revs.length });
+      revs.forEach(function (r) { rows.push({ q: r, sub: true }); });
     });
-    return h + '</tbody></table></div>';
+    return qRowsTable(rows, { qMine: qMine });
   }
+
 
   function quotesBodyHtml() {
     var list = quoteSearchList(true);   /* 6.9.654 - everyone's quotes */
@@ -18750,22 +18795,8 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
           '<button class="btn sm ghost" data-act="q-card" data-id="">Close card</button></div>' + quoteCardHtml(_uc);
       }
       var _ul = list.slice().sort(function (a, b) { return String(b.createdAt || "").localeCompare(String(a.createdAt || "")); });
-      var _th = function (t, al) { return '<th style="text-align:' + (al || "left") + ';padding:7px 8px;font-size:12px;letter-spacing:.04em;color:#fff;white-space:nowrap">' + t + '</th>'; };
-      h += '<div style="overflow-x:auto;border:1px solid #e2e8f0;border-radius:10px;background:#fff"><table style="border-collapse:collapse;width:100%;min-width:900px;font-size:13px">' +
-        '<thead><tr style="background:#0b3b36">' + _th("QUOTE NO.") + _th("CLIENT") + _th("BRANDS") + _th("NET", "right") + _th("MADE") + _th("DAYS", "right") + _th("") + '</tr></thead><tbody>';
-      _ul.forEach(function (q) {
-        var w = qWhen(q.createdAt), ag = qAgeDays(q);
-        var td = function (x, al) { return '<td style="padding:6px 8px;border-top:1px solid #e2e8f0;vertical-align:middle;text-align:' + (al || "left") + '">' + x + '</td>'; };
-        h += '<tr>' + td('<button class="btn sm ghost" data-act="q-card" data-id="' + esc(q.id) + '" style="padding:2px 8px;font-size:13px;font-weight:700;white-space:nowrap">' + esc(qNo(q) || "open") + '</button>') +
-          td('<b>' + esc(q.client || "") + '</b>') + td(esc(quoteBrands(q).join(", ") || q.brand || "\u2014")) +
-          td('<b style="white-space:nowrap">' + money(q.net) + '</b>', "right") +
-          td('<span style="white-space:nowrap">' + esc(w.d) + (w.t ? ', ' + esc(w.t) : '') + '</span>') +
-          td(ag >= 0 ? '<b style="color:' + (ag > 14 ? "#b91c1c" : "#92400e") + '">' + ag + '</b>' : '<span style="color:#94a3b8">\u2014</span>', "right") +
-          td('<span style="white-space:nowrap"><button class="btn sm" data-act="q-sent" data-id="' + esc(q.id) + '" style="padding:2px 9px;font-size:12px">Sent</button> ' +
-            '<button class="btn sm ghost" data-act="q-notreq" data-id="' + esc(q.id) + '" style="padding:2px 9px;font-size:12px">Not required</button> ' +
-            '<button class="btn sm ghost" data-act="q-pdf" data-id="' + esc(q.id) + '" style="padding:2px 9px;font-size:12px">PDF</button></span>') + '</tr>';
-      });
-      return h + '</tbody></table></div>';
+      /* 6.9.777 - the same rows as the quote book, with Sent first */
+      return h + qRowsTable(_ul.map(function (q) { return { q: q }; }), { qMine: qMine, unsent: true });
     }
     /* ===== THE QUOTE LOG  (v6.9.534 - his third list, item 15) =====
        "proper quote log, date wise, can be filtered, which brand quoted; win / lose with one
