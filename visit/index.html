@@ -189,7 +189,7 @@ h3.sec{color:#1F3A5F}
       button: function () { return '<button type="button" class="ewthm" onclick="ewTheme.next(this)">' + ewtLabel() + '</button>'; }
     };
   })();
-  var APP_VERSION = "1.4.11";
+  var APP_VERSION = "1.4.12";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_vq_session", JRN = "ew_vq_journal_v1", CALLQ = "ew_vq_calls_v1", SNAPK = "ew_vq_snap_";
   var CAT_KEY = "ew_team_catalog", CAT_V = 2;   /* the CRM's own shelf copy of the price list - shared, same origin */
@@ -1403,517 +1403,7 @@ h3.sec{color:#1F3A5F}
     });
     return H;
   }
-  function quotePdf(q) {
-    var items = [];
-    try { items = JSON.parse(q.items || "[]"); } catch (e) {}
-    /* No DejaVu ₹-font embed: it added ~600 KB to every quote, which made the Telegram bot send
-       (base64 over the wire) fail and the WhatsApp share sluggish. Uses "Rs." in core Helvetica,
-       exactly like the statement PDF. Result: ~50 KB, sends reliably. */
-    return Promise.all([
-      Promise.resolve(null),
-      loadLogo(),
-      picsForQuote(items),
-      logosReady()
-    ]).then(function (res) {
-      var f = res[0], logo = res[1], pics = res[2];
-      var doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4" });
-      /* v6.9.502 - the shortfall rides on the document, so every one of the four send paths can
-         see it without each having to remember to ask. NOT printed on the quotation: that is his
-         shop's paper going to a customer, and the plumbing is not the customer's business. */
-      try {
-        doc.picMiss = (pics && pics.miss) ? pics.miss.slice() : [];
-        if (doc.picMiss.length) toast(picMissSay(doc.picMiss));
-      } catch (e) { }
-      var uni = false;
-      if (f) {
-        doc.addFileToVFS("DejaVuSans.ttf", f.reg); doc.addFont("DejaVuSans.ttf", "DJ", "normal");
-        doc.addFileToVFS("DejaVuSans-Bold.ttf", f.bold); doc.addFont("DejaVuSans-Bold.ttf", "DJ", "bold");
-        uni = true;
-      }
-      var F = function (w) { var s = (w && String(w).indexOf("bold") >= 0) ? "bold" : "normal"; doc.setFont(ppEmbed(doc), s); };
-      /* v6.9.303: Math.round added. This printed the raw number, so the moment a
-         quantity could be 1.5 a customer would have received "Rs.12,345.5". */
-      /* 6.9.673 - the rupee sign: Noto Sans carries it, and it is two characters narrower than "Rs."
-         in every money column, which is the room the bigger figures needed */
-      var R = function (n) { return "\u20B9" + Math.round(nAmt(n)).toLocaleString("en-IN"); };
-      var col = function (c) { doc.setTextColor(c[0], c[1], c[2]); };
-      var fill = function (c) { doc.setFillColor(c[0], c[1], c[2]); };
-
-      /* 6.9.673 - GREY was 110,125,140 and the MRP / serial / footer printed faint. Every grey on
-         white is now dark grey; light colours stay only on the dark green bands, where they read. */
-      var INK = [17, 24, 39], DEEP = [11, 59, 54], MINT = [94, 234, 212],
-          SLATE = [30, 41, 59], GREY = [55, 65, 81], LINE = [203, 213, 225], SOFT = [246, 248, 250],
-          TEALD = [15, 118, 110];
-      var W = 210, L = 10, Rt = W - 10;   /* tighter print margins (10mm) -> a wider table for the description */
-
-      var bd = Number(q.discountPct) || 0;
-      var rows = items.map(function (i, idx) {
-        /* per-line discount: explicit override wins, else the line's own brand
-           discount snapshot (i.bd), else the quote's blended figure for old quotes. */
-        /* v6.9.513 - the rule moved out to qLineDisc/qLineNet so the read-only quote panel
-           prices a line exactly as the printed document does. Two copies of one arithmetic rule
-           is two answers to one question - the whole of item 22 this week. */
-        var d = qLineDisc(q, i);
-        var net = qLineNet(q, i);
-        var _dl = descLines(i.desc);
-        /* the room reads as the first bullet, so an existing quote layout carries
-           it with no new column: "Master Bathroom, PDR" above the features */
-        var _rooms = [];
-        var _rq = (i && i.rq && typeof i.rq === "object") ? i.rq : null;
-        if (_rq) {
-          for (var _k in _rq) {
-            var _n = Number(_rq[_k]) || 0;
-            if (_k && _n > 0) _rooms.push(_k + (_n !== 1 ? " x" + qShow(_n) : ""));   /* v6.9.303 */
-          }
-          _rooms.sort();
-        }
-        var _bul = _dl.bullets.map(function (b) { return pdfSafe(b); });
-        /* v6.9.459 - the "For: ..." bullet is how the room reached the paper when there was one
-           flat table. With the table drawn room by room the band above the line already says it,
-           so it would be the same words twice; it is added below only if nothing is grouped. */
-        return { title: pdfSafe(_dl.title) + (i.optional ? "   [OPTIONAL - NOT ADDED TO VALUE]" : ""),
-          bullets: _bul, roomBul: _rooms.length ? pdfSafe("For: " + _rooms.join(", ")) : "",
-          rq: _rq,
-          code: pdfSafe(i.code), pic: pics[idx], dim: PIC_DIM[i.pic] || null,
-          unit: i.unit || "No's", optional: i.optional ? 1 : 0,
-          qty: i.qty, price: i.price, disc: d, net: net, total: Math.round(net * i.qty) };   /* v6.9.303 */
-      });
-      var ordered = rows.filter(function (r) { return r.disc > 0; }).sort(function (a, b) { return b.disc - a.disc; })
-        .concat(rows.filter(function (r) { return r.disc <= 0; }));
-
-      /* ============ ROOM BY ROOM (v6.9.459) ============
-         His words: "pdf must show bathroom wise item selected total and grand total below".
-
-         The rooms are read off each line's own rq map, in the order the rooms first appear across
-         the quote - which is the order he added them, not the alphabet, so "Bathroom 1" before
-         "Bathroom 10" and a room named later stays later. A line in two rooms is emitted TWICE,
-         each copy carrying only that room's quantity and that room's amount, so the room totals
-         sum to the grand total with nothing double-counted and nothing lost. Lines with no room
-         at all fall into one last group rather than disappearing.
-
-         roomOrder is empty when not one line names a room - and then nothing below changes what
-         the paper has always looked like. */
-      var roomOrder = [], roomSeen = {};
-      ordered.forEach(function (r) {
-        if (!r.rq) return;
-        for (var k in r.rq) {
-          if (k && (Number(r.rq[k]) || 0) > 0 && !roomSeen[k]) { roomSeen[k] = 1; roomOrder.push(k); }
-        }
-      });
-      var grouped = roomOrder.length > 0;
-      /* every line, once per room it is in; the copy carries that room's qty and amount */
-      var groups = [];
-      if (grouped) {
-        roomOrder.forEach(function (rm) {
-          var list = [];
-          ordered.forEach(function (r) {
-            var n = (r.rq && Number(r.rq[rm])) || 0;
-            if (n > 0) list.push(Object.assign({}, r, { qty: n, total: Math.round(r.net * n) }));
-          });
-          if (list.length) groups.push({ room: rm, rows: list });
-        });
-        var loose = ordered.filter(function (r) {
-          if (!r.rq) return true;
-          for (var k in r.rq) if (k && (Number(r.rq[k]) || 0) > 0) return false;
-          return true;
-        });
-        if (loose.length) groups.push({ room: "", rows: loose });
-      } else {
-        /* ungrouped: the room bullet is the only place a room can show, so it goes back on */
-        ordered.forEach(function (r) { if (r.roomBul) r.bullets = [r.roomBul].concat(r.bullets); });
-        groups.push({ room: "", rows: ordered });
-      }
-      /* option lines are printed with their own price but never added into the sub-total */
-      var subTotal = rows.reduce(function (a, r) { return a + (r.optional ? 0 : r.total); }, 0);
-      /* Some projects must show 18% GST spelled out on the quote. The flag rides along inside
-         the saved items (no sheet column), so it round-trips. Off = the old "{ GST as Actual }". */
-      var showGst = items.some(function (i) { return Number(i.gst) === 1; });
-      /* item-wise pricing: print each line's price but NO consolidated total box */
-      var noTotal = items.some(function (i) { return Number(i.noTotal) === 1; });
-      var c = clientByName(q.client) || {};
-
-      /* ================= HEADER =================
-         Everything the reader needs to identify the quote sits in the dark band: who it is for,
-         what it is, and how long it holds. The old "PREPARED FOR / PREPARED BY" strip below it
-         was repeating the same names in a second box - dropped. Who wrote it now signs off at
-         the foot of the document, which is where a signature belongs. */
-      var HH = 46;   /* the word QUOTATION was doing no work - the document is obviously a quote */
-      fill(DEEP); doc.rect(0, 0, W, HH, "F");
-      fill(MINT); doc.rect(0, HH, W, 1.2, "F");
-
-      if (logo) { try { doc.addImage(logo, "JPEG", L, 8, 31, 16.5); } catch (e) {} }
-      col(MINT); F("bold"); doc.setFontSize(8);
-      doc.text("M O D E R N   P L U M B I N G   S O L U T I O N", L, 31);
-      col([190, 225, 220]); F("normal"); doc.setFontSize(8);
-      doc.text("PANIPAT   |   SONIPAT   |   KARNAL", L, 36.5);
-
-      /* QUOTE FOR - name and address only. The client knows their own phone number. */
-      col(MINT); F("bold"); doc.setFontSize(8);
-      doc.text("Q U O T E   F O R", Rt, 11.5, { align: "right" });
-      col([255, 255, 255]); F("bold"); doc.setFontSize(14);
-      doc.text(fitCell(doc, F, q.client || "-", 100, 1, "bold", 14)[0], Rt, 18.4, { align: "right" });
-      /* Address parts repeat in practice: the address line often already ends in the city,
-         and area == location for a Panipat client, which printed "Sector 57, Panipat, Panipat".
-         Drop any part already contained in what we have built so far. */
-      var addr = [c.address, c.area, c.location].filter(Boolean).map(String)
-        .reduce(function (acc, p) {
-          var seen = acc.join(", ").toLowerCase();
-          if (seen.indexOf(p.trim().toLowerCase()) < 0) acc.push(p.trim());
-          return acc;
-        }, []).join(", ");
-      col([205, 232, 228]); F("normal"); doc.setFontSize(8.5);
-      var aLines = fitCell(doc, F, addr, 100, 2, "normal", 8.5);
-      aLines.forEach(function (ln, i) { doc.text(ln, Rt, 23.6 + i * 3.7, { align: "right" }); });
-
-      doc.setDrawColor(38, 94, 88); doc.setLineWidth(0.3);
-      doc.line(Rt - 62, 32.4, Rt, 32.4); doc.setLineWidth(0.2);
-
-      col([205, 232, 228]); F("normal"); doc.setFontSize(8.5);
-      var VALID_DAYS = 30;
-      var vUntil = ymdLocal(new Date(Date.now() + VALID_DAYS * 86400000));
-      doc.text("Quote No.   " + String(q.quoteNo || "") + (qCode(q) ? "   \u00b7   " + qCode(q) : ""), Rt, 36.8, { align: "right" });   /* 1.4.11 */
-      doc.text(q.createdAt ? qMadeLine(q) : "Date   " + today(), Rt, 40.6, { align: "right" });
-      col(MINT);
-      doc.text("Valid for " + VALID_DAYS + " days  \u00b7  until " + vUntil, Rt, 44.4, { align: "right" });
-
-      /* ---- AUTH. DISTRIBUTOR FOR: the whole strip sits in one soft panel ---- */
-      var y = HH + 10;
-      /* ============ TWO TIDY ROWS, WHATEVER THE COUNT (v6.9.311) ============
-         This was 6 across with a fixed 17.5mm box, which was two exact rows for twelve
-         brands. Eureka Forbes made thirteen, and thirteen put ONE lonely box on a third row
-         and made the panel 11mm taller on every quote page.
-
-         Drawn both ways as real PDFs and looked at, rather than worked out in my head - the
-         last grid decided in my head came out seven brands across a laptop screen. Seven
-         across is two full rows (7 + 6), the logo is still legible at 14.7mm, and holding
-         GRID_W fixed instead of deriving it keeps the AUTH. DISTRIBUTOR FOR label exactly the
-         60mm of room it had.
-
-         PER_ROW now follows the count, so the next brand added reflows on its own. The cap at
-         eight is where a box stops being readable; past that it takes a third row and that is
-         the right answer, not a squeeze. */
-      var GRID_W = 116, GAP = 2.2, BH = 9;
-      var PER_ROW = Math.min(8, Math.max(6, Math.ceil(PDF_LOGO_ORDER.length / 2)));
-      var BW = (GRID_W - (PER_ROW - 1) * GAP) / PER_ROW;
-      var LROWS = Math.ceil(PDF_LOGO_ORDER.length / PER_ROW);
-      var PAN_H = LROWS * BH + (LROWS - 1) * 2.2 + 8;
-      fill([246, 250, 249]); doc.roundedRect(L, y - 4, Rt - L, PAN_H, 2, 2, "F");
-      doc.setDrawColor(214, 232, 228); doc.roundedRect(L, y - 4, Rt - L, PAN_H, 2, 2, "S");
-      fill(MINT); doc.rect(L, y - 4, 1.4, PAN_H, "F");
-
-      col(TEALD); F("bold"); doc.setFontSize(8);
-      doc.text("AUTH. DISTRIBUTOR FOR", L + 6, y - 4 + PAN_H / 2 + 1);
-
-      var CHIP_L = Rt - GRID_W - 4;
-      var slots = PDF_LOGO_ORDER.map(function (n) { return logoFor(n); });
-      slots.forEach(function (lg, i) {
-        var r = Math.floor(i / PER_ROW), cIdx = i % PER_ROW;
-        var bx = CHIP_L + cIdx * (BW + GAP), by = y + r * (BH + 2.2);
-        fill([255, 255, 255]); doc.roundedRect(bx, by, BW, BH, 1.6, 1.6, "F");
-        doc.setDrawColor(203, 213, 225); doc.setLineWidth(0.25);
-        doc.roundedRect(bx, by, BW, BH, 1.6, 1.6, "S");
-        if (!lg || !lg.src) return;
-        var mw = BW - 2.4, mh = BH - 2.4;
-        var sc = Math.min(mw / lg.w, mh / lg.h);
-        var iw = lg.w * sc, ih = lg.h * sc;
-        try { doc.addImage(lg.src, "JPEG", bx + (BW - iw) / 2, by + (BH - ih) / 2, iw, ih); } catch (e) { }
-      });
-      doc.setLineWidth(0.2);
-      y += PAN_H + 4;
-
-      /* ================= TABLE ================= */
-      /* money columns widened: a lakh figure like Rs 4,51,869 needs real room, and it
-         was running into the next column. Everything shrunk a notch so 100+ lines fit. */
-      /* Column x-positions rebalanced (v6.9.161): the numeric block is packed to the right at its
-         real worst-case widths so the DESCRIPTION gets ~93mm (was ~56). Verified with jsPDF that no
-         number or header column overlaps even at 8-digit figures. */
-      /* 6.9.673 - re-spaced for 9-10 pt figures (they were 6.2-6.6 pt): every money column is wide
-         enough for a lakh figure at its new size, and the description gives up the room. Checked
-         by drawing a lakh figure in every column and looking at it (audit/print/prints.js). */
-      var X = { n: L + 1, pic: L + 4.5, item: L + 18, unit: 117, qty: 127, price: 146, dis: 158, dprice: 177, amt: Rt - 1 };
-      var UNIT_W = 15;                       /* "Per Set", "Per 3 Mtr" at 9pt */
-      var DESC_W = X.unit - UNIT_W - X.item - 2;
-      var head = function () {
-        fill(DEEP); doc.rect(L, y - 5.2, Rt - L, 8.4, "F");
-        fill(MINT); doc.rect(L, y + 2.6, Rt - L, 0.5, "F");   /* mint underline ties the table header to the brand band */
-        col([255, 255, 255]); F("bold"); doc.setFontSize(8);
-        doc.text("#", X.n, y);
-        doc.text("ITEM DESCRIPTION", X.item, y);
-        doc.text("UNIT", X.unit, y, { align: "right" });
-        doc.text("QTY", X.qty, y, { align: "right" });
-        doc.text("PRICE", X.price, y, { align: "right" });
-        doc.text("DIS.%", X.dis, y, { align: "right" });
-        doc.text("DISC. PRICE", X.dprice, y, { align: "right" });
-        doc.text("TOTAL AMT", X.amt, y, { align: "right" });
-        y += 8.4;
-      };
-      head();
-
-      /* v6.9.459 - the row drawing is a function now, called once per row per room. Not one line
-         of what it draws changed: the group loop hands it a row whose qty and total are already
-         that room's, so the drawing has no idea it is inside a group. */
-      var drawRow = function (r, i) {
-        /* ONE description. The catalogue repeats the spec inside the description, and
-           printing both made every row a wall of duplicated text. */
-        /* DESC_W is derived from the column positions, not guessed. The unit column is
-           right-aligned at X.unit, so its text grows leftwards - reserve room for it. */
-        var BUL_W = DESC_W - 4;
-        var _code = String(r.code || "");   /* 6.9.758 - the code is a tag; the name starts beside it */
-        F("bold"); doc.setFontSize(8.5);
-        var _cw = _code ? doc.getTextWidth(_code) + 3.2 : 0;
-        F("bold"); doc.setFontSize(10);
-        var _w1 = DESC_W - _cw - 1.8, _words = String(r.title || "").split(/\s+/).filter(Boolean), _l1 = "";
-        while (_words.length && doc.getTextWidth((_l1 ? _l1 + " " : "") + _words[0]) <= _w1) _l1 = (_l1 ? _l1 + " " : "") + _words.shift();
-        var tLines = [_l1].concat(_words.length ? fitCell(doc, F, _words.join(" "), DESC_W, 40, "bold", 10) : []);
-        var bBlocks = (r.bullets || []).map(function (b) { return fitCell(doc, F, b, BUL_W, 6, "normal", 8.5); });
-        var bCount = bBlocks.reduce(function (a, x) { return a + x.length; }, 0);
-        var hasB = (r.bullets && r.bullets.length) ? 1 : 0;
-        /* 6.9.673 - code 9pt, name 10pt (4.1mm a line), features 8.5pt (3.5mm a line) */
-        var hgt = Math.max(r.pic ? 13 : 10.5, 7 + (tLines.length - 1) * 4.1 + (hasB ? 1.4 : 0) + bCount * 3.5 + (hasB ? 0.6 : 0));   /* 1.4.8 */
-        /* Page-break FIRST, then derive mid from the post-break y. If mid were computed
-           before the break, a row that wraps to a new page would draw its serial # and
-           figures at the old bottom-of-page y (off the printable area) while the
-           description drew at the new top - the "item 17 invisible" bug. */
-        if (y + hgt > 272) { doc.addPage(); y = 20; head(); }
-        /* baseline for the right-aligned numbers, vertically CENTRED in the row so a one-line item
-           aligns with its description and a multi-line item keeps its figures in the middle. */
-        var mid = (y - 3.6) + hgt / 2 + 1.1;
-        if (r.optional) {
-          fill([255, 236, 209]); doc.setDrawColor(217, 119, 6); doc.setLineWidth(0.5);
-          doc.roundedRect(L + 0.4, y - 3.4, Rt - L - 0.8, hgt - 0.3, 1, 1, "FD"); doc.setLineWidth(0.2);
-        }   /* 1.4.8 - no shading on alternate rows */
-
-        col(GREY); F("normal"); doc.setFontSize(8.5);
-        doc.text(String(i + 1), X.n, mid);   /* serial # centred in the row, level with the figures */
-        /* A photo was forced into a fixed 10 x 9 box, so a tall product (the sand filter)
-           came out visibly squashed. Fit it inside the box on its own aspect ratio and centre
-           it. Products with no photo in the catalogue simply leave the cell blank. */
-        if (r.pic) {
-          try {
-            var BOXW = X.item - X.pic - 1.5, BOXH = Math.min(16, hgt - 2.2);   /* 1.4.8 - the box is the cell */
-            var dm = (r.dim && r.dim.w && r.dim.h) ? r.dim : { w: BOXW, h: BOXH };
-            var psc = Math.min(BOXW / dm.w, BOXH / dm.h);
-            var pw = dm.w * psc, ph = dm.h * psc;
-            /* Centre the photo in the FULL row height, not just the top 9mm box. A tall row
-               (long, wrapped description) used to leave the picture stuck at the top while the
-               text ran down beside it - the tank looked top-aligned. Centre it on the row band
-               (which starts at y-3.6 and is `hgt` tall) so every photo sits mid-row. */
-            doc.addImage(r.pic, "JPEG", X.pic + (BOXW - pw) / 2, (y - 3.6) + (hgt - ph) / 2, pw, ph);
-          } catch (e) { }
-        }
-
-        /* 6.9.758 - code tag, then the name on the same line */
-        var _ty = y + 0.9;
-        if (_code) {
-          fill([224, 242, 238]); doc.roundedRect(X.item, _ty - 3.3, _cw, 4.5, 0.9, 0.9, "F");
-          col(TEALD); F("bold"); doc.setFontSize(8.5); doc.text(_code, X.item + 1.6, _ty);
-        }
-        col(r.optional ? [146, 64, 14] : INK); F("bold"); doc.setFontSize(10);
-        tLines.forEach(function (tl, k) { if (tl) doc.text(tl, k === 0 ? X.item + _cw + 1.8 : X.item, _ty + k * 4.1); });
-        _ty += tLines.length * 4.1 + (hasB ? 1.4 : 0) - 0.6;
-        F("normal"); doc.setFontSize(8.5);
-        bBlocks.forEach(function (bl) {
-          fill(TEALD); doc.circle(X.item + 1.0, _ty - 1.1, 0.6, "F");
-          col(r.optional ? [146, 64, 14] : GREY);
-          doc.text(bl, X.item + 3.4, _ty, { lineHeightFactor: 1.15 });
-          _ty += bl.length * 3.5;
-        });
-
-        col(GREY); F("normal"); doc.setFontSize(9);
-        doc.text(fitCell(doc, F, r.unit, UNIT_W, 1, "normal", 9)[0], X.unit, mid, { align: "right" });
-        col(INK); F("bold"); doc.text(qShow(r.qty), X.qty, mid, { align: "right" });
-        F("normal");
-        /* A discounted line shows list PRICE, DIS.%, and the DISC. PRICE. A line with NO
-           discount would just repeat the same figure in PRICE and DISC. PRICE, so we leave the
-           PRICE and DIS.% cells blank and print the single price once, under DISC. PRICE. */
-        if (r.disc > 0) {
-          col(GREY); F("normal");
-          doc.text(R(r.price), X.price, mid, { align: "right" });
-          col(TEALD); F("bold");
-          doc.text(r.disc.toFixed(1) + "%", X.dis, mid, { align: "right" });
-        }
-        col(r.optional ? [180, 83, 9] : INK); F("normal");
-        doc.text(R(r.net), X.dprice, mid, { align: "right" });
-        F("bold"); doc.setFontSize(10); col(r.optional ? [180, 83, 9] : INK);
-        doc.text(r.optional ? "(" + R(r.total) + ")" : R(r.total), X.amt, mid, { align: "right" });
-
-        y += hgt;
-        doc.setDrawColor(LINE[0], LINE[1], LINE[2]); doc.line(L, y - 2.8, Rt, y - 2.8);
-      };
-
-      /* the table itself: a band per room, its lines, and that room's total */
-      var _sn = 0;
-      groups.forEach(function (g, gi) {
-        if (grouped) {
-          /* a band needs its name AND at least one line under it on the same page - a room
-             heading alone at the foot of a page is a promise the page does not keep */
-          if (y + 16 > 272) { doc.addPage(); y = 20; head(); }
-          fill([236, 253, 250]); doc.rect(L, y - 4, Rt - L, 8.4, "F");
-          fill(MINT); doc.rect(L, y - 4, 1.6, 8.4, "F");
-          col(TEALD); F("bold"); doc.setFontSize(10);
-          doc.text(pdfSafe(g.room || "Not assigned to a room"), X.item, y + 1.1);
-          var _gn = g.rows.length;
-          col(GREY); F("normal"); doc.setFontSize(8.5);
-          doc.text(_gn + (_gn === 1 ? " item" : " items"), X.unit, y + 1.1, { align: "right" });
-          y += 9.6;
-        }
-        g.rows.forEach(function (r) { drawRow(r, _sn++); });
-        if (grouped) {
-          var gTot = g.rows.reduce(function (a, r) { return a + (r.optional ? 0 : r.total); }, 0);
-          if (y + 9 > 278) { doc.addPage(); y = 20; head(); }
-          fill([248, 250, 252]); doc.rect(L, y - 3.2, Rt - L, 7, "F");
-          doc.setDrawColor(203, 213, 225); doc.line(L, y - 3.2, Rt, y - 3.2);
-          col(SLATE); F("bold"); doc.setFontSize(9);
-          doc.text(pdfSafe((g.room || "Not assigned to a room") + " \u2014 total"), X.item, y + 1.2);
-          col(INK); F("bold"); doc.setFontSize(10);
-          doc.text(R(gTot), X.amt, y + 1.2, { align: "right" });
-          y += 9.4;
-        }
-      });
-
-      /* ---- sub-total. Either "{ GST as Actual }" (default) or a spelled-out 18% GST block. ----
-         The box HEIGHT is known up-front per branch, so we advance y to a single deterministic
-         point BELOW the box afterwards. This is what stops the optional-lines footnote (and the
-         Terms panel) from ever riding on top of the total. */
-      var hasOpt = rows.some(function (r) { return r.optional; });
-      y += 4;
-      var boxH = noTotal ? 10 : (showGst ? 23 : 16);
-      if ((y - 4.5) + boxH > 285) { doc.addPage(); y = 26; }
-      var boxTop = y - 4.5;
-      var TBL = 104;   /* the total panel starts a little left of the numeric columns */
-      if (noTotal) {
-        fill([255, 251, 235]); doc.roundedRect(TBL, boxTop, Rt - TBL, boxH, 1.5, 1.5, "F");
-        col([124, 45, 18]); F("normal"); doc.setFontSize(9);
-        doc.text("Item-wise pricing - no consolidated total.", 110, y + 1.2);
-      } else if (showGst) {
-        var GST_RATE = 18;
-        var gstAmt = Math.round(subTotal * GST_RATE / 100);
-        var grand = subTotal + gstAmt;
-        fill(DEEP); doc.roundedRect(TBL, boxTop, Rt - TBL, boxH, 2, 2, "F");
-        fill(MINT); doc.rect(TBL, boxTop, 1.6, boxH, "F");
-        col([205, 232, 228]); F("normal"); doc.setFontSize(9);
-        doc.text("Sub-Total", 110, y + 1.2);
-        col([255, 255, 255]); F("bold"); doc.text(R(subTotal), X.amt, y + 1.2, { align: "right" });
-        col([205, 232, 228]); F("normal"); doc.setFontSize(9);
-        doc.text("GST @ 18%", 110, y + 6.8);
-        doc.text(R(gstAmt), X.amt, y + 6.8, { align: "right" });
-        doc.setDrawColor(94, 234, 212); doc.setLineWidth(0.25); doc.line(110, y + 9.6, Rt - 6, y + 9.6); doc.setLineWidth(0.2);
-        col(MINT); F("bold"); doc.setFontSize(10);
-        doc.text("GRAND TOTAL (incl. GST)", 110, y + 15);
-        col([255, 255, 255]); doc.setFontSize(12); doc.text(R(grand), X.amt, y + 15, { align: "right" });
-      } else {
-        fill(DEEP); doc.roundedRect(TBL, boxTop, Rt - TBL, boxH, 2, 2, "F");
-        fill(MINT); doc.rect(TBL, boxTop, 1.6, boxH, "F");
-        col(MINT); F("bold"); doc.setFontSize(10); doc.text("SUB-TOTAL", 110, y + 0.6);
-        col([205, 232, 228]); F("normal"); doc.setFontSize(8.5); doc.text("{ GST as Actual }", 110, y + 5.4);
-        col([255, 255, 255]); F("bold"); doc.setFontSize(14);
-        doc.text(R(subTotal), X.amt, y + 3.6, { align: "right" });
-      }
-      y = boxTop + boxH + 5;   /* single, deterministic point clear of the total box */
-
-      /* Footnote whenever any line is an alternative option — a bordered amber strip drawn BELOW
-         the total box (never over it). Text is wrapped and the box is sized to the wrapped lines. */
-      if (hasOpt) {
-        F("bold"); doc.setFontSize(8);
-        var fnLines = doc.splitTextToSize(
-          "Rows outlined in amber and marked  OPTIONAL - NOT ADDED TO VALUE  are alternative choices. Their price is shown for comparison but is NOT included in the total above.",
-          Rt - L - 8);
-        var fnH = 4.4 + fnLines.length * 3.4;
-        if (y + fnH > 288) { doc.addPage(); y = 26; }
-        fill([255, 243, 222]); doc.setDrawColor(217, 119, 6); doc.setLineWidth(0.4);
-        doc.roundedRect(L, y, Rt - L, fnH, 1.4, 1.4, "FD"); doc.setLineWidth(0.2);
-        col([146, 64, 14]); F("bold");
-        doc.text(fnLines, L + 4, y + 4.4);
-        y += fnH + 1;
-      }
-
-      /* ================= TERMS ================= */
-      /* T&C now sits inside the same soft, mint-barred panel as the distributor strip, so it
-         reads as one framed block instead of loose text under a bar. The panel is sized to the
-         taller of the two text columns, computed deterministically before it is drawn. */
-      var TC_FS = 8, TC_LEAD = 3.3, TC_GAP = 2.4;   /* 6.9.673 - was 5.4pt */
-      var TC_PADL = 6, TC_PADR = 5, TC_HEADH = 8.5, TC_PADB = 4, TC_COLGAP = 6;
-      var COLW = (Rt - L - TC_PADL - TC_PADR - TC_COLGAP) / 2;
-      F("normal"); doc.setFontSize(TC_FS);
-      var tcBlocks = TERMS.map(function (tx, n) {
-        var parts = tx.split(" - ");
-        var hd = parts.length > 1 ? parts.shift() : "";
-        var body = parts.join(" - ") || tx;
-        var ls = doc.splitTextToSize(body, COLW - 3);
-        return { hd: hd, ls: ls, n: n + 1, h: (hd ? 3.5 : 0) + ls.length * TC_LEAD + TC_GAP };
-      });
-      var tcTotal = tcBlocks.reduce(function (a, b) { return a + b.h; }, 0);
-      var tcHalf = tcTotal / 2;
-      var tcAccP = 0, tcColP = 0, tcColH = [0, 0];
-      var tcPlaced = tcBlocks.map(function (b) {
-        if (tcColP === 0 && tcAccP + b.h > tcHalf && tcAccP > 0) { tcColP = 1; }
-        tcColH[tcColP] += b.h;
-        if (tcColP === 0) tcAccP += b.h;
-        return tcColP;
-      });
-      var TC_PANH = TC_HEADH + Math.max(tcColH[0], tcColH[1]) + TC_PADB;
-      if (y + TC_PANH + 3 > 276) { doc.addPage(); y = 22; } else { y += 4; }
-      var tcPy = y;
-      fill([246, 250, 249]); doc.roundedRect(L, tcPy, Rt - L, TC_PANH, 2, 2, "F");
-      doc.setDrawColor(214, 232, 228); doc.setLineWidth(0.3);
-      doc.roundedRect(L, tcPy, Rt - L, TC_PANH, 2, 2, "S"); doc.setLineWidth(0.2);
-      fill(MINT); doc.rect(L, tcPy, 1.4, TC_PANH, "F");
-      col(DEEP); F("bold"); doc.setFontSize(10);
-      doc.text("Terms & Conditions", L + TC_PADL, tcPy + 5.8);
-      var tcTop = tcPy + TC_HEADH + 2;
-      var tcY = [tcTop, tcTop];
-      tcBlocks.forEach(function (b, bi) {
-        var tcCol = tcPlaced[bi];
-        var x = L + TC_PADL + tcCol * (COLW + TC_COLGAP);
-        var yy = tcY[tcCol];
-        if (b.hd) {
-          col(TEALD); F("bold"); doc.setFontSize(TC_FS);
-          doc.text(b.n + ". " + b.hd.toUpperCase(), x, yy);
-          yy += 3.5;
-        }
-        col(GREY); F("normal"); doc.setFontSize(TC_FS);
-        doc.text(b.ls, x + (b.hd ? 1.8 : 0), yy);
-        yy += b.ls.length * TC_LEAD + TC_GAP;
-        tcY[tcCol] = yy;
-      });
-      y = tcPy + TC_PANH + 2;
-
-      /* 6.9.755 - the bank details, bottom left, beside the sign-off */
-      if (y + 29 > 286) { doc.addPage(); y = 22; }
-      var _payY = y + 3;
-      ewPayBox(doc, L, _payY, Math.min(118, Rt - L - 68));
-      y = _payY - 3;   /* the sign-off sits level with it on the right */
-
-      /* ---- sign-off, bottom right of the last page. A quotation is a document a person
-           stands behind, so the name goes where a signature goes - not in a header box. ---- */
-      var me = (S.data.team || []).filter(function (t2) { return t2.name === q.createdBy; })[0] || {};
-      /* Keep the sign-off on THIS page whenever it fits. It used to jump to a fresh page far
-         too early (y>236) even with half the page still empty. Only break if the ~25mm block
-         would collide with the footer; otherwise anchor it at the usual 250, or just below the
-         terms when those run long. */
-      if (y + 21 > 290) { doc.addPage(); y = 30; }
-      var sy = Math.max(250, y + 3);
-      doc.setDrawColor(LINE[0], LINE[1], LINE[2]); doc.setLineWidth(0.3);
-      doc.line(Rt - 62, sy, Rt, sy); doc.setLineWidth(0.2);
-      col(GREY); F("bold"); doc.setFontSize(8);
-      doc.text("PREPARED BY", Rt, sy + 4.4, { align: "right" });
-      col(INK); F("bold"); doc.setFontSize(11);
-      doc.text(String(q.createdBy || "-"), Rt, sy + 10, { align: "right" });
-      if (me.mobile) {
-        col(GREY); F("normal"); doc.setFontSize(9);
-        doc.text(String(me.mobile), Rt, sy + 14.5, { align: "right" });
-      }
-
-      var pages = doc.internal.getNumberOfPages();
-      for (var p = 1; p <= pages; p++) {
-        doc.setPage(p);
-        F("normal"); doc.setFontSize(8); col(GREY);   /* 6.9.673 - was 6.2pt light grey */
-        doc.text("Energy World  |  Panipat \u00b7 Sonipat \u00b7 Karnal  |  Authorised Distributor", L, 290);
-        doc.text(p + " / " + pages, Rt, 290, { align: "right" });
-      }
-      return doc;
-    });
-  }
+  /* the Visit app's own quotePdf was here - the shared one replaces it (Visit 1.4.12) */
   function siteVisits(siteId) {
     return S.data.sitevisits.filter(function (v) { return v.siteId === siteId; });
   }
@@ -2299,7 +1789,7 @@ h3.sec{color:#1F3A5F}
       qItems(q).forEach(function (i) {
         var b = i.brand || productBrandByCode(i.code) || ""; if (!b) return;
         var o = out[b] || (out[b] = {}), at = String(q.createdAt || "");
-        if (!o.q || at > o.q.at) o.q = { disc: qLineDisc(q, i), by: q.createdBy || "", at: at, no: q.quoteNo || "", st: q.status || "" };
+        if (!o.q || at > o.q.at) o.q = { disc: qLineDisc(q, i), by: q.createdBy || "", at: at, no: qNo(q) || "", st: q.status || "" };
       });
     });
     (S.data.challans || []).forEach(function (c) {
@@ -2750,7 +2240,7 @@ h3.sec{color:#1F3A5F}
   function qRow(q) {
     var st = q.status || "Draft", grp = st === "Won" ? "Won" : st === "Lost" ? "Lost" : "Pending", mine = isMe(q.createdBy) || !q.createdBy;
     return '<div class="card tap mine" data-act="q-open" data-id="' + esc(q.id) + '"><div class="row"><div class="grow"><div class="ttl2">' + codeTag(q.client) + esc(q.client || "") + '</div>' +
-      '<div class="meta">' + esc(q.quoteNo || "") + ' &middot; ' + esc(fd(q.createdAt)) + ' &middot; ' + esc(q.brand || "") + '</div></div>' +
+      '<div class="meta">' + esc(qNo(q)) + ' &middot; ' + esc(fd(q.createdAt)) + ' &middot; ' + esc(q.brand || "") + '</div></div>' +
       '<div style="text-align:right"><div class="amt">' + esc(money(q.net)) + '</div><span class="pill ' + qTone(st) + '">' + esc(st) + '</span></div></div>' +
       (mine ? '<div class="qst">' + [["Pending", "Pending"], ["Won", "Won"], ["Lost", "Lost"]].map(function (x) {
         return '<button type="button" class="' + x[0].toLowerCase() + (grp === x[0] ? ' on' : '') + '" data-act="qr-st" data-k="' + x[0] + '" data-id="' + esc(q.id) + '" aria-pressed="' + (grp === x[0]) + '">' + x[1] + '</button>';
@@ -2758,12 +2248,12 @@ h3.sec{color:#1F3A5F}
   }
   function qRowSet(q, k) {
     var st = q.status || "Draft", grp = st === "Won" ? "Won" : st === "Lost" ? "Lost" : "Pending";
-    if (k === grp) { toast((q.quoteNo || "Quote") + " is already " + (k === "Pending" ? "pending (" + st + ")" : k) + "."); return; }
+    if (k === grp) { toast((qNo(q) || "Quote") + " is already " + (k === "Pending" ? "pending (" + st + ")" : k) + "."); return; }
     if (k === "Lost") { S.sheet = qLostSheet(q); render(); return; }
     var to = k === "Won" ? "Won" : "Sent";
     var row = Object.assign({}, q, { status: to }); delete row._lid;
     saveRow("quotes", row); render();
-    toast((q.quoteNo || "Quote") + " — " + (to === "Won" ? "Won" : "pending again (Sent)") + ".");
+    toast((qNo(q) || "Quote") + " — " + (to === "Won" ? "Won" : "pending again (Sent)") + ".");
   }
   /* ===== 1.4.11 - QUOTE CODES, DATE AND TIME, THE QUOTE TABLE (as CRM 6.9.773) ===== */
   function qCode(q) { return String((q && q.code) || "").trim(); }
@@ -2806,8 +2296,8 @@ h3.sec{color:#1F3A5F}
     var newest = function (f) { return f.reduce(function (m, q) { var d = String(q.createdAt || ""); return d > m ? d : m; }, ""); };
     order.sort(function (a, b) { return newest(fams[b]).localeCompare(newest(fams[a])); });
     var th = function (t, r) { return '<th style="padding:7px 8px;text-align:' + (r ? "right" : "left") + ';white-space:nowrap;font-size:12px;color:#fff">' + t + '</th>'; };
-    var h = '<div style="overflow-x:auto;border:1px solid #DCE3EA;border-radius:12px;background:#fff;margin-top:8px"><table style="border-collapse:collapse;width:100%;min-width:1040px;font-size:13px">' +
-      '<thead><tr style="background:#0F2A44">' + th("CODE") + th("QUOTE NO.") + th("CLIENT") + th("PHONE") + th("EXECUTIVE") + th("BRANDS") + th("DATE") + th("TIME") + th("PLUMBER") + th("ARCHITECT") + th("STATUS") + th("NET", 1) + '</tr></thead><tbody>';
+    var h = '<div style="overflow-x:auto;border:1px solid #DCE3EA;border-radius:12px;background:#fff;margin-top:8px"><table style="border-collapse:collapse;width:100%;min-width:960px;font-size:13px">' +
+      '<thead><tr style="background:#0F2A44">' + th("QUOTE NO.") + th("CLIENT") + th("PHONE") + th("EXECUTIVE") + th("BRANDS") + th("DATE") + th("TIME") + th("PLUMBER") + th("ARCHITECT") + th("STATUS") + th("NET", 1) + '</tr></thead><tbody>';
     order.forEach(function (k) {
       var f = fams[k].slice().sort(function (a, b) { return (Number(a.version) || 1) - (Number(b.version) || 1) || String(a.createdAt || "").localeCompare(String(b.createdAt || "")); });
       var base = f[0], revs = f.slice(1).reverse();
@@ -2816,9 +2306,8 @@ h3.sec{color:#1F3A5F}
         var grp = st === "Won" ? "Won" : st === "Lost" ? "Lost" : "Pending", mine = isMe(q.createdBy) || !q.createdBy;
         var td = function (x, r, pad) { return '<td style="padding:6px 8px;border-top:1px solid ' + (sub ? "#F1F5F9" : "#DCE3EA") + ';vertical-align:top;text-align:' + (r ? "right" : "left") + (pad ? ";padding-left:18px" : "") + '">' + x + '</td>'; };
         h += '<tr style="background:' + (sub ? "#F8FAFC" : "#fff") + '">' +
-          td(sub ? '<span class="meta">↳</span> <b>' + esc(qCode(q) || "v" + (q.version || "")) + '</b><div class="meta">' + esc(qRevLabel(q)) + '</div>'
-                 : '<b>' + esc(qCode(q) || "—") + '</b>' + (revs.length ? '<div class="meta">' + revs.length + ' revision' + (revs.length > 1 ? "s" : "") + '</div>' : ''), false, sub) +
-          td('<button type="button" class="btn sm gry" data-act="q-open" data-id="' + esc(q.id) + '" style="min-height:44px;padding:0 8px;font-size:12px;white-space:normal;word-break:break-all;text-align:left">' + esc(q.quoteNo || "open") + '</button>') +
+          td((sub ? '<span class="meta">↳</span> ' : '') + '<button type="button" class="btn sm gry" data-act="q-open" data-id="' + esc(q.id) + '" style="min-height:44px;padding:0 10px;font-size:13px;font-weight:700;white-space:nowrap">' + esc(qNo(q) || "open") + '</button>' +
+             (sub ? '<div class="meta">' + esc(qRevLabel(q)) + '</div>' : (revs.length ? '<div class="meta">' + revs.length + ' revision' + (revs.length > 1 ? "s" : "") + '</div>' : '')), false, sub) +
           td('<b>' + esc(q.client || "") + '</b>') +
           td(mob10(c.mobile).length === 10 ? '<a href="tel:' + mob10(c.mobile) + '" style="white-space:nowrap">' + esc(c.mobile) + '</a>' : esc(c.mobile || "")) +
           td(esc(c.ownedBy || c.createdBy || "") + (q.createdBy && q.createdBy !== (c.ownedBy || c.createdBy) ? '<div class="meta">made by ' + esc(q.createdBy) + '</div>' : '')) +
@@ -2850,7 +2339,7 @@ h3.sec{color:#1F3A5F}
   function qById(id) { return (S.data.quotes || []).filter(function (x) { return String(x.id) === String(id); })[0] || null; }
   function qSheet(q) {
     var it = qItems(q), c = clientByName(q.client) || {}, m = mob10(c.mobile), mine = roleIs("admin") || isMe(q.createdBy) || isMineClient(q.client);
-    var h = '<h2>' + codeTag(q.client) + esc(q.client || "") + '</h2><div class="meta">' + (qCode(q) ? '<b>' + esc(qCode(q)) + '</b> &middot; ' : '') + esc(q.quoteNo || "") + ' &middot; ' + esc(qMadeLine(q)) + ' &middot; by ' + esc(q.createdBy || "") + '</div>' +
+    var h = '<h2>' + codeTag(q.client) + esc(q.client || "") + '</h2><div class="meta"><b>' + esc(qNo(q)) + '</b> &middot; ' + esc(qMadeLine(q)) + ' &middot; by ' + esc(q.createdBy || "") + '</div>' +
       '<div style="margin:6px 0"><span class="pill ' + qTone(q.status) + '">' + esc(q.status || "Draft") + '</span> <span class="pill">' + esc(q.brand || "") + '</span></div>';
     h += lineTable(it.map(function (i) { return { i: i, d: qLineDisc(q, i), net: Math.round(qLineNet(q, i) * (Number(i.qty) || 0)) }; }));
     h += totCard({ gross: Number(q.gross) || 0, net: Number(q.net) || 0, gst: Number(q.gstAmt) || 0, total: Number(q.total) || 0 }, it.some(function (i) { return i.gst; }));   /* 1.1.0 - GST only when the quote says so */
@@ -2882,10 +2371,10 @@ h3.sec{color:#1F3A5F}
   }
   function qSetStatus(q, st) {
     var row = Object.assign({}, q, { status: st }); delete row._lid;
-    saveRow("quotes", row); S.sheet = qSheet(qById(q.id) || row); render(); toast((q.quoteNo || "Quote") + " — " + st + ".");
+    saveRow("quotes", row); S.sheet = qSheet(qById(q.id) || row); render(); toast((qNo(q) || "Quote") + " — " + st + ".");
   }
   function qLostSheet(q) {
-    return '<h2>Why did we lose it?</h2><div class="meta">' + esc(q.quoteNo || "") + ' &middot; ' + esc(q.client || "") + ' &middot; ' + esc(money(q.net)) + '</div>' +
+    return '<h2>Why did we lose it?</h2><div class="meta">' + esc(qNo(q)) + ' &middot; ' + esc(q.client || "") + ' &middot; ' + esc(money(q.net)) + '</div>' +
       '<label for="ql_reason">Reason</label><select id="ql_reason"><option value=""></option>' + lossReasonList().map(function (r) { return '<option>' + esc(r) + '</option>'; }).join("") + '</select>' +
       '<label for="ql_to">Lost to &mdash; company or brand, if you know</label><input id="ql_to" placeholder="e.g. Kent, or the dealer in Sonipat"/>' +
       '<label for="ql_note">What was said</label><textarea id="ql_note"></textarea>' +
@@ -2901,10 +2390,10 @@ h3.sec{color:#1F3A5F}
   }
   function qShare(q, wa) {
     if (!window.jspdf) { toast("The PDF maker did not load — check the signal and open the app again."); return; }
-    var fname = String(q.quoteNo || "quote").replace(/[^\w.-]/g, "_") + ".pdf";
+    var fname = String(qNo(q) || "quote").replace(/[^\w.-]/g, "_") + ".pdf";
     if (!wa) { toast("Making the PDF…"); quotePdf(q).then(function (d) { pdfOut(d, fname); }).catch(function (e) { toast("PDF failed: " + ((e && e.message) || "")); }); return; }
     var c = clientByName(q.client) || {}, n = digits(c.mobile); if (n.length === 10) n = "91" + n;
-    var msg = "Hello " + q.client + ",\n\nSharing your quotation " + q.quoteNo + " from Energy World.\nAmount: " + moneyAscii(q.net) + " (GST as applicable). Valid for 30 days.\nPlease let us know if we may proceed.\n\nThank you,\n" + S.user + "\nEnergy World";
+    var msg = "Hello " + q.client + ",\n\nSharing your quotation " + qNo(q) + " from Energy World.\nAmount: " + moneyAscii(q.net) + " (GST as applicable). Valid for 30 days.\nPlease let us know if we may proceed.\n\nThank you,\n" + S.user + "\nEnergy World";
     toast("Making the PDF…");
     waShareDoc(quotePdf(q), fname, n, msg, null);
     if (q.status === "Draft") { var row = Object.assign({}, q, { status: "Sent" }); saveRow("quotes", row); }
@@ -3243,6 +2732,974 @@ h3.sec{color:#1F3A5F}
       return base.apply(this, arguments);
     };
   })();
+
+  /* ======== SHARED QUOTE PDF - BUILT FROM THE CRM'S team/app.js 6.9.776 BY sharedpdf/build_visit_pdf.py - DO NOT EDIT HERE ========
+     Edit the CRM, then run the script again. Later declarations win, so these replace the Visit
+     app's own older copies of the same functions. */
+  var QX_BASE = "../team/";
+  var PP_I = "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NhcOAgcOAhUUFjMyNjcXBgYjIiY1NDY3PgI3ATA0JSgWGyUnBxsuJSA3IjAuJkkhIChjL09eSUYnKxcIAiE0ITIbGh8z1ytANh0YLzgmKzEZEEMWHE5PRGM0HSctIv///8cAAAIBA7ACJgAiAAAABwBBAIoAsv///8cAAAImA7ACJgAiAAAABwB0AN8Asv///8cAAAIYA7ACJgAiAAAABwC/AHAAsv///8cAAAJJA5ECJgAiAAAABwDBAG0Asv///8cAAAIaA4wCJgAiAAAABwBoAC0Asv///8cAAAIBA+ECJgAiAAAABwDAAJcAsgAC/8YAAANgAsoADwATAAAjASEHIQchByEHIQchNyMHEzMTIzoByQHREP7uMAEAD/8ANgEREf6VL9aLvrNHKQLKT99O/0/e3gEuAU3//wBI/xACeALUAiYAJAAAAAcAdwESAAD//wApAAACKgOwAiYAJgAAAAcAQQCEALL//wApAAACKgOwAiYAJgAAAAcAdADZALL//wApAAACKgOwAiYAJgAAAAcAvwBqALL//wApAAACKgOMAiYAJgAAAAcAaAAnALL////sAAABfQOwAiYAKgAAAAcAQQATALL////sAAABrwOwAiYAKgAAAAcAdABoALL////sAAABoQOwAiYAKgAAAAcAv//5ALL////sAAABowOMAiYAKgAAAAcAaP+2ALIAAgAhAAACfALKAA0AGwAAMxMjNzMTMzIWFRQGBiM3MjY2NTQmIyMHMwcjBylDSxFKRKmBkmG7hwVojkppV1U0nRGcMwE7TQFCjJF8wm9NXqBjbmH1Te4A//8AKAAAAsgDkQImAC8AAAAHAMEAuwCy//8ASP/2ArIDsAImADAAAAAHAEEA2gCy//8ASP/2ArIDsAImADAAAAAHAHQBLwCy//8ASP/2ArIDsAImADAAAAAHAL8AwACy//8ASP/2ArIDkQImADAAAAAHAMEAvQCy//8ASP/2ArIDjAImADAAAAAHAGgAggCyAAEAVACEAg4CPgALAAABFwcXBycHJzcnNxcB3DKqqTKrpzSpqjSpAj4zqqozqakzqqk0qwADADn/1wLKAvAAGQAkADAAABcnNyYmNTQ+AjMyFzcXBxYWFRQOAiMiJwEmJiMiDgIVFBcXMj4CNTQmJwEWFnI5QhoZMV6GVF1DPzpIFxktWYRXYEEB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AIYAhgALAI8AjwADAJEAlQADAJcAlwADAJgAmwAFAJwAnAAHAJ0AnQAYAJ8ApAABAK4ArgAGALwAvAAEAL4AvgAEAMIAwwAQAMQAxQAIAMYAxgARAMcAyAAIAMkAyQARAAIAOwADAAMAEAAIAAgAEAAKAAoAEwANAA0ADQAOAA4AEQAPAA8ADQAiACIABQAkACQAAgAoACgAAgAwADAAAgAyADIAAgA1ADUADgA2ADYABgA3ADgACgA6ADoACAA7ADsAEgA+AD4AEwBCAEIABABEAEYAAQBHAEcAFwBIAEgADABOAE8AAwBQAFAAAQBRAFEAAwBSAFIAAQBTAFMAAwBUAFQACQBVAFUACwBWAFYAAwBXAFgABwBaAFoABwBbAFsADwBeAF4AEwBrAGsAFgB6AHoAFQB/AIQABQCFAIUAGACGAIYAAgCRAJUAAgCXAJcAAgCYAJsABgCcAJwACACfAJ8AAQCgAKUABACmAKoAAQCwALAAAwCxALUAAQC3ALcAAQC4ALsAAwC8ALwABwC+AL4ABwDCAMMAEQDEAMQAFADFAMUAEADGAMYADQDHAMcAFADIAMgAEADJAMkADQDLAMsADQAAAAEAAAAKADIANAAEREZMVAAaY3lybAAkZ3JlawAkbGF0bgAkAAQAAAAA//8AAAAAAAAAAAAAAAA=";
+
+  function ppEmbed(doc){ try { if(!doc.__pp){ doc.addFileToVFS("PPr.ttf",PP_R); doc.addFont("PPr.ttf","PP","normal"); doc.addFileToVFS("PPb.ttf",PP_B); doc.addFont("PPb.ttf","PP","bold"); try { doc.addFileToVFS("PPi.ttf",PP_I); doc.addFont("PPi.ttf","PP","italic"); } catch(e2){} doc.__pp=1; } return "PP"; } catch(e){ return "helvetica"; } }
+
+  var _tkb = null, _tkbAsk = 0, _tkbIx = null;
+
+  function qCode(q) { return String((q && q.code) || "").trim().replace(/^Quote(?=\d)/i, "QT"); }
+
+  function qNo(q) { return qCode(q) || String((q && q.quoteNo) || ""); }
+
+  function descLines(raw) {
+    raw = String(raw || "").trim();
+    if (!raw) return { title: "", bullets: [] };
+    var parts = /[\n|;·]/.test(raw) ? raw.split(/\s*[\n|;·]\s*/) : raw.split(/\s*,\s+|\s+-\s+/);
+    parts = parts.map(function (s) { return s.trim(); }).filter(Boolean);
+    if (parts.length <= 1) return { title: raw, bullets: [] };
+    return { title: parts.shift(), bullets: parts };
+  }
+
+  function trimWhite(cv) {
+    var cx = cv.getContext("2d"), w = cv.width, h = cv.height;
+    var d;
+    try { d = cx.getImageData(0, 0, w, h).data; } catch (e) { return cv; }
+    var TH = 244, x0 = w, y0 = h, x1 = -1, y1 = -1;
+    for (var yy = 0; yy < h; yy++) {
+      for (var xx = 0; xx < w; xx++) {
+        var p = (yy * w + xx) * 4;
+        if (d[p] < TH || d[p + 1] < TH || d[p + 2] < TH) {
+          if (xx < x0) x0 = xx; if (xx > x1) x1 = xx;
+          if (yy < y0) y0 = yy; if (yy > y1) y1 = yy;
+        }
+      }
+    }
+    if (x1 < 0) return cv;
+    var pad = 1;
+    x0 = Math.max(0, x0 - pad); y0 = Math.max(0, y0 - pad);
+    x1 = Math.min(w - 1, x1 + pad); y1 = Math.min(h - 1, y1 + pad);
+    var nw = x1 - x0 + 1, nh = y1 - y0 + 1;
+    if (nw === w && nh === h) return cv;
+    var o = document.createElement("canvas"); o.width = nw; o.height = nh;
+    var ox = o.getContext("2d");
+    ox.fillStyle = "#ffffff"; ox.fillRect(0, 0, nw, nh);
+    ox.drawImage(cv, x0, y0, nw, nh, 0, 0, nw, nh);
+    return o;
+  }
+
+  function loadPic(url, trim) {
+    /* Logos (trim=true) print into ~17mm boxes and were fetched at only =w200, so they came
+       out soft/blurry. Pull them at =w700 and keep the downscale ceiling at 600 so the mark
+       is crisp. Catalogue photos stay at =w200 / 300 - they sit in a 10mm box and the smaller
+       fetch keeps on-screen data light on 4G. */
+    var raw = url;
+    /* 6.9.762 - trim "prod": a product photo for the quote - white border trimmed, 400 px fetched, 360 px kept */
+    var prod = trim === "prod";
+    url = driveImg(url, prod ? 400 : (trim ? 700 : 200));
+    if (!url) return Promise.resolve(null);
+    /* v6.9.502 - and the stamp, so the cap evicts the ones he stopped quoting rather than
+       whichever happened to be added last. */
+    var ck = prod ? "P|" + url : url;   /* 6.9.762 - the trimmed quote copy is cached apart from the plain thumbnail */
+    if (PIC_CACHE[ck] !== undefined) { PIC_USED[ck] = Date.now(); return Promise.resolve(PIC_CACHE[ck]); }
+    /* v6.9.488 - A MISS IS NEVER CACHED. The note below used to say the miss is not cached and
+       that was only true of the timeout: both the not-ok branch and the catch wrote null into
+       PIC_CACHE, and the race's null resolved while `fetched` kept running underneath and cached
+       its failure a moment later. From then on PIC_CACHE[url] !== undefined, so every later
+       export for that product returned the cached blank instantly - one flaky moment blanking a
+       picture for the rest of the session. Only a real picture is remembered now. */
+    var once = function () {
+      /* 6.9.645 - the phone asks Google itself first; the server only when that fails */
+      var MX = prod ? 360 : (trim ? 600 : 300), QQ = prod ? 0.8 : (trim ? 0.85 : 0.75);
+      return picDirect(url, MX, QQ, !!trim).then(function (d) {
+        if (d) return d;
+        return api("imgB64", { url: url }).then(function (r) {
+          if (!r || !r.ok) return null;
+          return shrinkPic("data:" + r.mime + ";base64," + r.b64, MX, QQ, !!trim);
+        });
+      }).then(function (p) {
+        /* v6.9.488 - hits only. v6.9.502 - and it survives the session now. */
+        if (p && p.src) { PIC_CACHE[ck] = p.src; PIC_USED[ck] = Date.now(); savePicCacheSoon(); }
+        var dim = p ? { w: p.w, h: p.h } : null;
+        /* Store the real pixel dimensions under BOTH the fetched (=w700) key and the ORIGINAL
+           url. logosReady() and the quote table look dims up by the original url; keying only
+           by the transformed url made every lookup miss and fall back to a fixed {100,40},
+           which squashed every logo to the box aspect and stretched the wide ones tall. */
+        if (!prod) { PIC_DIM[url] = dim; PIC_DIM[raw] = dim; }   /* 6.9.762 - the quote reads its own picture's size */
+        return (p && p.src) || null;
+      }).catch(function () { return null; });                /* v6.9.488 - a miss is not cached */
+    };
+    /* ONE RETRY, AFTER A BREATH. A queued Apps Script call that lost its place comes back on the
+       second ask, and a retry costs nothing on the runs where the first try worked. */
+    /* v6.9.488b - THE CAP STARTS WHEN THE PICTURE STARTS, NOT WHEN IT IS QUEUED.
+       Reviewing this before shipping: with the clock running from the moment a job joins the
+       queue, the queue itself eats the budget. Nine pictures through a pool of two at ~2.1s a
+       call means the ninth does not START for about eight seconds; at 4s a call it does not start
+       for sixteen, and a 20-second cap measured from queueing would cut it off while it was still
+       waiting its turn. That is the SAME bug as before, moved further down the list - the last
+       rows of a long quote print blank.
+
+       So the cap is inside the slot: every picture gets its own full twenty seconds of actual
+       running, however long it waited to get there. The only thing the cap still protects against
+       is one dead image, and that is all it was ever for. */
+    var fetched = picQueue(function () {
+      var work = once().then(function (p) {
+        if (p) return p;
+        return new Promise(function (r) { setTimeout(r, 600); }).then(once);
+      });
+      var cap = new Promise(function (res) { setTimeout(function () { res(null); }, 20000); });
+      return Promise.race([work, cap]);
+    });
+    return fetched;
+    /* One slow image used to stall the WHOLE quote PDF: the export waits on every picture, and a
+       single hung request (weak signal / big Drive image) meant the PDF never appeared and the
+       Telegram send never fired. Cap each fetch - if it has not returned in time, draw the PDF
+       WITHOUT that one image instead of hanging. We deliberately do NOT cache the miss, so the
+       next export tries the image again. */
+
+  }
+
+  var TERMS = [
+    "EX WORKS - Prices are Ex Works Panipat warehouse.",
+    "VALIDITY - This quotation is valid for 30 days from the date of issue. Prices are subject to revision after expiry and re-quotation may be required for orders placed thereafter.",
+    "PRODUCT IMAGES - Product images shown are for reference only. Actual product supplied may differ in appearance, colour, finish or packaging. The product description and model number shall be the basis of supply.",
+    "PRICES & GST - Applicable GST at prevailing rates will be charged additionally. Prices are subject to change without prior notice based on supplier or MRP revisions.",
+    "PAYMENT TERMS - 50% advance along with a signed Purchase Order confirms the booking. Balance is payable against the Proforma Invoice before dispatch. Cheques and demand drafts in favour of Energy World are subject to realization before order processing.",
+    "DELIVERY - Delivery timelines are indicative and subject to stock availability and supplier lead times. Delivery charges, if applicable, are communicated separately and are not included unless explicitly stated.",
+    "RETURNS - Goods once delivered and accepted cannot be returned unless defective or incorrectly supplied. Any discrepancy must be reported within 48 hours of delivery. Custom-ordered or imported items are non-returnable once placed with the supplier.",
+    "CANCELLATION - Orders once confirmed and subsequently cancelled shall attract a cancellation fee of 40% of the advance received; the balance of the advance shall be refunded.",
+    "WARRANTY - Products carry the respective manufacturer warranty. Energy World will assist in connecting the customer with the brand service team but does not assume warranty obligation on behalf of the manufacturer.",
+    "INSTALLATION - Unless explicitly included, installation is not in the scope of supply. Energy World recommends installation by certified plumbers or brand-authorized technicians."
+  ];
+
+  function qPicNow(i) {
+    var c = String((i && i.code) || "").trim().toUpperCase();
+    if (c) {
+      for (var k = 0; k < PRODUCTS.length; k++) {
+        var p = PRODUCTS[k];
+        if (p && String(p.code || "").trim().toUpperCase() === c && p.pic) return p.pic;
+      }
+    }
+    return (i && i.pic) || "";
+  }
+
+  function picsForQuote(items) {
+    return picsForList(items, function (i) { return qPicNow(i); }, picName, function (u) { return loadPic(u, "prod"); });   /* 6.9.762 */
+  }
+
+  function qLineDisc(q, i) {
+    var bd = Number((q && q.discountPct) || 0) || 0;
+    var d = (i.disc === "" || i.disc === undefined || i.disc === null)
+      ? ((i.bd !== undefined && i.bd !== null) ? Number(i.bd) : bd)
+      : Number(i.disc);
+    return Number(d) || 0;
+  }
+
+  function qLineNet(q, i) { return Math.round(Number(i.price || 0) * (1 - qLineDisc(q, i) / 100)); }
+
+  function quotePdf(q) {
+    var _it = []; try { _it = JSON.parse(q.items || "[]"); } catch (e) { }
+    return qxReady(_it).then(function () { return quotePdf0(q); });
+  }
+
+  function quotePdf0(q) {
+    var items = [];
+    try { items = JSON.parse(q.items || "[]"); } catch (e) {}
+    /* No DejaVu ₹-font embed: it added ~600 KB to every quote, which made the Telegram bot send
+       (base64 over the wire) fail and the WhatsApp share sluggish. Uses "Rs." in core Helvetica,
+       exactly like the statement PDF. Result: ~50 KB, sends reliably. */
+    return Promise.all([
+      Promise.resolve(null),
+      loadLogo(),
+      picsForQuote(items),
+      logosReady()
+    ]).then(function (res) {
+      var f = res[0], logo = res[1], pics = res[2];
+      var doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4" });
+      doc.__noBold = 1;   /* 6.9.760 - the payment box on the quote is not bold either */
+      /* v6.9.502 - the shortfall rides on the document, so every one of the four send paths can
+         see it without each having to remember to ask. NOT printed on the quotation: that is his
+         shop's paper going to a customer, and the plumbing is not the customer's business. */
+      try {
+        doc.picMiss = (pics && pics.miss) ? pics.miss.slice() : [];
+        if (doc.picMiss.length) toast(picMissSay(doc.picMiss));
+      } catch (e) { }
+      var uni = false;
+      if (f) {
+        doc.addFileToVFS("DejaVuSans.ttf", f.reg); doc.addFont("DejaVuSans.ttf", "DJ", "normal");
+        doc.addFileToVFS("DejaVuSans-Bold.ttf", f.bold); doc.addFont("DejaVuSans-Bold.ttf", "DJ", "bold");
+        uni = true;
+      }
+      /* 6.9.760 - "remove bold from every character": in the quote every weight is Regular; "italic" is the one other style */
+      var F = function (w) { var s = (w && String(w).indexOf("italic") >= 0) ? "italic" : "normal"; doc.setFont(ppEmbed(doc), s); };
+      /* v6.9.303: Math.round added. This printed the raw number, so the moment a
+         quantity could be 1.5 a customer would have received "Rs.12,345.5". */
+      /* 6.9.673 - the rupee sign: Noto Sans carries it, and it is two characters narrower than "Rs."
+         in every money column, which is the room the bigger figures needed */
+      var R = function (n) { return "\u20B9" + Math.round(nAmt(n)).toLocaleString("en-IN"); };
+      var col = function (c) { doc.setTextColor(c[0], c[1], c[2]); };
+      var fill = function (c) { doc.setFillColor(c[0], c[1], c[2]); };
+
+      /* 6.9.673 - GREY was 110,125,140 and the MRP / serial / footer printed faint. Every grey on
+         white is now dark grey; light colours stay only on the dark green bands, where they read. */
+      var INK = [17, 24, 39], DEEP = [11, 59, 54], MINT = [94, 234, 212],
+          SLATE = [30, 41, 59], GREY = [55, 65, 81], LINE = [203, 213, 225], SOFT = [246, 248, 250],
+          TEALD = [15, 118, 110];
+      var W = 210, L = 10, Rt = W - 10;   /* tighter print margins (10mm) -> a wider table for the description */
+
+      var bd = Number(q.discountPct) || 0;
+      var rows = items.map(function (i, idx) {
+        /* per-line discount: explicit override wins, else the line's own brand
+           discount snapshot (i.bd), else the quote's blended figure for old quotes. */
+        /* v6.9.513 - the rule moved out to qLineDisc/qLineNet so the read-only quote panel
+           prices a line exactly as the printed document does. Two copies of one arithmetic rule
+           is two answers to one question - the whole of item 22 this week. */
+        var d = qLineDisc(q, i);
+        var net = qLineNet(q, i);
+        var _dl = descLines(i.desc);
+        /* the room reads as the first bullet, so an existing quote layout carries
+           it with no new column: "Master Bathroom, PDR" above the features */
+        var _rooms = [];
+        var _rq = (i && i.rq && typeof i.rq === "object") ? i.rq : null;
+        if (_rq) {
+          for (var _k in _rq) {
+            var _n = Number(_rq[_k]) || 0;
+            if (_k && _n > 0) _rooms.push(_k + (_n !== 1 ? " x" + qShow(_n) : ""));   /* v6.9.303 */
+          }
+          _rooms.sort();
+        }
+        var _bul = _dl.bullets.map(function (b) { return pdfSafe(String(b).replace(/^[\s\u00b7\u2022\u2219\u30fb'"\-\u2013]+/, "")); }).filter(Boolean);   /* 6.9.759 - no double bullet */
+        var _tk = totoTechLineKeys(i.code, i.brand);   /* v6.9.772 - icons + names, drawn in drawRow */
+        /* v6.9.459 - the "For: ..." bullet is how the room reached the paper when there was one
+           flat table. With the table drawn room by room the band above the line already says it,
+           so it would be the same words twice; it is added below only if nothing is grouped. */
+        return { title: pdfSafe(_dl.title) + (i.optional ? "   [OPTIONAL - NOT ADDED TO VALUE]" : ""),
+          bullets: _bul, roomBul: _rooms.length ? pdfSafe("For: " + _rooms.join(", ")) : "",
+          rq: _rq,
+          code: pdfSafe(i.code), pic: pics[idx], dim: PIC_DIM[qPicNow(i)] || PIC_DIM[i.pic] || null, tech: _tk,
+          unit: i.unit || "No's", optional: i.optional ? 1 : 0,
+          qty: i.qty, price: i.price, disc: d, net: net, total: Math.round(net * i.qty) };   /* v6.9.303 */
+      });
+      var ordered = rows.filter(function (r) { return r.disc > 0; }).sort(function (a, b) { return b.disc - a.disc; })
+        .concat(rows.filter(function (r) { return r.disc <= 0; }));
+
+      /* ============ ROOM BY ROOM (v6.9.459) ============
+         His words: "pdf must show bathroom wise item selected total and grand total below".
+
+         The rooms are read off each line's own rq map, in the order the rooms first appear across
+         the quote - which is the order he added them, not the alphabet, so "Bathroom 1" before
+         "Bathroom 10" and a room named later stays later. A line in two rooms is emitted TWICE,
+         each copy carrying only that room's quantity and that room's amount, so the room totals
+         sum to the grand total with nothing double-counted and nothing lost. Lines with no room
+         at all fall into one last group rather than disappearing.
+
+         roomOrder is empty when not one line names a room - and then nothing below changes what
+         the paper has always looked like. */
+      var roomOrder = [], roomSeen = {};
+      ((items[0] && Array.isArray(items[0].ro)) ? items[0].ro : []).forEach(function (k) {   /* 6.9.759 - his order */
+        if (k && !roomSeen[k]) { roomSeen[k] = 1; roomOrder.push(k); }
+      });
+      ordered.forEach(function (r) {
+        if (!r.rq) return;
+        for (var k in r.rq) {
+          if (k && (Number(r.rq[k]) || 0) > 0 && !roomSeen[k]) { roomSeen[k] = 1; roomOrder.push(k); }
+        }
+      });
+      var grouped = roomOrder.length > 0;
+      /* every line, once per room it is in; the copy carries that room's qty and amount */
+      var groups = [];
+      if (grouped) {
+        roomOrder.forEach(function (rm) {
+          var list = [];
+          ordered.forEach(function (r) {
+            var n = (r.rq && Number(r.rq[rm])) || 0;
+            if (n > 0) list.push(Object.assign({}, r, { qty: n, total: Math.round(r.net * n) }));
+          });
+          if (list.length) groups.push({ room: rm, rows: list });
+        });
+        /* 6.9.763 - the part of each line that is in no group, at its own quantity (was: a line with any piece in a
+           group was dropped here whole, so its other pieces printed nowhere but were still in the Sub-Total) */
+        var loose = [];
+        ordered.forEach(function (r) {
+          var named = 0;
+          if (r.rq) for (var k in r.rq) if (k) named += Number(r.rq[k]) || 0;
+          var rest = Math.round(((Number(r.qty) || 0) - named) * 1000) / 1000;
+          if (!named) loose.push(r);
+          else if (rest > 0) loose.push(Object.assign({}, r, { qty: rest, total: Math.round(r.net * rest) }));
+        });
+        if (loose.length) groups.push({ room: "", rows: loose });
+      } else {
+        /* ungrouped: the room bullet is the only place a room can show, so it goes back on */
+        ordered.forEach(function (r) { if (r.roomBul) r.bullets = [r.roomBul].concat(r.bullets); });
+        groups.push({ room: "", rows: ordered });
+      }
+      /* option lines are printed with their own price but never added into the sub-total */
+      var subTotal = rows.reduce(function (a, r) { return a + (r.optional ? 0 : r.total); }, 0);
+      /* Some projects must show 18% GST spelled out on the quote. The flag rides along inside
+         the saved items (no sheet column), so it round-trips. Off = the old "{ GST as Actual }". */
+      var showGst = items.some(function (i) { return Number(i.gst) === 1; });
+      /* item-wise pricing: print each line's price but NO consolidated total box */
+      var noTotal = items.some(function (i) { return Number(i.noTotal) === 1; });
+      var c = clientByName(q.client) || {};
+
+      /* ================= HEADER =================
+         Everything the reader needs to identify the quote sits in the dark band: who it is for,
+         what it is, and how long it holds. The old "PREPARED FOR / PREPARED BY" strip below it
+         was repeating the same names in a second box - dropped. Who wrote it now signs off at
+         the foot of the document, which is where a signature belongs. */
+      var HH = 46;   /* the word QUOTATION was doing no work - the document is obviously a quote */
+      fill(DEEP); doc.rect(0, 0, W, HH, "F");
+      fill(MINT); doc.rect(0, HH, W, 1.2, "F");
+
+      if (logo) { try { doc.addImage(logo, "JPEG", L, 8, 31, 16.5); } catch (e) {} }
+      col(MINT); F("bold"); doc.setFontSize(8);
+      doc.text("M O D E R N   P L U M B I N G   S O L U T I O N", L, 31);
+      col([190, 225, 220]); F("normal"); doc.setFontSize(8);
+      doc.text("PANIPAT   |   SONIPAT   |   KARNAL", L, 36.5);
+
+      /* QUOTE FOR - name and address only. The client knows their own phone number. */
+      col(MINT); F("bold"); doc.setFontSize(8);
+      doc.text("Q U O T E   F O R", Rt, 11.5, { align: "right" });
+      col([255, 255, 255]); F("bold"); doc.setFontSize(14);
+      doc.text(fitCell(doc, F, q.client || "-", 100, 1, "bold", 14)[0], Rt, 18.4, { align: "right" });
+      /* Address parts repeat in practice: the address line often already ends in the city,
+         and area == location for a Panipat client, which printed "Sector 57, Panipat, Panipat".
+         Drop any part already contained in what we have built so far. */
+      var addr = [c.address, c.area, c.location].filter(Boolean).map(String)
+        .reduce(function (acc, p) {
+          var seen = acc.join(", ").toLowerCase();
+          if (seen.indexOf(p.trim().toLowerCase()) < 0) acc.push(p.trim());
+          return acc;
+        }, []).join(", ");
+      col([205, 232, 228]); F("normal"); doc.setFontSize(8.5);
+      var aLines = fitCell(doc, F, addr, 100, 2, "normal", 8.5);
+      aLines.forEach(function (ln, i) { doc.text(ln, Rt, 23.6 + i * 3.7, { align: "right" }); });
+
+      doc.setDrawColor(38, 94, 88); doc.setLineWidth(0.3);
+      doc.line(Rt - 62, 32.4, Rt, 32.4); doc.setLineWidth(0.2);
+
+      col([205, 232, 228]); F("normal"); doc.setFontSize(8.5);
+      var VALID_DAYS = 30;
+      var vUntil = ymdLocal(new Date(Date.now() + VALID_DAYS * 86400000));
+      doc.text("Quote No.   " + qNo(q), Rt, 36.8, { align: "right" });   /* v6.9.776 - QT113-R1 */
+      doc.text(pdfSafe(q.createdAt ? qMadeLine(q) : "Date   " + today()), Rt, 40.6, { align: "right" });
+      col(MINT);
+      doc.text("Valid for " + VALID_DAYS + " days  \u00b7  until " + vUntil, Rt, 44.4, { align: "right" });
+
+      /* ---- AUTH. DISTRIBUTOR FOR: the whole strip sits in one soft panel ---- */
+      var y = HH + 10;
+      /* ============ TWO TIDY ROWS, WHATEVER THE COUNT (v6.9.311) ============
+         This was 6 across with a fixed 17.5mm box, which was two exact rows for twelve
+         brands. Eureka Forbes made thirteen, and thirteen put ONE lonely box on a third row
+         and made the panel 11mm taller on every quote page.
+
+         Drawn both ways as real PDFs and looked at, rather than worked out in my head - the
+         last grid decided in my head came out seven brands across a laptop screen. Seven
+         across is two full rows (7 + 6), the logo is still legible at 14.7mm, and holding
+         GRID_W fixed instead of deriving it keeps the AUTH. DISTRIBUTOR FOR label exactly the
+         60mm of room it had.
+
+         PER_ROW now follows the count, so the next brand added reflows on its own. The cap at
+         eight is where a box stops being readable; past that it takes a third row and that is
+         the right answer, not a squeeze. */
+      var GRID_W = 116, GAP = 2.2, BH = 9;
+      var PER_ROW = Math.min(8, Math.max(6, Math.ceil(PDF_LOGO_ORDER.length / 2)));
+      var BW = (GRID_W - (PER_ROW - 1) * GAP) / PER_ROW;
+      var LROWS = Math.ceil(PDF_LOGO_ORDER.length / PER_ROW);
+      var PAN_H = LROWS * BH + (LROWS - 1) * 2.2 + 8;
+      fill([246, 250, 249]); doc.roundedRect(L, y - 4, Rt - L, PAN_H, 2, 2, "F");
+      doc.setDrawColor(214, 232, 228); doc.roundedRect(L, y - 4, Rt - L, PAN_H, 2, 2, "S");
+      fill(MINT); doc.rect(L, y - 4, 1.4, PAN_H, "F");
+
+      col(TEALD); F("bold"); doc.setFontSize(8);
+      doc.text("AUTH. DISTRIBUTOR FOR", L + 6, y - 4 + PAN_H / 2 + 1);
+
+      var CHIP_L = Rt - GRID_W - 4;
+      var slots = PDF_LOGO_ORDER.map(function (n) { return logoFor(n); });
+      slots.forEach(function (lg, i) {
+        var r = Math.floor(i / PER_ROW), cIdx = i % PER_ROW;
+        var bx = CHIP_L + cIdx * (BW + GAP), by = y + r * (BH + 2.2);
+        fill([255, 255, 255]); doc.roundedRect(bx, by, BW, BH, 1.6, 1.6, "F");
+        doc.setDrawColor(203, 213, 225); doc.setLineWidth(0.25);
+        doc.roundedRect(bx, by, BW, BH, 1.6, 1.6, "S");
+        if (!lg || !lg.src) return;
+        var mw = BW - 2.4, mh = BH - 2.4;
+        var sc = Math.min(mw / lg.w, mh / lg.h);
+        var iw = lg.w * sc, ih = lg.h * sc;
+        try { doc.addImage(lg.src, "JPEG", bx + (BW - iw) / 2, by + (BH - ih) / 2, iw, ih); } catch (e) { }
+      });
+      doc.setLineWidth(0.2);
+      y += PAN_H + 4;
+
+      /* ================= TABLE ================= */
+      /* money columns widened: a lakh figure like Rs 4,51,869 needs real room, and it
+         was running into the next column. Everything shrunk a notch so 100+ lines fit. */
+      /* Column x-positions rebalanced (v6.9.161): the numeric block is packed to the right at its
+         real worst-case widths so the DESCRIPTION gets ~93mm (was ~56). Verified with jsPDF that no
+         number or header column overlaps even at 8-digit figures. */
+      /* 6.9.673 - re-spaced for 9-10 pt figures (they were 6.2-6.6 pt): every money column is wide
+         enough for a lakh figure at its new size, and the description gives up the room. Checked
+         by drawing a lakh figure in every column and looking at it (audit/print/prints.js). */
+      /* v6.9.773 - his choice B: the description starts at the left and the picture sits just before
+         Unit, so the eye reads #, name, picture, then the figures. The money columns did not move. */
+      var X = { n: L + 1, item: L + 6, unit: 117, qty: 127, price: 146, dis: 158, dprice: 177, amt: Rt - 1 };
+      var UNIT_W = 15;                       /* "Per Set", "Per 3 Mtr" at 9pt */
+      X.pic = X.unit - UNIT_W - 15.5;
+      var DESC_W = X.pic - X.item - 2;
+      var head = function () {
+        fill(DEEP); doc.rect(L, y - 5.2, Rt - L, 8.4, "F");
+        fill(MINT); doc.rect(L, y + 2.6, Rt - L, 0.5, "F");   /* mint underline ties the table header to the brand band */
+        col([255, 255, 255]); F("bold"); doc.setFontSize(8);
+        doc.text("#", X.n, y);
+        doc.text("ITEM DESCRIPTION", X.item, y);
+        doc.text("UNIT", X.unit, y, { align: "right" });
+        doc.text("QTY", X.qty, y, { align: "right" });
+        doc.text("PRICE", X.price, y, { align: "right" });
+        doc.text("DIS.%", X.dis, y, { align: "right" });
+        doc.text("DISC. PRICE", X.dprice, y, { align: "right" });
+        doc.text("TOTAL AMT", X.amt, y, { align: "right" });
+        y += 8.4;
+      };
+      head();
+
+      /* v6.9.459 - the row drawing is a function now, called once per row per room. Not one line
+         of what it draws changed: the group loop hands it a row whose qty and total are already
+         that room's, so the drawing has no idea it is inside a group. */
+      var drawRow = function (r, i) {
+        /* ONE description. The catalogue repeats the spec inside the description, and
+           printing both made every row a wall of duplicated text. */
+        /* DESC_W is derived from the column positions, not guessed. The unit column is
+           right-aligned at X.unit, so its text grows leftwards - reserve room for it. */
+        var BUL_W = DESC_W;
+        var _code = String(r.code || "");   /* 6.9.758 - the code is a tag; the name starts beside it */
+        F("normal"); doc.setFontSize(7.5);
+        var _cw = _code ? doc.getTextWidth(_code) + 2.8 : 0;
+        F("normal"); doc.setFontSize(9);
+        var _w1 = DESC_W - _cw - 1.8, _words = String(r.title || "").split(/\s+/).filter(Boolean), _l1 = "";
+        while (_words.length && doc.getTextWidth((_l1 ? _l1 + " " : "") + _words[0]) <= _w1) _l1 = (_l1 ? _l1 + " " : "") + _words.shift();
+        var tLines = [_l1].concat(_words.length ? fitCell(doc, F, _words.join(" "), DESC_W, 40, "normal", 9) : []);
+        /* 6.9.760 - the features as ONE italic run, " · " between them, at most 3 lines (was a bullet a line) */
+        var _feat = (r.bullets || []).join("  \u00b7  ");
+        var bBlocks = _feat ? [fitCell(doc, F, _feat, BUL_W, 3, "italic", 7.5)] : [];
+        var bCount = bBlocks.reduce(function (a, x) { return a + x.length; }, 0);
+        var hasB = bCount ? 1 : 0;
+        /* v6.9.772 - the technology chips: TOTO's icon then its name, wrapping in the description column */
+        var T_IC = 3.4, T_FS = 6.8, T_LH = 4.3;
+        var _tl = (r.tech && r.tech.length) ? techChipLayout(doc, F, r.tech, BUL_W, T_IC, T_FS) : { chips: [], rows: 0 };
+        var hgt = Math.max(r.pic ? 13 : 8.5, 6 + (tLines.length - 1) * 3.7 + (hasB ? 0.6 : 0) + bCount * 3.1 + (_tl.rows ? 1.2 + _tl.rows * T_LH : 0));   /* 6.9.760 - tighter */
+        /* Page-break FIRST, then derive mid from the post-break y. If mid were computed
+           before the break, a row that wraps to a new page would draw its serial # and
+           figures at the old bottom-of-page y (off the printable area) while the
+           description drew at the new top - the "item 17 invisible" bug. */
+        if (y + hgt > 272) { doc.addPage(); y = 20; head(); }
+        /* baseline for the right-aligned numbers, vertically CENTRED in the row so a one-line item
+           aligns with its description and a multi-line item keeps its figures in the middle. */
+        var mid = (y - 3.6) + hgt / 2 + 1.0;
+        if (r.optional) {
+          fill([255, 236, 209]); doc.setDrawColor(217, 119, 6); doc.setLineWidth(0.5);
+          doc.roundedRect(L + 0.4, y - 3.4, Rt - L - 0.8, hgt - 0.3, 1, 1, "FD"); doc.setLineWidth(0.2);
+        }   /* 6.9.759 - no shading on alternate rows ("background color not needed") */
+
+        col(GREY); F("normal"); doc.setFontSize(8.5);
+        doc.text(String(i + 1), X.n, mid);   /* serial # centred in the row, level with the figures */
+        /* A photo was forced into a fixed 10 x 9 box, so a tall product (the sand filter)
+           came out visibly squashed. Fit it inside the box on its own aspect ratio and centre
+           it. Products with no photo in the catalogue simply leave the cell blank. */
+        if (r.pic) {
+          try {
+            /* 6.9.759 - the box IS the cell: from the serial column to the description, and the row's own
+               height less a margin, so a picture can never reach the row above or below */
+            var BOXW = 14, BOXH = Math.min(17, hgt - 1.4);   /* v6.9.773 - a 14 mm box before Unit */
+            var dm = null;
+            try { var _ip = doc.getImageProperties(r.pic); if (_ip && _ip.width && _ip.height) dm = { w: _ip.width, h: _ip.height }; } catch (e3) { }   /* 6.9.762 - the picture's own size */
+            if (!dm) dm = (r.dim && r.dim.w && r.dim.h) ? r.dim : { w: BOXW, h: BOXH };
+            var psc = Math.min(BOXW / dm.w, BOXH / dm.h);
+            var pw = dm.w * psc, ph = dm.h * psc;
+            /* Centre the photo in the FULL row height, not just the top 9mm box. A tall row
+               (long, wrapped description) used to leave the picture stuck at the top while the
+               text ran down beside it - the tank looked top-aligned. Centre it on the row band
+               (which starts at y-3.6 and is `hgt` tall) so every photo sits mid-row. */
+            doc.addImage(r.pic, "JPEG", X.pic + 1 + (BOXW - pw) / 2, (y - 3.6) + (hgt - ph) / 2, pw, ph);
+          } catch (e) { }
+        }
+
+        /* 6.9.758 - code tag, then the name on the same line */
+        var _ty = y + 0.2;
+        if (_code) {
+          fill([232, 245, 242]); doc.roundedRect(X.item, _ty - 2.9, _cw, 3.9, 0.8, 0.8, "F");
+          col(TEALD); F("normal"); doc.setFontSize(7.5); doc.text(_code, X.item + 1.4, _ty);
+        }
+        col(r.optional ? [146, 64, 14] : INK); F("normal"); doc.setFontSize(9);
+        tLines.forEach(function (tl, k) { if (tl) doc.text(tl, k === 0 ? X.item + _cw + 1.6 : X.item, _ty + k * 3.7); });
+        _ty += tLines.length * 3.7 + (hasB ? 0.3 : 0) - 0.4;
+        F("italic"); doc.setFontSize(7.5);
+        bBlocks.forEach(function (bl) {
+          col(r.optional ? [146, 64, 14] : GREY);
+          doc.text(bl, X.item, _ty, { lineHeightFactor: 1.15 });
+          _ty += bl.length * 3.1;
+        });
+        if (_tl.rows) { techChipDraw(doc, F, _tl, X.item, _ty + 1.6, T_IC, T_FS, T_LH, GREY); _ty += 1.2 + _tl.rows * T_LH; }
+
+        col(GREY); F("normal"); doc.setFontSize(8.5);
+        doc.text(fitCell(doc, F, r.unit, UNIT_W, 1, "normal", 8.5)[0], X.unit, mid, { align: "right" });
+        col(INK); F("normal"); doc.text(qShow(r.qty), X.qty, mid, { align: "right" });
+        F("normal");
+        /* A discounted line shows list PRICE, DIS.%, and the DISC. PRICE. A line with NO
+           discount would just repeat the same figure in PRICE and DISC. PRICE, so we leave the
+           PRICE and DIS.% cells blank and print the single price once, under DISC. PRICE. */
+        if (r.disc > 0) {
+          col(GREY); F("normal");
+          doc.text(R(r.price), X.price, mid, { align: "right" });
+          col(TEALD); F("bold");
+          doc.text(r.disc.toFixed(1) + "%", X.dis, mid, { align: "right" });
+        }
+        col(r.optional ? [180, 83, 9] : INK); F("normal");
+        doc.text(R(r.net), X.dprice, mid, { align: "right" });
+        F("normal"); doc.setFontSize(9); col(r.optional ? [180, 83, 9] : INK);
+        doc.text(r.optional ? "(" + R(r.total) + ")" : R(r.total), X.amt, mid, { align: "right" });
+
+        y += hgt;
+        doc.setDrawColor(226, 232, 240); doc.setLineWidth(0.15); doc.line(X.item, y - 2.8, Rt, y - 2.8); doc.setLineWidth(0.2);   /* 6.9.760 - hairline */
+      };
+
+      /* the table itself: a band per room, its lines, and that room's total */
+      var _sn = 0;
+      groups.forEach(function (g, gi) {
+        if (grouped) {
+          /* a band needs its name AND at least one line under it on the same page - a room
+             heading alone at the foot of a page is a promise the page does not keep */
+          /* 6.9.760 - his group name, wrapped to the full width; no count (it printed over a long name), no block */
+          var _gl = fitCell(doc, F, pdfSafe(g.room || "Other items"), Rt - X.item - 2, 2, "normal", 9.5);
+          if (y + 8 + _gl.length * 4 > 272) { doc.addPage(); y = 20; head(); }
+          /* v6.9.774 - his option 3: the heading in amber over an amber line, so a group name is never
+             mistaken for an item (the item codes and figures are teal / black) */
+          var _gh = 1.8 + (_gl.length - 1) * 4;
+          col([180, 83, 9]); F("normal"); doc.setFontSize(9.5);
+          _gl.forEach(function (gl, k) { doc.text(gl, X.item, y + 0.6 + k * 4); });
+          doc.setDrawColor(251, 191, 36); doc.setLineWidth(0.3); doc.line(X.item, y + _gh, Rt, y + _gh); doc.setLineWidth(0.2);
+          y += 6.4 + (_gl.length - 1) * 4;
+        }
+        g.rows.forEach(function (r) { drawRow(r, _sn++); });
+        if (grouped) {   /* 6.9.761 - one slim total line under each group, as on his supplier's quote */
+          var gTot = g.rows.reduce(function (a, r) { return a + (r.optional ? 0 : r.total); }, 0);
+          var gPcs = g.rows.filter(function (r) { return !r.optional; }).reduce(function (a, r) { return a + (Number(r.qty) || 0); }, 0);
+          if (y + 7 > 278) { doc.addPage(); y = 20; head(); }
+          doc.setDrawColor(94, 234, 212); doc.setLineWidth(0.3); doc.line(X.unit - 14, y - 2.6, Rt, y - 2.6); doc.setLineWidth(0.2);
+          col(TEALD); F("italic"); doc.setFontSize(8.5); doc.text("Total", X.unit - 14, y + 1.0);
+          F("normal"); col(INK); doc.setFontSize(8.5); doc.text(qShow(gPcs), X.qty, y + 1.0, { align: "right" });
+          doc.setFontSize(9.5); doc.text(R(gTot), X.amt, y + 1.0, { align: "right" });
+          y += 7.4;
+        }
+      });
+
+      /* ---- 6.9.761 - SUMMARY: each group's pieces, MRP value and amount; GST and total only when GST is shown extra ---- */
+      if (grouped && groups.length > 1) {
+        var sumRows = groups.map(function (g) {
+          var live = g.rows.filter(function (r) { return !r.optional; });
+          return { name: g.room || "Other items",
+            pcs: live.reduce(function (a2, r) { return a2 + (Number(r.qty) || 0); }, 0),
+            mrp: live.reduce(function (a2, r) { return a2 + Math.round((Number(r.price) || 0) * (Number(r.qty) || 0)); }, 0),
+            amt: live.reduce(function (a2, r) { return a2 + r.total; }, 0) };
+        });
+        var smAll = sumRows.reduce(function (a2, x) { return a2 + x.amt; }, 0);
+        var smN = sumRows.reduce(function (a2, x) { return a2 + x.pcs; }, 0);
+        var smMrp = sumRows.reduce(function (a2, x) { return a2 + x.mrp; }, 0);
+        var smGst = showGst ? Math.round(smAll * 18 / 100) : 0;
+        if (showGst) {   /* the groups' GST adds up to exactly the box's GST: largest remainder */
+          var _raw = sumRows.map(function (x) { return x.amt * 18 / 100; });
+          sumRows.forEach(function (x, k) { x.gst = Math.floor(_raw[k]); });
+          var _left = smGst - sumRows.reduce(function (a2, x) { return a2 + x.gst; }, 0);
+          _raw.map(function (v, k) { return [v - Math.floor(v), k]; }).sort(function (p, q) { return q[0] - p[0]; })
+            .slice(0, Math.max(0, _left)).forEach(function (p) { sumRows[p[1]].gst += 1; });
+        }
+        var C = showGst ? { pcs: 104, mrp: 128, amt: 151, gst: 172, tot: X.amt } : { pcs: 127, mrp: 158, amt: X.amt };
+        var NAME_W = (showGst ? C.pcs - 12 : C.pcs - 14) - (L + 12);
+        F("normal"); doc.setFontSize(9);
+        sumRows.forEach(function (x) { x.lines = fitCell(doc, F, x.name, NAME_W, 2, "normal", 9); x.h = 6.4 + (x.lines.length - 1) * 3.6; });   /* a long group name wraps, never cut */
+        var smH = 12 + sumRows.reduce(function (a2, x) { return a2 + x.h; }, 0) + 9;
+        if (y + smH > 276) { doc.addPage(); y = 22; }
+        y += 3;
+        var smTop = y;
+        fill([246, 250, 249]); doc.roundedRect(L, smTop, Rt - L, smH, 2, 2, "F");
+        doc.setDrawColor(214, 232, 228); doc.setLineWidth(0.3); doc.roundedRect(L, smTop, Rt - L, smH, 2, 2, "S"); doc.setLineWidth(0.2);
+        fill(MINT); doc.rect(L, smTop, 1.4, smH, "F");
+        col(DEEP); F("normal"); doc.setFontSize(10);
+        doc.text("SUMMARY", L + 6, smTop + 6.4);
+        col(GREY); F("normal"); doc.setFontSize(7.5);
+        doc.text("QTY", C.pcs, smTop + 6.4, { align: "right" });
+        doc.text("MRP VALUE", C.mrp, smTop + 6.4, { align: "right" });
+        doc.text("AMOUNT", C.amt, smTop + 6.4, { align: "right" });
+        if (showGst) { doc.text("GST 18%", C.gst, smTop + 6.4, { align: "right" }); doc.text("TOTAL", C.tot, smTop + 6.4, { align: "right" }); }
+        var sy0 = smTop + 12.2;
+        sumRows.forEach(function (x, k) {
+          if (k % 2 === 0) { fill([255, 255, 255]); doc.rect(L + 3, sy0 - 4.3, Rt - L - 5, x.h, "F"); }
+          col(GREY); F("normal"); doc.setFontSize(8.5); doc.text(String(k + 1) + ".", L + 6, sy0);
+          col(INK); doc.setFontSize(9);
+          x.lines.forEach(function (ln, j) { doc.text(ln, L + 12, sy0 + j * 3.6); });
+          col(GREY); doc.setFontSize(8.5);
+          doc.text(qShow(x.pcs), C.pcs, sy0, { align: "right" });
+          doc.text(R(x.mrp), C.mrp, sy0, { align: "right" });
+          col(INK); doc.setFontSize(9); doc.text(R(x.amt), C.amt, sy0, { align: "right" });
+          if (showGst) { col(GREY); doc.setFontSize(8.5); doc.text(R(x.gst), C.gst, sy0, { align: "right" });
+            col(INK); doc.setFontSize(9); doc.text(R(x.amt + x.gst), C.tot, sy0, { align: "right" }); }
+          sy0 += x.h;
+        });
+        doc.setDrawColor(13, 118, 108); doc.setLineWidth(0.4); doc.line(L + 4, sy0 - 3.6, Rt - 2, sy0 - 3.6); doc.setLineWidth(0.2);
+        col(DEEP); F("normal"); doc.setFontSize(10);
+        doc.text("TOTAL", L + 12, sy0 + 1.6);
+        doc.setFontSize(9); col(GREY);
+        doc.text(qShow(smN), C.pcs, sy0 + 1.6, { align: "right" });
+        doc.text(R(smMrp), C.mrp, sy0 + 1.6, { align: "right" });
+        col(DEEP); doc.setFontSize(10); doc.text(R(smAll), C.amt, sy0 + 1.6, { align: "right" });
+        if (showGst) { doc.setFontSize(9); col(GREY); doc.text(R(smGst), C.gst, sy0 + 1.6, { align: "right" });
+          col(DEEP); doc.setFontSize(10.5); doc.text(R(smAll + smGst), C.tot, sy0 + 1.6, { align: "right" }); }
+        y = smTop + smH + 4;
+      }
+
+      /* ---- sub-total. Either "{ GST as Actual }" (default) or a spelled-out 18% GST block. ----
+         The box HEIGHT is known up-front per branch, so we advance y to a single deterministic
+         point BELOW the box afterwards. This is what stops the optional-lines footnote (and the
+         Terms panel) from ever riding on top of the total. */
+      var hasOpt = rows.some(function (r) { return r.optional; });
+      y += 4;
+      var boxH = noTotal ? 10 : (showGst ? 23 : 16);
+      if ((y - 4.5) + boxH > 285) { doc.addPage(); y = 26; }
+      var boxTop = y - 4.5;
+      var TBL = 104;   /* the total panel starts a little left of the numeric columns */
+      if (noTotal) {
+        fill([255, 251, 235]); doc.roundedRect(TBL, boxTop, Rt - TBL, boxH, 1.5, 1.5, "F");
+        col([124, 45, 18]); F("normal"); doc.setFontSize(9);
+        doc.text("Item-wise pricing - no consolidated total.", 110, y + 1.2);
+      } else if (showGst) {
+        var GST_RATE = 18;
+        var gstAmt = Math.round(subTotal * GST_RATE / 100);
+        var grand = subTotal + gstAmt;
+        fill(DEEP); doc.roundedRect(TBL, boxTop, Rt - TBL, boxH, 2, 2, "F");
+        fill(MINT); doc.rect(TBL, boxTop, 1.6, boxH, "F");
+        col([205, 232, 228]); F("normal"); doc.setFontSize(9);
+        doc.text("Sub-Total", 110, y + 1.2);
+        col([255, 255, 255]); F("bold"); doc.text(R(subTotal), X.amt, y + 1.2, { align: "right" });
+        col([205, 232, 228]); F("normal"); doc.setFontSize(9);
+        doc.text("GST @ 18%", 110, y + 6.8);
+        doc.text(R(gstAmt), X.amt, y + 6.8, { align: "right" });
+        doc.setDrawColor(94, 234, 212); doc.setLineWidth(0.25); doc.line(110, y + 9.6, Rt - 6, y + 9.6); doc.setLineWidth(0.2);
+        col(MINT); F("bold"); doc.setFontSize(10);
+        doc.text("GRAND TOTAL (incl. GST)", 110, y + 15);
+        col([255, 255, 255]); doc.setFontSize(12); doc.text(R(grand), X.amt, y + 15, { align: "right" });
+      } else {
+        fill(DEEP); doc.roundedRect(TBL, boxTop, Rt - TBL, boxH, 2, 2, "F");
+        fill(MINT); doc.rect(TBL, boxTop, 1.6, boxH, "F");
+        col(MINT); F("bold"); doc.setFontSize(10); doc.text("SUB-TOTAL", 110, y + 0.6);
+        col([205, 232, 228]); F("normal"); doc.setFontSize(8.5); doc.text("{ GST as Actual }", 110, y + 5.4);
+        col([255, 255, 255]); F("bold"); doc.setFontSize(14);
+        doc.text(R(subTotal), X.amt, y + 3.6, { align: "right" });
+      }
+      y = boxTop + boxH + 5;   /* single, deterministic point clear of the total box */
+      if (!noTotal) {   /* 6.9.761 - amount in words, as on his supplier's quote: the figure the customer pays */
+        var _payN = showGst ? subTotal + Math.round(subTotal * 18 / 100) : subTotal;
+        col(GREY); F("italic"); doc.setFontSize(8);
+        var _wl = fitCell(doc, F, "Amount in words: Rupees " + amountWords(_payN) + " Only" + (showGst ? " (incl. GST)" : ""), Rt - TBL, 2, "italic", 8);
+        _wl.forEach(function (wl, k) { doc.text(wl, Rt, y - 1 + k * 3.4, { align: "right" }); });
+        y += _wl.length * 3.4 + 1;
+      }
+
+      /* Footnote whenever any line is an alternative option — a bordered amber strip drawn BELOW
+         the total box (never over it). Text is wrapped and the box is sized to the wrapped lines. */
+      if (hasOpt) {
+        F("bold"); doc.setFontSize(8);
+        var fnLines = doc.splitTextToSize(
+          "Rows outlined in amber and marked  OPTIONAL - NOT ADDED TO VALUE  are alternative choices. Their price is shown for comparison but is NOT included in the total above.",
+          Rt - L - 8);
+        var fnH = 4.4 + fnLines.length * 3.4;
+        if (y + fnH > 288) { doc.addPage(); y = 26; }
+        fill([255, 243, 222]); doc.setDrawColor(217, 119, 6); doc.setLineWidth(0.4);
+        doc.roundedRect(L, y, Rt - L, fnH, 1.4, 1.4, "FD"); doc.setLineWidth(0.2);
+        col([146, 64, 14]); F("bold");
+        doc.text(fnLines, L + 4, y + 4.4);
+        y += fnH + 1;
+      }
+
+      /* v6.9.770 - TOTO technologies with their icons, then the brands, before the Terms */
+      try { y = qxDrawPlain(doc, F, items, y, L, Rt, { DEEP: DEEP, INK: INK, GREY: GREY, TEAL: TEALD }); } catch (e) { }
+
+      /* ================= TERMS ================= */
+      /* T&C now sits inside the same soft, mint-barred panel as the distributor strip, so it
+         reads as one framed block instead of loose text under a bar. The panel is sized to the
+         taller of the two text columns, computed deterministically before it is drawn. */
+      var TC_FS = 8, TC_LEAD = 3.3, TC_GAP = 2.4;   /* 6.9.673 - was 5.4pt */
+      var TC_PADL = 6, TC_PADR = 5, TC_HEADH = 8.5, TC_PADB = 4, TC_COLGAP = 6;
+      var COLW = (Rt - L - TC_PADL - TC_PADR - TC_COLGAP) / 2;
+      F("normal"); doc.setFontSize(TC_FS);
+      var tcBlocks = TERMS.map(function (tx, n) {
+        var parts = tx.split(" - ");
+        var hd = parts.length > 1 ? parts.shift() : "";
+        var body = parts.join(" - ") || tx;
+        var ls = doc.splitTextToSize(body, COLW - 3);
+        return { hd: hd, ls: ls, n: n + 1, h: (hd ? 3.5 : 0) + ls.length * TC_LEAD + TC_GAP };
+      });
+      var tcTotal = tcBlocks.reduce(function (a, b) { return a + b.h; }, 0);
+      var tcHalf = tcTotal / 2;
+      var tcAccP = 0, tcColP = 0, tcColH = [0, 0];
+      var tcPlaced = tcBlocks.map(function (b) {
+        if (tcColP === 0 && tcAccP + b.h > tcHalf && tcAccP > 0) { tcColP = 1; }
+        tcColH[tcColP] += b.h;
+        if (tcColP === 0) tcAccP += b.h;
+        return tcColP;
+      });
+      var TC_PANH = TC_HEADH + Math.max(tcColH[0], tcColH[1]) + TC_PADB;
+      if (y + TC_PANH + 3 > 276) { doc.addPage(); y = 22; } else { y += 4; }
+      var tcPy = y;
+      fill([246, 250, 249]); doc.roundedRect(L, tcPy, Rt - L, TC_PANH, 2, 2, "F");
+      doc.setDrawColor(214, 232, 228); doc.setLineWidth(0.3);
+      doc.roundedRect(L, tcPy, Rt - L, TC_PANH, 2, 2, "S"); doc.setLineWidth(0.2);
+      fill(MINT); doc.rect(L, tcPy, 1.4, TC_PANH, "F");
+      col(DEEP); F("bold"); doc.setFontSize(10);
+      doc.text("Terms & Conditions", L + TC_PADL, tcPy + 5.8);
+      var tcTop = tcPy + TC_HEADH + 2;
+      var tcY = [tcTop, tcTop];
+      tcBlocks.forEach(function (b, bi) {
+        var tcCol = tcPlaced[bi];
+        var x = L + TC_PADL + tcCol * (COLW + TC_COLGAP);
+        var yy = tcY[tcCol];
+        if (b.hd) {
+          col(TEALD); F("bold"); doc.setFontSize(TC_FS);
+          doc.text(b.n + ". " + b.hd.toUpperCase(), x, yy);
+          yy += 3.5;
+        }
+        col(GREY); F("normal"); doc.setFontSize(TC_FS);
+        doc.text(b.ls, x + (b.hd ? 1.8 : 0), yy);
+        yy += b.ls.length * TC_LEAD + TC_GAP;
+        tcY[tcCol] = yy;
+      });
+      y = tcPy + TC_PANH + 2;
+
+      /* 6.9.755 - the bank details, bottom left, beside the sign-off */
+      if (y + 29 > 286) { doc.addPage(); y = 22; }
+      var _payY = y + 3;
+      ewPayBox(doc, L, _payY, Math.min(118, Rt - L - 68));
+      y = _payY - 3;   /* the sign-off sits level with it on the right */
+
+      /* ---- sign-off, bottom right of the last page. A quotation is a document a person
+           stands behind, so the name goes where a signature goes - not in a header box. ---- */
+      var me = (S.data.team || []).filter(function (t2) { return t2.name === q.createdBy; })[0] || {};
+      /* Keep the sign-off on THIS page whenever it fits. It used to jump to a fresh page far
+         too early (y>236) even with half the page still empty. Only break if the ~25mm block
+         would collide with the footer; otherwise anchor it at the usual 250, or just below the
+         terms when those run long. */
+      if (y + 21 > 290) { doc.addPage(); y = 30; }
+      var sy = Math.max(250, y + 3);
+      doc.setDrawColor(LINE[0], LINE[1], LINE[2]); doc.setLineWidth(0.3);
+      doc.line(Rt - 62, sy, Rt, sy); doc.setLineWidth(0.2);
+      col(GREY); F("bold"); doc.setFontSize(8);
+      doc.text("PREPARED BY", Rt, sy + 4.4, { align: "right" });
+      col(INK); F("bold"); doc.setFontSize(11);
+      doc.text(String(q.createdBy || "-"), Rt, sy + 10, { align: "right" });
+      if (me.mobile) {
+        col(GREY); F("normal"); doc.setFontSize(9);
+        doc.text(String(me.mobile), Rt, sy + 14.5, { align: "right" });
+      }
+
+      var pages = doc.internal.getNumberOfPages();
+      for (var p = 1; p <= pages; p++) {
+        doc.setPage(p);
+        F("normal"); doc.setFontSize(8); col(GREY);   /* 6.9.673 - was 6.2pt light grey */
+        doc.text("Energy World  |  Panipat \u00b7 Sonipat \u00b7 Karnal  |  Authorised Distributor", L, 290);
+        doc.text(p + " / " + pages, Rt, 290, { align: "right" });
+      }
+      return doc;
+    });
+  }
+
+  var _qxIntros = null, _qxIcons = {};
+
+  function qxJson(url) {
+    return fetch(url + "?v=" + APP_VERSION).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; });
+  }
+
+  function qxReady(items) {
+    var kbP = _tkb ? Promise.resolve(_tkb) : qxJson(QX_BASE + "toto_kb.json").then(function (j) { if (j) { _tkb = j; _tkbIx = null; } return _tkb; });
+    var inP = _qxIntros ? Promise.resolve(_qxIntros) : qxJson(QX_BASE + "brand_intros.json").then(function (j) { if (j) _qxIntros = j; return _qxIntros; });
+    return Promise.all([kbP, inP]).then(function () {
+      var need = qxTechKeys(items || []).filter(function (k) { return !_qxIcons[k]; });
+      return Promise.all(need.map(function (k) {
+        return fetch(QX_BASE + "toto_icons/" + k + ".jpg?v=" + APP_VERSION).then(function (r) { return r.ok ? r.blob() : null; })
+          .then(function (b) {
+            if (!b) return;
+            return new Promise(function (res) { var fr = new FileReader(); fr.onload = function () { _qxIcons[k] = fr.result; res(); }; fr.onerror = function () { res(); }; fr.readAsDataURL(b); });
+          }).catch(function () { });
+      }));
+    }).catch(function () { });
+  }
+
+  function totoTechKeys(code, brand) {
+    if (!_tkb || !_tkb.tech) return [];
+    if (brand !== undefined && !/\btoto\b/i.test(String(brand || ""))) return [];
+    return _tkb.tech[String(code || "")] || [];
+  }
+
+  function totoTechLineKeys(code, brand) {
+    var td = (_tkb && _tkb.techDict) || {}, seen = {};
+    return totoTechKeys(code, brand).filter(function (k) { var n = td[k] && td[k].n; if (!n || seen[n]) return false; seen[n] = 1; return true; });
+  }
+
+  function techChipLayout(doc, F, keys, W, ICON, FS) {
+    var td = (_tkb && _tkb.techDict) || {}, x = 0, row = 0, out = [];
+    F("normal"); doc.setFontSize(FS);
+    keys.forEach(function (k) {
+      var w = ICON + 1 + doc.getTextWidth(pdfSafe(td[k].n)) + 3;
+      if (x > 0 && x + w > W) { row++; x = 0; }
+      out.push({ k: k, x: x, row: row }); x += w;
+    });
+    return { chips: out, rows: keys.length ? row + 1 : 0 };
+  }
+
+  function techChipDraw(doc, F, lay, X0, Y0, ICON, FS, LH, colr) {
+    var td = (_tkb && _tkb.techDict) || {};
+    lay.chips.forEach(function (c) {
+      var x = X0 + c.x, yy = Y0 + c.row * LH;
+      if (_qxIcons[c.k]) { try { doc.addImage(_qxIcons[c.k], "JPEG", x, yy - ICON + 0.9, ICON, ICON); } catch (e) { } }
+      doc.setTextColor(colr[0], colr[1], colr[2]); F("normal"); doc.setFontSize(FS);
+      doc.text(pdfSafe(td[c.k].n), x + ICON + 1, yy);
+    });
+  }
+
+  function qxTechKeys(items) {
+    var td = (_tkb && _tkb.techDict) || {}, have = {}, names = {};
+    (items || []).forEach(function (i) { totoTechKeys(i.code, i.brand).forEach(function (k) { have[k] = 1; }); });
+    return Object.keys(td).filter(function (k) {
+      if (!have[k]) return false;
+      var n = td[k].n; if (names[n]) return false; names[n] = 1; return true;
+    });
+  }
+
+  function qxIntroFor(brand) {
+    var b = String(brand || "").trim().toLowerCase(); if (!b || !_qxIntros) return null;
+    var list = _qxIntros.brands || [];
+    for (var i = 0; i < list.length; i++) {
+      var x = list[i];
+      if ((x.alias || [x.brand]).some(function (a) { return String(a).toLowerCase() === b; })) return x.hold ? null : x;
+    }
+    return null;
+  }
+
+  function qxIntroBrands(items) {
+    var out = [], seen = {};
+    (items || []).forEach(function (i) {
+      var x = qxIntroFor(i.brand); if (!x || seen[x.brand]) return;
+      seen[x.brand] = 1; out.push(x);
+    });
+    return out;
+  }
+
+  function qxDrawPlain(doc, F, items, y, L, Rt, C) {
+    var td = (_tkb && _tkb.techDict) || {};
+    var col = function (c) { doc.setTextColor(c[0], c[1], c[2]); };
+
+    /* ---- 1. About the brands ---- */
+    var bs = qxIntroBrands(items);
+    if (bs.length) {
+      var LW = 26, LH = 11, TX = L + LW + 4, TW = Rt - TX;
+      var bl = bs.map(function (x) {
+        F("normal"); doc.setFontSize(7.8);
+        var ls = doc.splitTextToSize(pdfSafe(x.about), TW);
+        return { x: x, ls: ls, lg: logoFor(x.brand) || logoFor((x.alias || [])[0] || ""), h: Math.max(LH + 2, 5.4 + ls.length * 3.4) + 3 };
+      });
+      if (y + 12 + bl[0].h > 278) { doc.addPage(); y = 22; } else { y += 4; }
+      col(C.DEEP); F("bold"); doc.setFontSize(10);
+      doc.text(bs.length === 1 ? "About the brand in this quote" : "About the brands in this quote", L, y + 2);
+      y += 7;
+      bl.forEach(function (b) {
+        if (y + b.h > 280) { doc.addPage(); y = 22; }
+        /* the logo, framed like the distributor strip */
+        doc.setFillColor(255, 255, 255); doc.roundedRect(L, y - 1, LW, LH, 1.4, 1.4, "F");
+        doc.setDrawColor(203, 213, 225); doc.setLineWidth(0.25); doc.roundedRect(L, y - 1, LW, LH, 1.4, 1.4, "S"); doc.setLineWidth(0.2);
+        if (b.lg && b.lg.src && b.lg.w && b.lg.h) {
+          var sc = Math.min((LW - 2.4) / b.lg.w, (LH - 2.4) / b.lg.h), iw = b.lg.w * sc, ih = b.lg.h * sc;
+          try { doc.addImage(b.lg.src, "JPEG", L + (LW - iw) / 2, y - 1 + (LH - ih) / 2, iw, ih); } catch (e) { }
+        } else {
+          col(C.INK); F("bold"); doc.setFontSize(7.4);
+          doc.text(fitCell(doc, F, pdfSafe(b.x.brand), LW - 3, 1, "bold", 7.4)[0], L + LW / 2, y + LH / 2, { align: "center" });
+        }
+        col(C.INK); F("bold"); doc.setFontSize(8.8);
+        doc.text(pdfSafe(b.x.brand), TX, y + 2);
+        var bw = doc.getTextWidth(pdfSafe(b.x.brand));
+        col(C.TEAL); F("normal"); doc.setFontSize(7.6);
+        doc.text(fitCell(doc, F, pdfSafe("- " + b.x.tagline + (b.x.origin ? "  (" + b.x.origin + ")" : "")), TW - bw - 3, 1, "normal", 7.6)[0], TX + bw + 2.2, y + 2);
+        col(C.GREY); F("normal"); doc.setFontSize(7.8);
+        doc.text(b.ls, TX, y + 6);
+        y += b.h;
+      });
+    }
+
+    /* ---- 2. TOTO technologies, if any ---- */
+    var keys = qxTechKeys(items);
+    if (keys.length) {
+      var GAP = 6, COLW = (Rt - L - GAP) / 2, ICON = 7.5;
+      var cells = keys.map(function (k) {
+        F("normal"); doc.setFontSize(7.6);
+        var ls = doc.splitTextToSize(pdfSafe(td[k].e), COLW - ICON - 3);
+        return { k: k, ls: ls, h: Math.max(ICON + 1.5, 4.2 + ls.length * 3.3 + 1.5) };
+      });
+      if (y + 14 + cells[0].h > 278) { doc.addPage(); y = 22; } else { y += 4; }
+      col(C.DEEP); F("bold"); doc.setFontSize(10);
+      doc.text("TOTO technologies in this quote", L, y + 2);
+      col(C.GREY); F("normal"); doc.setFontSize(7.4);
+      doc.text("From TOTO's 2026 catalogue. The TOTO products above carry these features.", L, y + 6.4);
+      y += 11;
+      for (var r = 0; r < cells.length; r += 2) {
+        var pair = cells.slice(r, r + 2), rh = Math.max.apply(null, pair.map(function (c) { return c.h; }));
+        if (y + rh > 280) { doc.addPage(); y = 22; }
+        pair.forEach(function (c, j) {
+          var x = L + j * (COLW + GAP);
+          if (_qxIcons[c.k]) { try { doc.addImage(_qxIcons[c.k], "JPEG", x, y - 1, ICON, ICON); } catch (e) { } }
+          col(C.INK); F("bold"); doc.setFontSize(8);
+          doc.text(pdfSafe(td[c.k].n), x + ICON + 3, y + 2);
+          col(C.GREY); F("normal"); doc.setFontSize(7.6);
+          doc.text(c.ls, x + ICON + 3, y + 5.6);
+        });
+        y += rh + 1;
+      }
+    }
+    return y;
+  }
+
+  function ewPayBox(doc, x, y, w) {
+    var H = 26, Q = 22, drew = false;
+    doc.setFillColor(255, 255, 255); doc.setDrawColor(13, 118, 108); doc.setLineWidth(0.35);
+    doc.roundedRect(x, y, w, H, 1.6, 1.6, "FD"); doc.setLineWidth(0.2);
+    try { drew = pdfQr(doc, EW_PAY.qr, x + 2, y + 2, Q); } catch (e) { drew = false; }
+    var tx = x + (drew ? Q + 5 : 4), vx = tx + 19;
+    doc.setFont(doc.__noBold ? ppEmbed(doc) : "helvetica", doc.__noBold ? "normal" : "bold"); doc.setFontSize(8.4); doc.setTextColor(13, 118, 108);
+    doc.text("PAYMENT DETAILS" + (drew ? "  -  scan to pay by UPI" : ""), tx, y + 5.6);
+    [["A/c holder", EW_PAY.holder], ["Bank", EW_PAY.bank + ", " + EW_PAY.branch], ["A/c no", EW_PAY.acno],
+     ["IFSC", EW_PAY.ifsc], ["UPI", EW_PAY.upi]].forEach(function (r, i) {
+      var yy = y + 10 + i * 3.6;
+      doc.setFont(doc.__noBold ? ppEmbed(doc) : "helvetica", "normal"); doc.setFontSize(7.8); doc.setTextColor(100, 116, 139); doc.text(r[0], tx, yy);
+      doc.setFont(doc.__noBold ? ppEmbed(doc) : "helvetica", doc.__noBold ? "normal" : "bold"); doc.setTextColor(17, 34, 45); doc.text(r[1], vx, yy);
+    });
+    return H;
+  }
+
+  function amountWords(n) {
+    n = Math.round(nAmt(n));             /* v6.9.398 - "Zero Rupees only" under a real amount */
+    if (n <= 0) return "Zero";
+    var ones = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten",
+      "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
+    var tens = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+    var two = function (x) { return x < 20 ? ones[x] : (tens[Math.floor(x / 10)] + (x % 10 ? " " + ones[x % 10] : "")); };
+    var three = function (x) { return x >= 100 ? (ones[Math.floor(x / 100)] + " Hundred" + (x % 100 ? " " + two(x % 100) : "")) : two(x); };
+    var out = [], units = [[10000000, "Crore"], [100000, "Lakh"], [1000, "Thousand"], [100, "Hundred"]];
+    units.forEach(function (u) {
+      var q = Math.floor(n / u[0]);
+      if (q) { out.push((u[0] === 10000000 ? three(q) : two(q)) + " " + u[1]); n -= q * u[0]; }
+    });
+    if (n) out.push(two(n));
+    return out.join(" ");
+  }
+
+  function dmy(v) {
+    var s2 = String(v || "").trim();
+    if (!s2) return "";
+    var d = new Date(s2);
+    if (isNaN(d.getTime())) return s2;
+    return String(d.getDate()).padStart(2, "0") + "/" + String(d.getMonth() + 1).padStart(2, "0") + "/" + d.getFullYear();
+  }
+  /* ======== END SHARED QUOTE PDF ======== */
 
   function boot() {
     try { if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(function () { }); } catch (e) { }
