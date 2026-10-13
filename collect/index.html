@@ -177,7 +177,7 @@ table.ct td.wd{white-space:nowrap}
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.66.5";
+  var APP_VERSION = "1.66.6";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -4115,7 +4115,7 @@ function cancelMap() {
   var LOGO_B64 = "";
   function loadLogo() {
     if (LOGO_B64) return Promise.resolve(LOGO_B64);
-    return fetch("../assets/logo.jpg").then(function (r) { return r.ok ? r.blob() : null; })
+    return fetch("../assets/logo_tm.jpg").then(function (r) { return r.ok ? r.blob() : null; })
       .then(function (b) {
         if (!b) return "";
         return new Promise(function (res) {
