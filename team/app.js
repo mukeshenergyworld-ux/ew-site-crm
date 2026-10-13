@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.771";
+  var APP_VERSION = "6.9.772";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -20607,15 +20607,14 @@ function viewCatalogue() {
           _rooms.sort();
         }
         var _bul = _dl.bullets.map(function (b) { return pdfSafe(String(b).replace(/^[\s\u00b7\u2022\u2219\u30fb'"\-\u2013]+/, "")); }).filter(Boolean);   /* 6.9.759 - no double bullet */
-        var _tn = totoTechNames(i.code, i.brand);   /* v6.9.770 */
-        if (_tn.length) _bul.push(pdfSafe("Technology: " + _tn.join(", ")));
+        var _tk = totoTechLineKeys(i.code, i.brand);   /* v6.9.772 - icons + names, drawn in drawRow */
         /* v6.9.459 - the "For: ..." bullet is how the room reached the paper when there was one
            flat table. With the table drawn room by room the band above the line already says it,
            so it would be the same words twice; it is added below only if nothing is grouped. */
         return { title: pdfSafe(_dl.title) + (i.optional ? "   [OPTIONAL - NOT ADDED TO VALUE]" : ""),
           bullets: _bul, roomBul: _rooms.length ? pdfSafe("For: " + _rooms.join(", ")) : "",
           rq: _rq,
-          code: pdfSafe(i.code), pic: pics[idx], dim: PIC_DIM[qPicNow(i)] || PIC_DIM[i.pic] || null,
+          code: pdfSafe(i.code), pic: pics[idx], dim: PIC_DIM[qPicNow(i)] || PIC_DIM[i.pic] || null, tech: _tk,
           unit: i.unit || "No's", optional: i.optional ? 1 : 0,
           qty: i.qty, price: i.price, disc: d, net: net, total: Math.round(net * i.qty) };   /* v6.9.303 */
       });
@@ -20819,7 +20818,10 @@ function viewCatalogue() {
         var bBlocks = _feat ? [fitCell(doc, F, _feat, BUL_W, 3, "italic", 7.5)] : [];
         var bCount = bBlocks.reduce(function (a, x) { return a + x.length; }, 0);
         var hasB = bCount ? 1 : 0;
-        var hgt = Math.max(r.pic ? 13 : 8.5, 6 + (tLines.length - 1) * 3.7 + (hasB ? 0.6 : 0) + bCount * 3.1);   /* 6.9.760 - tighter */
+        /* v6.9.772 - the technology chips: TOTO's icon then its name, wrapping in the description column */
+        var T_IC = 3.4, T_FS = 6.8, T_LH = 4.3;
+        var _tl = (r.tech && r.tech.length) ? techChipLayout(doc, F, r.tech, BUL_W, T_IC, T_FS) : { chips: [], rows: 0 };
+        var hgt = Math.max(r.pic ? 13 : 8.5, 6 + (tLines.length - 1) * 3.7 + (hasB ? 0.6 : 0) + bCount * 3.1 + (_tl.rows ? 1.2 + _tl.rows * T_LH : 0));   /* 6.9.760 - tighter */
         /* Page-break FIRST, then derive mid from the post-break y. If mid were computed
            before the break, a row that wraps to a new page would draw its serial # and
            figures at the old bottom-of-page y (off the printable area) while the
@@ -20871,6 +20873,7 @@ function viewCatalogue() {
           doc.text(bl, X.item, _ty, { lineHeightFactor: 1.15 });
           _ty += bl.length * 3.1;
         });
+        if (_tl.rows) { techChipDraw(doc, F, _tl, X.item, _ty + 1.6, T_IC, T_FS, T_LH, GREY); _ty += 1.2 + _tl.rows * T_LH; }
 
         col(GREY); F("normal"); doc.setFontSize(8.5);
         doc.text(fitCell(doc, F, r.unit, UNIT_W, 1, "normal", 8.5)[0], X.unit, mid, { align: "right" });
@@ -21257,6 +21260,31 @@ function viewCatalogue() {
     var td = (_tkb && _tkb.techDict) || {}, out = [];
     totoTechKeys(code, brand).forEach(function (k) { var n = td[k] && td[k].n; if (n && out.indexOf(n) < 0) out.push(n); });
     return out;
+  }
+  /* v6.9.772 - one key per technology name for a single line, Icon Guide order */
+  function totoTechLineKeys(code, brand) {
+    var td = (_tkb && _tkb.techDict) || {}, seen = {};
+    return totoTechKeys(code, brand).filter(function (k) { var n = td[k] && td[k].n; if (!n || seen[n]) return false; seen[n] = 1; return true; });
+  }
+  /* lays the icon + name chips out in rows of width W; returns [{k, x, row}] and the row count */
+  function techChipLayout(doc, F, keys, W, ICON, FS) {
+    var td = (_tkb && _tkb.techDict) || {}, x = 0, row = 0, out = [];
+    F("normal"); doc.setFontSize(FS);
+    keys.forEach(function (k) {
+      var w = ICON + 1 + doc.getTextWidth(pdfSafe(td[k].n)) + 3;
+      if (x > 0 && x + w > W) { row++; x = 0; }
+      out.push({ k: k, x: x, row: row }); x += w;
+    });
+    return { chips: out, rows: keys.length ? row + 1 : 0 };
+  }
+  function techChipDraw(doc, F, lay, X0, Y0, ICON, FS, LH, colr) {
+    var td = (_tkb && _tkb.techDict) || {};
+    lay.chips.forEach(function (c) {
+      var x = X0 + c.x, yy = Y0 + c.row * LH;
+      if (_qxIcons[c.k]) { try { doc.addImage(_qxIcons[c.k], "JPEG", x, yy - ICON + 0.9, ICON, ICON); } catch (e) { } }
+      doc.setTextColor(colr[0], colr[1], colr[2]); F("normal"); doc.setFontSize(FS);
+      doc.text(pdfSafe(td[c.k].n), x + ICON + 1, yy);
+    });
   }
   /* every technology in a quote, one per name, in TOTO's Icon Guide order */
   function qxTechKeys(items) {
@@ -21950,8 +21978,7 @@ function viewCatalogue() {
       var lastCat = null, catIdx = 0;
       seq.forEach(function (sq, idx) {
         var i = sq.it, pic = pics[idx], dl = descLines(i.desc);
-        var _tn2 = totoTechNames(i.code, i.brand);   /* v6.9.770 */
-        if (_tn2.length) dl.bullets = dl.bullets.concat(["Technology: " + _tn2.join(", ")]);
+        var _tk2 = totoTechLineKeys(i.code, i.brand);   /* v6.9.772 - drawn as icon chips below */
 
         if (cats.length > 1 && sq.cat !== lastCat) {
           lastCat = sq.cat;
@@ -22053,6 +22080,16 @@ function viewCatalogue() {
             var bl = fitCell(doc, F, T(dl.bullets[bi]), CW2 - 4, 2, "normal", 7.4);
             bl.forEach(function (ln, k) { doc.text(ln, X + 4, ry + k * 4); });
             ry += (bl.length - 1) * 4 + 5;
+          }
+        }
+        /* v6.9.772 - TOTO technologies: the icon and the name */
+        if (_tk2.length) {
+          var _pl = techChipLayout(doc, F, _tk2, CW2, 5.2, 8);
+          if (room(6 + _pl.rows * 6.4)) {
+            col([148, 163, 184]); F("bold"); doc.setFontSize(5.8);
+            doc.text("T E C H N O L O G Y", X, ry + 1); ry += 7.2;
+            techChipDraw(doc, F, _pl, X, ry, 5.2, 8, 6.4, SLATE);
+            ry += _pl.rows * 6.4;
           }
         }
 
