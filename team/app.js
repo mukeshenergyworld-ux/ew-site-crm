@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.773";
+  var APP_VERSION = "6.9.774";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -21011,12 +21011,12 @@ function viewCatalogue() {
           /* 6.9.760 - his group name, wrapped to the full width; no count (it printed over a long name), no block */
           var _gl = fitCell(doc, F, pdfSafe(g.room || "Other items"), Rt - X.item - 2, 2, "normal", 9.5);
           if (y + 8 + _gl.length * 4 > 272) { doc.addPage(); y = 20; head(); }
-          /* v6.9.773 - his option 2: navy on a light blue band, a navy bar at its left edge */
+          /* v6.9.774 - his option 3: the heading in amber over an amber line, so a group name is never
+             mistaken for an item (the item codes and figures are teal / black) */
           var _gh = 1.8 + (_gl.length - 1) * 4;
-          fill([232, 238, 250]); doc.rect(X.item - 1.5, y - 3.6, Rt - X.item + 1.5, _gh + 4.6, "F");
-          fill([30, 58, 138]); doc.rect(X.item - 1.5, y - 3.6, 1.2, _gh + 4.6, "F");
-          col([30, 58, 138]); F("normal"); doc.setFontSize(9.5);
-          _gl.forEach(function (gl, k) { doc.text(gl, X.item + 1, y + 0.6 + k * 4); });
+          col([180, 83, 9]); F("normal"); doc.setFontSize(9.5);
+          _gl.forEach(function (gl, k) { doc.text(gl, X.item, y + 0.6 + k * 4); });
+          doc.setDrawColor(251, 191, 36); doc.setLineWidth(0.3); doc.line(X.item, y + _gh, Rt, y + _gh); doc.setLineWidth(0.2);
           y += 6.4 + (_gl.length - 1) * 4;
         }
         g.rows.forEach(function (r) { drawRow(r, _sn++); });
