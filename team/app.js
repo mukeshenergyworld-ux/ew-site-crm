@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.772";
+  var APP_VERSION = "6.9.773";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -18426,7 +18426,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
 
   function quoteHit(q, txt, dig) {
     var c = null; try { c = clientByName(q.client); } catch (e) { c = null; }
-    var hay = [q.quoteNo, q.client, q.brand, q.status, q.createdBy,
+    var hay = [q.quoteNo, q.code, q.client, q.brand, q.status, q.createdBy,
                (c && c.area) || "", (c && c.location) || "",
                (c && (c.ownedBy || c.createdBy)) || ""].join(" ").toLowerCase();
     if (txt && hay.indexOf(txt) > -1) return true;
@@ -18562,12 +18562,12 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     return '<div class="card" style="padding:9px 13px;margin-bottom:8px">' +
       '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">' +
       '<div style="flex:1 1 240px;min-width:0">' +
-      '<h3 style="margin:0 0 2px;font-size:13.5px">' + esc(q.quoteNo) + ' <span class="pill ' + (q.status === "Won" ? "Won" : (q.status === "Lost" ? "Lost" : "teal")) + '">' + esc(q.status) + '</span>' +
+      '<h3 style="margin:0 0 2px;font-size:13.5px">' + (qCode(q) ? '<span class="pill" style="background:#e0e7ff;color:#1e3a8a;font-weight:700">' + esc(qCode(q)) + '</span> ' : '') + esc(q.quoteNo) + ' <span class="pill ' + (q.status === "Won" ? "Won" : (q.status === "Lost" ? "Lost" : "teal")) + '">' + esc(q.status) + '</span>' +
       (Number(q.version) > 1 ? ' <span class="pill">v' + esc(q.version) + '</span>' : "") + '</h3>' +
       '<div class="meta" style="font-size:12px;line-height:1.5">' + esc(q.client) + ' &middot; ' + esc(q.brand) +
       (_ph ? ' &middot; <span style="color:#0f766e;white-space:nowrap">' + esc(_ph) + '</span>' : "") +
       '<br>net <b>' + money(q.net) + '</b> &middot; <b>' + money(q.total) + '</b> incl GST &middot; ' + esc(q.discountPct) + '% off ' + money(q.gross) +
-      ' <span style="color:#94a3b8">&middot; ' + esc(d10(q.createdAt)) + ' ' + esc(q.createdBy) + '</span></div>' +
+      '<br><span style="color:#64748b">' + esc(qMadeLine(q)) + ' &middot; ' + esc(q.createdBy) + '</span></div>' +   /* v6.9.773 - date AND time */
       '</div>' +
       /* v6.9.215: flex:1 1 auto, not 0 0 auto. The comment above always SAID this row wraps on a
          phone, but 0 0 auto forbade the box from shrinking, so it sat at its full one-line width
@@ -18618,6 +18618,104 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
 
   /* The list alone, so typing repaints THIS and never the page - the caret and the phone
      keyboard stay exactly where they were. */
+  /* ============ QUOTE CODES, DATE AND TIME, THE QUOTE TABLE (v6.9.773) ============ */
+  function qCode(q) { return String((q && q.code) || "").trim(); }
+  /* "12 Oct 2026" and "3:45 pm" from the server's ISO stamp, on this side of midnight */
+  function qWhen(v) {
+    var s0 = String(v || "").trim(); if (!s0) return { d: "", t: "" };
+    var ms = Date.parse(s0);
+    if (!ms || s0.indexOf("T") < 0) { return { d: dmy(s0.slice(0, 10)) || s0.slice(0, 10), t: "" }; }
+    var x = new Date(ms), M = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    var hh = x.getHours(), mm = String(x.getMinutes()).padStart(2, "0");
+    return { d: x.getDate() + " " + M[x.getMonth()] + " " + x.getFullYear(), t: ((hh % 12) || 12) + ":" + mm + " " + (hh < 12 ? "am" : "pm") };
+  }
+  /* the first version of a quote (follow parentId), and the family it belongs to */
+  function qRootOf(q, byId) {
+    var x = q, seen = {};
+    while (x && x.parentId && byId[x.parentId] && !seen[x.id]) { seen[x.id] = 1; x = byId[x.parentId]; }
+    return x || q;
+  }
+  function qRevLabel(q) { var m = qCode(q).match(/-R(\d+)$/i); return m ? "Revision " + m[1] : (Number(q.version) > 1 ? "Revision " + (Number(q.version) - 1) : ""); }
+  /* "Made 12 Oct 2026, 3:45 pm" - and for a revision, when the first version was made too */
+  function qMadeLine(q) {
+    var byId = {}; (S.data.quotes || []).forEach(function (x) { if (x) byId[x.id] = x; });
+    var w = qWhen(q.createdAt), rt = qRootOf(q, byId);
+    if (rt && rt !== q && rt.id !== q.id) {
+      var w0 = qWhen(rt.createdAt);
+      return "Made " + w0.d + (w0.t ? ", " + w0.t : "") + " · " + (qRevLabel(q) || "Revised") + " " + w.d + (w.t ? ", " + w.t : "");
+    }
+    return "Made " + w.d + (w.t ? ", " + w.t : "");
+  }
+  /* the plumber / architect cell: the name, or a button to fill it in */
+  function qPartnerCell(cl, role) {
+    var v = String((cl && cl[role]) || "").trim();
+    if (v) return esc(v);
+    if (!cl || !cl.id) return '<span style="color:#94a3b8">—</span>';
+    return '<button class="btn sm ghost" data-act="q-partner" data-id="' + esc(cl.id) + '" data-role="' + role + '" style="padding:2px 8px;font-size:12px;color:#b45309;border-color:#fcd34d">+ add</button>';
+  }
+  function modalQuotePartner(cid, role) {
+    var c = (S.data.clients || []).filter(function (x) { return String(x.id) === String(cid); })[0];
+    if (!c) return '<h2>Client not found</h2><div class="foot"><button class="btn ghost" data-act="close">Close</button></div>';
+    var lab = role === "architect" ? "Architect" : "Plumber";
+    return '<h2>' + lab + ' for ' + esc(c.name) + '</h2>' +
+      '<p class="sub">Pick the ' + lab.toLowerCase() + ' from the partner list. It is saved on the client, so every quote, visit and challan of ' + esc(c.name) + ' shows it.</p>' +
+      partnerSelect("qp_sel", role, "", true, c.location) +
+      '<div class="meta" style="margin-top:8px;font-size:12px">Not on the list? <a href="#" data-act="cl-open" data-id="' + esc(c.id) + '">Open the client</a> and add the new partner there (mobile number required).</div>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
+      '<button class="btn" data-act="q-partner-save" data-id="' + esc(c.id) + '" data-role="' + role + '">Save</button></div>';
+  }
+  /* THE QUOTE TABLE: one row per quotation, the latest at the top; its revisions sit under it as
+     sub-rows, newest revision first. Dates and times are the server's, shown in this phone's time. */
+  function quotesTableHtml(list, stPill, qMine) {
+    var byId = {}; (S.data.quotes || []).forEach(function (q) { if (q) byId[q.id] = q; });
+    var fams = {}, order = [];
+    list.forEach(function (q) {
+      var rt = qRootOf(q, byId), k = qCode(rt).replace(/-R\d+$/i, "") || ("id:" + rt.id);
+      var k2 = qCode(q).replace(/-R\d+$/i, "") || k;
+      if (!fams[k2]) { fams[k2] = []; order.push(k2); }
+      fams[k2].push(q);
+    });
+    var newest = function (f) { return f.reduce(function (m, q) { var d = String(q.createdAt || ""); return d > m ? d : m; }, ""); };
+    order.sort(function (a, b) { return newest(fams[b]).localeCompare(newest(fams[a])); });
+    var th = function (t, al) { return '<th style="text-align:' + (al || "left") + ';padding:7px 8px;font-size:12px;letter-spacing:.04em;color:#fff;white-space:nowrap">' + t + '</th>'; };
+    var h = '<div style="overflow-x:auto;border:1px solid #e2e8f0;border-radius:10px;background:#fff">' +
+      '<table style="border-collapse:collapse;width:100%;min-width:1080px;font-size:13px">' +
+      '<thead><tr style="background:#0b3b36">' + th("CODE") + th("QUOTE NO.") + th("CLIENT") + th("PHONE") + th("EXECUTIVE") + th("BRANDS") +
+      th("DATE") + th("TIME") + th("PLUMBER") + th("ARCHITECT") + th("STATUS") + th("INCL GST", "right") + '</tr></thead><tbody>';
+    order.forEach(function (k) {
+      var f = fams[k].slice().sort(function (a, b) { return (Number(a.version) || 1) - (Number(b.version) || 1) || String(a.createdAt || "").localeCompare(String(b.createdAt || "")); });
+      var base = f[0], revs = f.slice(1).reverse();
+      [base].concat(revs).forEach(function (q, i) {
+        var sub = i > 0;
+        var cl = clientByName(q.client) || {};
+        var exec = String(cl.ownedBy || cl.createdBy || "").trim() || "Unassigned";
+        var w = qWhen(q.createdAt), st = String(q.status || "Draft");
+        var td = function (x, al, extra) { return '<td style="padding:6px 8px;border-top:1px solid ' + (sub ? "#f1f5f9" : "#e2e8f0") + ';vertical-align:top;text-align:' + (al || "left") + (extra || "") + '">' + x + '</td>'; };
+        var codeCell = sub
+          ? '<span style="color:#94a3b8">↳</span> <b style="color:#0f766e">' + esc(qCode(q) || ("v" + (q.version || ""))) + '</b><div style="font-size:12px;color:#64748b">' + esc(qRevLabel(q)) + '</div>'
+          : '<b>' + esc(qCode(q) || "—") + '</b>' + (revs.length ? '<div style="font-size:12px;color:#64748b">' + revs.length + ' revision' + (revs.length > 1 ? "s" : "") + '</div>' : '');
+        var noCell = qMine(q)
+          ? '<button class="btn sm ghost" data-act="q-card" data-id="' + esc(q.id) + '" style="padding:1px 7px;font-size:12px;white-space:normal;word-break:break-all;text-align:left" title="Open this quote’s card">' + esc(q.quoteNo || "open") + '</button>'
+          : '<span style="font-size:12px;word-break:break-all">' + esc(q.quoteNo || "") + '</span>';
+        h += '<tr style="background:' + (sub ? "#f8fafc" : "#fff") + '">' +
+          td(codeCell, "left", sub ? ";padding-left:18px" : "") + td(noCell) +
+          td('<a href="#" data-act="cl-open" data-id="' + esc(cl.id || "") + '" style="font-weight:700;color:#0b3b36;text-decoration:none">' + esc(q.client || "") + '</a>') +
+          td('<span style="white-space:nowrap">' + esc(cl.mobile || "") + '</span>') +
+          td(esc(exec) + (String(q.createdBy || "").trim() && String(q.createdBy).trim() !== exec ? '<div style="font-size:12px;color:#64748b">made by ' + esc(q.createdBy) + '</div>' : '')) +
+          td(esc(quoteBrands(q).join(", ") || q.brand || "—")) +
+          td('<span style="white-space:nowrap">' + esc(w.d) + '</span>') + td('<span style="white-space:nowrap">' + esc(w.t) + '</span>') +
+          td(qPartnerCell(cl, "plumber")) + td(qPartnerCell(cl, "architect")) +
+          td(stPill(q) + '<div style="margin-top:3px;white-space:nowrap">' +
+            (qMine(q) && st !== "Won" ? '<button class="btn sm" data-act="q-win" data-id="' + esc(q.id) + '" style="padding:2px 7px;font-size:12px">Won</button> ' : "") +
+            (qMine(q) && st !== "Lost" ? '<button class="btn sm ghost" data-act="q-lose" data-id="' + esc(q.id) + '" style="padding:2px 7px;font-size:12px">Lost</button> ' : "") +
+            '<button class="btn sm ghost" data-act="q-pdf" data-id="' + esc(q.id) + '" style="padding:2px 7px;font-size:12px">PDF</button></div>') +
+          td('<b style="white-space:nowrap">' + money(q.total) + '</b><div style="font-size:12px;color:#64748b;white-space:nowrap">net ' + money(q.net) + '</div>', "right") +
+          '</tr>';
+      });
+    });
+    return h + '</tbody></table></div>';
+  }
+
   function quotesBodyHtml() {
     var list = quoteSearchList(true);   /* 6.9.654 - everyone's quotes */
     var qMine = qMineFn();
@@ -18701,9 +18799,13 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
        the whole row. Every heading still sorts - by date, client, status, total and executive. */
     var qSm = function (t) { return '<div style="font-size:12px;color:#64748b;font-weight:400;margin-top:1px">' + t + '</div>'; };
     /* 6.9.647 - BY CLIENT (the default) or the flat sortable list */
-    var grp = S.qGroup !== "list";
-    h += '<div class="row" style="gap:6px;margin:4px 0 8px"><button class="btn sm ' + (grp ? "" : "ghost") + '" data-act="q-group" data-k="client">By client</button>' +
-      '<button class="btn sm ' + (grp ? "ghost" : "") + '" data-act="q-group" data-k="list">List</button></div>';
+    var qg = S.qGroup === "list" || S.qGroup === "client" ? S.qGroup : "table";   /* v6.9.773 - the table first */
+    var grp = qg === "client";
+    h += '<div class="row" style="gap:6px;margin:4px 0 8px">' +
+      '<button class="btn sm ' + (qg === "table" ? "" : "ghost") + '" data-act="q-group" data-k="table">Table</button>' +
+      '<button class="btn sm ' + (grp ? "" : "ghost") + '" data-act="q-group" data-k="client">By client</button>' +
+      '<button class="btn sm ' + (qg === "list" ? "" : "ghost") + '" data-act="q-group" data-k="list">List</button></div>';
+    if (qg === "table") return h + quotesTableHtml(shown, stPill, qMine);
     if (grp) return h + quotesByClientHtml(shown, stPill, qMine);
     h += xlTable("qlog", [
       { k: "date", t: "QUOTE", wrap: "170px" }, { k: "client", t: "CLIENT", wrap: "240px" },
@@ -20719,8 +20821,8 @@ function viewCatalogue() {
       col([205, 232, 228]); F("normal"); doc.setFontSize(8.5);
       var VALID_DAYS = 30;
       var vUntil = ymdLocal(new Date(Date.now() + VALID_DAYS * 86400000));
-      doc.text("Quote No.   " + String(q.quoteNo || ""), Rt, 36.8, { align: "right" });
-      doc.text("Date   " + today(), Rt, 40.6, { align: "right" });
+      doc.text("Quote No.   " + String(q.quoteNo || "") + (qCode(q) ? "   \u00b7   " + qCode(q) : ""), Rt, 36.8, { align: "right" });   /* v6.9.773 */
+      doc.text(pdfSafe(q.createdAt ? qMadeLine(q) : "Date   " + today()), Rt, 40.6, { align: "right" });
       col(MINT);
       doc.text("Valid for " + VALID_DAYS + " days  \u00b7  until " + vUntil, Rt, 44.4, { align: "right" });
 
@@ -20778,9 +20880,12 @@ function viewCatalogue() {
       /* 6.9.673 - re-spaced for 9-10 pt figures (they were 6.2-6.6 pt): every money column is wide
          enough for a lakh figure at its new size, and the description gives up the room. Checked
          by drawing a lakh figure in every column and looking at it (audit/print/prints.js). */
-      var X = { n: L + 1, pic: L + 4.5, item: L + 21, unit: 117, qty: 127, price: 146, dis: 158, dprice: 177, amt: Rt - 1 };   /* 6.9.762 - picture column 3 mm wider */
+      /* v6.9.773 - his choice B: the description starts at the left and the picture sits just before
+         Unit, so the eye reads #, name, picture, then the figures. The money columns did not move. */
+      var X = { n: L + 1, item: L + 6, unit: 117, qty: 127, price: 146, dis: 158, dprice: 177, amt: Rt - 1 };
       var UNIT_W = 15;                       /* "Per Set", "Per 3 Mtr" at 9pt */
-      var DESC_W = X.unit - UNIT_W - X.item - 2;
+      X.pic = X.unit - UNIT_W - 15.5;
+      var DESC_W = X.pic - X.item - 2;
       var head = function () {
         fill(DEEP); doc.rect(L, y - 5.2, Rt - L, 8.4, "F");
         fill(MINT); doc.rect(L, y + 2.6, Rt - L, 0.5, "F");   /* mint underline ties the table header to the brand band */
@@ -20844,7 +20949,7 @@ function viewCatalogue() {
           try {
             /* 6.9.759 - the box IS the cell: from the serial column to the description, and the row's own
                height less a margin, so a picture can never reach the row above or below */
-            var BOXW = X.item - X.pic - 2.5, BOXH = Math.min(17, hgt - 1.4);
+            var BOXW = 14, BOXH = Math.min(17, hgt - 1.4);   /* v6.9.773 - a 14 mm box before Unit */
             var dm = null;
             try { var _ip = doc.getImageProperties(r.pic); if (_ip && _ip.width && _ip.height) dm = { w: _ip.width, h: _ip.height }; } catch (e3) { }   /* 6.9.762 - the picture's own size */
             if (!dm) dm = (r.dim && r.dim.w && r.dim.h) ? r.dim : { w: BOXW, h: BOXH };
@@ -20906,9 +21011,12 @@ function viewCatalogue() {
           /* 6.9.760 - his group name, wrapped to the full width; no count (it printed over a long name), no block */
           var _gl = fitCell(doc, F, pdfSafe(g.room || "Other items"), Rt - X.item - 2, 2, "normal", 9.5);
           if (y + 8 + _gl.length * 4 > 272) { doc.addPage(); y = 20; head(); }
-          col(TEALD); F("normal"); doc.setFontSize(9.5);
-          _gl.forEach(function (gl, k) { doc.text(gl, X.item, y + 0.6 + k * 4); });
-          doc.setDrawColor(94, 234, 212); doc.setLineWidth(0.3); doc.line(X.item, y + 1.8 + (_gl.length - 1) * 4, Rt, y + 1.8 + (_gl.length - 1) * 4); doc.setLineWidth(0.2);
+          /* v6.9.773 - his option 2: navy on a light blue band, a navy bar at its left edge */
+          var _gh = 1.8 + (_gl.length - 1) * 4;
+          fill([232, 238, 250]); doc.rect(X.item - 1.5, y - 3.6, Rt - X.item + 1.5, _gh + 4.6, "F");
+          fill([30, 58, 138]); doc.rect(X.item - 1.5, y - 3.6, 1.2, _gh + 4.6, "F");
+          col([30, 58, 138]); F("normal"); doc.setFontSize(9.5);
+          _gl.forEach(function (gl, k) { doc.text(gl, X.item + 1, y + 0.6 + k * 4); });
           y += 6.4 + (_gl.length - 1) * 4;
         }
         g.rows.forEach(function (r) { drawRow(r, _sn++); });
@@ -56255,7 +56363,21 @@ function viewCatalogue() {
        The write is the same one the status select makes (qq.status + save), and Lost opens
        the reason sheet after saving, exactly as the select does. */
     if (act === "q-log") { S.qLog = t.getAttribute("data-k") || "all"; keepScroll = true; render(); return; }
-    if (act === "q-group") { S.qGroup = t.getAttribute("data-k") === "list" ? "list" : "client"; keepScroll = true; render(); return; }   /* 6.9.647 */
+    if (act === "q-group") { var _qgk = t.getAttribute("data-k"); S.qGroup = (_qgk === "list" || _qgk === "client") ? _qgk : "table"; keepScroll = true; render(); return; }   /* 6.9.647, 6.9.773 */
+    /* v6.9.773 - a missing plumber / architect, filled in from the quote table */
+    if (act === "q-partner") { S.modal = modalQuotePartner(t.getAttribute("data-id"), t.getAttribute("data-role") === "architect" ? "architect" : "plumber"); render(); return; }
+    if (act === "q-partner-save") {
+      var _qpc = (S.data.clients || []).filter(function (x) { return String(x.id) === String(t.getAttribute("data-id")); })[0];
+      var _qpr = t.getAttribute("data-role") === "architect" ? "architect" : "plumber";
+      var _qpv = String(val("qp_sel") || "").trim();
+      if (!_qpc) { toast("That client is no longer on the list."); return; }
+      if (!_qpv || _qpv === "__new__") { toast("Pick a name from the list first."); return; }
+      var _qprow = Object.assign({}, _qpc); _qprow[_qpr] = _qpv;
+      S.modal = null;
+      save("clients", _qprow).then(function (r) { if (r) toast((_qpr === "architect" ? "Architect" : "Plumber") + " saved on " + _qpc.name + "."); },
+        function (e) { toast("Not saved — " + apiWhy(e) + "."); });
+      render(); return;
+    }
     if (act === "q-card") { S.qCard = t.getAttribute("data-id") || ""; keepScroll = true; render(); return; }
     if (act === "q-dates-clear") { S.qFrom = ""; S.qTo = ""; render(); return; }
     if (act === "q-win" || act === "q-lose") {
