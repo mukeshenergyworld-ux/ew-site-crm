@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.770";
+  var APP_VERSION = "6.9.771";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -21287,10 +21287,51 @@ function viewCatalogue() {
     return out;
   }
   /* plain quote: technologies with icons, then the brands - drawn before the Terms. Returns y. */
+  /* plain quote: the brands (logo + name + introduction) first, then the TOTO technologies with
+     their icons - drawn before the Terms. Returns y. v6.9.771: his words "use brand logo with
+     brand name; about the brand on top then technology if any". */
   function qxDrawPlain(doc, F, items, y, L, Rt, C) {
     var td = (_tkb && _tkb.techDict) || {};
-    var keys = qxTechKeys(items);
     var col = function (c) { doc.setTextColor(c[0], c[1], c[2]); };
+
+    /* ---- 1. About the brands ---- */
+    var bs = qxIntroBrands(items);
+    if (bs.length) {
+      var LW = 26, LH = 11, TX = L + LW + 4, TW = Rt - TX;
+      var bl = bs.map(function (x) {
+        F("normal"); doc.setFontSize(7.8);
+        var ls = doc.splitTextToSize(pdfSafe(x.about), TW);
+        return { x: x, ls: ls, lg: logoFor(x.brand) || logoFor((x.alias || [])[0] || ""), h: Math.max(LH + 2, 5.4 + ls.length * 3.4) + 3 };
+      });
+      if (y + 12 + bl[0].h > 278) { doc.addPage(); y = 22; } else { y += 4; }
+      col(C.DEEP); F("bold"); doc.setFontSize(10);
+      doc.text(bs.length === 1 ? "About the brand in this quote" : "About the brands in this quote", L, y + 2);
+      y += 7;
+      bl.forEach(function (b) {
+        if (y + b.h > 280) { doc.addPage(); y = 22; }
+        /* the logo, framed like the distributor strip */
+        doc.setFillColor(255, 255, 255); doc.roundedRect(L, y - 1, LW, LH, 1.4, 1.4, "F");
+        doc.setDrawColor(203, 213, 225); doc.setLineWidth(0.25); doc.roundedRect(L, y - 1, LW, LH, 1.4, 1.4, "S"); doc.setLineWidth(0.2);
+        if (b.lg && b.lg.src && b.lg.w && b.lg.h) {
+          var sc = Math.min((LW - 2.4) / b.lg.w, (LH - 2.4) / b.lg.h), iw = b.lg.w * sc, ih = b.lg.h * sc;
+          try { doc.addImage(b.lg.src, "JPEG", L + (LW - iw) / 2, y - 1 + (LH - ih) / 2, iw, ih); } catch (e) { }
+        } else {
+          col(C.INK); F("bold"); doc.setFontSize(7.4);
+          doc.text(fitCell(doc, F, pdfSafe(b.x.brand), LW - 3, 1, "bold", 7.4)[0], L + LW / 2, y + LH / 2, { align: "center" });
+        }
+        col(C.INK); F("bold"); doc.setFontSize(8.8);
+        doc.text(pdfSafe(b.x.brand), TX, y + 2);
+        var bw = doc.getTextWidth(pdfSafe(b.x.brand));
+        col(C.TEAL); F("normal"); doc.setFontSize(7.6);
+        doc.text(fitCell(doc, F, pdfSafe("- " + b.x.tagline + (b.x.origin ? "  (" + b.x.origin + ")" : "")), TW - bw - 3, 1, "normal", 7.6)[0], TX + bw + 2.2, y + 2);
+        col(C.GREY); F("normal"); doc.setFontSize(7.8);
+        doc.text(b.ls, TX, y + 6);
+        y += b.h;
+      });
+    }
+
+    /* ---- 2. TOTO technologies, if any ---- */
+    var keys = qxTechKeys(items);
     if (keys.length) {
       var GAP = 6, COLW = (Rt - L - GAP) / 2, ICON = 7.5;
       var cells = keys.map(function (k) {
@@ -21302,7 +21343,7 @@ function viewCatalogue() {
       col(C.DEEP); F("bold"); doc.setFontSize(10);
       doc.text("TOTO technologies in this quote", L, y + 2);
       col(C.GREY); F("normal"); doc.setFontSize(7.4);
-      doc.text("From TOTO's 2026 catalogue. The products above carry these features.", L, y + 6.4);
+      doc.text("From TOTO's 2026 catalogue. The TOTO products above carry these features.", L, y + 6.4);
       y += 11;
       for (var r = 0; r < cells.length; r += 2) {
         var pair = cells.slice(r, r + 2), rh = Math.max.apply(null, pair.map(function (c) { return c.h; }));
@@ -21317,29 +21358,6 @@ function viewCatalogue() {
         });
         y += rh + 1;
       }
-    }
-    var bs = qxIntroBrands(items);
-    if (bs.length) {
-      var bl = bs.map(function (x) {
-        F("normal"); doc.setFontSize(7.8);
-        var ls = doc.splitTextToSize(pdfSafe(x.about), Rt - L);
-        return { x: x, ls: ls, h: 5 + ls.length * 3.4 + 2.5 };
-      });
-      if (y + 12 + bl[0].h > 278) { doc.addPage(); y = 22; } else { y += 4; }
-      col(C.DEEP); F("bold"); doc.setFontSize(10);
-      doc.text(bs.length === 1 ? "About the brand in this quote" : "About the brands in this quote", L, y + 2);
-      y += 8;
-      bl.forEach(function (b) {
-        if (y + b.h > 280) { doc.addPage(); y = 22; }
-        col(C.INK); F("bold"); doc.setFontSize(8.6);
-        doc.text(pdfSafe(b.x.brand), L, y + 2);
-        var bw = doc.getTextWidth(pdfSafe(b.x.brand));
-        col(C.TEAL); F("normal"); doc.setFontSize(7.6);
-        doc.text(pdfSafe("- " + b.x.tagline + (b.x.origin ? "  (" + b.x.origin + ")" : "")), L + bw + 2.2, y + 2);
-        col(C.GREY); F("normal"); doc.setFontSize(7.8);
-        doc.text(b.ls, L, y + 6);
-        y += b.h;
-      });
     }
     return y;
   }
