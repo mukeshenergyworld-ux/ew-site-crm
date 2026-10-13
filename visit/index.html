@@ -189,7 +189,7 @@ h3.sec{color:#1F3A5F}
       button: function () { return '<button type="button" class="ewthm" onclick="ewTheme.next(this)">' + ewtLabel() + '</button>'; }
     };
   })();
-  var APP_VERSION = "1.4.10";
+  var APP_VERSION = "1.4.11";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_vq_session", JRN = "ew_vq_journal_v1", CALLQ = "ew_vq_calls_v1", SNAPK = "ew_vq_snap_";
   var CAT_KEY = "ew_team_catalog", CAT_V = 2;   /* the CRM's own shelf copy of the price list - shared, same origin */
@@ -1571,8 +1571,8 @@ h3.sec{color:#1F3A5F}
       col([205, 232, 228]); F("normal"); doc.setFontSize(8.5);
       var VALID_DAYS = 30;
       var vUntil = ymdLocal(new Date(Date.now() + VALID_DAYS * 86400000));
-      doc.text("Quote No.   " + String(q.quoteNo || ""), Rt, 36.8, { align: "right" });
-      doc.text("Date   " + today(), Rt, 40.6, { align: "right" });
+      doc.text("Quote No.   " + String(q.quoteNo || "") + (qCode(q) ? "   \u00b7   " + qCode(q) : ""), Rt, 36.8, { align: "right" });   /* 1.4.11 */
+      doc.text(q.createdAt ? qMadeLine(q) : "Date   " + today(), Rt, 40.6, { align: "right" });
       col(MINT);
       doc.text("Valid for " + VALID_DAYS + " days  \u00b7  until " + vUntil, Rt, 44.4, { align: "right" });
 
@@ -2765,15 +2765,82 @@ h3.sec{color:#1F3A5F}
     saveRow("quotes", row); render();
     toast((q.quoteNo || "Quote") + " — " + (to === "Won" ? "Won" : "pending again (Sent)") + ".");
   }
+  /* ===== 1.4.11 - QUOTE CODES, DATE AND TIME, THE QUOTE TABLE (as CRM 6.9.773) ===== */
+  function qCode(q) { return String((q && q.code) || "").trim(); }
+  function qWhen(v) {
+    var s0 = String(v || "").trim(); if (!s0) return { d: "", t: "" };
+    var ms = Date.parse(s0);
+    if (!ms || s0.indexOf("T") < 0) return { d: fd(s0), t: "" };
+    var x = new Date(ms), hh = x.getHours(), mm = String(x.getMinutes()).padStart(2, "0");
+    return { d: x.getDate() + " " + MON[x.getMonth()] + " " + x.getFullYear(), t: ((hh % 12) || 12) + ":" + mm + " " + (hh < 12 ? "am" : "pm") };
+  }
+  function qRootOf(q, byId) { var x = q, seen = {}; while (x && x.parentId && byId[x.parentId] && !seen[x.id]) { seen[x.id] = 1; x = byId[x.parentId]; } return x || q; }
+  function qRevLabel(q) { var m = qCode(q).match(/-R(\d+)$/i); return m ? "Revision " + m[1] : (Number(q.version) > 1 ? "Revision " + (Number(q.version) - 1) : ""); }
+  function qMadeLine(q) {
+    var byId = {}; (S.data.quotes || []).forEach(function (x) { if (x) byId[x.id] = x; });
+    var w = qWhen(q.createdAt), rt = qRootOf(q, byId);
+    if (rt && rt.id !== q.id) { var w0 = qWhen(rt.createdAt); return "Made " + w0.d + (w0.t ? ", " + w0.t : "") + " · " + (qRevLabel(q) || "Revised") + " " + w.d + (w.t ? ", " + w.t : ""); }
+    return "Made " + w.d + (w.t ? ", " + w.t : "");
+  }
+  function qPartnerCell(c, f) {
+    var v = String((c && c[f]) || "").trim();
+    if (v) return esc(v);
+    if (!c || !c.name) return '<span class="meta">—</span>';
+    return '<button type="button" class="btn sm gry" data-act="qp-add" data-k="' + f + '" data-id="' + esc(c.name) + '" style="min-height:44px;padding:0 10px;color:#B45309">+ add</button>';
+  }
+  function qPartnerSheet(cname, f) {
+    var c = clientByName(cname); if (!c) return '<h2>Client not found</h2><div class="acts"><button class="btn gry" data-act="close">Close</button></div>';
+    var lab = f === "architect" ? "Architect" : "Plumber";
+    return '<h2>' + lab + ' for ' + esc(c.name) + '</h2><div class="meta">Saved on the client, so every quote, visit and challan of ' + esc(c.name) + ' shows it.</div>' +
+      '<label for="qp_name">' + lab + '</label><input id="qp_name" list="qp_list" placeholder="Pick or type the name" autocomplete="off"/>' + dl("qp_list", partners(f).map(function (a) { return a.name; })) +
+      '<div class="acts"><button class="btn gry" data-act="close">Cancel</button><button class="btn" data-act="qp-save" data-k="' + f + '" data-id="' + esc(c.name) + '">Save</button></div>';
+  }
+  function qTable(list) {
+    var byId = {}; (S.data.quotes || []).forEach(function (q) { if (q) byId[q.id] = q; });
+    var fams = {}, order = [];
+    list.forEach(function (q) {
+      var rt = qRootOf(q, byId), k = qCode(q).replace(/-R\d+$/i, "") || qCode(rt).replace(/-R\d+$/i, "") || ("id:" + rt.id);
+      if (!fams[k]) { fams[k] = []; order.push(k); }
+      fams[k].push(q);
+    });
+    var newest = function (f) { return f.reduce(function (m, q) { var d = String(q.createdAt || ""); return d > m ? d : m; }, ""); };
+    order.sort(function (a, b) { return newest(fams[b]).localeCompare(newest(fams[a])); });
+    var th = function (t, r) { return '<th style="padding:7px 8px;text-align:' + (r ? "right" : "left") + ';white-space:nowrap;font-size:12px;color:#fff">' + t + '</th>'; };
+    var h = '<div style="overflow-x:auto;border:1px solid #DCE3EA;border-radius:12px;background:#fff;margin-top:8px"><table style="border-collapse:collapse;width:100%;min-width:1040px;font-size:13px">' +
+      '<thead><tr style="background:#0F2A44">' + th("CODE") + th("QUOTE NO.") + th("CLIENT") + th("PHONE") + th("EXECUTIVE") + th("BRANDS") + th("DATE") + th("TIME") + th("PLUMBER") + th("ARCHITECT") + th("STATUS") + th("NET", 1) + '</tr></thead><tbody>';
+    order.forEach(function (k) {
+      var f = fams[k].slice().sort(function (a, b) { return (Number(a.version) || 1) - (Number(b.version) || 1) || String(a.createdAt || "").localeCompare(String(b.createdAt || "")); });
+      var base = f[0], revs = f.slice(1).reverse();
+      [base].concat(revs).forEach(function (q, i) {
+        var sub = i > 0, c = clientByName(q.client) || {}, w = qWhen(q.createdAt), st = q.status || "Draft";
+        var grp = st === "Won" ? "Won" : st === "Lost" ? "Lost" : "Pending", mine = isMe(q.createdBy) || !q.createdBy;
+        var td = function (x, r, pad) { return '<td style="padding:6px 8px;border-top:1px solid ' + (sub ? "#F1F5F9" : "#DCE3EA") + ';vertical-align:top;text-align:' + (r ? "right" : "left") + (pad ? ";padding-left:18px" : "") + '">' + x + '</td>'; };
+        h += '<tr style="background:' + (sub ? "#F8FAFC" : "#fff") + '">' +
+          td(sub ? '<span class="meta">↳</span> <b>' + esc(qCode(q) || "v" + (q.version || "")) + '</b><div class="meta">' + esc(qRevLabel(q)) + '</div>'
+                 : '<b>' + esc(qCode(q) || "—") + '</b>' + (revs.length ? '<div class="meta">' + revs.length + ' revision' + (revs.length > 1 ? "s" : "") + '</div>' : ''), false, sub) +
+          td('<button type="button" class="btn sm gry" data-act="q-open" data-id="' + esc(q.id) + '" style="min-height:44px;padding:0 8px;font-size:12px;white-space:normal;word-break:break-all;text-align:left">' + esc(q.quoteNo || "open") + '</button>') +
+          td('<b>' + esc(q.client || "") + '</b>') +
+          td(mob10(c.mobile).length === 10 ? '<a href="tel:' + mob10(c.mobile) + '" style="white-space:nowrap">' + esc(c.mobile) + '</a>' : esc(c.mobile || "")) +
+          td(esc(c.ownedBy || c.createdBy || "") + (q.createdBy && q.createdBy !== (c.ownedBy || c.createdBy) ? '<div class="meta">made by ' + esc(q.createdBy) + '</div>' : '')) +
+          td(esc(q.brand || "")) +
+          td('<span style="white-space:nowrap">' + esc(w.d) + '</span>') + td('<span style="white-space:nowrap">' + esc(w.t) + '</span>') +
+          td(qPartnerCell(c, "plumber")) + td(qPartnerCell(c, "architect")) +
+          td('<span class="pill ' + qTone(st) + '">' + esc(st) + '</span>' + (mine ? '<div style="display:flex;gap:4px;margin-top:4px">' + [["Pending", "Pend."], ["Won", "Won"], ["Lost", "Lost"]].map(function (x) {
+              return '<button type="button" class="btn sm ' + (grp === x[0] ? "" : "gry") + '" data-act="qr-st" data-k="' + x[0] + '" data-id="' + esc(q.id) + '" style="min-height:44px;padding:0 8px;font-size:12px" aria-pressed="' + (grp === x[0]) + '">' + x[1] + '</button>'; }).join("") + '</div>' : '')) +
+          td('<b style="white-space:nowrap">' + esc(money(q.net)) + '</b>', true) + '</tr>';
+      });
+    });
+    return h + '</tbody></table></div>';
+  }
   function viewQuotes() {
     var f = S.fq || "all", all = myQuotes(), q = lower(S.q);
     var cnt = function (k) { return all.filter(function (x) { return fqOk(x, k); }).length; };
-    var list = all.filter(function (x) { return fqOk(x, f); }).filter(function (x) { return !q || lower([x.client, x.quoteNo, x.brand, x.siteName].join(" ")).indexOf(q) >= 0; });
+    var list = all.filter(function (x) { return fqOk(x, f); }).filter(function (x) { return !q || lower([x.client, x.quoteNo, x.code, x.brand, x.siteName].join(" ")).indexOf(q) >= 0; });
     return '<h2>Quotes</h2><div class="acts"><button class="btn full" data-act="qz-new">+ New quote</button></div>' +
       '<div class="chips">' + [["all", "All"], ["Draft", "Not sent"], ["follow", "To follow up"], ["Sent", "Sent"], ["Negotiating", "Negotiating"], ["Won", "Won"], ["Lost", "Lost"]].map(function (x) {
         return '<button class="chip' + (f === x[0] ? ' on' : '') + '" data-act="fq" data-k="' + x[0] + '">' + x[1] + ' <b>' + cnt(x[0]) + '</b></button>'; }).join("") + '</div>' +
       '<div class="bar"><input id="qq" placeholder="Client, quote number or brand" value="' + esc(S.q || "") + '" autocomplete="off"/></div>' +
-      '<div id="qres">' + (list.length ? list.slice(0, 80).map(qRow).join("") : '<div class="empty">No quote here.</div>') + '</div>';
+      '<div id="qres">' + (list.length ? qTable(list.slice(0, 120)) : '<div class="empty">No quote here.</div>') + '</div>';   /* 1.4.11 - the table */
   }
   function fqOk(x, k) {
     if (k === "all") return true;
@@ -2783,7 +2850,7 @@ h3.sec{color:#1F3A5F}
   function qById(id) { return (S.data.quotes || []).filter(function (x) { return String(x.id) === String(id); })[0] || null; }
   function qSheet(q) {
     var it = qItems(q), c = clientByName(q.client) || {}, m = mob10(c.mobile), mine = roleIs("admin") || isMe(q.createdBy) || isMineClient(q.client);
-    var h = '<h2>' + codeTag(q.client) + esc(q.client || "") + '</h2><div class="meta">' + esc(q.quoteNo || "") + ' &middot; ' + esc(fd(q.createdAt)) + ' &middot; by ' + esc(q.createdBy || "") + '</div>' +
+    var h = '<h2>' + codeTag(q.client) + esc(q.client || "") + '</h2><div class="meta">' + (qCode(q) ? '<b>' + esc(qCode(q)) + '</b> &middot; ' : '') + esc(q.quoteNo || "") + ' &middot; ' + esc(qMadeLine(q)) + ' &middot; by ' + esc(q.createdBy || "") + '</div>' +
       '<div style="margin:6px 0"><span class="pill ' + qTone(q.status) + '">' + esc(q.status || "Draft") + '</span> <span class="pill">' + esc(q.brand || "") + '</span></div>';
     h += lineTable(it.map(function (i) { return { i: i, d: qLineDisc(q, i), net: Math.round(qLineNet(q, i) * (Number(i.qty) || 0)) }; }));
     h += totCard({ gross: Number(q.gross) || 0, net: Number(q.net) || 0, gst: Number(q.gstAmt) || 0, total: Number(q.total) || 0 }, it.some(function (i) { return i.gst; }));   /* 1.1.0 - GST only when the quote says so */
@@ -3036,6 +3103,15 @@ h3.sec{color:#1F3A5F}
     if (act === "cn-dupok") { if (S.cn) S.cn.dupOk = true; S.sheet = clNewSheet(); render(); cnSave(); return; }
     if (act === "qz-use") { qzKeep(); S.qz.brandDiscs[k] = Number(t.getAttribute("data-p")) || 0; render(); return; }
     if (act === "pv-sites") { S.pvSitesOpen = !S.pvSitesOpen; pvInfoPaint(); return; }
+    /* 1.4.11 - a missing plumber / architect, from the quote table */
+    if (act === "qp-add") { S.sheet = qPartnerSheet(id, k === "architect" ? "architect" : "plumber"); render(); return; }
+    if (act === "qp-save") {
+      var _qc = clientByName(id), _qf = k === "architect" ? "architect" : "plumber", _qn = val("qp_name");
+      if (!_qc || !_qn) { toast("Pick or type the name first."); return; }
+      saveRow("clients", Object.assign({}, _qc, { [_qf]: _qn }));
+      ensurePartner(_qn, _qf === "architect" ? "Architect" : "Plumber", _qc.location, _qc.area);
+      S.sheet = null; render(); toast(_qc.name + ": " + _qf + " " + _qn + " saved."); return;
+    }
     if (act === "pv-cfix") {
       var _pc = clientByName(val("pv_name")), _pf = k, _pn = val("pv_c" + k); if (!_pc || !_pn) { toast("Pick or type the name first."); return; }
       saveRow("clients", Object.assign({}, _pc, { [_pf]: _pn }));
@@ -3100,7 +3176,7 @@ h3.sec{color:#1F3A5F}
     if (t.id === "sn_dist") { var _sd = el("sn_cdl"); if (_sd) _sd.innerHTML = dl("sn_cities", areasFor(t.value)); return; }
     if (t.id === "cn_dist") { var _cd = el("cn_adl"); if (_cd) _cd.innerHTML = dl("cn_areas", areasFor(t.value)); return; }
     if (t.id === "sq") { S.q = t.value; S.near = null; var r = el("sres"); if (r) r.innerHTML = siteResults(); return; }
-    if (t.id === "qq") { S.q = t.value; var r2 = el("qres"); if (r2) { var f = S.fq || "all", q = lower(S.q); var list = myQuotes().filter(function (x) { return fqOk(x, f); }).filter(function (x) { return !q || lower([x.client, x.quoteNo, x.brand, x.siteName].join(" ")).indexOf(q) >= 0; }); r2.innerHTML = list.length ? list.slice(0, 80).map(qRow).join("") : '<div class="empty">No quote here.</div>'; } return; }
+    if (t.id === "qq") { S.q = t.value; var r2 = el("qres"); if (r2) { var f = S.fq || "all", q = lower(S.q); var list = myQuotes().filter(function (x) { return fqOk(x, f); }).filter(function (x) { return !q || lower([x.client, x.quoteNo, x.code, x.brand, x.siteName].join(" ")).indexOf(q) >= 0; }); r2.innerHTML = list.length ? list.slice(0, 80).map(qRow).join("") : '<div class="empty">No quote here.</div>'; } return; }
     if (t.id === "qz_cq") { S.qz.cq = t.value; var q3 = lower(t.value), cl = myClients(); var hits = q3.length >= 2 ? cl.filter(function (c) { return lower([c.code, c.oldCode, c.name, c.area, c.location, c.mobile].join(" ")).indexOf(q3) >= 0; }) : []; el("qz_hits").innerHTML = qzHits(hits, q3); return; }
     if (t.id === "qz_pq") { S.qz.pq = t.value; el("qz_pres").innerHTML = qzProdHits(); return; }
     if (t.classList && (t.classList.contains("qz-qty") || t.classList.contains("qz-bd"))) { qzKeep(); return; }
