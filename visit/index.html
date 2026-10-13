@@ -189,7 +189,7 @@ h3.sec{color:#1F3A5F}
       button: function () { return '<button type="button" class="ewthm" onclick="ewTheme.next(this)">' + ewtLabel() + '</button>'; }
     };
   })();
-  var APP_VERSION = "1.4.15";
+  var APP_VERSION = "1.4.16";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_vq_session", JRN = "ew_vq_journal_v1", CALLQ = "ew_vq_calls_v1", SNAPK = "ew_vq_snap_";
   var CAT_KEY = "ew_team_catalog", CAT_V = 2;   /* the CRM's own shelf copy of the price list - shared, same origin */
@@ -938,7 +938,7 @@ h3.sec{color:#1F3A5F}
   var FONTS = null, LOGO_B64 = null, PIC_CACHE = {};
   function loadLogo() {
     if (LOGO_B64 !== null) return Promise.resolve(LOGO_B64);
-    return fetch("../assets/logo.jpg").then(function (r) { return r.blob(); }).then(function (b) {
+    return fetch("../assets/logo_tm.jpg").then(function (r) { return r.blob(); }).then(function (b) {
       return new Promise(function (res) {
         var fr = new FileReader();
         fr.onload = function () { LOGO_B64 = String(fr.result); res(LOGO_B64); };
