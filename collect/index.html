@@ -177,7 +177,7 @@ table.ct td.wd{white-space:nowrap}
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.66.4";
+  var APP_VERSION = "1.66.5";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -3895,7 +3895,7 @@ function cancelMap() {
     l.push("Kindly confirm this figure, or tell us the amount as per your books so we can reconcile it. We will send the detailed statement on your word.");
     l.push("");
     l.push("Thank you.");
-    l.push("Energy World  |  Panipat · Sonipat · Karnal");
+    l.push("Energy World  |  Sonipat · Panipat · Karnal · Rohtak");
     return l.join("\n");
   }
 
@@ -3973,7 +3973,7 @@ function cancelMap() {
     }
     lines.push("");
     lines.push("Thank you for your business.");
-    lines.push("Energy World  |  Panipat · Sonipat · Karnal");
+    lines.push("Energy World  |  Sonipat · Panipat · Karnal · Rohtak");
     return lines.join("\n");
   }
   function waSend(name) {
@@ -4072,7 +4072,7 @@ function cancelMap() {
                               : "Your account is now clear. Thank you."));
     l.push("");
     l.push("With thanks,");
-    l.push("Energy World  |  Panipat · Sonipat · Karnal");
+    l.push("Energy World  |  Sonipat · Panipat · Karnal · Rohtak");
     return l.join("\n");
   }
 
@@ -4539,7 +4539,7 @@ function cancelMap() {
       for (var _pg = 1; _pg <= _np; _pg++) {
         doc.setPage(_pg);
         doc.setFontSize(6.4); doc.setTextColor(150, 163, 175);
-        doc.text("Energy World  |  Panipat . Sonipat . Karnal    |    Statement of account, not a tax invoice." + (_np > 1 ? "    Page " + _pg + " of " + _np : ""), L, 288);
+        doc.text("Energy World  |  Sonipat . Panipat . Karnal . Rohtak    |    Statement of account, not a tax invoice." + (_np > 1 ? "    Page " + _pg + " of " + _np : ""), L, 288);
       }
       return doc;
     });
