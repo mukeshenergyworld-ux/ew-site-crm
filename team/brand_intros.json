@@ -212,10 +212,11 @@
    "about": "Sanitaar is the Stellar Sanitär range of stainless steel plumbing from the Sun Stellar group, manufactured near Panipat. It covers 316L stainless steel pipes, double-press V-profile fittings, headers, valves and unions. Press-fit stainless steel needs no threading or welding on site, resists corrosion and keeps drinking water free of rust and plastic taste for the life of the building.",
    "origin": "India",
    "web": "stellarsanitar.com",
-   "hold": 1,
+   "hold": 0,
    "src": [
     "https://www.stellarsanitar.com/"
-   ]
+   ],
+   "confirmed": "13 Oct 2026 by Mukesh: Stellar Sanitär"
   },
   {
    "brand": "TECE",
@@ -291,6 +292,25 @@
     "https://www.astralpipes.com/about-us"
    ],
    "holdWhy": "13 Oct 2026: not a primary brand - Energy World is a sub-dealer; no introduction on quotes"
+  },
+  {
+   "brand": "IONCARE",
+   "alias": [
+    "IONCARE",
+    "Ioncare",
+    "Ioncares",
+    "ION CARE"
+   ],
+   "tagline": "Korean alkaline water ionizers",
+   "about": "IONCARE water ionizers are made in South Korea, where they are licensed as medical devices. Water passes through two filters and is then split by platinum-coated titanium plates (5, 7 or 9 plates depending on the model) into alkaline drinking water, mostly around pH 8.5 to 10, and acidic water for cleaning. The machines clean their own plates automatically, so the water stays consistent with little upkeep.",
+   "origin": "South Korea",
+   "web": "ioncares.co.kr",
+   "hold": 0,
+   "confirmed": "13 Oct 2026 by Mukesh: researched on the web at his request",
+   "src": [
+    "http://ioncares.co.kr/page/sub_01_01.php?locale=en_US",
+    "https://www.vvwater.com/ioncares-7000-water-water-ionizer-254.html"
+   ]
   }
  ],
  "updated": "2026-10-13"
