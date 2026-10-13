@@ -189,7 +189,7 @@ h3.sec{color:#1F3A5F}
       button: function () { return '<button type="button" class="ewthm" onclick="ewTheme.next(this)">' + ewtLabel() + '</button>'; }
     };
   })();
-  var APP_VERSION = "1.4.9";
+  var APP_VERSION = "1.4.10";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_vq_session", JRN = "ew_vq_journal_v1", CALLQ = "ew_vq_calls_v1", SNAPK = "ew_vq_snap_";
   var CAT_KEY = "ew_team_catalog", CAT_V = 2;   /* the CRM's own shelf copy of the price list - shared, same origin */
@@ -3112,6 +3112,62 @@ h3.sec{color:#1F3A5F}
   function pvInfoPaint() { var b = el("pv_info"); if (!b) return; var k = S.vk, P = S.pv || {}; b.innerHTML = pvInfoHtml(k, k === "showroom" ? (P.whoKind || "Client") : "", val("pv_name")); }
 
   /* ================= START ================= */
+  /* ===== BACK WHERE YOU WERE (13 Oct 2026) - his words: "if at this stage a mid of quote i refresh app
+     to newer version, its go to some other page, it must stay on this page only ... do it for all apps".
+     pagehide keeps the screen (state in S, typed boxes, scroll) in this tab's sessionStorage; the first
+     paint with the same user and a book on screen puts it back. A paint that throws undoes it. ===== */
+  (function () {
+    var KEY = "ew_resume_" + String(location.pathname || "").replace(/[^a-z0-9]/gi, "");
+    var SKIP = { data: 1, pin: 1, tok: 1, user: 1, role: 1, pinSet: 1, busy: 1, pending: 1, syncAt: 1, fastAt: 1, restAt: 1, pullAt: 1, catAt: 1 };
+    function save() {
+      try {
+        if (!S || !S.user) return;
+        var r = { at: Date.now(), user: S.user, y: 0, st: {}, f: {} }, room = 400000;
+        try { r.y = window.scrollY || 0; } catch (e) { }
+        Object.keys(S).forEach(function (k) {
+          if (SKIP[k]) return;
+          var v = S[k]; if (v === undefined || typeof v === "function") return;
+          try { var j = JSON.stringify(v); if (j && j.length < room) { r.st[k] = v; room -= j.length; } } catch (e) { }
+        });
+        if (typeof r.st.sheet === "string" && /type="password"/.test(r.st.sheet)) delete r.st.sheet;
+        [].forEach.call(document.querySelectorAll("input[id],select[id],textarea[id]"), function (e) {
+          var ty = String(e.type || "").toLowerCase();
+          if (ty === "password" || ty === "file" || ty === "checkbox" || ty === "radio" || e.value === "" || e.value == null) return;
+          r.f[e.id] = e.value;
+        });
+        sessionStorage.setItem(KEY, JSON.stringify(r));
+      } catch (e) { }
+    }
+    window.addEventListener("pagehide", save);
+    var tried = false;
+    function ready() {
+      if (!S || !S.user || !S.data) return false;
+      for (var k in S.data) if (Array.isArray(S.data[k]) && S.data[k].length) return true;
+      return false;
+    }
+    var base = render;
+    render = function () {
+      if (!tried && ready()) {
+        tried = true;
+        var r = null;
+        try { r = JSON.parse(sessionStorage.getItem(KEY) || "null"); sessionStorage.removeItem(KEY); } catch (e) { r = null; }
+        if (r && r.st && r.user === S.user && Date.now() - (Number(r.at) || 0) < 2 * 3600 * 1000) {
+          var undo = {};
+          Object.keys(r.st).forEach(function (k) { if (!SKIP[k]) { undo[k] = S[k]; S[k] = r.st[k]; } });
+          try { base.apply(this, arguments); }
+          catch (e) { Object.keys(undo).forEach(function (k) { S[k] = undo[k]; }); return base.apply(this, arguments); }
+          var put = function () {
+            Object.keys(r.f || {}).forEach(function (id) { var e = document.getElementById(id); if (e && (e.value === "" || e.value == null)) e.value = r.f[id]; });
+            if (r.y) { try { window.scrollTo(0, r.y); } catch (e) { } }
+          };
+          setTimeout(put, 30); setTimeout(put, 800);
+          return;
+        }
+      }
+      return base.apply(this, arguments);
+    };
+  })();
+
   function boot() {
     try { if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(function () { }); } catch (e) { }
     setInterval(function () { if (document.visibilityState === "visible" && S.data) flush(); }, 60000);
