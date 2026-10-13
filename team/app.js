@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.768";
+  var APP_VERSION = "6.9.769";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -723,7 +723,61 @@
      sorted, because the FIRST tab in the list is the one the app opens on, and a man should
      land where his main work is - not on whatever happens to sort first. */
   /* 6.9.737 - "#visits" in the address (the EW Visit link) lands on Site visits & quotes */
+  /* ============ BACK WHERE YOU WERE (v6.9.769) ============
+     His words: "if at this stage a mid of quote i refresh app to newer version, its go to some other
+     page, it must stay on this page only so that i can carry on". The screen goes into this browser
+     tab's sessionStorage on every reload and comes back on the next boot of the same user. */
+  var RESUME_KEY = "ew_resume_v1";
+  var RESUME_SKIP = { data: 1, pin: 1, tok: 1, user: 1, role: 1, pinSet: 1, busy: 1, pending: 1, cancelled: 1,
+    modal: 1, sres: 1, warmStart: 1, restartSeen: 1, snapQuota: 1, gps: 1 };
+  function resumeSave() {
+    try {
+      if (!S || !S.user) return;
+      var r = { at: Date.now(), user: S.user, v: APP_VERSION, tab: S.tab, y: 0, st: {}, modal: "", form: null };
+      try { r.y = window.scrollY || 0; } catch (e) { }
+      var room = 400000;
+      Object.keys(S).forEach(function (k) {
+        if (RESUME_SKIP[k]) return;
+        var v = S[k]; if (v === undefined || typeof v === "function") return;
+        try { var j = JSON.stringify(v); if (j && j.length < room) { r.st[k] = v; room -= j.length; } } catch (e) { }
+      });
+      if (typeof S.modal === "string" && S.modal.length < 300000 && !/type="password"/.test(S.modal)) r.modal = S.modal;
+      try { r.form = formSnap(); } catch (e) { }
+      sessionStorage.setItem(RESUME_KEY, JSON.stringify(r));
+    } catch (e) { }
+  }
+  window.addEventListener("pagehide", resumeSave);
+  var _resumeForm = null, _resumeY = 0, _resumeUndo = null, _resumeAt = 0;
+  function resumeTake() {
+    var r = null;
+    try { r = JSON.parse(sessionStorage.getItem(RESUME_KEY) || "null"); sessionStorage.removeItem(RESUME_KEY); } catch (e) { r = null; }
+    if (!r || !r.st || r.user !== S.user || Date.now() - (Number(r.at) || 0) > 2 * 3600 * 1000) return "";
+    var _free = { dash: 1, brandboard: 1, matrix: 1, customers: 1, pitch: 1 };   /* the nav's FREE_TAB, which is not in scope here */
+    if (!r.tab || (!_free[r.tab] && !canSee(r.tab))) return "";
+    _resumeUndo = {};
+    Object.keys(r.st).forEach(function (k) { if (!RESUME_SKIP[k]) { _resumeUndo[k] = S[k]; S[k] = r.st[k]; } });
+    if (r.modal) { _resumeUndo.modal = S.modal; S.modal = r.modal; }
+    _resumeForm = r.form || null; _resumeY = Number(r.y) || 0; _resumeAt = Date.now();
+    setTimeout(resumeFinish, 60); setTimeout(resumeFinish, 900);
+    return r.tab;
+  }
+  function resumeFinish() {
+    try { if (_resumeForm) formRestore(_resumeForm); } catch (e) { }
+    try { if (_resumeY) window.scrollTo(0, _resumeY); } catch (e) { }
+  }
+  /* a restored screen that cannot paint is undone, once: the app starts on its first tab as before */
+  function resumeUndo() {
+    if (!_resumeUndo || Date.now() - _resumeAt > 8000) return false;
+    var u = _resumeUndo; _resumeUndo = null; _resumeForm = null; _resumeY = 0;
+    Object.keys(u).forEach(function (k) { S[k] = u[k]; });
+    S.tab = myTabs()[0] || "dash"; _resumeTab = "";
+    return true;
+  }
+  var _resumeTab = "";
   function landTab() {
+    if (_resumeTab && Date.now() - _resumeAt < 10000) return _resumeTab;
+    var _rt = ""; try { _rt = resumeTake(); } catch (e) { _rt = ""; }
+    if (_rt) { _resumeTab = _rt; return _rt; }
     var h = ""; try { h = String(location.hash || "").replace(/^#/, ""); } catch (e) { }
     if (h === "visits" && canSee("visits")) { try { history.replaceState(history.state, "", location.pathname + location.search); } catch (e) { } return "visits"; }
     return myTabs()[0] || "dash";
@@ -49906,6 +49960,8 @@ function viewCatalogue() {
     try { renderCore(); try { formRestore(_fsnap); } catch (e) { } try { hsbPickShow(); } catch (e) { } try { stageResync(); } catch (e) { } try { syncBanner(); } catch (e) { } try { chDraftKeep(); } catch (e) { } try { xlScrollRestore(); } catch (e) { } }   /* v6.9.554, v6.9.560 */
     catch (err) {
       logCrash("render", err);
+      /* v6.9.769 - a resumed screen that throws is undone and painted again, not left as a snag */
+      try { if (resumeUndo()) { S.modal = null; setTimeout(render, 0); return; } } catch (e) { }
       try {
         document.getElementById("root").innerHTML =
           '<div style="max-width:540px;margin:60px auto;padding:24px;font-family:system-ui,sans-serif;text-align:center">' +
