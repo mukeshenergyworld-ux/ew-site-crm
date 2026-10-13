@@ -10,7 +10,7 @@
   /* The companion server (EW Saathi / Visit / Console). Separate deployment, separate
      spreadsheet-bound project - the CRM only ever POSTs to it, never reads its tabs. */
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
-  var LOGO = "../assets/logo.jpg";
+  var LOGO = "../assets/logo_tm.jpg";
   var STORE = "ew_team_session";
 
   /* ==EW-CORE:BEGIN== built by tools/build_core.py — do not edit here, edit core/ew-core.js == */
@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.779";
+  var APP_VERSION = "6.9.780";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -20086,7 +20086,7 @@ function viewCatalogue() {
 
   function loadLogo() {
     if (LOGO_B64 !== null) return Promise.resolve(LOGO_B64);
-    return fetch("../assets/logo.jpg").then(function (r) { return r.blob(); }).then(function (b) {
+    return fetch("../assets/logo_tm.jpg").then(function (r) { return r.blob(); }).then(function (b) {
       return new Promise(function (res) {
         var fr = new FileReader();
         fr.onload = function () { LOGO_B64 = String(fr.result); res(LOGO_B64); };
