@@ -189,7 +189,7 @@ h3.sec{color:#1F3A5F}
       button: function () { return '<button type="button" class="ewthm" onclick="ewTheme.next(this)">' + ewtLabel() + '</button>'; }
     };
   })();
-  var APP_VERSION = "1.4.17";
+  var APP_VERSION = "1.4.18";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_vq_session", JRN = "ew_vq_journal_v1", CALLQ = "ew_vq_calls_v1", SNAPK = "ew_vq_snap_";
   var CAT_KEY = "ew_team_catalog", CAT_V = 2;   /* the CRM's own shelf copy of the price list - shared, same origin */
@@ -287,7 +287,7 @@ h3.sec{color:#1F3A5F}
   var STAGES = ["Enquiry / Not started", "Foundation", "Structure / Slab", "Brickwork",
     "Concealed Plumbing", "Concealed Electrical", "Plastering", "Flooring / Tiling",
     "Sanitary & CP Fitting", "Painting", "Final Fitout / Handover", "Completed"];
-  var LOCATIONS = ["Panipat", "Sonipat", "Karnal"];
+  var LOCATIONS = ["Panipat", "Sonipat", "Karnal", "Rohtak"];   /* 1.4.18 - Rohtak, as CRM 6.9.782 */
   var QSTATUS = ["Draft", "Sent", "Negotiating", "Won", "Lost", "Revised"];
   var GST = 0.18;
   function esc(v) {
@@ -2738,7 +2738,7 @@ h3.sec{color:#1F3A5F}
     };
   })();
 
-  /* ======== SHARED QUOTE PDF - BUILT FROM THE CRM'S team/app.js 6.9.781 BY sharedpdf/build_visit_pdf.py - DO NOT EDIT HERE ========
+  /* ======== SHARED QUOTE PDF - BUILT FROM THE CRM'S team/app.js 6.9.782 BY sharedpdf/build_visit_pdf.py - DO NOT EDIT HERE ========
      Edit the CRM, then run the script again. Later declarations win, so these replace the Visit
      app's own older copies of the same functions. */
   var QX_BASE = "../team/";
