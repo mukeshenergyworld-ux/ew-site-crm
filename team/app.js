@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.775";
+  var APP_VERSION = "6.9.776";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -2409,7 +2409,7 @@
        beside it and missing from the payment’s own. */
     if (tab === "payments") return (r.id ? receiptNo(r) + " · " : "") + String(r.client || "") +
       (r.amount ? " · " + money(r.amount) : "");
-    if (tab === "quotes") return String(r.quoteNo || "") + (r.client ? " · " + r.client : "");
+    if (tab === "quotes") return String(qNo(r) || "") + (r.client ? " · " + r.client : "");
     if (tab === "discounts") return String(r.client || "") + " · " + String(r.brand || "");
     if (tab === "clients" || tab === "customers") return String(r.name || "");
     if (tab === "team") return String(r.name || "");
@@ -4904,7 +4904,7 @@ window.addEventListener("beforeunload", function (ev) {
 
     var qRow = function (q) {
       var d = dstr(q.createdAt);
-      return { id: q.id, d: d, no: String(q.quoteNo || ""), name: String(q.client || ""), exec: rvQExec(q),
+      return { id: q.id, d: d, no: String(qNo(q) || ""), name: String(q.client || ""), exec: rvQExec(q),
                brands: quoteBrands(q).join(", "), amt: nAmt(q.net) || nAmt(q.total), status: String(q.status || "Open"),
                age: d ? Math.max(0, -daysTo(d)) : null };
     };
@@ -6803,7 +6803,7 @@ window.addEventListener("beforeunload", function (ev) {
       quiet.slice(0, 25).sort(function (a, b) { return b.net - a.net; }).forEach(function (r) {
         h += '<div class="card" style="padding:8px 13px;margin-bottom:6px">' +
           '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">' +
-          '<div style="flex:1 1 170px;min-width:0"><b style="font-size:13px">' + esc(r.quoteNo || r.client) + '</b>' +
+          '<div style="flex:1 1 170px;min-width:0"><b style="font-size:13px">' + esc(qNo(r) || r.client) + '</b>' +
           '<div class="meta" style="font-size:12px">' + esc(r.client) + ' &middot; ' + esc(r.brand) + ' &middot; ' + money(r.net) + '</div></div>' +
           '<button class="btn sm" data-act="quote-lost" data-id="' + esc(r.id) + '">Why lost?</button></div></div>';
       });
@@ -6820,7 +6820,7 @@ window.addEventListener("beforeunload", function (ev) {
     if (!q) return "";
     var l = lossOf(id) || {};
     return '<h2>Why did we lose this one?</h2>' +
-      '<p class="sub">' + esc(q.quoteNo || "") + ' &middot; ' + esc(q.client || "") + ' &middot; ' + esc(q.brand || "") +
+      '<p class="sub">' + esc(qNo(q) || "") + ' &middot; ' + esc(q.client || "") + ' &middot; ' + esc(q.brand || "") +
       ' &middot; ' + money(q.net) + ' net</p>' +
       '<div class="meta" style="margin-bottom:8px">Half a minute now is the whole of next quarter&rsquo;s answer to <b>why we lose</b>. Nothing here is ever shown to the customer.</div>' +
       '<label>Reason</label><select id="ql_reason">' + opts([""].concat(lossReasonList()), l.reason || "") + '</select>' +
@@ -18426,7 +18426,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
 
   function quoteHit(q, txt, dig) {
     var c = null; try { c = clientByName(q.client); } catch (e) { c = null; }
-    var hay = [q.quoteNo, q.code, q.client, q.brand, q.status, q.createdBy,
+    var hay = [q.quoteNo, q.code, qCode(q), q.client, q.brand, q.status, q.createdBy,
                (c && c.area) || "", (c && c.location) || "",
                (c && (c.ownedBy || c.createdBy)) || ""].join(" ").toLowerCase();
     if (txt && hay.indexOf(txt) > -1) return true;
@@ -18521,7 +18521,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     var cur = qBrandOf(qid, brand) || {};
     var others = quoteBrands(q).filter(function (b) { return dkey(b) !== dkey(brand); });
     return '<h2>' + esc(brand) + '</h2>' +
-      '<p class="sub">' + esc(q.quoteNo || "") + ' &middot; ' + esc(q.client || "") + ' &middot; ' +
+      '<p class="sub">' + esc(qNo(q) || "") + ' &middot; ' + esc(q.client || "") + ' &middot; ' +
       money(q.net) + ' net on the whole quote</p>' +
       '<div class="card" style="border-color:#bfdbfe;background:#eff6ff;padding:10px 12px">' +
       '<div class="meta" style="font-size:12.5px;color:#1e40af">This quote carries ' +
@@ -18562,7 +18562,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     return '<div class="card" style="padding:9px 13px;margin-bottom:8px">' +
       '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">' +
       '<div style="flex:1 1 240px;min-width:0">' +
-      '<h3 style="margin:0 0 2px;font-size:13.5px">' + (qCode(q) ? '<span class="pill" style="background:#e0e7ff;color:#1e3a8a;font-weight:700">' + esc(qCode(q)) + '</span> ' : '') + esc(q.quoteNo) + ' <span class="pill ' + (q.status === "Won" ? "Won" : (q.status === "Lost" ? "Lost" : "teal")) + '">' + esc(q.status) + '</span>' +
+      '<h3 style="margin:0 0 2px;font-size:13.5px">' + esc(qNo(q)) + ' <span class="pill ' + (q.status === "Won" ? "Won" : (q.status === "Lost" ? "Lost" : "teal")) + '">' + esc(q.status) + '</span>' +
       (Number(q.version) > 1 ? ' <span class="pill">v' + esc(q.version) + '</span>' : "") + '</h3>' +
       '<div class="meta" style="font-size:12px;line-height:1.5">' + esc(q.client) + ' &middot; ' + esc(q.brand) +
       (_ph ? ' &middot; <span style="color:#0f766e;white-space:nowrap">' + esc(_ph) + '</span>' : "") +
@@ -18607,7 +18607,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
             (qAgeDays(q) >= 0
               ? 'Raised <b>' + qAgeDays(q) + ' days</b> ago and never marked sent.'
               : '<b style="color:#b45309">This row has no date on it at all</b> &mdash; the number says ' +
-                esc(q.quoteNo || "") + ', the column is empty.') + '</span>' +
+                esc(qNo(q) || "") + ', the column is empty.') + '</span>' +
           '<button class="btn sm" data-act="q-sent" data-id="' + esc(q.id) + '">Sent</button>' +
           '<button class="btn sm ghost" data-act="q-notreq" data-id="' + esc(q.id) + '">Not required</button>' +
           '</div>'
@@ -18619,7 +18619,9 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
   /* The list alone, so typing repaints THIS and never the page - the caret and the phone
      keyboard stay exactly where they were. */
   /* ============ QUOTE CODES, DATE AND TIME, THE QUOTE TABLE (v6.9.773) ============ */
-  function qCode(q) { return String((q && q.code) || "").trim(); }
+  function qCode(q) { return String((q && q.code) || "").trim().replace(/^Quote(?=\d)/i, "QT"); }   /* 6.9.776 - QT113 */
+  /* 6.9.776 - THE number a person reads: the code, else the old long number (a row not yet coded) */
+  function qNo(q) { return qCode(q) || String((q && q.quoteNo) || ""); }
   /* "12 Oct 2026" and "3:45 pm" from the server's ISO stamp, on this side of midnight */
   function qWhen(v) {
     var s0 = String(v || "").trim(); if (!s0) return { d: "", t: "" };
@@ -18679,8 +18681,8 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     order.sort(function (a, b) { return newest(fams[b]).localeCompare(newest(fams[a])); });
     var th = function (t, al) { return '<th style="text-align:' + (al || "left") + ';padding:7px 8px;font-size:12px;letter-spacing:.04em;color:#fff;white-space:nowrap">' + t + '</th>'; };
     var h = '<div style="overflow-x:auto;border:1px solid #e2e8f0;border-radius:10px;background:#fff">' +
-      '<table style="border-collapse:collapse;width:100%;min-width:1080px;font-size:13px">' +
-      '<thead><tr style="background:#0b3b36">' + th("CODE") + th("QUOTE NO.") + th("CLIENT") + th("PHONE") + th("EXECUTIVE") + th("BRANDS") +
+      '<table style="border-collapse:collapse;width:100%;min-width:1000px;font-size:13px">' +
+      '<thead><tr style="background:#0b3b36">' + th("QUOTE NO.") + th("CLIENT") + th("PHONE") + th("EXECUTIVE") + th("BRANDS") +
       th("DATE") + th("TIME") + th("PLUMBER") + th("ARCHITECT") + th("STATUS") + th("INCL GST", "right") + '</tr></thead><tbody>';
     order.forEach(function (k) {
       var f = fams[k].slice().sort(function (a, b) { return (Number(a.version) || 1) - (Number(b.version) || 1) || String(a.createdAt || "").localeCompare(String(b.createdAt || "")); });
@@ -18691,14 +18693,15 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         var exec = String(cl.ownedBy || cl.createdBy || "").trim() || "Unassigned";
         var w = qWhen(q.createdAt), st = String(q.status || "Draft");
         var td = function (x, al, extra) { return '<td style="padding:6px 8px;border-top:1px solid ' + (sub ? "#f1f5f9" : "#e2e8f0") + ';vertical-align:top;text-align:' + (al || "left") + (extra || "") + '">' + x + '</td>'; };
-        var codeCell = sub
-          ? '<span style="color:#94a3b8">↳</span> <b style="color:#0f766e">' + esc(qCode(q) || ("v" + (q.version || ""))) + '</b><div style="font-size:12px;color:#64748b">' + esc(qRevLabel(q)) + '</div>'
-          : '<b>' + esc(qCode(q) || "—") + '</b>' + (revs.length ? '<div style="font-size:12px;color:#64748b">' + revs.length + ' revision' + (revs.length > 1 ? "s" : "") + '</div>' : '');
-        var noCell = qMine(q)
-          ? '<button class="btn sm ghost" data-act="q-card" data-id="' + esc(q.id) + '" style="padding:1px 7px;font-size:12px;white-space:normal;word-break:break-all;text-align:left" title="Open this quote’s card">' + esc(q.quoteNo || "open") + '</button>'
-          : '<span style="font-size:12px;word-break:break-all">' + esc(q.quoteNo || "") + '</span>';
+        /* 6.9.776 - one column: the number (QT113, QT113-R1) opens the card; revisions sit under it */
+        var _nb = qMine(q)
+          ? '<button class="btn sm ghost" data-act="q-card" data-id="' + esc(q.id) + '" style="padding:2px 8px;font-size:13px;font-weight:700;white-space:nowrap" title="Open this quote\u2019s card">' + esc(qNo(q) || "open") + '</button>'
+          : '<b style="white-space:nowrap">' + esc(qNo(q)) + '</b>';
+        var noCell = (sub ? '<span style="color:#94a3b8">\u21b3</span> ' : '') + _nb +
+          (sub ? '<div style="font-size:12px;color:#64748b">' + esc(qRevLabel(q)) + '</div>'
+               : (revs.length ? '<div style="font-size:12px;color:#64748b">' + revs.length + ' revision' + (revs.length > 1 ? "s" : "") + '</div>' : ''));
         h += '<tr style="background:' + (sub ? "#f8fafc" : "#fff") + '">' +
-          td(codeCell, "left", sub ? ";padding-left:18px" : "") + td(noCell) +
+          td(noCell, "left", sub ? ";padding-left:18px" : "") +
           td('<a href="#" data-act="cl-open" data-id="' + esc(cl.id || "") + '" style="font-weight:700;color:#0b3b36;text-decoration:none">' + esc(q.client || "") + '</a>') +
           td('<span style="white-space:nowrap">' + esc(cl.mobile || "") + '</span>') +
           td(esc(exec) + (String(q.createdBy || "").trim() && String(q.createdBy).trim() !== exec ? '<div style="font-size:12px;color:#64748b">made by ' + esc(q.createdBy) + '</div>' : '')) +
@@ -18743,18 +18746,17 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       /* v6.9.775 - the latest first, one compact line each (was a full card each, oldest first) */
       if (S.qCard) {
         var _uc = list.filter(function (q) { return q.id === S.qCard; })[0];
-        if (_uc) h += '<div class="row" style="margin:6px 0 2px"><b style="font-size:13.5px">' + esc(_uc.quoteNo || "") + '</b><div class="grow"></div>' +
+        if (_uc) h += '<div class="row" style="margin:6px 0 2px"><b style="font-size:13.5px">' + esc(qNo(_uc) || "") + '</b><div class="grow"></div>' +
           '<button class="btn sm ghost" data-act="q-card" data-id="">Close card</button></div>' + quoteCardHtml(_uc);
       }
       var _ul = list.slice().sort(function (a, b) { return String(b.createdAt || "").localeCompare(String(a.createdAt || "")); });
       var _th = function (t, al) { return '<th style="text-align:' + (al || "left") + ';padding:7px 8px;font-size:12px;letter-spacing:.04em;color:#fff;white-space:nowrap">' + t + '</th>'; };
       h += '<div style="overflow-x:auto;border:1px solid #e2e8f0;border-radius:10px;background:#fff"><table style="border-collapse:collapse;width:100%;min-width:900px;font-size:13px">' +
-        '<thead><tr style="background:#0b3b36">' + _th("CODE") + _th("QUOTE NO.") + _th("CLIENT") + _th("BRANDS") + _th("NET", "right") + _th("MADE") + _th("DAYS", "right") + _th("") + '</tr></thead><tbody>';
+        '<thead><tr style="background:#0b3b36">' + _th("QUOTE NO.") + _th("CLIENT") + _th("BRANDS") + _th("NET", "right") + _th("MADE") + _th("DAYS", "right") + _th("") + '</tr></thead><tbody>';
       _ul.forEach(function (q) {
         var w = qWhen(q.createdAt), ag = qAgeDays(q);
         var td = function (x, al) { return '<td style="padding:6px 8px;border-top:1px solid #e2e8f0;vertical-align:middle;text-align:' + (al || "left") + '">' + x + '</td>'; };
-        h += '<tr>' + td('<b>' + esc(qCode(q) || "\u2014") + '</b>') +
-          td('<button class="btn sm ghost" data-act="q-card" data-id="' + esc(q.id) + '" style="padding:1px 7px;font-size:12px;white-space:normal;word-break:break-all;text-align:left">' + esc(q.quoteNo || "open") + '</button>') +
+        h += '<tr>' + td('<button class="btn sm ghost" data-act="q-card" data-id="' + esc(q.id) + '" style="padding:2px 8px;font-size:13px;font-weight:700;white-space:nowrap">' + esc(qNo(q) || "open") + '</button>') +
           td('<b>' + esc(q.client || "") + '</b>') + td(esc(quoteBrands(q).join(", ") || q.brand || "\u2014")) +
           td('<b style="white-space:nowrap">' + money(q.net) + '</b>', "right") +
           td('<span style="white-space:nowrap">' + esc(w.d) + (w.t ? ', ' + esc(w.t) : '') + '</span>') +
@@ -18803,7 +18805,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     if (S.qCard) {
       var _qc = list.filter(function (q) { return q.id === S.qCard; })[0];
       if (_qc) {
-        h += '<div class="row" style="margin:6px 0 2px"><b style="font-size:13.5px">' + esc(_qc.quoteNo || "") + '</b>' +
+        h += '<div class="row" style="margin:6px 0 2px"><b style="font-size:13.5px">' + esc(qNo(_qc) || "") + '</b>' +
           '<div class="grow"></div><button class="btn sm ghost" data-act="q-card" data-id="">Close card</button></div>' + quoteCardHtml(_qc);
       }
     }
@@ -18840,8 +18842,8 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       var brands = quoteBrands(q);
       return { v: { date: d, no: q.quoteNo || "", client: q.client || "", brand: brands.join(", ") || q.brand || "", st: st, go: "", net: Number(q.net) || 0, total: Number(q.total) || 0, exec: exec, by: q.createdBy || "" },
         cells: {
-          date: (qMine(q) ? '<button class="btn sm ghost" data-act="q-card" data-id="' + esc(q.id) + '" style="padding:1px 8px;font-size:12.5px;font-weight:700;white-space:normal;word-break:break-all;text-align:left" title="Open this quote’s card">' + esc(q.quoteNo || "open") + '</button>'
-                : '<b style="font-size:12.5px;word-break:break-all">' + esc(q.quoteNo || "") + '</b>') +   /* 6.9.654 - another's: read-only */
+          date: (qMine(q) ? '<button class="btn sm ghost" data-act="q-card" data-id="' + esc(q.id) + '" style="padding:1px 8px;font-size:12.5px;font-weight:700;white-space:normal;word-break:break-all;text-align:left" title="Open this quote’s card">' + esc(qNo(q) || "open") + '</button>'
+                : '<b style="font-size:12.5px;word-break:break-all">' + esc(qNo(q) || "") + '</b>') +   /* 6.9.654 - another's: read-only */
               (Number(q.version) > 1 ? ' <span class="pill" style="font-size:12px">v' + esc(q.version) + '</span>' : "") +
               qSm(esc(dmy(d)) || '<span style="color:#b45309">no date</span>'),
           client: '<a href="#" data-act="cl-open" data-id="' + esc(cl.id || "") + '" style="font-weight:700;color:#0b3b36;text-decoration:none">' + esc(q.client || "") + '</a>' +
@@ -18903,8 +18905,8 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
           return '<div class="row" style="align-items:flex-start;gap:10px;margin:0;padding:8px 12px;border-top:1px solid #e2e8f0' +
               (f.length > 1 && i < f.length - 1 ? ';background:#f8fafc' : '') + '">' +
             '<div style="flex:1 1 200px;min-width:0">' + rev +
-              (qMine(q) ? '<button class="btn sm ghost" data-act="q-card" data-id="' + esc(q.id) + '" style="padding:1px 8px;font-size:12.5px;font-weight:700;white-space:normal;word-break:break-all;text-align:left" title="Open this quote\u2019s card">' + esc(q.quoteNo || "open") + '</button>'
-                : '<b style="font-size:12.5px;word-break:break-all;padding:0 8px">' + esc(q.quoteNo || "") + '</b>') +
+              (qMine(q) ? '<button class="btn sm ghost" data-act="q-card" data-id="' + esc(q.id) + '" style="padding:1px 8px;font-size:12.5px;font-weight:700;white-space:normal;word-break:break-all;text-align:left" title="Open this quote\u2019s card">' + esc(qNo(q) || "open") + '</button>'
+                : '<b style="font-size:12.5px;word-break:break-all;padding:0 8px">' + esc(qNo(q) || "") + '</b>') +
               '<div style="font-size:12px;color:#64748b;margin-top:2px">' + (esc(dmy(d)) || '<span style="color:#b45309">no date</span>') +
                 ' \u00b7 ' + esc(quoteBrands(q).join(", ") || q.brand || "\u2014") +
                 (String(q.createdBy || "").trim() ? ' \u00b7 by <b style="color:#1e3a8a">' + esc(regFirst(q.createdBy) || q.createdBy) + '</b>' : '') +   /* 6.9.654 */
@@ -19078,12 +19080,12 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     var wcl = clientByName(wq.client) || {};
     var wnum = String(wcl.mobile || "").replace(/\D/g, "");
     if (wnum.length === 10) wnum = "91" + wnum;
-    var wmsg = "Hello " + wq.client + ",\n\nSharing your quotation " + wq.quoteNo + " from Energy World.\n" +
+    var wmsg = "Hello " + wq.client + ",\n\nSharing your quotation " + qNo(wq) + " from Energy World.\n" +
       "Amount: " + moneyAscii(wq.net) + " (GST as applicable). Valid for 30 days.\n" +
       "Please let us know if we may proceed.\n\nThank you,\nEnergy World";
-    var fname = String(wq.quoteNo).replace(/[^\w.-]/g, "_") + ".pdf";
-    var wr = waRoute(t, wq.client, wnum, wmsg, "quotation " + wq.quoteNo); if (!wr.ok) return;
-    var qtpl = (wr.num === wnum) ? { template: "quotation", vars: [wq.client, String(wq.quoteNo || "")], note: "quotation " + wq.quoteNo, client: wq.client } : null;   /* v6.9.548 */
+    var fname = String(qNo(wq)).replace(/[^\w.-]/g, "_") + ".pdf";
+    var wr = waRoute(t, wq.client, wnum, wmsg, "quotation " + qNo(wq)); if (!wr.ok) return;
+    var qtpl = (wr.num === wnum) ? { template: "quotation", vars: [wq.client, String(qNo(wq) || "")], note: "quotation " + qNo(wq), client: wq.client } : null;   /* v6.9.548 */
     waShareDoc(quotePdf(wq), fname, wr.num, wr.msg, qtpl);
   }
 
@@ -19108,7 +19110,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
   }
   function presFileName(q) {
     return "Proposal_" + String(q.client || "").replace(/[^\w]+/g, "_") + "_" +
-      String(q.quoteNo || "").replace(/[^\w.-]/g, "_") + ".pdf";
+      String(qNo(q) || "").replace(/[^\w.-]/g, "_") + ".pdf";
   }
   function presMsg(q, role, name) {
     var s2 = presSummary(q);
@@ -19120,7 +19122,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       s2.n + " product" + (s2.n === 1 ? "" : "s") +
       (s2.rooms ? " across " + s2.rooms + " area" + (s2.rooms === 1 ? "" : "s") : "") +
       ", with photographs and specifications.\n" +
-      "Reference " + String(q.quoteNo || "") + ".\n" +
+      "Reference " + String(qNo(q) || "") + ".\n" +
       "The figures shown are MRP - your project pricing is on the quotation." +
       "\n\nRegards,\n" + (S.user || "Energy World") + "\nEnergy World, Panipat";
   }
@@ -19146,7 +19148,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     var ppl = agContactsFor(q.client);
     var row = 'style="justify-content:flex-start;text-align:left;width:100%"';
     return '<h2>Send the proposal</h2>' +
-      '<p class="sub">' + esc(q.client) + ' &middot; ' + esc(q.quoteNo || "") + '</p>' +
+      '<p class="sub">' + esc(q.client) + ' &middot; ' + esc(qNo(q) || "") + '</p>' +
       '<div class="empty" style="text-align:left;padding:0 0 10px;font-size:12.5px">' +
         '<b>' + s2.n + ' product' + (s2.n === 1 ? '' : 's') + ' &middot; ' + s2.pieces + ' pc &middot; ' +
         (s2.rooms ? s2.rooms + ' area' + (s2.rooms === 1 ? '' : 's') : 'no rooms set') +
@@ -20544,7 +20546,7 @@ function viewCatalogue() {
     var live = items.filter(function (i) { return !i.optional; });
     var money2 = function (n) { return money(n); };
 
-    var h = '<h2 style="margin:0 0 2px">' + esc(q.quoteNo || "(no number)") + '</h2>' +
+    var h = '<h2 style="margin:0 0 2px">' + esc(qNo(q) || "(no number)") + '</h2>' +
       '<div class="meta" style="font-size:13px">' + esc(q.client || "") +
       (q.siteName ? ' · ' + esc(q.siteName) : "") + '</div>' +
       '<div class="row" style="gap:6px;flex-wrap:wrap;margin:8px 0 2px">' +
@@ -20641,7 +20643,7 @@ function viewCatalogue() {
         var here = String(x.id) === String(q.id);
         return '<div style="font-size:12.5px;padding:3px 0;border-top:1px solid #f1f5f9;display:flex;gap:8px;align-items:baseline">' +
           '<span style="flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' +
-            (here ? '<b>' + esc(x.quoteNo) + '</b> ◀ this one' : esc(x.quoteNo)) + '</span>' +
+            (here ? '<b>' + esc(qNo(x)) + '</b> ◀ this one' : esc(qNo(x))) + '</span>' +
           '<span class="meta" style="white-space:nowrap">' + esc(d10(x.createdAt)) + '</span>' +
           '<span style="white-space:nowrap;font-weight:600">' + money2(x.net) + '</span>' +
           '<span class="pill" style="' + qStatusTone(x.status) + '">' + esc(x.status || "Draft") + '</span></div>';
@@ -20843,7 +20845,7 @@ function viewCatalogue() {
       col([205, 232, 228]); F("normal"); doc.setFontSize(8.5);
       var VALID_DAYS = 30;
       var vUntil = ymdLocal(new Date(Date.now() + VALID_DAYS * 86400000));
-      doc.text("Quote No.   " + String(q.quoteNo || "") + (qCode(q) ? "   \u00b7   " + qCode(q) : ""), Rt, 36.8, { align: "right" });   /* v6.9.773 */
+      doc.text("Quote No.   " + qNo(q), Rt, 36.8, { align: "right" });   /* v6.9.776 - QT113-R1 */
       doc.text(pdfSafe(q.createdAt ? qMadeLine(q) : "Date   " + today()), Rt, 40.6, { align: "right" });
       col(MINT);
       doc.text("Valid for " + VALID_DAYS + " days  \u00b7  until " + vUntil, Rt, 44.4, { align: "right" });
@@ -21926,7 +21928,7 @@ function viewCatalogue() {
         try { doc.addImage(lg.src, "JPEG", bx + (CBW - iwc) / 2, cSy + (CBH - ihc) / 2, iwc, ihc); } catch (e) { }
       });
 
-      var meta = [["QUOTE NO.", String(q.quoteNo || "")], ["DATE", today()],
+      var meta = [["QUOTE NO.", String(qNo(q) || "")], ["DATE", today()],
                   ["PREPARED BY", String(q.createdBy || "-")], ["VALID UNTIL", vUntil]];
       meta.forEach(function (m, i) {
         var x = L + i * 62;
@@ -22516,7 +22518,7 @@ function viewCatalogue() {
         doc.setPage(pg);
         F("normal"); doc.setFontSize(6);
         col(darkPg[pg] ? [90, 150, 143] : [150, 163, 175]);
-        doc.text(T(FIRM.name + "   |   " + FIRM.cities + "   |   " + String(q.quoteNo || "")), L, H - 7);
+        doc.text(T(FIRM.name + "   |   " + FIRM.cities + "   |   " + String(qNo(q) || "")), L, H - 7);
         doc.text(pg + " / " + pages, Rt, H - 7, { align: "right" });
       }
       return doc;
@@ -22996,7 +22998,7 @@ function viewCatalogue() {
         '<button class="btn ghost" data-act="site-open" data-id="' + esc(st.id) + '" style="min-height:44px">Edit site</button></div></div>';
     h += '<h3 style="margin:14px 0 4px;font-size:15px">Quotes &middot; ' + qs.length + '</h3>';
     h += qs.length ? pevTable([["Date"], ["Quote"], ["By"], ["Brands"], ["Value", "right"], ["Status"], [""]], qs.map(function (q) {
-      return [esc(dmy(q.createdAt)), '<b>' + esc(q.quoteNo || "") + '</b>' + (Number(q.version) > 1 ? ' <span style="color:#64748b">v' + esc(q.version) + '</span>' : ''), esc(q.createdBy || ""),
+      return [esc(dmy(q.createdAt)), '<b>' + esc(qNo(q) || "") + '</b>' + (Number(q.version) > 1 ? ' <span style="color:#64748b">v' + esc(q.version) + '</span>' : ''), esc(q.createdBy || ""),
         esc(String(q.brand || "").slice(0, 60)), '<b>' + money(nAmt(q.net)) + '</b>' + (nAmt(q.discountPct) ? '<div style="font-size:12px;color:#64748b">' + esc(q.discountPct) + '% off ' + money(nAmt(q.gross)) + '</div>' : ''), esc(q.status || ""),
         '<button class="btn sm ghost" data-act="q-pdf" data-id="' + esc(q.id) + '" style="min-height:44px">PDF</button>'];
     })) : '<div class="empty">No quote on this site yet.</div>';
@@ -23146,7 +23148,7 @@ function viewCatalogue() {
     /* 3. quotes */
     h += '<h3 style="margin:14px 0 4px;font-size:15px">3. Quotes gone quiet (' + RADAR_MIN + '+ days)</h3>';
     h += d.quotes.length ? pevTable([["Quote"], ["Client"], ["Value", "right"], ["Status"], ["Quiet", "right"], [""]], d.quotes.slice(0, 12).map(function (q) {
-      return [esc(q.quoteNo || ""), '<b>' + esc(q.client || "") + '</b>', money(nAmt(q.net)), esc(q.status || ""), qSilentDays(q) + ' days', '<button class="btn sm ghost" data-act="q-pdf" data-id="' + esc(q.id) + '" style="min-height:44px">PDF</button>'];
+      return [esc(qNo(q) || ""), '<b>' + esc(q.client || "") + '</b>', money(nAmt(q.net)), esc(q.status || ""), qSilentDays(q) + ' days', '<button class="btn sm ghost" data-act="q-pdf" data-id="' + esc(q.id) + '" style="min-height:44px">PDF</button>'];
     })) : '<div class="empty">Every quote of yours has moved in the last ' + RADAR_MIN + ' days.</div>';
     /* 4. visits */
     h += '<h3 style="margin:14px 0 4px;font-size:15px">4. Visits</h3><div class="card" style="padding:8px 11px"><div class="meta" style="font-size:13px">' + plural(d.visitsToday, "visit") + ' marked today.</div>' +
@@ -38329,7 +38331,7 @@ function viewCatalogue() {
     }
     if (e.lastQ) {
       h += '<div style="margin-top:3px;font-size:12px;color:#64748b;word-break:break-word">' +
-        esc(e.lastQ.quoteNo || "") + (e.value ? ' &middot; ' + money(e.value) : "") +
+        esc(qNo(e.lastQ) || "") + (e.value ? ' &middot; ' + money(e.value) : "") +
         (age ? ' &middot; ' + esc(age) : "") + '</div>';
     }
 
@@ -38419,8 +38421,8 @@ function viewCatalogue() {
       var nm = String(q.client || "").trim();
       if (!nm) return;
       var st = siteForClient(nm);
-      if (st) out.quotes.push({ row: q, site: st, name: nm, label: String(q.quoteNo || q.id || "") });
-      else out.orphans.push({ kind: "Quote", label: String(q.quoteNo || q.id || ""), name: nm });
+      if (st) out.quotes.push({ row: q, site: st, name: nm, label: String(qNo(q) || q.id || "") });
+      else out.orphans.push({ kind: "Quote", label: String(qNo(q) || q.id || ""), name: nm });
     });
     (S.data.pitch || []).forEach(function (p) {
       if (!p || !p.brand || !p.id) return;
@@ -43713,7 +43715,7 @@ function viewCatalogue() {
     if (kind === "quote") {
       var q = (S.data.quotes || []).filter(function (x) { return x.id === id; })[0];
       if (!q) return '<h2>Not found</h2>' + foot();
-      return '<h2>' + esc(q.quoteNo || "Quotation") + '</h2>' +
+      return '<h2>' + esc(qNo(q) || "Quotation") + '</h2>' +
         '<p class="sub">' + esc(q.client || "") + (q.siteName ? ' \u00b7 ' + esc(q.siteName) : '') + '</p>' +
         dgKV([
           ["Status", esc(q.status || "Draft")],
@@ -43986,7 +43988,7 @@ function viewCatalogue() {
     h += dgList("Quotes", d.quotes.slice().sort(byDateDesc("createdAt")), function (x) {
       return dgTap("quote", 'data-id="' + esc(x.id) + '" data-n="' + esc(x.quoteNo || "") + '"',
         '<div class="meta" style="padding:5px 0;border-top:1px solid #eef2f7">' +
-        '<b>' + esc(x.quoteNo || "-") + '</b> ' + esc(x.brand || "") +
+        '<b>' + esc(qNo(x) || "-") + '</b> ' + esc(x.brand || "") +
         ' <span class="pill">' + esc(x.status || "") + '</span> &middot; ' + money(dgNum(x.total)) +
         ' &middot; ' + esc(d10(x.createdAt)) + '</div>');
     });
@@ -44219,7 +44221,7 @@ function viewCatalogue() {
         (p.ref ? '  \u00b7  ref ' + esc(p.ref) : '') + '</div></div>';
     });
     group("Quotations", o.quotes, function (q2) {
-      return '<div class="card"><h3>' + esc(q2.quoteNo || "") +
+      return '<div class="card"><h3>' + esc(qNo(q2) || "") +
         ' <span class="pill teal">' + esc(q2.status || "") + '</span></h3>' +
         '<div class="meta">' + esc(q2.client || "") + (q2.brand ? '  \u00b7  ' + esc(q2.brand) : '') + '</div></div>';
     });
@@ -46073,7 +46075,7 @@ function viewCatalogue() {
       }).map(function (q) {
         var l = isW && String(q.status) === "Lost" ? (lossOf(q.id) || {}) : {};
         var d = dstr(isW ? (q.updatedAt || q.createdAt) : q.createdAt);
-        return { d: d, no: q.quoteNo || "", cl: q.client || "", ex: rvQExec(q) || "(no executive)", br: (function () { try { return quoteBrands(q).join(", "); } catch (e) { return q.brand || ""; } })(),
+        return { d: d, no: qNo(q) || "", cl: q.client || "", ex: rvQExec(q) || "(no executive)", br: (function () { try { return quoteBrands(q).join(", "); } catch (e) { return q.brand || ""; } })(),
           amt: nAmt(q.net) || nAmt(q.total), st: String(q.status || "Open"), why: l.reason || "", to: l.lostTo || "", note: l.note || "", age: d ? Math.max(0, -daysTo(dstr(q.createdAt))) : 0 };
       }).filter(function (r) { return stExOk(r.ex); });
       if (detail) {
@@ -47100,7 +47102,7 @@ function viewCatalogue() {
       h += '<div class="card"><h3>' + esc(q.client) +
         ' <span class="pill ' + b.cls + '">' + b.label + ' &middot; ' + days + 'd</span>' +
         (qseg ? ' <span class="pill" style="background:' + (qseg === "Project" ? "#e0e7ff;color:#3730a3" : "#dcfce7;color:#166534") + '">' + esc(qseg) + '</span>' : "") + '</h3>' +
-        '<div class="meta">' + esc(q.quoteNo) + (q.brand ? ' &middot; ' + esc(q.brand) : '') + '<br>' +
+        '<div class="meta">' + esc(qNo(q)) + (q.brand ? ' &middot; ' + esc(q.brand) : '') + '<br>' +
         esc(moneyAscii(q.net)) + ' (GST as applicable) &middot; ' + esc(q.status) +
         (roleIs("admin") && q.createdBy ? ' &middot; ' + esc(q.createdBy) : '') + '</div>' +
         '<div class="acts">' +
@@ -47391,12 +47393,12 @@ function viewCatalogue() {
           prio: idle >= 21 ? 82 : (idle >= 14 ? 64 : 50),
           tag: idle + "d NO REPLY",
           title: "Chase quotation \u2014 " + (q.client || "client"),
-          why: "Quotation " + (q.quoteNo || q.id) + (bt ? " (" + bt + ")" : "") + " worth " + money(q.net) +
+          why: "Quotation " + (qNo(q) || q.id) + (bt ? " (" + bt + ")" : "") + " worth " + money(q.net) +
             " has been sitting at \u201c" + q.status + "\u201d for " + idle + " days with no movement. " +
             "One call now is worth more than a new quotation next month.",
-          sub: (q.client || "client") + " \u00b7 " + (q.quoteNo || "") + " \u00b7 " + money(q.net) + " \u00b7 " + q.status,
+          sub: (q.client || "client") + " \u00b7 " + (qNo(q) || "") + " \u00b7 " + money(q.net) + " \u00b7 " + q.status,
           client: q.client || "", siteName: q.client || "quotation",
-          quoteNo: q.quoteNo || "", brandTxt: bt, qdate: q.updatedAt || q.createdAt || "",
+          quoteNo: qNo(q) || "", brandTxt: bt, qdate: q.updatedAt || q.createdAt || "",
           contacts: agContactsFor(q.client),
           /* chasing with the same price list rarely moves anything; the proposal does */
           btns: [{ act: "q-pres", attrs: { id: q.id }, label: "Send the proposal", ghost: 1 },
@@ -47530,16 +47532,16 @@ function viewCatalogue() {
             prio: od >= 21 ? 78 : (od >= 3 ? 64 : 58),
             tag: od === 0 ? "DUE TODAY" : od + "d ON",
             title: "He said later \u2014 " + esc(r.brand) + " at " + (q.client || "client"),
-            why: (q.client || "This client") + " took the rest of quote " + (q.quoteNo || "") +
+            why: (q.client || "This client") + " took the rest of quote " + (qNo(q) || "") +
               " and said he would install the " + r.brand + " after some time. That time was " +
               d10(r.till) + (od > 0 ? ", " + od + " days ago" : "") + "." +
               (r.why ? " His reason then: " + r.why + "." : "") +
               " The quote is already written and the price is already agreed \u2014 this is the " +
               "cheapest order in the book to go and collect.",
             sub: (q.client || "") + " \u00b7 " + r.brand + " \u00b7 deferred on " + d10(r.at || "") +
-              " to " + d10(r.till) + " \u00b7 quote " + (q.quoteNo || ""),
+              " to " + d10(r.till) + " \u00b7 quote " + (qNo(q) || ""),
             client: q.client || "", siteName: q.client || "quote", product: r.brand,
-            quoteNo: q.quoteNo || "", till: r.till,
+            quoteNo: qNo(q) || "", till: r.till,
             contacts: agContactsFor(q.client),
             btns: [{ act: "qb-open", attrs: { id: q.id, b: r.brand }, label: "Answer it", ghost: 1 },
                    { act: "q-pdf", attrs: { id: q.id }, label: "The quote", ghost: 1 }]
@@ -48295,7 +48297,7 @@ function viewCatalogue() {
     var quotes = [];
     try {
       quotes = radarQuotes().map(function (q) {
-        return { quoteNo: q.quoteNo || "", client: q.client || "", days: qSilentDays(q),
+        return { quoteNo: qNo(q) || "", client: q.client || "", days: qSilentDays(q),
           net: Number(q.net) || 0, status: q.status || "" };
       });
     } catch (e) { quotes = []; }
@@ -48425,7 +48427,7 @@ function viewCatalogue() {
     slipped.money.sort(function (a, b) { return b.overdue - a.overdue; });
     try {
       slipped.quotes = radarQuotes().filter(function (q) { return qSilentDays(q) > RADAR_MIN + sinceMon; })
-        .map(function (q) { return { quoteNo: q.quoteNo || "", client: q.client || "", days: qSilentDays(q) }; });
+        .map(function (q) { return { quoteNo: qNo(q) || "", client: q.client || "", days: qSilentDays(q) }; });
     } catch (e) { }
     try {
       slipped.followups = openFollowups().filter(function (f) {
@@ -49027,7 +49029,7 @@ function viewCatalogue() {
 
   function modalSnooze(q) {
     var due5 = ymdLocal(new Date(Date.now() + 5 * 86400000));
-    return '<h2>Snooze ' + esc(q.quoteNo) + '</h2>' +
+    return '<h2>Snooze ' + esc(qNo(q)) + '</h2>' +
       '<p class="sub">Hides it from the radar until this date. It also appears in your reminders below.</p>' +
       '<label>Follow up on</label><input id="sn_due" type="date" value="' + due5 + '"/>' +
       '<label>Note</label><textarea id="sn_note">Chase ' + esc(q.quoteNo) + ' — ' + esc(q.client) + '</textarea>' +
@@ -56791,7 +56793,7 @@ function viewCatalogue() {
       var qd = S.data.quotes.filter(function (x) { return x.id === id; })[0];
       if (!qd) return;
       toast("Building PDF...");
-      quotePdf(qd).then(function (d) { pdfOut(d, String(qd.quoteNo).replace(/[^\w.-]/g, "_") + ".pdf"); });
+      quotePdf(qd).then(function (d) { pdfOut(d, String(qNo(qd)).replace(/[^\w.-]/g, "_") + ".pdf"); });
       return;
     }
     /* the presentation deck - room by room, a page per product, MRP only */
@@ -56833,7 +56835,7 @@ function viewCatalogue() {
         var b64 = d.output("datauristring").split(",")[1];
         return api("tgSend", {
           bot: "TG_QUOTES", pdfBase64: b64, filename: presFileName(qg2),
-          caption: "<b>Proposal " + String(qg2.quoteNo || "") + "</b>\n" + String(qg2.client || "") +
+          caption: "<b>Proposal " + String(qNo(qg2) || "") + "</b>\n" + String(qg2.client || "") +
             "\n" + sg.n + " products · " + sg.pieces + " pc" +
             (sg.rooms ? " · " + sg.rooms + " areas" : "") +
             "\n" + moneyAscii(sg.mrp) + " at MRP\nBy " + (S.user || "")
@@ -56854,8 +56856,8 @@ function viewCatalogue() {
       quotePdf(qt).then(function (d) {
         var b64 = d.output("datauristring").split(",")[1];
         return api("tgSend", { bot: "TG_QUOTES", pdfBase64: b64,
-          filename: String(qt.quoteNo).replace(/[^\w.-]/g, "_") + ".pdf",
-          caption: "<b>Quotation " + qt.quoteNo + "</b>\n" + qt.client + "\n" + qt.brand + "\nSub-total Rs. " + qt.net + " (GST as actual)\nBy " + qt.createdBy
+          filename: String(qNo(qt)).replace(/[^\w.-]/g, "_") + ".pdf",
+          caption: "<b>Quotation " + qNo(qt) + "</b>\n" + qt.client + "\n" + qt.brand + "\nSub-total Rs. " + qt.net + " (GST as actual)\nBy " + qt.createdBy
         });
       }).then(function (r) { toast(r && r.ok ? "Quote sent to Telegram." : "Send failed."); renderBg(); })
         .catch(function (e) { btnBack(t, _lbl); toast("The quote did not go to Telegram \u2014 " + apiWhy(e) + ". Try again, or send it on WhatsApp."); });
@@ -58456,7 +58458,7 @@ function viewCatalogue() {
         askSheet({ title: bch + " is already quoted to " + esc(S.qz.client || "this client"), danger: true, yes: "Quote anyway", no: "Go back",
           sub: "Check with whoever made it before a second price goes out:",
           body: _bd.slice(0, 6).map(function (x) {
-            return '<div style="margin:0 0 8px"><b>' + esc(x.quoteNo || "") + '</b> \u00b7 ' + esc(String(x.status || "Draft").toLowerCase()) + '<br>' +
+            return '<div style="margin:0 0 8px"><b>' + esc(qNo(x) || "") + '</b> \u00b7 ' + esc(String(x.status || "Draft").toLowerCase()) + '<br>' +
               'by <b>' + esc(x.createdBy || "?") + '</b> on ' + esc(dmy(String(x.createdAt || "").slice(0, 10)) || "?") +
               ' \u00b7 ' + money(x.total) + (dkey(x.client) !== dkey(_bq.client) ? '<br><span style="color:#64748b">under the name ' + esc(x.client) + '</span>' : '') + '</div>';
           }).join("") + (_bd.length > 6 ? '<div class="meta">and ' + (_bd.length - 6) + ' more</div>' : '') })
@@ -58875,7 +58877,7 @@ function viewCatalogue() {
         /* and the brands quoted become pitch rows on that same lead, in the same breath */
         try { stampQuotedPitch(z.client, savedBrands, qno); } catch (e) { }
         S.qz = null;
-        toast("Quote " + qno + " saved.");
+        toast("Quote saved \u2014 its number (QT\u2026) comes from the server in a moment.");   /* 6.9.776 */
         render();
         savePromise.then(function (r) {
           if (!r) { draft.dupChecked = true; S.qz = draft; render(); return; }   /* server refused - back to Review */
@@ -58886,8 +58888,8 @@ function viewCatalogue() {
           toast("Sending to Telegram...");
           quotePdf(r).then(function (d) {
             return api("tgSend", { bot: "TG_QUOTES", pdfBase64: d.output("datauristring").split(",")[1],
-              filename: String(r.quoteNo || qno).replace(/[^\w.-]/g, "_") + ".pdf",
-              caption: "<b>Quotation " + (r.quoteNo || qno) + "</b>\n" + (r.client || z.client) + "\n" + (r.brand || savedBrands.join(", ")) + "\nSub-total Rs. " + (r.net != null ? r.net : tot.net) + " (GST as actual)\nBy " + (r.createdBy || S.user) });
+              filename: String(qNo(r) || qno).replace(/[^\w.-]/g, "_") + ".pdf",
+              caption: "<b>Quotation " + (qNo(r) || qno) + "</b>\n" + (r.client || z.client) + "\n" + (r.brand || savedBrands.join(", ")) + "\nSub-total Rs. " + (r.net != null ? r.net : tot.net) + " (GST as actual)\nBy " + (r.createdBy || S.user) });
           }).then(function (tr) {
             toast(tr && tr.ok ? "Quote sent to Telegram." : "Saved - Telegram send failed, use Send on the quote.");
           }).catch(function () {
@@ -58913,7 +58915,7 @@ function viewCatalogue() {
           body: others.slice(0, 6).map(function (x) {
               return '<div style="margin:0 0 8px"><b>' + esc(x.desc) + '</b><br>' +
                 (uniRupee() ? "\u20B9" : "Rs.") + esc(x.price) + ' at ' + esc(x.disc) + '% off, on ' + esc(x.date) +
-                '<br><span style="color:#64748b">by ' + esc(x.by) + ' (' + esc(x.quoteNo) + ', ' + esc(x.status) + ')</span></div>';
+                '<br><span style="color:#64748b">by ' + esc(x.by) + ' (' + esc(qNo(x)) + ', ' + esc(x.status) + ')</span></div>';
             }).join("") +
             '<div style="font-weight:700;color:#b91c1c">A client must never get two different prices from Energy World.</div>' })
         .then(function (yes) {
