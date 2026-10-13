@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.765";
+  var APP_VERSION = "6.9.766";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -11266,6 +11266,18 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       .map(function (b) { return b.brand; })
       .sort(alpha);
   }
+  /* v6.9.766 - his words: "while making quote and challan every brand have to be shown". Every
+     group a product is mapped to (Accessory, Net Price Items, Huliot...) plus every active brand
+     that carries products - the same list the Challan app has always shown. */
+  function pickerBrands() {
+    var seen = {}, out = [];
+    (S.data.brands || []).forEach(function (br) {
+      var b = String(br.brand || "");
+      if (b && !seen[b] && String(br.active || "Y").toUpperCase() !== "N" && brandProducts(b).length) { seen[b] = 1; out.push(b); }
+    });
+    (PRODUCTS || []).forEach(function (p) { var b = realBrand(p); if (b && !seen[b]) { seen[b] = 1; out.push(b); } });
+    return out.sort(alpha);
+  }
   function brandProducts(brand) {
     return PRODUCTS.filter(function (p) { return realBrand(p) === brand; });
   }
@@ -18978,7 +18990,9 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         return h;
       }
 
-      h += bucketedBrandCard();
+      /* v6.9.766 - the "not set up as a brand" card is gone from here: those groups are now tiles
+         below, so the card's sentence ("they never appear when a quote asks you to pick a brand")
+         stopped being true. It stays on the Brands screen, where promoting one is decided. */
       h += emptyBrandCard();
       /* v6.9.421 - ONE CARD PER BRAND WAS TWENTY-FIVE CARDS. A full-width card with a heading
          and a Choose button, twenty-five times, is about 2,300px of scrolling to reach a brand
@@ -18988,7 +19002,8 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       ensurePickerCss();
       /* the client's preset discount stays on the chip: on THIS screen it is the thing that
          decides which brand to open. */
-      h += '<div class="chips">' + brandList().filter(isMainBrand).map(function (b) {   /* p747 */
+      var _qzB = brandList().slice(); pickerBrands().forEach(function (b) { if (_qzB.indexOf(b) < 0) _qzB.push(b); }); _qzB.sort(alpha);   /* v6.9.766 */
+      h += '<div class="chips">' + _qzB.map(function (b) {
         var d = clientDiscount(z.client, b);
         return '<button class="chip bchip" data-act="qz-brand" data-brand="' + esc(b) + '">' +
           brandDot(b) + esc(b) + '<b>' + brandProducts(b).length + '</b>' +
@@ -48863,9 +48878,9 @@ function viewCatalogue() {
         '<div class="plist">' + hits.map(function (p) { return pickRow(P, p, z); }).join("") + '</div>';
     }
     /* v6.9.303 - "manage alphabatically everywhere". Sorted on a COPY - the sheet order is untouched. */
-    var brands = (S.data.brands || []).filter(function (br) {
-      return String(br.active || "Y").toUpperCase() !== "N" && brandProducts(br.brand).length && (P.pre !== "qz" || isMainBrand(br.brand));   /* p747: the quote offers main brands; challan, return, delivery offer all */
-    }).slice().sort(alphaBy(function (br) { return br.brand; }));
+    /* v6.9.766 - every group that carries products, in quote and challan alike (was: active
+       Brands rows only, and main brands only in the quote) */
+    var brands = pickerBrands().map(function (b) { return { brand: b }; });
     /* v6.9.391 - gated on PRODUCTS, not on brands.length: a man with no brands set up and a
        man whose price list has not arrived need different sentences. */
     if (!PRODUCTS.length) return qbox + catWait();
