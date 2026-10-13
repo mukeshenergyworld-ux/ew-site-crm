@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.782";
+  var APP_VERSION = "6.9.783";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -4065,6 +4065,12 @@ window.addEventListener("beforeunload", function (ev) {
      Split on a bar or a new line, then on the FIRST colon only - so a size like
      "380W x 540D" or a time like "6:30" on the right of the colon stays intact.
      A part with no colon is kept as a plain line rather than thrown away. */
+  /* 6.9.783 - the spec lines minus a "Technology" line when the TOTO icon block already shows them */
+  function specLinesFor(raw, code, brand) {
+    var sp = specLines(raw);
+    var shown = false; try { shown = totoTechLineKeys(code, brand).length > 0; } catch (e) { shown = false; }
+    return shown ? sp.filter(function (x) { return !/^technolog(y|ies)$/i.test(String(x.label || "").trim()); }) : sp;
+  }
   function specLines(raw) {
     var t = String(raw || "").trim();
     if (!t) return [];
@@ -4168,7 +4174,7 @@ window.addEventListener("beforeunload", function (ev) {
          sometimes I have to search and send screenshots to the client". The card is a picture he
          sends; it carries the list price and nothing about discounts. */
       '';
-    var sp = specLines(p.specs);
+    var sp = specLinesFor(p.specs, p.code, p.brand);   /* 6.9.783 */
     if (sp.length) {
       h += '<div style="font-size:12px;letter-spacing:.08em;color:#94a3b8;margin:12px 0 4px">SPECIFICATIONS</div>' +
         '<div style="font-size:13px;line-height:1.6;color:#334155">' +
@@ -22251,7 +22257,7 @@ function viewCatalogue() {
         }
 
         var room = function (hh) { return ry + hh <= byy - 6; };
-        var sp = specLines(i.specs);
+        var sp = specLinesFor(i.specs, i.code, i.brand);   /* 6.9.783 */
         if (sp.length && room(12)) {
           col([148, 163, 184]); F("bold"); doc.setFontSize(5.8);
           doc.text("S P E C I F I C A T I O N S", X, ry); ry += 5.6;
