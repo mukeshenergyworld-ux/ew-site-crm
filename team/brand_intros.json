@@ -1,0 +1,291 @@
+{
+ "v": "2026-10-13",
+ "note": "Short brand introductions printed on quotations. hold=1 is not printed until the owner confirms it.",
+ "brands": [
+  {
+   "brand": "TOTO",
+   "alias": [
+    "TOTO"
+   ],
+   "tagline": "Japan's pioneer in toilets and Washlets",
+   "about": "TOTO has made sanitaryware in Japan since 1917 and introduced the Washlet, its electronic bidet seat, in 1980. Today it is a listed global company whose toilets, basins and Washlets are known for hygienic glazes, water-saving flushing and long service life. Choosing TOTO means fittings designed and tested to exacting Japanese standards for comfort and cleanliness.",
+   "origin": "Japan",
+   "web": "toto.com",
+   "hold": 0,
+   "src": [
+    "https://en.wikipedia.org/wiki/Toto_Ltd.",
+    "https://www.toto.com/en/press/pdf/E-WL60MM.pdf"
+   ]
+  },
+  {
+   "brand": "Grundfos",
+   "alias": [
+    "Grundfos"
+   ],
+   "tagline": "Danish pump engineering since 1945",
+   "about": "Grundfos was founded in 1945 in Bjerringbro, Denmark, where it is still headquartered, and is majority owned by its founder's foundation. It is regarded as one of the world's largest pump makers, building circulators, pressure boosting, submersible and centrifugal pumps with its own motors and controls. For a home, that means steady water pressure, quiet running and dependable service backup.",
+   "origin": "Denmark",
+   "web": "grundfos.com",
+   "hold": 0,
+   "src": [
+    "https://en.wikipedia.org/wiki/Grundfos"
+   ]
+  },
+  {
+   "brand": "Huliot",
+   "alias": [
+    "Huliot",
+    "Huliot HT PRO",
+    "Huliot ULTRA SILENT"
+   ],
+   "tagline": "Israeli drainage pipes, built for silence",
+   "about": "Huliot began in 1947 at Kibbutz Sde Nehemia in Israel and moved into pipes and fittings in the 1960s. It now makes drainage and water-supply systems in Israel, Slovenia, Portugal and India, where its plant opened in 2014. Its HT PRO and Ultra Silent polypropylene drainage lines are designed for leak-free joints and low noise, so you hear far less water inside your walls.",
+   "origin": "Israel",
+   "web": "huliot.com",
+   "hold": 0,
+   "src": [
+    "https://huliot.com/about-huliot/",
+    "https://innovationisrael.org.il/en/success_story/huliot-1/"
+   ]
+  },
+  {
+   "brand": "Heliroma",
+   "alias": [
+    "Heliroma",
+    "Heliroma PPR"
+   ],
+   "tagline": "Portuguese PPR water pipes, Huliot Group",
+   "about": "Heliroma Plásticos is a Portuguese maker of thermoplastic piping, based in Albergaria-a-Velha, and has been part of the Huliot Group since 2019. Its PPR pipes and fittings carry hot and cold drinking water and are joined by heat fusion into one continuous piece, leaving no threads to leak. The range holds European certifications including AENOR and DVGW.",
+   "origin": "Portugal",
+   "web": "heliroma.pt",
+   "hold": 0,
+   "src": [
+    "https://huliot.com/about-huliot/",
+    "https://www.installershow.com/exhibitors/heliroma-plasticos-sa",
+    "https://apcmc.pt/associados-apcmc/heliroma-plasticos-sa/"
+   ]
+  },
+  {
+   "brand": "FIMA",
+   "alias": [
+    "FIMA"
+   ],
+   "tagline": "Italian-made faucets with designer finishes",
+   "about": "FIMA Carlo Frattini is an Italian faucet maker whose factory sits in Briga Novarese, in northern Italy's tap-making district. It designs and produces bathroom and kitchen mixers, shower systems and concealed bodies in-house, from machining and polishing to plating and assembly, including hard-wearing PVD finishes. FIMA brings genuine made-in-Italy design and craftsmanship to your bathroom.",
+   "origin": "Italy",
+   "web": "fimacf.com",
+   "hold": 0,
+   "src": [
+    "https://www.cosedicasa.com/news/rubinetti-fima-carlo-frattini-belli-e-di-qualita-innovazione-e-crescita-93086",
+    "https://shop.mohd.it/it/brands/fima-carlo-frattini.html"
+   ]
+  },
+  {
+   "brand": "Geberit",
+   "alias": [
+    "Geberit"
+   ],
+   "tagline": "Swiss concealed cisterns trusted since 1964",
+   "about": "Geberit has been in sanitary technology since 1874 and is headquartered in Rapperswil-Jona, Switzerland. It introduced its first concealed cistern in 1964 and is now a European leader in wall-hung toilet frames, flush systems and piping. Geberit keeps spare parts available for 50 years, so the cistern hidden in your wall stays serviceable for decades.",
+   "origin": "Switzerland",
+   "web": "geberit.com",
+   "hold": 0,
+   "src": [
+    "https://en.wikipedia.org/wiki/Geberit",
+    "https://www.geberit.com/insights/a-paradigm-shift-in-the-bathroom"
+   ]
+  },
+  {
+   "brand": "Pentair",
+   "alias": [
+    "Pentair"
+   ],
+   "tagline": "Global water treatment expertise since 1966",
+   "about": "Pentair started in Minnesota, USA, in 1966 and is today a New York Stock Exchange-listed water company working worldwide. It makes filtration vessels, softeners, control valves and pool equipment used in homes and businesses. A Pentair system gives you cleaner, softer water that protects your skin, fittings and appliances from hard-water scale, backed by a company with decades in water treatment.",
+   "origin": "United States (origin)",
+   "web": "pentair.com",
+   "hold": 0,
+   "src": [
+    "https://en.wikipedia.org/wiki/Pentair"
+   ]
+  },
+  {
+   "brand": "Green Heat",
+   "alias": [
+    "Green Heat",
+    "Green Heat Plus",
+    "Green Heat+"
+   ],
+   "tagline": "Efficient heat pumps for hot water",
+   "about": "Green Heat Plus is a Delhi-based supplier of air-source heat pumps for homes, along with swimming-pool heat pumps and solar water heating. A heat pump draws warmth from the surrounding air rather than heating water directly with an element, so it delivers plenty of hot water for a fraction of the electricity a conventional geyser uses.",
+   "origin": "India",
+   "web": "greenheatplus.in",
+   "hold": 1,
+   "src": [
+    "https://greenheatplus.in/",
+    "https://www.greenheatplus.in/swimming-pool-heating-heat-pumps"
+   ]
+  },
+  {
+   "brand": "Stellar",
+   "alias": [
+    "Stellar"
+   ],
+   "tagline": "Multi-layer stainless steel water tanks",
+   "about": "Stellar tanks are made by Sun Stellar, whose factory is at Bapauli, near Panipat in Haryana. The tanks are built from food-grade 316L stainless steel in five- and seven-layer insulated designs, with PUF-insulated models too. Unlike plastic tanks, stainless steel does not grow algae or break down in sunlight, so your stored water stays cleaner and the tank lasts much longer.",
+   "origin": "India",
+   "web": "sunstellar.in",
+   "hold": 0,
+   "src": [
+    "https://sunstellar.in/",
+    "https://www.stellarsanitar.com/"
+   ]
+  },
+  {
+   "brand": "MEA",
+   "alias": [
+    "MEA"
+   ],
+   "tagline": "German drainage channels for every load",
+   "about": "MEA Water Management is part of Germany's MEA Group, headquartered in Aichach, and has more than a century of construction experience. It makes surface drainage channels in polymer concrete, glass-fibre composite and stainless steel, with gratings rated under the European standard EN 1433 for loads from foot traffic to heavy vehicles. MEA channels keep driveways, terraces and courtyards dry.",
+   "origin": "Germany",
+   "web": "mea-group.com",
+   "hold": 0,
+   "src": [
+    "https://www.mea-group.com/content/uploads/sites/25/2023/07/EXPORT-Product-catalogue-2023-drainage-solution.pdf"
+   ]
+  },
+  {
+   "brand": "Oyster",
+   "alias": [
+    "Oyster",
+    "OYSTER"
+   ],
+   "tagline": "Shower and steam bath systems",
+   "about": "Oyster is the brand of Oyster Bath Concepts, a New Delhi company founded in 2003 that supplies shower columns, rain showers, steam cabins, enclosures and spa products. Its range is built around the shower experience, from overhead rain panels to full steam enclosures, letting you create a spa-like bathroom at home with a single, specialist brand.",
+   "origin": "India",
+   "web": "oysterbath.yolasite.com",
+   "hold": 1,
+   "src": [
+    "https://oysterbath.yolasite.com/"
+   ]
+  },
+  {
+   "brand": "Adani Solar",
+   "alias": [
+    "Adani",
+    "Adani Solar"
+   ],
+   "tagline": "India's largest integrated solar manufacturer",
+   "about": "Adani Solar is the solar manufacturing arm of India's Adani Group, which entered the business in 2017. At Mundra, Gujarat, it makes everything from ingots and wafers to cells and modules, describing itself as India's first and largest vertically integrated solar maker. Its panels are independently tested by Kiwa PVEL, giving you confidence in long-term power output.",
+   "origin": "India",
+   "web": "adanisolar.com",
+   "hold": 0,
+   "src": [
+    "https://www.adanisolar.com/about-us"
+   ]
+  },
+  {
+   "brand": "Eureka Forbes",
+   "alias": [
+    "Eureka Forbes"
+   ],
+   "tagline": "India's household name for safe water",
+   "about": "Eureka Forbes was founded in Mumbai in 1982 and is listed on India's stock exchanges. Best known for its Aquaguard water purifiers, it also makes air purifiers and vacuum cleaners. Its strength is a nationwide service network that has looked after Indian homes for over four decades, so help is easy to reach when your purifier needs attention.",
+   "origin": "India",
+   "web": "eurekaforbes.com",
+   "hold": 0,
+   "src": [
+    "https://en.wikipedia.org/wiki/Eureka_Forbes"
+   ]
+  },
+  {
+   "brand": "Sanitaar",
+   "alias": [
+    "SANITAAR",
+    "Sanitaar"
+   ],
+   "tagline": "Stainless steel 316L press-fit plumbing",
+   "about": "Sanitaar is the Stellar Sanitär range of stainless steel plumbing from the Sun Stellar group, manufactured near Panipat. It covers 316L stainless steel pipes, double-press V-profile fittings, headers, valves and unions. Press-fit stainless steel needs no threading or welding on site, resists corrosion and keeps drinking water free of rust and plastic taste for the life of the building.",
+   "origin": "India",
+   "web": "stellarsanitar.com",
+   "hold": 1,
+   "src": [
+    "https://www.stellarsanitar.com/"
+   ]
+  },
+  {
+   "brand": "TECE",
+   "alias": [
+    "TECE"
+   ],
+   "tagline": "German family firm for flush and drainage",
+   "about": "TECE was founded in 1987 in Emsdetten, Germany, and remains a family-owned company with production sites in several countries. It specialises in behind-the-wall bathroom technology: pre-wall frames, concealed cisterns, flush plates, shower channels and pipe systems. TECE products are engineered in Germany for clean, flat bathroom designs that are simple to maintain.",
+   "origin": "Germany",
+   "web": "tece.com",
+   "hold": 0,
+   "src": [
+    "https://www.tece.com/en/company/company-tece"
+   ]
+  },
+  {
+   "brand": "Lunos",
+   "alias": [
+    "Lunos",
+    "LUNOS"
+   ],
+   "tagline": "German decentralised ventilation since 1959",
+   "about": "LUNOS has made ventilation in Berlin since 1959 and builds its products in-house in Germany. It specialises in compact, through-the-wall ventilation units, many with heat recovery; its e² unit was the first fan with heat recovery to reach series production, in 2011. Lunos brings fresh, filtered air into each room without large ducts or major building work.",
+   "origin": "Germany",
+   "web": "lunos.de",
+   "hold": 0,
+   "src": [
+    "https://lunos.de/en/about-us"
+   ]
+  },
+  {
+   "brand": "INAIR",
+   "alias": [
+    "INAIR"
+   ],
+   "tagline": "Fresh air systems for healthier rooms",
+   "about": "INAIR (InAir Fresh Air Systems) is a ventilation company with its Indian office in Hyderabad. It supplies fresh-air units, energy recovery ventilators, filtration, ducting and fans for homes, offices, hospitals and hotels. An INAIR system brings in filtered outdoor air and removes stale air, cutting dust and stuffiness while recovering energy to keep cooling costs down.",
+   "origin": "India",
+   "web": "in-air.in",
+   "hold": 0,
+   "src": [
+    "https://www.in-air.in/"
+   ]
+  },
+  {
+   "brand": "Leo Pump",
+   "alias": [
+    "LEO",
+    "Leo Pump"
+   ],
+   "tagline": "Pump maker serving homes worldwide",
+   "about": "LEO pumps are made by Leo Group Co., Ltd., founded in 1995 in Wenling, China, and listed on the Shenzhen Stock Exchange. The company produces pumps for domestic water supply, pressure boosting, agriculture and drainage, sold in many countries. LEO offers practical, cost-effective pumps for everyday household water needs, backed by a large, established manufacturer.",
+   "origin": "China",
+   "web": "",
+   "hold": 1,
+   "src": [
+    "https://finance.yahoo.com/quote/002131.SZ/profile",
+    "https://www.elettronew.com/en/leo-pumps-1070"
+   ]
+  },
+  {
+   "brand": "Astral",
+   "alias": [
+    "Astral"
+   ],
+   "tagline": "India's CPVC plumbing pioneer",
+   "about": "Astral was founded in Ahmedabad in 1996 and brought CPVC piping to India in 1998. It was also the first in India to gain NSF approval for CPVC pipes. CPVC handles both hot and cold water, does not rust or scale and is joined with solvent cement, giving your home a durable, leak-resistant water supply system backed by one of India's leading pipe makers.",
+   "origin": "India",
+   "web": "astralpipes.com",
+   "hold": 0,
+   "src": [
+    "https://www.astralpipes.com/about-us"
+   ]
+  }
+ ]
+}

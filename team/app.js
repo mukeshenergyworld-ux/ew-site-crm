@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.769";
+  var APP_VERSION = "6.9.770";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -4182,6 +4182,15 @@ window.addEventListener("beforeunload", function (ev) {
       h += (sp.length ? '<div style="font-size:12px;letter-spacing:.08em;color:#94a3b8;margin:12px 0 4px">KEY FEATURES</div>' : '') +
         '<ul style="margin:8px 0 10px;padding-left:18px;font-size:13px;line-height:1.6;color:#334155">' +
         d.bullets.map(function (b) { return '<li>' + esc(b) + '</li>'; }).join("") + '</ul>';
+    }
+    /* v6.9.770 - TOTO technologies, read off TOTO's e-catalogue: the name and what it does */
+    try { totoKb(); } catch (e) { }
+    var _tk = totoTechKeys(p.code, rb || p.brand), _td = (_tkb && _tkb.techDict) || {}, _tseen = {};
+    if (_tk.length) {
+      h += '<div style="font-size:12px;letter-spacing:.08em;color:#94a3b8;margin:12px 0 4px">TOTO TECHNOLOGY</div>' +
+        _tk.filter(function (k) { var n = _td[k] && _td[k].n; if (!n || _tseen[n]) return false; _tseen[n] = 1; return true; }).map(function (k) {
+          return '<div style="font-size:13px;line-height:1.5;color:#334155;padding:3px 0;border-bottom:1px solid #f1f5f9"><b>' + esc(_td[k].n) + '</b> &mdash; ' + esc(_td[k].e) + '</div>';
+        }).join("");
     }
     /* ======== HIS ITEM 11: EDIT THE SPEC AND THE PRICE  (v6.9.492) ========
        Everything behind this already existed - modalProduct() edits the code, the price, the
@@ -11346,7 +11355,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     _tkbAsk = Date.now();
     try {
       fetch("toto_kb.json?v=" + APP_VERSION).then(function (r) { return r.json(); })
-        .then(function (j) { _tkb = j; _tkbIx = null; try { if (S.qz && S.qz.step === 3) { keepScroll = true; render(); } } catch (e) { } })
+        .then(function (j) { _tkb = j; _tkbIx = null; try { if ((S.qz && S.qz.step === 3) || S.pvOpen) { keepScroll = true; render(); } } catch (e) { } })
         .catch(function () { });
     } catch (e) { }
     return null;
@@ -20526,7 +20535,12 @@ function viewCatalogue() {
     return h;
   }
 
+  /* v6.9.770 - the TOTO technologies and the brand introductions are read before the paper is drawn */
   function quotePdf(q) {
+    var _it = []; try { _it = JSON.parse(q.items || "[]"); } catch (e) { }
+    return qxReady(_it).then(function () { return quotePdf0(q); });
+  }
+  function quotePdf0(q) {
     var items = [];
     try { items = JSON.parse(q.items || "[]"); } catch (e) {}
     /* No DejaVu ₹-font embed: it added ~600 KB to every quote, which made the Telegram bot send
@@ -20593,6 +20607,8 @@ function viewCatalogue() {
           _rooms.sort();
         }
         var _bul = _dl.bullets.map(function (b) { return pdfSafe(String(b).replace(/^[\s\u00b7\u2022\u2219\u30fb'"\-\u2013]+/, "")); }).filter(Boolean);   /* 6.9.759 - no double bullet */
+        var _tn = totoTechNames(i.code, i.brand);   /* v6.9.770 */
+        if (_tn.length) _bul.push(pdfSafe("Technology: " + _tn.join(", ")));
         /* v6.9.459 - the "For: ..." bullet is how the room reached the paper when there was one
            flat table. With the table drawn room by room the band above the line already says it,
            so it would be the same words twice; it is added below only if nothing is grouped. */
@@ -21032,6 +21048,9 @@ function viewCatalogue() {
         y += fnH + 1;
       }
 
+      /* v6.9.770 - TOTO technologies with their icons, then the brands, before the Terms */
+      try { y = qxDrawPlain(doc, F, items, y, L, Rt, { DEEP: DEEP, INK: INK, GREY: GREY, TEAL: TEALD }); } catch (e) { }
+
       /* ================= TERMS ================= */
       /* T&C now sits inside the same soft, mint-barred panel as the distributor strip, so it
          reads as one framed block instead of loose text under a bar. The panel is sized to the
@@ -21204,6 +21223,127 @@ function viewCatalogue() {
     return l.indexOf("accessor") < 0 && l.indexOf("net price") < 0;
   }
 
+  /* ============ TOTO TECHNOLOGIES + BRAND INTRODUCTIONS ON THE QUOTE (v6.9.770) ============
+     His words: "fetch these product features and technologies from toto e catalog and include in
+     our product description ... at bottom all technology logo included in quote with pic" and
+     "make an introduction of each brand we deal, as we have to include them in quote".
+     The technology map lives in toto_kb.json (read off TOTO's e-catalogue pages, icon by icon);
+     the introductions in brand_intros.json. Both are loaded once, before a quote PDF is drawn. */
+  var _qxIntros = null, _qxIcons = {};
+  function qxJson(url) {
+    return fetch(url + "?v=" + APP_VERSION).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; });
+  }
+  function qxReady(items) {
+    var kbP = _tkb ? Promise.resolve(_tkb) : qxJson("toto_kb.json").then(function (j) { if (j) { _tkb = j; _tkbIx = null; } return _tkb; });
+    var inP = _qxIntros ? Promise.resolve(_qxIntros) : qxJson("brand_intros.json").then(function (j) { if (j) _qxIntros = j; return _qxIntros; });
+    return Promise.all([kbP, inP]).then(function () {
+      var need = qxTechKeys(items || []).filter(function (k) { return !_qxIcons[k]; });
+      return Promise.all(need.map(function (k) {
+        return fetch("toto_icons/" + k + ".jpg?v=" + APP_VERSION).then(function (r) { return r.ok ? r.blob() : null; })
+          .then(function (b) {
+            if (!b) return;
+            return new Promise(function (res) { var fr = new FileReader(); fr.onload = function () { _qxIcons[k] = fr.result; res(); }; fr.onerror = function () { res(); }; fr.readAsDataURL(b); });
+          }).catch(function () { });
+      }));
+    }).catch(function () { });
+  }
+  /* the icon keys of one product - TOTO only, and only codes the e-catalogue showed icons for */
+  function totoTechKeys(code, brand) {
+    if (!_tkb || !_tkb.tech) return [];
+    if (brand !== undefined && !/\btoto\b/i.test(String(brand || ""))) return [];
+    return _tkb.tech[String(code || "")] || [];
+  }
+  function totoTechNames(code, brand) {
+    var td = (_tkb && _tkb.techDict) || {}, out = [];
+    totoTechKeys(code, brand).forEach(function (k) { var n = td[k] && td[k].n; if (n && out.indexOf(n) < 0) out.push(n); });
+    return out;
+  }
+  /* every technology in a quote, one per name, in TOTO's Icon Guide order */
+  function qxTechKeys(items) {
+    var td = (_tkb && _tkb.techDict) || {}, have = {}, names = {};
+    (items || []).forEach(function (i) { totoTechKeys(i.code, i.brand).forEach(function (k) { have[k] = 1; }); });
+    return Object.keys(td).filter(function (k) {
+      if (!have[k]) return false;
+      var n = td[k].n; if (names[n]) return false; names[n] = 1; return true;
+    });
+  }
+  /* the researched introduction for a brand as it is written on a quote line ("Huliot HT PRO", "LEO") */
+  function qxIntroFor(brand) {
+    var b = String(brand || "").trim().toLowerCase(); if (!b || !_qxIntros) return null;
+    var list = _qxIntros.brands || [];
+    for (var i = 0; i < list.length; i++) {
+      var x = list[i];
+      if ((x.alias || [x.brand]).some(function (a) { return String(a).toLowerCase() === b; })) return x.hold ? null : x;
+    }
+    return null;
+  }
+  /* the brands of a quote that have an introduction to print, in the order they first appear */
+  function qxIntroBrands(items) {
+    var out = [], seen = {};
+    (items || []).forEach(function (i) {
+      var x = qxIntroFor(i.brand); if (!x || seen[x.brand]) return;
+      seen[x.brand] = 1; out.push(x);
+    });
+    return out;
+  }
+  /* plain quote: technologies with icons, then the brands - drawn before the Terms. Returns y. */
+  function qxDrawPlain(doc, F, items, y, L, Rt, C) {
+    var td = (_tkb && _tkb.techDict) || {};
+    var keys = qxTechKeys(items);
+    var col = function (c) { doc.setTextColor(c[0], c[1], c[2]); };
+    if (keys.length) {
+      var GAP = 6, COLW = (Rt - L - GAP) / 2, ICON = 7.5;
+      var cells = keys.map(function (k) {
+        F("normal"); doc.setFontSize(7.6);
+        var ls = doc.splitTextToSize(pdfSafe(td[k].e), COLW - ICON - 3);
+        return { k: k, ls: ls, h: Math.max(ICON + 1.5, 4.2 + ls.length * 3.3 + 1.5) };
+      });
+      if (y + 14 + cells[0].h > 278) { doc.addPage(); y = 22; } else { y += 4; }
+      col(C.DEEP); F("bold"); doc.setFontSize(10);
+      doc.text("TOTO technologies in this quote", L, y + 2);
+      col(C.GREY); F("normal"); doc.setFontSize(7.4);
+      doc.text("From TOTO's 2026 catalogue. The products above carry these features.", L, y + 6.4);
+      y += 11;
+      for (var r = 0; r < cells.length; r += 2) {
+        var pair = cells.slice(r, r + 2), rh = Math.max.apply(null, pair.map(function (c) { return c.h; }));
+        if (y + rh > 280) { doc.addPage(); y = 22; }
+        pair.forEach(function (c, j) {
+          var x = L + j * (COLW + GAP);
+          if (_qxIcons[c.k]) { try { doc.addImage(_qxIcons[c.k], "JPEG", x, y - 1, ICON, ICON); } catch (e) { } }
+          col(C.INK); F("bold"); doc.setFontSize(8);
+          doc.text(pdfSafe(td[c.k].n), x + ICON + 3, y + 2);
+          col(C.GREY); F("normal"); doc.setFontSize(7.6);
+          doc.text(c.ls, x + ICON + 3, y + 5.6);
+        });
+        y += rh + 1;
+      }
+    }
+    var bs = qxIntroBrands(items);
+    if (bs.length) {
+      var bl = bs.map(function (x) {
+        F("normal"); doc.setFontSize(7.8);
+        var ls = doc.splitTextToSize(pdfSafe(x.about), Rt - L);
+        return { x: x, ls: ls, h: 5 + ls.length * 3.4 + 2.5 };
+      });
+      if (y + 12 + bl[0].h > 278) { doc.addPage(); y = 22; } else { y += 4; }
+      col(C.DEEP); F("bold"); doc.setFontSize(10);
+      doc.text(bs.length === 1 ? "About the brand in this quote" : "About the brands in this quote", L, y + 2);
+      y += 8;
+      bl.forEach(function (b) {
+        if (y + b.h > 280) { doc.addPage(); y = 22; }
+        col(C.INK); F("bold"); doc.setFontSize(8.6);
+        doc.text(pdfSafe(b.x.brand), L, y + 2);
+        var bw = doc.getTextWidth(pdfSafe(b.x.brand));
+        col(C.TEAL); F("normal"); doc.setFontSize(7.6);
+        doc.text(pdfSafe("- " + b.x.tagline + (b.x.origin ? "  (" + b.x.origin + ")" : "")), L + bw + 2.2, y + 2);
+        col(C.GREY); F("normal"); doc.setFontSize(7.8);
+        doc.text(b.ls, L, y + 6);
+        y += b.h;
+      });
+    }
+    return y;
+  }
+
   function brandIntro(brand) {
     var r = brandRow(brand) || {};
     var pts = String(r.points || "").split(/\s*[|\n;]\s*/)
@@ -21219,6 +21359,15 @@ function viewCatalogue() {
       origin: String(r.origin || "").trim(),
       web: String(r.web || "").trim()
     };
+    /* v6.9.770 - the cells were never filled, so no brand was ever introduced. The researched
+       words fill what is empty; a filled cell still wins. */
+    var rx = qxIntroFor(brand);
+    if (rx) {
+      if (!b.headline) b.headline = String(rx.tagline || "");
+      if (!b.about) b.about = String(rx.about || "");
+      if (!b.origin) b.origin = String(rx.origin || "");
+      if (!b.web) b.web = String(rx.web || "");
+    }
     b.has = !!(b.headline || b.about || b.points.length || b.photo || b.page);
     return b;
   }
@@ -21464,6 +21613,10 @@ function viewCatalogue() {
             ["IFSC", EW_PAY.ifsc], ["UPI", EW_PAY.upi]];
   }
   function quotePresPdf(q) {
+    var _it = []; try { _it = JSON.parse(q.items || "[]"); } catch (e) { }
+    return qxReady(_it).then(function () { return quotePresPdf0(q); });
+  }
+  function quotePresPdf0(q) {
     var items = [];
     try { items = JSON.parse(q.items || "[]"); } catch (e) { items = []; }
     var optl = items.filter(function (i) { return i.optional; });
@@ -21779,6 +21932,8 @@ function viewCatalogue() {
       var lastCat = null, catIdx = 0;
       seq.forEach(function (sq, idx) {
         var i = sq.it, pic = pics[idx], dl = descLines(i.desc);
+        var _tn2 = totoTechNames(i.code, i.brand);   /* v6.9.770 */
+        if (_tn2.length) dl.bullets = dl.bullets.concat(["Technology: " + _tn2.join(", ")]);
 
         if (cats.length > 1 && sq.cat !== lastCat) {
           lastCat = sq.cat;
@@ -22066,6 +22221,26 @@ function viewCatalogue() {
             col(TEAL); F("normal"); doc.setFontSize(6);
             var shown = String(u).replace(/^https?:\/\//, "");
             doc.text(fitCell(doc, F, T(shown), CW - 8, 1, "normal", 6)[0], cx + CW / 2, cy + CH - 3.4, { align: "center" });
+          });
+        }
+      })();
+
+      /* v6.9.770 - the TOTO technologies of this quote, with TOTO's own icons */
+      (function () {
+        var td = (_tkb && _tkb.techDict) || {}, keys = qxTechKeys(items);
+        if (!keys.length) return;
+        var per = 14;
+        for (var p0 = 0; p0 < keys.length; p0 += per) {
+          var ty = newPage("TOTO", "Technologies in this quote");
+          var chunk = keys.slice(p0, p0 + per);
+          var CWt = (Rt - L - 12) / 2;
+          chunk.forEach(function (k, n) {
+            var cx = L + (n % 2) * (CWt + 12), cy = ty + 2 + Math.floor(n / 2) * 22.5;
+            if (_qxIcons[k]) { try { doc.addImage(_qxIcons[k], "JPEG", cx, cy, 14, 14); } catch (e) { } }
+            col(INK); F("bold"); doc.setFontSize(10);
+            doc.text(T(td[k].n), cx + 19, cy + 4.5);
+            col(SLATE); F("normal"); doc.setFontSize(8.4);
+            fitCell(doc, F, T(td[k].e), CWt - 20, 3, "normal", 8.4).forEach(function (ln, j) { doc.text(ln, cx + 19, cy + 10 + j * 4.2); });
           });
         }
       })();
