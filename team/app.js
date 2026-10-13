@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.774";
+  var APP_VERSION = "6.9.775";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -18740,8 +18740,30 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     /* v6.9.410 - working through the never-sent list keeps its cards: the two taps that end
        a never-sent quotation live on the card. */
     if (S.qUnsent) {
-      list.forEach(function (q) { h += quoteCardHtml(q); });
-      return h;
+      /* v6.9.775 - the latest first, one compact line each (was a full card each, oldest first) */
+      if (S.qCard) {
+        var _uc = list.filter(function (q) { return q.id === S.qCard; })[0];
+        if (_uc) h += '<div class="row" style="margin:6px 0 2px"><b style="font-size:13.5px">' + esc(_uc.quoteNo || "") + '</b><div class="grow"></div>' +
+          '<button class="btn sm ghost" data-act="q-card" data-id="">Close card</button></div>' + quoteCardHtml(_uc);
+      }
+      var _ul = list.slice().sort(function (a, b) { return String(b.createdAt || "").localeCompare(String(a.createdAt || "")); });
+      var _th = function (t, al) { return '<th style="text-align:' + (al || "left") + ';padding:7px 8px;font-size:12px;letter-spacing:.04em;color:#fff;white-space:nowrap">' + t + '</th>'; };
+      h += '<div style="overflow-x:auto;border:1px solid #e2e8f0;border-radius:10px;background:#fff"><table style="border-collapse:collapse;width:100%;min-width:900px;font-size:13px">' +
+        '<thead><tr style="background:#0b3b36">' + _th("CODE") + _th("QUOTE NO.") + _th("CLIENT") + _th("BRANDS") + _th("NET", "right") + _th("MADE") + _th("DAYS", "right") + _th("") + '</tr></thead><tbody>';
+      _ul.forEach(function (q) {
+        var w = qWhen(q.createdAt), ag = qAgeDays(q);
+        var td = function (x, al) { return '<td style="padding:6px 8px;border-top:1px solid #e2e8f0;vertical-align:middle;text-align:' + (al || "left") + '">' + x + '</td>'; };
+        h += '<tr>' + td('<b>' + esc(qCode(q) || "\u2014") + '</b>') +
+          td('<button class="btn sm ghost" data-act="q-card" data-id="' + esc(q.id) + '" style="padding:1px 7px;font-size:12px;white-space:normal;word-break:break-all;text-align:left">' + esc(q.quoteNo || "open") + '</button>') +
+          td('<b>' + esc(q.client || "") + '</b>') + td(esc(quoteBrands(q).join(", ") || q.brand || "\u2014")) +
+          td('<b style="white-space:nowrap">' + money(q.net) + '</b>', "right") +
+          td('<span style="white-space:nowrap">' + esc(w.d) + (w.t ? ', ' + esc(w.t) : '') + '</span>') +
+          td(ag >= 0 ? '<b style="color:' + (ag > 14 ? "#b91c1c" : "#92400e") + '">' + ag + '</b>' : '<span style="color:#94a3b8">\u2014</span>', "right") +
+          td('<span style="white-space:nowrap"><button class="btn sm" data-act="q-sent" data-id="' + esc(q.id) + '" style="padding:2px 9px;font-size:12px">Sent</button> ' +
+            '<button class="btn sm ghost" data-act="q-notreq" data-id="' + esc(q.id) + '" style="padding:2px 9px;font-size:12px">Not required</button> ' +
+            '<button class="btn sm ghost" data-act="q-pdf" data-id="' + esc(q.id) + '" style="padding:2px 9px;font-size:12px">PDF</button></span>') + '</tr>';
+      });
+      return h + '</tbody></table></div>';
     }
     /* ===== THE QUOTE LOG  (v6.9.534 - his third list, item 15) =====
        "proper quote log, date wise, can be filtered, which brand quoted; win / lose with one
