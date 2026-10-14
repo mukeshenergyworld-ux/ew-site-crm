@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.794";
+  var APP_VERSION = "6.9.795";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -20379,7 +20379,10 @@ function viewCatalogue() {
     "Eureka Forbes": "../assets/brands/card/eureka.png", "Huliot": "../assets/brands/card/huliot.png", "FIMA": "../assets/brands/card/fima.png",
     "TOTO": "../assets/brands/card/toto.png", "Grundfos": "../assets/brands/card/grundfos.png", "Pentair": "../assets/brands/card/pentair.png",
     "Green Heat": "../assets/brands/card/greenheat.png", "Adani": "../assets/brands/card/adani.png", "Geberit": "../assets/brands/card/geberit.png",
-    "Stellar": "../assets/brands/card/stellar.png", "MEA": "../assets/brands/card/mea.png", "Oyster": "../assets/brands/card/oyster.png" };
+    "Stellar": "../assets/brands/card/stellar.png", "MEA": "../assets/brands/card/mea.png", "Oyster": "../assets/brands/card/oyster.png",
+    /* 6.9.795 - the five not on the card, from each brand's own website (assets/brands/web) */
+    "Heliroma": "../assets/brands/web/heliroma.png", "TECE": "../assets/brands/web/tece.png", "Lunos": "../assets/brands/web/lunos.png",
+    "INAIR": "../assets/brands/web/inair.png", "Sanitaar": "../assets/brands/web/sanitaar.png" };
   function localLogos() {
     return Promise.all(Object.keys(LOCAL_LOGOS).map(function (brand) {
       var k = normB(brand);
