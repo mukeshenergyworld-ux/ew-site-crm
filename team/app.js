@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.784";
+  var APP_VERSION = "6.9.790";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -1496,6 +1496,7 @@
     if (extra && extra._whole) { extra = Object.assign({}, extra); delete extra._whole; }
     var _t0 = Date.now();
     var body = Object.assign({ action: action, user: S.user, pin: S.pin }, extra || {});
+    try { if (!body.app) body.app = "CRM " + APP_VERSION; } catch (eApp) { }   /* 6.9.785 - the server write log names the app (V160) */
     if (S.tok) body.tok = S.tok;   /* B9 - the saved sign-in's token (server V142) */
     if (action === "teamAuth" && !(extra && Object.prototype.hasOwnProperty.call(extra, "pin"))) body.keep = 1;   /* a sign-in, not a PIN re-check: ask for a token */
     /* 6.9.669 - in pieces, on a device where a big request does not get through */
@@ -3152,6 +3153,8 @@ window.addEventListener("beforeunload", function (ev) {
       if (pendCount()) retryPending();
       try { prfFlush(); } catch (e) { }          /* delivery proofs taken out of signal */
       try { maybePartnerNag(); } catch (e) { }   /* weekly: chase missing plumber/architect names */
+      try { staleNag(); } catch (e) { }   /* 6.9.786 - Mondays: old quotes to close */
+      try { pstNag(); } catch (e) { }   /* 6.9.789 - 1st to 7th: partner statements to send */
       try { setTimeout(function () { try { rsAutoTick(); } catch (e) { } }, 6000); if (!_rsTick) _rsTick = setInterval(function () { try { rsAutoTick(); } catch (e) { } }, 1800000); } catch (e) { }   /* 6.9.639 - the reports send themselves */
       try { if (roleAny(["admin", "accounts"]) && !_stkNagDone) ensureStock(); } catch (e) { }   /* 6.9.607 - bills to upload */
     });
@@ -9861,10 +9864,56 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       return next(0).then(function () {
         S.ewm = null; S.modal = null; render();
         toast(client + ": " + lines.length + " product" + (lines.length > 1 ? "s" : "") + " marked " + (stepKind === "install" ? "installed" : "handed over") + "." + (fail ? " " + fail + " photo(s) did not go up." : ""));
+        if (stepKind === "handover") { try { hoOpen(c.id, lines, arow ? JSON.parse(arow.detail).date : today()); } catch (eHo) { } }   /* 6.9.788 */
       });
     }).catch(function (e) {
       if (S.ewm) { S.ewm.busy = false; S.modal = modalEwm(); render(); }
       toast("Not saved - " + apiWhy(e) + ". Try again.");
+    });
+  }
+  /* ===== 6.9.788 - TELL THE CUSTOMER AFTER HANDOVER (see p788) ===== */
+  function hoNextService(client) {
+    var td = today(), best = "";
+    (S.data.installs || []).forEach(function (x) {
+      if (!x || dkey(x.client || "") !== dkey(client || "") || !x.nextService) return;
+      var d = dstr(x.nextService); if (d >= td && (!best || d < best)) best = d;
+    });
+    return best;
+  }
+  function hoMsg(H) {
+    var lines = ["Namaste " + H.client + " ji,", "",
+      "Your " + H.what + (H.site ? " at " + H.site : "") + " " + (H.n > 1 ? "have" : "has") + " been installed and handed over on " + fullDate(H.date) + "."];
+    if (H.url) lines.push("", "Warranty card: " + H.url);
+    if (H.next) lines.push("Next service due: " + fullDate(H.next) + " - we will call you before.");
+    lines.push("", "For any service call Energy World: " + FIRM.phone, "Thank you - Energy World");
+    return lines.join("\n");
+  }
+  function modalHo() {
+    var H = S.ho; if (!H) return "";
+    var mob = String(H.mobile || "").replace(/\D/g, "").slice(-10);
+    return '<h2>Tell the customer</h2><p class="sub">' + esc(H.client) + (mob ? ' &middot; ' + esc(mob) : '') + '</p>' +
+      '<div style="white-space:pre-wrap;font-size:13px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:9px 11px">' + esc(hoMsg(H)) + '</div>' +
+      (H.busy ? '<div class="meta" style="margin-top:6px">Making the warranty card link…</div>' : (H.err ? '<div class="meta" style="margin-top:6px;color:#b45309">The card link could not be made (' + esc(H.err) + ') - the message goes without it.</div>' : '')) +
+      (!mob ? '<div class="meta" style="margin-top:6px;color:#b45309">No mobile number on this client - add it on his card first.</div>' : '') +
+      '<div class="foot"><button class="btn ghost" data-act="close">Not now</button>' +
+      (mob && !H.busy ? '<a class="btn" style="min-height:44px;display:inline-flex;align-items:center" target="_blank" rel="noopener" data-act="ho-sent" href="https://wa.me/91' + mob + '?text=' + encodeURIComponent(hoMsg(H)) + '">Send on WhatsApp</a>' : '') + '</div>';
+  }
+  function hoOpen(chId, lineIdx, date) {
+    var ch = (S.data.challans || []).filter(function (x) { return x.id === chId; })[0]; if (!ch) return;
+    var rows = ewiCrmRows().filter(function (x) { return x.c.id === chId && lineIdx.indexOf(x.idx) >= 0; });
+    var c = clientByName(ch.customerName) || {};
+    var H = S.ho = { ch: chId, client: ch.customerName || "", site: ch.site || "", mobile: c.mobile || "", date: date, n: rows.length || lineIdx.length,
+      what: rows.length ? rows.map(function (x) { return x.name; }).slice(0, 3).join(", ") + (rows.length > 3 ? " and " + (rows.length - 3) + " more" : "") : "products",
+      next: hoNextService(ch.customerName), url: "", busy: true, err: "" };
+    S.modal = modalHo(); render();
+    var cd = commDateOf(ch) || date;
+    Promise.resolve().then(function () { return warrantyCardPdf(ch, cd); }).then(function (doc) {
+      var b64 = doc.output("datauristring").split(",")[1];
+      return api("pdfHost", { pdfBase64: b64, filename: "Warranty_card_" + String(ch.challanNo || ch.id).replace(/[^\w.-]+/g, "_") + ".pdf" }, 90000);
+    }).then(function (r) {
+      if (r && r.ok && r.url) H.url = String(r.url); else H.err = (r && r.error) || "no link came back";
+    }).catch(function (e) { H.err = apiWhy(e); }).then(function () {
+      H.busy = false; if (S.ho === H) { S.modal = modalHo(); render(); }
     });
   }
   function commissioningSection() {
@@ -18885,6 +18934,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
        or two clicks". One sheet, newest first. Chips by outcome and a date range filter it;
        the number opens the ordinary card above the sheet; Won and Lost are one tap. The
        Compact tree and the executive -> outcome cards are gone from this screen. */
+    if (!qq) { try { h += staleBand(qMine); } catch (eSt) { } }   /* 6.9.786 */
     var qf = String(S.qLog || "all");
     var inRange = function (q) {
       var d = String(q.createdAt || "").slice(0, 10);
@@ -18978,6 +19028,50 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
      were made (version 1 is Revision 1), and the newest is marked latest. A revision is found by
      following parentId back to the first quote; a row with no parent but the same quote number
      is the same family. The flat sortable sheet is still one tap away (List). */
+  /* ===== 6.9.786 - OLD QUOTES TO CLOSE (see p786) ===== */
+  var STALE_DAYS = 45;
+  function staleQuotes(qMine) {
+    qMine = qMine || qMineFn();
+    var byId = {}; (S.data.quotes || []).forEach(function (q) { if (q) byId[q.id] = q; });
+    var fam = {};
+    quoteLogAll().forEach(function (q) {
+      var k = quoteFamilyKey(q, byId), cur = fam[k];
+      if (!cur || (Number(q.version) || 1) > (Number(cur.version) || 1) || ((Number(q.version) || 1) === (Number(cur.version) || 1) && String(q.createdAt || "") > String(cur.createdAt || ""))) fam[k] = q;
+    });
+    var fresh = {};   /* clients with a follow-up written or due in the window */
+    (S.data.followups || []).forEach(function (f) {
+      var dd = [f.createdAt, f.updatedAt, f.dueDate].map(function (d) { return d ? -daysTo(d) : 9999; });
+      if (Math.min.apply(null, dd) < STALE_DAYS) fresh[dkey(f.client || "")] = 1;
+    });
+    return Object.keys(fam).map(function (k) { return fam[k]; }).filter(function (q) {
+      if (q.status === "Won" || q.status === "Lost") return false;
+      if (!qMine(q)) return false;
+      if (qSilentDays(q) < STALE_DAYS) return false;
+      if (quoteSnoozed(q)) return false;
+      return !fresh[dkey(q.client || "")];
+    }).sort(function (a, b) { return String(a.updatedAt || a.createdAt || "").localeCompare(String(b.updatedAt || b.createdAt || "")); });
+  }
+  function staleBand(qMine) {
+    var st = staleQuotes(qMine); if (!st.length) return "";
+    var open = !!S.qStale;
+    var h = '<div class="card" style="border-color:#fbbf24;background:#fffbeb;padding:10px 12px">' +
+      '<div class="row" style="flex-wrap:wrap;gap:8px;align-items:center"><div class="grow"><b style="color:#92400e">' + st.length + ' old quote' + (st.length > 1 ? 's' : '') + ' to close</b>' +
+      '<div class="meta" style="font-size:12.5px">No word for ' + STALE_DAYS + '+ days and no follow-up with the client. Mark each Won, Lost or Not required, so the win rate and the follow-up lists tell the truth.</div></div>' +
+      '<button class="btn sm' + (open ? ' ghost' : '') + '" data-act="q-stale" style="min-height:44px">' + (open ? 'Hide the list' : 'Close them now') + '</button></div>';
+    if (open) h += '<div style="margin-top:8px">' + qRowsTable(st.map(function (q) { return { q: q }; }), { qMine: qMine }) + '</div>';
+    return h + '</div>';
+  }
+  function staleNag() {
+    try {
+      if (!S.user || S.modal || new Date().getDay() !== 1) return;   /* Mondays */
+      var key = "ew_qstale_" + S.user, last = Number(localStorage.getItem(key) || 0);
+      if (Date.now() - last < 6 * 86400000) return;
+      var n = staleQuotes().length; if (!n) return;
+      localStorage.setItem(key, String(Date.now()));
+      S.qStale = true;
+      toast(n + " old quote" + (n > 1 ? "s" : "") + " to close - Quotes tab, at the top.");
+    } catch (e) { }
+  }
   function quoteFamilyKey(q, byId) {
     var x = q, seen = {};
     while (x && x.parentId && !seen[x.id] && byId[x.parentId]) { seen[x.id] = 1; x = byId[x.parentId]; }
@@ -23264,6 +23358,41 @@ function viewCatalogue() {
       .map(function (x) { return { s: x, last: lastV[x.id] || "" }; }).sort(function (a, b) { return String(a.last).localeCompare(String(b.last)); }).slice(0, 8);
     return d;
   }
+  /* ===== STAGE -> WHAT TO PITCH, IN OUR BRANDS (CRM 6.9.787 / Visit 1.4.21) ===== */
+  var EW_PITCH = {
+    design:  { t: "Design / enquiry", win: false, lines: ["Get our brands written into the drawing: Huliot drainage, Heliroma PPR, Geberit concealed cisterns, TOTO / FIMA", "Book a showroom visit with the architect"] },
+    found:   { t: "Foundation", win: false, lines: ["Huliot HT PRO underground drainage", "Grundfos sump / dewatering pump", "Plan the Stellar water tank"] },
+    slab:    { t: "Structure / slab", win: true, lines: ["Huliot sleeves and floor-drain positions in the slab", "Lunos / INAIR wall sleeves for ventilation"] },
+    brick:   { t: "Brickwork", win: true, lines: ["Geberit / TECE concealed cisterns - before plaster", "Huliot Ultra Silent soil and waste lines", "Heliroma PPR rough-in"] },
+    plumb:   { t: "Concealed plumbing", win: true, lines: ["Heliroma PPR or Sanitaar SS press pipes", "FIMA concealed bodies and diverters", "Geberit concealed cisterns", "Huliot Ultra Silent drainage"] },
+    elec:    { t: "Concealed electrical", win: true, lines: ["Power points for Green Heat heat pump, Grundfos pressure pump, Pentair softener", "INAIR / Lunos fresh-air points"] },
+    plaster: { t: "Plastering", win: false, lines: ["Keep the quote warm - follow up", "Bring them to the showroom to finalise TOTO / FIMA"] },
+    water:   { t: "Waterproofing", win: true, lines: ["TECE shower drains", "MEA channels for terrace and balcony"] },
+    floor:   { t: "Flooring / tiling", win: true, lines: ["TECE Showerline drains", "MEA drainage channels", "Huliot floor traps"] },
+    cp:      { t: "Sanitary & CP fitting", win: true, lines: ["TOTO sanitaryware and Washlets", "FIMA faucets and showers", "Oyster shower systems", "Geberit flush plates"] },
+    paint:   { t: "Painting / false ceiling", win: false, lines: ["Lunos / INAIR ventilation", "Green Heat heat pump", "Grundfos pressure pump"] },
+    fitout:  { t: "Final fit-out / handover", win: true, lines: ["Pentair softener and filters", "Grundfos pressure pump", "Green Heat heat pump", "Stellar tank, Eureka Forbes RO, Adani solar"] },
+    done:    { t: "Completed", win: false, lines: ["AMC for Pentair / Grundfos / Green Heat", "Ask for a referral"] }
+  };
+  function ewStageKey(st) {
+    var s = String(st || "").toLowerCase();
+    if (!s) return "";
+    if (/design|drawing|enquiry|not started/.test(s)) return "design";
+    if (/excavat|foundation/.test(s)) return "found";
+    if (/slab|structure/.test(s)) return "slab";
+    if (/brick|masonry/.test(s)) return "brick";
+    if (/plumb|rough/.test(s)) return "plumb";
+    if (/electric/.test(s)) return "elec";
+    if (/waterproof/.test(s)) return "water";
+    if (/plaster/.test(s)) return "plaster";
+    if (/floor|tiling|tile/.test(s)) return "floor";
+    if (/sanitary|cp fitting/.test(s)) return "cp";
+    if (/paint|ceiling/.test(s)) return "paint";
+    if (/fit.?out|handover/.test(s) && !/post/.test(s)) return "fitout";
+    if (/complet|post|amc/.test(s)) return "done";
+    return "";
+  }
+  function ewPitchFor(st) { var k = ewStageKey(st); return k ? EW_PITCH[k] : null; }
   function viewMyDay() {
     var who = mdWho(), d = mdData(who), td = today();
     var tile = function (n, l, warn) { return '<div class="stat' + (warn && n ? ' alert' : '') + '"><div class="n">' + n + '</div><div class="l">' + l + '</div></div>'; };
@@ -23309,6 +23438,19 @@ function viewCatalogue() {
     if (d.staleSites.length) h += '<div class="meta" style="font-size:12.5px;font-weight:700;margin-top:8px">Your sites not visited for 30+ days</div>' + pevTable([["Site"], ["Client"], ["Stage"], ["Last visit"]], d.staleSites.map(function (x) {
       return ['<b data-act="vl-open" data-id="' + esc(x.s.id) + '" style="cursor:pointer;color:#0d766c">' + esc(x.s.name || "") + '</b>', esc(x.s.client || ""), esc(x.s.stage || ""), x.last ? esc(dmy(x.last)) : 'never'];
     }));
+    /* 5. 6.9.787 - sites at a pitch moment: touched in the last 7 days and at a stage whose window closes */
+    var _pm = (S.data.sites || []).filter(function (x) {
+      if (!x || !mdMine(x.createdBy, who) || String(x.status || "") === "Lost") return false;
+      var p = ewPitchFor(x.stage); if (!p || !p.win) return false;
+      var u = String(x.updatedAt || x.createdAt || "").slice(0, 10);
+      return u && u >= addDays(td, -7);
+    }).sort(function (a, b) { return String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")); });
+    h += '<h3 style="margin:14px 0 4px;font-size:15px">5. Sites at a pitch moment</h3>';
+    h += _pm.length ? pevTable([["Site"], ["Client"], ["Stage"], ["Pitch now"]], _pm.slice(0, 12).map(function (x) {
+      var p = ewPitchFor(x.stage);
+      return ['<b data-act="vl-open" data-id="' + esc(x.id) + '" style="cursor:pointer;color:#0d766c">' + esc(x.name || "") + '</b>', esc(x.client || ""), esc(x.stage || ""),
+        '<span style="font-size:12.5px">' + esc(p.lines.slice(0, 3).join(" · ")) + '</span>'];
+    })) : '<div class="empty">None of your sites moved into a pitch window this week.</div>';
     return h;
   }
   function viewVisitsOld() {
@@ -29510,6 +29652,51 @@ function viewCatalogue() {
   /* The card, the statement and the payout modal serve both - this decides which book. */
   function bookFor(name, kind) { return kind === "exec" ? execBook(name) : partnerBook(name); }
 
+  /* ===== 6.9.789 - THE MONTH'S PARTNER STATEMENTS (see p789) ===== */
+  function pstPrevYm() { var d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 1); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0"); }
+  function pstSent(ym) {
+    var m = {};
+    ((S.data && S.data.audit) || []).forEach(function (a) {
+      if (String(a && a.action || "") !== "pstmt:sent") return;
+      var d = {}; try { d = JSON.parse(a.detail || "{}"); } catch (e) { return; }
+      if (d.ym === ym && d.name) m[dkey(d.name)] = { at: a.createdAt || "", by: a.actor || "" };
+    });
+    return m;
+  }
+  function pstList(ym) {
+    return (S.data.associates || []).map(function (a) {
+      var g = partnerClientRows(partnerBook(a.name), ym), inc = g.reduce(function (t, x) { return t + x.inc; }, 0);
+      return { a: a, n: g.length, inc: inc, clients: g.map(function (x) { return x.client; }) };
+    }).filter(function (x) { return Math.round(x.inc) > 0; }).sort(function (p, q) { return q.inc - p.inc; });
+  }
+  function pstCard() {
+    if (!roleIs("admin")) return "";
+    var ym = pstPrevYm(), ls = pstList(ym); if (!ls.length) return "";
+    var sent = pstSent(ym), left = ls.filter(function (x) { return !sent[dkey(x.a.name)]; }).length;
+    return '<div class="card" style="border-color:' + (left ? '#fbbf24' : '#bbf7d0') + '"><h3>Statements for ' + esc(monthLabel(ym)) + ' <span class="pill ' + (left ? 'soon' : 'Won') + '">' + (left ? left + ' to send' : 'all sent') + '</span></h3>' +
+      '<div class="meta" style="margin:0 0 6px">Every partner who earned last month: his clients and his incentive, as a PDF on WhatsApp.</div>' +
+      xlTable("pst", [{ k: "p", t: "PARTNER", w: "150px" }, { k: "c", t: "CLIENTS" }, { k: "inc", t: "INCENTIVE", n: 1, r: 1 }, { k: "go", t: "" }],
+        ls.map(function (x) {
+          var s0 = sent[dkey(x.a.name)];
+          return { v: { p: x.a.name, c: x.n, inc: x.inc }, cells: {
+            p: '<b>' + esc(x.a.name) + '</b>' + (x.a.role ? ' <span class="meta">' + esc(x.a.role) + '</span>' : ''),
+            c: esc(x.clients.slice(0, 3).join(", ") + (x.clients.length > 3 ? " +" + (x.clients.length - 3) : "")),
+            inc: money(x.inc),
+            go: (s0 ? '<span class="pill Won" style="font-size:12px">sent ' + esc(dmy(s0.at)) + '</span> ' : '') +
+              '<button class="btn sm' + (s0 ? ' ghost' : '') + '" data-act="p-stmt-wa" data-n="' + esc(x.a.name) + '" data-m="' + ym + '" data-k="partner" style="padding:2px 9px;font-size:12px;min-height:36px">' + (s0 ? 'Send again' : 'WhatsApp') + '</button>'
+          } };
+        }), "each partner who earned") + '</div>';
+  }
+  function pstNag() {
+    try {
+      if (!roleIs("admin") || S.modal || new Date().getDate() > 7) return;
+      var ym = pstPrevYm(), key = "ew_pst_" + ym; if (localStorage.getItem(key)) return;
+      var ls = pstList(ym), sent = pstSent(ym), left = ls.filter(function (x) { return !sent[dkey(x.a.name)]; }).length;
+      if (!left) return;
+      localStorage.setItem(key, "1");
+      toast(left + " partner statement" + (left > 1 ? "s" : "") + " for " + monthLabel(ym) + " to send - Incentives tab, at the top.");
+    } catch (e) { }
+  }
   function viewIncentives() {
     if (S.partner) return viewPartnerCard(S.partner);
     var partners = S.data.associates.slice();
@@ -29525,6 +29712,7 @@ function viewCatalogue() {
       '<div class="stat"><div class="n">' + money(tot.paid) + '</div><div class="l">Paid out</div></div>' +
       '<div class="stat ' + (tot.pending > 0 ? "alert" : "") + '"><div class="n">' + money(tot.pending) + '</div><div class="l">Still to pay</div></div>' +
       '</div>';
+    try { h += pstCard(); } catch (ePst) { }   /* 6.9.789 */
     h += '<div class="empty" style="text-align:left;padding:0 0 12px">Incentive = net sale (post-discount, ex-GST) \u00d7 the rate set for that <b>client &amp; brand</b> on the discount screen, paid to whoever is that client\u2019s plumber / architect / builder / PMC. It only becomes <b>payable as the client pays</b>, and a challan counts only once its material receipt is in. A booked-in material return reverses it.</div>';
 
     /* ---- FIND A MAN (v6.9.330) ----
@@ -29613,7 +29801,13 @@ function viewCatalogue() {
           name: '<b data-pname="' + esc(dkey(r.name + " " + r.role)) + '" data-act="p-open" data-k="' + (r.kind === "exec" ? "exec" : "") + '" data-n="' + esc(r.name) + '" style="cursor:pointer;color:#0f766e">' + esc(r.name) + '</b>' +
                 (r.reversed > 0.5 ? ' <span class="pill due" style="font-size:12px">' + money(r.reversed) + ' reversed</span>' : ''),
           role: r.kind === "exec" ? '<span class="pill" style="background:#ede9fe;color:#6d28d9;font-size:12px">Executive</span>' : '<span class="pill" style="font-size:12px">' + esc(r.role) + '</span>',
-          pending: r.pending > 0.5 ? '<b style="color:#b91c1c">' + money(r.pending) + '</b>' : '<span class="pill Won" style="font-size:12px">settled</span>',
+          /* 6.9.790 - HIS QUESTION (14 Oct): "its showing settled - because of pending payment from client, or because we
+             havent paid him yet?" It said "settled" whenever nothing was PAYABLE - including a partner who has earned and
+             whose client simply has not paid yet (Bheera - Ranbir: earned 10,442, client payment not in, paid 0). Now the
+             cell says which: still to pay, waiting for the client's payment, settled (earned and paid), or nothing earned. */
+          pending: r.pending > 0.5 ? '<b style="color:#b91c1c">' + money(r.pending) + '</b>'
+            : (r.earned - r.payable > 0.5 ? '<span class="pill soon" style="font-size:12px" title="Incentive is paid as the client pays">' + money(r.earned - r.payable) + ' waits for client payment</span>'
+            : (r.earned > 0.5 ? '<span class="pill Won" style="font-size:12px">settled</span>' : '<span style="color:#94a3b8">nothing earned</span>')),
           go: '<button class="btn sm" data-act="p-open" data-k="' + (r.kind === "exec" ? "exec" : "") + '" data-n="' + esc(r.name) + '" style="padding:2px 8px;font-size:12px">Open</button>' +
               (r.id ? ' <button class="btn sm ghost" data-act="as-open" data-id="' + esc(r.id) + '" style="padding:2px 8px;font-size:12px">Edit</button>' : ''),
           billed: money(r.billed), earned: '<b style="color:#0f766e">' + money(r.earned) + '</b>', payable: money(r.payable), paid: money(r.paid),
@@ -58927,6 +59121,7 @@ function viewCatalogue() {
       }, function (e) { toast("Not saved \u2014 " + apiWhy(e) + ". It will go up when the line is back."); });
       render(); return;
     }
+    if (act === "q-stale") { S.qStale = !S.qStale; render(); return; }   /* 6.9.786 */
     if (act === "q-notreq") {
       var _qnr = (S.data.quotes || []).filter(function (x) { return x.id === id; })[0];
       if (!_qnr) { toast("That quotation is no longer on the list. Refresh and try again."); return; }
@@ -59239,6 +59434,9 @@ function viewCatalogue() {
       S.ewm.sel[_ei] = true; S.modal = modalEwm(); render(); return;
     }
     if (act === "ewm-save") { ewmSave(); return; }
+    if (act === "ho-sent") { var _h = S.ho; S.ho = null; S.modal = null; setTimeout(render, 300);   /* 6.9.788 - the link opens WhatsApp; the row is noted */
+      if (_h) { try { save("audit", { id: "", createdAt: new Date().toISOString(), actor: S.user || "", action: "handover:wa", target: _h.client, detail: JSON.stringify({ chId: _h.ch, url: _h.url, next: _h.next }), ip: "" }, true); } catch (eA) { } }
+      return; }
     if (act === "comm-open") { S.modal = modalCommission(t.getAttribute("data-ch")); render(); return; }
     if (act === "comm-save") {
       var commCh = (S.data.challans || []).filter(function (x) { return x.id === t.getAttribute("data-ch"); })[0];
@@ -60175,6 +60373,10 @@ function viewCatalogue() {
         (_pwm === "ALL" ? "(all months)" : "for " + monthLabel(_pwm)) + " is attached.";
       waShareDoc(loadLogo().then(function () { return partnerStatementPdf(_pwn, _pwm, stmtShowPct(), _pwk); }),
         String(_pwn).replace(/[^\w.-]/g, "_") + "_incentive_" + _pwm + ".pdf", _pwa.mobile, _pwmsg);
+      if (_pwk === "partner" && _pwm !== "ALL") {   /* 6.9.789 - the month's list shows it as sent */
+        var _pr = { id: "", createdAt: new Date().toISOString(), actor: S.user || "", action: "pstmt:sent", target: _pwn, detail: JSON.stringify({ name: _pwn, ym: _pwm }), ip: "" };
+        try { (S.data.audit = S.data.audit || []).push(_pr); save("audit", _pr, true); setTimeout(render, 400); } catch (ePs) { }
+      }
       return;
     }
 
