@@ -252,7 +252,7 @@ body{background:#F4F6F9}
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.131.4";
+  var APP_VERSION = "1.131.5";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -1297,6 +1297,7 @@ body{background:#F4F6F9}
     if (extra && extra._whole) { extra = Object.assign({}, extra); delete extra._whole; }
     var _t0 = Date.now();
     var body = Object.assign({ action: action, user: S.user, pin: S.pin }, extra || {});
+    try { if (!body.app) body.app = "Challan " + APP_VERSION; } catch (eApp) { }   /* 1.131.5 - the server write log names the app (V160) */
     if (S.tok) body.tok = S.tok;   /* B9 - the saved sign-in's token (server V142) */
     if (action === "teamAuth" && !(extra && Object.prototype.hasOwnProperty.call(extra, "pin"))) body.keep = 1;   /* a sign-in, not a PIN re-check: ask for a token */
     /* v20.08.2026 - a call carrying a file is an upload, and an upload gets said out loud */
