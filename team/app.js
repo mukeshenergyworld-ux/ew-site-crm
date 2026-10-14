@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.798";
+  var APP_VERSION = "6.9.799";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -11127,6 +11127,9 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     var s = incCardSlab(hit.m, d);
     return s ? (Number(s[String(role).toLowerCase()]) || 0) : 0;
   }
+  /* 6.9.799 - the Basic Amt: on a day the card is in force every incentive is worked on the amount
+     before GST (amount / 1.18); before the card's first day it stays as it was earned. */
+  function incBasicF(day) { return incCardLive(incDayOf(day)) ? 1 / 1.18 : 1; }
   /* ---- who held a role on a client on a given day ---- */
   var _incHist = null;
   function incHist() {
@@ -14637,7 +14640,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       lines.forEach(function (x) {
         if (x.job) return;
         var r = (m.role === "exec") ? execRateFor(cl, x.brand, day, x.disc) : incRate(cl, x.brand, m.role, day, x.disc);
-        if (r > 0) { amt += x.amt * r / 100; pcts[String(r)] = 1; }
+        if (r > 0) { amt += x.amt * incBasicF(day) * r / 100; pcts[String(r)] = 1; }   /* 6.9.799 - Basic Amt */
       });
       var ks = Object.keys(pcts);
       return { role: m.role, name: m.name, amt: amt, rated: ks.length > 0,
@@ -14778,7 +14781,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
           (priced || []).forEach(function (x) {
             if (x.job || (String(x.brand || "").trim() || "(no brand)") !== b) return;
             var r1 = (m.role === "exec") ? execRateFor(cl, b, day, x.disc) : incRate(cl, b, m.role, day, x.disc);
-            amt += x.amt * r1 / 100; pcts[String(r1)] = 1;
+            amt += x.amt * incBasicF(day) * r1 / 100; pcts[String(r1)] = 1;   /* 6.9.799 */
           });
           var ks = Object.keys(pcts);
           var r = ks.length === 1 ? Number(ks[0]) : (byBrand[b] ? Math.round(amt / byBrand[b] * 10000) / 100 : 0);
@@ -14985,7 +14988,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       lines.forEach(function (x) {
         if (x.job) return;
         var rt = (r === "exec") ? execRateFor(cl, x.brand, day, x.disc) : incRate(cl, x.brand, r, day, x.disc);
-        if (rt > 0) { amt += x.amt * rt / 100; pc[String(rt)] = 1; }
+        if (rt > 0) { amt += x.amt * incBasicF(day) * rt / 100; pc[String(rt)] = 1; }   /* 6.9.799 */
       });
       var ks = Object.keys(pc);
       rows.push('<div style="display:flex;align-items:center;gap:9px;padding:8px 0 0;flex-wrap:wrap;min-height:44px">' +
@@ -29296,7 +29299,7 @@ function viewCatalogue() {
         var _b = x.brand || fallbackBrand || "", _f = _sh ? (_sh[dkey(_b)] || 0) : 0;
         var _d = _f ? 100 - (100 - (Number(x.disc) || 0)) * (1 - _f) : x.disc;
         var r = ctx && ctx.c ? ((m.role === "exec") ? execRateFor(cl, _b, _day, _d) : incRate(cl, _b, m.role, _day, _d)) : admRateOf(cl, _b, m.role);
-        if (r > 0) { amt += x.amt * (1 - _f) * r / 100; pcts[String(r)] = 1; }
+        if (r > 0) { amt += x.amt * (1 - _f) * incBasicF(_day) * r / 100; pcts[String(r)] = 1; }   /* 6.9.799 */
       });
       var ks = Object.keys(pcts);
       return { role: m.role, name: m.name, amt: amt, rated: ks.length > 0,
@@ -29471,7 +29474,7 @@ function viewCatalogue() {
       }));
       var clBilled = 0, clFreight = 0, clReturned = 0;
       chs.forEach(function (c) {
-        var base = 0, inc = 0;
+        var base = 0, inc = 0, _gf = incBasicF(rateDayOf(c));   /* 6.9.799 - Basic Amt from the card's first day */
         var _lines = pricedLines(c, c.customerName);   /* 6.9.694 - the extra discount, put onto a brand */
         var _sh = chOffShare(c, _lines, chFurtherOff(c, _lines.reduce(function (a, x) { return a + x.amt; }, 0)));
         _lines.forEach(function (x) {
@@ -29496,7 +29499,7 @@ function viewCatalogue() {
           var _f = _sh ? (_sh[dkey(x.brand || c.brand || "")] || 0) : 0;
           var _d = _f ? 100 - (100 - (Number(x.disc) || 0)) * (1 - _f) : x.disc;   /* 6.9.694 - the deeper discount picks the slab */
           var _pd = deductFor ? deductFor(cl, x.brand || c.brand || "", c, _d) : 0;
-          inc += x.amt * (1 - _f) * (1 - _pd / 100) * rateFor(cl, x.brand || c.brand || "", c, _d) / 100;   /* 6.9.693 - the line's own discount picks the slab */
+          inc += x.amt * (1 - _f) * (1 - _pd / 100) * rateFor(cl, x.brand || c.brand || "", c, _d) / 100 * _gf;   /* 6.9.693 - the line's own discount picks the slab */
         });
         /* v6.9.609 - REVIEW A9, HIS DECISION 25 Sep 2026: "after further discount". The further
            discount at hisab time and the discount on the whole challan (hisabExtra) come off the
@@ -29518,7 +29521,7 @@ function viewCatalogue() {
         released += inc * _paid;
         rows.push({ no: c.challanNo, client: c.customerName, site: c.site, brand: c.brand,
           ymd: String(c.createdAt || "").slice(0, 10),
-          amount: net, base: net, off: off, pct: net > 0 ? (inc / net * 100) : 0, inc: inc, ret: false,
+          amount: net, base: net * _gf, off: off, pct: net > 0 ? (inc / (net * _gf) * 100) : 0, inc: inc, ret: false,   /* 6.9.799 - base is the Basic Amt */
           paidShare: _paid, onAcct: !!_sr, rel: inc * _paid });
       });
       /* A MATERIAL RETURN IS A NEGATIVE CHALLAN. It reverses only once the goods are
@@ -29537,7 +29540,7 @@ function viewCatalogue() {
            delivery's line-up. Read against the client record instead, a partner deliberately
            ticked off a challan would be reversed for an incentive he never earned and would go
            NEGATIVE. A return naming no challan hands back null and falls back, as before. */
-        var rCh = retChallan(r), _rsh = null;
+        var rCh = retChallan(r), _rsh = null, _rgf = incBasicF(rCh ? rateDayOf(rCh) : localDay(r.createdAt));   /* 6.9.799 */
         if (rCh) { var _rl = pricedLines(rCh, rCh.customerName); _rsh = chOffShare(rCh, _rl, chFurtherOff(rCh, _rl.reduce(function (a, x) { return a + x.amt; }, 0))); }   /* 6.9.694 */
         returnLines(r).forEach(function (x) {
           rBase += x.amt;
@@ -29548,7 +29551,7 @@ function viewCatalogue() {
           var _rf = _rsh ? (_rsh[dkey(x.brand)] || 0) : 0;
           var _rd = _rf ? 100 - (100 - (Number(x.disc) || 0)) * (1 - _rf) : x.disc;   /* 6.9.694 - as it was earned */
           var _rpd = deductFor ? deductFor(cl, x.brand, rCh, _rd) : 0;   /* 6.9.668 - the mirror */
-          rInc += x.amt * (1 - _rf) * (1 - _rpd / 100) * rateFor(cl, x.brand, rCh, _rd) / 100;
+          rInc += x.amt * (1 - _rf) * (1 - _rpd / 100) * rateFor(cl, x.brand, rCh, _rd) / 100 * _rgf;
           if (x.brand) rBrands[x.brand] = 1;
         });
         /* v6.9.609 - A9: a return carries the same share of its delivery's discount as the credit
@@ -29562,7 +29565,7 @@ function viewCatalogue() {
           rows.push({ no: r.returnNo || r.id || "RETURN", client: cl.name,
             site: r.site || "", brand: Object.keys(rBrands).sort().join(", "),
             ymd: String(r.createdAt || "").slice(0, 10),
-            amount: -rBase, base: -rBase, pct: rBase > 0 ? (rInc / rBase * 100) : 0,
+            amount: -rBase, base: -rBase * _rgf, pct: rBase > 0 ? (rInc / (rBase * _rgf) * 100) : 0,   /* 6.9.799 */
             inc: -rInc, ret: true, paidShare: 1, rel: -rInc });
         }
       });
@@ -29731,13 +29734,13 @@ function viewCatalogue() {
       tot.earned += b.earned; tot.payable += b.payable; tot.paid += b.paid; tot.pending += b.pending;
     });
     var h = '<div class="cards">' +
-      '<div class="stat"><div class="n">' + money(tot.earned) + '</div><div class="l">Incentive earned (ex-GST)</div></div>' +
+      '<div class="stat"><div class="n">' + money(tot.earned) + '</div><div class="l">Incentive earned</div></div>' +
       '<div class="stat"><div class="n">' + money(tot.payable) + '</div><div class="l">Payable (money collected)</div></div>' +
       '<div class="stat"><div class="n">' + money(tot.paid) + '</div><div class="l">Paid out</div></div>' +
       '<div class="stat ' + (tot.pending > 0 ? "alert" : "") + '"><div class="n">' + money(tot.pending) + '</div><div class="l">Still to pay</div></div>' +
       '</div>';
     try { h += pstCard(); } catch (ePst) { }   /* 6.9.789 */
-    h += '<div class="empty" style="text-align:left;padding:0 0 12px">Incentive = net sale (post-discount, ex-GST) \u00d7 the rate set for that <b>client &amp; brand</b> on the discount screen, paid to whoever is that client\u2019s plumber / architect / builder / PMC. It only becomes <b>payable as the client pays</b>, and a challan counts only once its material receipt is in. A booked-in material return reverses it.</div>';
+    h += '<div class="empty" style="text-align:left;padding:0 0 12px">Incentive = Basic Amt (the net sale after discount, before GST) \u00d7 the rate set for that <b>client &amp; brand</b> on the discount screen, paid to whoever is that client\u2019s plumber / architect / builder / PMC. It only becomes <b>payable as the client pays</b>, and a challan counts only once its material receipt is in. A booked-in material return reverses it.</div>';
 
     /* ---- FIND A MAN (v6.9.330) ----
        "show search bar here, to find and open". The two lists below only grow, and an Open
@@ -30041,7 +30044,7 @@ function viewCatalogue() {
             '<span style="flex:1 1 auto;min-width:0"><b>' + esc(g.client) + '</b>' +
               '<span class="pmeta" style="display:block;margin:0">' + g.n + ' challan' + (g.n === 1 ? '' : 's') +
               (g.brandList.length ? ' &middot; ' + esc(g.brandList.join(", ")) : '') +
-              ' &middot; ' + money(g.base) + ' ex-GST</span></span>' +
+              ' &middot; Basic Amt ' + money(g.base) + '</span></span>' +
             '<b style="color:#0f766e;white-space:nowrap;margin-left:8px">' + money(g.inc) + '</b>' +
           '</button>' +
           (open
@@ -38130,7 +38133,7 @@ function viewCatalogue() {
       doc.text("CLIENT", L + 2, y);
       doc.text("BRAND(S)", L + 62, y);
       doc.text("CHALLANS", Xn, y, { align: "right" });
-      doc.text("EX-GST", Xb, y, { align: "right" });
+      doc.text("BASIC AMT", Xb, y, { align: "right" });
       if (showPct) doc.text("RATE", Xr, y, { align: "right" });
       doc.text("INCENTIVE", Rt - 2, y, { align: "right" });
       y += 9;
@@ -38164,7 +38167,7 @@ function viewCatalogue() {
       doc.setFontSize(11); doc.text(R2(mInc), Rt - 2, y + 1.6, { align: "right" });
       y += 14;
       F("normal"); doc.setFontSize(6.4); doc.setTextColor(120, 130, 140);
-      doc.text("On " + R2(mBase) + " of ex-GST business across " + groups.length +
+      doc.text("On a Basic Amt of " + R2(mBase) + " of business across " + groups.length +
         (groups.length === 1 ? " client" : " clients") + "." +
         (groups.some(function (g) { return (g.rows || []).some(function (r) { return r.ret; }); })
           ? "   * net of material returned and booked in." : ""), L, y);
@@ -38186,7 +38189,7 @@ function viewCatalogue() {
         doc.text(_wl, L, y + 2); y += 4 + _wl.length * 3.4;
       }
       F("normal"); doc.setFontSize(6.2); doc.setTextColor(150, 163, 175);
-      doc.text(doc.splitTextToSize("Client-wise. Only clients where incentive was actually earned are listed. Incentive is the ex-GST (post-discount) net sale x the rate set for that client & brand" +
+      doc.text(doc.splitTextToSize("Client-wise. Only clients where incentive was actually earned are listed. Incentive is the Basic Amt (post-discount, before GST) x the rate set for that client & brand" +
         (isX ? ", on the clients assigned to this executive" : "") +
         ". It becomes payable only in proportion to what the client has actually paid, and material returned and booked in at the godown reverses it at the same rate that earned it.", Rt - L), L, 278);
       doc.text("Energy World  |  Sonipat \u00b7 Panipat \u00b7 Karnal \u00b7 Rohtak", L, 290);
@@ -41305,7 +41308,7 @@ function viewCatalogue() {
       say: "A receipt photo is queued on the phone and pushed on the next refresh; the challan is marked received at once. Pending upload lists what is still waiting on this phone.",
       also: [["pending", "Pending upload"]] },
     { re: /incentive|payout|paid|commission/i, k: "incentive",
-      say: "Incentive is earned on the net (post-discount, ex-GST) at the rate set for that client and brand, only once the receipt is in, and becomes payable as the client pays. A rate not set is amber on Discounts - that man earns nothing on that brand until it is.",
+      say: "Incentive is earned on the Basic Amt (post-discount, before GST) at the rate set for that client and brand, only once the receipt is in, and becomes payable as the client pays. A rate not set is amber on Discounts - that man earns nothing on that brand until it is.",
       also: [["commission", "Incentives"], ["discounts", "Discounts"]] },
     { re: /blank|white|nothing (opens|loads)|crash|error|closes/i, k: "crash",
       say: "A blank screen at a place with no signal is a phone whose offline copy is empty; the /fix/ page recovers it. A crash is written to a small log on this phone, which the report below carries.",
@@ -42384,7 +42387,7 @@ function viewCatalogue() {
     /* v6.9.539 - the eight "closing today" cards are gone from here: the tile above counts
        them and the agent's Windows-closing sheet is where they are worked. */
 
-    h += '<div class="foot-note">Figures are ex-GST where incentive is concerned. Only delivered challans (receipt in) count.</div>';
+    h += '<div class="foot-note">Incentive is worked on the Basic Amt (before GST). Only delivered challans (receipt in) count.</div>';
     return h;
   }
 
