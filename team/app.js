@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.800";
+  var APP_VERSION = "6.9.805";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -711,8 +711,8 @@
   }
 
   var ROLE_TABS = {
-    admin:    ["dash","myday","statements","review","agent","report","scorecard","returns","tools","rates","clients","crlog","partners","pevents","quotes","leads","brandfollow","winloss","visits","followups","challans","register","paylog","freight","payments","paidout","billing","discounts","commission","complaints","service","spares","dues","payroll","products","catalogs","brandstory","pricelist","catalogue","rules","teampins","tally","plcheck","health","trouble","changelog","booksweep","dups","stock","brief"],
-    accounts: ["dash","statements","review","agent","returns","tools","clients","crlog","partners","followups","challans","register","paylog","freight","payments","billing","complaints","service","spares","dues","products","catalogs","rates","pricelist","dups","stock","tally","trouble"],
+    admin:    ["dash","myday","statements","review","agent","report","scorecard","returns","tools","rates","clients","crlog","partners","pevents","quotes","leads","brandfollow","winloss","visits","followups","challans","register","paylog","freight","payments","paidout","billing","discounts","commission","complaints","service","spares","dues","payroll","products","catalogs","brandstory","pricelist","catalogue","rules","teampins","tally","plcheck","health","trouble","changelog","booksweep","dups","stock","brief","attendance"],
+    accounts: ["dash","statements","review","agent","returns","tools","clients","crlog","partners","followups","challans","register","paylog","freight","payments","billing","complaints","service","spares","dues","products","catalogs","rates","pricelist","dups","stock","tally","trouble","attendance"],
     godown:   ["dash","agent","returns","tools","challans","freight","products","stock","trouble"],
     sales:    ["myday","dash","review","agent","report","returns","tools","clients","crlog","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","register","paylog","freight","billing","payments","complaints","products","catalogs","dups","brief","trouble"],
     service:  ["dash","agent","tools","complaints","service","spares","dues","followups","products","catalogs","trouble"]
@@ -798,7 +798,7 @@
     /* Hubs bundle several tabs; grant a hub to anyone who could see ANY of its members, so no
        role list needs rewriting and no member is ever exposed to a role that lacked it. */
     var member = { deliveries: ["challans", "returns"], collections: ["payments", "dues"],
-      pricing: ["rates", "pricelist", "catalogue"], payrollhub: ["commission", "payroll"] };
+      pricing: ["rates", "pricelist", "catalogue"], payrollhub: ["commission", "payroll", "attendance"] };
     if (member[tab]) return member[tab].some(function (m) { return t.indexOf(m) >= 0; });
     /* v6.9.316 - "dossier" is every role's, because it is built entirely out of S.data,
        which teamFilterAll_ has already cut to what this man is allowed to hold. A salesman's
@@ -5316,8 +5316,191 @@ window.addEventListener("beforeunload", function (ev) {
     { k: "pulse", t: "Owner's weekly pulse", when: "every Monday" },   /* 6.9.652 */
     { k: "partner", t: "Plumber & architect scorecard", when: "the 1st and the 16th" },
     { k: "money", t: "Money check", when: "every day" },   /* 6.9.662 */
-    { k: "risk", t: "Morning money risk", when: "every day" }   /* 6.9.739 */
+    { k: "risk", t: "Morning money risk", when: "every day" },   /* 6.9.739 */
+    { k: "attweek", t: "Weekly attendance", when: "every Monday" },   /* 6.9.805 */
+    { k: "attmonth", t: "Monthly attendance (for salary)", when: "the 1st" }   /* 6.9.805 */
   ];
+  /* ================= ATTENDANCE FROM VISITS  (CRM 6.9.805 / Visit 1.5.2, 14 Oct 2026) =================
+     HIS WORDS: "remind executive by popup in their device that attendance will only be marked when visits
+     marked in app, visit will be like daily report, remind this 3 times a day in professional way ... weekly
+     send report that in past week these are marked present and these are absent bcos of no visit entered, a
+     monthly report to accounts and admin for present and absent for making salary ... back date visit entry
+     not allowed". His answers: one visit or more = present; Sunday off; 11 am, 3 pm, 6:30 pm; the reports go
+     to the @ewreminder_bot group.
+     Nothing new is stored for a visit: a day is read from the visits already in the book - site visits
+     (their date is the SERVER's, it cannot be typed) and the plumber / architect / showroom visits (audit
+     visit:mark). Those carry the network's clock as netAt from this version on, so a phone set to yesterday
+     cannot make yesterday a present day; a visit saved where the time could not be checked says so (tchk 0).
+     Holidays, leave and a day present without a visit (office work) are audit rows att:mark - the latest row
+     for a day and a person wins, and "clear" takes a mark back off. Nothing is ever deleted.
+     THIS BLOCK IS THE SAME, BYTE FOR BYTE, IN THE CRM AND THE VISIT APP. */
+  var ATT_FROM = "2026-10-16";   /* the first day counted - nobody is absent for days before he was told */
+  var ATT_SKEW_MS = 10 * 60000;  /* a phone more than 10 minutes off the network's time may not save a visit */
+  var ATT_SLOTS = [{ k: "am", h: 11, m: 0 }, { k: "pm", h: 15, m: 0 }, { k: "eve", h: 18, m: 30 }];
+  var ATT_SAY = { P: "Present", A: "Absent", L: "Leave", H: "Holiday", O: "Sunday", W: "Worked on a day off", T: "Today - no visit yet" };
+  function attDow(day) { return new Date(String(day).slice(0, 10) + "T12:00:00").getDay(); }
+  function attMarks() {
+    var out = {};
+    ((S.data && S.data.audit) || []).forEach(function (r) {
+      if (!r || r.action !== "att:mark") return;
+      var d = {}; try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
+      var day = String(d.day || "").slice(0, 10); if (!day) return;
+      var k = day + "|" + (d.who === "*" ? "*" : dkey(d.who)), at = String(r.createdAt || "");
+      if (!out[k] || at >= out[k].at) out[k] = { kind: String(d.kind || ""), note: String(d.note || ""), by: String(r.actor || ""), at: at };
+    });
+    return out;
+  }
+  function attVisitDays(name) {
+    var who = dkey(name), out = {};
+    var add = function (day, unv) { if (!day) return; var o = out[day] || (out[day] = { n: 0, unv: 0 }); o.n++; if (unv) o.unv++; };
+    ((S.data && S.data.sitevisits) || []).forEach(function (v) { if (v && dkey(v.createdBy) === who) add(dstr(v.createdAt || v.date), 0); });
+    ((S.data && S.data.audit) || []).forEach(function (r) {
+      if (!r || r.action !== "visit:mark" || dkey(r.actor) !== who) return;
+      var d = {}; try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { d = {}; }
+      add(dstr(d.netAt || r.createdAt), d.tchk === 0 ? 1 : 0);   /* the network's day where the phone could ask */
+    });
+    return out;
+  }
+  /* P present, A absent, L leave, H holiday, O Sunday, W worked on a Sunday or holiday,
+     T today and nothing yet, "" not counted (before ATT_FROM, or still to come) */
+  function attDay(name, day, vd, marks) {
+    if (!day || day < ATT_FROM || day > today()) return "";
+    var m = marks[day + "|" + dkey(name)] || marks[day + "|*"] || null, kind = m ? m.kind : "";
+    var v = !!(vd[day] && vd[day].n > 0);
+    if (kind === "present") return "P";
+    if (kind === "leave") return "L";
+    if (attDow(day) === 0 || kind === "holiday") return v ? "W" : (kind === "holiday" ? "H" : "O");
+    if (v) return "P";
+    return day === today() ? "T" : "A";
+  }
+  /* the network's time: GitHub's own Date header on a HEAD request, which goes past the service worker
+     and the browser's cache. { ok, skew (ms the phone is behind), net } - ok false when there is no signal */
+  var _attClk = { at: 0, skew: 0 };
+  function attNetClock() {
+    if (_attClk.at && Date.now() - _attClk.at < 300000) return Promise.resolve({ ok: true, skew: _attClk.skew, net: Date.now() + _attClk.skew });
+    var t0 = Date.now();
+    var ask = fetch("index.html?clk=" + t0, { method: "HEAD", cache: "no-store" }).then(function (r) {
+      var d = Date.parse((r && r.headers && r.headers.get("Date")) || ""); if (!d) throw new Error("no date");
+      var sk = d - Math.round((t0 + Date.now()) / 2); _attClk = { at: Date.now(), skew: sk };
+      return { ok: true, skew: sk, net: Date.now() + sk };
+    }).catch(function () { return { ok: false, skew: 0, net: 0 }; });
+    return Promise.race([ask, new Promise(function (res) { setTimeout(function () { res({ ok: false, skew: 0, net: 0 }); }, 4000); })]);
+  }
+  function attClockSay(skew) {
+    var mins = Math.round(Math.abs(skew) / 60000), d = Math.floor(mins / 1440), h = Math.floor((mins % 1440) / 60), m = mins % 60;
+    return (d ? d + " day" + (d > 1 ? "s " : " ") : "") + (h ? h + " hour" + (h > 1 ? "s " : " ") : "") + (!d && m ? m + " minute" + (m > 1 ? "s" : "") : "");
+  }
+  /* ================= END OF THE SHARED ATTENDANCE BLOCK ================= */
+
+  /* ---- 6.9.805 - the office's side: the screen, the marks, the two reports ---- */
+  var ATT_MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"], ATT_DOW = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+  function attDayLabel(d) { var x = new Date(String(d).slice(0, 10) + "T12:00:00"); return ATT_DOW[x.getDay()] + " " + x.getDate() + " " + ATT_MON[x.getMonth()]; }
+  function attSpan(from, to) { var a = new Date(from + "T12:00:00"), b = new Date(to + "T12:00:00"); return a.getDate() + (a.getMonth() !== b.getMonth() ? " " + ATT_MON[a.getMonth()] : "") + " to " + b.getDate() + " " + ATT_MON[b.getMonth()] + " " + b.getFullYear(); }
+  function attRange(from, to) { var out = [], d = from; for (var i = 0; i < 40 && d <= to; i++) { out.push(d); d = addDays(d, 1); } return out; }
+  function attPeriod(p) {
+    var t = today(), mon = addDays(t, -((attDow(t) + 6) % 7)), first = t.slice(0, 7) + "-01", lastPrev = addDays(first, -1);
+    if (p === "lastweek") return { from: addDays(mon, -7), to: addDays(mon, -1), label: "Last week" };
+    if (p === "month") return { from: first, to: t, label: "This month" };
+    if (p === "lastmonth") return { from: lastPrev.slice(0, 7) + "-01", to: lastPrev, label: "Last month" };
+    return { from: mon, to: t, label: "This week" };
+  }
+  function attSummary(from, to) {
+    var marks = attMarks(), days = attRange(from, to);
+    return scExecs().map(function (e) {
+      var vd = attVisitDays(e), c = { P: 0, A: 0, L: 0, H: 0, O: 0, W: 0, T: 0 }, absent = [], unv = 0, by = {}, n = 0;
+      days.forEach(function (d) {
+        var st = attDay(e, d, vd, marks); by[d] = st; if (st) c[st]++;
+        if (st === "A") absent.push(d);
+        if (vd[d]) { unv += vd[d].unv; n += vd[d].n; }
+      });
+      return { exec: e, c: c, absent: absent, unv: unv, by: by, visits: n };
+    }).sort(function (a, b) { return alpha(a.exec, b.exec); });
+  }
+  function viewAttendance() {
+    var p = S.attP || "week", R = attPeriod(p), L = attSummary(R.from, R.to), isAdm = roleIs("admin");
+    var chip = function (k, l) { return '<button class="chip' + (p === k ? ' on' : '') + '" data-act="att-p" data-k="' + k + '" style="min-height:44px">' + l + '</button>'; };
+    var h = '<div class="card" style="padding:10px 12px"><h2 style="margin:0 0 4px;font-size:17px">Attendance from visits</h2>' +
+      '<div class="meta" style="font-size:13px">Present = at least one visit entered that day in the Visit app or here (site, plumber, architect or showroom). Sundays and marked holidays are off. Counting starts ' + esc(attDayLabel(ATT_FROM)) + ' 2026. A visit cannot be entered for an earlier day.</div>' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">' + chip("week", "This week") + chip("lastweek", "Last week") + chip("month", "This month") + chip("lastmonth", "Last month") + '</div>' +
+      '<div class="meta" style="margin-top:6px"><b>' + esc(R.label) + '</b> &middot; ' + esc(attSpan(R.from, R.to)) + '</div>';
+    if (!L.length) return h + '<div class="empty">No active sales executive in Team.</div></div>';
+    h += pevTable([["Executive"], ["Present", "right"], ["Absent", "right"], ["Leave", "right"], ["Off", "right"], ["Visits", "right"]], L.map(function (x) {
+      return ['<b>' + esc(x.exec) + '</b>', '<b style="color:#047857">' + (x.c.P + x.c.W) + '</b>', x.c.A ? '<b style="color:#b91c1c">' + x.c.A + '</b>' : '0', String(x.c.L), String(x.c.O + x.c.H), String(x.visits)];
+    }));
+    var ab = L.filter(function (x) { return x.absent.length || x.unv || x.c.W; });
+    if (ab.length) h += '<div style="margin-top:8px;font-size:13px">' + ab.map(function (x) {
+      return '<div style="padding:4px 0;border-bottom:1px solid #eef2f7"><b>' + esc(x.exec) + '</b>' +
+        (x.absent.length ? ' &middot; <span style="color:#b91c1c">absent, no visit entered:</span> ' + x.absent.map(attDayLabel).map(esc).join(", ") : '') +
+        (x.c.W ? ' &middot; <span style="color:#047857">worked on ' + plural(x.c.W, "day") + ' off</span>' : '') +
+        (x.unv ? ' &middot; <span style="color:#92400e">' + plural(x.unv, "visit") + ' saved without signal (time not checked)</span>' : '') + '</div>';
+    }).join("") + '</div>';
+    h += '<div class="acts" style="margin-top:10px;flex-wrap:wrap"><button class="btn sm" data-act="att-xl">Download Excel (day by day)</button>' +
+      (isAdm ? '<button class="btn sm ghost" data-act="att-send" data-k="attweek">Send last week&rsquo;s report now</button><button class="btn sm ghost" data-act="att-send" data-k="attmonth">Send last month&rsquo;s report now</button>' : '') + '</div>' +
+      '<div class="meta" style="margin-top:4px">Sent by itself to @' + RV_BOT + ': the weekly report every Monday, the monthly report (for salary) on the 1st.</div></div>';
+    /* the marks */
+    var marks = [];
+    (S.data.audit || []).forEach(function (r) {
+      if (!r || r.action !== "att:mark") return; var d = {}; try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
+      if (String(d.day || "") >= R.from && String(d.day || "") <= R.to) marks.push({ day: d.day, who: d.who === "*" ? "Everyone" : d.who, kind: d.kind, note: d.note || "", by: r.actor || "", at: String(r.createdAt || "") });
+    });
+    marks.sort(function (a, b) { return String(b.day).localeCompare(String(a.day)) || b.at.localeCompare(a.at); });
+    var KIND = { holiday: "Holiday", leave: "Leave", present: "Present (no visit, e.g. office work)", clear: "Mark taken off" };
+    h += '<div class="card" style="padding:10px 12px"><h3 style="margin:0 0 4px;font-size:15px">Holiday, leave, or a day at the office</h3>' +
+      '<div class="meta" style="font-size:13px">A holiday is for everyone. Leave and &ldquo;present&rdquo; are for one person. A new mark replaces the earlier one for that day; nothing is deleted.</div>' +
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-top:8px">' +
+      '<input id="att_day" type="date" value="' + esc(S.attDay || today()) + '" style="min-height:44px;font-size:15px"/>' +
+      '<select id="att_who" style="min-height:44px;font-size:15px"><option value="*">Everyone</option>' + L.map(function (x) { return '<option>' + esc(x.exec) + '</option>'; }).join("") + '</select>' +
+      '<select id="att_kind" style="min-height:44px;font-size:15px">' + ["holiday", "leave", "present", "clear"].map(function (k) { return '<option value="' + k + '">' + esc(KIND[k]) + '</option>'; }).join("") + '</select>' +
+      '<input id="att_note" placeholder="Note (optional) - e.g. Diwali" style="min-height:44px;font-size:15px"/></div>' +
+      '<div class="acts" style="margin-top:8px"><button class="btn" data-act="att-save">Save the mark</button></div>' +
+      (marks.length ? pevTable([["Day"], ["Who"], ["Mark"], ["Note"], ["By"]], marks.slice(0, 60).map(function (m) { return [esc(attDayLabel(m.day)), esc(m.who), esc(KIND[m.kind] || m.kind), esc(m.note), esc(m.by)]; })) : '<div class="meta" style="margin-top:6px">No marks in this period.</div>') +
+      '</div>';
+    return h;
+  }
+  /* the Excel: one row per executive, one column per day */
+  function attSheet(from, to, title) {
+    var L = attSummary(from, to), days = attRange(from, to), W = days.length + 6, out = [];
+    var ST = { P: XL.G, W: XL.G, A: XL.R, L: XL.A, H: XL.PLAIN, O: XL.PLAIN, T: XL.PLAIN, "": XL.PLAIN };
+    var SAY = { P: "P", W: "P*", A: "A", L: "L", H: "Hol", O: "Sun", T: "", "": "" };
+    out.push(rsFill("Energy World – " + title + " – " + attSpan(from, to), XL.TITLE, W));
+    out.push([rsMadeLine("Present = at least one visit entered that day. P* = worked on a Sunday or holiday.")]);
+    out.push([]);
+    out.push(rsHead(["Executive"].concat(days.map(function (d) { return attDayLabel(d).replace(/ [A-Z][a-z]{2}$/, ""); })).concat(["Present", "Absent", "Leave", "Off", "Visits"])));
+    L.forEach(function (x) {
+      out.push([{ v: x.exec, s: XL.BOLD }].concat(days.map(function (d) { var st = x.by[d] || ""; return { v: SAY[st], s: ST[st] }; }))
+        .concat([{ v: x.c.P + x.c.W, s: XL.G }, { v: x.c.A, s: x.c.A ? XL.R : XL.PLAIN }, x.c.L, x.c.O + x.c.H, x.visits]));
+    });
+    out.push([]);
+    out.push(rsFill("Absent – no visit entered", XL.SECT, W));
+    L.forEach(function (x) { if (x.absent.length) out.push([x.exec, x.absent.map(attDayLabel).join(", ")]); });
+    if (!L.some(function (x) { return x.absent.length; })) out.push(["Nobody was absent."]);
+    var cols = [22].concat(days.map(function () { return 8; })).concat([9, 9, 8, 8, 8]);
+    return { L: L, rows: out, cols: cols, opts: rsOpts(out, W, 4), file: title.replace(/[^A-Za-z]+/g, "_") + "_" + from + "_to_" + to + ".xlsx" };
+  }
+  function attWho() {
+    return (S.data.team || []).filter(function (t2) { return /admin|accounts/i.test(String(t2.role || "")) && String(t2.active).toUpperCase() !== "N"; })
+      .map(function (t2) { return String(t2.name || "").trim(); }).filter(Boolean);
+  }
+  function attRepRange(k) {
+    var t = today(), mon = addDays(t, -((attDow(t) + 6) % 7)), first = t.slice(0, 7) + "-01", lastPrev = addDays(first, -1);
+    return k === "attweek" ? { from: addDays(mon, -7), to: addDays(mon, -1), title: "Weekly attendance" }
+      : { from: lastPrev.slice(0, 7) + "-01", to: lastPrev, title: "Monthly attendance (for salary)" };
+  }
+  function rsSetAtt(k) {
+    var R = attRepRange(k), from = R.from < ATT_FROM ? ATT_FROM : R.from, X = attSheet(from, R.to, R.title), L = X.L;
+    var tP = 0, tA = 0; L.forEach(function (x) { tP += x.c.P + x.c.W; tA += x.c.A; });
+    var blocks = [{ h: "Days present and absent" }, { cols: [["Executive", 36, "l"], ["Present", 16, "r"], ["Absent", 16, "r"], ["Leave", 16, "r"], ["Off", 16, "r"]],
+      rows: L.map(function (x) { return [rsC(x.exec, "B", true), rsC(x.c.P + x.c.W, "G", true), rsC(x.c.A, x.c.A ? "R" : "", true), x.c.L, x.c.O + x.c.H]; }) }];
+    var ab = L.filter(function (x) { return x.absent.length; });
+    if (ab.length) blocks.push({ h: "Absent – no visit entered" }, { cols: [["Executive", 30, "l"], ["Days", 70, "l", "w"]],
+      rows: ab.map(function (x) { return [rsC(x.exec, "R", true), x.absent.map(attDayLabel).join(", ")]; }) });
+    blocks.push({ note: "Present = at least one visit entered that day. Sundays and holidays are off." });
+    var team = { who: attWho(), head: R.title + " – " + attSpan(from, R.to),
+      line: plural(L.length, "executive") + " · " + tP + " days present · " + tA + " absent",
+      spec: { title: R.title, sub: attSpan(from, R.to), key: [["Present", "G"], ["Leave", "A"], ["Absent", "R"]], blocks: blocks },
+      text: "", xlsx: { sheet: k === "attweek" ? "Weekly attendance" : "Monthly attendance", rows: X.rows, cols: X.cols, opts: X.opts, file: X.file } };
+    return { team: team, men: [] };
+  }
   /* the latest slot of each report on or before today, if it is still fresh enough to send */
   function rsSlots(t) {
     t = t || today();
@@ -5330,6 +5513,10 @@ window.addEventListener("beforeunload", function (ev) {
     if (half) out.push({ k: "partner", slot: "partner:" + half, day: half });
     out.push({ k: "money", slot: "money:" + t, day: t });   /* 6.9.662 - every day */
     out.push({ k: "risk", slot: "risk:" + t, day: t });     /* 6.9.739 - every morning */
+    /* 6.9.805 - attendance: last week on Monday, last month on the 1st; never a period before counting began */
+    if (mon && addDays(mon, -1) >= ATT_FROM) out.push({ k: "attweek", slot: "attweek:" + mon, day: mon });
+    var _a1 = back(function (d) { return d.slice(8, 10) === "01"; }, 4);
+    if (_a1 && addDays(_a1, -1) >= ATT_FROM) out.push({ k: "attmonth", slot: "attmonth:" + _a1, day: _a1 });
     return out;
   }
   function rsLocal() { try { return JSON.parse(localStorage.getItem("ew_rs_sent") || "{}") || {}; } catch (e) { return {}; } }
@@ -5385,6 +5572,7 @@ window.addEventListener("beforeunload", function (ev) {
     if (k === "pitch") return rsPitchSheet();
     if (k === "pulse") return rsPulseSheet();   /* 6.9.652 */
     if (k === "money") return rsMoneySheet();   /* 6.9.662 */
+    if (k === "attweek" || k === "attmonth") { var _ak = rsSetAtt(k).team.xlsx; return { rows: _ak.rows, cols: _ak.cols, opts: _ak.opts, file: _ak.file, text: "", caption: "" }; }   /* 6.9.805 */
     if (k === "risk") { var _rk = rsSetRisk().team.xlsx; return { rows: _rk.rows, cols: _rk.cols, opts: _rk.opts, file: _rk.file, text: "", caption: "" }; }   /* 6.9.739 */
     return rsPartnerReport();
   }
@@ -6246,6 +6434,7 @@ window.addEventListener("beforeunload", function (ev) {
     if (k === "pulse") return rsSetPulse();   /* 6.9.652 */
     if (k === "money") return rsSetMoney();   /* 6.9.662 */
     if (k === "risk") return rsSetRisk();      /* 6.9.739 */
+    if (k === "attweek" || k === "attmonth") return rsSetAtt(k);   /* 6.9.805 */
     return rsSetPartner();
   }
 
@@ -18742,7 +18931,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         return (_lr ? '<span class="pill Lost" title="' + esc(_lr.reason + (_lr.note ? " - " + _lr.note : "")) + '">' + esc(lossShort(_lr.reason)) + (_lr.lostTo ? ' &middot; ' + esc(_lr.lostTo) : "") + '</span>' : "") +
           '<button class="btn sm' + (_lr ? " ghost" : "") + '" data-act="quote-lost" data-id="' + esc(q.id) + '">' + (_lr ? "Change reason" : "Why lost?") + '</button>';
       })() : "") +
-      '<button class="btn sm ghost" data-act="qz-revise" data-id="' + esc(q.id) + '">Revise</button></div>' +
+      '<button class="btn sm ghost" data-act="qz-revise" data-id="' + esc(q.id) + '"' + (qSameDay(q) ? ' title="Made today - changes go into this same quote"' : ' title="Makes the next revision"') + '>' + (qSameDay(q) ? "Edit" : "Revise") + '</button></div>' +   /* 6.9.803 */
       /* v6.9.410 - the two taps, and ONLY while he is working through the never-sent list.
          On the ordinary book they would be two more buttons on every card, which is the
          opposite of what he asked for on 2 September. */
@@ -18782,6 +18971,18 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     var x = q, seen = {};
     while (x && x.parentId && byId[x.parentId] && !seen[x.id]) { seen[x.id] = 1; x = byId[x.parentId]; }
     return x || q;
+  }
+  /* 6.9.803 - HIS WORDS: "if its edited same day then its same file edited, after one day its come
+     under revision. Sometime some items to add then its going to revision of all quote and make a
+     duplicate of it". Until now every change, even adding one item ten minutes later, wrote a new
+     row as the next revision. A quote made TODAY (this phone's date) is now edited in place: same
+     row, same QT number. From the next day it is a revision as before. Won and Lost quotes are
+     history and are always revised, never edited. The row as it was is kept by the change log. */
+  function qSameDay(q) {
+    if (!q || !q.createdAt) return false;
+    if (q.status === "Won" || q.status === "Lost") return false;
+    var ms = Date.parse(String(q.createdAt)); if (!ms) return false;
+    return ymdLocal(new Date(ms)) === today();
   }
   function qRevLabel(q) { var m = qCode(q).match(/-R(\d+)$/i); return m ? "Revision " + m[1] : (Number(q.version) > 1 ? "Revision " + (Number(q.version) - 1) : ""); }
   /* "Made 12 Oct 2026, 3:45 pm" - and for a revision, when the first version was made too */
@@ -19610,8 +19811,17 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
           '</div>';
         if (qzHere.length) {
           h += '<div style="margin-top:6px">' + qzHere.map(function (x) {
-            return '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid #ccfbf1;font-size:12.5px">' +
-              '<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' +
+            /* 6.9.802 - HIS WORDS: "show product pic here also, so easy to identify what included
+               what not". The room list was words only (WC, Seat Cover); the picture is the
+               catalogue's (qPicNow), the same one the quote PDF prints. Tap it to see it large. */
+            var _ru = String(qPicNow(x.it) || "").trim();
+            var _rp = _ru
+              ? '<a href="' + esc(driveImg(_ru, 900)) + '" target="_blank" rel="noopener" title="See it large" style="flex:0 0 48px;display:block">' +
+                '<img src="' + esc(driveImg(_ru, 96)) + '" loading="lazy" alt="" style="width:48px;height:48px;object-fit:contain;border-radius:6px;background:#fff;border:1px solid #e2e8f0;display:block"/></a>'
+              : '<div style="flex:0 0 48px;width:48px;height:48px;border-radius:6px;background:#f1f5f9;color:#94a3b8;font-size:12px;display:flex;align-items:center;justify-content:center;text-align:center">no pic</div>';
+            return '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid #ccfbf1;font-size:13px">' +
+              _rp +
+              '<span style="flex:1;min-width:0;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.3">' +   /* two lines on a phone */
               (x.it.cat ? '<b style="color:#0f766e">' + esc(x.it.cat) + '</b> &middot; ' : '') +
               esc(descLines(x.it.desc).title || x.it.code) +
               (x.it.optional ? ' <span style="color:#b45309">(option)</span>' : '') + '</span>' +
@@ -21401,8 +21611,10 @@ function viewCatalogue() {
       var hasOpt = rows.some(function (r) { return r.optional; });
       y += 4;
       var boxH = noTotal ? 10 : (showGst ? 23 : 16);
-      if ((y - 4.5) + boxH > 282) { doc.addPage(); y = 26; }
+      var PAYH = 30;   /* 6.9.804 - the bank details sit in the white space left of the total */
+      if ((y - 4.5) + Math.max(boxH, PAYH) > 282) { doc.addPage(); y = 26; }
       var boxTop = y - 4.5;
+      ewPayBox(doc, L, boxTop, 104 - L - 3, true);
       var TBL = 104;   /* the total panel starts a little left of the numeric columns */
       if (noTotal) {
         fill([255, 251, 235]); doc.roundedRect(TBL, boxTop, Rt - TBL, boxH, 1.5, 1.5, "F");
@@ -21433,6 +21645,7 @@ function viewCatalogue() {
         doc.text(R(subTotal), X.amt, y + 3.6, { align: "right" });
       }
       y = boxTop + boxH + 5;   /* single, deterministic point clear of the total box */
+      var _payEnd = boxTop + PAYH + 3;   /* 6.9.804 - and clear of the bank details beside it */
       if (!noTotal) {   /* 6.9.761 - amount in words, as on his supplier's quote: the figure the customer pays */
         var _payN = showGst ? subTotal + Math.round(subTotal * 18 / 100) : subTotal;
         col(GREY); F("italic"); doc.setFontSize(8);
@@ -21440,6 +21653,7 @@ function viewCatalogue() {
         _wl.forEach(function (wl, k) { doc.text(wl, Rt, y - 1 + k * 3.4, { align: "right" }); });
         y += _wl.length * 3.4 + 1;
       }
+      y = Math.max(y, _payEnd);   /* 6.9.804 */
 
       /* Footnote whenever any line is an alternative option — a bordered amber strip drawn BELOW
          the total box (never over it). Text is wrapped and the box is sized to the wrapped lines. */
@@ -21511,11 +21725,8 @@ function viewCatalogue() {
       });
       y = tcPy + TC_PANH + 2;
 
-      /* 6.9.755 - the bank details, bottom left, beside the sign-off */
-      if (y + 29 > 283) { doc.addPage(); y = 22; }
-      var _payY = y + 3;
-      ewPayBox(doc, L, _payY, Math.min(118, Rt - L - 68));
-      y = _payY - 3;   /* the sign-off sits level with it on the right */
+      /* 6.9.755 - the bank details were drawn here, bottom left, beside the sign-off.
+         6.9.804 - they now sit beside the SUB-TOTAL (above), which saves about 30mm. */
 
       /* ---- sign-off, bottom right of the last page. A quotation is a document a person
            stands behind, so the name goes where a signature goes - not in a header box. ---- */
@@ -22040,7 +22251,8 @@ function viewCatalogue() {
   var EW_PAY = { holder: "Energy World", bank: "IndusInd Bank", branch: "Faridpur, Panipat", acno: "201031712906",
                  ifsc: "INDB0000660", upi: "Pos.11363629@indus",
                  qr: "upi://pay?pa=Pos.11363629@indus&pn=Indus%20Merchant&cu=INR" };
-  function ewPayBox(doc, x, y, w) {
+  function ewPayBox(doc, x, y, w, narrow) {
+    if (narrow) return ewPayBoxNarrow(doc, x, y, w);   /* 6.9.804 */
     var H = 26, Q = 22, drew = false;
     doc.setFillColor(255, 255, 255); doc.setDrawColor(13, 118, 108); doc.setLineWidth(0.35);
     doc.roundedRect(x, y, w, H, 1.6, 1.6, "FD"); doc.setLineWidth(0.2);
@@ -22053,6 +22265,31 @@ function viewCatalogue() {
       var yy = y + 10 + i * 3.6;
       doc.setFont(doc.__noBold ? ppEmbed(doc) : "helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(100, 116, 139); doc.text(r[0], tx, yy);
       doc.setFont(doc.__noBold ? ppEmbed(doc) : "helvetica", doc.__noBold ? "normal" : "bold"); doc.setTextColor(17, 34, 45); doc.text(r[1], vx, yy);
+    });
+    return H;
+  }
+  /* 6.9.804 - HIS WORDS: "put payment detail at this empty place, it will save space" - the white
+     space left of the SUB-TOTAL panel on the quote. That is about 87mm wide, so the bank and the
+     branch take a row each, the labels sit closer, and "scan to pay" goes under the QR. Still 8pt. */
+  function ewPayBoxNarrow(doc, x, y, w) {
+    var H = 30, Q = 22, drew = false;
+    var FB = function () { doc.setFont(doc.__noBold ? ppEmbed(doc) : "helvetica", doc.__noBold ? "normal" : "bold"); };
+    var FN = function () { doc.setFont(doc.__noBold ? ppEmbed(doc) : "helvetica", "normal"); };
+    doc.setFillColor(255, 255, 255); doc.setDrawColor(13, 118, 108); doc.setLineWidth(0.35);
+    doc.roundedRect(x, y, w, H, 1.6, 1.6, "FD"); doc.setLineWidth(0.2);
+    try { drew = pdfQr(doc, EW_PAY.qr, x + 2, y + 2, Q); } catch (e) { drew = false; }
+    if (drew) { FN(); doc.setFontSize(8); doc.setTextColor(13, 118, 108); doc.text("Scan to pay", x + 2 + Q / 2, y + 27.4, { align: "center" }); }
+    var tx = x + (drew ? Q + 5 : 4);
+    FN(); doc.setFontSize(8);
+    var lw = Math.max.apply(null, ["A/c holder", "Bank", "Branch", "A/c no", "IFSC", "UPI"].map(function (t) { return doc.getTextWidth(t); }));
+    var vx = tx + lw + 2.5;
+    FB(); doc.setFontSize(8.4); doc.setTextColor(13, 118, 108);
+    doc.text("PAYMENT DETAILS", tx, y + 5.6);
+    [["A/c holder", EW_PAY.holder], ["Bank", EW_PAY.bank], ["Branch", EW_PAY.branch], ["A/c no", EW_PAY.acno],
+     ["IFSC", EW_PAY.ifsc], ["UPI", EW_PAY.upi]].forEach(function (r, i) {
+      var yy = y + 10.4 + i * 3.6;
+      FN(); doc.setFontSize(8); doc.setTextColor(100, 116, 139); doc.text(r[0], tx, yy);
+      FB(); doc.setTextColor(17, 34, 45); doc.text(r[1], vx, yy);
     });
     return H;
   }
@@ -29911,12 +30148,14 @@ function viewCatalogue() {
       g.inc += Number(r.inc) || 0;
       g.rel += Number(r.rel) || 0;   /* 6.9.791 - the part of it released by that client's payments */
       g.n++;
-      if (r.brand) g.brands[r.brand] = 1;
+      /* 6.9.801 - one brand once. Mahabir's statement read "Accessory, Accessory" because two
+         challans spelt it differently (case / a trailing space). Keyed on the plain name. */
+      if (r.brand) { var _bk = String(r.brand).trim(); if (_bk && !g.brands[_bk.toLowerCase()]) g.brands[_bk.toLowerCase()] = _bk; }
       g.rows.push(r);
     });
     return order.map(function (k) {
       var g = by[k];
-      g.brandList = Object.keys(g.brands).sort();
+      g.brandList = Object.keys(g.brands).map(function (k) { return g.brands[k] === 1 ? k : g.brands[k]; }).sort();
       g.pct = g.base > 0 ? (g.inc / g.base * 100) : 0;
       g.rows.sort(function (x, y) { return String(x.ymd).localeCompare(String(y.ymd)); });
       return g;
@@ -38160,8 +38399,13 @@ function viewCatalogue() {
         uni = true;
       }
       var F = function (w) { var s = (w && String(w).indexOf("bold") >= 0) ? "bold" : "normal"; doc.setFont(ppEmbed(doc), s); };
-      var R2 = function (n) { return (uni ? "\u20b9" : "Rs.") + Number(n || 0).toLocaleString("en-IN"); };
+      /* 6.9.801 - WHOLE RUPEES, SIGN IN FRONT. Since the Basic Amt (6.9.799) every figure is a
+         /1.18 and the statement printed "\u20b98,23,745.475" and "\u20b9-2,288.871". Seen on
+         Mahabir's statement, 14 Oct. */
+      var R2 = function (n) { var v = Math.round(Number(n) || 0); return (v < 0 ? "- " : "") + (uni ? "\u20b9" : "Rs.") + Math.abs(v).toLocaleString("en-IN"); };
       var W = 210, L = 14, Rt = W - 14, y = 0;
+      /* 6.9.801 - nothing runs off the page or under the footer: every block asks for its room */
+      var room = function (h) { if (y + h > 272) { doc.addPage(); y = 20; } };
       doc.setFillColor(11, 59, 54); doc.rect(0, 0, W, 34, "F");
       doc.setFillColor(94, 234, 212); doc.rect(0, 34, W, 1.2, "F");
       if (LOGO_B64) { try { doc.addImage(LOGO_B64, "JPEG", L, 8, 30, 16); } catch (e) {} }
@@ -38174,7 +38418,7 @@ function viewCatalogue() {
 
       y = 48;
       doc.setFillColor(30, 41, 59); doc.rect(L, y - 5.5, Rt - L, 9, "F");
-      doc.setTextColor(255, 255, 255); F("bold"); doc.setFontSize(6);
+      doc.setTextColor(255, 255, 255); F("bold"); doc.setFontSize(8);   /* 6.9.801 - 8pt floor */
       var Xn = showPct ? Rt - 58 : Rt - 50;      /* challan count */
       var Xb = showPct ? Rt - 38 : Rt - 28;      /* ex-GST business */
       var Xr = Rt - 22;                          /* rate, only when shown */
@@ -38190,13 +38434,13 @@ function viewCatalogue() {
         doc.text("Nothing earned in " + perLabel + ".", L, y + 2); y += 10;
       }
       groups.forEach(function (g, i) {
-        if (y > 248) { doc.addPage(); y = 24; }
-        if (i % 2 === 1) { doc.setFillColor(248, 250, 252); doc.rect(L, y - 4.6, Rt - L, 7.4, "F"); }
-        doc.setTextColor(17, 34, 45); F("bold"); doc.setFontSize(7.2);
-        doc.text(doc.splitTextToSize(String(g.client || ""), 56)[0], L + 2, y);
-        F("normal"); doc.setFontSize(6.4); doc.setTextColor(90, 100, 110);
-        doc.text(doc.splitTextToSize(g.brandList.join(", "), 52)[0] || "-", L + 62, y);
-        doc.setTextColor(17, 34, 45); doc.setFontSize(6.6);
+        room(8);
+        if (i % 2 === 1) { doc.setFillColor(248, 250, 252); doc.rect(L, y - 5, Rt - L, 8, "F"); }
+        doc.setTextColor(17, 34, 45); F("bold"); doc.setFontSize(8.5);
+        doc.text(doc.splitTextToSize(String(g.client || ""), 58)[0], L + 2, y);
+        F("normal"); doc.setFontSize(8); doc.setTextColor(90, 100, 110);
+        doc.text(doc.splitTextToSize(g.brandList.join(", "), 46)[0] || "-", L + 62, y);
+        doc.setTextColor(17, 34, 45); doc.setFontSize(8);
         /* a client whose figure is net of goods that came back says so, so nobody has to
            work out why the number is smaller than the challans suggest */
         var _hasRet = (g.rows || []).some(function (r) { return r.ret; });
@@ -38204,43 +38448,52 @@ function viewCatalogue() {
         doc.text(R2(g.base), Xb, y, { align: "right" });
         if (showPct) doc.text((Math.round(g.pct * 10) / 10) + "%", Xr, y, { align: "right" });
         F("bold"); doc.text(R2(g.inc), Rt - 2, y, { align: "right" });
-        y += 7.4;
+        y += 8;
       });
 
       y += 4;
-      if (y > 250) { doc.addPage(); y = 24; }
+      room(18);
       doc.setFillColor(236, 253, 245); doc.roundedRect(96, y - 5, Rt - 96, 12, 1.5, 1.5, "F");
       doc.setTextColor(13, 118, 108); F("bold"); doc.setFontSize(8);
       doc.text("Earned \u00b7 " + perLabel, 100, y + 1.4);
       doc.setFontSize(11); doc.text(R2(mInc), Rt - 2, y + 1.6, { align: "right" });
       y += 14;
-      F("normal"); doc.setFontSize(6.4); doc.setTextColor(120, 130, 140);
+      F("normal"); doc.setFontSize(8); doc.setTextColor(120, 130, 140);
       doc.text("On a Basic Amt of " + R2(mBase) + " of business across " + groups.length +
         (groups.length === 1 ? " client" : " clients") + "." +
         (groups.some(function (g) { return (g.rows || []).some(function (r) { return r.ret; }); })
           ? "   * net of material returned and booked in." : ""), L, y);
       y += 10;
 
-      F("bold"); doc.setFontSize(8); doc.setTextColor(30, 41, 59);
+      room(42);
+      F("bold"); doc.setFontSize(9); doc.setTextColor(30, 41, 59);
       doc.text("Overall position (all months)", L, y); y += 7;
       [["Total incentive earned", b.earned], ["Released (your clients have paid)", b.payable],
        ["Paid out so far", b.paid], ["Due to you now", b.pending],
        ["Earned, waiting for client payment", incWaitTotal(b)]].forEach(function (p) {   /* 6.9.791 */
-        F("normal"); doc.setFontSize(7.6); doc.setTextColor(80, 90, 100); doc.text(p[0], L, y);
+        F("normal"); doc.setFontSize(8.5); doc.setTextColor(80, 90, 100); doc.text(p[0], L, y);
         F("bold"); doc.setTextColor(17, 34, 45); doc.text(R2(p[1]), Rt - 2, y, { align: "right" }); y += 6.4;
       });
 
       if (incWaitTotal(b) > 0.5) {   /* 6.9.791 - in words */
-        F("normal"); doc.setFontSize(7); doc.setTextColor(146, 64, 14);
+        F("normal"); doc.setFontSize(8); doc.setTextColor(146, 64, 14);
         var _wl = doc.splitTextToSize(R2(incWaitTotal(b)) + " of your incentive is earned and is yours. It is pending until your client" + (incWaitByClient(b).length > 1 ? "s pay" : " pays") +
           " for the deliveries it was earned on, and becomes due as they pay: " + incWaitByClient(b).slice(0, 6).map(function (x) { return x.client + " " + R2(x.wait); }).join(", ") + ".", Rt - L);
-        doc.text(_wl, L, y + 2); y += 4 + _wl.length * 3.4;
+        room(4 + _wl.length * 3.8);
+        doc.text(_wl, L, y + 2); y += 4 + _wl.length * 3.8;
       }
-      F("normal"); doc.setFontSize(6.2); doc.setTextColor(150, 163, 175);
-      doc.text(doc.splitTextToSize("Client-wise. Only clients where incentive was actually earned are listed. Incentive is the Basic Amt (post-discount, before GST) x the rate set for that client & brand" +
+      F("normal"); doc.setFontSize(8); doc.setTextColor(150, 163, 175);
+      var _fine = doc.splitTextToSize("Client-wise. Only clients where incentive was actually earned are listed. Incentive is the Basic Amt (post-discount, before GST) x the rate set for that client & brand" +
         (isX ? ", on the clients assigned to this executive" : "") +
-        ". It becomes payable only in proportion to what the client has actually paid, and material returned and booked in at the godown reverses it at the same rate that earned it.", Rt - L), L, 278);
-      doc.text("Energy World  |  Sonipat \u00b7 Panipat \u00b7 Karnal \u00b7 Rohtak", L, 290);
+        ". It becomes payable only in proportion to what the client has actually paid, and material returned and booked in at the godown reverses it at the same rate that earned it.", Rt - L);
+      /* 6.9.801 - this note sat at a fixed y = 278 and printed over "Due to you now" once the
+         list was long (Mahabir, 23 clients). It now follows the text. */
+      y += 6; room(_fine.length * 3.6); doc.text(_fine, L, y);
+      for (var _pg = 1, _np = doc.getNumberOfPages(); _pg <= _np; _pg++) {
+        doc.setPage(_pg); F("normal"); doc.setFontSize(8); doc.setTextColor(150, 163, 175);
+        doc.text("Energy World  |  Sonipat \u00b7 Panipat \u00b7 Karnal \u00b7 Rohtak" + (_np > 1 ? "   \u00b7   page " + _pg + " of " + _np : ""), L, 287);
+      }
+      doc.setPage(doc.getNumberOfPages());
       return doc;
     });
   }
@@ -40870,7 +41123,7 @@ function viewCatalogue() {
      nothing else could reach it - so the usage counter would have had to keep a second copy
      of the same forty-two names, and a second copy is how the two quietly stop agreeing.
      Hoisted, not duplicated. render() still reads exactly this. */
-  var TAB_TABS = [["search", "Search"], ["myday", "My day"], ["dash", "Today"], ["statements", "Statements"], ["review", "Twice-weekly review"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits & quotes"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["register", "Challan log"], ["paylog", "Payment log"], ["freight", "Drivers & freight"], ["deliveries", "Deliveries"], ["collections", "Payments"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["crlog", "Client & lead log"], ["partners", "Partners"], ["pevents", "Partner events"], ["quotes", "Quotes"], ["commission", "Incentives"], ["complaints", "Complaints"], ["service", "Service"], ["spares", "Spares"], ["dues", "Service dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["paidout", "Paid out"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["catalogs", "Brand catalogues"], ["brandstory", "Brand stories"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["trouble", "Troubleshoot"], ["changelog", "Change log"], ["booksweep", "Book numbers"], ["dups", "Duplicate check"], ["stock", "Stock"], ["tally", "Tally"], ["plcheck", "Supplier price list"], ["brief", "The brief"]];
+  var TAB_TABS = [["search", "Search"], ["myday", "My day"], ["dash", "Today"], ["statements", "Statements"], ["review", "Twice-weekly review"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits & quotes"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["register", "Challan log"], ["paylog", "Payment log"], ["freight", "Drivers & freight"], ["deliveries", "Deliveries"], ["collections", "Payments"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["crlog", "Client & lead log"], ["partners", "Partners"], ["pevents", "Partner events"], ["quotes", "Quotes"], ["commission", "Incentives"], ["complaints", "Complaints"], ["service", "Service"], ["spares", "Spares"], ["dues", "Service dues"], ["payroll", "Payroll"], ["attendance", "Attendance"], ["products", "Products"], ["payments", "Payments"], ["paidout", "Paid out"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["catalogs", "Brand catalogues"], ["brandstory", "Brand stories"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["trouble", "Troubleshoot"], ["changelog", "Change log"], ["booksweep", "Book numbers"], ["dups", "Duplicate check"], ["stock", "Stock"], ["tally", "Tally"], ["plcheck", "Supplier price list"], ["brief", "The brief"]];
   var TAB_LABEL = (function () {
     var m = {}; TAB_TABS.forEach(function (t) { m[t[0]] = t[1]; }); return m;
   })();
@@ -50447,7 +50700,7 @@ function viewCatalogue() {
     return subHub([["rates", "Rate revision", viewRates], ["pricelist", "Price list PDF", viewPriceList], ["catalogue", "Catalogue", viewCatalogue]], "priceSub", "price-sub");
   }
   function viewPayrollHub() {
-    return subHub([["commission", "Incentives", viewIncentives], ["payroll", "Payroll", viewPayroll]], "payHubSub", "pay-sub");
+    return subHub([["commission", "Incentives", viewIncentives], ["payroll", "Payroll", viewPayroll], ["attendance", "Attendance", viewAttendance]], "payHubSub", "pay-sub");   /* 6.9.805 */
   }
 
   /* ---------------- crash log ----------------
@@ -54048,7 +54301,7 @@ function viewCatalogue() {
     dues: 1, paidout: 1, service: 1, spares: 1, products: 1, pricelist: 1, stock: 1, catalogs: 1, brandstory: 1,
     catalogue: 1, partners: 1, scorecard: 1, report: 1, commission: 1, payroll: 1, teampins: 1, dash: 1,
     pending: 1, trouble: 1, dups: 1, health: 1, changelog: 1, tools: 1, brief: 1, rates: 1, rules: 1, booksweep: 1 };
-  var HELP_ALIAS = { deliveries: "challans", collections: "payments", pricing: "pricelist", payrollhub: "commission",
+  var HELP_ALIAS = { deliveries: "challans", collections: "payments", pricing: "pricelist", payrollhub: "commission", attendance: "commission",
     dossier: "clients", matrix: "pitch", sites: "pitch", customers: "clients", paylog: "payments", complaints: "service", crlog: "clients", tally: "stock", plcheck: "stock", pevents: "partners", myday: "dash", statements: "billing", statements: "billing" };   /* 6.9.667; 6.9.684 complaints -> the service section until it has its own */
   function helpHref(tab) {
     var k = HELP_AT[tab] ? tab : (HELP_ALIAS[tab] || "");
@@ -54290,7 +54543,7 @@ function viewCatalogue() {
       if (!_noBookT) _noBookT = setTimeout(function () { _noBookT = null; if (!S.data && (S.pin || S.tok)) { try { refresh(); } catch (e) { } } }, 6000);
       return;
     }
-    var views = { statements: viewStatements, agent: viewAgent, search: viewSearch, dossier: viewDossier, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, complaints: viewComplaints, payments: viewPayments, paidout: viewPaidOut, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, catalogs: viewCatalogues, brandstory: viewBrandStories, clients: viewClients, crlog: viewCrLog, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, register: viewRegister, paylog: viewPayLog, freight: viewFreight, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, trouble: viewTrouble, changelog: viewChangeLog, booksweep: viewBookSweep, dups: viewDups, stock: viewStock, tally: viewTally, plcheck: viewPlCheck, pevents: viewPev, brief: viewBrief, review: viewReview, myday: viewMyDay };   /* 6.9.739 - myday */
+    var views = { attendance: viewAttendance, statements: viewStatements, agent: viewAgent, search: viewSearch, dossier: viewDossier, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, complaints: viewComplaints, payments: viewPayments, paidout: viewPaidOut, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, catalogs: viewCatalogues, brandstory: viewBrandStories, clients: viewClients, crlog: viewCrLog, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, register: viewRegister, paylog: viewPayLog, freight: viewFreight, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, trouble: viewTrouble, changelog: viewChangeLog, booksweep: viewBookSweep, dups: viewDups, stock: viewStock, tally: viewTally, plcheck: viewPlCheck, pevents: viewPev, brief: viewBrief, review: viewReview, myday: viewMyDay };   /* 6.9.739 - myday */
     var tabs = TAB_TABS;
 
     var h = '<div class="top">' +
@@ -56462,6 +56715,35 @@ function viewCatalogue() {
     if (act === "coll-sub") { S.collSub = t.getAttribute("data-s"); render(); return; }
     if (act === "price-sub") { S.priceSub = t.getAttribute("data-s"); render(); return; }
     if (act === "pay-sub") { S.payHubSub = t.getAttribute("data-s"); render(); return; }
+    /* 6.9.805 - attendance */
+    if (act === "att-p") { S.attP = t.getAttribute("data-k") || "week"; keepScroll = true; render(); return; }
+    if (act === "att-xl") { var _ap = attPeriod(S.attP || "week"), _ax = attSheet(_ap.from < ATT_FROM ? ATT_FROM : _ap.from, _ap.to, "Attendance"); dlXlsx(_ax.file, "Attendance", _ax.rows, _ax.cols, _ax.opts); return; }
+    if (act === "att-send") {
+      var _ak2 = t.getAttribute("data-k");
+      if (!roleIs("admin")) { toast("Only the owner sends this by hand. It also goes by itself."); return; }
+      askSheet({ title: "Send " + rsTitle(_ak2) + "?", sub: "To @" + RV_BOT + ", now: the table as a picture and the Excel.", yes: "Send", no: "Not now" }).then(function (y) {
+        if (!y) return;
+        toast("Sending\u2026");
+        rsSendSet(rsSetAtt(_ak2)).then(function () { toast("Sent to @" + RV_BOT + "."); }, function (e) { toast("Not sent \u2014 " + rvTgWhy(e)); });
+      });
+      return;
+    }
+    if (act === "att-save") {
+      if (!roleAny(["admin", "accounts"])) { toast("Only the owner or accounts marks attendance."); return; }
+      var _day = String(val("att_day") || "").slice(0, 10), _aw = String(val("att_who") || "*"), _kd = String(val("att_kind") || ""), _nt = String(val("att_note") || "").trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(_day)) { toast("Pick the day."); return; }
+      if (_kd === "holiday" && _aw !== "*") { toast("A holiday is for everyone. For one person choose Leave."); return; }
+      if ((_kd === "leave" || _kd === "present") && _aw === "*") { toast("Choose the executive for leave or present."); return; }
+      S.attDay = _day;
+      var _KS = { holiday: "a holiday for everyone", leave: "leave for " + _aw, present: "present for " + _aw + " (no visit needed)", clear: "no mark (back to what the visits say) for " + (_aw === "*" ? "everyone" : _aw) };
+      askSheet({ title: "Mark " + attDayLabel(_day) + "?", sub: attDayLabel(_day) + " becomes " + _KS[_kd] + (_nt ? " \u2014 " + _nt : "") + ".", yes: "Save", no: "Go back" }).then(function (y) {
+        if (!y) return;
+        save("audit", { id: "", createdAt: new Date().toISOString(), actor: S.user, action: "att:mark", target: _aw === "*" ? "*" : _aw,
+          detail: JSON.stringify({ day: _day, who: _aw, kind: _kd, note: _nt.slice(0, 200) }), ip: "" }, true)
+          .then(function () { toast("Saved."); render(); }, function (e) { toast("NOT saved \u2014 " + apiWhy(e) + "."); });
+      });
+      return;
+    }
     if (act === "pv-brand") { S.pvBrand = t.getAttribute("data-v") || ""; S.pvCat = ""; S.pvFam = ""; S.pvMore = 0; S.pvOpen = ""; render(); return; }
     if (act === "pv-cat")   { S.pvCat = t.getAttribute("data-v") || ""; S.pvFam = ""; S.pvMore = 0; render(); return; }
     if (act === "pv-fam")   { S.pvFam = t.getAttribute("data-v") || ""; S.pvMore = 0; render(); return; }
@@ -59243,12 +59525,18 @@ function viewCatalogue() {
         var bd = (i.bd !== undefined && i.bd !== null) ? Number(i.bd) || 0 : (Number(old.discountPct) || 0);
         if (i.brand && revBd[i.brand] === undefined) revBd[i.brand] = bd;
       });
+      var _sameDay = qSameDay(old);   /* 6.9.803 - made today: edit this same quote */
+      /* 6.9.759 rooms: the order rides on the first saved line */
+      var _ro0 = (its[0] && Array.isArray(its[0].ro)) ? its[0].ro.slice() : [];
       S.qz = { step: 4, location: "", client: old.client,
         brand: (its[0] && its[0].brand) || old.brand, items: its,
-        brandDisc: Number(old.discountPct) || 0, brandDiscs: revBd, parentId: old.id,
-        version: (Number(old.version) || 1) + 1, quoteNo: old.quoteNo,
+        brandDisc: Number(old.discountPct) || 0, brandDiscs: revBd,
+        parentId: _sameDay ? (old.parentId || "") : old.id,
+        version: _sameDay ? (Number(old.version) || 1) : (Number(old.version) || 1) + 1, quoteNo: old.quoteNo,
+        editId: _sameDay ? old.id : "", editNo: _sameDay ? qNo(old) : "", rooms: _ro0.length ? _ro0 : undefined,
         gst: its.some(function (i) { return Number(i.gst) === 1; }),
         noTotal: its.some(function (i) { return Number(i.noTotal) === 1; }) };
+      toast(_sameDay ? "Editing " + (qNo(old) || "the quote") + " \u2014 made today, so it stays the same quote." : "Making the next revision of " + (qNo(old) || "the quote") + ".");
       S.tab = "quotes"; render(); return;
     }
     if (act === "qz-save") {
@@ -59314,7 +59602,17 @@ function viewCatalogue() {
            count his quotes and the pitch engine could not see which brand had been shown to him.
            Blank stays blank when he genuinely has no lead in the book - it is never invented. */
         var qSite = siteForClient(z.client);
-        var savePromise = save("quotes", {
+        /* 6.9.803 - a same-day edit goes into the SAME row: its id, its QT number, its date, who
+           made it and its status stay; only the lines and the money change. */
+        var _ed = z.editId ? (S.data.quotes || []).filter(function (q) { return q.id === z.editId; })[0] : null;
+        if (z.editId && !_ed) { toast("That quote is no longer in the book \u2014 saved as a new revision instead."); z.editId = ""; }
+        var savePromise = _ed ? save("quotes", {
+          id: _ed.id, quoteNo: _ed.quoteNo || qno, version: _ed.version || 1, parentId: _ed.parentId || "",
+          siteId: _ed.siteId || (qSite && qSite.id) || "", siteName: _ed.siteName || (qSite && qSite.name) || "",
+          client: z.client, brand: savedBrands.join(", "),
+          items: JSON.stringify(savedItems), gross: tot.gross, discountPct: blended,
+          net: tot.net, gstAmt: tot.gst, total: tot.total
+        }) : save("quotes", {
           id: "", createdBy: S.user, quoteNo: qno, version: z.version || 1, parentId: z.parentId || "",
           siteId: (qSite && qSite.id) || "", siteName: (qSite && qSite.name) || "",
           client: z.client, brand: savedBrands.join(", "),
@@ -59324,7 +59622,7 @@ function viewCatalogue() {
         /* and the brands quoted become pitch rows on that same lead, in the same breath */
         try { stampQuotedPitch(z.client, savedBrands, qno); } catch (e) { }
         S.qz = null;
-        toast("Quote saved \u2014 its number (QT\u2026) comes from the server in a moment.");   /* 6.9.776 */
+        toast(_ed ? (qNo(_ed) || "Quote") + " updated \u2014 the same quote, no new revision." : "Quote saved \u2014 its number (QT\u2026) comes from the server in a moment.");   /* 6.9.776 / 6.9.803 */
         render();
         savePromise.then(function (r) {
           if (!r) { draft.dupChecked = true; S.qz = draft; render(); return; }   /* server refused - back to Review */
@@ -59336,7 +59634,7 @@ function viewCatalogue() {
           quotePdf(r).then(function (d) {
             return api("tgSend", { bot: "TG_QUOTES", pdfBase64: d.output("datauristring").split(",")[1],
               filename: String(qNo(r) || qno).replace(/[^\w.-]/g, "_") + ".pdf",
-              caption: "<b>Quotation " + (qNo(r) || qno) + "</b>\n" + (r.client || z.client) + "\n" + (r.brand || savedBrands.join(", ")) + "\nSub-total Rs. " + (r.net != null ? r.net : tot.net) + " (GST as actual)\nBy " + (r.createdBy || S.user) });
+              caption: "<b>Quotation " + (qNo(r) || qno) + (_ed ? " (edited)" : "") + "</b>\n" + (r.client || z.client) + "\n" + (r.brand || savedBrands.join(", ")) + "\nSub-total Rs. " + (r.net != null ? r.net : tot.net) + " (GST as actual)\nBy " + (r.createdBy || S.user) });
           }).then(function (tr) {
             toast(tr && tr.ok ? "Quote sent to Telegram." : "Saved - Telegram send failed, use Send on the quote.");
           }).catch(function () {
@@ -59355,6 +59653,7 @@ function viewCatalogue() {
         z.dupChecked = true;
         if (r && r.__timeout) { toast("Duplicate check timed out - saving anyway."); qzDoSave(); return; }
         var others = ((r && r.clashes) || []).filter(function (x) { return !x.mine; });
+        if (z.editId) others = others.filter(function (x) { return x.id !== z.editId && !(z.editNo && qNo(x) === z.editNo); });   /* 6.9.803 - not a clash with itself */
         if (!others.length) { qzDoSave(); return; }
         /* v6.9.452 - the app's own sheet, not window.confirm; each clash on its own lines */
         askSheet({ title: "Already quoted by someone else", danger: true, yes: "Save anyway", no: "Go back",
@@ -61110,12 +61409,14 @@ function viewCatalogue() {
       if (_mt.length < 3) { toast("Say in a few words what happened."); return; }
       var _whoKind = _mk === "showroom" ? (S.vmWho || "Client") : (_mk === "plumber" ? "Plumber" : "Architect");
       var _mb = t, _ml = t.textContent; _mb.disabled = true; _mb.textContent = "Saving...";
-      var _mgo = function (g) {
-        save("audit", { id: "", createdAt: new Date().toISOString(), actor: S.user, action: "visit:mark", target: _who,
-          detail: JSON.stringify({ kind: _mk, who: _who, whoKind: _whoKind, note: _mt.slice(0, 500), lat: g ? g.lat : "", lng: g ? g.lng : "", acc: g ? g.acc : "" }), ip: "" }, true)
+      var _mgo = function (g) { attNetClock().then(function (ck) {   /* 6.9.805 - no back-dated visit: the network's clock first */
+        if (ck.ok && Math.abs(ck.skew) > ATT_SKEW_MS) { btnBack(_mb, _ml); toast("This device's clock is " + attClockSay(ck.skew).trim() + " " + (ck.skew > 0 ? "behind" : "ahead of") + " the network time. Set date and time to automatic, then press Save again."); return; }
+        var _vat = ck.ok ? new Date(ck.net).toISOString() : new Date().toISOString();
+        save("audit", { id: "", createdAt: _vat, actor: S.user, action: "visit:mark", target: _who,
+          detail: JSON.stringify({ kind: _mk, who: _who, whoKind: _whoKind, note: _mt.slice(0, 500), lat: g ? g.lat : "", lng: g ? g.lng : "", acc: g ? g.acc : "", tchk: ck.ok ? 1 : 0, netAt: ck.ok ? _vat : "" }), ip: "" }, true)
           .then(function () { S.modal = null; toast((VM_KINDS[_mk] || "") + " visit marked — " + _who + "."); render(); },
                 function (e) { btnBack(_mb, _ml); toast("NOT saved — " + apiWhy(e) + ". Press Save again."); });
-      };
+      }); };
       var _md = false, _mtm = setTimeout(function () { if (!_md) { _md = true; _mgo(null); } }, 5000);
       try { navigator.geolocation.getCurrentPosition(function (p) { if (_md) return; _md = true; clearTimeout(_mtm); _mgo({ lat: p.coords.latitude, lng: p.coords.longitude, acc: Math.round(p.coords.accuracy || 0) }); },
         function () { if (_md) return; _md = true; clearTimeout(_mtm); _mgo(null); }, { enableHighAccuracy: true, timeout: 4500, maximumAge: 60000 }); } catch (e) { if (!_md) { _md = true; clearTimeout(_mtm); _mgo(null); } }
