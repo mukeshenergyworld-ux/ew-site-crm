@@ -252,7 +252,7 @@ body{background:#F4F6F9}
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.131.6";
+  var APP_VERSION = "1.131.7";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -7382,7 +7382,7 @@ function discRowOn(client, brand, onYmd) {
       lines.forEach(function (x) {
         if (x.job) return;
         var r = (m.role === "exec") ? execRateFor(cl, x.brand, day, x.disc) : incRate(cl, x.brand, m.role, day, x.disc);
-        if (r > 0) { amt += x.amt * r / 100; pcts[String(r)] = 1; }
+        if (r > 0) { amt += x.amt * incBasicF(day) * r / 100; pcts[String(r)] = 1; }   /* 6.9.799 - Basic Amt */
       });
       var ks = Object.keys(pcts);
       return { role: m.role, name: m.name, amt: amt, rated: ks.length > 0,
@@ -7504,6 +7504,9 @@ function discRowOn(client, brand, onYmd) {
     var s = incCardSlab(hit.m, d);
     return s ? (Number(s[String(role).toLowerCase()]) || 0) : 0;
   }
+  /* 6.9.799 - the Basic Amt: on a day the card is in force every incentive is worked on the amount
+     before GST (amount / 1.18); before the card's first day it stays as it was earned. */
+  function incBasicF(day) { return incCardLive(incDayOf(day)) ? 1 / 1.18 : 1; }
   /* ---- who held a role on a client on a given day ---- */
   var _incHist = null;
   function incHist() {
