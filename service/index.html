@@ -429,7 +429,7 @@ function ewmBuild(n, pre) {
    Nothing here deletes anything, ever. A visit is a row added.
    ========================================================================== */
 
-  var APP_VERSION = "2.9.6";
+  var APP_VERSION = "2.9.7";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -481,7 +481,7 @@ function ewmBuild(n, pre) {
      Never inside a box you type in, a drop-down, a script or a PDF; a name shared by two different numbers is
      left alone rather than guessed; a name under 5 letters with no space is left alone (too much like a word). */
   (function () {
-    var MAP = null, KEY = "", pend = [], sched = false;
+    var MAP = null, KEY = "", pend = [], sched = false, SHORT = {};
     var SKIP = { SCRIPT: 1, STYLE: 1, TEXTAREA: 1, OPTION: 1, SELECT: 1, INPUT: 1, TITLE: 1, NOSCRIPT: 1, DATALIST: 1 };
     function ewcLow(s) { return String(s == null ? "" : s).replace(/\s+/g, " ").trim().toLowerCase(); }
     function ewcData() { try { return window.__ewCodeSrc ? window.__ewCodeSrc() : null; } catch (e) { return null; } }
@@ -490,10 +490,10 @@ function ewmBuild(n, pre) {
       var cl = d.clients || [], as = d.associates || [];
       var k = cl.length + ":" + as.length + ":" + cl.filter(function (c) { return c && c.code; }).length + ":" + as.filter(function (a) { return a && a.code; }).length;
       if (k === KEY && MAP) return MAP;
-      KEY = k; var m = {}, bad = {};
+      KEY = k; var m = {}, bad = {}; SHORT = {};
       function ewcPut(name, code) {
         var n = ewcLow(name), c = String(code || "").trim(); if (!n || !c) return;
-        if (n.length < 5 && n.indexOf(" ") < 0) return;
+        if (n.length < 5 && n.indexOf(" ") < 0) { if (SHORT[n] && SHORT[n] !== c) SHORT[n] = "\u0000"; else SHORT[n] = c; return; }   /* 6.9.754 - kept apart, used only on a marked name */
         if (m[n] && m[n] !== c) bad[n] = 1; else m[n] = c;
       }
       cl.forEach(function (c) { if (c) ewcPut(c.name, c.code); });
@@ -519,8 +519,12 @@ function ewmBuild(n, pre) {
     }
     function ewcOne(t, m) {
       var v = t.nodeValue; if (!v || v.length > 80) return;
-      var code = m[ewcLow(v)]; if (!code) return;
-      var p = t.parentNode; if (!p || p.nodeType !== 1 || ewcSkip(p)) return;
+      var code = m[ewcLow(v)], p = t.parentNode;
+      /* 6.9.754 - "Prem", "Anil": under 5 letters, so never matched in running text - but where the screen itself marks
+         the element as a person's name (data-n / data-cl carrying exactly that name), it is his */
+      if (!code && p && p.nodeType === 1 && p.getAttribute) { var dn = p.getAttribute("data-n") || p.getAttribute("data-cl"); if (dn && ewcLow(dn) === ewcLow(v)) { var sc = SHORT[ewcLow(v)]; if (sc && sc !== "\u0000") code = sc; } }
+      if (!code) return;
+      if (!p || p.nodeType !== 1 || ewcSkip(p)) return;
       var prev = t.previousSibling;
       while (prev && prev.nodeType === 3 && !prev.nodeValue.trim()) prev = prev.previousSibling;
       if (prev && prev.nodeType === 1 && prev.classList && (prev.classList.contains("ewc") || prev.classList.contains("code"))) return;
@@ -1933,7 +1937,7 @@ function ewmBuild(n, pre) {
        beside it and missing from the payment’s own. */
     if (tab === "payments") return (r.id ? receiptNo(r) + " · " : "") + String(r.client || "") +
       (r.amount ? " · " + money(r.amount) : "");
-    if (tab === "quotes") return String(r.quoteNo || "") + (r.client ? " · " + r.client : "");
+    if (tab === "quotes") return String((typeof qNo === "function" ? qNo(r) : r.quoteNo) || "") + (r.client ? " · " + r.client : "");   /* 6.9.776 QT number where the app has it; one function in every app */
     if (tab === "discounts") return String(r.client || "") + " · " + String(r.brand || "");
     if (tab === "clients" || tab === "customers") return String(r.name || "");
     if (tab === "team") return String(r.name || "");
