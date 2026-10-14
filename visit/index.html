@@ -189,7 +189,7 @@ h3.sec{color:#1F3A5F}
       button: function () { return '<button type="button" class="ewthm" onclick="ewTheme.next(this)">' + ewtLabel() + '</button>'; }
     };
   })();
-  var APP_VERSION = "1.4.23";
+  var APP_VERSION = "1.4.24";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_vq_session", JRN = "ew_vq_journal_v1", CALLQ = "ew_vq_calls_v1", SNAPK = "ew_vq_snap_";
   var CAT_KEY = "ew_team_catalog", CAT_V = 2;   /* the CRM's own shelf copy of the price list - shared, same origin */
@@ -988,7 +988,10 @@ h3.sec{color:#1F3A5F}
     "Eureka Forbes": "../assets/brands/card/eureka.png", "Huliot": "../assets/brands/card/huliot.png", "FIMA": "../assets/brands/card/fima.png",
     "TOTO": "../assets/brands/card/toto.png", "Grundfos": "../assets/brands/card/grundfos.png", "Pentair": "../assets/brands/card/pentair.png",
     "Green Heat": "../assets/brands/card/greenheat.png", "Adani": "../assets/brands/card/adani.png", "Geberit": "../assets/brands/card/geberit.png",
-    "Stellar": "../assets/brands/card/stellar.png", "MEA": "../assets/brands/card/mea.png", "Oyster": "../assets/brands/card/oyster.png" };
+    "Stellar": "../assets/brands/card/stellar.png", "MEA": "../assets/brands/card/mea.png", "Oyster": "../assets/brands/card/oyster.png",
+    /* 6.9.795 - the five not on the card, from each brand's own website (assets/brands/web) */
+    "Heliroma": "../assets/brands/web/heliroma.png", "TECE": "../assets/brands/web/tece.png", "Lunos": "../assets/brands/web/lunos.png",
+    "INAIR": "../assets/brands/web/inair.png", "Sanitaar": "../assets/brands/web/sanitaar.png" };
   function localLogos() {
     return Promise.all(Object.keys(LOCAL_LOGOS).map(function (brand) {
       var k = normB(brand);
@@ -2811,7 +2814,7 @@ h3.sec{color:#1F3A5F}
     };
   })();
 
-  /* ======== SHARED QUOTE PDF - BUILT FROM THE CRM'S team/app.js 6.9.794 BY sharedpdf/build_visit_pdf.py - DO NOT EDIT HERE ========
+  /* ======== SHARED QUOTE PDF - BUILT FROM THE CRM'S team/app.js 6.9.795 BY sharedpdf/build_visit_pdf.py - DO NOT EDIT HERE ========
      Edit the CRM, then run the script again. Later declarations win, so these replace the Visit
      app's own older copies of the same functions. */
   var QX_BASE = "../team/";
