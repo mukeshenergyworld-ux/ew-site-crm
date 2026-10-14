@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.790";
+  var APP_VERSION = "6.9.791";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -29675,10 +29675,12 @@ function viewCatalogue() {
     var sent = pstSent(ym), left = ls.filter(function (x) { return !sent[dkey(x.a.name)]; }).length;
     return '<div class="card" style="border-color:' + (left ? '#fbbf24' : '#bbf7d0') + '"><h3>Statements for ' + esc(monthLabel(ym)) + ' <span class="pill ' + (left ? 'soon' : 'Won') + '">' + (left ? left + ' to send' : 'all sent') + '</span></h3>' +
       '<div class="meta" style="margin:0 0 6px">Every partner who earned last month: his clients and his incentive, as a PDF on WhatsApp.</div>' +
-      xlTable("pst", [{ k: "p", t: "PARTNER", w: "150px" }, { k: "c", t: "CLIENTS" }, { k: "inc", t: "INCENTIVE", n: 1, r: 1 }, { k: "go", t: "" }],
+      xlTable("pst", [{ k: "p", t: "PARTNER", w: "150px" }, { k: "c", t: "CLIENTS" }, { k: "inc", t: "EARNED", n: 1, r: 1 }, { k: "due", t: "DUE NOW", n: 1, r: 1 }, { k: "wt", t: "WAITS FOR CLIENT", n: 1, r: 1 }, { k: "go", t: "" }],
         ls.map(function (x) {
-          var s0 = sent[dkey(x.a.name)];
-          return { v: { p: x.a.name, c: x.n, inc: x.inc }, cells: {
+          var s0 = sent[dkey(x.a.name)], _bk = partnerBook(x.a.name), _wt = incWaitTotal(_bk);   /* 6.9.791 */
+          return { v: { p: x.a.name, c: x.n, inc: x.inc, due: _bk.pending, wt: _wt }, cells: {
+            due: _bk.pending > 0.5 ? '<b style="color:#b91c1c">' + money(_bk.pending) + '</b>' : '\u2014',
+            wt: _wt > 0.5 ? '<span style="color:#b45309">' + money(_wt) + '</span>' : '\u2014',
             p: '<b>' + esc(x.a.name) + '</b>' + (x.a.role ? ' <span class="meta">' + esc(x.a.role) + '</span>' : ''),
             c: esc(x.clients.slice(0, 3).join(", ") + (x.clients.length > 3 ? " +" + (x.clients.length - 3) : "")),
             inc: money(x.inc),
@@ -29830,10 +29832,11 @@ function viewCatalogue() {
          return landed in a group of its own, which was always negative and therefore always
          dropped by the filter below. */
       var k = dkey(r.client) || "(no client)";
-      if (!by[k]) { by[k] = { client: String(r.client || "").trim() || "(no client)", base: 0, inc: 0, n: 0, brands: {}, rows: [] }; order.push(k); }
+      if (!by[k]) { by[k] = { client: String(r.client || "").trim() || "(no client)", base: 0, inc: 0, rel: 0, n: 0, brands: {}, rows: [] }; order.push(k); }
       var g = by[k];
       g.base += Number(r.base) || 0;
       g.inc += Number(r.inc) || 0;
+      g.rel += Number(r.rel) || 0;   /* 6.9.791 - the part of it released by that client's payments */
       g.n++;
       if (r.brand) g.brands[r.brand] = 1;
       g.rows.push(r);
@@ -29927,6 +29930,12 @@ function viewCatalogue() {
     }
     return h;
   }
+  /* 6.9.791 - how much of a man's incentive waits on each client's payment (all months) */
+  function incWaitByClient(b) {
+    return partnerClientRows(b, "ALL").map(function (g) { return { client: g.client, wait: Math.max(0, g.inc - g.rel) }; })
+      .filter(function (x) { return x.wait > 0.5; }).sort(function (p, q) { return q.wait - p.wait; });
+  }
+  function incWaitTotal(b) { return Math.max(0, (Number(b.earned) || 0) - (Number(b.payable) || 0)); }
   function viewPartnerCard(name) {
     /* v6.9.234 - one card for a partner and for a sales executive. They differ only in
        which book is read and what the sections are called; the statement, the reversal
@@ -29942,9 +29951,18 @@ function viewCatalogue() {
     h += '<div class="cards">' +
       '<div class="stat"><div class="n">' + (isX ? b.clientCount : b.sites.length) + '</div><div class="l">' + (isX ? 'Clients assigned' : 'Ongoing sites') + '</div></div>' +
       '<div class="stat"><div class="n">' + money(b.earned) + '</div><div class="l">Incentive earned</div></div>' +
+      '<div class="stat ' + (b.pending > 0 ? "alert" : "") + '"><div class="n">' + money(b.pending) + '</div><div class="l">Due now (client has paid)</div></div>' +   /* 6.9.791 */
+      '<div class="stat"><div class="n" style="color:#b45309">' + money(incWaitTotal(b)) + '</div><div class="l">Waiting for client payment</div></div>' +
       '<div class="stat"><div class="n">' + money(b.paid) + '</div><div class="l">Paid</div></div>' +
-      '<div class="stat ' + (b.pending > 0 ? "alert" : "") + '"><div class="n">' + money(b.pending) + '</div><div class="l">Pending</div></div>' +
       '</div>';
+    (function () {   /* 6.9.791 - the same, in words */
+      var w = incWaitTotal(b); if (w < 0.5) return;
+      var by = incWaitByClient(b);
+      h += '<div class="card" style="border-color:#fbbf24;background:#fffbeb"><div style="font-weight:700;color:#92400e">' + money(w) + ' earned by ' + esc(name) + ' &mdash; due to him, pending until the client pays</div>' +
+        '<div class="meta" style="font-size:13px;margin-top:4px">Incentive becomes payable as each client pays for the delivery it was earned on. ' +
+        (b.pending > 0.5 ? money(b.pending) + ' is due now; ' : 'Nothing is due to him today; ') + 'the rest is released by these payments:</div>' +
+        '<div style="margin-top:6px;font-size:13px">' + by.slice(0, 12).map(function (x) { return '<div>' + esc(x.client) + ' &mdash; <b>' + money(x.wait) + '</b> waits for this client&rsquo;s payment</div>'; }).join("") + '</div></div>';
+    })();
     h += '<div class="card"><h3>' + esc(name) + ' <span class="pill">' + esc(a.role || "") + '</span></h3>' +
       '<div class="meta">' + (a.mobile ? esc(a.mobile) + '<br>' : "") +
       'Billed ' + money(b.billed) + ' &middot; collected ' + money(b.collected) +
@@ -38132,12 +38150,19 @@ function viewCatalogue() {
 
       F("bold"); doc.setFontSize(8); doc.setTextColor(30, 41, 59);
       doc.text("Overall position (all months)", L, y); y += 7;
-      [["Total incentive earned", b.earned], ["Payable (as clients have paid)", b.payable],
-       ["Paid out so far", b.paid], ["Still to pay", b.pending]].forEach(function (p) {
+      [["Total incentive earned", b.earned], ["Released (your clients have paid)", b.payable],
+       ["Paid out so far", b.paid], ["Due to you now", b.pending],
+       ["Earned, waiting for client payment", incWaitTotal(b)]].forEach(function (p) {   /* 6.9.791 */
         F("normal"); doc.setFontSize(7.6); doc.setTextColor(80, 90, 100); doc.text(p[0], L, y);
         F("bold"); doc.setTextColor(17, 34, 45); doc.text(R2(p[1]), Rt - 2, y, { align: "right" }); y += 6.4;
       });
 
+      if (incWaitTotal(b) > 0.5) {   /* 6.9.791 - in words */
+        F("normal"); doc.setFontSize(7); doc.setTextColor(146, 64, 14);
+        var _wl = doc.splitTextToSize(R2(incWaitTotal(b)) + " of your incentive is earned and is yours. It is pending until your client" + (incWaitByClient(b).length > 1 ? "s pay" : " pays") +
+          " for the deliveries it was earned on, and becomes due as they pay: " + incWaitByClient(b).slice(0, 6).map(function (x) { return x.client + " " + R2(x.wait); }).join(", ") + ".", Rt - L);
+        doc.text(_wl, L, y + 2); y += 4 + _wl.length * 3.4;
+      }
       F("normal"); doc.setFontSize(6.2); doc.setTextColor(150, 163, 175);
       doc.text(doc.splitTextToSize("Client-wise. Only clients where incentive was actually earned are listed. Incentive is the ex-GST (post-discount) net sale x the rate set for that client & brand" +
         (isX ? ", on the clients assigned to this executive" : "") +
@@ -60371,6 +60396,10 @@ function viewCatalogue() {
         : ((S.data.associates.filter(function (x) { return x.name === _pwn; })[0]) || {});
       var _pwmsg = "Namaste " + _pwn + ", your Energy World incentive statement " +
         (_pwm === "ALL" ? "(all months)" : "for " + monthLabel(_pwm)) + " is attached.";
+      try {   /* 6.9.791 - what is due now, and what waits on clients, in words */
+        var _pwb = bookFor(_pwn, _pwk), _pww = incWaitTotal(_pwb);
+        _pwmsg += " Due to you now: " + money(_pwb.pending) + "." + (_pww > 0.5 ? " A further " + money(_pww) + " is earned and yours, pending until your clients pay - it becomes due as they pay." : "");
+      } catch (eW) { }
       waShareDoc(loadLogo().then(function () { return partnerStatementPdf(_pwn, _pwm, stmtShowPct(), _pwk); }),
         String(_pwn).replace(/[^\w.-]/g, "_") + "_incentive_" + _pwm + ".pdf", _pwa.mobile, _pwmsg);
       if (_pwk === "partner" && _pwm !== "ALL") {   /* 6.9.789 - the month's list shows it as sent */
