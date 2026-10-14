@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.799";
+  var APP_VERSION = "6.9.800";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -23279,6 +23279,12 @@ function viewCatalogue() {
       return [esc(dmy(v.createdAt || v.date)) + ' <span style="color:#64748b">' + esc(String(v.createdAt || "").slice(11, 16)) + '</span>', '<b>' + esc(v.createdBy || "") + '</b>', esc(v.visitType || v.whom || ""), esc(v.purpose || v.note || ""),
         v.lat ? '<a target="_blank" rel="noopener" href="https://maps.google.com/?q=' + esc(v.lat) + ',' + esc(v.lng) + '">' + esc(v.verified || "Map") + '</a>' : '<span style="color:#94a3b8">' + esc(v.verified || "—") + '</span>'];
     })) : '<div class="empty">No visit logged yet.</div>';
+    var _ph = (S.data.audit || []).filter(function (r) { return r && r.action === "visit:photo"; }).map(function (r) { var d = {}; try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { d = {}; } return d; })
+      .filter(function (d) { return d.url && String(d.siteId || "") === String(st.id); }).sort(function (a, b) { return String(b.at).localeCompare(String(a.at)); });   /* 6.9.800 */
+    if (_ph.length) h += '<h3 style="margin:14px 0 4px;font-size:15px">Site photos &middot; ' + _ph.length + '</h3><div style="display:flex;flex-wrap:wrap;gap:8px">' + _ph.slice(0, 40).map(function (p) {
+      return '<a href="' + esc(p.url) + '" target="_blank" rel="noopener" style="display:flex;flex-direction:column;align-items:center;gap:2px;text-decoration:none;color:#475569;font-size:12px">' +
+        (p.thumb ? '<img alt="" src="data:image/jpeg;base64,' + esc(p.thumb) + '" style="width:84px;height:84px;object-fit:cover;border-radius:8px;border:1px solid #cbd5e1"/>' : '<span class="btn sm ghost">Photo</span>') +
+        esc(dmy(p.at)) + ' · ' + esc(p.by || "") + '</a>'; }).join("") + '</div>';
     return h;
   }
   function modalVlVisit(st) {
@@ -23302,12 +23308,54 @@ function viewCatalogue() {
       '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px">' +
       [["site", "Site visit"], ["plumber", "Plumber visit"], ["architect", "Architect visit"], ["showroom", "Showroom visit"]].map(function (k) {
         return '<button class="btn" data-act="vm-new" data-k="' + k[0] + '" style="min-height:52px;font-size:15px">' + k[1] + '</button>'; }).join("") + '</div></div>' +
-      vmReportHtml() +
+      vmReportHtml() + srLogHtml() +   /* 6.9.800 */
       '<div class="card" style="padding:10px 12px"><h2 style="margin:0 0 6px;font-size:17px">Site visits &amp; quotes</h2>' +
       '<input id="vl_q" type="search" autocomplete="off" placeholder="Find a site — name, client, mobile, area or partner" value="' + esc(S.vlQ || "") + '" style="min-height:44px;font-size:15px"/>' +
       '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><button class="btn" data-act="site-new" style="min-height:44px">+ New site</button>' +
       '<button class="btn ghost" data-act="vl-gps" style="min-height:44px">Sites near me (GPS)</button></div></div>' +
       '<div id="vl_res">' + vlFindHtml(S.vlQ) + '</div>';
+  }
+  /* ===== 6.9.800 - THE SHOWROOM LOG =====
+     His rule: a client who has taken Huliot is the one to bring to the showroom for TOTO and FIMA. Read from the
+     visit:mark rows (kind showroom, a client) the Visit app and this screen already write; nothing new is stored. */
+  function srVisits() {
+    var out = {};
+    (S.data.audit || []).forEach(function (r) {
+      if (!r || r.action !== "visit:mark") return;
+      var d = {}; try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
+      if (d.kind !== "showroom" || String(d.whoKind || "") !== "Client") return;
+      var k = dkey(d.who || r.target); if (!k) return;
+      var at = String(r.createdAt || ""), o = out[k] || (out[k] = { at: "", by: "", n: 0 });
+      o.n++; if (at > o.at) { o.at = at; o.by = r.actor || ""; }
+    });
+    return out;
+  }
+  function srLogHtml() {
+    var sv = srVisits(), f = S.srF || "due", rows = [];
+    (S.data.clients || []).forEach(function (c) {
+      if (!c || !c.name || isCancelled("clients", c.id)) return;
+      if (!seesAllClients() && clientOwner(c.name) !== dkey(S.user)) return;
+      var v = sv[dkey(c.name)] || null;
+      var hu = clientBrandState(c.name, "Huliot") === "won", to = clientBrandState(c.name, "TOTO") === "won", fi = clientBrandState(c.name, "FIMA") === "won";
+      var due = !v && hu && !(to && fi);
+      if (f === "due" && !due) return; if (f === "came" && !v) return;
+      if (f === "all" && !v && !hu) return;
+      rows.push({ c: c, v: v, hu: hu, to: to, fi: fi, due: due });
+    });
+    rows.sort(function (a, b) { return (b.v ? b.v.at : "").localeCompare(a.v ? a.v.at : "") || alpha(a.c.name, b.c.name); });
+    var nDue = 0, nCame = Object.keys(sv).length;
+    (S.data.clients || []).forEach(function (c) { if (c && c.name && !sv[dkey(c.name)] && (seesAllClients() || clientOwner(c.name) === dkey(S.user)) && clientBrandState(c.name, "Huliot") === "won" && !(clientBrandState(c.name, "TOTO") === "won" && clientBrandState(c.name, "FIMA") === "won")) nDue++; });
+    var chip = function (k, l) { return '<button class="chip' + (f === k ? ' on' : '') + '" data-act="sr-f" data-k="' + k + '" style="min-height:44px">' + l + '</button>'; };
+    var tick = function (x) { return x ? '<span style="color:#047857;font-weight:700">won</span>' : '<span style="color:#94a3b8">&mdash;</span>'; };
+    var h = '<div class="card" style="padding:10px 12px"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><h3 style="margin:0;font-size:15px;flex:1">Showroom log</h3>' +
+      chip("due", "Should come &middot; " + nDue) + chip("came", "Came &middot; " + nCame) + chip("all", "All") + '</div>' +
+      '<div class="meta" style="margin:4px 0 6px">Should come: Huliot taken, TOTO / FIMA not yet, never marked in the showroom.</div>';
+    if (!rows.length) return h + '<div class="empty">Nobody in this list.</div></div>';
+    return h + pevTable([["Client"], ["Executive"], ["Huliot"], ["TOTO"], ["FIMA"], ["Showroom"]], rows.slice(0, 200).map(function (r) {
+      return ['<a href="#" data-act="ch-hisab" data-cl="' + esc(r.c.name) + '" style="font-weight:700;color:#0b3b36;text-decoration:none">' + esc(r.c.name) + '</a>' + (r.c.area || r.c.location ? ' <span style="color:#64748b">· ' + esc(r.c.area || r.c.location) + '</span>' : ''),
+        esc(r.c.ownedBy || r.c.createdBy || ""), tick(r.hu), tick(r.to), tick(r.fi),
+        r.v ? esc(dmy(r.v.at)) + ' <span style="color:#64748b">' + esc(r.v.by) + (r.v.n > 1 ? ' · ' + r.v.n + ' times' : '') + '</span>' : (r.due ? '<span class="pill due">should come</span>' : '<span style="color:#94a3b8">not yet</span>')];
+    })) + '</div>';
   }
   /* ---- 6.9.738 - marked visits: one list of every kind ---- */
   var VM_KINDS = { site: "Site", plumber: "Plumber", architect: "Architect", showroom: "Showroom" };
@@ -61054,6 +61102,7 @@ function viewCatalogue() {
       S.vmWho = _vk === "showroom" ? "Client" : ""; S.modal = modalVmMark(_vk); render(); return;
     }
     if (act === "vm-who") { S.vmWho = t.getAttribute("data-w") || "Client"; var _kk = (document.querySelector('.modal [data-act="vm-save"]') || {}).getAttribute ? document.querySelector('.modal [data-act="vm-save"]').getAttribute("data-k") : "showroom"; S.modal = modalVmMark(_kk); render(); return; }
+    if (act === "sr-f") { S.srF = t.getAttribute("data-k") || "due"; keepScroll = true; render(); return; }   /* 6.9.800 */
     if (act === "vm-save") {
       var _mk = t.getAttribute("data-k") || "", _mn = String(val("vm_name") || ""), _mo = String(val("vm_other") || "").trim(), _mt = String(val("vm_note") || "").trim();
       var _who = _mn === "__other__" || !_mn ? _mo : _mn.replace(/ \([^)]*\)$/, "");
