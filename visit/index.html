@@ -189,7 +189,7 @@ h3.sec{color:#1F3A5F}
       button: function () { return '<button type="button" class="ewthm" onclick="ewTheme.next(this)">' + ewtLabel() + '</button>'; }
     };
   })();
-  var APP_VERSION = "1.4.18";
+  var APP_VERSION = "1.4.21";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_vq_session", JRN = "ew_vq_journal_v1", CALLQ = "ew_vq_calls_v1", SNAPK = "ew_vq_snap_";
   var CAT_KEY = "ew_team_catalog", CAT_V = 2;   /* the CRM's own shelf copy of the price list - shared, same origin */
@@ -1540,6 +1540,7 @@ h3.sec{color:#1F3A5F}
   function credTook(r) { try { if (r && r.ok && r.tok && r.tok !== S.tok) { S.tok = String(r.tok); credPut({ user: S.user, role: S.role }); } } catch (e) { } }
   function api(action, extra, ms) {
     var body = Object.assign({ action: action, user: S.user, pin: S.pin }, extra || {});
+    try { if (!body.app) body.app = "Visit " + APP_VERSION; } catch (eApp) { }   /* 1.4.19 - the server write log names the app (V160) */
     if (S.tok) body.tok = S.tok;
     if (action === "teamAuth" && !(extra && Object.prototype.hasOwnProperty.call(extra, "pin"))) body.keep = 1;
     var limit = Number(ms) || API_MS[action] || 30000, ctrl = null, timer = null;
@@ -2068,11 +2069,56 @@ h3.sec{color:#1F3A5F}
       if (!S.near.length) toast("No site on the book within 400 m. Use + New site.");
     });
   }
+  /* ===== STAGE -> WHAT TO PITCH, IN OUR BRANDS (CRM 6.9.787 / Visit 1.4.21) ===== */
+  var EW_PITCH = {
+    design:  { t: "Design / enquiry", win: false, lines: ["Get our brands written into the drawing: Huliot drainage, Heliroma PPR, Geberit concealed cisterns, TOTO / FIMA", "Book a showroom visit with the architect"] },
+    found:   { t: "Foundation", win: false, lines: ["Huliot HT PRO underground drainage", "Grundfos sump / dewatering pump", "Plan the Stellar water tank"] },
+    slab:    { t: "Structure / slab", win: true, lines: ["Huliot sleeves and floor-drain positions in the slab", "Lunos / INAIR wall sleeves for ventilation"] },
+    brick:   { t: "Brickwork", win: true, lines: ["Geberit / TECE concealed cisterns - before plaster", "Huliot Ultra Silent soil and waste lines", "Heliroma PPR rough-in"] },
+    plumb:   { t: "Concealed plumbing", win: true, lines: ["Heliroma PPR or Sanitaar SS press pipes", "FIMA concealed bodies and diverters", "Geberit concealed cisterns", "Huliot Ultra Silent drainage"] },
+    elec:    { t: "Concealed electrical", win: true, lines: ["Power points for Green Heat heat pump, Grundfos pressure pump, Pentair softener", "INAIR / Lunos fresh-air points"] },
+    plaster: { t: "Plastering", win: false, lines: ["Keep the quote warm - follow up", "Bring them to the showroom to finalise TOTO / FIMA"] },
+    water:   { t: "Waterproofing", win: true, lines: ["TECE shower drains", "MEA channels for terrace and balcony"] },
+    floor:   { t: "Flooring / tiling", win: true, lines: ["TECE Showerline drains", "MEA drainage channels", "Huliot floor traps"] },
+    cp:      { t: "Sanitary & CP fitting", win: true, lines: ["TOTO sanitaryware and Washlets", "FIMA faucets and showers", "Oyster shower systems", "Geberit flush plates"] },
+    paint:   { t: "Painting / false ceiling", win: false, lines: ["Lunos / INAIR ventilation", "Green Heat heat pump", "Grundfos pressure pump"] },
+    fitout:  { t: "Final fit-out / handover", win: true, lines: ["Pentair softener and filters", "Grundfos pressure pump", "Green Heat heat pump", "Stellar tank, Eureka Forbes RO, Adani solar"] },
+    done:    { t: "Completed", win: false, lines: ["AMC for Pentair / Grundfos / Green Heat", "Ask for a referral"] }
+  };
+  function ewStageKey(st) {
+    var s = String(st || "").toLowerCase();
+    if (!s) return "";
+    if (/design|drawing|enquiry|not started/.test(s)) return "design";
+    if (/excavat|foundation/.test(s)) return "found";
+    if (/slab|structure/.test(s)) return "slab";
+    if (/brick|masonry/.test(s)) return "brick";
+    if (/plumb|rough/.test(s)) return "plumb";
+    if (/electric/.test(s)) return "elec";
+    if (/waterproof/.test(s)) return "water";
+    if (/plaster/.test(s)) return "plaster";
+    if (/floor|tiling|tile/.test(s)) return "floor";
+    if (/sanitary|cp fitting/.test(s)) return "cp";
+    if (/paint|ceiling/.test(s)) return "paint";
+    if (/fit.?out|handover/.test(s) && !/post/.test(s)) return "fitout";
+    if (/complet|post|amc/.test(s)) return "done";
+    return "";
+  }
+  function ewPitchFor(st) { var k = ewStageKey(st); return k ? EW_PITCH[k] : null; }
+  function ewPitchBox(st, moved, client) {
+    var p = ewPitchFor(st); if (!p) return "";
+    return '<div class="card" style="border-color:' + (p.win ? '#f59e0b' : '#DCE3EA') + ';background:' + (p.win ? '#fffbeb' : '#fff') + '">' +
+      (moved ? '<div style="font-weight:700;color:#92400e;margin-bottom:4px">Stage moved to ' + esc(st) + ' - pitch now</div>' : '<div style="font-weight:700">Pitch now at ' + esc(p.t) + '</div>') +
+      (p.win ? '<div class="meta" style="color:#b45309">This window closes when the walls / floor are finished.</div>' : '') +
+      '<ul style="margin:6px 0 0 18px;padding:0">' + p.lines.map(function (l) { return '<li style="margin:3px 0">' + esc(l) + '</li>'; }).join("") + '</ul>' +
+      (client ? '<div class="acts"><button class="btn sm" data-act="pz-quote" data-id="' + esc(client) + '" style="min-height:44px">Make a quote for ' + esc(client) + '</button></div>' : '') + '</div>';
+  }
   function siteSheet(st) {
     var o = siteOwner(st), mine = siteMine(st), vs = vlVisits(st), qs = vlQuotes(st), c = clientByName(st.client);
     var h = '<h2>' + esc(st.name || st.client || "Site") + '</h2>' +
       '<div class="meta">' + esc([st.client && st.client !== st.name ? st.client : "", st.city || st.location, st.type].filter(Boolean).join(" · ")) + '</div>' +
-      (st.stage ? '<div style="margin:6px 0"><span class="pill blu">' + esc(st.stage) + '</span></div>' : '');
+      (st.stage ? '<div style="margin:6px 0"><span class="pill blu">' + esc(st.stage) + '</span></div>' : '') +
+      (st.stage ? ewPitchBox(st.stage, S.stageMoved === st.id, st.client || "") : '');   /* 1.4.21 */
+    if (S.stageMoved === st.id) S.stageMoved = null;
     if (!mine) h += '<div class="note warn"><b>Already visited by ' + esc(o.by) + '</b>' + (o.at ? ' on ' + esc(fd(o.at)) : '') + '. This site is ' + esc(o.by) + '&rsquo;s. You can still log your visit &mdash; it is shown as a later visit.</div>';
     else h += '<div class="meta">Entered by ' + esc(o.by || "-") + (o.at ? ' on ' + esc(fd(o.at)) : '') + '</div>';
     if (mine) {
@@ -2124,7 +2170,7 @@ h3.sec{color:#1F3A5F}
       var local = { id: "LV-" + Date.now(), siteId: st.id, siteName: st.name || "", client: st.client || "", createdBy: S.user, createdAt: iso(), date: today(), visitType: L.met, purpose: _purp, verified: "" };
       (S.data.sitevisits = S.data.sitevisits || []).push(local);
       var stageCh = L.stage && L.stage !== st.stage;
-      if (stageCh) saveRow("sites", Object.assign({}, st, { stage: L.stage }));
+      if (stageCh) { saveRow("sites", Object.assign({}, st, { stage: L.stage })); st.stage = L.stage; S.stageMoved = st.id; }   /* 1.4.21 - the pitch band shows on the sheet below */
       nextFollow(st.client || st.name, _next, "Next meeting (site visit, " + (st.name || "") + ") - For: " + _brands.join(", ") + ": " + L.note);   /* 1.2.0 */
       api("siteVisit", extra).then(function (r) {
         if (r && r.ok) { local.verified = r.verified || ""; toast("Visit saved" + (r.verified === "Verified" ? " — at the site." : r.note ? " — " + r.note : ".")); }
@@ -2326,11 +2372,31 @@ h3.sec{color:#1F3A5F}
     return h + '</tbody></table></div>';
   }
 
+  /* 1.4.20 - old quotes to close (as CRM 6.9.786) */
+  function vStaleQ(all) {
+    var byId = {}; (S.data.quotes || []).forEach(function (x) { if (x) byId[x.id] = x; });
+    var fam = {};
+    all.forEach(function (x) { var r = qRootOf(x, byId), k = r ? r.id : x.id, c = fam[k];
+      if (!c || (Number(x.version) || 1) > (Number(c.version) || 1) || ((Number(x.version) || 1) === (Number(c.version) || 1) && String(x.createdAt || "") > String(c.createdAt || ""))) fam[k] = x; });
+    var fresh = {};
+    (S.data.followups || []).forEach(function (fu) {
+      var dd = [fu.createdAt, fu.updatedAt, fu.dueDate].map(function (d) { return d ? -daysTo(d) : 9999; });
+      if (Math.min.apply(null, dd) < 45) { fresh[lower(fu.client || "")] = 1; fresh[lower(fu.customerName || "")] = 1; }
+    });
+    return Object.keys(fam).map(function (k) { return fam[k]; }).filter(function (x) {
+      return x.status !== "Won" && x.status !== "Lost" && qSilentDays(x) >= 45 && !quoteSnoozed(x) && !fresh[lower(x.client || "")];
+    });
+  }
   function viewQuotes() {
     var f = S.fq || "all", all = myQuotes(), q = lower(S.q);
+    var _st = []; try { _st = vStaleQ(all); } catch (eS) { _st = []; }
+    var _band = _st.length ? '<div class="card" style="border-color:#fbbf24;background:#fffbeb"><b style="color:#92400e">' + _st.length + ' old quote' + (_st.length > 1 ? 's' : '') + ' to close</b>' +
+      '<div class="meta">No word for 45+ days and no follow-up with the client. Mark each Won or Lost.</div>' +
+      '<div class="acts"><button class="btn sm' + (S.qStale ? ' gry' : '') + '" data-act="q-stale" style="min-height:44px">' + (S.qStale ? 'Hide the list' : 'Close them now') + '</button></div>' +
+      (S.qStale ? qTable(_st) : '') + '</div>' : '';
     var cnt = function (k) { return all.filter(function (x) { return fqOk(x, k); }).length; };
     var list = all.filter(function (x) { return fqOk(x, f); }).filter(function (x) { return !q || lower([x.client, x.quoteNo, x.code, x.brand, x.siteName].join(" ")).indexOf(q) >= 0; });
-    return '<h2>Quotes</h2><div class="acts"><button class="btn full" data-act="qz-new">+ New quote</button></div>' +
+    return '<h2>Quotes</h2><div class="acts"><button class="btn full" data-act="qz-new">+ New quote</button></div>' + _band +
       '<div class="chips">' + [["all", "All"], ["Draft", "Not sent"], ["follow", "To follow up"], ["Sent", "Sent"], ["Negotiating", "Negotiating"], ["Won", "Won"], ["Lost", "Lost"]].map(function (x) {
         return '<button class="chip' + (f === x[0] ? ' on' : '') + '" data-act="fq" data-k="' + x[0] + '">' + x[1] + ' <b>' + cnt(x[0]) + '</b></button>'; }).join("") + '</div>' +
       '<div class="bar"><input id="qq" placeholder="Client, quote number or brand" value="' + esc(S.q || "") + '" autocomplete="off"/></div>' +
@@ -2622,6 +2688,7 @@ h3.sec{color:#1F3A5F}
     if (act === "cl-new") { var s0 = k ? siteById(k) : null; S.cn = { name: s0 ? (s0.client || s0.name) : "", mobile: s0 ? s0.mobile : "", dist: s0 ? (s0.location || districts()[0]) : districts()[0], area: s0 ? s0.city : "", plumber: s0 ? s0.plumber : "", architect: s0 ? s0.architect : "", siteId: s0 ? s0.id : "" }; S.sheet = clNewSheet(); render(); return; }
     if (act === "cn-save") { cnSave(); return; }
     if (act === "qz-new") { startQuote(""); return; }
+    if (act === "pz-quote") { S.sheet = null; startQuote(id || ""); return; }   /* 1.4.21 */
     if (act === "qz-for") { startQuote(k); return; }
     if (act === "qz-cancel") { S.qz = null; S.tab = "quotes"; render(); return; }
     if (act === "qz-client") { S.qz.client = k; S.qz.step = 2; render(); window.scrollTo(0, 0); return; }
@@ -2653,6 +2720,7 @@ h3.sec{color:#1F3A5F}
     if (act === "q-open") { var q = qById(id); if (!q) return; S.sheet = qSheet(q); render(); return; }
     if (act === "q-wa" || act === "q-pdf") { var q2 = qById(id); if (q2) qShare(q2, act === "q-wa"); return; }
     if (act === "vq-upd") { vqUpdate(); return; }
+    if (act === "q-stale") { S.qStale = !S.qStale; render(); return; }   /* 1.4.20 */
     if (act === "qr-st") { var _qr = qById(id); if (_qr) qRowSet(_qr, k); return; }   /* 1.4.0 */
     if (act === "q-st") { var q3 = qById(id); if (q3) qSetStatus(q3, k); return; }
     if (act === "q-lost") { var q4 = qById(id); if (!q4) return; S.sheet = qLostSheet(q4); render(); return; }
@@ -2738,7 +2806,7 @@ h3.sec{color:#1F3A5F}
     };
   })();
 
-  /* ======== SHARED QUOTE PDF - BUILT FROM THE CRM'S team/app.js 6.9.782 BY sharedpdf/build_visit_pdf.py - DO NOT EDIT HERE ========
+  /* ======== SHARED QUOTE PDF - BUILT FROM THE CRM'S team/app.js 6.9.789 BY sharedpdf/build_visit_pdf.py - DO NOT EDIT HERE ========
      Edit the CRM, then run the script again. Later declarations win, so these replace the Visit
      app's own older copies of the same functions. */
   var QX_BASE = "../team/";
