@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.791";
+  var APP_VERSION = "6.9.792";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -2410,7 +2410,7 @@
        beside it and missing from the payment’s own. */
     if (tab === "payments") return (r.id ? receiptNo(r) + " · " : "") + String(r.client || "") +
       (r.amount ? " · " + money(r.amount) : "");
-    if (tab === "quotes") return String(qNo(r) || "") + (r.client ? " · " + r.client : "");
+    if (tab === "quotes") return String((typeof qNo === "function" ? qNo(r) : r.quoteNo) || "") + (r.client ? " · " + r.client : "");   /* 6.9.776 QT number where the app has it; one function in every app */
     if (tab === "discounts") return String(r.client || "") + " · " + String(r.brand || "");
     if (tab === "clients" || tab === "customers") return String(r.name || "");
     if (tab === "team") return String(r.name || "");
@@ -9767,7 +9767,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         var ins = st.install[String(idx)] || st.install["*"] || null, ho = st.handover[String(idx)] || st.handover["*"] || null;
         var commDate = cs ? String(cs.date || "").slice(0, 10) : "", inst = ins ? ins.date : commDate, hand = ho ? ho.date : "";
         if (!ins && !ho && cs && (cs.at === "crm" || !cs.at || String(cs.at) < EWI_LAUNCH)) { hand = commDate; inst = inst || commDate; }
-        out.push({ c: c, i: i, idx: idx, name: ewiShortCrm(i), inst: inst, comm: !!cs, commDate: commDate, hand: hand, ins: ins, ho: ho,
+        out.push({ c: c, i: i, idx: idx, name: ewiShortCrm(i), inst: inst, comm: !!cs, commDate: commDate, hand: hand, ins: ins, hop: ho,
                    stage: !inst ? "install" : !cs ? "comm" : !hand ? "hand" : "done" });
       });
     });
@@ -9789,7 +9789,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     ], open.slice(0, 300).map(function (x) {
       return { v: { client: x.c.customerName || "", no: x.c.challanNo || "", what: x.name, qty: Number(x.i.qty) || 1, inst: x.inst, comm: x.commDate, hand: x.hand }, cells: {
         client: '<b>' + esc(x.c.customerName || "") + '</b>', no: esc(x.c.challanNo || ""), what: esc(x.name) + (x.i.brand ? ' <span class="meta">' + esc(x.i.brand) + '</span>' : ''), qty: esc(String(x.i.qty || 1)),
-        inst: d(x.inst) + pics(x.ins, "install"), comm: x.comm ? d(x.commDate) : d(""), hand: d(x.hand) + pics(x.ho, "handover"),
+        inst: d(x.inst) + pics(x.ins, "install"), comm: x.comm ? d(x.commDate) : d(""), hand: d(x.hand) + pics(x.hop, "handover"),
         go: ewmBtn(x)   /* 6.9.784 */
       } };
     }), "each product and its three steps") + '</div>';
@@ -9896,7 +9896,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       (H.busy ? '<div class="meta" style="margin-top:6px">Making the warranty card link…</div>' : (H.err ? '<div class="meta" style="margin-top:6px;color:#b45309">The card link could not be made (' + esc(H.err) + ') - the message goes without it.</div>' : '')) +
       (!mob ? '<div class="meta" style="margin-top:6px;color:#b45309">No mobile number on this client - add it on his card first.</div>' : '') +
       '<div class="foot"><button class="btn ghost" data-act="close">Not now</button>' +
-      (mob && !H.busy ? '<a class="btn" style="min-height:44px;display:inline-flex;align-items:center" target="_blank" rel="noopener" data-act="ho-sent" href="https://wa.me/91' + mob + '?text=' + encodeURIComponent(hoMsg(H)) + '">Send on WhatsApp</a>' : '') + '</div>';
+      (mob && !H.busy ? '<a class="btn" style="min-height:44px;display:inline-flex;align-items:center" target="_blank" rel="noopener" data-act="handover-sent" href="https://wa.me/91' + mob + '?text=' + encodeURIComponent(hoMsg(H)) + '">Send on WhatsApp</a>' : '') + '</div>';
   }
   function hoOpen(chId, lineIdx, date) {
     var ch = (S.data.challans || []).filter(function (x) { return x.id === chId; })[0]; if (!ch) return;
@@ -59459,7 +59459,7 @@ function viewCatalogue() {
       S.ewm.sel[_ei] = true; S.modal = modalEwm(); render(); return;
     }
     if (act === "ewm-save") { ewmSave(); return; }
-    if (act === "ho-sent") { var _h = S.ho; S.ho = null; S.modal = null; setTimeout(render, 300);   /* 6.9.788 - the link opens WhatsApp; the row is noted */
+    if (act === "handover-sent") { var _h = S.ho; S.ho = null; S.modal = null; setTimeout(render, 300);   /* 6.9.788 - the link opens WhatsApp; the row is noted */
       if (_h) { try { save("audit", { id: "", createdAt: new Date().toISOString(), actor: S.user || "", action: "handover:wa", target: _h.client, detail: JSON.stringify({ chId: _h.ch, url: _h.url, next: _h.next }), ip: "" }, true); } catch (eA) { } }
       return; }
     if (act === "comm-open") { S.modal = modalCommission(t.getAttribute("data-ch")); render(); return; }
