@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.805";
+  var APP_VERSION = "6.9.806";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -30150,7 +30150,9 @@ function viewCatalogue() {
       g.n++;
       /* 6.9.801 - one brand once. Mahabir's statement read "Accessory, Accessory" because two
          challans spelt it differently (case / a trailing space). Keyed on the plain name. */
-      if (r.brand) { var _bk = String(r.brand).trim(); if (_bk && !g.brands[_bk.toLowerCase()]) g.brands[_bk.toLowerCase()] = _bk; }
+      /* 6.9.806 - and a row's brand can itself be a list ("Accessory, DRP, Drain Chambers" - a challan of
+         several brands), which is what still printed "Accessory, Accessory" on Mahabir's live statement. */
+      if (r.brand) String(r.brand).split(",").forEach(function (b0) { var _bk = b0.trim(); if (_bk && !g.brands[_bk.toLowerCase()]) g.brands[_bk.toLowerCase()] = _bk; });
       g.rows.push(r);
     });
     return order.map(function (k) {
