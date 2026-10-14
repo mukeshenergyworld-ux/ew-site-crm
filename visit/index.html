@@ -70,6 +70,8 @@ textarea{min-height:84px}
 .hist b.h{display:block;font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:#92400e;margin-bottom:4px}
 .hist .ln{padding:4px 0;border-top:1px solid #fef3c7}
 .hist .ln:first-of-type{border-top:0}
+.vpics{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0}.vpic{display:flex;flex-direction:column;align-items:center;gap:4px}.vpic img{width:76px;height:76px;object-fit:cover;border-radius:10px;border:1px solid #cbd5e1}
+.vpbtns{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0}.vpbtns label{position:relative;overflow:hidden}.vpbtns input[type=file]{position:absolute;inset:0;opacity:0;width:100%;cursor:pointer}
 .info{border:1px solid #bae6fd;background:#f0f9ff;border-radius:12px;padding:8px 10px;margin:8px 0;font-size:13px}
 .info .kv{display:flex;gap:6px;padding:3px 0}
 .info .kv span{color:#64748b;min-width:84px}
@@ -189,7 +191,7 @@ h3.sec{color:#1F3A5F}
       button: function () { return '<button type="button" class="ewthm" onclick="ewTheme.next(this)">' + ewtLabel() + '</button>'; }
     };
   })();
-  var APP_VERSION = "1.4.26";
+  var APP_VERSION = "1.5.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_vq_session", JRN = "ew_vq_journal_v1", CALLQ = "ew_vq_calls_v1", SNAPK = "ew_vq_snap_";
   var CAT_KEY = "ew_team_catalog", CAT_V = 2;   /* the CRM's own shelf copy of the price list - shared, same origin */
@@ -1978,6 +1980,111 @@ h3.sec{color:#1F3A5F}
     return [forB && forB.length ? "For: " + forB.join(", ") : "", intB && intB.length ? "Interested in: " + intB.join(", ") : "", next ? "Next meeting: " + fd(next) : ""].filter(Boolean).join(" · ");
   }
 
+  /* ================= 1.5.0 - PHOTOS ON A VISIT =================
+     Shrunk on the phone (1400 px for the picture, 96 px for the thumbnail), hosted on Drive with pdfHost once the
+     visit is saved, and recorded as an audit row visit:photo. Nothing is deleted; a photo removed before saving is
+     simply never sent. */
+  function vpShrink(file, maxPx, qual) {
+    return new Promise(function (res) {
+      var fr = new FileReader();
+      fr.onload = function () {
+        var img = new Image();
+        img.onload = function () {
+          var sc = Math.min(1, (maxPx || 1400) / Math.max(img.width, img.height));
+          var c = document.createElement("canvas"); c.width = Math.round(img.width * sc); c.height = Math.round(img.height * sc);
+          var cx = c.getContext("2d"); cx.fillStyle = "#ffffff"; cx.fillRect(0, 0, c.width, c.height); cx.drawImage(img, 0, 0, c.width, c.height);
+          res(c.toDataURL("image/jpeg", qual || 0.7).split(",")[1]);
+        };
+        img.onerror = function () { res(null); };
+        img.src = String(fr.result);
+      };
+      fr.onerror = function () { res(null); };
+      fr.readAsDataURL(file);
+    });
+  }
+  function vpList(key) { S.vp = S.vp || {}; return S.vp[key] || (S.vp[key] = []); }
+  function vpInner(key) {
+    var L = vpList(key);
+    return (L.length ? '<div class="vpics">' + L.map(function (p, i) {
+      return '<div class="vpic"><img alt="" src="data:image/jpeg;base64,' + p.thumb + '"/><button type="button" class="btn sm gry" data-act="vp-rm" data-k="' + key + '" data-id="' + i + '">Remove</button></div>';
+    }).join("") + '</div>' : '') + ((S.vpRead || 0) > 0 ? '<div class="meta">Reading the photo…</div>' : '');
+  }
+  function picsHtml(key, selfie) {
+    var b = selfie
+      ? '<label class="btn sm">Take a selfie with him<input type="file" accept="image/*" capture="user" class="vp-pic" data-k="' + key + '"/></label>'
+      : '<label class="btn sm">Take a photo<input type="file" accept="image/*" capture="environment" multiple class="vp-pic" data-k="' + key + '"/></label>' +
+        '<label class="btn sm gry">From gallery<input type="file" accept="image/*" multiple class="vp-pic" data-k="' + key + '"/></label>';
+    return '<div class="vpbtns">' + b + '</div><div id="vp_' + key + '">' + vpInner(key) + '</div>';
+  }
+  function vpPaint(key) { var b = el("vp_" + key); if (b) b.innerHTML = vpInner(key); }
+  function vpSend(key, meta) {
+    var L = vpList(key).slice(); S.vp[key] = [];
+    if (!L.length) return;
+    var up = 0, fail = 0;
+    var next = function (i) {
+      if (i >= L.length) { if (fail) toast(fail + " photo(s) did not go up — no signal? Take them again later."); else toast(up + " photo" + (up === 1 ? "" : "s") + " saved with the visit."); return; }
+      var nm = (meta.kind + "-" + meta.visitKey + "-" + (i + 1) + ".jpg").replace(/[^\w.-]+/g, "_");
+      api("pdfHost", { pdfBase64: L[i].b64, filename: nm, mime: "image/jpeg" }, 240000).then(function (h) {
+        if (!h || !h.ok || !h.url) { fail++; return; }
+        return saveRow("audit", { id: "", createdAt: iso(), actor: S.user, action: "visit:photo", target: meta.who || "",
+          detail: JSON.stringify({ visitKey: meta.visitKey, kind: meta.kind, siteId: meta.siteId || "", who: meta.who || "", url: h.url, thumb: L[i].thumb, by: S.user, at: iso() }), ip: "" }).then(function () { up++; });
+      }).catch(function () { fail++; }).then(function () { next(i + 1); });
+    };
+    next(0);
+  }
+  function vpPhotosOf(siteId) {
+    return (S.data.audit || []).filter(function (r) { return r && r.action === "visit:photo"; }).map(function (r) {
+      var d = {}; try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { d = {}; } return d;
+    }).filter(function (d) { return d.siteId && String(d.siteId) === String(siteId) && d.url; }).sort(function (a, b) { return String(b.at).localeCompare(String(a.at)); });
+  }
+  /* ================= 1.5.0 - WHO IS THIS MOBILE ================= */
+  function mobWho(m, kind) {
+    m = mob10(m); if (m.length !== 10) return null;
+    var hit = function (x) { return mob10(x.mobile) === m || mob10(x.mobile2) === m; };
+    if (kind === "client") {
+      var c = (S.data.clients || []).filter(hit)[0]; if (c) return { name: c.name, from: "client", rec: c };
+      var st = (S.data.sites || []).filter(function (x) { return mob10(x.mobile) === m; })[0]; if (st) return { name: st.client || st.name, from: "site", rec: st };
+      return null;
+    }
+    var rx = kind === "plumber" ? /plumb/i : kind === "architect" ? /archit/i : null;
+    var all = (S.data.associates || []).filter(hit);
+    var a = all.filter(function (x) { return !rx || rx.test(String(x.role || "")); })[0] || all[0];
+    return a ? { name: a.name, from: "partner", rec: a, role: a.role || "", other: !!(rx && !rx.test(String(a.role || ""))) } : null;
+  }
+  /* ================= 1.5.0 - THE SHOWROOM LOG =================
+     His rule: a client we have delivered Huliot to is the one to bring to the showroom for TOTO and FIMA. */
+  function showroomVisits() {
+    var out = {};
+    (S.data.audit || []).forEach(function (r) {
+      if (!r || r.action !== "visit:mark") return;
+      var d = {}; try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
+      if (d.kind !== "showroom" || String(d.whoKind || "") !== "Client") return;
+      var k = dkey(d.who || r.target); if (!k) return;
+      var at = String(r.createdAt || "");
+      if (!out[k] || at > out[k].at) out[k] = { at: at, by: r.actor || "", n: (out[k] ? out[k].n : 0) + 1 }; else out[k].n++;
+    });
+    return out;
+  }
+  function showroomLogHtml() {
+    var sv = showroomVisits(), cl = myClients(), came = [], due = [];
+    cl.forEach(function (c) {
+      var k = dkey(c.name), v = sv[k];
+      if (v) { came.push({ c: c, v: v }); return; }
+      var H = brandHist(c.name), del = Object.keys(H).filter(function (b) { return H[b].c; });
+      var hul = del.some(function (b) { return /huliot/i.test(b); }), tf = del.some(function (b) { return /toto|fima/i.test(b); });
+      if (hul && !tf) due.push({ c: c });
+    });
+    came.sort(function (a, b) { return b.v.at.localeCompare(a.v.at); });
+    var h = '<h3 class="sec">Showroom log</h3>';
+    h += '<div class="card"><div class="ttl2">Should come to the showroom &mdash; ' + due.length + '</div><div class="meta">Huliot delivered, TOTO / FIMA not yet, never in the showroom.</div>' +
+      (due.length ? due.slice(0, 40).map(function (x) { var m = mob10(x.c.mobile);
+        return '<div class="kv" style="display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid #e2e8f0"><span style="flex:1">' + esc(x.c.name) + (x.c.area || x.c.location ? ' <span class="meta">· ' + esc(x.c.area || x.c.location) + '</span>' : '') + '</span>' +
+          (m.length === 10 ? '<a class="btn sm gry" href="tel:' + m + '">Call</a>' : '') + '</div>'; }).join("") : '<div class="empty">Nobody due.</div>') + '</div>';
+    h += '<div class="card"><div class="ttl2">Came to the showroom &mdash; ' + came.length + '</div>' +
+      (came.length ? came.slice(0, 40).map(function (x) {
+        return '<div style="padding:6px 0;border-top:1px solid #e2e8f0">' + esc(x.c.name) + ' <span class="meta">· ' + esc(fd(x.v.at)) + ' · ' + esc(x.v.by) + (x.v.n > 1 ? ' · ' + x.v.n + ' times' : '') + '</span></div>'; }).join("") : '<div class="empty">None marked yet.</div>') + '</div>';
+    return h;
+  }
   /* ================= MARK A VISIT ================= */
   function viewVisit() {
     var k = S.vk || "site";
@@ -1989,6 +2096,7 @@ h3.sec{color:#1F3A5F}
         '<div id="sres">' + siteResults() + '</div>';
     } else {
       h += partnerForm(k);
+      if (k === "showroom") h += showroomLogHtml();   /* 1.5.0 */
     }
     var mv = myVisits().slice(0, 10);
     h += '<h3 class="sec">My latest visits</h3>' + (mv.length ? mv.map(visitRow).join("") : '<div class="empty">None yet.</div>');
@@ -2001,14 +2109,17 @@ h3.sec{color:#1F3A5F}
     var h = '<div class="card">';
     if (k === "showroom") h += '<label>Who came to the showroom</label><div class="chips">' + ["Client", "Plumber / partner"].map(function (x) { return '<button class="chip' + (who === x ? ' on' : '') + '" data-act="pv-who" data-k="' + esc(x) + '">' + esc(x) + '</button>'; }).join("") + '</div>';
     var known = P.name && (k === "showroom" && who === "Client" ? !!clientByName(P.name) : !!partnerByName(P.name));
-    h += '<div class="g2"><div><label for="pv_name">' + (k === "showroom" ? esc(who) : (k === "plumber" ? "Plumber" : "Architect")) + '</label>' +
-      '<input id="pv_name" list="pv_list" value="' + esc(P.name || "") + '" placeholder="Pick, or type a new name" autocomplete="off"/>' +
-      '<datalist id="pv_list">' + list.slice(0, 600).map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join("") + '</datalist></div>' +
-      '<div><label for="pv_mob">Mobile (if new)</label><input id="pv_mob" inputmode="numeric" value="' + esc(P.mob || "") + '" placeholder="10 digits"' + (known ? ' disabled' : '') + '/></div></div>' +
+    /* 1.5.0 - the mobile first: 10 digits fill in who it is */
+    h += '<div class="g2"><div><label for="pv_mob">Mobile</label><input id="pv_mob" inputmode="numeric" value="' + esc(P.mob || "") + '" placeholder="10 digits - fills in the rest" autocomplete="off"/></div>' +
+      '<div><label for="pv_name">' + (k === "showroom" ? esc(who) : (k === "plumber" ? "Plumber" : "Architect")) + '</label>' +
+      '<input id="pv_name" list="pv_list" value="' + esc(P.name || "") + '" placeholder="Or pick / type the name" autocomplete="off"/>' +
+      '<datalist id="pv_list">' + list.slice(0, 600).map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join("") + '</datalist></div></div>' +
+      (P.mobNote ? '<div class="note' + (P.mobWarn ? ' warn' : '') + '">' + P.mobNote + '</div>' : '') +
       '<div id="pv_info">' + pvInfoHtml(k, who, P.name || "") + '</div>' +   /* 1.1.0 */
       (k === "showroom" && who === "Client" ? '<label>Came for which brand <span class="req">*</span></label>' + brandTiles(P.came || (P.came = []), "pv-came", "came") +
         '<label>Interested in <span class="req">*</span> <span class="meta">(tap all he liked)</span></label>' + brandTiles(P.int || (P.int = []), "pv-int", "int") +
         nextHtml("pv_next", P.next) : '') +   /* 1.2.0 */
+      (k === "plumber" ? '<label>Selfie with him <span class="meta">(optional - he likes it)</span></label>' + picsHtml("pv_selfie", true) : '') +   /* 1.5.0 */
       '<label for="pv_note">What was discussed</label><textarea id="pv_note" placeholder="e.g. showed the Grohe range, he has two sites starting in Model Town">' + esc(P.note || "") + '</textarea>' +
       '<div class="acts"><button class="btn full" data-act="pv-save" data-k="' + k + '">Save the visit</button></div></div>';
     return h;
@@ -2031,6 +2142,8 @@ h3.sec{color:#1F3A5F}
     var who = k === "showroom" ? (P.whoKind || "Client") : (k === "plumber" ? "Plumber" : "Architect");
     var known = k === "showroom" && who === "Client" ? !!clientByName(name) : !!partnerByName(name);
     if (!known && mob && mob.length !== 10) { toast("The mobile number needs 10 digits."); return; }
+    /* 1.5.0 - a new name on a mobile that is already someone's is a duplicate */
+    if (!known && mob.length === 10) { var _mw = mobWho(mob, k === "showroom" && who === "Client" ? "client" : (k === "showroom" ? "" : k)); if (_mw && dkey(_mw.name) !== dkey(name)) { toast("This mobile is already " + _mw.name + "'s. Pick him, or check the number."); return; } }
     /* 1.2.0 - a client in the showroom: which brand he came for, what he liked, when we meet him next */
     var isCl = k === "showroom" && who === "Client", came = (P.came || []).slice(), intr = (P.int || []).slice(), nx = val("pv_next");
     if (isCl && !came.length) { toast("Tap the brand he came for."); return; }
@@ -2045,6 +2158,7 @@ h3.sec{color:#1F3A5F}
       /* a plumber or architect not on the list becomes a partner, as the CRM does from a client form */
       if (!known && k !== "showroom" && mob.length === 10) save("associates", { id: "", name: name, role: who, mobile: mob, mobile2: "", location: "", area: "", address: "", birthday: "", anniversary: "", rate: "", notes: "added from a visit (Visit & Quote app)", ownedBy: S.user });
       if (isCl) nextFollow(name, nx, "Next meeting (showroom visit) - " + brandLine(came, intr, "") + (note ? ": " + note : ""));
+      if (k === "plumber") vpSend("pv_selfie", { kind: "selfie", visitKey: "PV-" + Date.now(), who: name });   /* 1.5.0 */
       S.pv = {}; render(); toast("Visit saved — " + name + (isCl ? ". Next meeting " + fd(nx) + "." : "."));
     });
   }
@@ -2148,6 +2262,9 @@ h3.sec{color:#1F3A5F}
         (v.verified === "Verified" ? ' &middot; <span class="pill grn">at the site</span>' : v.verified === "Far" ? ' &middot; <span class="pill amb">away from the site</span>' : '') + '</div>' +
         (mine || isMe(v.createdBy) ? (v.purpose || v.note ? '<div class="meta" style="color:#334155">' + esc(v.purpose || v.note) + '</div>' : '') : '') + '</div>';
     }).join("") : '<div class="empty">No visit logged yet.</div>');
+    var _ph = vpPhotosOf(st.id);   /* 1.5.0 */
+    if (_ph.length) h += '<h3 class="sec">Site photos &mdash; ' + _ph.length + '</h3><div class="vpics">' + _ph.slice(0, 30).map(function (p) {
+      return '<a class="vpic" href="' + esc(p.url) + '" target="_blank" rel="noopener"><img alt="" src="data:image/jpeg;base64,' + esc(p.thumb || "") + '"/><span class="meta">' + esc(fd(p.at)) + '</span></a>'; }).join("") + '</div>';
     h += '<h3 class="sec">Quotes &mdash; ' + qs.length + '</h3>' + (qs.length ? qs.map(function (q) {
       return mine || isMe(q.createdBy) ? qRow(q) : '<div class="card"><div class="ttl2">Quoted by ' + esc(q.createdBy || "") + '</div><div class="meta">' + esc(fd(q.createdAt)) + ' &middot; ' + esc(q.brand || "") + ' &middot; ' + esc(q.status || "") + '</div></div>';
     }).join("") : '<div class="empty">No quote yet.</div>');
@@ -2161,7 +2278,8 @@ h3.sec{color:#1F3A5F}
       '<label for="sl_note">What happened</label><textarea id="sl_note" placeholder="e.g. slab done, plumbing starts in two weeks, owner wants a CPVC quote">' + esc(L.note || "") + '</textarea>' +
       '<label>Visit for which brand <span class="req">*</span></label>' + brandTiles(L.brands || (L.brands = []), "sl-brand", "sl") +   /* 1.2.0 */
       nextHtml("sl_next", L.next) +
-      '<label>Stage now</label><select id="sl_stage"><option value="">(no change)</option>' + STAGES.map(function (s) { return '<option' + (L.stage === s ? ' selected' : '') + '>' + esc(s) + '</option>'; }).join("") + '</select>' +
+      '<label>Stage now <span class="req">*</span>' + (st.stage ? ' <span class="meta">(last marked: ' + esc(st.stage) + ')</span>' : '') + '</label><select id="sl_stage"><option value="">&mdash; pick the stage you saw &mdash;</option>' + STAGES.map(function (s) { return '<option' + (L.stage === s ? ' selected' : '') + '>' + esc(s) + '</option>'; }).join("") + '</select>' +   /* 1.5.0 - must be picked */
+      '<label>Site photos <span class="meta">(as many as you like)</span></label>' + picsHtml("sl") +   /* 1.5.0 */
       '<div class="meta" style="margin-top:6px">Your location is taken with the visit, to show you were at the site.</div>' +
       '<div class="acts"><button class="btn gry" data-act="site-open" data-id="' + esc(st.id) + '">Back</button><button class="btn" data-act="sl-save">Save the visit</button></div>';
   }
@@ -2172,6 +2290,8 @@ h3.sec{color:#1F3A5F}
     if (L.note.length < 3) { toast("Write a line about the visit."); return; }
     if (!(L.brands || []).length) { toast("Tap the brand this visit is for."); return; }   /* 1.2.0 */
     if (!nextOk(L.next)) { toast("Pick the next meeting date."); return; }
+    if (!L.stage) { toast("Pick the stage you saw at the site."); return; }   /* 1.5.0 */
+    if ((S.vpRead || 0) > 0) { toast("Wait a moment - a photo is still being read."); return; }
     var _bl = brandLine(L.brands, null, L.next), _purp = (L.note + " · " + _bl).slice(0, 700), _brands = L.brands.slice(), _next = L.next;
     if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
     gps(5000).then(function (g) {
@@ -2181,6 +2301,7 @@ h3.sec{color:#1F3A5F}
       (S.data.sitevisits = S.data.sitevisits || []).push(local);
       var stageCh = L.stage && L.stage !== st.stage;
       if (stageCh) { saveRow("sites", Object.assign({}, st, { stage: L.stage })); st.stage = L.stage; S.stageMoved = st.id; }   /* 1.4.21 - the pitch band shows on the sheet below */
+      vpSend("sl", { kind: "site", visitKey: "SV-" + Date.now(), siteId: st.id, who: st.name || st.client || "" });   /* 1.5.0 */
       nextFollow(st.client || st.name, _next, "Next meeting (site visit, " + (st.name || "") + ") - For: " + _brands.join(", ") + ": " + L.note);   /* 1.2.0 */
       api("siteVisit", extra).then(function (r) {
         if (r && r.ok) { local.verified = r.verified || ""; toast("Visit saved" + (r.verified === "Verified" ? " — at the site." : r.note ? " — " + r.note : ".")); }
@@ -2199,7 +2320,8 @@ h3.sec{color:#1F3A5F}
     return '<h2>New site</h2><div class="meta">The site is yours. If the mobile is already on the book you are told who has it.</div>' +
       '<label for="sn_name">Site address</label><input id="sn_name" value="' + esc(N.name || "") + '" placeholder="e.g. 96 R, Model Town"/>' +
       '<div class="g2"><div><label for="sn_client">Client name</label><input id="sn_client" list="sn_cl" value="' + esc(N.client || "") + '" placeholder="Owner"/>' + dl("sn_cl", cl.map(function (c) { return c.name; })) + '</div>' +
-      '<div><label for="sn_mob">Mobile</label><input id="sn_mob" inputmode="numeric" value="' + esc(N.mobile || "") + '" placeholder="10 digits"/></div></div>' +
+      '<div><label for="sn_mob">Mobile</label><input id="sn_mob" inputmode="numeric" value="' + esc(N.mobile || "") + '" placeholder="10 digits - fills in the rest"/></div></div>' +
+      '<div id="sn_dup">' + (N.dupNote || '') + '</div>' +   /* 1.5.0 */
       '<div class="g4"><div><label for="sn_dist">District</label><input id="sn_dist" list="sn_dists" value="' + esc(N.dist || "") + '" placeholder="Pick or add"/>' + dl("sn_dists", districts()) + '</div>' +
       '<div><label for="sn_city">Area</label><input id="sn_city" list="sn_cities" value="' + esc(N.city || "") + '" placeholder="Pick or add"/><span id="sn_cdl">' + dl("sn_cities", areasFor(N.dist)) + '</span></div>' +
       '<div><label for="sn_pl">Plumber</label><input id="sn_pl" list="sn_pls" value="' + esc(N.plumber || "") + '" placeholder="Pick or add"/>' + dl("sn_pls", partners("plumber").map(function (a) { return a.name; })) + '</div>' +
@@ -2661,9 +2783,10 @@ h3.sec{color:#1F3A5F}
     if (act === "close") { S.sheet = null; S.sl = null; render(); return; }
     if (act === "go-visit") { S.tab = "visit"; S.vk = "site"; render(); return; }
     if (act === "go-quotes") { S.tab = "quotes"; S.fq = k === "Draft" ? "Draft" : k === "follow" ? "follow" : "all"; render(); return; }
-    if (act === "vk") { S.vk = k; S.pv = {}; S.near = null; render(); return; }
+    if (act === "vk") { S.vk = k; S.pv = {}; S.near = null; if (S.vp) S.vp.pv_selfie = []; render(); return; }
     if (act === "pv-who") { S.pv = S.pv || {}; S.pv.name = val("pv_name"); S.pv.note = val("pv_note"); S.pv.mob = val("pv_mob"); S.pv.whoKind = k; S.pv.name = ""; S.pv.came = []; S.pv.int = []; S.pv.next = ""; render(); return; }
     if (act === "pv-save") { pvSave(k, t); return; }
+    if (act === "vp-rm") { var _vl = vpList(k); _vl.splice(Number(id) || 0, 1); vpPaint(k); return; }   /* 1.5.0 */
     if (act === "near") { nearMe(t); return; }
     if (act === "site-new") { S.sn = { client: S.q || "" }; S.sheet = siteNewSheet(); render(); return; }
     if (act === "sn-save") { snSave(t); return; }
@@ -2689,7 +2812,7 @@ h3.sec{color:#1F3A5F}
       toast(_pc.name + ": " + _pf + " " + _pn + " saved."); pvInfoPaint(); return;
     }
     if (act === "site-open") { var st = siteById(id); if (!st) return; S.sl = null; S.sheet = siteSheet(st); render(); return; }
-    if (act === "sv-log") { var st2 = siteById(id); if (!st2) return; S.sl = { id: st2.id, met: "", stage: st2.stage || "" }; S.sheet = svLogSheet(st2); render(); return; }
+    if (act === "sv-log") { var st2 = siteById(id); if (!st2) return; S.sl = { id: st2.id, met: "", stage: "" }; S.vp = S.vp || {}; S.vp.sl = []; S.sheet = svLogSheet(st2); render(); return; }
     if (act === "sl-brand") { if (!S.sl) return; S.sl.brands = S.sl.brands || []; var _on = togIn(S.sl.brands, k); t.classList.toggle("on", _on); t.setAttribute("aria-pressed", _on); return; }   /* 1.2.0 - in place, nothing typed is lost */
     if (act === "pv-came" || act === "pv-int") { S.pv = S.pv || {}; var _a = act === "pv-came" ? (S.pv.came = S.pv.came || []) : (S.pv.int = S.pv.int || []); var _on2 = togIn(_a, k); t.classList.toggle("on", _on2); t.setAttribute("aria-pressed", _on2); return; }
     if (act === "nd") { var _ni = el(id); if (_ni) { _ni.value = addDays(Number(k) || 1); if (id === "pv_next") { S.pv = S.pv || {}; S.pv.next = _ni.value; } else if (S.sl) S.sl.next = _ni.value; } return; }
@@ -2744,7 +2867,31 @@ h3.sec{color:#1F3A5F}
   /* live typing repaints only the result box, so the keyboard stays up */
   document.addEventListener("input", function (ev) {
     var t = ev.target; if (!t || !S.data) return;
-    if (t.id === "pv_name") { S.pv = S.pv || {}; S.pv.name = t.value; S.pvSitesOpen = false; pvInfoPaint(); var _pm = el("pv_mob"); if (_pm) { var _k = S.vk, _w = _k === "showroom" ? (S.pv.whoKind || "Client") : ""; _pm.disabled = !!(_k === "showroom" && _w === "Client" ? clientByName(t.value) : partnerByName(t.value)); } return; }   /* 1.1.0 */
+    if (t.id === "pv_name") { S.pv = S.pv || {}; S.pv.name = t.value; S.pvSitesOpen = false; pvInfoPaint(); var _pm = el("pv_mob"); if (_pm) { var _k = S.vk, _w = _k === "showroom" ? (S.pv.whoKind || "Client") : ""; var _rec = (_k === "showroom" && _w === "Client") ? clientByName(t.value) : partnerByName(t.value); if (_rec && mob10(_rec.mobile).length === 10 && !mob10(_pm.value)) { _pm.value = _rec.mobile; S.pv.mob = _rec.mobile; } } return; }   /* 1.5.0 - a known name fills his mobile; the box stays open */
+    if (t.id === "pv_mob") {   /* 1.5.0 - 10 digits: who is it */
+      S.pv = S.pv || {}; S.pv.mob = t.value; var _m10 = mob10(t.value);
+      if (_m10.length === 10) {
+        var _vk = S.vk, _isCl = _vk === "showroom" && (S.pv.whoKind || "Client") === "Client";
+        var _f = mobWho(_m10, _isCl ? "client" : (_vk === "showroom" ? "" : _vk));
+        S.pv.note = val("pv_note");
+        if (_f) { S.pv.name = _f.name; S.pv.mobWarn = !!_f.other; S.pv.mobNote = _f.from === "site" ? "On a site as <b>" + esc(_f.name) + "</b> - not a client yet." : _f.other ? "This mobile is <b>" + esc(_f.name) + "</b>, on the book as " + esc(_f.role || "a partner") + "." : "Found: <b>" + esc(_f.name) + "</b>."; }
+        else { S.pv.mobNote = "New mobile - type the name; he is added to the book."; S.pv.mobWarn = false; }
+        render(); var _pn = el("pv_note"); if (_pn && !_f) { var _nm = el("pv_name"); if (_nm) _nm.focus(); }
+      }
+      return;
+    }
+    if (t.id === "sn_mob") {   /* 1.5.0 - the client's details from the book, and a warning if it is already there */
+      var _sm = mob10(t.value);
+      if (_sm.length === 10) {
+        var N0 = snKeep(), _c = mobWho(_sm, "client"), _cr = _c && _c.from === "client" ? _c.rec : null, _sr = _c && _c.from === "site" ? _c.rec : null;
+        if (_cr) { if (!N0.client) N0.client = _cr.name; if (!N0.dist) N0.dist = _cr.location || ""; if (!N0.city) N0.city = _cr.area || ""; if (!N0.plumber) N0.plumber = _cr.plumber || ""; if (!N0.architect) N0.architect = _cr.architect || ""; }
+        else if (_sr) { if (!N0.client) N0.client = _sr.client || ""; if (!N0.dist) N0.dist = _sr.location || ""; if (!N0.city) N0.city = _sr.city || ""; if (!N0.plumber) N0.plumber = _sr.plumber || ""; if (!N0.architect) N0.architect = _sr.architect || ""; }
+        var _dd = dupByMobile(_sm);
+        N0.dupNote = _dd.length ? dupHtml(_dd) : (_c ? '' : '<div class="meta">New mobile - not on the book yet.</div>');
+        S.sheet = siteNewSheet(); render();
+      }
+      return;
+    }
     if (t.id === "sn_dist") { var _sd = el("sn_cdl"); if (_sd) _sd.innerHTML = dl("sn_cities", areasFor(t.value)); return; }
     if (t.id === "cn_dist") { var _cd = el("cn_adl"); if (_cd) _cd.innerHTML = dl("cn_areas", areasFor(t.value)); return; }
     if (t.id === "sq") { S.q = t.value; S.near = null; var r = el("sres"); if (r) r.innerHTML = siteResults(); return; }
@@ -2757,6 +2904,21 @@ h3.sec{color:#1F3A5F}
     if (t.id === "sl_next" && S.sl) S.sl.next = t.value;
   });
 
+  /* 1.5.0 - photos picked from the camera or the gallery */
+  document.addEventListener("change", function (ev) {
+    var t = ev.target; if (!t || !t.classList || !t.classList.contains("vp-pic") || !S.data) return;
+    var key = t.getAttribute("data-k") || "x", files = Array.prototype.slice.call(t.files || []);
+    if (!files.length) return;
+    if (key === "sl" && S.sl) { S.sl.note = val("sl_note"); S.sl.stage = val("sl_stage"); S.sl.next = val("sl_next"); }
+    if (key === "pv_selfie") vpList(key).length = 0;   /* one selfie */
+    S.vpRead = (S.vpRead || 0) + files.length; vpPaint(key);
+    files.forEach(function (f) {
+      Promise.all([vpShrink(f, 1400, 0.7), vpShrink(f, 96, 0.5)]).then(function (p) {
+        if (p[0]) vpList(key).push({ b64: p[0], thumb: p[1] || "" }); else toast("That photo could not be read.");
+      }).catch(function () { toast("That photo could not be read."); }).then(function () { S.vpRead--; vpPaint(key); });
+    });
+    t.value = "";
+  });
   function pvInfoPaint() { var b = el("pv_info"); if (!b) return; var k = S.vk, P = S.pv || {}; b.innerHTML = pvInfoHtml(k, k === "showroom" ? (P.whoKind || "Client") : "", val("pv_name")); }
 
   /* ================= START ================= */
