@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.795";
+  var APP_VERSION = "6.9.796";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -20634,7 +20634,8 @@ function viewCatalogue() {
      needs touching. Its logo comes off assets/ rather than Drive - see LOCAL_LOGOS. */
   var PDF_LOGO_ORDER = ["Huliot", "Heliroma", "FIMA", "TOTO",
     "Grundfos", "Pentair", "Green Heat", "Adani",
-    "Geberit", "Stellar", "MEA", "Oyster", "Eureka Forbes"];
+    "Geberit", "Stellar", "MEA", "Oyster", "Eureka Forbes",
+    "Lunos", "INAIR", "TECE"];   /* 6.9.796 - they have logos now (6.9.795) */
 
   var DIST_BRANDS = ["HULIOT", "FIMA", "TOTO", "GRUNDFOS", "PENTAIR", "GREEN HEAT+", "GEBERIT",
     "INAIR", "LUNOS", "STELLAR", "MEA", "NEXGEN", "ADANI SOLAR", "HELIROMA", "EUREKA FORBES"];
@@ -21205,7 +21206,7 @@ function viewCatalogue() {
         var bCount = bBlocks.reduce(function (a, x) { return a + x.length; }, 0);
         var hasB = bCount ? 1 : 0;
         /* v6.9.772 - the technology chips: TOTO's icon then its name, wrapping in the description column */
-        var T_IC = 3.4, T_FS = 6.8, T_LH = 4.3;
+        var T_IC = 3.8, T_FS = 8, T_LH = 4.8;   /* 6.9.796 - 8 pt, was 6.8 */
         var _tl = (r.tech && r.tech.length) ? techChipLayout(doc, F, r.tech, BUL_W, T_IC, T_FS) : { chips: [], rows: 0 };
         var hgt = Math.max(r.pic ? 13 : 8.5, 6 + (tLines.length - 1) * 3.7 + (hasB ? 0.6 : 0) + bCount * 3.3 + (_tl.rows ? 1.2 + _tl.rows * T_LH : 0));   /* 6.9.760 - tighter */
         /* Page-break FIRST, then derive mid from the post-break y. If mid were computed
@@ -21714,9 +21715,9 @@ function viewCatalogue() {
     if (bs.length) {
       var LW = 26, LH = 11, TX = L + LW + 4, TW = Rt - TX;
       var bl = bs.map(function (x) {
-        F("normal"); doc.setFontSize(7.8);
+        F("normal"); doc.setFontSize(8);
         var ls = doc.splitTextToSize(pdfSafe(x.about), TW);
-        return { x: x, ls: ls, lg: logoFor(x.brand) || logoFor((x.alias || [])[0] || ""), h: Math.max(LH + 2, 5.4 + ls.length * 3.4) + 3 };
+        return { x: x, ls: ls, lg: logoFor(x.brand) || logoFor((x.alias || [])[0] || ""), h: Math.max(LH + 2, 5.4 + ls.length * 3.5) + 3 };
       });
       if (y + 12 + bl[0].h > 278) { doc.addPage(); y = 22; } else { y += 4; }
       col(C.DEEP); F("bold"); doc.setFontSize(10);
@@ -21731,15 +21732,15 @@ function viewCatalogue() {
           var sc = Math.min((LW - 2.4) / b.lg.w, (LH - 2.4) / b.lg.h), iw = b.lg.w * sc, ih = b.lg.h * sc;
           try { doc.addImage(b.lg.src, "JPEG", L + (LW - iw) / 2, y - 1 + (LH - ih) / 2, iw, ih); } catch (e) { }
         } else {
-          col(C.INK); F("bold"); doc.setFontSize(7.4);
-          doc.text(fitCell(doc, F, pdfSafe(b.x.brand), LW - 3, 1, "bold", 7.4)[0], L + LW / 2, y + LH / 2, { align: "center" });
+          col(C.INK); F("bold"); doc.setFontSize(8);
+          doc.text(fitCell(doc, F, pdfSafe(b.x.brand), LW - 3, 1, "bold", 8)[0], L + LW / 2, y + LH / 2, { align: "center" });
         }
         col(C.INK); F("bold"); doc.setFontSize(8.8);
         doc.text(pdfSafe(b.x.brand), TX, y + 2);
         var bw = doc.getTextWidth(pdfSafe(b.x.brand));
-        col(C.TEAL); F("normal"); doc.setFontSize(7.6);
-        doc.text(fitCell(doc, F, pdfSafe("- " + b.x.tagline + (b.x.origin ? "  (" + b.x.origin + ")" : "")), TW - bw - 3, 1, "normal", 7.6)[0], TX + bw + 2.2, y + 2);
-        col(C.GREY); F("normal"); doc.setFontSize(7.8);
+        col(C.TEAL); F("normal"); doc.setFontSize(8);
+        doc.text(fitCell(doc, F, pdfSafe("- " + b.x.tagline + (b.x.origin ? "  (" + b.x.origin + ")" : "")), TW - bw - 3, 1, "normal", 8)[0], TX + bw + 2.2, y + 2);
+        col(C.GREY); F("normal"); doc.setFontSize(8);
         doc.text(b.ls, TX, y + 6);
         y += b.h;
       });
@@ -21750,14 +21751,14 @@ function viewCatalogue() {
     if (keys.length) {
       var GAP = 6, COLW = (Rt - L - GAP) / 2, ICON = 7.5;
       var cells = keys.map(function (k) {
-        F("normal"); doc.setFontSize(7.6);
+        F("normal"); doc.setFontSize(8);
         var ls = doc.splitTextToSize(pdfSafe(td[k].e), COLW - ICON - 3);
-        return { k: k, ls: ls, h: Math.max(ICON + 1.5, 4.2 + ls.length * 3.3 + 1.5) };
+        return { k: k, ls: ls, h: Math.max(ICON + 1.5, 4.2 + ls.length * 3.45 + 1.5) };
       });
       if (y + 14 + cells[0].h > 278) { doc.addPage(); y = 22; } else { y += 4; }
       col(C.DEEP); F("bold"); doc.setFontSize(10);
       doc.text("TOTO technologies in this quote", L, y + 2);
-      col(C.GREY); F("normal"); doc.setFontSize(7.4);
+      col(C.GREY); F("normal"); doc.setFontSize(8);
       doc.text("From TOTO's 2026 catalogue. The TOTO products above carry these features.", L, y + 6.4);
       y += 11;
       for (var r = 0; r < cells.length; r += 2) {
@@ -21768,7 +21769,7 @@ function viewCatalogue() {
           if (_qxIcons[c.k]) { try { doc.addImage(_qxIcons[c.k], "JPEG", x, y - 1, ICON, ICON); } catch (e) { } }
           col(C.INK); F("bold"); doc.setFontSize(8);
           doc.text(pdfSafe(td[c.k].n), x + ICON + 3, y + 2);
-          col(C.GREY); F("normal"); doc.setFontSize(7.6);
+          col(C.GREY); F("normal"); doc.setFontSize(8);
           doc.text(c.ls, x + ICON + 3, y + 5.6);
         });
         y += rh + 1;
@@ -22034,7 +22035,7 @@ function viewCatalogue() {
     [["A/c holder", EW_PAY.holder], ["Bank", EW_PAY.bank + ", " + EW_PAY.branch], ["A/c no", EW_PAY.acno],
      ["IFSC", EW_PAY.ifsc], ["UPI", EW_PAY.upi]].forEach(function (r, i) {
       var yy = y + 10 + i * 3.6;
-      doc.setFont(doc.__noBold ? ppEmbed(doc) : "helvetica", "normal"); doc.setFontSize(7.8); doc.setTextColor(100, 116, 139); doc.text(r[0], tx, yy);
+      doc.setFont(doc.__noBold ? ppEmbed(doc) : "helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(100, 116, 139); doc.text(r[0], tx, yy);
       doc.setFont(doc.__noBold ? ppEmbed(doc) : "helvetica", doc.__noBold ? "normal" : "bold"); doc.setTextColor(17, 34, 45); doc.text(r[1], vx, yy);
     });
     return H;
@@ -22168,8 +22169,8 @@ function viewCatalogue() {
 
       /* page one says who we are as well as who it is for: the mark, the cities,
          and every brand we are the authorised distributor for */
-      var CBW = 19.4, CBH = 10.2, CGP = 2.2;
-      var cStripW = 12 * CBW + 11 * CGP;
+      var _cn = PDF_LOGO_ORDER.length, CGP = 2.2, CBW = Math.min(19.4, (W - 24 - (_cn - 1) * CGP) / _cn), CBH = 10.2;   /* 6.9.796 - sized from the list */
+      var cStripW = _cn * CBW + (_cn - 1) * CGP;
       var cSx = (W - cStripW) / 2, cSy = H - 56;
       col([100, 160, 152]); F("bold"); doc.setFontSize(5.4);
       doc.text(SP("Authorised distributor for"), W / 2, cSy - 4.6, { align: "center" });
@@ -22751,7 +22752,7 @@ function viewCatalogue() {
       });
 
       /* brand strip, the same marks the quotation carries */
-      var BW = 20, BH = 10.5, GP = 2.4, PERR = 12;
+      var PERR = PDF_LOGO_ORDER.length, GP = 2.4, BW = Math.min(20, (W - 24 - (PERR - 1) * GP) / PERR), BH = 10.5;   /* 6.9.796 - sized from the list */
       var stripW = PERR * BW + (PERR - 1) * GP;
       var sx = (W - stripW) / 2, sy2 = H - 34;
       col([90, 150, 143]); F("bold"); doc.setFontSize(5.6);
