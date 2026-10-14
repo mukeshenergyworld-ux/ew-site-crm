@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.797";
+  var APP_VERSION = "6.9.798";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -20394,7 +20394,8 @@ function viewCatalogue() {
     "Stellar": "../assets/brands/card/stellar.png", "MEA": "../assets/brands/card/mea.png", "Oyster": "../assets/brands/card/oyster.png",
     /* 6.9.795 - the five not on the card, from each brand's own website (assets/brands/web) */
     "Heliroma": "../assets/brands/web/heliroma.png", "TECE": "../assets/brands/web/tece.png", "Lunos": "../assets/brands/web/lunos.png",
-    "INAIR": "../assets/brands/web/inair.png", "Sanitaar": "../assets/brands/web/sanitaar.png" };
+    "INAIR": "../assets/brands/web/inair.png", "Sanitaar": "../assets/brands/web/sanitaar.png",
+    "IONCARE": "../assets/brands/web/ioncare.png", "Leo": "../assets/brands/web/leo.png" };   /* 6.9.798 */
   function localLogos() {
     return Promise.all(Object.keys(LOCAL_LOGOS).map(function (brand) {
       var k = normB(brand);
