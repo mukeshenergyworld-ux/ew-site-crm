@@ -177,7 +177,7 @@ table.ct td.wd{white-space:nowrap}
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.66.8";
+  var APP_VERSION = "1.66.9";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -1663,7 +1663,7 @@ table.ct td.wd{white-space:nowrap}
        beside it and missing from the payment’s own. */
     if (tab === "payments") return (r.id ? receiptNo(r) + " · " : "") + String(r.client || "") +
       (r.amount ? " · " + money(r.amount) : "");
-    if (tab === "quotes") return String(r.quoteNo || "") + (r.client ? " · " + r.client : "");
+    if (tab === "quotes") return String((typeof qNo === "function" ? qNo(r) : r.quoteNo) || "") + (r.client ? " · " + r.client : "");   /* 6.9.776 QT number where the app has it; one function in every app */
     if (tab === "discounts") return String(r.client || "") + " · " + String(r.brand || "");
     if (tab === "clients" || tab === "customers") return String(r.name || "");
     if (tab === "team") return String(r.name || "");
