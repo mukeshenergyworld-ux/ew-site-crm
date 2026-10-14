@@ -177,7 +177,7 @@ table.ct td.wd{white-space:nowrap}
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.66.9";
+  var APP_VERSION = "1.66.10";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -4364,7 +4364,7 @@ function cancelMap() {
     [["A/c holder", EW_PAY.holder], ["Bank", EW_PAY.bank + ", " + EW_PAY.branch], ["A/c no", EW_PAY.acno],
      ["IFSC", EW_PAY.ifsc], ["UPI", EW_PAY.upi]].forEach(function (r, i) {
       var yy = y + 10 + i * 3.6;
-      doc.setFont("helvetica", "normal"); doc.setFontSize(7.8); doc.setTextColor(100, 116, 139); doc.text(r[0], tx, yy);
+      doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(100, 116, 139); doc.text(r[0], tx, yy);
       doc.setFont("helvetica", "bold"); doc.setTextColor(17, 34, 45); doc.text(r[1], vx, yy);
     });
     return H;
