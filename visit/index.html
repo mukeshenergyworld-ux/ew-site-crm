@@ -191,7 +191,7 @@ h3.sec{color:#1F3A5F}
       button: function () { return '<button type="button" class="ewthm" onclick="ewTheme.next(this)">' + ewtLabel() + '</button>'; }
     };
   })();
-  var APP_VERSION = "1.5.0";
+  var APP_VERSION = "1.5.2";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_vq_session", JRN = "ew_vq_journal_v1", CALLQ = "ew_vq_calls_v1", SNAPK = "ew_vq_snap_";
   var CAT_KEY = "ew_team_catalog", CAT_V = 2;   /* the CRM's own shelf copy of the price list - shared, same origin */
@@ -1449,6 +1449,131 @@ h3.sec{color:#1F3A5F}
     });
     return out.sort(function (a, b) { return b.at.localeCompare(a.at); });
   }
+  /* ================= ATTENDANCE FROM VISITS  (CRM 6.9.805 / Visit 1.5.2, 14 Oct 2026) =================
+     HIS WORDS: "remind executive by popup in their device that attendance will only be marked when visits
+     marked in app, visit will be like daily report, remind this 3 times a day in professional way ... weekly
+     send report that in past week these are marked present and these are absent bcos of no visit entered, a
+     monthly report to accounts and admin for present and absent for making salary ... back date visit entry
+     not allowed". His answers: one visit or more = present; Sunday off; 11 am, 3 pm, 6:30 pm; the reports go
+     to the @ewreminder_bot group.
+     Nothing new is stored for a visit: a day is read from the visits already in the book - site visits
+     (their date is the SERVER's, it cannot be typed) and the plumber / architect / showroom visits (audit
+     visit:mark). Those carry the network's clock as netAt from this version on, so a phone set to yesterday
+     cannot make yesterday a present day; a visit saved where the time could not be checked says so (tchk 0).
+     Holidays, leave and a day present without a visit (office work) are audit rows att:mark - the latest row
+     for a day and a person wins, and "clear" takes a mark back off. Nothing is ever deleted.
+     THIS BLOCK IS THE SAME, BYTE FOR BYTE, IN THE CRM AND THE VISIT APP. */
+  var ATT_FROM = "2026-10-16";   /* the first day counted - nobody is absent for days before he was told */
+  var ATT_SKEW_MS = 10 * 60000;  /* a phone more than 10 minutes off the network's time may not save a visit */
+  var ATT_SLOTS = [{ k: "am", h: 11, m: 0 }, { k: "pm", h: 15, m: 0 }, { k: "eve", h: 18, m: 30 }];
+  var ATT_SAY = { P: "Present", A: "Absent", L: "Leave", H: "Holiday", O: "Sunday", W: "Worked on a day off", T: "Today - no visit yet" };
+  function attDow(day) { return new Date(String(day).slice(0, 10) + "T12:00:00").getDay(); }
+  function attMarks() {
+    var out = {};
+    ((S.data && S.data.audit) || []).forEach(function (r) {
+      if (!r || r.action !== "att:mark") return;
+      var d = {}; try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
+      var day = String(d.day || "").slice(0, 10); if (!day) return;
+      var k = day + "|" + (d.who === "*" ? "*" : dkey(d.who)), at = String(r.createdAt || "");
+      if (!out[k] || at >= out[k].at) out[k] = { kind: String(d.kind || ""), note: String(d.note || ""), by: String(r.actor || ""), at: at };
+    });
+    return out;
+  }
+  function attVisitDays(name) {
+    var who = dkey(name), out = {};
+    var add = function (day, unv) { if (!day) return; var o = out[day] || (out[day] = { n: 0, unv: 0 }); o.n++; if (unv) o.unv++; };
+    ((S.data && S.data.sitevisits) || []).forEach(function (v) { if (v && dkey(v.createdBy) === who) add(dstr(v.createdAt || v.date), 0); });
+    ((S.data && S.data.audit) || []).forEach(function (r) {
+      if (!r || r.action !== "visit:mark" || dkey(r.actor) !== who) return;
+      var d = {}; try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { d = {}; }
+      add(dstr(d.netAt || r.createdAt), d.tchk === 0 ? 1 : 0);   /* the network's day where the phone could ask */
+    });
+    return out;
+  }
+  /* P present, A absent, L leave, H holiday, O Sunday, W worked on a Sunday or holiday,
+     T today and nothing yet, "" not counted (before ATT_FROM, or still to come) */
+  function attDay(name, day, vd, marks) {
+    if (!day || day < ATT_FROM || day > today()) return "";
+    var m = marks[day + "|" + dkey(name)] || marks[day + "|*"] || null, kind = m ? m.kind : "";
+    var v = !!(vd[day] && vd[day].n > 0);
+    if (kind === "present") return "P";
+    if (kind === "leave") return "L";
+    if (attDow(day) === 0 || kind === "holiday") return v ? "W" : (kind === "holiday" ? "H" : "O");
+    if (v) return "P";
+    return day === today() ? "T" : "A";
+  }
+  /* the network's time: GitHub's own Date header on a HEAD request, which goes past the service worker
+     and the browser's cache. { ok, skew (ms the phone is behind), net } - ok false when there is no signal */
+  var _attClk = { at: 0, skew: 0 };
+  function attNetClock() {
+    if (_attClk.at && Date.now() - _attClk.at < 300000) return Promise.resolve({ ok: true, skew: _attClk.skew, net: Date.now() + _attClk.skew });
+    var t0 = Date.now();
+    var ask = fetch("index.html?clk=" + t0, { method: "HEAD", cache: "no-store" }).then(function (r) {
+      var d = Date.parse((r && r.headers && r.headers.get("Date")) || ""); if (!d) throw new Error("no date");
+      var sk = d - Math.round((t0 + Date.now()) / 2); _attClk = { at: Date.now(), skew: sk };
+      return { ok: true, skew: sk, net: Date.now() + sk };
+    }).catch(function () { return { ok: false, skew: 0, net: 0 }; });
+    return Promise.race([ask, new Promise(function (res) { setTimeout(function () { res({ ok: false, skew: 0, net: 0 }); }, 4000); })]);
+  }
+  function attClockSay(skew) {
+    var mins = Math.round(Math.abs(skew) / 60000), d = Math.floor(mins / 1440), h = Math.floor((mins % 1440) / 60), m = mins % 60;
+    return (d ? d + " day" + (d > 1 ? "s " : " ") : "") + (h ? h + " hour" + (h > 1 ? "s " : " ") : "") + (!d && m ? m + " minute" + (m > 1 ? "s" : "") : "");
+  }
+  /* ================= END OF THE SHARED ATTENDANCE BLOCK ================= */
+
+  /* ---- 1.5.2 - the executive's side: today on My day, three kind reminders, and the clock ---- */
+  function attMine() { return roleIs("sales"); }
+  function attToday() { var vd = attVisitDays(S.user), td = today(); return { st: attDay(S.user, td, vd, attMarks()), n: (vd[td] || {}).n || 0 }; }
+  function attFirst() { return esc(String(S.user || "").split(" ")[0]); }
+  function attStripHtml() {
+    if (!attMine() || today() < ATT_FROM) return "";
+    var a = attToday();
+    if (a.n > 0) return '<div class="note" style="margin-top:10px;border-color:#86efac;background:#f0fdf4"><b>Attendance today: present</b> &middot; ' + a.n + ' visit' + (a.n === 1 ? '' : 's') + ' recorded. Your visits are your daily report.</div>';
+    if (a.st === "O" || a.st === "H" || a.st === "L") return '<div class="note" style="margin-top:10px">Today is ' + (a.st === "O" ? "Sunday" : a.st === "H" ? "a holiday" : "marked as leave") + ' &mdash; no attendance is needed.</div>';
+    return '<div class="note warn" style="margin-top:10px"><b>Attendance today: not recorded yet.</b> It is recorded with your first visit entry of the day &mdash; site, plumber, architect or showroom.</div>';
+  }
+  /* the words. Asked for "in a professional way, that would not hurt or pinch" - so they inform and thank, never warn */
+  function attSheet(kind, n) {
+    var nm = attFirst(), t = "", b = "";
+    if (kind === "thanks") { t = "Thank you, " + nm; b = n + " visit" + (n === 1 ? " is" : "s are") + " recorded today, so your attendance for today is marked. Keep adding visits as you go &mdash; together they make your daily report."; }
+    else if (kind === "am") { t = "Good morning, " + nm; b = "A gentle reminder: attendance is recorded from the visits you enter in this app, and the visits you mark also make up your daily report. It is easiest to enter each one as soon as you finish it."; }
+    else if (kind === "pm") { t = "Good afternoon, " + nm; b = "Just checking in &mdash; no visit is entered for today yet. Whenever you have a moment, please add the sites, plumbers, architects or showroom clients you met today. That completes your daily report and your attendance."; }
+    else { t = "Before you close the day, " + nm; b = "Today&rsquo;s visits are not entered yet. Please take a minute to add them before the day ends &mdash; your attendance for today is recorded from these entries. Thank you for your work today."; }
+    var canNote = ("Notification" in window) && Notification.permission === "default";
+    return '<h2>' + t + '</h2><div class="meta" style="font-size:15px;line-height:1.5;color:inherit">' + b + '</div>' +
+      '<div class="acts">' + (kind === "thanks" ? '' : '<button class="btn full" data-act="go-visit">Mark a visit now</button>') +
+      '<button class="btn gry full" data-act="close">' + (kind === "thanks" ? 'OK' : 'Later') + '</button></div>' +
+      (canNote && kind !== "thanks" ? '<div class="acts"><button class="btn gry full" data-act="att-notif">Also remind me in the phone&rsquo;s notifications</button></div>' : '');
+  }
+  function attSeen(k) { try { return !!localStorage.getItem("ew_att_" + k); } catch (e) { return false; } }
+  function attSee(k) { try { localStorage.setItem("ew_att_" + k, "1"); } catch (e) { } }
+  function attTick() {
+    try {
+      if (!S.user || !S.data || !attMine()) return;
+      var td = today(); if (td < ATT_FROM) return;
+      if (!((S.data.sitevisits || []).length || (S.data.audit || []).length)) return;   /* the book is not in yet */
+      var a = attToday(); if (a.st !== "T" && a.st !== "P" && a.st !== "W") return;
+      var now = new Date(), mins = now.getHours() * 60 + now.getMinutes();
+      var due = ATT_SLOTS.filter(function (x) { return mins >= x.h * 60 + x.m; }); if (!due.length) return;
+      var slot = due[due.length - 1], kind = "", key = "";
+      if (a.n > 0) { if (attSeen(td + "_thanks") || !attSeen(td + "_any")) return; kind = "thanks"; key = td + "_thanks"; }   /* thanked once, and only after a reminder */
+      else { key = td + "_" + slot.k; if (attSeen(key)) return; kind = slot.k; }
+      if (document.visibilityState !== "visible") {   /* in the background: the phone's own notification, if he allowed it */
+        if (kind !== "thanks" && ("Notification" in window) && Notification.permission === "granted" && navigator.serviceWorker) {
+          attSee(key); attSee(td + "_any");
+          navigator.serviceWorker.getRegistration().then(function (rg) {
+            var tt = attSheet(kind, a.n).match(/<h2>(.*?)<\/h2>/), bb = attSheet(kind, a.n).match(/<div class="meta"[^>]*>(.*?)<\/div>/);
+            var clean = function (x) { var e2 = document.createElement("div"); e2.innerHTML = x || ""; return e2.textContent; };
+            if (rg) rg.showNotification(clean(tt && tt[1]), { body: clean(bb && bb[1]), tag: "ew-att", icon: "../icons/ewv-192.png" });
+          }).catch(function () { });
+        }
+        return;
+      }
+      if (S.sheet || vqBusy()) return;   /* never over something he is typing */
+      attSee(key); if (kind !== "thanks") attSee(td + "_any");
+      S.sheet = attSheet(kind, a.n); render();
+    } catch (e) { }
+  }
   function seesAllClients() { return roleIs("admin") || roleIs("accounts"); }
   function clientOwner(name) {
     var cl = clientByName(name) || {};
@@ -1702,7 +1827,7 @@ h3.sec{color:#1F3A5F}
       if (REST.every(function (k) { return r && Array.isArray(r[k]); })) { mergeBook(r, REST); render(); snapSave(); return; }   /* 1.4.5 - it came in the one call */
       return getBook(REST).then(function (r2) { mergeBook(r2, REST); render(); snapSave(); }).catch(function () { });
     }).catch(function (e) { if (loud) toast("Could not update: " + ((e && e.message) || "no signal")); })
-      .then(function () { _pulling = null; });
+      .then(function () { _pulling = null; setTimeout(attTick, 1500); });   /* 1.5.2 - the reminder, once the book is in */
     loadCat(false);
     return _pulling;
   }
@@ -1916,7 +2041,7 @@ h3.sec{color:#1F3A5F}
         tile(quiet.length, "Quotes to follow up", quiet.length ? "warn" : "good", "go-quotes", "follow") +
         tile(drafts.length, "Quotes not sent yet", drafts.length ? "warn" : "good", "go-quotes", "Draft") +
         tile(fu.length, "Follow-ups due", fu.length ? "bad" : "good", "", "") +
-      '</div>';
+      '</div>' + attStripHtml();   /* 1.5.2 */
     if (fu.length) h += '<h3 class="sec">Follow-ups due</h3>' + fu.slice(0, 10).map(function (f) {
       var c = clientByName(f.customerName) || {}, m = mob10(c.mobile);
       return '<div class="card"><div class="row"><div class="grow"><div class="ttl2">' + esc(f.customerName || "") + '</div><div class="meta">' + esc(f.note || "") + ' &middot; due ' + esc(fd(f.dueDate)) + '</div></div>' +
@@ -2150,10 +2275,20 @@ h3.sec{color:#1F3A5F}
     if (isCl && !intr.length) { toast("Tap the brands he is interested in."); return; }
     if (isCl && !nextOk(nx)) { toast("Pick the next meeting date."); return; }
     if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
-    gps(5000).then(function (g) {
-      var row = { id: "", createdAt: iso(), actor: S.user, action: "visit:mark", target: name,
+    /* 1.5.2 - NO BACK-DATED VISIT. There is no date to type; the one way left was a phone set to another day.
+       The network's clock is asked first: more than 10 minutes out and the visit is not saved (what is typed stays). */
+    Promise.all([gps(5000), attNetClock()]).then(function (gx) {
+      var g = gx[0], ck = gx[1];
+      if (ck.ok && Math.abs(ck.skew) > ATT_SKEW_MS) {
+        if (btn) { btn.disabled = false; btn.textContent = "Save the visit"; }
+        S.sheet = '<h2>Please check the phone&rsquo;s date and time</h2><div class="meta" style="font-size:15px;line-height:1.5;color:inherit">The phone&rsquo;s clock is ' + esc(attClockSay(ck.skew).trim()) + ' ' + (ck.skew > 0 ? 'behind' : 'ahead of') + ' the network time. Visits are saved with the actual date and time, so please turn on <b>Automatic date &amp; time</b> in the phone&rsquo;s settings and press Save again. What you typed is still here.</div>' +
+          '<div class="acts"><button class="btn full" data-act="close">OK</button></div>';
+        render(); return;
+      }
+      var row = { id: "", createdAt: ck.ok ? new Date(ck.net).toISOString() : iso(), actor: S.user, action: "visit:mark", target: name,
         detail: JSON.stringify({ kind: k, who: name, whoKind: k === "showroom" ? (who === "Client" ? "Client" : "Plumber") : who, note: (note + (isCl ? " · " + brandLine(came, intr, nx) : "")).slice(0, 700), lat: g.lat || "", lng: g.lng || "", acc: g.acc || "", mobile: known ? "" : mob, app: "visit",
           brands: isCl ? came : [], interest: isCl ? intr : [], next: isCl ? nx : "" }), ip: "" };
+      try { var _dd = JSON.parse(row.detail); _dd.tchk = ck.ok ? 1 : 0; if (ck.ok) _dd.netAt = row.createdAt; row.detail = JSON.stringify(_dd); } catch (eD) { }   /* 1.5.2 */
       saveRow("audit", row);
       /* a plumber or architect not on the list becomes a partner, as the CRM does from a client form */
       if (!known && k !== "showroom" && mob.length === 10) save("associates", { id: "", name: name, role: who, mobile: mob, mobile2: "", location: "", area: "", address: "", birthday: "", anniversary: "", rate: "", notes: "added from a visit (Visit & Quote app)", ownedBy: S.user });
@@ -2781,6 +2916,11 @@ h3.sec{color:#1F3A5F}
     if (act === "menu") { S.sheet = menuSheet(); render(); return; }
     if (act === "signout") { if (pendingN()) toast("Kept on this phone: " + pendingN() + "."); signOut(""); return; }
     if (act === "close") { S.sheet = null; S.sl = null; render(); return; }
+    if (act === "att-notif") {   /* 1.5.2 - only when he presses it */
+      try { Notification.requestPermission().then(function (p) { toast(p === "granted" ? "Done - the reminders will also come as notifications while the app is open in the background." : "Notifications stay off. The reminders will show when you open the app."); }); } catch (e) { }
+      S.sheet = null; render(); return;
+    }
+    if (act === "go-visit") { S.sheet = null; }
     if (act === "go-visit") { S.tab = "visit"; S.vk = "site"; render(); return; }
     if (act === "go-quotes") { S.tab = "quotes"; S.fq = k === "Draft" ? "Draft" : k === "follow" ? "follow" : "all"; render(); return; }
     if (act === "vk") { S.vk = k; S.pv = {}; S.near = null; if (S.vp) S.vp.pv_selfie = []; render(); return; }
@@ -2978,7 +3118,7 @@ h3.sec{color:#1F3A5F}
     };
   })();
 
-  /* ======== SHARED QUOTE PDF - BUILT FROM THE CRM'S team/app.js 6.9.798 BY sharedpdf/build_visit_pdf.py - DO NOT EDIT HERE ========
+  /* ======== SHARED QUOTE PDF - BUILT FROM THE CRM'S team/app.js 6.9.804 BY sharedpdf/build_visit_pdf.py - DO NOT EDIT HERE ========
      Edit the CRM, then run the script again. Later declarations win, so these replace the Visit
      app's own older copies of the same functions. */
   var QX_BASE = "../team/";
@@ -3670,8 +3810,10 @@ h3.sec{color:#1F3A5F}
       var hasOpt = rows.some(function (r) { return r.optional; });
       y += 4;
       var boxH = noTotal ? 10 : (showGst ? 23 : 16);
-      if ((y - 4.5) + boxH > 282) { doc.addPage(); y = 26; }
+      var PAYH = 30;   /* 6.9.804 - the bank details sit in the white space left of the total */
+      if ((y - 4.5) + Math.max(boxH, PAYH) > 282) { doc.addPage(); y = 26; }
       var boxTop = y - 4.5;
+      ewPayBox(doc, L, boxTop, 104 - L - 3, true);
       var TBL = 104;   /* the total panel starts a little left of the numeric columns */
       if (noTotal) {
         fill([255, 251, 235]); doc.roundedRect(TBL, boxTop, Rt - TBL, boxH, 1.5, 1.5, "F");
@@ -3702,6 +3844,7 @@ h3.sec{color:#1F3A5F}
         doc.text(R(subTotal), X.amt, y + 3.6, { align: "right" });
       }
       y = boxTop + boxH + 5;   /* single, deterministic point clear of the total box */
+      var _payEnd = boxTop + PAYH + 3;   /* 6.9.804 - and clear of the bank details beside it */
       if (!noTotal) {   /* 6.9.761 - amount in words, as on his supplier's quote: the figure the customer pays */
         var _payN = showGst ? subTotal + Math.round(subTotal * 18 / 100) : subTotal;
         col(GREY); F("italic"); doc.setFontSize(8);
@@ -3709,6 +3852,7 @@ h3.sec{color:#1F3A5F}
         _wl.forEach(function (wl, k) { doc.text(wl, Rt, y - 1 + k * 3.4, { align: "right" }); });
         y += _wl.length * 3.4 + 1;
       }
+      y = Math.max(y, _payEnd);   /* 6.9.804 */
 
       /* Footnote whenever any line is an alternative option — a bordered amber strip drawn BELOW
          the total box (never over it). Text is wrapped and the box is sized to the wrapped lines. */
@@ -3780,11 +3924,8 @@ h3.sec{color:#1F3A5F}
       });
       y = tcPy + TC_PANH + 2;
 
-      /* 6.9.755 - the bank details, bottom left, beside the sign-off */
-      if (y + 29 > 283) { doc.addPage(); y = 22; }
-      var _payY = y + 3;
-      ewPayBox(doc, L, _payY, Math.min(118, Rt - L - 68));
-      y = _payY - 3;   /* the sign-off sits level with it on the right */
+      /* 6.9.755 - the bank details were drawn here, bottom left, beside the sign-off.
+         6.9.804 - they now sit beside the SUB-TOTAL (above), which saves about 30mm. */
 
       /* ---- sign-off, bottom right of the last page. A quotation is a document a person
            stands behind, so the name goes where a signature goes - not in a header box. ---- */
@@ -3968,7 +4109,8 @@ h3.sec{color:#1F3A5F}
     return y;
   }
 
-  function ewPayBox(doc, x, y, w) {
+  function ewPayBox(doc, x, y, w, narrow) {
+    if (narrow) return ewPayBoxNarrow(doc, x, y, w);   /* 6.9.804 */
     var H = 26, Q = 22, drew = false;
     doc.setFillColor(255, 255, 255); doc.setDrawColor(13, 118, 108); doc.setLineWidth(0.35);
     doc.roundedRect(x, y, w, H, 1.6, 1.6, "FD"); doc.setLineWidth(0.2);
@@ -3981,6 +4123,29 @@ h3.sec{color:#1F3A5F}
       var yy = y + 10 + i * 3.6;
       doc.setFont(doc.__noBold ? ppEmbed(doc) : "helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(100, 116, 139); doc.text(r[0], tx, yy);
       doc.setFont(doc.__noBold ? ppEmbed(doc) : "helvetica", doc.__noBold ? "normal" : "bold"); doc.setTextColor(17, 34, 45); doc.text(r[1], vx, yy);
+    });
+    return H;
+  }
+
+  function ewPayBoxNarrow(doc, x, y, w) {
+    var H = 30, Q = 22, drew = false;
+    var FB = function () { doc.setFont(doc.__noBold ? ppEmbed(doc) : "helvetica", doc.__noBold ? "normal" : "bold"); };
+    var FN = function () { doc.setFont(doc.__noBold ? ppEmbed(doc) : "helvetica", "normal"); };
+    doc.setFillColor(255, 255, 255); doc.setDrawColor(13, 118, 108); doc.setLineWidth(0.35);
+    doc.roundedRect(x, y, w, H, 1.6, 1.6, "FD"); doc.setLineWidth(0.2);
+    try { drew = pdfQr(doc, EW_PAY.qr, x + 2, y + 2, Q); } catch (e) { drew = false; }
+    if (drew) { FN(); doc.setFontSize(8); doc.setTextColor(13, 118, 108); doc.text("Scan to pay", x + 2 + Q / 2, y + 27.4, { align: "center" }); }
+    var tx = x + (drew ? Q + 5 : 4);
+    FN(); doc.setFontSize(8);
+    var lw = Math.max.apply(null, ["A/c holder", "Bank", "Branch", "A/c no", "IFSC", "UPI"].map(function (t) { return doc.getTextWidth(t); }));
+    var vx = tx + lw + 2.5;
+    FB(); doc.setFontSize(8.4); doc.setTextColor(13, 118, 108);
+    doc.text("PAYMENT DETAILS", tx, y + 5.6);
+    [["A/c holder", EW_PAY.holder], ["Bank", EW_PAY.bank], ["Branch", EW_PAY.branch], ["A/c no", EW_PAY.acno],
+     ["IFSC", EW_PAY.ifsc], ["UPI", EW_PAY.upi]].forEach(function (r, i) {
+      var yy = y + 10.4 + i * 3.6;
+      FN(); doc.setFontSize(8); doc.setTextColor(100, 116, 139); doc.text(r[0], tx, yy);
+      FB(); doc.setTextColor(17, 34, 45); doc.text(r[1], vx, yy);
     });
     return H;
   }
@@ -4014,6 +4179,8 @@ h3.sec{color:#1F3A5F}
   function boot() {
     try { if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(function () { }); } catch (e) { }
     setInterval(function () { if (document.visibilityState === "visible" && S.data) flush(); }, 60000);
+    setInterval(attTick, 60000);   /* 1.5.2 - the three reminders */
+    document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") setTimeout(attTick, 4000); });
     window.addEventListener("online", function () { if (S.data) flush(); });
     document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible" && S.data && Date.now() - S.pullAt > 120000) pull(false); });
     var sess = null; try { sess = JSON.parse(localStorage.getItem(STORE) || "null"); } catch (e) { sess = null; }
