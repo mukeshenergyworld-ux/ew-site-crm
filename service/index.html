@@ -429,7 +429,7 @@ function ewmBuild(n, pre) {
    Nothing here deletes anything, ever. A visit is a row added.
    ========================================================================== */
 
-  var APP_VERSION = "2.9.4";
+  var APP_VERSION = "2.9.6";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -1398,6 +1398,7 @@ function ewmBuild(n, pre) {
   function api(action, extra, ms) {
       var _t0 = Date.now();
       var body = Object.assign({ action: action, user: S.user, pin: S.pin }, extra || {});
+    try { if (!body.app) body.app = "Service " + APP_VERSION; } catch (eApp) { }   /* 2.9.5 - the server write log names the app (V160) */
       if (S.tok) body.tok = S.tok;   /* B9 - the saved sign-in's token (server V142) */
       if (action === "teamAuth" && !(extra && Object.prototype.hasOwnProperty.call(extra, "pin"))) body.keep = 1;   /* a sign-in, not a PIN re-check: ask for a token */
     /* v20.08.2026 - a call carrying a file is an upload, and an upload gets said out loud */
@@ -4038,6 +4039,24 @@ function ewmBuild(n, pre) {
     (S.data.audit = S.data.audit || []).push(arow); saveRow("audit", arow);
     return id;
   }
+  /* 2.9.6 - tell the customer after a handover */
+  function hoSheet(x, lines, date) {
+    var c = clientByName(x.c.customerName) || {}, mob = String(c.mobile || "").replace(/\D/g, "").slice(-10);
+    var names = x.lines.filter(function (l) { return lines.indexOf(l.idx) >= 0; }).map(function (l) { return l.name; });
+    var next = "", td = today();
+    ((S.data && S.data.installs) || []).forEach(function (m) { if (m && String(m.client || "").trim().toLowerCase() === String(x.c.customerName || "").trim().toLowerCase() && m.nextService) { var d = String(m.nextService).slice(0, 10); if (d >= td && (!next || d < next)) next = d; } });
+    var msg = ["Namaste " + (x.c.customerName || "") + " ji,", "",
+      "Your " + (names.slice(0, 3).join(", ") || "products") + (names.length > 3 ? " and " + (names.length - 3) + " more" : "") + (x.c.site ? " at " + x.c.site : "") + " " + (names.length > 1 ? "have" : "has") + " been installed and handed over on " + ewiD(date) + "."];
+    if (next) msg.push("Next service due: " + ewiD(next) + " - we will call you before.");
+    msg.push("", "For any service call Energy World: 9466600611", "Thank you - Energy World");
+    var txt = msg.join("\n");
+    return '<h2>Tell the customer</h2><div class="meta">' + esc(x.c.customerName || "") + (mob ? ' &middot; ' + mob : '') + '</div>' +
+      '<div style="white-space:pre-wrap;font-size:13px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:9px 11px;margin-top:8px">' + esc(txt) + '</div>' +
+      (!mob ? '<div class="note warn">No mobile number on this client - ask the office to add it.</div>' : '') +
+      '<div class="meta" style="margin-top:6px">The warranty card PDF is sent from the CRM.</div>' +
+      '<div class="acts"><button class="btn gry" data-act="close">Not now</button>' +
+      (mob ? '<a class="btn" target="_blank" rel="noopener" href="https://wa.me/91' + mob + '?text=' + encodeURIComponent(txt) + '" style="min-height:44px;display:inline-flex;align-items:center">Send on WhatsApp</a>' : '') + '</div>';
+  }
   function ewiSave() {
     ewiKeep();
     var E = S.ew || {}, x = ewiFind(E.id); if (!x) return;
@@ -4057,6 +4076,7 @@ function ewmBuild(n, pre) {
     try { applyJournal(); } catch (e) { }
     S.ew = null; S.cm = null; S.sheet = null; _ewiC = null; sv2Bust(); bust(); render();
     toast(String(c.customerName || "") + ": " + said.join(", ") + ".");
+    if (E.hand && E.hand.on) { try { S.sheet = hoSheet(x, ids("hand").length ? ids("hand") : lh || [], E.hand.date); render(); } catch (eHo) { } }   /* 2.9.6 */
     sent.forEach(function (p) { try { picSend(p[0], p[1], "", c.customerName || ""); } catch (e) { toast("Saved. The photos could not be sent."); } });
   }
 
