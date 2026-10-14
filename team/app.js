@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.796";
+  var APP_VERSION = "6.9.797";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -9896,7 +9896,19 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       (H.busy ? '<div class="meta" style="margin-top:6px">Making the warranty card link…</div>' : (H.err ? '<div class="meta" style="margin-top:6px;color:#b45309">The card link could not be made (' + esc(H.err) + ') - the message goes without it.</div>' : '')) +
       (!mob ? '<div class="meta" style="margin-top:6px;color:#b45309">No mobile number on this client - add it on his card first.</div>' : '') +
       '<div class="foot"><button class="btn ghost" data-act="close">Not now</button>' +
-      (mob && !H.busy ? '<a class="btn" style="min-height:44px;display:inline-flex;align-items:center" target="_blank" rel="noopener" data-act="handover-sent" href="https://wa.me/91' + mob + '?text=' + encodeURIComponent(hoMsg(H)) + '">Send on WhatsApp</a>' : '') + '</div>';
+      (mob && !H.busy && hoBiz(H) ? '<button class="btn" style="min-height:44px" data-act="handover-biz">Send from the business number</button>' : '') +   /* 6.9.797 */
+      (mob && !H.busy ? '<a class="btn' + (hoBiz(H) ? ' ghost' : '') + '" style="min-height:44px;display:inline-flex;align-items:center" target="_blank" rel="noopener" data-act="handover-sent" href="https://wa.me/91' + mob + '?text=' + encodeURIComponent(hoMsg(H)) + '">' + (hoBiz(H) ? 'Open on this phone' : 'Send on WhatsApp') + '</a>' : '') + '</div>';
+  }
+  /* 6.9.797 - the approved template "handover_done" (Utility): {{1}} client, {{2}} what (and site), {{3}} handed over on,
+     {{4}} warranty card link, {{5}} next service, {{6}} the service phone. Used only when the server's WhatsApp is ready
+     and the client has agreed to WhatsApp updates (6.9.549). */
+  function hoBiz(H) { return !!(H && waReady() && waConsent(H.client).yes); }
+  function hoVars(H) {
+    return [String(H.client || ""), String(H.what || "") + (H.site ? " at " + H.site : ""), fullDate(H.date),
+      H.url ? String(H.url) : "will be sent separately", H.next ? fullDate(H.next) : "we will call you to fix it", String(FIRM.phone || "")];
+  }
+  function hoNote(H, via) {
+    try { save("audit", { id: "", createdAt: new Date().toISOString(), actor: S.user || "", action: "handover:wa", target: H.client, detail: JSON.stringify({ chId: H.ch, url: H.url, next: H.next, via: via }), ip: "" }, true); } catch (eA) { }
   }
   function hoOpen(chId, lineIdx, date) {
     var ch = (S.data.challans || []).filter(function (x) { return x.id === chId; })[0]; if (!ch) return;
@@ -59469,8 +59481,21 @@ function viewCatalogue() {
     }
     if (act === "ewm-save") { ewmSave(); return; }
     if (act === "handover-sent") { var _h = S.ho; S.ho = null; S.modal = null; setTimeout(render, 300);   /* 6.9.788 - the link opens WhatsApp; the row is noted */
-      if (_h) { try { save("audit", { id: "", createdAt: new Date().toISOString(), actor: S.user || "", action: "handover:wa", target: _h.client, detail: JSON.stringify({ chId: _h.ch, url: _h.url, next: _h.next }), ip: "" }, true); } catch (eA) { } }
+      if (_h) hoNote(_h, "phone");   /* 6.9.797 - one writer for both paths */
       return; }
+    if (act === "handover-biz") {   /* 6.9.797 - from the business number, falling back to his phone */
+      var _hb = S.ho; if (!_hb) return;
+      var _hm = String(_hb.mobile || "").replace(/\D/g, "").slice(-10);
+      var _hw = window.open("", "_blank");
+      toast("Sending from the business number\u2026");
+      api("waSend", { to: "91" + _hm, template: "handover_done", vars: hoVars(_hb), note: "handover " + _hb.client }, 30000).then(function (w) {
+        if (w && w.ok) { try { if (_hw && !_hw.closed) _hw.close(); } catch (e) { } hoNote(_hb, "business"); toast("Handover message sent from the business number."); }
+        else { toast(((w && w.error) || "The server did not send it") + " \u2014 opening WhatsApp on this phone instead."); hoNote(_hb, "phone");
+          var _u = "https://wa.me/91" + _hm + "?text=" + encodeURIComponent(hoMsg(_hb)); if (_hw && !_hw.closed) _hw.location = _u; else window.open(_u, "_blank"); }
+      }).catch(function (e) { toast("Could not send (" + apiWhy(e) + ") \u2014 opening WhatsApp on this phone instead."); hoNote(_hb, "phone");
+        var _u = "https://wa.me/91" + _hm + "?text=" + encodeURIComponent(hoMsg(_hb)); if (_hw && !_hw.closed) _hw.location = _u; else window.open(_u, "_blank"); });
+      S.ho = null; S.modal = null; setTimeout(render, 300); return;
+    }
     if (act === "comm-open") { S.modal = modalCommission(t.getAttribute("data-ch")); render(); return; }
     if (act === "comm-save") {
       var commCh = (S.data.challans || []).filter(function (x) { return x.id === t.getAttribute("data-ch"); })[0];
