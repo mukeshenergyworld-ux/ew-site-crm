@@ -29,7 +29,7 @@ function ewKeep(req, res) {
   if (!res || !(res.ok || res.status === 200)) return;
   try { if (new URL(req.url).search) return; } catch (e) { return; }
   var cp = res.clone();
-  caches.open(CACHE).then(function (c) { c.put(req, cp); }).catch(function () {});
+  return caches.open(CACHE).then(function (c) { return c.put(req, cp); }).catch(function () {});   /* 15 Oct 2026 - returned, so a waitUntil can wait for it */
 }
 /* and clear what the old rule left behind. Runs once, when this worker activates. The cache
    NAME is deliberately not bumped - that would delete the good entries too and cost every
@@ -118,16 +118,22 @@ function ewTellNewBuild(url) {
     });
   } catch (e) {}
 }
-function ewShelf(req, fallbackUrl) {
+/* 15 Oct 2026 - THE QUIET DOWNLOAD WAS BEING KILLED (the CRM's fix, sw 9d05626, brought here). The new build was
+   fetched "quietly into the cache" with nothing keeping this worker alive; a browser stops an idle worker after about
+   30 seconds, so on a slow line the new version never landed however often he refreshed. The download and the cache
+   write now go through e.waitUntil. */
+function ewShelf(req, fallbackUrl, ev) {
   return caches.match(req).then(function (hit) {
+    var stored = null;
     var net = fetch(req).then(function (r) {
       if (r && r.ok) {
         /* the tag is read BEFORE ewKeep replaces the stored copy */
         if (hit && ewTag(hit) && ewTag(r) && ewTag(hit) !== ewTag(r)) ewTellNewBuild(req.url);
-        ewKeep(req, r);
+        stored = ewKeep(req, r);
       }
       return r;
     }).catch(function () { return null; });
+    if (ev && ev.waitUntil) { try { ev.waitUntil(net.then(function () { return stored; }).catch(function () {})); } catch (e) { } }
     if (hit) return hit;                    /* instant - the fetch finishes quietly into the cache */
     return net.then(function (r) {
       if (r) return r;
@@ -192,5 +198,5 @@ self.addEventListener("fetch", function (e) {
   var url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
   /* v17aug: the shelf first, unless the request is deliberately asking the server */
-  e.respondWith(ewWantsNetwork(req) ? ewFresh(req, "./index.html") : ewShelf(req, "./index.html"));
+  e.respondWith(ewWantsNetwork(req) ? ewFresh(req, "./index.html") : ewShelf(req, "./index.html", e));
 });
