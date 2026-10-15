@@ -429,7 +429,7 @@ function ewmBuild(n, pre) {
    Nothing here deletes anything, ever. A visit is a row added.
    ========================================================================== */
 
-  var APP_VERSION = "3.0.0";
+  var APP_VERSION = "3.1.0";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -4353,6 +4353,37 @@ function ewmBuild(n, pre) {
     S.il = { dist: N.dist, ndist: N.ndist, area: N.area, narea: N.narea, rows: [{ wm: "" }] };
     S.sheet = ilSheet(); render();
   }
+
+  /* 3.1.0 - WARRANTIES ENDING. His yes to: "once the old installations are in, list every customer whose warranty
+     ends in the next 60 days - the natural moment to offer an AMC or a service visit". Read from the same installs
+     rows; one line per product, soonest first, with Call and a WhatsApp offer written out. */
+  function ilTill(x) {
+    var p0 = {}; try { p0 = (JSON.parse(x.productsJson || "[]") || [])[0] || {}; } catch (e) { p0 = {}; }
+    var st = p0.commDate || x.installDate, wm = Number(p0.warrantyMonths);
+    return (st && p0.warrantyMonths !== undefined && !isNaN(wm)) ? { till: svAddMonths(st, wm), brand: p0.brand || x.model || "", product: x.product || p0.product || "" } : null;
+  }
+  function ilEnding(days) {
+    var lim = sv2AddDays(today(), days || 60), t0 = today();
+    return installs().map(function (x) { var w = ilTill(x); return w && w.till >= t0 && w.till <= lim ? { x: x, w: w } : null; })
+      .filter(Boolean).filter(function (r) { return !/amc/i.test(String(r.x.amcType || "")) || String(r.x.amcType) === "None"; })
+      .sort(function (a, b) { return a.w.till.localeCompare(b.w.till); });
+  }
+  function ilEndingHtml() {
+    var L = ilEnding(60);
+    if (!L.length) return '<div class="empty">No warranty ends in the next 60 days.</div>';
+    return '<div class="meta" style="margin:4px 0">' + L.length + ' product' + (L.length === 1 ? '' : 's') + ' &middot; soonest first &middot; offer an AMC or a service visit before the date.</div>' +
+      L.map(function (r) {
+        var x = r.x, d = Math.round((Date.parse(r.w.till + "T00:00:00") - Date.parse(today() + "T00:00:00")) / 86400000);
+        var mob = String(x.mobile || "").replace(/\D/g, "").slice(-10);
+        var msg = "Namaste Ji, the warranty on your " + [r.w.brand, r.w.product].filter(Boolean).join(" ") + " installed by Energy World ends on " + dstr(r.w.till) +
+          ". To keep it running without worry, we can cover it with an AMC or a service visit. Please reply or call us. - Energy World";
+        return '<div class="card" style="margin:4px 0;padding:8px 10px"><div style="font-size:14px"><b>' + esc(x.client || "") + '</b> &middot; ' + esc([r.w.brand, r.w.product].filter(Boolean).join(" ")) + '</div>' +
+          '<div class="meta">' + esc(x.area || "") + ' &middot; <span class="pill ' + (d <= 15 ? 'red' : 'amb') + '">ends ' + esc(dstr(r.w.till)) + ' &middot; ' + d + ' day' + (d === 1 ? '' : 's') + '</span></div>' +
+          (mob.length === 10 ? '<div class="acts" style="margin-top:4px"><a class="btn sm gry" href="tel:' + mob + '" style="min-height:44px;display:inline-flex;align-items:center;text-decoration:none">Call</a>' +
+            '<a class="btn sm" target="_blank" rel="noopener" href="https://wa.me/91' + mob + '?text=' + encodeURIComponent(msg) + '" style="min-height:44px;display:inline-flex;align-items:center;text-decoration:none">WhatsApp the offer</a></div>'
+            : '<div class="meta" style="color:#b45309">No mobile on file.</div>') + '</div>';
+      }).join("");
+  }
   function viewInsLog() {
     var q = lower(S.q), fd = S.ilD || "", fa = S.ilA || "";
     var all = installs().map(function (x) { var s2 = ilSplit(x.area); return { x: x, dist: s2.dist || "No district", area: s2.area || "No area" }; });
@@ -4375,7 +4406,10 @@ function ewmBuild(n, pre) {
       '<div class="meta">' + installs().length + ' products at ' + order.length + ' customers' + (fd || fa || q ? ' (filtered)' : '') + ' &middot; district, then area, then customer.</div>' +
       '<div class="grid2" style="margin-top:6px"><div><label>District</label><select id="il_fd" class="il-f" style="min-height:44px">' + ilOpt("", fd, "All districts") + dists.map(function (x) { return ilOpt(x, fd); }).join("") + '</select></div>' +
       '<div><label>Area</label><select id="il_fa" class="il-f" style="min-height:44px">' + ilOpt("", fa, "All areas") + areas.map(function (x) { return ilOpt(x, fa); }).join("") + '</select></div></div></div>' +
-      searchBox("Search a name, mobile, address or product");
+      '<div class="chips" style="margin:6px 0"><button class="chip bchip' + (S.ilEnd ? '' : ' on') + '" data-act="il-end" data-k="">All installations</button>' +
+      '<button class="chip bchip' + (S.ilEnd ? ' on' : '') + '" data-act="il-end" data-k="1">Warranty ending in 60 days (' + ilEnding(60).length + ')</button></div>';
+    if (S.ilEnd) return h + ilEndingHtml();   /* 3.1.0 */
+    h += searchBox("Search a name, mobile, address or product");
     if (!cs.length) return h + '<div class="empty">Nothing logged here yet.</div>';
     var lastD = "", lastA = "", n = 0;
     cs.forEach(function (c) {
@@ -5563,6 +5597,7 @@ function ewmBuild(n, pre) {
       S.tab = k; S.q = ""; render(); return;
     }
     if (act === "il-new") { if (!canRecord()) { toast("Entering installations is for the service team and the owner."); return; } S.il = S.il || { rows: [{ wm: "" }] }; S.sheet = ilSheet(); render(); return; }   /* 3.0.0 */
+    if (act === "il-end") { S.ilEnd = !!t.getAttribute("data-k"); render(); return; }   /* 3.1.0 */
     if (act === "il-add") { ilKeep(); S.il.rows.push({ wm: "" }); S.sheet = ilSheet(); render(); return; }
     if (act === "il-rm") { ilKeep(); S.il.rows.splice(Number(t.getAttribute("data-i")) || 0, 1); if (!S.il.rows.length) S.il.rows.push({ wm: "" }); S.sheet = ilSheet(); render(); return; }
     if (act === "il-save") { ilSave(t); return; }
