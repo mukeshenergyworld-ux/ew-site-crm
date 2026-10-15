@@ -69,7 +69,7 @@ function ewKeep(req, res) {
   if (!res || !(res.ok || res.status === 200)) return;
   try { if (new URL(req.url).search) return; } catch (e) { return; }
   var cp = res.clone();
-  caches.open(CACHE).then(function (c) { c.put(req, cp); }).catch(function () {});
+  return caches.open(CACHE).then(function (c) { return c.put(req, cp); }).catch(function () {});   /* returned so a waitUntil can wait for the copy to be stored */
 }
 /* and clear what the old rule left behind. Runs once, when this worker activates. The cache
    NAME is deliberately not bumped - that would delete the good entries too and cost every
@@ -158,16 +158,27 @@ function ewTellNewBuild(url) {
     });
   } catch (e) {}
 }
-function ewShelf(req, fallbackUrl) {
+/* ===== THE QUIET DOWNLOAD WAS BEING KILLED (15 Oct 2026) =====
+   HIS REPORT: "not updating to 811 version, even after many refresh clicks".
+   MEASURED from his own computer: app.js is 1.47 MB gzipped and took 129 seconds to arrive.
+   ewShelf serves the old copy at once and lets the new one "finish quietly into the cache" -
+   but nothing told the browser to keep this worker alive for that. A service worker with no
+   pending event is stopped after about 30 seconds, and every refresh starts the download
+   again from zero. On his line the new build could therefore never land, however often he
+   refreshed. The background fetch is now handed to e.waitUntil, so the worker stays up until
+   it has finished (Chrome allows up to 5 minutes). */
+function ewShelf(req, fallbackUrl, ev) {
   return caches.match(req).then(function (hit) {
+    var stored = null;
     var net = fetch(req).then(function (r) {
       if (r && r.ok) {
         /* the tag is read BEFORE ewKeep replaces the stored copy */
         if (hit && ewTag(hit) && ewTag(r) && ewTag(hit) !== ewTag(r)) ewTellNewBuild(req.url);
-        ewKeep(req, r);
+        stored = ewKeep(req, r);
       }
       return r;
     }).catch(function () { return null; });
+    if (ev && ev.waitUntil) { try { ev.waitUntil(net.then(function () { return stored; }).catch(function () {})); } catch (e) {} }
     if (hit) return hit;                    /* instant - the fetch finishes quietly into the cache */
     return net.then(function (r) {
       if (r) return r;
@@ -242,7 +253,7 @@ self.addEventListener("fetch", function (e) {
   if (e.request.mode === "navigate" || url.indexOf("app.js") >= 0 ||
       url.indexOf("index.html") >= 0 || url.indexOf("manifest") >= 0) {
     if (ewWantsNetwork(e.request)) { networkFirst(e); return; }
-    e.respondWith(ewShelf(e.request, e.request.mode === "navigate" ? "./index.html" : null));
+    e.respondWith(ewShelf(e.request, e.request.mode === "navigate" ? "./index.html" : null, e));
     return;
   }
 

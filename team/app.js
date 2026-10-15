@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.811";
+  var APP_VERSION = "6.9.812";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -700,12 +700,16 @@
   /* the same reading, applied to somebody else's cell - used by the team screens, which ask
      about a row rather than about the man holding the phone */
   function rolesOn(v) {
-    return String(v || "").toLowerCase().split(/[^a-z]+/).filter(Boolean);
+    return String(v || "").toLowerCase().split(/[^a-z]+/).filter(Boolean).map(function (w) { return /^account/.test(w) ? "accounts" : w; });
   }
   function roleIsOn(v, r) { return rolesOn(v).indexOf(r) >= 0; }
 
+  /* 6.9.812 - "Account", "Accountant", "Accounts": one role. His words: "its 811 version, even then
+     not shown to accounts". The billing desk asks for the word "accounts" exactly, and a role typed
+     any other way in Team PINs quietly got nothing - no button, no desk, no warning. */
+  function roleWord(w) { return /^account/.test(w) ? "accounts" : w; }
   function myRoles() {
-    return String(S.role || "").toLowerCase().split(/[^a-z]+/).filter(Boolean);
+    return String(S.role || "").toLowerCase().split(/[^a-z]+/).filter(Boolean).map(roleWord);
   }
   function roleIs(r) { return myRoles().indexOf(r) >= 0; }
   function roleAny(list) {
@@ -54596,6 +54600,19 @@ function viewCatalogue() {
        five because their names were arbitrary; these eight are an order he approved, with
        the money first and the day last. A group none of his roles can see is not drawn. */
     var h = '<div class="nvrow">';
+    /* 6.9.812 - BILLING, ALWAYS IN SIGHT FOR ACCOUNTS. His words: "this open billing is not shown to
+       accounts - Gautam ... show a tab at top to accounts only in red highlighted, so he can view
+       everytime". The desk lived two taps down (Deliveries > Billing) and behind a band on Today that
+       scrolls away. For a man holding the accounts role it is now the FIRST chip of the top row, red,
+       with the number of challans waiting for a bill. Nobody else gets it - the owner reaches the desk
+       from Today and Deliveries as before. */
+    try {
+      if (roleIs("accounts") && canBill()) {
+        var _bn = billToDo().length, _bon = (S.tab === "deliveries" && S.delSub === "bill");
+        h += '<button class="nvg" data-act="del-sub" data-s="bill" style="background:' + (_bon ? '#991b1b' : '#dc2626') +
+          ';border-color:#b91c1c;color:#fff">Billing' + (_bn ? ' &middot; ' + _bn : '') + '</button>';
+      }
+    } catch (e) { }
     NAV_GROUPS.forEach(function (g) {
       var items = navItemsOf(g, label);
       if (!items.length) return;
