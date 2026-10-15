@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.813";
+  var APP_VERSION = "6.9.814";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -2167,6 +2167,7 @@
       if (!found) { arr.push(e.row); back++; }
     });
     if (back) { try { console.warn("[EW] put back " + plural(back, "confirmed row") + " a re-sync had not caught up with"); } catch (x) { } }
+    try { applyBillFacts(); } catch (eBf) { }   /* 6.9.814 */
   }
 
   /* ---- v6.9.292 · THE MOVE REGISTER ----
@@ -3164,6 +3165,7 @@ window.addEventListener("beforeunload", function (ev) {
       try { pstNag(); } catch (e) { }   /* 6.9.789 - 1st to 7th: partner statements to send */
       try { setTimeout(function () { try { rsAutoTick(); } catch (e) { } }, 6000); if (!_rsTick) _rsTick = setInterval(function () { try { rsAutoTick(); } catch (e) { } }, 1800000); } catch (e) { }   /* 6.9.639 - the reports send themselves */
       try { if (roleAny(["admin", "accounts"]) && !_stkNagDone) ensureStock(); } catch (e) { }   /* 6.9.607 - bills to upload */
+      try { billRescue(); } catch (e) { }   /* 6.9.814 */
     });
   }
 
@@ -24401,7 +24403,72 @@ function viewCatalogue() {
   function billProfiles(c) {
     var cl = clientByName(c.customerName) || {}, out = [];
     try { out = JSON.parse(cl.billingJson || "[]") || []; } catch (e) { out = []; }
+    try { billNameFacts(c.customerName).forEach(function (p) { var v = p.gstin ? p.name + " - " + p.gstin : p.name; if (!out.some(function (q) { return (q.gstin ? q.name + " - " + q.gstin : q.name) === v; })) out.push(p); }); } catch (e) { }   /* 6.9.814 */
     return out.filter(function (p) { return p && String(p.name || "").trim(); });
+  }
+
+  /* ===== 6.9.814 - THE BILL IS KEPT AS A FACT, NOT ONLY ON THE CHALLAN ROW =====
+     His report: "accounts have entered billing details for this challan, but not shown here, fix this
+     for all" (challan 15/10/2026/288, Kainos Hospital - HISAB showed "+ bill").
+     MEASURED on his own device's book (pulled 12:33): Gautam's audit row bill:open for that challan
+     reached the server at 12:27, but the challan row itself came back with billTo, billNo and
+     billStatus all empty. In the whole book only challans billed by the owner carry a bill number:
+     the server does not keep a challan edit made by an accounts login. The audit sheet takes his
+     writes. So every billing step now ALSO writes an audit row "bill:set" (challan id, billing name,
+     bill number, date, who), and every pull lays the latest of those over its challan. The challan
+     save still goes too - for the owner it always worked. Nothing is deleted. */
+  function billFactMap() {
+    var m = {};
+    ((S.data && S.data.audit) || []).forEach(function (a) {
+      if (!a || String(a.action || "") !== "bill:set") return;
+      var k = String(a.target || ""); if (!k) return;
+      var d = {}; try { d = JSON.parse(a.detail || "{}") || {}; } catch (e) { d = {}; }
+      d._at = String(a.createdAt || ""); d._by = String(a.actor || "");
+      if (!m[k] || d._at > m[k]._at) m[k] = d;
+    });
+    return m;
+  }
+  function applyBillFacts() {
+    if (!S.data || !S.data.challans) return;
+    var m = billFactMap(); if (!Object.keys(m).length) return;
+    S.data.challans.forEach(function (c) {
+      var f = c && m[String(c.id)]; if (!f) return;
+      if (f.billTo) c.billTo = f.billTo;
+      if (f.billNo) { c.billNo = f.billNo; c.billStatus = "Billed"; c.billedAt = c.billedAt || f.billedAt || f._at.slice(0, 10); c.billedBy = c.billedBy || f.billedBy || f._by; }
+      else if (f.billStatus && !String(c.billNo || "").trim()) c.billStatus = f.billStatus;
+    });
+  }
+  function billFactSave(c, extra) {
+    var d = Object.assign({ challan: String(c.challanNo || ""), client: String(c.customerName || ""), billTo: String(c.billTo || ""),
+      billNo: String(c.billNo || ""), billStatus: String(c.billStatus || ""), billedAt: String(c.billedAt || ""), billedBy: String(c.billedBy || "") }, extra || {});
+    return auditFact("bill:set", String(c.id), d).catch(function () { });
+  }
+  /* billing names registered by accounts - the clients row is the owner's to write, so a new name
+     is ALSO filed as an audit row "bill:name" and read back here */
+  function billNameFacts(client) {
+    var k = dgKey(client), out = [];
+    ((S.data && S.data.audit) || []).forEach(function (a) {
+      if (!a || String(a.action || "") !== "bill:name" || dgKey(a.target || "") !== k) return;
+      var d = {}; try { d = JSON.parse(a.detail || "{}") || {}; } catch (e) { d = {}; }
+      if (d.name) out.push({ name: String(d.name), gstin: String(d.gstin || "") });
+    });
+    return out;
+  }
+  /* bills typed on THIS device before 6.9.814 are still in its save journal (the server refused the
+     challan row). File each one as its fact, once. */
+  var _billRescued = {};
+  function billRescue() {
+    if (!canBill() || !S.data) return;
+    var m = billFactMap();
+    (pendLoad() || []).forEach(function (e) {
+      if (!e || e.tab !== "challans" || !e.row) return;
+      var r = e.row, id = String(r.id || "");
+      if (!id || _billRescued[id] || !(String(r.billNo || "").trim() || String(r.billTo || "").trim())) return;
+      var f = m[id];
+      if (f && String(f.billNo || "") === String(r.billNo || "") && String(f.billTo || "") === String(r.billTo || "")) return;
+      _billRescued[id] = 1;
+      billFactSave(r, { rescued: true });
+    });
   }
   function billFormHtml(c, nameOnly) {
     var profs = billProfiles(c), cur = String(c.billTo || "");
@@ -63129,10 +63196,12 @@ function viewCatalogue() {
           _gp.push({ name: _gn, gstin: _gg });
           save("clients", { id: _gcl.id, name: _gcl.name, billingJson: JSON.stringify(_gp) });
         }
+        auditFact("bill:name", String(_gc.customerName || ""), { name: _gn, gstin: _gg }).catch(function () { });   /* 6.9.814 */
       }
       var _gnow = new Date().toISOString();
       Object.assign(_gc, { billTo: _gto, billStatus: "Billing" });
       save("challans", Object.assign({}, _gc)).catch(function () { toast("Kept safe on this device - will sync on next refresh."); });
+      billFactSave(_gc);   /* 6.9.814 */
       save("audit", { id: "", createdAt: _gnow, actor: S.user, action: "bill:open", target: String(id), detail: JSON.stringify({ challan: _gc.challanNo || "", client: _gc.customerName || "", billTo: _gto }), ip: "" }, true);
       S.bsOpen = id; S.modal = modalBillSheet(id); render(); return;
     }
@@ -63187,6 +63256,7 @@ function viewCatalogue() {
           profs.push({ name: nn, gstin: gg });
           save("clients", { id: bcl.id, name: bcl.name, billingJson: JSON.stringify(profs) });
         }
+        auditFact("bill:name", String(bch.customerName || ""), { name: nn, gstin: gg }).catch(function () { });   /* 6.9.814 */
       }
       var billNo = String(val("b_no") || "").trim();
       if (!billNo) { toast("Enter the bill number."); return; }
@@ -63205,6 +63275,7 @@ function viewCatalogue() {
         S.bsOpen = null;   /* 6.9.810 */
         render();
         save("challans", updated).catch(function () { toast("Kept safe on this device - will sync on next refresh."); });
+        billFactSave(updated);   /* 6.9.814 - the copy the server keeps for an accounts login */
       };
       if (dupes.length) {
         /* v6.9.453 - the app's own sheet, the bill form held and put back on Go back */
