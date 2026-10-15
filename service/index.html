@@ -429,7 +429,7 @@ function ewmBuild(n, pre) {
    Nothing here deletes anything, ever. A visit is a row added.
    ========================================================================== */
 
-  var APP_VERSION = "2.9.7";
+  var APP_VERSION = "3.0.0";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -4207,13 +4207,202 @@ function ewmBuild(n, pre) {
   }
 
   /* ---- ALL MACHINES, searchable ---- */
+
+  /* ===================== 3.0.0 - THE INSTALLATION LOG (old installations) =====================
+     His words: "make an easy system for entering old installations, like an installation log, as there
+     are more than 300 installations, we have to categorise them district wise, area wise - sr no, name,
+     mobile no, address, product 1, product 2, add product, tentative installation date of each product to
+     calculate warranty, all to be selected from drop down, or add new if not there".
+     One customer per entry, any number of products. Every choice is a drop-down built from what is
+     already on the book (districts and areas from the clients and the installs, brands and products from
+     the brand rules and the installs) with "+ Add new" at the end. Each product becomes one installs row,
+     the same shape the complaint and commissioning forms write, so every screen that reads installations
+     reads these. Warranty = the tentative date + the brand's warranty months (editable). After Save the
+     district and area stay, so the next customer in the same area is three fields away. */
+  function ilSplit(a) {   /* "Area, District" -> {area, dist}; a single word is the district */
+    var p = String(a || "").split(",").map(function (x) { return x.trim(); }).filter(Boolean);
+    if (!p.length) return { area: "", dist: "" };
+    if (p.length === 1) return { area: "", dist: p[0] };
+    return { area: p.slice(0, -1).join(", "), dist: p[p.length - 1] };
+  }
+  function ilUniq(L) { var o = []; L.forEach(function (x) { x = String(x || "").trim(); if (x && o.indexOf(x) < 0) o.push(x); }); return o.sort(alpha); }
+  function ilDists() {
+    return ilUniq(clients().map(function (c) { return c.location; }).concat(installs().map(function (x) { return ilSplit(x.area).dist; })));
+  }
+  function ilAreas(dist) {
+    var a = clients().filter(function (c) { return !dist || String(c.location || "").trim() === dist; }).map(function (c) { return c.area; });
+    installs().forEach(function (x) { var s2 = ilSplit(x.area); if (!dist || s2.dist === dist) a.push(s2.area); });
+    return ilUniq(a);
+  }
+  function ilBrands() {
+    var b = SVC_BRANDS4.slice();
+    installs().forEach(function (x) { var ps = []; try { ps = JSON.parse(x.productsJson || "[]") || []; } catch (e) { ps = []; } ps.forEach(function (p) { b.push(p.brand); }); b.push(x.model); });
+    return ilUniq(b.filter(function (v) { return v && v.length < 30; }));
+  }
+  function ilProducts() {
+    var p = SV_PRODUCTS.filter(function (x) { return x !== "Other"; });
+    installs().forEach(function (x) { p.push(x.product); });
+    return ilUniq(p.filter(function (v) { return v && v.length < 40; }));
+  }
+  function ilOpt(v, cur, l) { return '<option value="' + esc(v) + '"' + (v === cur ? ' selected' : '') + '>' + esc(l == null ? v : l) + '</option>'; }
+  function ilSelect(id, list, cur, ph, newLabel) {
+    var known = !cur || list.indexOf(cur) >= 0 || cur === "__new__";
+    return '<select id="' + id + '" class="il-sel" style="min-height:44px">' + ilOpt("", cur, ph) + list.map(function (x) { return ilOpt(x, cur); }).join("") +
+      (!known ? ilOpt(cur, cur) : "") + ilOpt("__new__", cur, "+ " + newLabel) + '</select>';
+  }
+  function ilWm(brand) { var bs = sv2BrandSvc(brand) || {}; return Number(bs.wm) || 12; }
+  function ilRowsOf(nm, mob) {   /* the products already logged for this customer */
+    var k = lower(nm), m = String(mob || "").replace(/\D/g, "").slice(-10);
+    return installs().filter(function (x) { return (k && lower(x.client) === k) || (m.length === 10 && String(x.mobile || "").replace(/\D/g, "").slice(-10) === m); });
+  }
+  function ilSheet() {
+    var N = S.il || (S.il = { rows: [{ wm: "" }] });
+    var dists = ilDists(), areas = ilAreas(N.dist === "__new__" ? "" : N.dist);
+    var h = '<h2>Installation log &mdash; add an old installation</h2>' +
+      '<div class="muted">One customer, any number of products. Pick from the lists, or + Add new at the end of a list.</div>' +
+      '<div class="grid2"><div><label>District</label>' + ilSelect("il_dist", dists, N.dist || "", "— pick the district —", "Add new district") +
+      (N.dist === "__new__" ? '<input id="il_ndist" value="' + esc(N.ndist || "") + '" placeholder="New district name" style="margin-top:4px"/>' : '') + '</div>' +
+      '<div><label>Area</label>' + ilSelect("il_area", areas, N.area || "", "— pick the area —", "Add new area") +
+      (N.area === "__new__" ? '<input id="il_narea" value="' + esc(N.narea || "") + '" placeholder="New area name" style="margin-top:4px"/>' : '') + '</div></div>';
+    var dSel = N.dist === "__new__" ? "" : N.dist, aSel = N.area === "__new__" ? "" : N.area;
+    var cls = ilUniq(clients().filter(function (c) { return (!dSel || String(c.location || "").trim() === dSel) && (!aSel || String(c.area || "").trim() === aSel); }).map(function (c) { return c.name; }));
+    h += '<label>Customer</label>' + ilSelect("il_cust", cls, N.cust || "", "— pick the customer (" + cls.length + ") —", "New customer (not on the book)") +
+      (N.cust === "__new__" ? '<input id="il_name" value="' + esc(N.name || "") + '" placeholder="Customer name" style="margin-top:4px"/>' : '') +
+      '<div class="grid2"><div><label>Mobile</label><input id="il_mob" inputmode="numeric" maxlength="10" value="' + esc(N.mob || "") + '" placeholder="10 digits"/></div>' +
+      '<div><label>Address</label><input id="il_addr" value="' + esc(N.addr || "") + '" placeholder="House, street"/></div></div>';
+    var nm = N.cust === "__new__" ? N.name : N.cust, had = nm ? ilRowsOf(nm, N.mob) : [];
+    if (had.length) h += '<div class="meta" style="margin:6px 0;color:#b45309">Already logged for him: ' + esc(had.map(function (x) { return [x.model, x.product].filter(Boolean).join(" ") + (x.installDate ? " (" + dstr(x.installDate) + ")" : ""); }).join(" · ")) + '</div>';
+    var brands = ilBrands(), prods = ilProducts();
+    N.rows.forEach(function (r, i) {
+      var b = r.brand === "__new__" ? (r.nbrand || "") : (r.brand || ""), wm = r.wm === "" || r.wm == null ? (b ? ilWm(b) : "") : r.wm;
+      var till = r.date && wm !== "" ? svAddMonths(r.date, Number(wm) || 0) : "";
+      h += '<div class="card" style="margin:8px 0;border-color:#5eead4"><div class="row"><b class="grow">Product ' + (i + 1) + '</b>' +
+        (N.rows.length > 1 ? '<button class="btn gry sm" data-act="il-rm" data-i="' + i + '">Remove</button>' : '') + '</div>' +
+        '<div class="grid2"><div><label>Brand</label>' + ilSelect("il_b" + i, brands, r.brand || "", "— brand —", "Add new brand") +
+        (r.brand === "__new__" ? '<input id="il_nb' + i + '" value="' + esc(r.nbrand || "") + '" placeholder="New brand" style="margin-top:4px"/>' : '') + '</div>' +
+        '<div><label>Product</label>' + ilSelect("il_p" + i, prods, r.product || "", "— product —", "Add new product") +
+        (r.product === "__new__" ? '<input id="il_np' + i + '" value="' + esc(r.nproduct || "") + '" placeholder="New product" style="margin-top:4px"/>' : '') + '</div></div>' +
+        '<div class="grid2"><div><label>Model (if known)</label><input id="il_m' + i + '" value="' + esc(r.model || "") + '" placeholder="optional"/></div>' +
+        '<div><label>Installed on (tentative)</label><input id="il_d' + i + '" type="date" max="' + today() + '" value="' + esc(r.date || "") + '" class="il-sel"/></div></div>' +
+        '<div class="grid2"><div><label>Warranty (months)</label><input id="il_w' + i + '" inputmode="numeric" value="' + esc(wm) + '" class="il-sel"/></div>' +
+        '<div style="align-self:end;padding-bottom:6px">' + (till ? '<span class="pill ' + (till >= today() ? 'grn' : 'red') + '">' + (till >= today() ? 'In warranty till ' : 'Warranty ended ') + esc(dstr(till)) + '</span>' : '<span class="meta">Pick the date to see the warranty</span>') + '</div></div></div>';
+    });
+    h += '<button class="btn gry sm" data-act="il-add" style="min-height:44px">+ Add product</button>' +
+      '<div class="acts"><button class="btn gry" data-act="close">Close</button><button class="btn grow" data-act="il-save">Save &amp; next customer</button></div>';
+    return h;
+  }
+  function ilKeep() {
+    var N = S.il; if (!N) return;
+    var g = function (id) { var e = el(id); return e ? String(e.value || "") : null; };
+    var v;
+    if ((v = g("il_dist")) != null) { if (v !== N.dist) { N.area = ""; N.cust = ""; } N.dist = v; }
+    if ((v = g("il_ndist")) != null) N.ndist = v;
+    if ((v = g("il_area")) != null) { if (v !== N.area) N.cust = ""; N.area = v; }
+    if ((v = g("il_narea")) != null) N.narea = v;
+    if ((v = g("il_cust")) != null) {
+      if (v !== N.cust && v && v !== "__new__") { var c = clientByName(v) || {}; N.mob = String(c.mobile || c.mobile2 || "").replace(/\D/g, "").slice(-10); N.addr = String(c.address || ""); }
+      N.cust = v;
+    }
+    if ((v = g("il_name")) != null) N.name = v;
+    if ((v = g("il_mob")) != null) N.mob = v.replace(/\D/g, "").slice(0, 10);
+    if ((v = g("il_addr")) != null) N.addr = v;
+    N.rows.forEach(function (r, i) {
+      var nb, bch = false;
+      if ((nb = g("il_b" + i)) != null) { if (nb !== r.brand) { r.wm = ""; bch = true; } r.brand = nb; }
+      if ((nb = g("il_nb" + i)) != null) r.nbrand = nb;
+      if ((nb = g("il_p" + i)) != null) r.product = nb;
+      if ((nb = g("il_np" + i)) != null) r.nproduct = nb;
+      if ((nb = g("il_m" + i)) != null) r.model = nb;
+      if ((nb = g("il_d" + i)) != null) r.date = nb;
+      if (!bch && (nb = g("il_w" + i)) != null) r.wm = nb.replace(/[^\d]/g, "");   /* a new brand brings its own warranty */
+    });
+  }
+  function ilSave(btn) {
+    ilKeep();
+    var N = S.il || {};
+    var dist = N.dist === "__new__" ? String(N.ndist || "").trim() : String(N.dist || "").trim();
+    var area = N.area === "__new__" ? String(N.narea || "").trim() : String(N.area || "").trim();
+    var nm = N.cust === "__new__" ? String(N.name || "").trim() : String(N.cust || "").trim();
+    var mob = String(N.mob || "").replace(/\D/g, "");
+    if (!dist) { toast("Pick the district, or + Add new district."); return; }
+    if (!area) { toast("Pick the area, or + Add new area."); return; }
+    if (!nm) { toast("Pick the customer, or + New customer and type the name."); return; }
+    if (mob && mob.length !== 10) { toast("The mobile should be 10 digits (or leave it empty)."); return; }
+    var L = [];
+    for (var i = 0; i < N.rows.length; i++) {
+      var r = N.rows[i], b = r.brand === "__new__" ? String(r.nbrand || "").trim() : String(r.brand || "").trim(),
+          pr = r.product === "__new__" ? String(r.nproduct || "").trim() : String(r.product || "").trim();
+      if (!b || !pr) { toast("Product " + (i + 1) + ": pick the brand and the product."); return; }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(String(r.date || ""))) { toast("Product " + (i + 1) + ": pick the installation date (a tentative one is fine)."); return; }
+      if (r.date > today()) { toast("Product " + (i + 1) + ": the installation date cannot be in the future."); return; }
+      var wm = r.wm === "" || r.wm == null ? ilWm(b) : Math.max(0, Math.round(num(r.wm)));
+      L.push({ brand: b, product: pr, model: String(r.model || "").trim(), date: r.date, wm: wm });
+    }
+    var isClient = !!clientByName(nm), areaF = [area, dist].filter(Boolean).join(", ");
+    L.forEach(function (m) {
+      var bs = sv2BrandSvc(m.brand) || {}, cyc = Number(bs.cm) || 6;
+      saveRow("installs", { id: mintId("IN"), createdBy: S.user, client: nm, mobile: mob, address: String(N.addr || "").trim(), area: areaF,
+        product: m.product, model: m.model || m.brand, serial: "", installDate: m.date, waterQuality: "", cycleDays: Math.round(cyc * 30),
+        lastService: "", nextService: svAddMonths(m.date, cyc), amcType: "None", amcAmount: "", amcEnd: "", engineer: "", status: "Active",
+        productsJson: JSON.stringify([{ brand: m.brand, product: m.product, model: m.model || m.product, serial: "", installDate: m.date, commDate: m.date, warrantyMonths: m.wm, serviceReq: 1, serviceMonths: cyc }]),
+        notes: "Old installation, entered in the installation log (Service app) · installation date tentative · warranty " + m.wm + " months till " + dstr(svAddMonths(m.date, m.wm)) + (isClient ? "" : " · the office to add him as a client") });
+    });
+    try { applyJournal(); } catch (e) { }
+    try { bust(); } catch (e) { }
+    toast(nm + ": " + L.length + " product" + (L.length === 1 ? "" : "s") + " logged. Next customer — the district and area are kept.");
+    S.il = { dist: N.dist, ndist: N.ndist, area: N.area, narea: N.narea, rows: [{ wm: "" }] };
+    S.sheet = ilSheet(); render();
+  }
+  function viewInsLog() {
+    var q = lower(S.q), fd = S.ilD || "", fa = S.ilA || "";
+    var all = installs().map(function (x) { var s2 = ilSplit(x.area); return { x: x, dist: s2.dist || "No district", area: s2.area || "No area" }; });
+    var dists = ilUniq(all.map(function (r) { return r.dist; })), areas = ilUniq(all.filter(function (r) { return !fd || r.dist === fd; }).map(function (r) { return r.area; }));
+    var rows = all.filter(function (r) {
+      if (fd && r.dist !== fd) return false;
+      if (fa && r.area !== fa) return false;
+      return !q || lower([r.x.client, r.x.mobile, r.x.address, r.x.area, r.x.product, r.x.model].join(" ")).indexOf(q) >= 0;
+    });
+    /* one line per customer: his products under him */
+    var byC = {}, order = [];
+    rows.forEach(function (r) {
+      var k = r.dist + "|" + r.area + "|" + lower(r.x.client) + "|" + String(r.x.mobile || "");
+      if (!byC[k]) { byC[k] = { dist: r.dist, area: r.area, name: r.x.client, mob: r.x.mobile, addr: r.x.address, ps: [] }; order.push(k); }
+      byC[k].ps.push(r.x);
+    });
+    var cs = order.map(function (k) { return byC[k]; }).sort(function (a, b) { return alpha(a.dist, b.dist) || alpha(a.area, b.area) || alpha(a.name, b.name); });
+    var h = '<div class="card"><div class="row"><b class="grow" style="font-size:16px">Installation log</b>' +
+      (canRecord() ? '<button class="btn sm" data-act="il-new" style="min-height:44px">+ Add old installation</button>' : '') + '</div>' +
+      '<div class="meta">' + installs().length + ' products at ' + order.length + ' customers' + (fd || fa || q ? ' (filtered)' : '') + ' &middot; district, then area, then customer.</div>' +
+      '<div class="grid2" style="margin-top:6px"><div><label>District</label><select id="il_fd" class="il-f" style="min-height:44px">' + ilOpt("", fd, "All districts") + dists.map(function (x) { return ilOpt(x, fd); }).join("") + '</select></div>' +
+      '<div><label>Area</label><select id="il_fa" class="il-f" style="min-height:44px">' + ilOpt("", fa, "All areas") + areas.map(function (x) { return ilOpt(x, fa); }).join("") + '</select></div></div></div>' +
+      searchBox("Search a name, mobile, address or product");
+    if (!cs.length) return h + '<div class="empty">Nothing logged here yet.</div>';
+    var lastD = "", lastA = "", n = 0;
+    cs.forEach(function (c) {
+      if (c.dist !== lastD) { h += '<div style="margin:12px 0 4px;font-weight:800;font-size:15px;color:#0b3b36">' + esc(c.dist) + '</div>'; lastD = c.dist; lastA = ""; }
+      if (c.area !== lastA) { h += '<div style="margin:6px 0 2px;font-weight:700;font-size:13.5px;color:#475569">' + esc(c.area) + '</div>'; lastA = c.area; }
+      n++;
+      h += '<div class="card" style="margin:4px 0;padding:8px 10px"><div style="font-size:14px"><b>' + n + '. ' + esc(c.name || "") + '</b>' +
+        (c.mob ? ' &middot; <a href="tel:' + esc(c.mob) + '">' + esc(c.mob) + '</a>' : '') + '</div>' +
+        (c.addr ? '<div class="meta">' + esc(c.addr) + '</div>' : '') +
+        c.ps.map(function (x) {
+          var p0 = {}; try { p0 = (JSON.parse(x.productsJson || "[]") || [])[0] || {}; } catch (e) { p0 = {}; }
+          var st = p0.commDate || x.installDate, wm = Number(p0.warrantyMonths), till = st && !isNaN(wm) && p0.warrantyMonths !== undefined ? svAddMonths(st, wm) : "";
+          return '<div style="font-size:13px;margin-top:3px">' + esc([p0.brand || x.model, x.product].filter(Boolean).join(" ")) + (x.installDate ? ' &middot; ' + esc(dstr(x.installDate)) : '') +
+            (till ? ' <span class="pill ' + (till >= today() ? 'grn' : 'red') + '">' + (till >= today() ? 'warranty till ' : 'warranty ended ') + esc(dstr(till)) + '</span>' : '') + '</div>';
+        }).join("") + '</div>';
+    });
+    return h;
+  }
   function viewJobs() {
     var q = lower(S.q);
     var list = installs().filter(function (x) {
       if (!q) return true;
       return lower([x.client, x.area, x.product, x.model, x.serial, x.mobile, x.address].join(" ")).indexOf(q) >= 0;
     }).sort(function (a, b) { return alpha(a.client, b.client); });
-    return searchBox("Search a customer, area, model or serial") +
+    return '<div class="card" style="margin:6px 0"><div class="row"><div class="grow"><b>Installation log</b><div class="meta">Old installations, district and area wise, with warranty.</div></div>' +
+        '<button class="btn sm" data-act="tab" data-k="inslog" style="min-height:44px">Open</button></div></div>' +   /* 3.0.0 */
+      searchBox("Search a customer, area, model or serial") +
       (list.length
         ? '<div class="meta pad">' + list.length + ' of ' + installs().length + '</div>' + list.map(insRow).join("")
         : '<div class="empty">Nothing matches that.</div>');
@@ -5225,7 +5414,7 @@ function ewmBuild(n, pre) {
        a white card. On a narrow phone that mostly stacked anyway and looked passable, which is
        why it survived; on a Mac it is the scattered mess in his screenshot. */
     if (S.sheet) return '<div class="sheet"><div class="inner">' + S.sheet + '</div></div>';
-    var v = { home: viewHome, today: viewHome, complaints: viewComplaints, commission: viewCommission, jobs: viewJobs, history: viewHistory, account: viewAccount }[S.tab];
+    var v = { home: viewHome, today: viewHome, complaints: viewComplaints, commission: viewCommission, jobs: viewJobs, history: viewHistory, account: viewAccount, inslog: viewInsLog }[S.tab];
     return v ? v() : viewHome();
   }
 
@@ -5297,6 +5486,12 @@ function ewmBuild(n, pre) {
       });
       try { cq.focus({ preventScroll: true }); cq.setSelectionRange(cq.value.length, cq.value.length); } catch (e) { }
     }
+    Array.prototype.forEach.call(document.querySelectorAll(".il-sel"), function (b) {   /* 3.0.0 - the log's drop-downs redraw the form */
+      b.addEventListener("change", function () { if (!S.il) return; ilKeep(); S.sheet = ilSheet(); render(); });
+    });
+    Array.prototype.forEach.call(document.querySelectorAll(".il-f"), function (b) {
+      b.addEventListener("change", function () { if (b.id === "il_fd") { S.ilD = b.value; S.ilA = ""; } else S.ilA = b.value; render(); });
+    });
     Array.prototype.forEach.call(document.querySelectorAll(".cm2-skip"), function (b) {
       b.addEventListener("change", function () { if (S.ew) return; sv2CommKeep(); S.sheet = sv2CommSheet(); render(); });   /* 2.9.0 - the step sheet has its own */
     });
@@ -5367,6 +5562,10 @@ function ewmBuild(n, pre) {
       }
       S.tab = k; S.q = ""; render(); return;
     }
+    if (act === "il-new") { if (!canRecord()) { toast("Entering installations is for the service team and the owner."); return; } S.il = S.il || { rows: [{ wm: "" }] }; S.sheet = ilSheet(); render(); return; }   /* 3.0.0 */
+    if (act === "il-add") { ilKeep(); S.il.rows.push({ wm: "" }); S.sheet = ilSheet(); render(); return; }
+    if (act === "il-rm") { ilKeep(); S.il.rows.splice(Number(t.getAttribute("data-i")) || 0, 1); if (!S.il.rows.length) S.il.rows.push({ wm: "" }); S.sheet = ilSheet(); render(); return; }
+    if (act === "il-save") { ilSave(t); return; }
     if (act === "acc-open") {
       var ak = t.getAttribute("data-k") || "";
       S.accOpen = (S.accOpen === ak) ? "" : ak;
