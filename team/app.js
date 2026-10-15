@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.818";
+  var APP_VERSION = "6.9.819";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -17650,9 +17650,18 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     if (nq.length >= 3 && nn.indexOf(nq) > 0) return 30;
     return 0;
   }
+  /* 6.9.819 - HIS WORDS: "some client still not having client code, like Tagra sanitary, i m searching showing no
+     unique client code". Every client HAS one (216 of 216 on his book; Tagra Sanitary Store is CL085). This panel drew
+     the name with the typed letters in bold - "<b>Tagra</b> Sanitary Store" - which splits the name across two pieces
+     of text, and the code tagger only tags a piece of text that IS a whole name. So the code is now drawn here
+     directly, and typing the code itself (CL085, PL012) finds the man. */
+  function taCode(it) {
+    if (it && it.code) return String(it.code);
+    try { var m = window.__ewCodes && window.__ewCodes.map(); return (m && m[String((it && it.v) || "").replace(/\s+/g, " ").trim().toLowerCase()]) || ""; } catch (e) { return ""; }
+  }
   function taRank(q, items, max) {
-    var out = [];
-    items.forEach(function (it) { var s = taScore(q, it.v); if (s) out.push({ it: it, s: s }); });
+    var out = [], lq = String(q || "").trim().toLowerCase();
+    items.forEach(function (it) { var s = taScore(q, it.v), cd = lq.length >= 2 ? taCode(it).toLowerCase() : ""; if (cd && cd.indexOf(lq) === 0) s = Math.max(s, 90); if (s) out.push({ it: it, s: s }); });
     out.sort(function (a, b) { return b.s - a.s || alpha(a.it.v, b.it.v); });
     return out.slice(0, max || 8).map(function (x) { return x.it; });
   }
@@ -17660,9 +17669,9 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
   function taItems(inp) {
     var src = inp.getAttribute("data-ta");
     if (src === "client") return (S.data.clients || []).filter(function (c) { return c.name; }).map(function (c) {
-      return { v: String(c.name).trim(), sub: [c.type, c.area, c.location].filter(Boolean).join(" · "), id: c.id, act: "cl-open" }; });
+      return { v: String(c.name).trim(), code: String(c.code || ""), sub: [c.type, c.area, c.location].filter(Boolean).join(" · "), id: c.id, act: "cl-open" }; });
     if (src === "partner") return assocLive().map(function (a) {   /* 6.9.730 */
-      return { v: String(a.name).trim(), sub: [a.role, a.location, a.mobile].filter(Boolean).join(" · "), id: a.id, act: "as-open" }; });
+      return { v: String(a.name).trim(), code: String(a.code || ""), sub: [a.role, a.location, a.mobile].filter(Boolean).join(" · "), id: a.id, act: "as-open" }; });
     if (src === "brand") return (S.data.brands || []).filter(function (b) { return b.brand; }).map(function (b) {
       return { v: String(b.brand).trim(), sub: b.notes || "", id: b.id, act: "br-open" }; });
     var lid = inp.getAttribute("data-ta-list") || inp.getAttribute("list"), dl = lid && document.getElementById(lid);
@@ -17716,7 +17725,8 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     if (isNew && list.length) h += '<div style="padding:7px 12px;font-size:12.5px;font-weight:700;color:' + (exact ? '#b91c1c' : '#b45309') + ';background:' + (exact ? '#fef2f2' : '#fffbeb') + '">' +
       (exact ? 'Already on the book — open it instead of making a second one' : 'Is it one of these? Open it instead of making a second one') + '</div>';
     list.forEach(function (it, i) {
-      h += row('<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + taHl(it.v, q) +
+      var _tc = taCode(it);
+      h += row('<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (_tc ? '<span class="ewc">' + esc(_tc) + '</span>' : '') + taHl(it.v, q) +
         (it.sub ? ' <span style="color:#64748b;font-size:12px">' + esc(it.sub) + '</span>' : '') + '</span>' +
         (isNew && it.act && it.id ? '<button class="btn sm" data-act="' + it.act + '" data-id="' + esc(it.id) + '" style="flex:0 0 auto">Open</button>' : ''), isNew ? null : i, i === _ta.hi ? 'background:#e0f2fe' : '');
     });
