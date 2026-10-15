@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.814";
+  var APP_VERSION = "6.9.815";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -51590,12 +51590,13 @@ function viewCatalogue() {
     if (!miss.length) return;
     var amt = miss.reduce(function (a, b) { return a + b.amount; }, 0);
     S.modal = '<h2>' + plural(miss.length, "purchase bill") + ' not uploaded</h2>' +
-      '<p class="sub">These are on GSTR-2B or the Tally Purchase Register but their bills are not in the CRM yet, so their goods are <b>not in stock</b>. Download each bill from Tally as Excel or PDF and upload it.</p>' +
+      '<p class="sub">These are on GSTR-2B or the Tally Purchase Register but their bills are not in the CRM yet, so their goods are <b>not in stock</b>. Download each bill from Tally as Excel or PDF and upload it. Bank and insurance entries are left out; tap <b>Not a purchase</b> on anything else that is not goods.</p>' +
       '<div style="overflow-x:auto;max-height:45vh"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="background:#e2e8f0">' +
       '<th style="padding:5px 7px;text-align:left">DATE</th><th style="padding:5px 7px;text-align:left">SUPPLIER</th><th style="padding:5px 7px;text-align:left">BILL NO</th><th style="padding:5px 7px;text-align:right">AMOUNT</th></tr></thead><tbody>' +
       miss.map(function (b) {
         return '<tr style="border-top:1px solid #e2e8f0"><td style="padding:5px 7px;white-space:nowrap">' + esc(dmy(b.date)) + '</td><td style="padding:5px 7px">' + esc(b.supplier) +
-          '</td><td style="padding:5px 7px"><b>' + esc(b.billNo) + '</b></td><td style="padding:5px 7px;text-align:right">' + money(b.amount) + '</td></tr>';
+          '</td><td style="padding:5px 7px"><b>' + esc(b.billNo) + '</b></td><td style="padding:5px 7px;text-align:right">' + money(b.amount) +
+          '<br><button class="btn sm ghost" data-act="stk-notbill" data-k="' + esc(b.key) + '" style="min-height:44px;font-size:12px;margin-top:2px" title="Not goods - a service, expense or bank entry. Leaves this list for everyone.">Not a purchase</button></td></tr>';
       }).join("") + '</tbody><tfoot><tr style="background:#f1f5f9"><td colspan="3" style="padding:6px 7px;font-weight:800">Total</td><td style="padding:6px 7px;text-align:right;font-weight:800">' + money(amt) + '</td></tr></tfoot></table></div>' +
       '<div class="foot"><button class="btn" data-act="stk-nag-go">Open the Tally screen</button><button class="btn ghost" data-act="close">Later</button></div>';
     render();
@@ -53939,6 +53940,33 @@ function viewCatalogue() {
     (S.stock || []).forEach(function (r) { if (String(r.type) === "bill" && r.ref) m[String(r.ref).trim().toLowerCase()] = r; });
     return m;
   }
+
+  /* ===== 6.9.815 - ONLY PURCHASE BILLS =====
+     His words over "23 purchase bills not uploaded": "pick only purchase bills and avoid bank
+     transactions, form 2b upload, we have to upload only purchase bills". GSTR-2B lists EVERY
+     invoice filed against our GSTIN - a bank's GST on its charges (UNION BANK OF INDIA, Rs 1,196)
+     is on it too, and there is no stock behind it. A supplier named as a bank or an insurer is now
+     left off every list built from the register (the nag, the Tally screen's pending, the matching).
+     Anything else that is not goods - an IT shop, a service - gets a "Not a purchase" tap, filed
+     as an audit row "stk:notbill" so it stays off for everyone. Nothing is deleted: the 2B upload
+     keeps every line. */
+  var STK_NOT_GOODS = /\b(bank|banking|insurance|assurance)\b/i;
+  function stkSkipMap() {
+    var m = {};
+    ((S.data && S.data.audit) || []).forEach(function (a) {
+      if (!a || String(a.action || "") !== "stk:notbill") return;
+      var d = {}; try { d = JSON.parse(a.detail || "{}") || {}; } catch (e) { d = {}; }
+      var k = String(a.target || "").trim().toLowerCase(); if (!k) return;
+      var at = String(a.createdAt || "");
+      if (!m[k] || at > m[k].at) m[k] = { on: d.on !== false, at: at };
+    });
+    return m;
+  }
+  function stkNotPurchase(b, skip) {
+    if (STK_NOT_GOODS.test(String(b.supplier || ""))) return true;
+    var f = (skip || stkSkipMap())[String(b.key || "").toLowerCase()];
+    return !!(f && f.on);
+  }
   /* the month's Purchase Register, as uploaded: one "register" row per upload, the bills in desc */
   function stkRegister() {
     var byKey = {};
@@ -53947,7 +53975,8 @@ function viewCatalogue() {
       var list = []; try { list = JSON.parse(r.desc || "[]") || []; } catch (e) { list = []; }
       list.forEach(function (b) { byKey[stkBillKey(b.s, b.n).toLowerCase()] = { key: stkBillKey(b.s, b.n), date: b.d, supplier: b.s, billNo: b.n, amount: Number(b.a) || 0 }; });
     });
-    return Object.keys(byKey).map(function (k) { return byKey[k]; }).sort(function (a, b) { return String(a.date).localeCompare(String(b.date)); });
+    var _skip = stkSkipMap();   /* 6.9.815 - purchase bills only */
+    return Object.keys(byKey).map(function (k) { return byKey[k]; }).filter(function (b) { return !stkNotPurchase(b, _skip); }).sort(function (a, b) { return String(a.date).localeCompare(String(b.date)); });
   }
   /* files picked: registers are saved at once, bills go to the review */
 
@@ -63206,6 +63235,13 @@ function viewCatalogue() {
       S.bsOpen = id; S.modal = modalBillSheet(id); render(); return;
     }
     if (act === "bd-all") { S.bdAll = true; keepScroll = true; render(); return; }   /* 6.9.811 */
+    if (act === "stk-notbill") {   /* 6.9.815 */
+      var _sk = t.getAttribute("data-k") || "";
+      if (!_sk) return;
+      auditFact("stk:notbill", _sk, { key: _sk, on: true }).catch(function () { });
+      toast("Left off the purchase list: " + _sk);
+      S.modal = null; _stkNagDone = false; stkBillNag(); if (!S.modal) render(); return;
+    }
     if (act === "wrm-tog") { var _wn = t.getAttribute("data-n"); S.wrmSel = S.wrmSel || {}; if (S.wrmSel[_wn]) delete S.wrmSel[_wn]; else S.wrmSel[_wn] = 1; keepScroll = true; render(); return; }   /* 6.9.813 */
     if (act === "wrm-band") { S.wrmBand = t.getAttribute("data-b"); keepScroll = true; render(); return; }
     if (act === "wrm-sugg") { S.wrmSel = {}; wrmRows().filter(function (r) { return wrmSuggest(r) && (S.wrmBand === "all" || !S.wrmBand || r.days >= Number(S.wrmBand)); }).forEach(function (r) { S.wrmSel[r.name] = 1; }); keepScroll = true; render(); return; }
