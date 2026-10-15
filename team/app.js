@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.810";
+  var APP_VERSION = "6.9.811";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -3619,6 +3619,7 @@ window.addEventListener("beforeunload", function (ev) {
       return;
     }
     if (t && t.id === "inc_q") { incFilter(); return; }
+    if (t && t.id === "bd_q") { S.bdQ = t.value; var _bdr = document.getElementById("bd_res"); if (_bdr) _bdr.innerHTML = billDeskList(); return; }   /* 6.9.811 */
     if (t && t.id === "vl_q") { S.vlQ = t.value; var _vr = document.getElementById("vl_res"); if (_vr) _vr.innerHTML = vlFindHtml(t.value); return; }   /* 6.9.737 */
     if (t && t.id === "p_find") { S.pFind = t.value; var _pr = document.getElementById("p_find_res"); if (_pr) _pr.innerHTML = pFindHtml(t.value); return; }   /* 6.9.736 */
     if (t && t.getAttribute && t.getAttribute("data-bdisc") != null) { hsbDiscPaint(); return; }   /* v6.9.565, by brand 6.9.567 */
@@ -24398,7 +24399,7 @@ function viewCatalogue() {
     try { out = JSON.parse(cl.billingJson || "[]") || []; } catch (e) { out = []; }
     return out.filter(function (p) { return p && String(p.name || "").trim(); });
   }
-  function billFormHtml(c) {
+  function billFormHtml(c, nameOnly) {
     var profs = billProfiles(c), cur = String(c.billTo || "");
     var opt = function (p) { var v = p.gstin ? p.name + " - " + p.gstin : p.name; return '<option value="' + esc(v) + '"' + (v === cur ? ' selected' : '') + '>' + esc(p.name) + (p.gstin ? ' · GSTIN ' + esc(p.gstin) : ' · no GSTIN') + '</option>'; };
     var known = profs.some(function (p) { return (p.gstin ? p.name + " - " + p.gstin : p.name) === cur; });
@@ -24411,7 +24412,7 @@ function viewCatalogue() {
       '<div class="meta" style="font-size:12px;margin:4px 0">' + (profs.length ? 'Registered for ' + esc(c.customerName || "this client") + ': ' + profs.length + '. The GSTIN comes with the name.' : 'No billing name registered for this client yet &mdash; choose + New.') + '</div>' +
       '<div class="grid2"><div><label>New billing name</label><input id="b_newname" placeholder="Only for + New"/></div>' +
       '<div><label>GSTIN (if any)</label><input id="b_newgst" placeholder="Only for + New" style="text-transform:uppercase"/></div></div>' +
-      '<label>Bill number</label><input id="b_no" value="' + esc(c.billNo || "") + '" placeholder="Invoice / bill no." style="min-height:44px;font-size:15px"/>' +
+      (nameOnly ? '' : '<label>Bill number</label><input id="b_no" value="' + esc(c.billNo || "") + '" placeholder="Invoice / bill no." style="min-height:44px;font-size:15px"/>') +
       '</div>';
   }
   function billOpenRows() {
@@ -24443,6 +24444,74 @@ function viewCatalogue() {
           '<br><span class="meta" style="font-size:12px">opened ' + esc(dmy(String(x.o.opened).slice(0, 10))) + ' by ' + esc(x.o.by) + (x.o.why ? ' &middot; closed because: ' + esc(x.o.why) : '') + '</span></span>' +
           '<button class="btn sm" data-act="bill-sheet" data-id="' + esc(x.c.id) + '" style="min-height:44px;flex:0 0 auto">Enter bill</button></div>';
       }).join("") + (L.length > 15 ? '<div class="meta">and ' + (L.length - 15) + ' more</div>' : '') + '</div>';
+  }
+
+  /* ===== 6.9.811 - THE BILLING DESK (accounts and the owner) =====
+     Every challan passed (Approved, Dispatched or Received) and not cancelled, without a bill number, newest first,
+     each one tap from its billing sheet; the ones opened and left without a bill at the top; the bills made lately
+     below. Read only - the bill itself is saved from the sheet. */
+  function billToDo() {
+    return (S.data.challans || []).filter(function (c) {
+      return c && ["Approved", "Dispatched", "Received"].indexOf(String(c.status || "")) >= 0 && !String(c.billNo || "").trim() &&
+        !isCancelled("challans", c.id) && !c._isReturn;
+    }).sort(function (a, b) { return String(b.createdAt || "").localeCompare(String(a.createdAt || "")); });
+  }
+  function viewBillDesk() {
+    if (!canBill()) return '<div class="empty">Billing is for accounts and the owner.</div>';
+    return billPendCard() +
+      '<div class="card" style="padding:10px 12px"><h2 style="margin:0 0 4px;font-size:17px">Billing &mdash; challans to bill</h2>' +
+      '<div class="meta" style="font-size:13px">Every passed challan without a bill number, newest first, with what went. <b>Open for billing</b> asks the billing name first; the prices at the client&rsquo;s preset discount open after that, and the bill number is saved there.</div>' +
+      '<input id="bd_q" type="search" autocomplete="off" placeholder="Find a challan or client" value="' + esc(S.bdQ || "") + '" style="min-height:44px;font-size:15px;width:100%;box-sizing:border-box;margin-top:6px"/>' +
+      '<div id="bd_res">' + billDeskList() + '</div></div>' + billDoneHtml();
+  }
+  function billDeskList() {
+    var q = String(S.bdQ || "").trim().toLowerCase(), L = billToDo(), all = L.length;
+    if (q) L = L.filter(function (c) { return (String(c.challanNo || "") + " " + String(c.customerName || "") + " " + String(c.site || "")).toLowerCase().indexOf(q) >= 0; });
+    var lim = S.bdAll ? L.length : 40;
+    var h = '<div class="meta" style="margin:6px 0"><b>' + plural(L.length, "challan") + '</b> to bill' + (q ? ' (of ' + all + ')' : '') + '</div>';
+    if (!L.length) return h + '<div class="empty">Nothing to bill' + (q ? ' for &ldquo;' + esc(S.bdQ) + '&rdquo;' : '') + '.</div>';
+    h += L.slice(0, lim).map(function (c) {
+      return '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-top:1px solid #e2e8f0;font-size:13px">' +
+        '<span style="min-width:0"><b>' + esc(c.challanNo || "") + '</b> &middot; ' + esc(dmy(String(c.createdAt || "").slice(0, 10))) + ' &middot; ' + esc(c.customerName || "") +
+        (c.site ? ' <span class="meta">&middot; ' + esc(c.site) + '</span>' : '') + ' <span class="meta">&middot; ' + esc(c.status || "") + '</span>' +
+        (c.billTo ? '<br><span style="color:#b45309">Billing started &middot; ' + esc(c.billTo) + '</span>' : '') +
+        '<div style="margin-top:3px;color:#334155">' + chItemsSummary(c, 4) + '</div></span>' +
+        '<button class="btn sm" data-act="bill-sheet" data-id="' + esc(c.id) + '" style="min-height:44px;flex:0 0 auto">' + (c.billTo ? 'Continue billing' : 'Open for billing') + '</button></div>';
+    }).join("");
+    if (L.length > lim) h += '<div class="acts"><button class="btn sm ghost" data-act="bd-all" style="min-height:44px">Show all ' + L.length + '</button></div>';
+    return h;
+  }
+  function billDoneHtml() {
+    var h = "";
+    var done = (S.data.challans || []).filter(function (c) { return c && String(c.billNo || "").trim(); })
+      .sort(function (a, b) { return String(b.billedAt || b.createdAt || "").localeCompare(String(a.billedAt || a.createdAt || "")); }).slice(0, 15);
+    if (done.length) h += '<div class="card" style="padding:10px 12px"><h3 style="margin:0 0 4px;font-size:15px">Billed lately</h3>' + done.map(function (c) {
+      return '<div style="padding:6px 0;border-top:1px solid #e2e8f0;font-size:13px"><b>Bill ' + esc(c.billNo) + '</b> &middot; ' + esc(c.challanNo || "") + ' &middot; ' + esc(c.customerName || "") +
+        '<br><span class="meta">' + esc(c.billTo || "billing name not recorded") + (c.billedAt ? ' &middot; ' + esc(dmy(String(c.billedAt).slice(0, 10))) : '') + (c.billedBy ? ' &middot; ' + esc(c.billedBy) : '') + '</span></div>';
+    }).join("") + '</div>';
+    return h;
+  }
+
+  /* ===== 6.9.811 - OPEN FOR BILLING: THE BILLING NAME FIRST =====
+     HIS WORDS: "we can show accounts challan summary like item and qty, show him open it for billing, that will ask billing
+     details, after choosing billing name from drop down or entering new, will open it for billing - this will be a more
+     secure process". So the desk shows only what went (items and quantities); the prices at the preset discount open
+     only after a billing name is chosen and saved on the challan (billTo, billStatus "Billing"). The bill number is then
+     typed on the sheet; closing without it still asks, and the challan stays on the red card on Today. */
+  function chItemsSummary(c, max) {
+    var L = []; try { L = JSON.parse(c.itemsJson || "[]") || []; } catch (e) { L = []; }
+    if (!L.length && c.items) L = String(c.items).split(",").map(function (t) { var m = String(t).match(/^(.*?)\s*[x×](\d+(?:\.\d+)?)\s*$/); return { desc: m ? m[1] : t, qty: m ? m[2] : "" }; });
+    var n = max || 4, out = L.slice(0, n).map(function (i) { return esc(String(i.desc || i.code || "").trim()) + ' <b>&times; ' + esc(qShow(Number(i.qty) || i.qty || 0)) + '</b>'; });
+    return out.join('<br>') + (L.length > n ? '<br><span class="meta">+ ' + (L.length - n) + ' more item' + (L.length - n === 1 ? '' : 's') + '</span>' : '');
+  }
+  function modalBillStart(id) {
+    var c = (S.data.challans || []).filter(function (x) { return x.id === id; })[0];
+    if (!c) return '<h2>Open for billing</h2><div class="empty">Challan not found.</div><div class="foot"><button class="btn" data-act="close">Close</button></div>';
+    return '<h2>Open for billing</h2><p class="sub">' + esc(c.challanNo || "") + ' &middot; ' + esc(c.customerName || "") + (c.site ? ' &middot; ' + esc(c.site) : '') + '</p>' +
+      '<div class="card" style="padding:8px 10px;font-size:13px"><b>What went</b><br>' + chItemsSummary(c, 30) + '</div>' +
+      '<div class="meta" style="font-size:13px;margin:6px 0">Choose the name this bill is made in. The prices at the client&rsquo;s preset discount open after that, and the bill number is entered there.</div>' +
+      billFormHtml(c, true) +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button><button class="btn" data-act="bill-start-go" data-id="' + esc(c.id) + '">Open for billing</button></div>';
   }
   function billSheetXl(id) {
     var c = (S.data.challans || []).filter(function (x) { return x.id === id; })[0]; if (!c) return;
@@ -27703,7 +27772,8 @@ function viewCatalogue() {
        costs an old one, and this belongs beside the deliveries it is about. The count rides on
        the button, because a chase list nobody knows is full is a chase list nobody opens. */
     /* v6.9.485 - a FOURTH sub-tab, and still not a 46th top-level one. */
-    var sub = ["returns", "rcpt", "reg"].indexOf(S.delSub) >= 0 ? S.delSub : "challans";
+    var sub = ["returns", "rcpt", "reg", "bill"].indexOf(S.delSub) >= 0 ? S.delSub : "challans";
+    if (sub === "bill" && !canBill()) sub = "challans";   /* 6.9.811 */
     if (sub === "rcpt" && !canSeeRcptQueue()) sub = "challans";
     if (sub === "reg" && !canSeeRegister()) sub = "challans";
     var n = canSeeRcptQueue() ? rcptQueueCount() : 0;
@@ -27721,12 +27791,17 @@ function viewCatalogue() {
           })()
         : '') +
       '<button class="btn sm ' + (sub === "returns" ? "" : "ghost") + '" data-act="del-sub" data-s="returns">Material returns</button>' +
+      /* 6.9.811 - HIS WORDS: "no where accounts shown". The billing sheet lived only on each challan's card, so
+         accounts had no place of its own to work from. This is that place. */
+      (canBill() ? (function () { var bp = billPending().length; return '<button class="btn sm ' + (sub === "bill" ? "" : "ghost") + '" data-act="del-sub" data-s="bill"' +
+        (bp ? ' style="border-color:#fecaca;color:' + (sub === "bill" ? "#fff" : "#b91c1c") + '"' : '') + '>Billing (accounts)' + (bp ? ' (' + bp + ' open)' : '') + '</button>'; })() : '') +
       (canSeeRcptQueue()
         ? '<button class="btn sm ' + (sub === "rcpt" ? "" : "ghost") + '" data-act="del-sub" data-s="rcpt"' +
           (n ? ' style="border-color:#fecaca;color:' + (sub === "rcpt" ? "#fff" : "#b91c1c") + '"' : '') +
           '>Receipts pending' + (n ? ' (' + n + ')' : '') + '</button>'
         : '') +
       '</div>';
+    if (sub === "bill") return h + viewBillDesk();   /* 6.9.811 */
     return h + (sub === "reg" ? viewRegister() : sub === "rcpt" ? viewRcptPending()
               : sub === "returns" ? viewReturns() : viewChallans());
   }
@@ -28454,7 +28529,7 @@ function viewCatalogue() {
         hisab: '<span class="stp-b">' + hisabAddBtn(c) + hisabWhyNot(c) + '</span>',
         /* Billing on a received challan: accounts and admin enter it here, everyone else hands
            it off to the accounts queue. */
-        bill: ((canBill() && ["Approved", "Dispatched", "Received"].indexOf(st) >= 0 ? '<button class="btn sm ghost" data-act="bill-sheet" data-id="' + esc(c.id) + '">Billing sheet</button> ' : '') +   /* 6.9.809 */
+        bill: ((canBill() && ["Approved", "Dispatched", "Received"].indexOf(st) >= 0 ? '<button class="btn sm ghost" data-act="bill-sheet" data-id="' + esc(c.id) + '">' + (String(c.billNo || "").trim() ? 'Billing sheet' : (String(c.billTo || "").trim() ? 'Continue billing' : 'Open for billing')) + '</button> ' : '') +   /* 6.9.809 */
               (st === "Received"
                 ? (canBill()
                     ? '<button class="btn sm ' + (c.billNo ? 'act-billedit' : 'act-bill') + '" data-act="bill-detail" data-id="' + esc(c.id) + '">' + (c.billNo ? 'Edit bill' : 'Add billing detail') + '</button>'
@@ -28636,7 +28711,7 @@ function viewCatalogue() {
       var _unb = unbilledStats();
       if (_unb.val > 0) {
         h += '<div class="card" style="border-color:#fed7aa;background:#fff7ed;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">' +
-          '<div class="meta" style="font-size:13.5px;color:#7c2d12"><b>' + money(_unb.val) + '</b> in <b>' + _unb.count + '</b> delivered challans not billed yet — raise the bills so nothing slips on GST.</div></div>';
+          '<div class="meta" style="font-size:13.5px;color:#7c2d12"><b>' + money(_unb.val) + '</b> in <b>' + _unb.count + '</b> delivered challans not billed yet — raise the bills so nothing slips on GST.</div>' + (canBill() ? '<button class="btn sm" data-act="del-sub" data-s="bill" style="min-height:44px">Open billing</button>' : '') + '</div>';
       }
     }
     /* v6.9.388 - not inside the queue: the band and the queue's own header would say the same
@@ -42810,7 +42885,7 @@ function viewCatalogue() {
       '<div class="stat"><div class="n">' + awaitRcpt.length + '</div><div class="l">Awaiting receipt</div></div>' +
       '<div class="stat"><div class="n">' + quotesOpen.length + '</div><div class="l">Quotes live</div></div>' +
       '<div class="stat ' + (svcDue.length ? "alert" : "") + '"><div class="n">' + svcDue.length + '</div><div class="l">Service overdue</div></div>' +
-      '<div class="stat ' + (unb.val > 0 ? "alert" : "") + '" data-act="tab" data-tab="deliveries" style="cursor:pointer" title="' + unb.count + ' delivered challan' + (unb.count === 1 ? '' : 's') + ' with no bill yet — tap to open">' +
+      '<div class="stat ' + (unb.val > 0 ? "alert" : "") + '" data-act="' + (canBill() ? 'del-sub" data-s="bill' : 'tab" data-tab="deliveries') + '" style="cursor:pointer" title="' + unb.count + ' delivered challan' + (unb.count === 1 ? '' : 's') + ' with no bill yet — tap to open">' +
         '<div class="n">' + money(unb.val) + '</div><div class="l">Delivered, not billed</div></div>' +
       '<div class="stat"><div class="n">' + visitsToday.length + '</div><div class="l">Site visits today</div></div>' +
       '</div>';
@@ -56731,7 +56806,7 @@ function viewCatalogue() {
       }).catch(function () { toast("Import failed — check connection."); });
       return;
     }
-    if (act === "del-sub") { S.delSub = t.getAttribute("data-s"); render(); return; }
+    if (act === "del-sub") { S.delSub = t.getAttribute("data-s"); if (S.tab !== "deliveries" && canSee("deliveries")) { S.tab = "deliveries"; try { tabUse(S.tab); navBump(S.tab); } catch (e) { } window.scrollTo(0, 0); } render(); return; }   /* 6.9.811 - from Today too */
     /* v6.9.485 - one button empties every box on the challan register at once. The name is
        regx- because reg-clear belongs to the BRAND register and has since 6.9.458; this handler
        sits earlier in the chain and would have eaten its taps. t_dead_taps caught it. */
@@ -62863,10 +62938,37 @@ function viewCatalogue() {
        typed, open the FULL client form, and when he saves, come straight back to where he was
        with the client filled in. Registering a client must never cost him the form he was on. */
     if (act === "bill-clear") { S.q = ""; var _qb = el("q"); if (_qb) _qb.value = ""; render(); return; }   /* 6.9.727 - and the box empties */
+    if (act === "bill-start-go") {   /* 6.9.811 */
+      if (!canBill()) { toast("Billing is for accounts and the owner."); return; }
+      var _gc = (S.data.challans || []).filter(function (x) { return x.id === id; })[0];
+      if (!_gc) { toast("Challan not found."); return; }
+      var _gs = val("b_to"), _gto = "";
+      if (!_gs) { toast("Choose the billing name from the list, or + New billing name."); return; }
+      if (_gs !== "__new") _gto = _gs;
+      else {
+        var _gn = String(val("b_newname") || "").trim(), _gg = String(val("b_newgst") || "").trim().toUpperCase();
+        if (!_gn) { toast("Type the new billing name."); return; }
+        if (_gg && !/^[0-9]{2}[A-Z0-9]{13}$/.test(_gg)) { toast("The GSTIN should be 15 letters and digits, starting with the 2-digit state code."); return; }
+        _gto = _gg ? _gn + " - " + _gg : _gn;
+        var _gcl = clientByName(_gc.customerName) || {}, _gp = [];
+        try { _gp = JSON.parse(_gcl.billingJson || "[]") || []; } catch (e) { _gp = []; }
+        if (_gcl.id && !_gp.some(function (p) { return (p.gstin ? p.name + " - " + p.gstin : p.name) === _gto; })) {   /* registered on the client for next time */
+          _gp.push({ name: _gn, gstin: _gg });
+          save("clients", { id: _gcl.id, name: _gcl.name, billingJson: JSON.stringify(_gp) });
+        }
+      }
+      var _gnow = new Date().toISOString();
+      Object.assign(_gc, { billTo: _gto, billStatus: "Billing" });
+      save("challans", Object.assign({}, _gc)).catch(function () { toast("Kept safe on this device - will sync on next refresh."); });
+      save("audit", { id: "", createdAt: _gnow, actor: S.user, action: "bill:open", target: String(id), detail: JSON.stringify({ challan: _gc.challanNo || "", client: _gc.customerName || "", billTo: _gto }), ip: "" }, true);
+      S.bsOpen = id; S.modal = modalBillSheet(id); render(); return;
+    }
+    if (act === "bd-all") { S.bdAll = true; keepScroll = true; render(); return; }   /* 6.9.811 */
     if (act === "bill-sheet" || act === "bs-xl") {   /* 6.9.809 - accounts and the owner only */
       if (!canBill()) { toast("The billing sheet is for accounts and the owner."); return; }
       if (act === "bs-xl") { billSheetXl(id); return; }
       var _bsc = (S.data.challans || []).filter(function (x) { return x.id === id; })[0];
+      if (_bsc && !String(_bsc.billNo || "").trim() && !String(_bsc.billTo || "").trim()) { S.modal = modalBillStart(id); render(); return; }   /* 6.9.811 - the billing name first */
       if (_bsc && !String(_bsc.billNo || "").trim()) {   /* 6.9.810 - opened for billing: on the record */
         save("audit", { id: "", createdAt: new Date().toISOString(), actor: S.user, action: "bill:open", target: String(id), detail: JSON.stringify({ challan: _bsc.challanNo || "", client: _bsc.customerName || "" }), ip: "" }, true);
       }
