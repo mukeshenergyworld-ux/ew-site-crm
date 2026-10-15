@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.812";
+  var APP_VERSION = "6.9.813";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -718,8 +718,8 @@
   }
 
   var ROLE_TABS = {
-    admin:    ["dash","myday","statements","review","agent","report","scorecard","returns","tools","rates","clients","crlog","partners","pevents","quotes","leads","brandfollow","winloss","visits","followups","challans","register","paylog","freight","payments","paidout","billing","discounts","commission","complaints","service","spares","dues","payroll","products","catalogs","brandstory","pricelist","catalogue","rules","teampins","tally","plcheck","health","trouble","changelog","booksweep","dups","stock","brief","attendance"],
-    accounts: ["dash","statements","review","agent","returns","tools","clients","crlog","partners","followups","challans","register","paylog","freight","payments","billing","complaints","service","spares","dues","products","catalogs","rates","pricelist","dups","stock","tally","trouble","attendance"],
+    admin:    ["dash","wareminder","myday","statements","review","agent","report","scorecard","returns","tools","rates","clients","crlog","partners","pevents","quotes","leads","brandfollow","winloss","visits","followups","challans","register","paylog","freight","payments","paidout","billing","discounts","commission","complaints","service","spares","dues","payroll","products","catalogs","brandstory","pricelist","catalogue","rules","teampins","tally","plcheck","health","trouble","changelog","booksweep","dups","stock","brief","attendance"],
+    accounts: ["dash","wareminder","statements","review","agent","returns","tools","clients","crlog","partners","followups","challans","register","paylog","freight","payments","billing","complaints","service","spares","dues","products","catalogs","rates","pricelist","dups","stock","tally","trouble","attendance"],
     godown:   ["dash","agent","returns","tools","challans","freight","products","stock","trouble"],
     sales:    ["myday","dash","review","agent","report","returns","tools","clients","crlog","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","register","paylog","freight","billing","payments","complaints","products","catalogs","dups","brief","trouble"],
     service:  ["dash","agent","tools","complaints","service","spares","dues","followups","products","catalogs","trouble"]
@@ -37378,6 +37378,161 @@ function viewCatalogue() {
     return list;
   }
 
+
+  /* ===================== 6.9.813 - WHATSAPP REMINDERS =====================
+     His words: "make a whatsapp reminder section, draft a message with balance amt, due from last
+     how many days to be mention, twice a week show me whome to send, will select, and how can we
+     send all selected with just one click?"
+
+     WHO: the same list as the Collection radar (rdrRows - owed, past the PAY_MIN grace), read with
+     the radar's own filters switched off so a filter left on that screen cannot hide anybody here.
+     DAYS: the age of his OLDEST unpaid bill (clientAging, credits settled oldest-first), which is
+     what "due for the last N days" means to the man reading it. Falls back to the days since his
+     last delivery when the ageing has nothing.
+     WHEN: Monday and Thursday, the same two days as the review - a card on Today.
+     ONE CLICK FOR ALL: only possible from the business number (WhatsApp Cloud API, server V130,
+     template "due_reminder"). WhatsApp does not let a web page press Send in a man's own WhatsApp,
+     so until the business number is live the screen walks the ticked list one tap per client:
+     each tap opens that chat with the message written, he presses Send, comes back, taps Next.
+     Every send is an audit row "wa:remind" (who, amount, days, how), so the list knows who was
+     reminded and when. Nothing is deleted; nothing about the money changes. */
+  var WRM_DEF = "Namaste {name} ji,\n\nA gentle reminder from Energy World: {amount} is outstanding on your account, due for the last {days} days.\n\nKindly arrange the payment at the earliest. If it is already paid, please ignore this message.\n\nThank you,\nEnergy World, Panipat";
+  function wrmTpl() { try { return localStorage.getItem("ew_wrm_tpl") || WRM_DEF; } catch (e) { return WRM_DEF; } }
+  function wrmAmt(n) { return "₹" + Math.round(nAmt(n)).toLocaleString("en-IN"); }
+  function wrmMsg(r, tpl) {
+    return String(tpl || wrmTpl()).replace(/\{name\}/g, r.name).replace(/\{amount\}/g, wrmAmt(r.due)).replace(/\{days\}/g, String(r.days));
+  }
+  function wrmNum(m) { var n = String(m || "").replace(/\D/g, ""); if (n.length === 10) n = "91" + n; return n.length === 12 ? n : ""; }
+  /* the last reminder per client: the audit book plus what this phone sent since the last pull */
+  function wrmLastMap() {
+    var out = {};
+    ((S.data && S.data.audit) || []).forEach(function (a) {
+      if (String(a.action || "") !== "wa:remind") return;
+      var k = dgKey(a.target || ""), at = String(a.createdAt || "");
+      if (k && (!out[k] || at > out[k])) out[k] = at;
+    });
+    Object.keys(S.wrmDone || {}).forEach(function (k) { if (!out[k] || S.wrmDone[k] > out[k]) out[k] = S.wrmDone[k]; });
+    return out;
+  }
+  function wrmRows() {
+    var keep = [S.rdBand, S.rdOwner, S.rdQ, S.rdSort], rows;
+    S.rdBand = "all"; S.rdOwner = ""; S.rdQ = ""; S.rdSort = "old";
+    try { rows = rdrRows(); } finally { S.rdBand = keep[0]; S.rdOwner = keep[1]; S.rdQ = keep[2]; S.rdSort = keep[3]; }
+    var last = wrmLastMap();
+    return rows.map(function (r) {
+      var lt = last[dgKey(r.name)] || "";
+      return { name: r.name, due: r.due, days: r.oldest || r.age || 0, num: wrmNum(r.mobile), owner: r.owner,
+               last: lt, lastDays: lt ? -daysTo(localDay(lt)) : null };
+    }).sort(function (a, b) { return b.days - a.days || b.due - a.due; });
+  }
+  /* suggested: 30 days or more, a mobile to send to, and not reminded in the last 3 days */
+  function wrmSuggest(r) { return r.days >= 30 && !!r.num && (r.lastDays === null || r.lastDays >= 3); }
+  function wrmIsDay() { var w = rvDow(today()); return w === 1 || w === 4; }
+  function wrmDayCard() {
+    if (!canSee("wareminder") || !wrmIsDay()) return "";
+    var L = wrmRows().filter(wrmSuggest); if (!L.length) return "";
+    var tot = L.reduce(function (a, r) { return a + r.due; }, 0);
+    return '<div class="card" style="border-left:4px solid #16a34a;display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
+      '<div style="flex:1;min-width:200px"><div style="font-weight:700">WhatsApp reminder day</div>' +
+      '<div style="font-size:13px;color:var(--muted)">' + plural(L.length, "client") + ' owe ' + wrmAmt(tot) + ' for 30 days or more and were not reminded in the last 3 days.</div></div>' +
+      '<button class="btn sm" data-act="tab" data-tab="wareminder" style="min-height:44px">Choose and send</button></div>';
+  }
+  function viewWaRem() {
+    var all = wrmRows(), sel = S.wrmSel || (S.wrmSel = {});
+    var band = S.wrmBand || "all";
+    var L = all.filter(function (r) { return band === "all" ? true : r.days >= Number(band); });
+    var nSel = all.filter(function (r) { return sel[r.name]; }).length;
+    var biz = waReady();
+    var h = '<div class="card"><h2 style="margin:0 0 4px">WhatsApp reminders</h2>' +
+      '<div class="meta" style="font-size:13px">Clients who owe us, oldest money first. Tick the ones to remind, then send. ' +
+      (wrmIsDay() ? '<b>Today is a reminder day.</b>' : 'Reminder days are Monday and Thursday.') + '</div>' +
+      '<div class="meta" style="font-size:13px;margin-top:4px">' + (biz
+        ? 'The business number is connected: <b>one tap sends all ticked</b> (to clients who agreed to WhatsApp updates; the rest go one by one from your phone).'
+        : 'Sending: <b>one tap per client</b> from your own WhatsApp. One tap for all needs the business number (WhatsApp Cloud API) to be switched on.') + '</div></div>';
+
+    if (S.wrmQ && S.wrmQ.length) {
+      var q = S.wrmQ[0], done = S.wrmQn || 0, totQ = done + S.wrmQ.length;
+      h += '<div class="card" style="border:2px solid #16a34a;background:#f0fdf4"><div style="font-weight:700;font-size:15px">Sending ' + (done + 1) + ' of ' + totQ + '</div>' +
+        '<div style="font-size:14px;margin:6px 0"><b>' + esc(q.name) + '</b> &middot; ' + wrmAmt(q.due) + ' &middot; ' + q.days + ' days</div>' +
+        '<div class="meta" style="font-size:13px;margin-bottom:8px">Tap to open his chat with the message written. Press Send in WhatsApp, come back here, and the next one is ready.</div>' +
+        '<div class="acts" style="flex-wrap:wrap;gap:6px;margin:0"><button class="btn" data-act="wrm-go" style="min-height:44px">Open WhatsApp &middot; ' + esc(q.name) + '</button>' +
+        '<button class="btn ghost" data-act="wrm-skip" style="min-height:44px">Skip</button>' +
+        '<button class="btn ghost" data-act="wrm-stop" style="min-height:44px">Stop</button></div></div>';
+    }
+
+    h += '<div class="card"><h3 style="margin:0 0 4px">The message</h3>' +
+      '<div class="meta" style="font-size:12.5px;margin-bottom:4px">{name}, {amount} and {days} are filled in for each client. Saved on this device.</div>' +
+      '<textarea id="wrm_tpl" rows="7" style="width:100%;font-size:14px;box-sizing:border-box">' + esc(wrmTpl()) + '</textarea>' +
+      '<div class="acts" style="flex-wrap:wrap;gap:6px;margin:6px 0 0"><button class="btn sm" data-act="wrm-tpl-save" style="min-height:44px">Save message</button>' +
+      '<button class="btn sm ghost" data-act="wrm-tpl-reset" style="min-height:44px">Back to the standard message</button></div>';
+    var ex = L[0];
+    if (ex) h += '<div style="margin-top:8px;font-size:13px;white-space:pre-wrap;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px">' + esc(wrmMsg(ex)) + '</div>';
+    h += '</div>';
+
+    h += '<div class="card"><div class="acts" style="flex-wrap:wrap;gap:6px;margin:0 0 8px">' +
+      [["all", "All"], ["30", "30+ days"], ["60", "60+ days"], ["90", "90+ days"]].map(function (b) {
+        return '<button class="btn sm ' + (band === b[0] ? "" : "ghost") + '" data-act="wrm-band" data-b="' + b[0] + '" style="min-height:44px">' + b[1] + '</button>';
+      }).join("") +
+      '<button class="btn sm ghost" data-act="wrm-sugg" style="min-height:44px">Tick suggested</button>' +
+      '<button class="btn sm ghost" data-act="wrm-none" style="min-height:44px">Untick all</button></div>' +
+      '<div class="meta" style="font-size:12.5px;margin-bottom:6px">Suggested = 30 days or more, has a mobile, not reminded in the last 3 days.</div>';
+    if (!L.length) h += '<div class="empty">Nobody owes money in this band.</div>';
+    L.forEach(function (r) {
+      var on = !!sel[r.name];
+      h += '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid #e2e8f0;font-size:13.5px">' +
+        '<button class="btn sm ' + (on ? "" : "ghost") + '" data-act="wrm-tog" data-n="' + esc(r.name) + '"' + (r.num ? '' : ' disabled') +
+        ' style="min-height:44px;min-width:44px;padding:0;flex:0 0 auto" aria-label="Tick ' + esc(r.name) + '">' + (on ? '&#10003;' : '') + '</button>' +
+        '<div style="flex:1;min-width:0"><b>' + esc(r.name) + '</b><br><span class="meta" style="font-size:12.5px">' +
+        wrmAmt(r.due) + ' &middot; due ' + r.days + ' days' +
+        (r.last ? ' &middot; reminded ' + (r.lastDays === 0 ? 'today' : r.lastDays + ' days ago') : '') +
+        (r.num ? '' : ' &middot; <span style="color:#b91c1c">no mobile</span>') + '</span></div></div>';
+    });
+    h += '</div>';
+    h += '<div class="card" style="position:sticky;bottom:0;z-index:5;display:flex;gap:8px;align-items:center;flex-wrap:wrap;border-color:#16a34a">' +
+      '<div style="flex:1;min-width:160px;font-size:14px"><b>' + nSel + '</b> ticked</div>' +
+      '<button class="btn" data-act="wrm-send"' + (nSel ? '' : ' disabled') + ' style="min-height:44px;background:#16a34a;border-color:#16a34a">' +
+      (biz ? 'Send all ' + nSel + ' from the business number' : 'Send ' + nSel + ' on WhatsApp') + '</button></div>';
+    return h;
+  }
+  function wrmMark(r, via) {
+    S.wrmDone = S.wrmDone || {}; S.wrmDone[dgKey(r.name)] = new Date().toISOString();
+    if (S.wrmSel) delete S.wrmSel[r.name];
+    return auditFact("wa:remind", r.name, { name: r.name, amount: Math.round(r.due), days: r.days, via: via }).catch(function () { });
+  }
+  function wrmPhoneQueue(list) {
+    S.wrmQ = list.slice(); S.wrmQn = 0; window.scrollTo(0, 0); render();
+  }
+  function wrmSend() {
+    var sel = S.wrmSel || {}, tpl = wrmTpl();
+    var list = wrmRows().filter(function (r) { return sel[r.name] && r.num; });
+    if (!list.length) { toast("Tick at least one client with a mobile."); return; }
+    if (!waReady()) { wrmPhoneQueue(list); return; }
+    var biz = list.filter(function (r) { return waConsent(r.name).yes; }), rest = list.filter(function (r) { return !waConsent(r.name).yes; });
+    askSheet({ title: "Send " + plural(biz.length, "reminder") + " from the business number?",
+      body: biz.length ? 'Each goes with his own amount and days.' + (rest.length ? ' ' + plural(rest.length, "client") + ' have not agreed to WhatsApp updates; they will be opened one by one on your phone after this.' : '') : 'None of the ticked clients has agreed to WhatsApp updates, so all go one by one from your phone.',
+      yes: biz.length ? "Send " + biz.length : "Start on my phone" }).then(function (ok) {
+      if (!ok) return;
+      if (!biz.length) { wrmPhoneQueue(rest); return; }
+      var sent = 0, failed = [];
+      toast("Sending " + biz.length + " from the business number…");
+      var step = function (i) {
+        if (i >= biz.length) {
+          toast(sent + " sent from the business number" + (failed.length ? ", " + failed.length + " could not go - they are next, on your phone" : "") + ".");
+          var nextQ = failed.concat(rest);
+          if (nextQ.length) wrmPhoneQueue(nextQ); else render();
+          return;
+        }
+        var r = biz[i];
+        api("waSend", { to: r.num, template: "due_reminder", vars: [r.name, wrmAmt(r.due), String(r.days)], note: "reminder " + r.name }, 30000)
+          .then(function (w) { if (w && w.ok) { sent++; wrmMark(r, "business"); } else failed.push(r); })
+          .catch(function () { failed.push(r); })
+          .then(function () { step(i + 1); });
+      };
+      step(0);
+    });
+    void tpl;
+  }
+
   /* ============ COLLECTION RADAR AS A SHEET  (v6.9.433, 7 Sep 2026) ============
      HIS WORDS: "collection radar also zig zag, must be managed professionally in excel like
      sheet ... with more tools".
@@ -41390,7 +41545,7 @@ function viewCatalogue() {
      nothing else could reach it - so the usage counter would have had to keep a second copy
      of the same forty-two names, and a second copy is how the two quietly stop agreeing.
      Hoisted, not duplicated. render() still reads exactly this. */
-  var TAB_TABS = [["search", "Search"], ["myday", "My day"], ["dash", "Today"], ["statements", "Statements"], ["review", "Twice-weekly review"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits & quotes"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["register", "Challan log"], ["paylog", "Payment log"], ["freight", "Drivers & freight"], ["deliveries", "Deliveries"], ["collections", "Payments"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["crlog", "Client & lead log"], ["partners", "Partners"], ["pevents", "Partner events"], ["quotes", "Quotes"], ["commission", "Incentives"], ["complaints", "Complaints"], ["service", "Service"], ["spares", "Spares"], ["dues", "Service dues"], ["payroll", "Payroll"], ["attendance", "Attendance"], ["products", "Products"], ["payments", "Payments"], ["paidout", "Paid out"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["catalogs", "Brand catalogues"], ["brandstory", "Brand stories"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["trouble", "Troubleshoot"], ["changelog", "Change log"], ["booksweep", "Book numbers"], ["dups", "Duplicate check"], ["stock", "Stock"], ["tally", "Tally"], ["plcheck", "Supplier price list"], ["brief", "The brief"]];
+  var TAB_TABS = [["search", "Search"], ["myday", "My day"], ["dash", "Today"], ["statements", "Statements"], ["review", "Twice-weekly review"], ["wareminder", "WhatsApp reminders"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits & quotes"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["register", "Challan log"], ["paylog", "Payment log"], ["freight", "Drivers & freight"], ["deliveries", "Deliveries"], ["collections", "Payments"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["crlog", "Client & lead log"], ["partners", "Partners"], ["pevents", "Partner events"], ["quotes", "Quotes"], ["commission", "Incentives"], ["complaints", "Complaints"], ["service", "Service"], ["spares", "Spares"], ["dues", "Service dues"], ["payroll", "Payroll"], ["attendance", "Attendance"], ["products", "Products"], ["payments", "Payments"], ["paidout", "Paid out"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["catalogs", "Brand catalogues"], ["brandstory", "Brand stories"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["trouble", "Troubleshoot"], ["changelog", "Change log"], ["booksweep", "Book numbers"], ["dups", "Duplicate check"], ["stock", "Stock"], ["tally", "Tally"], ["plcheck", "Supplier price list"], ["brief", "The brief"]];
   var TAB_LABEL = (function () {
     var m = {}; TAB_TABS.forEach(function (t) { m[t[0]] = t[1]; }); return m;
   })();
@@ -54451,7 +54606,7 @@ function viewCatalogue() {
     /* v6.9.526 - "where is dedicated challan log under hisab". The register had no door: it was
        a sub-tab of the old Deliveries hub ("deliveries"), which no group names. It is a tab now,
        in both places a man would look. */
-    ["HISAB",      ["billing", "register", "paylog", "payments", "paidout", "dues", "review", "statements"]],   /* 6.9.667 - the Payment log beside the Challan log */   /* 6.9.635 - the twice-weekly review, in both places */
+    ["HISAB",      ["billing", "wareminder", "register", "paylog", "payments", "paidout", "dues", "review", "statements"]],   /* 6.9.667 - the Payment log beside the Challan log */   /* 6.9.635 - the twice-weekly review, in both places */
     ["Deliveries", ["challans", "register", "freight", "returns"]],
     /* v6.9.533 - his third list, item 13: "merge Leads and Clients into one tab with sub-tabs",
        and item 16: "remove Leads tab from header". One group; the lead board is its second
@@ -54840,7 +54995,7 @@ function viewCatalogue() {
       if (!_noBookT) _noBookT = setTimeout(function () { _noBookT = null; if (!S.data && (S.pin || S.tok)) { try { refresh(); } catch (e) { } } }, 6000);
       return;
     }
-    var views = { attendance: viewAttendance, statements: viewStatements, agent: viewAgent, search: viewSearch, dossier: viewDossier, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, complaints: viewComplaints, payments: viewPayments, paidout: viewPaidOut, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, catalogs: viewCatalogues, brandstory: viewBrandStories, clients: viewClients, crlog: viewCrLog, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, register: viewRegister, paylog: viewPayLog, freight: viewFreight, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, trouble: viewTrouble, changelog: viewChangeLog, booksweep: viewBookSweep, dups: viewDups, stock: viewStock, tally: viewTally, plcheck: viewPlCheck, pevents: viewPev, brief: viewBrief, review: viewReview, myday: viewMyDay };   /* 6.9.739 - myday */
+    var views = { attendance: viewAttendance, statements: viewStatements, agent: viewAgent, search: viewSearch, dossier: viewDossier, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, complaints: viewComplaints, payments: viewPayments, paidout: viewPaidOut, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, catalogs: viewCatalogues, brandstory: viewBrandStories, clients: viewClients, crlog: viewCrLog, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, register: viewRegister, paylog: viewPayLog, freight: viewFreight, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, trouble: viewTrouble, changelog: viewChangeLog, booksweep: viewBookSweep, dups: viewDups, stock: viewStock, tally: viewTally, plcheck: viewPlCheck, pevents: viewPev, brief: viewBrief, review: viewReview, myday: viewMyDay, wareminder: viewWaRem };   /* 6.9.739 - myday */
     var tabs = TAB_TABS;
 
     var h = '<div class="top">' +
@@ -54909,7 +55064,8 @@ function viewCatalogue() {
     var _appr = ""; try { _appr = apprStrip(); } catch (eAp) { _appr = ""; }
     var _rst = ""; try { _rst = restartCard(); } catch (eRs) { _rst = ""; }   /* 6.9.631 */
     var _mw = ""; try { _mw = moneyWaitStrip(); } catch (eMw) { _mw = ""; }   /* 6.9.723 */
-    var _dm = ""; try { _dm = dupMobileCard(); } catch (eDm) { _dm = ""; }   /* 6.9.742 - on every page, for the owner */
+    var _dm = ""; try { _dm = dupMobileCard(); } catch (eDm) { _dm = ""; }
+    if (S.tab === "dash") { try { _dm += wrmDayCard(); } catch (eWr) { } }   /* 6.9.813 - Monday and Thursday */   /* 6.9.742 - on every page, for the owner */
     h += '<main>' + _rst + _appr + _mw + _dm + body +
       '<div class="foot-note">Energy World Team <span data-act="crash-log" style="cursor:pointer;border-bottom:1px dotted #cbd5e1;display:inline-block;padding:13px 6px;margin:-13px 0" title="View crash log">v' + APP_VERSION + '</span> &middot; data lives in your Google Sheet</div></main>';
 
@@ -62981,6 +63137,22 @@ function viewCatalogue() {
       S.bsOpen = id; S.modal = modalBillSheet(id); render(); return;
     }
     if (act === "bd-all") { S.bdAll = true; keepScroll = true; render(); return; }   /* 6.9.811 */
+    if (act === "wrm-tog") { var _wn = t.getAttribute("data-n"); S.wrmSel = S.wrmSel || {}; if (S.wrmSel[_wn]) delete S.wrmSel[_wn]; else S.wrmSel[_wn] = 1; keepScroll = true; render(); return; }   /* 6.9.813 */
+    if (act === "wrm-band") { S.wrmBand = t.getAttribute("data-b"); keepScroll = true; render(); return; }
+    if (act === "wrm-sugg") { S.wrmSel = {}; wrmRows().filter(function (r) { return wrmSuggest(r) && (S.wrmBand === "all" || !S.wrmBand || r.days >= Number(S.wrmBand)); }).forEach(function (r) { S.wrmSel[r.name] = 1; }); keepScroll = true; render(); return; }
+    if (act === "wrm-none") { S.wrmSel = {}; keepScroll = true; render(); return; }
+    if (act === "wrm-tpl-save") { var _wt = (document.getElementById("wrm_tpl") || {}).value || ""; if (!/\{amount\}/.test(_wt) || !/\{days\}/.test(_wt)) { toast("Keep {amount} and {days} in the message - they are filled in for each client."); return; } try { localStorage.setItem("ew_wrm_tpl", _wt); } catch (e) { } toast("Message saved on this device."); keepScroll = true; render(); return; }
+    if (act === "wrm-tpl-reset") { try { localStorage.removeItem("ew_wrm_tpl"); } catch (e) { } keepScroll = true; render(); return; }
+    if (act === "wrm-send") { wrmSend(); return; }
+    if (act === "wrm-go") {
+      var _q = (S.wrmQ || [])[0]; if (!_q) return;
+      window.open("https://wa.me/" + _q.num + "?text=" + encodeURIComponent(wrmMsg(_q)), "_blank");
+      wrmMark(_q, "phone"); S.wrmQ.shift(); S.wrmQn = (S.wrmQn || 0) + 1;
+      if (!S.wrmQ.length) { toast("All " + S.wrmQn + " opened. Each one is marked as reminded today."); S.wrmQ = null; }
+      keepScroll = true; render(); return;
+    }
+    if (act === "wrm-skip") { if (S.wrmQ) { S.wrmQ.shift(); if (!S.wrmQ.length) S.wrmQ = null; } keepScroll = true; render(); return; }
+    if (act === "wrm-stop") { S.wrmQ = null; keepScroll = true; render(); return; }
     if (act === "bill-sheet" || act === "bs-xl") {   /* 6.9.809 - accounts and the owner only */
       if (!canBill()) { toast("The billing sheet is for accounts and the owner."); return; }
       if (act === "bs-xl") { billSheetXl(id); return; }
