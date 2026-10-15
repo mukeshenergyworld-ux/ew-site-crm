@@ -22,7 +22,7 @@ R = B.R
 CHECK = "--check" in sys.argv
 
 APPS = {
-  'CRM':     {'file': 'team/app.js',          'anchor': '  var STORE = "ew_team_session";'},
+  'CRM':     {'file': 'team/app.src.js',          'anchor': '  var STORE = "ew_team_session";'},
   'Challan': {'file': 'challan/index.html',   'anchor': '  var STORE = "ew_challan_session";'},
   'Payment': {'file': 'collect/index.html',   'anchor': '  var STORE = "ew_collect_session";'},
 }

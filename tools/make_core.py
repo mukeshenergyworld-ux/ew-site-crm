@@ -14,7 +14,7 @@ import io, json, re, sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ewbuild as B
 
-APPS = {'CRM': 'team/app.js', 'Challan': 'challan/index.html', 'Payment': 'collect/index.html'}
+APPS = {'CRM': 'team/app.src.js', 'Challan': 'challan/index.html', 'Payment': 'collect/index.html'}
 S  = {a: B.js_of(p) for a, p in APPS.items()}
 TL = {a: B.top_level(S[a]) for a in APPS}
 
