@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.815";
+  var APP_VERSION = "6.9.816";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -37463,8 +37463,9 @@ function viewCatalogue() {
      each tap opens that chat with the message written, he presses Send, comes back, taps Next.
      Every send is an audit row "wa:remind" (who, amount, days, how), so the list knows who was
      reminded and when. Nothing is deleted; nothing about the money changes. */
-  var WRM_DEF = "Namaste {name} ji,\n\nA gentle reminder from Energy World: {amount} is outstanding on your account, due for the last {days} days.\n\nKindly arrange the payment at the earliest. If it is already paid, please ignore this message.\n\nThank you,\nEnergy World, Panipat";
-  function wrmTpl() { try { return localStorage.getItem("ew_wrm_tpl") || WRM_DEF; } catch (e) { return WRM_DEF; } }
+  /* 6.9.816 - his words: "name not required on Namaste Ji" */
+  var WRM_DEF = "Namaste Ji,\n\nA gentle reminder from Energy World: {amount} is outstanding on your account, due for the last {days} days.\n\nKindly arrange the payment at the earliest. If it is already paid, please ignore this message.\n\nThank you,\nEnergy World, Panipat";
+  function wrmTpl() { try { return String(localStorage.getItem("ew_wrm_tpl") || WRM_DEF).replace(/Namaste \{name\} ji/gi, "Namaste Ji"); } catch (e) { return WRM_DEF; } }
   function wrmAmt(n) { return "₹" + Math.round(nAmt(n)).toLocaleString("en-IN"); }
   function wrmMsg(r, tpl) {
     return String(tpl || wrmTpl()).replace(/\{name\}/g, r.name).replace(/\{amount\}/g, wrmAmt(r.due)).replace(/\{days\}/g, String(r.days));
@@ -37528,7 +37529,7 @@ function viewCatalogue() {
     }
 
     h += '<div class="card"><h3 style="margin:0 0 4px">The message</h3>' +
-      '<div class="meta" style="font-size:12.5px;margin-bottom:4px">{name}, {amount} and {days} are filled in for each client. Saved on this device.</div>' +
+      '<div class="meta" style="font-size:12.5px;margin-bottom:4px">{amount} and {days} are filled in for each client ({name} too, if you add it). Saved on this device.</div>' +
       '<textarea id="wrm_tpl" rows="7" style="width:100%;font-size:14px;box-sizing:border-box">' + esc(wrmTpl()) + '</textarea>' +
       '<div class="acts" style="flex-wrap:wrap;gap:6px;margin:6px 0 0"><button class="btn sm" data-act="wrm-tpl-save" style="min-height:44px">Save message</button>' +
       '<button class="btn sm ghost" data-act="wrm-tpl-reset" style="min-height:44px">Back to the standard message</button></div>';
@@ -37590,7 +37591,7 @@ function viewCatalogue() {
           return;
         }
         var r = biz[i];
-        api("waSend", { to: r.num, template: "due_reminder", vars: [r.name, wrmAmt(r.due), String(r.days)], note: "reminder " + r.name }, 30000)
+        api("waSend", { to: r.num, template: "due_reminder", vars: [wrmAmt(r.due), String(r.days)], note: "reminder " + r.name }, 30000)
           .then(function (w) { if (w && w.ok) { sent++; wrmMark(r, "business"); } else failed.push(r); })
           .catch(function () { failed.push(r); })
           .then(function () { step(i + 1); });
