@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.807";
+  var APP_VERSION = "6.9.809";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -24337,6 +24337,64 @@ function viewCatalogue() {
      admin-or-accounts since the billing queue was built; the HANDLER never checked, so the
      hidden button was the only lock. This is the rule, and the handler reads it. */
   function canBill()    { return roleAny(["admin","accounts"]); }
+  /* ===== 6.9.809 - THE BILLING SHEET =====
+     HIS WORDS: "when a challan raised, for accounts and admin only, after challan approval, make a billing
+     section - if we have to send items on bills not on challan, then only accounts and admin can see challan
+     details at preset discount, so billing can be raised. It's just to help accounts, not included in any hisab."
+     Read only: the challan's lines at the client's preset discount (pricedLines - the same price the hisab would
+     use), with the GST split worked out, to type the bill from. Nothing is saved and nothing moves in any hisab. */
+  function billSheetData(c) {
+    var cl = clientByName(c.customerName) || { name: c.customerName };
+    var L = pricedLines(c, cl).slice().sort(function (a, b) { return (a.ix || 0) - (b.ix || 0); });
+    var tot = 0;
+    var rows = L.map(function (l, i) {
+      var p = (typeof prodByCode === "function" ? prodByCode(l.code) : null) || {};
+      tot += l.amt;
+      return { n: i + 1, desc: l.desc, code: l.code || "", hsn: String(p.hsn || ""), unit: String(p.unit || ""), qty: l.qty, mrp: l.rate, disc: l.disc, rate: l.dr, amt: l.amt, job: l.job };
+    });
+    var taxable = Math.round(tot / 1.18 * 100) / 100, gst = Math.round((tot - taxable) * 100) / 100;
+    return { c: c, rows: rows, tot: tot, taxable: taxable, gst: gst };
+  }
+  function modalBillSheet(id) {
+    var c = (S.data.challans || []).filter(function (x) { return x.id === id; })[0];
+    if (!c) return '<h2>Billing sheet</h2><div class="empty">Challan not found.</div><div class="foot"><button class="btn" data-act="close">Close</button></div>';
+    var D = billSheetData(c), td = 'padding:5px 6px;border-top:1px solid #e2e8f0;font-size:13px;vertical-align:top';
+    var h = '<h2>Billing sheet</h2>' +
+      '<p class="sub">' + esc(c.challanNo || "") + ' &middot; ' + esc(c.customerName || "") + (c.site ? ' &middot; ' + esc(c.site) : '') + ' &middot; ' + esc(dmy(String(c.createdAt || "").slice(0, 10))) + '</p>' +
+      '<div class="meta" style="font-size:13px;margin-bottom:6px">The challan&rsquo;s items at this client&rsquo;s preset discount, to raise the bill from. <b>For accounts only &mdash; nothing is saved, and it is not added to any hisab.</b></div>' +
+      '<div style="max-height:52vh;overflow:auto"><table style="width:100%;border-collapse:collapse;table-layout:fixed"><thead><tr style="background:#0b3b36;color:#fff;font-size:12px">' +
+      '<th style="padding:6px;text-align:left">ITEM</th><th style="padding:6px;text-align:right;width:40px">QTY</th>' +
+      '<th style="padding:6px;text-align:right;width:72px">RATE</th><th style="padding:6px;text-align:right;width:84px">AMOUNT</th></tr></thead><tbody>' +
+      D.rows.map(function (r, i) {
+        return '<tr style="background:' + (i % 2 ? '#f8fafc' : '#fff') + '"><td style="' + td + ';word-break:break-word">' + esc(r.desc) +
+          '<div style="font-size:12px;color:#64748b">' + esc([r.code, r.hsn ? "HSN " + r.hsn : "", r.job ? "job work" : ""].filter(Boolean).join(" · ")) + '</div>' +
+          '<div style="font-size:12px;color:#0f766e">MRP ' + money(r.mrp) + (r.disc ? ' &middot; ' + (Math.round(r.disc * 100) / 100) + '% off' : ' &middot; no discount') + '</div></td>' +
+          '<td style="' + td + ';text-align:right">' + esc(qShow(r.qty)) + '</td><td style="' + td + ';text-align:right">' + money(r.rate) + '</td>' +
+          '<td style="' + td + ';text-align:right;font-weight:700">' + money(r.amt) + '</td></tr>';
+      }).join("") + '</tbody></table></div>' +
+      '<div style="display:grid;grid-template-columns:1fr auto;gap:4px 12px;margin-top:8px;font-size:14px">' +
+      '<span>Taxable value (before GST)</span><b style="text-align:right">' + money(D.taxable) + '</b>' +
+      '<span>CGST 9% + SGST 9%</span><b style="text-align:right">' + money(D.gst) + '</b>' +
+      '<span><b>Total (incl. 18% GST)</b></span><b style="text-align:right;font-size:16px">' + money(D.tot) + '</b></div>' +
+      '<div class="meta" style="font-size:12px;margin-top:4px">GST worked out at 18%, as the MRPs include it. An item on another GST rate must be corrected in the bill.</div>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Close</button><button class="btn" data-act="bs-xl" data-id="' + esc(c.id) + '">Download Excel</button></div>';
+    return h;
+  }
+  function billSheetXl(id) {
+    var c = (S.data.challans || []).filter(function (x) { return x.id === id; })[0]; if (!c) return;
+    var D = billSheetData(c), out = [];
+    out.push([{ v: "Billing sheet – " + (c.challanNo || "") + " – " + (c.customerName || ""), s: XL.TITLE }]);
+    out.push(["For billing only. Not added to any hisab. Made " + d10(today()) + " by " + String(S.user || "")]);
+    out.push([]);
+    out.push(rsHead(["#", "Item", "Code", "HSN", "Qty", "MRP", "Disc %", "Rate", "Amount (incl. GST)"]));
+    D.rows.forEach(function (r) { out.push([r.n, r.desc, r.code, r.hsn, r.qty, { v: r.mrp, s: XL.MONEY }, r.disc || 0, { v: r.rate, s: XL.MONEY }, { v: r.amt, s: XL.MONEY }]); });
+    out.push([]);
+    out.push(["", "Taxable value (before GST)", "", "", "", "", "", "", { v: D.taxable, s: XL.MONEY }]);
+    out.push(["", "CGST 9% + SGST 9%", "", "", "", "", "", "", { v: D.gst, s: XL.MONEY }]);
+    out.push(["", { v: "Total (incl. 18% GST)", s: XL.BOLD }, "", "", "", "", "", "", { v: D.tot, s: XL.MONEYB }]);
+    dlXlsx("Billing_" + String(c.challanNo || id).replace(/[^\w.-]+/g, "_") + ".xlsx", "Billing", out, [5, 44, 14, 10, 7, 11, 8, 11, 16], { freeze: { r: 4, c: 0 } });
+  }
+
 
   /* ================= A DELIVERY THAT HAS ARRIVED  (v6.9.387, 31 August 2026) ===========
      HIS WORDS, with 23/08/2026/008 on the screen: "receipt attached then why this dispatch
@@ -28332,11 +28390,12 @@ function viewCatalogue() {
         hisab: '<span class="stp-b">' + hisabAddBtn(c) + hisabWhyNot(c) + '</span>',
         /* Billing on a received challan: accounts and admin enter it here, everyone else hands
            it off to the accounts queue. */
-        bill: (st === "Received"
+        bill: ((canBill() && ["Approved", "Dispatched", "Received"].indexOf(st) >= 0 ? '<button class="btn sm ghost" data-act="bill-sheet" data-id="' + esc(c.id) + '">Billing sheet</button> ' : '') +   /* 6.9.809 */
+              (st === "Received"
                 ? (canBill()
                     ? '<button class="btn sm ' + (c.billNo ? 'act-billedit' : 'act-bill') + '" data-act="bill-detail" data-id="' + esc(c.id) + '">' + (c.billNo ? 'Edit bill' : 'Add billing detail') + '</button>'
                     : (!c.billStatus ? '<button class="btn sm act-billsend" data-act="bill-send" data-id="' + esc(c.id) + '">Send for billing</button>' : ""))
-                : "")
+                : ""))
       };
 
       var actions =
@@ -29964,6 +30023,64 @@ function viewCatalogue() {
   }
   /* The card, the statement and the payout modal serve both - this decides which book. */
   function bookFor(name, kind) { return kind === "exec" ? execBook(name) : partnerBook(name); }
+  /* ===== 6.9.808 - HIS LEDGER, AT THE TOP =====
+     HIS WORDS: "on searching any partner or executive, entering at his name, must show his statement at top,
+     like what earned for which site and what's payout - like a proper ledger". One line per delivery he earned
+     on, per return that took some back, and per payout, oldest first, with the running balance; the totals
+     under it are the same book every other screen reads (bookFor), so they cannot disagree. Read only. */
+  function incLedgerRows(name, kind, bk) {
+    var b = bk || bookFor(name, kind === "exec" ? "exec" : "partner"), nm = String(name || "").trim().toLowerCase(), ev = [];
+    (b.rows || []).forEach(function (r) {
+      ev.push({ d: String(r.ymd || "").slice(0, 10), t: r.ret ? "ret" : "earn", no: r.no || "", client: r.client || "", site: r.site || "",
+        brand: r.brand || "", amt: Number(r.inc) || 0, rel: Number(r.rel) || 0, share: Number(r.paidShare) || 0 });
+    });
+    (S.data.commpay || []).forEach(function (p) {
+      if (String(p.associate || "").trim().toLowerCase() !== nm) return;
+      ev.push({ d: dstr(p.date || p.createdAt), t: "pay", amt: payAmt(p), mode: String(p.mode || ""), note: String(p.notes || ""), site: String(p.siteName || "") });
+    });
+    ev.sort(function (a, c) { return String(a.d).localeCompare(String(c.d)) || ((a.t === "pay") - (c.t === "pay")); });
+    var bal = 0;
+    ev.forEach(function (e) { bal += e.t === "pay" ? -e.amt : e.amt; e.bal = bal; });
+    return { b: b, ev: ev };
+  }
+  function incLedgerHtml(name, kind, bk) {
+    var L = incLedgerRows(name, kind, bk), b = L.b, ev = L.ev;
+    S.ldgAll = S.ldgAll || {};
+    var key = (kind === "exec" ? "x:" : "p:") + dkey(name), all = !!S.ldgAll[key], SHOW = 15;
+    var list = all ? ev : ev.slice(-SHOW);
+    var earned = 0, paid = 0;
+    ev.forEach(function (e) { if (e.t === "pay") paid += e.amt; else earned += e.amt; });
+    var due = Math.max(0, (Number(b.payable) || 0) - paid), wait = Math.max(0, earned - (Number(b.payable) || 0));
+    var td = 'padding:6px 6px;border-top:1px solid #e2e8f0;vertical-align:top;font-size:13px';
+    var h = '<div class="card" style="border-color:#0b3b36;padding:10px 12px"><h3 style="margin:0 0 2px">' + esc(name) + ' &mdash; ledger</h3>' +
+      '<div class="meta" style="font-size:13px;margin-bottom:6px">Every delivery he earned on, every return and every payout, oldest first, with the balance after each line.</div>';
+    if (!ev.length) return h + '<div class="empty">Nothing earned or paid yet.</div></div>';
+    if (!all && ev.length > SHOW) h += '<div style="margin-bottom:6px"><button class="btn sm ghost" data-act="ldg-all" data-k="' + esc(key) + '" style="min-height:44px">Show all ' + ev.length + ' lines</button> <span class="meta">showing the latest ' + SHOW + '</span></div>';
+    /* three columns, so a phone has room for the words: the date leads the particulars */
+    h += '<table style="width:100%;border-collapse:collapse;table-layout:fixed"><thead><tr style="background:#0b3b36;color:#fff;font-size:12px">' +
+      '<th style="padding:6px;text-align:left">DATE &middot; PARTICULARS</th>' +
+      '<th style="padding:6px;text-align:right;width:84px">EARNED / PAID</th><th style="padding:6px;text-align:right;width:84px">BALANCE</th></tr></thead><tbody>';
+    list.forEach(function (e, i) {
+      var bg = e.t === "pay" ? "#eff6ff" : (e.t === "ret" ? "#fef2f2" : (i % 2 ? "#f8fafc" : "#fff"));
+      var part;
+      if (e.t === "pay") part = '<b style="color:#1d4ed8">Payout</b>' + (e.mode ? ' &middot; ' + esc(e.mode) : '') + (e.site ? ' &middot; ' + esc(e.site) : '') + (e.note ? '<div class="meta" style="font-size:12px">' + esc(e.note) + '</div>' : '');
+      else part = (e.t === "ret" ? '<b style="color:#b91c1c">Return</b> ' : '') + '<b>' + esc(e.client) + '</b>' + (e.site && dkey(e.site) !== dkey(e.client) ? ' &middot; ' + esc(e.site) : '') +
+        '<div class="meta" style="font-size:12px">' + esc(e.no) + (e.brand ? ' &middot; ' + esc(e.brand) : '') +
+        (e.t === "earn" ? ' &middot; ' + (e.share >= 0.995 ? '<span style="color:#047857">client paid</span>' : e.share > 0.005 ? '<span style="color:#b45309">client paid ' + Math.round(e.share * 100) + '%</span>' : '<span style="color:#b45309">waiting for client payment</span>') : '') + '</div>';
+      h += '<tr style="background:' + bg + '"><td style="' + td + ';word-break:break-word"><span style="color:#64748b;font-size:12px">' + esc(dmy(e.d)) + '</span><br>' + part + '</td>' +
+        '<td style="' + td + ';text-align:right;white-space:nowrap">' + (e.t === "pay" ? '<b style="color:#1d4ed8">&minus; ' + money(e.amt) + '</b><div style="font-size:12px;color:#1d4ed8">paid</div>' :
+          (e.amt < 0 ? '<span style="color:#b91c1c">' + money(e.amt) + '</span><div style="font-size:12px;color:#b91c1c">reversed</div>' : '+ ' + money(e.amt) + '<div style="font-size:12px;color:#047857">earned</div>')) + '</td>' +
+        '<td style="' + td + ';text-align:right;white-space:nowrap;font-weight:700">' + money(e.bal) + '</td></tr>';
+    });
+    h += '<tr style="background:#ecfdf5;font-weight:700"><td style="' + td + '">Total earned ' + money(earned) + '<br>Total paid ' + money(paid) + '</td><td style="' + td + '"></td><td style="' + td + ';text-align:right;white-space:nowrap">' + money(earned - paid) + '</td></tr>';
+    h += '</tbody></table>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:8px;font-size:13px">' +
+      '<span>Balance <b>' + money(earned - paid) + '</b></span>' +
+      '<span>Due now (client has paid) <b style="color:' + (due > 0.5 ? '#b91c1c' : 'inherit') + '">' + money(due) + '</b></span>' +
+      '<span>Waiting for client payment <b style="color:#b45309">' + money(wait) + '</b></span></div></div>';
+    return h;
+  }
+
 
   /* ===== 6.9.789 - THE MONTH'S PARTNER STATEMENTS (see p789) ===== */
   function pstPrevYm() { var d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 1); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0"); }
@@ -30289,6 +30406,7 @@ function viewCatalogue() {
       '<br><i>Incentive is released <b>challan by challan</b>, in the share that challan&rsquo;s own bill has been paid &mdash; payments clear the oldest bill first, unless a payment was pointed at particular challans. A challan not yet finalised releases nothing. Booked-in material returns reverse the incentive on the goods that came back, at the same rate that earned it.</i></div>' +
       '<div class="acts"><button class="btn sm" data-act="pay-out" data-k="' + kind + '" data-n="' + esc(name) + '">Record payout</button></div></div>';
 
+    try { h += incLedgerHtml(name, isX ? "exec" : "partner", b); } catch (eL) { }   /* 6.9.808 - his ledger, near the top */
     if (!isX) { try { h += partnerMore(name, b); } catch (e) { } }   /* 6.9.734 */
     /* v6.9.231 - the statement, client by client. Only what was earned, foldable,
        and downloadable for one month or for everything. */
@@ -44492,6 +44610,14 @@ function viewCatalogue() {
     var nm = Object.keys(d.id.names).map(function (k) { return d.id.names[k]; });
     var mobs = Object.keys(d.id.mobs);
     var pr = d.partners[0] || null;
+    /* 6.9.808 - a partner or a sales executive: his ledger first */
+    var _ldg = "";
+    try {
+      if (canSee("commission")) {
+        if (pr && pr.name) _ldg = incLedgerHtml(pr.name, "partner") + '<div class="acts" style="margin:-4px 0 10px"><button class="btn sm" data-act="p-open" data-n="' + esc(pr.name) + '">Open his incentive page</button></div>';
+        else { var _xu = (S.data.team || []).filter(function (u) { return u && String(u.role || "").toLowerCase() === "sales" && dkey(u.name) === dkey(q); })[0]; if (_xu) _ldg = incLedgerHtml(_xu.name, "exec") + '<div class="acts" style="margin:-4px 0 10px"><button class="btn sm" data-act="p-open" data-k="exec" data-n="' + esc(_xu.name) + '">Open his incentive page</button></div>'; }
+      }
+    } catch (eLd) { _ldg = ""; }
 
     var h = '<h2>' + esc(nm[0] || q) + '</h2>' +
       '<p class="sub">' +
@@ -44500,6 +44626,7 @@ function viewCatalogue() {
         (d.sites.length ? '<span class="pill">' + d.sites.length + ' own site' + (d.sites.length === 1 ? '' : 's') + '</span> ' : '') +
         (d.underHim.length ? '<span class="pill">' + d.underHim.length + ' site' + (d.underHim.length === 1 ? '' : 's') + ' under him</span> ' : '') +
       '</p>' + back;
+    h += _ldg;   /* 6.9.808 */
 
     /* THE NAMES HE IS FILED UNDER. Said out loud, because the whole reason this screen exists
        is that one man was three rows, and a man reading it deserves to know which rows were
@@ -44871,6 +44998,8 @@ function viewCatalogue() {
     (d.associates || []).forEach(function (a) {
       if (has(a.name) || has(a.mobile) || has(a.role) || has(a.area)) out.partners.push(a);
     });
+    /* 6.9.808 - and the sales executives, for the owner and accounts: his ledger is one tap away */
+    try { if (canSee("commission")) out.execs = (d.team || []).filter(function (u) { return u && String(u.role || "").toLowerCase() === "sales" && String(u.active).toUpperCase() !== "N" && (has(u.name) || has(u.mobile)); }); } catch (eX) { }
     return out;
   }
   function uniCount(o) {
@@ -44937,9 +45066,14 @@ function viewCatalogue() {
       return '<div class="card"><h3>' + esc(x.name || "") + '</h3><div class="meta">' +
         esc([x.mobile, x.vehicle].filter(Boolean).join("  \u00b7  ")) + '</div></div>';
     });
-    group("Partners", o.partners, function (a) {
-      return '<div class="card"><h3>' + esc(a.name || "") + '</h3><div class="meta">' +
-        esc([a.role, a.mobile, a.area].filter(Boolean).join("  \u00b7  ")) + '</div></div>';
+    group("Partners", o.partners, function (a) {   /* 6.9.808 - a tap opens his ledger */
+      var _go = canSee("commission") ? ' data-act="p-open" data-n="' + esc(a.name || "") + '" style="cursor:pointer"' : ' data-act="as-open" data-id="' + esc(a.id || "") + '" style="cursor:pointer"';
+      return '<div class="card"' + _go + '><h3>' + esc(a.name || "") + '</h3><div class="meta">' +
+        esc([a.role, a.mobile, a.area].filter(Boolean).join("  \u00b7  ")) + (canSee("commission") ? ' &middot; <b style="color:#0f766e">open his ledger &rsaquo;</b>' : '') + '</div></div>';
+    });
+    group("Sales executives", o.execs || [], function (u) {
+      return '<div class="card" data-act="p-open" data-k="exec" data-n="' + esc(u.name || "") + '" style="cursor:pointer"><h3>' + esc(u.name || "") + '</h3><div class="meta">Sales executive' +
+        (u.mobile ? ' &middot; ' + esc(u.mobile) : '') + ' &middot; <b style="color:#0f766e">open his ledger &rsaquo;</b></div></div>';
     });
     /* v6.9.408 - with a picture, like every other list. v6.9.299 fixed exactly this ("the same
        product, two screens, two answers") in the search POPUP and left the screen showing a
@@ -60749,6 +60883,7 @@ function viewCatalogue() {
       return;
     }
     if (act === "p-open") {
+      S.modal = null;   /* 6.9.808 - opened from the search results */
       S.partner = t.getAttribute("data-n");
       S.pKind = (t.getAttribute("data-k") === "exec") ? "exec" : "";
       /* v6.9.524 - the partners sheet presses this too. Only viewIncentives draws the book,
@@ -60756,6 +60891,7 @@ function viewCatalogue() {
       if (S.tab !== "commission" && canSee("commission")) { S.tab = "commission"; try { tabUse(S.tab); navBump(S.tab); } catch (e) { } }
       S.pMonth = ""; S.pOpen = {}; render(); return;
     }
+    if (act === "ldg-all") { S.ldgAll = S.ldgAll || {}; S.ldgAll[t.getAttribute("data-k") || ""] = 1; keepScroll = true; render(); return; }   /* 6.9.808 */
     if (act === "p-back") { S.partner = ""; S.pKind = ""; S.pOpen = {}; render(); return; }
     /* v6.9.234 - rate % or amount only, for the screen, the PDF and the WhatsApp copy. */
     if (act === "p-pct") {
@@ -62638,6 +62774,11 @@ function viewCatalogue() {
        typed, open the FULL client form, and when he saves, come straight back to where he was
        with the client filled in. Registering a client must never cost him the form he was on. */
     if (act === "bill-clear") { S.q = ""; var _qb = el("q"); if (_qb) _qb.value = ""; render(); return; }   /* 6.9.727 - and the box empties */
+    if (act === "bill-sheet" || act === "bs-xl") {   /* 6.9.809 - accounts and the owner only */
+      if (!canBill()) { toast("The billing sheet is for accounts and the owner."); return; }
+      if (act === "bs-xl") { billSheetXl(id); return; }
+      S.modal = modalBillSheet(id); render(); return;
+    }
     if (act === "bill-detail") {
       /* v6.9.444 - hiding a button is a courtesy, not a lock. The rule is here. */
       if (!canBill()) { toast("A GST bill is recorded by accounts or the owner."); return; }
