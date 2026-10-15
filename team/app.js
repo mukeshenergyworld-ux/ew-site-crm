@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.806";
+  var APP_VERSION = "6.9.807";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -525,6 +525,9 @@
      small navy tag in front of it, as the screen is drawn (one MutationObserver, batched per frame).
      Never inside a box you type in, a drop-down, a script or a PDF; a name shared by two different numbers is
      left alone rather than guessed; a name under 5 letters with no space is left alone (too much like a word). */
+  /* 6.9.807 - HIS QUESTION: "why plumber is shown in driver list?" Nobody was: a driver called Rohit or Satish has
+     the same name as plumber Rohit (PL075) / Satish (PL183), and lead Seva singh (LD014), so the tagger put their
+     numbers on the drivers. A driver's name is marked ewcdata-nocode wherever it is drawn as a driver. */
   (function () {
     var MAP = null, KEY = "", pend = [], sched = false, SHORT = {};
     var SKIP = { SCRIPT: 1, STYLE: 1, TEXTAREA: 1, OPTION: 1, SELECT: 1, INPUT: 1, TITLE: 1, NOSCRIPT: 1, DATALIST: 1 };
@@ -26973,7 +26976,7 @@ function viewCatalogue() {
       return { v: { name: g.name, veh: g.vehicle, mobile: g.mobile, ready: g.ready, held: g.held, paid: paid, owed: owed },
         after: S.dlOpen === g.key ? driverLedgerPanel(g.key) : "",
         cells: {
-          name: '<a href="#" data-act="dl-open" data-k="' + esc(g.key) + '" style="font-weight:700;color:#0b3b36;text-decoration:underline dotted" title="His ledger, under this row">' + (S.dlOpen === g.key ? '&#9662; ' : '&#9656; ') + esc(g.name) + '</a>' +
+          name: '<a href="#" data-act="dl-open" ewcdata-nocode="1" data-k="' + esc(g.key) + '" style="font-weight:700;color:#0b3b36;text-decoration:underline dotted" title="His ledger, under this row">' + (S.dlOpen === g.key ? '&#9662; ' : '&#9656; ') + esc(g.name) + '</a>' +
             (!g.onReg ? ' <span class="pill" style="background:#fef3c7;color:#92400e" title="Not on the driver register - typed on the delivery">not on register</span>' +
               (canManageDrivers() ? ' <button class="btn sm ghost" data-act="dl-link" data-k="' + esc(g.key) + '" style="padding:1px 8px;font-size:12px">Link&hellip;</button>' : '') : ''),
           veh: g.vehicle ? esc(g.vehicle) : '<span style="color:#94a3b8">—</span>',
@@ -27001,7 +27004,7 @@ function viewCatalogue() {
       return { v: { name: d.name || "", mob: d.mobile || "", type: vt, veh: d.vehicle || "" },
         after: (S.dlOpen === _rk2 && !_hasRow) ? driverLedgerPanel(_rk2) : "",
         cells: {
-          name: '<a href="#" data-act="dl-open" data-k="' + esc(drvResolve("id:" + String(d.id || "").trim())) + '" style="font-weight:700;color:#0b3b36;text-decoration:underline dotted">' + esc(d.name) + '</a>' +
+          name: '<a href="#" data-act="dl-open" ewcdata-nocode="1" data-k="' + esc(drvResolve("id:" + String(d.id || "").trim())) + '" style="font-weight:700;color:#0b3b36;text-decoration:underline dotted">' + esc(d.name) + '</a>' +
             (_mInto ? ' <span class="pill" style="background:#e2e8f0;color:#334155" title="His trips and payments count under ' + esc(_mInto) + '">merged into ' + esc(_mInto) + '</span>' : ''),
           mob: d.mobile ? '<a href="tel:' + esc(d.mobile) + '">' + esc(d.mobile) + '</a>' : '<span style="color:#b45309">no mobile</span>',
           type: vt ? esc(vt) : '<span style="color:#b45309">not set</span>',
@@ -27034,7 +27037,7 @@ function viewCatalogue() {
           no: frIsReturn(c) ? '<b>' + esc(c.returnNo) + '</b> <span class="pill" style="font-size:12px">return</span>'
                             : '<b data-act="ch-open" data-id="' + esc(c.id) + '" style="cursor:pointer;color:#0f766e">' + esc(c.challanNo || "") + '</b>',
           client: esc(c.customerName || ""),
-          driver: (c.driverId || c.driver) ? esc(c.driver || c.driverId) : '<span style="color:#b45309">not named</span>',
+          driver: (c.driverId || c.driver) ? '<span ewcdata-nocode="1">' + esc(c.driver || c.driverId) + '</span>' : '<span style="color:#b45309">not named</span>',
           fr: money(frAmt(c)),
           state: frStatePill(state) + (state === "held" && !frIsReturn(c) && canAttachProof() ? ' <button class="btn sm ghost" data-act="ch-proof" data-id="' + esc(c.id) + '" style="padding:1px 8px;font-size:12px">Attach receipt</button>' : ''),
           to: frToClient(c) ? '<span class="pill teal">client</span>' : '<span class="pill" style="background:#fee2e2;color:#b91c1c">us</span>'
@@ -27049,7 +27052,7 @@ function viewCatalogue() {
         { k: "date", t: "DATE", w: "84px" }, { k: "driver", t: "DRIVER" }, { k: "amt", t: "AMOUNT", n: 1, r: 1 }, { k: "mode", t: "HOW" }, { k: "ref", t: "REFERENCE" }, { k: "for", t: "FOR" }, { k: "by", t: "ENTERED BY" }
       ], pays.map(function (p) {
         return { v: { date: String(p.createdAt || "").slice(0, 10), driver: p.driver || "", amt: dpAmt(p), mode: p.mode || "", ref: p.ref || "", "for": p.forTrips || "", by: p.createdBy || "" },
-          cells: { date: esc(dmy(String(p.createdAt || "").slice(0, 10))), driver: '<b>' + esc(p.driver || "") + '</b>', amt: money(dpAmt(p)), mode: esc(p.mode || "—"),
+          cells: { date: esc(dmy(String(p.createdAt || "").slice(0, 10))), driver: '<b ewcdata-nocode="1">' + esc(p.driver || "") + '</b>', amt: money(dpAmt(p)), mode: esc(p.mode || "—"),
                    ref: esc(p.ref || "—"), "for": esc(p.forTrips || "—") + (p.note ? ' <span style="color:#94a3b8">' + esc(p.note) + '</span>' : ''), by: esc(p.createdBy || "—") } };
       }), "how it was paid and against what");
     }
