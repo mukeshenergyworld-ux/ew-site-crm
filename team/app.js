@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.809";
+  var APP_VERSION = "6.9.810";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -24361,7 +24361,7 @@ function viewCatalogue() {
     var D = billSheetData(c), td = 'padding:5px 6px;border-top:1px solid #e2e8f0;font-size:13px;vertical-align:top';
     var h = '<h2>Billing sheet</h2>' +
       '<p class="sub">' + esc(c.challanNo || "") + ' &middot; ' + esc(c.customerName || "") + (c.site ? ' &middot; ' + esc(c.site) : '') + ' &middot; ' + esc(dmy(String(c.createdAt || "").slice(0, 10))) + '</p>' +
-      '<div class="meta" style="font-size:13px;margin-bottom:6px">The challan&rsquo;s items at this client&rsquo;s preset discount, to raise the bill from. <b>For accounts only &mdash; nothing is saved, and it is not added to any hisab.</b></div>' +
+      '<div class="meta" style="font-size:13px;margin-bottom:6px">The challan&rsquo;s items at this client&rsquo;s preset discount, to raise the bill from. <b>For accounts and the owner only.</b> These figures are not saved or added to any hisab; only the bill details below are saved on the challan.</div>' +
       '<div style="max-height:52vh;overflow:auto"><table style="width:100%;border-collapse:collapse;table-layout:fixed"><thead><tr style="background:#0b3b36;color:#fff;font-size:12px">' +
       '<th style="padding:6px;text-align:left">ITEM</th><th style="padding:6px;text-align:right;width:40px">QTY</th>' +
       '<th style="padding:6px;text-align:right;width:72px">RATE</th><th style="padding:6px;text-align:right;width:84px">AMOUNT</th></tr></thead><tbody>' +
@@ -24377,8 +24377,72 @@ function viewCatalogue() {
       '<span>CGST 9% + SGST 9%</span><b style="text-align:right">' + money(D.gst) + '</b>' +
       '<span><b>Total (incl. 18% GST)</b></span><b style="text-align:right;font-size:16px">' + money(D.tot) + '</b></div>' +
       '<div class="meta" style="font-size:12px;margin-top:4px">GST worked out at 18%, as the MRPs include it. An item on another GST rate must be corrected in the bill.</div>' +
-      '<div class="foot"><button class="btn ghost" data-act="close">Close</button><button class="btn" data-act="bs-xl" data-id="' + esc(c.id) + '">Download Excel</button></div>';
+      '<div class="acts" style="margin-top:6px"><button class="btn sm ghost" data-act="bs-xl" data-id="' + esc(c.id) + '">Download Excel</button></div>' +
+      billFormHtml(c) +
+      '<div class="foot"><button class="btn ghost" data-act="close">Close</button><button class="btn" data-act="bill-save" data-id="' + esc(c.id) + '">' + (c.billNo ? 'Update bill details' : 'Save bill details') + '</button></div>';
     return h;
+  }
+
+  /* ===== 6.9.810 - THE BILL IS RECORDED, OR THE REASON IS =====
+     HIS WORDS: "when accounts raise bill of any challan then it must enter billing name, GST if any and bill no, auto
+     shown to hisab ... if any challan open by accounts for billing then before closing it must ask to enter billing
+     details ... billing name to be selected from drop down only, if not registered new ... my fear is that accounts will
+     open challan for billing and close without entering billing details, we have to put proper check on this".
+     So: the billing sheet carries the bill form (the client's registered billing names, or a new one which is then
+     registered on the client); opening it writes an audit row bill:open; closing it without a bill number asks again,
+     and closing anyway needs a reason (audit bill:skip). Every challan opened for billing and still without a bill
+     number stays on a red card on Today for the owner and accounts until its bill is entered. The bill itself is the
+     challan's billTo / billNo / billedAt, which the challan card, the challan log and the hisab already read. */
+  function billProfiles(c) {
+    var cl = clientByName(c.customerName) || {}, out = [];
+    try { out = JSON.parse(cl.billingJson || "[]") || []; } catch (e) { out = []; }
+    return out.filter(function (p) { return p && String(p.name || "").trim(); });
+  }
+  function billFormHtml(c) {
+    var profs = billProfiles(c), cur = String(c.billTo || "");
+    var opt = function (p) { var v = p.gstin ? p.name + " - " + p.gstin : p.name; return '<option value="' + esc(v) + '"' + (v === cur ? ' selected' : '') + '>' + esc(p.name) + (p.gstin ? ' · GSTIN ' + esc(p.gstin) : ' · no GSTIN') + '</option>'; };
+    var known = profs.some(function (p) { return (p.gstin ? p.name + " - " + p.gstin : p.name) === cur; });
+    return '<div class="card" style="margin-top:10px;border-color:' + (c.billNo ? '#86efac' : '#fca5a5') + ';background:' + (c.billNo ? '#f0fdf4' : '#fef2f2') + ';padding:10px 12px">' +
+      '<h3 style="margin:0 0 4px;font-size:15px">Bill details ' + (c.billNo ? '<span class="pill Won">Bill ' + esc(c.billNo) + '</span>' : '<span style="color:#b91c1c">&mdash; required</span>') + '</h3>' +
+      '<label>Billing name</label><select id="b_to" style="min-height:44px;font-size:15px">' +
+        '<option value=""' + (!cur ? ' selected' : '') + ' disabled>Choose the billing name&hellip;</option>' + profs.map(opt).join("") +
+        (cur && !known ? '<option value="' + esc(cur) + '" selected>' + esc(cur) + '</option>' : '') +
+        '<option value="__new">+ New billing name (not registered yet)</option></select>' +
+      '<div class="meta" style="font-size:12px;margin:4px 0">' + (profs.length ? 'Registered for ' + esc(c.customerName || "this client") + ': ' + profs.length + '. The GSTIN comes with the name.' : 'No billing name registered for this client yet &mdash; choose + New.') + '</div>' +
+      '<div class="grid2"><div><label>New billing name</label><input id="b_newname" placeholder="Only for + New"/></div>' +
+      '<div><label>GSTIN (if any)</label><input id="b_newgst" placeholder="Only for + New" style="text-transform:uppercase"/></div></div>' +
+      '<label>Bill number</label><input id="b_no" value="' + esc(c.billNo || "") + '" placeholder="Invoice / bill no." style="min-height:44px;font-size:15px"/>' +
+      '</div>';
+  }
+  function billOpenRows() {
+    var out = {};
+    (S.data.audit || []).forEach(function (r) {
+      if (!r || (r.action !== "bill:open" && r.action !== "bill:skip")) return;
+      var k = String(r.target || ""); if (!k) return;
+      var o = out[k] || (out[k] = { opened: "", by: "", skip: "", why: "" });
+      if (r.action === "bill:open" && String(r.createdAt || "") > o.opened) { o.opened = String(r.createdAt || ""); o.by = r.actor || ""; }
+      if (r.action === "bill:skip" && String(r.createdAt || "") > o.skip) { o.skip = String(r.createdAt || ""); try { o.why = (JSON.parse(r.detail || "{}") || {}).why || ""; } catch (e) { } }
+    });
+    return out;
+  }
+  function billPending() {
+    var op = billOpenRows();
+    return (S.data.challans || []).filter(function (c) {
+      return c && op[String(c.id)] && !String(c.billNo || "").trim() && !/cancel/i.test(String(c.status || "")) && !isCancelled("challans", c.id);
+    }).map(function (c) { return { c: c, o: op[String(c.id)] }; })
+      .sort(function (a, b) { return a.o.opened.localeCompare(b.o.opened); });
+  }
+  function billPendCard() {
+    if (!canBill()) return "";
+    var L = billPending(); if (!L.length) return "";
+    return '<div class="card" style="border-color:#fca5a5;background:#fef2f2;padding:10px 12px"><h3 style="margin:0 0 4px;color:#b91c1c">' + plural(L.length, "challan") + ' opened for billing &mdash; bill details not entered</h3>' +
+      '<div class="meta" style="font-size:13px;margin-bottom:6px">Each one was opened on the billing sheet and closed without a bill number. It stays here until its billing name and bill number are saved.</div>' +
+      L.slice(0, 15).map(function (x) {
+        return '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-top:1px solid #fecaca;font-size:13px">' +
+          '<span style="min-width:0"><b>' + esc(x.c.challanNo || "") + '</b> &middot; ' + esc(x.c.customerName || "") +
+          '<br><span class="meta" style="font-size:12px">opened ' + esc(dmy(String(x.o.opened).slice(0, 10))) + ' by ' + esc(x.o.by) + (x.o.why ? ' &middot; closed because: ' + esc(x.o.why) : '') + '</span></span>' +
+          '<button class="btn sm" data-act="bill-sheet" data-id="' + esc(x.c.id) + '" style="min-height:44px;flex:0 0 auto">Enter bill</button></div>';
+      }).join("") + (L.length > 15 ? '<div class="meta">and ' + (L.length - 15) + ' more</div>' : '') + '</div>';
   }
   function billSheetXl(id) {
     var c = (S.data.challans || []).filter(function (x) { return x.id === id; })[0]; if (!c) return;
@@ -30031,6 +30095,7 @@ function viewCatalogue() {
   function incLedgerRows(name, kind, bk) {
     var b = bk || bookFor(name, kind === "exec" ? "exec" : "partner"), nm = String(name || "").trim().toLowerCase(), ev = [];
     (b.rows || []).forEach(function (r) {
+      if (Math.abs(Number(r.inc) || 0) < 0.5) return;   /* 6.9.810 - a delivery that earned nothing is not a ledger line */
       ev.push({ d: String(r.ymd || "").slice(0, 10), t: r.ret ? "ret" : "earn", no: r.no || "", client: r.client || "", site: r.site || "",
         brand: r.brand || "", amt: Number(r.inc) || 0, rel: Number(r.rel) || 0, share: Number(r.paidShare) || 0 });
     });
@@ -47851,6 +47916,7 @@ function viewCatalogue() {
       (seesAllClients() ? '<div class="stat"><div class="n">' + money(comm) + '</div><div class="l">Incentive owed</div></div>' : '') +
       '</div>';
 
+    try { h += billPendCard(); } catch (e) { }   /* 6.9.810 - opened for billing, not billed */
     try { h += rvDashCard(); } catch (e) { }   /* 6.9.635 - Monday and Thursday */
     try { h += chDraftBanner(); } catch (e) { }   /* v6.9.554 */
     try { h += draftDashCard(); } catch (e) { console.warn("[draft] card:", e); }
@@ -55710,6 +55776,29 @@ function viewCatalogue() {
     /* v6.9.452 - the typed line is read BEFORE promptDone repaints the box away */
     if (act === "prompt-ok") { var _pv = el("prompt_in"); promptDone(_pv ? String(_pv.value) : ""); return; }
     if (act === "prompt-alt") { promptDone(_prmAlt == null ? "" : _prmAlt); return; }   /* v6.9.453 */
+    if (act === "close" && S.bsOpen && !_ask && !_prm && !_cho) {   /* 6.9.810 - the billing sheet does not close quietly */
+      var _bso = (S.data.challans || []).filter(function (x) { return x.id === S.bsOpen; })[0];
+      if (_bso && !String(_bso.billNo || "").trim()) {
+        var _bsHold0 = formHold(), _bsId = S.bsOpen, _bsHtml = S.modal;
+        askSheet({ title: "Bill details are not entered", danger: true, yes: "Enter them now", no: "Close without billing",
+          sub: esc(_bso.challanNo || "") + " &middot; " + esc(_bso.customerName || ""),
+          body: "This challan was opened for billing. Choose the billing name and type the bill number before closing.<br><br>" +
+            '<span style="color:#64748b">If the bill is not being made now, close it and say why. It stays on the red card on Today until the bill is entered.</span>' })
+        .then(function (yes) {
+          if (yes) { S.bsOpen = _bsId; S.modal = _bsHtml; render(); formBack(_bsHold0); return; }
+          promptSheet({ title: "Why is the bill not entered?", sub: esc(_bso.challanNo || ""), placeholder: "e.g. bill to be made tomorrow, waiting for GSTIN", multiline: true })
+          .then(function (why) {
+            why = String(why == null ? "" : why).trim();
+            if (!why) { toast("A reason is needed to close without the bill."); S.bsOpen = _bsId; S.modal = _bsHtml; render(); formBack(_bsHold0); return; }
+            save("audit", { id: "", createdAt: new Date().toISOString(), actor: S.user, action: "bill:skip", target: String(_bsId), detail: JSON.stringify({ challan: _bso.challanNo || "", why: why.slice(0, 300) }), ip: "" }, true);
+            S.bsOpen = null; S.modal = null; render();
+            toast("Closed. " + (_bso.challanNo || "The challan") + " stays on the billing card on Today until its bill is entered.");
+          });
+        });
+        return;
+      }
+      S.bsOpen = null;
+    }
     if (act === "close") {
       S.binOpen = false; S.binPend = null;   /* v6.9.765 */
       /* v6.9.448 - a question closed any way but Yes is a "no", and the caller is told */
@@ -62777,7 +62866,11 @@ function viewCatalogue() {
     if (act === "bill-sheet" || act === "bs-xl") {   /* 6.9.809 - accounts and the owner only */
       if (!canBill()) { toast("The billing sheet is for accounts and the owner."); return; }
       if (act === "bs-xl") { billSheetXl(id); return; }
-      S.modal = modalBillSheet(id); render(); return;
+      var _bsc = (S.data.challans || []).filter(function (x) { return x.id === id; })[0];
+      if (_bsc && !String(_bsc.billNo || "").trim()) {   /* 6.9.810 - opened for billing: on the record */
+        save("audit", { id: "", createdAt: new Date().toISOString(), actor: S.user, action: "bill:open", target: String(id), detail: JSON.stringify({ challan: _bsc.challanNo || "", client: _bsc.customerName || "" }), ip: "" }, true);
+      }
+      S.bsOpen = id; S.modal = modalBillSheet(id); render(); return;
     }
     if (act === "bill-detail") {
       /* v6.9.444 - hiding a button is a courtesy, not a lock. The rule is here. */
@@ -62788,12 +62881,13 @@ function viewCatalogue() {
       var bch = (S.data.challans || []).filter(function (x) { return x.id === id; })[0];
       if (!bch) { toast("Challan not found."); return; }
       var sel = val("b_to"), billTo = "";
+      if (!sel) { toast("Choose the billing name from the list, or + New billing name."); return; }   /* 6.9.810 */
       if (sel && sel !== "__new") {
         billTo = sel;
       } else {
         var nn = String(val("b_newname") || "").trim();
         if (!nn) { toast("Pick a billing name, or type a new one."); return; }
-        var gg = String(val("b_newgst") || "").trim();
+        var gg = String(val("b_newgst") || "").trim().toUpperCase();
         billTo = gg ? nn + " - " + gg : nn;
         /* remember this billing name on the client for next time */
         var bcl = clientByName(bch.customerName) || {};
@@ -62817,6 +62911,7 @@ function viewCatalogue() {
         var updated = Object.assign({}, bch, { billTo: billTo, billNo: billNo, billStatus: "Billed", billedAt: bch.billedAt || _bnow, billedBy: S.user });
         Object.assign(bch, { billTo: billTo, billNo: billNo, billStatus: "Billed", billedAt: bch.billedAt || _bnow, billedBy: S.user });
         toast("Bill " + billNo + " recorded on " + bch.challanNo + ".");
+        S.bsOpen = null;   /* 6.9.810 */
         render();
         save("challans", updated).catch(function () { toast("Kept safe on this device - will sync on next refresh."); });
       };
