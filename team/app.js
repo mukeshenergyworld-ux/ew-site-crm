@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.817";
+  var APP_VERSION = "6.9.818";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -3625,6 +3625,7 @@ window.addEventListener("beforeunload", function (ev) {
       return;
     }
     if (t && t.id === "inc_q") { incFilter(); return; }
+    if (t && t.id === "bdn_q") { S.bdnQ = t.value; var _bnr = document.getElementById("bdn_res"); if (_bnr) _bnr.innerHTML = billedListHtml(); return; }   /* 6.9.818 */
     if (t && t.id === "bd_q") { S.bdQ = t.value; var _bdr = document.getElementById("bd_res"); if (_bdr) _bdr.innerHTML = billDeskList(); return; }   /* 6.9.811 */
     if (t && t.id === "vl_q") { S.vlQ = t.value; var _vr = document.getElementById("vl_res"); if (_vr) _vr.innerHTML = vlFindHtml(t.value); return; }   /* 6.9.737 */
     if (t && t.id === "p_find") { S.pFind = t.value; var _pr = document.getElementById("p_find_res"); if (_pr) _pr.innerHTML = pFindHtml(t.value); return; }   /* 6.9.736 */
@@ -24563,6 +24564,47 @@ function viewCatalogue() {
     if (L.length > lim) h += '<div class="acts"><button class="btn sm ghost" data-act="bd-all" style="min-height:44px">Show all ' + L.length + '</button></div>';
     return h;
   }
+
+  /* ===== 6.9.818 - BILLED: EVERY CHALLAN WITH ITS BILL =====
+     His words: "show one more tab that show list of challans whose billing done with billing details and bill no".
+     Accounts and the owner. Newest bill first; challan, client, billing name with GSTIN, bill number, date, who.
+     Search and an Excel file. Read only - a bill is changed from its billing sheet. */
+  function billedList() {
+    return (S.data.challans || []).filter(function (c) { return c && String(c.billNo || "").trim() && !isCancelled("challans", c.id); })
+      .sort(function (a, b) { return String(b.billedAt || b.createdAt || "").localeCompare(String(a.billedAt || a.createdAt || "")); });
+  }
+  function billedRows() {
+    var q = String(S.bdnQ || "").trim().toLowerCase(), L = billedList();
+    if (q) L = L.filter(function (c) { return [c.challanNo, c.customerName, c.billTo, c.billNo, c.billedBy].join(" ").toLowerCase().indexOf(q) >= 0; });
+    return L;
+  }
+  function billedListHtml() {
+    var L = billedRows(), show = S.bdnAll ? L : L.slice(0, 60);
+    if (!L.length) return '<div class="empty">No billed challan matches.</div>';
+    return '<div class="meta" style="font-size:12.5px;margin:4px 0">' + plural(L.length, "challan") + ' billed</div>' + show.map(function (c) {
+      return '<div style="padding:7px 0;border-top:1px solid #e2e8f0;font-size:13.5px;line-height:1.4">' +
+        '<b style="color:#0f766e">Bill ' + esc(c.billNo) + '</b>' + (c.billedAt ? ' &middot; ' + esc(dmy(String(c.billedAt).slice(0, 10))) : '') +
+        ' &middot; <a href="#" data-act="ch-detail" data-id="' + esc(c.id) + '" style="color:#0b3b36;font-weight:700">' + esc(c.challanNo || "") + '</a> &middot; ' + esc(c.customerName || "") +
+        '<br><span class="meta" style="font-size:12.5px">Billed to: ' + esc(c.billTo || "billing name not recorded") + (c.billedBy ? ' &middot; by ' + esc(c.billedBy) : '') + '</span>' +
+        ' <button class="btn sm ghost" data-act="bill-sheet" data-id="' + esc(c.id) + '" style="min-height:44px;margin-left:4px">Billing sheet</button></div>';
+    }).join("") + (L.length > show.length ? '<button class="btn sm ghost" data-act="bdn-all" style="min-height:44px;margin-top:6px">Show all ' + L.length + '</button>' : '');
+  }
+  function viewBilled() {
+    if (!canBill()) return '<div class="empty">Billing is for accounts and the owner.</div>';
+    return '<div class="card" style="padding:10px 12px"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
+      '<h2 style="margin:0;font-size:17px;flex:1">Billed &mdash; challans with their bills</h2>' +
+      '<button class="btn sm ghost" data-act="bdn-xl" style="min-height:44px">&#8681; Excel</button></div>' +
+      '<input id="bdn_q" placeholder="Find a bill no, challan, client or billing name" value="' + esc(S.bdnQ || "") + '" style="margin-top:8px;min-height:44px;font-size:15px;width:100%;box-sizing:border-box"/>' +
+      '<div id="bdn_res">' + billedListHtml() + '</div></div>';
+  }
+  function billedXl() {
+    var out = [];
+    out.push([{ v: "Billed challans – " + dmy(today()), s: XL.TITLE }]);
+    out.push([]);
+    out.push(rsHead(["Bill no", "Bill date", "Challan no", "Challan date", "Client", "Billed to (name - GSTIN)", "Billed by"]));
+    billedRows().forEach(function (c) { out.push([String(c.billNo || ""), d10(c.billedAt), String(c.challanNo || ""), d10(c.createdAt), String(c.customerName || ""), String(c.billTo || ""), String(c.billedBy || "")]); });
+    dlXlsx("Billed_challans_" + today() + ".xlsx", "Billed", out, [14, 12, 22, 12, 28, 40, 16], { freeze: { r: 3, c: 0 } });
+  }
   function billDoneHtml() {
     var h = "";
     var done = (S.data.challans || []).filter(function (c) { return c && String(c.billNo || "").trim(); })
@@ -26855,7 +26897,8 @@ function viewCatalogue() {
         (function () { var _d = regDMY(regDate(c)), _n = String(c.challanNo || "");
           /* p748 - his words: "put date from number text below challan date cum sr.no" - under the number, not beside it */
           return (_n.indexOf(_d) === 0 && !chDatePill(c)) ? '' :
-            '<div style="font-size:12px;color:#64748b;margin-top:2px;white-space:nowrap">' + esc(_d.replace(/\/(\d\d)(\d\d)$/, "/$2")) + chDatePill(c, true) + '</div>'; })() + '</td>' +
+            '<div style="font-size:12px;color:#64748b;margin-top:2px;white-space:nowrap">' + esc(_d.replace(/\/(\d\d)(\d\d)$/, "/$2")) + chDatePill(c, true) + '</div>'; })() +
+        (String(c.billNo || "").trim() ? '<div style="font-size:12px;color:#0f766e;font-weight:700;margin-top:2px;white-space:nowrap" title="GST bill number">Bill ' + esc(String(c.billNo).trim()) + '</div>' : '') + '</td>' +   /* 6.9.818 - the bill number, for every role that sees the log */
       '<td style="' + regCell(";min-width:120px;max-width:200px;white-space:normal;font-size:12.5px;line-height:1.3") + '">' +   /* p748 - the whole name, on two lines if it must */
         '<a href="#" data-act="ch-hisab" data-cl="' + esc(c.customerName || "") + '" ' +
         'style="font-weight:700;color:#0b3b36;text-decoration:none;word-break:break-word" title="' +
@@ -27855,8 +27898,8 @@ function viewCatalogue() {
        costs an old one, and this belongs beside the deliveries it is about. The count rides on
        the button, because a chase list nobody knows is full is a chase list nobody opens. */
     /* v6.9.485 - a FOURTH sub-tab, and still not a 46th top-level one. */
-    var sub = ["returns", "rcpt", "reg", "bill"].indexOf(S.delSub) >= 0 ? S.delSub : "challans";
-    if (sub === "bill" && !canBill()) sub = "challans";   /* 6.9.811 */
+    var sub = ["returns", "rcpt", "reg", "bill", "billed"].indexOf(S.delSub) >= 0 ? S.delSub : "challans";
+    if ((sub === "bill" || sub === "billed") && !canBill()) sub = "challans";   /* 6.9.811 / 6.9.818 */
     if (sub === "rcpt" && !canSeeRcptQueue()) sub = "challans";
     if (sub === "reg" && !canSeeRegister()) sub = "challans";
     var n = canSeeRcptQueue() ? rcptQueueCount() : 0;
@@ -27878,6 +27921,7 @@ function viewCatalogue() {
          accounts had no place of its own to work from. This is that place. */
       (canBill() ? (function () { var bp = billPending().length; return '<button class="btn sm ' + (sub === "bill" ? "" : "ghost") + '" data-act="del-sub" data-s="bill"' +
         (bp ? ' style="border-color:#fecaca;color:' + (sub === "bill" ? "#fff" : "#b91c1c") + '"' : '') + '>Billing (accounts)' + (bp ? ' (' + bp + ' open)' : '') + '</button>'; })() : '') +
+      (canBill() ? '<button class="btn sm ' + (sub === "billed" ? "" : "ghost") + '" data-act="del-sub" data-s="billed">Billed (' + billedList().length + ')</button>' : '') +   /* 6.9.818 */
       (canSeeRcptQueue()
         ? '<button class="btn sm ' + (sub === "rcpt" ? "" : "ghost") + '" data-act="del-sub" data-s="rcpt"' +
           (n ? ' style="border-color:#fecaca;color:' + (sub === "rcpt" ? "#fff" : "#b91c1c") + '"' : '') +
@@ -27885,6 +27929,7 @@ function viewCatalogue() {
         : '') +
       '</div>';
     if (sub === "bill") return h + viewBillDesk();   /* 6.9.811 */
+    if (sub === "billed") return h + viewBilled();   /* 6.9.818 */
     return h + (sub === "reg" ? viewRegister() : sub === "rcpt" ? viewRcptPending()
               : sub === "returns" ? viewReturns() : viewChallans());
   }
@@ -28712,7 +28757,7 @@ function viewCatalogue() {
 
       if (open) {
         var billLine = (c.billNo ? 'Bill <b>' + esc(c.billNo) + '</b>' + (c.billTo ? ' to ' + esc(c.billTo) : "") :
-          (String(c.billStatus) === "Sent for billing" ? '<span style="color:#b45309">With accounts for billing' + (c.billTo ? ' - ' + esc(c.billTo) : "") + '</span>' : ""));
+          (String(c.billStatus) === "Sent for billing" ? '<span style="color:#b45309">With accounts for billing' + (c.billTo && canBill() ? ' - ' + esc(c.billTo) : "") + '</span>' : ""));
         var freightLine = (c.freight ? 'Freight ' + money(c.freight) + ' (' + esc(c.freightTo || "Client") + ') &middot; ' + esc(c.driver || "no driver") : "");
         /* v6.9.466 - madeLine is GONE. It said "Created by X · approved by Y" with no dates and
            only once the card was expanded, which is the exact complaint. The trail above says
@@ -32516,7 +32561,7 @@ function viewCatalogue() {
   function miniBillWord(b) {
     if (!b) return "";
     if (b.no) return b.no + (b.at ? " \u00b7 " + b.at : "");
-    if (/^sent/i.test(b.st)) return "Sent for billing" + (b.to ? " \u00b7 " + b.to : "");
+    if (/^sent/i.test(b.st)) return "Sent for billing" + (b.to && canBill() ? " \u00b7 " + b.to : "");   /* 6.9.818 */
     return "Not billed";
   }
   function miniBillCell(r) {
@@ -32525,13 +32570,13 @@ function viewCatalogue() {
     var may = canBill() && !!r.id;
     var open = may ? ' data-act="bill-detail" data-id="' + esc(r.id) + '"' : "";
     if (b.no) {
-      return '<span' + open + ' title="' + esc((b.to ? 'Billed under ' + b.to + '. ' : '') + (may ? 'Tap to edit.' : '')) + '"' +
+      return '<span' + open + ' title="' + esc((b.to && may ? 'Billed under ' + b.to + '. ' : '') + (may ? 'Tap to edit.' : 'GST bill number')) + '"' +   /* 6.9.818 - the billing name stays with accounts */
         ' style="color:#0f766e;font-weight:700' + (may ? ';cursor:pointer;text-decoration:underline dotted' : '') + '">' +
         esc(b.no) + '</span>' + (b.at ? '<span style="color:#64748b"> \u00b7 ' + esc(b.at) + '</span>' : '');
     }
     if (/^sent/i.test(b.st)) {
-      return '<span' + open + ' title="' + esc('With accounts for billing' + (b.to ? ' \u2014 ' + b.to : '') + (may ? '. Tap to record the bill.' : '')) + '"' +
-        ' style="color:#b45309;font-weight:600' + (may ? ';cursor:pointer' : '') + '">with accounts</span>';
+      return '<span' + open + ' title="' + esc('With accounts for billing' + (b.to && may ? ' \u2014 ' + b.to : '') + (may ? '. Tap to record the bill.' : '')) + '"' +
+        ' style="color:#b45309;font-weight:600' + (may ? ';cursor:pointer' : '') + '">with accounts</span>';   /* the name only in the title, and only for billers below */
     }
     if (!may) return '<span style="color:#94a3b8">not billed</span>';
     return '<button class="btn sm" data-act="bill-detail" data-id="' + esc(r.id) + '" ' +
@@ -63250,6 +63295,8 @@ function viewCatalogue() {
       S.bsOpen = id; S.modal = modalBillSheet(id); render(); return;
     }
     if (act === "bd-all") { S.bdAll = true; keepScroll = true; render(); return; }   /* 6.9.811 */
+    if (act === "bdn-all") { S.bdnAll = true; keepScroll = true; render(); return; }   /* 6.9.818 */
+    if (act === "bdn-xl") { if (canBill()) billedXl(); return; }
     if (act === "stk-notbill") {   /* 6.9.815 */
       var _sk = t.getAttribute("data-k") || "";
       if (!_sk) return;
