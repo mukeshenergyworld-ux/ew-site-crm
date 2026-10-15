@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.820";
+  var APP_VERSION = "6.9.821";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -62610,6 +62610,14 @@ function viewCatalogue() {
          not a partner. 10 digits minimum, always. */
       var am = String(val("m_amobile") || "").replace(/\D/g, "");
       if (am.length < 10) { toast("Partner mobile number is required (10 digits) — no partner without a phone."); return; }
+      /* 6.9.821 - ONE MAN, ONE PARTNER RECORD. Measured on his book (15 Oct): 10 partners entered more than once
+         with the same mobile - "Sumit - Mahavir" 10 times (PL199-PL208), "Rohit Garg" 5 times (AR019, AR104-107),
+         "vicky kataria" 3 times - several within the same second, i.e. one Save pressed twice. A NEW partner whose
+         mobile is already on a partner is refused, naming the record to open instead. */
+      if (!id) {
+        var _am10 = am.slice(-10), _same = (S.data.associates || []).filter(function (x) { return [x.mobile, x.mobile2].some(function (m) { return String(m || "").replace(/\D/g, "").slice(-10) === _am10; }); });
+        if (_same.length) { toast("This mobile is already on the book as " + _same.map(function (x) { return (x.code ? x.code + " " : "") + x.name; }).join(", ") + " — open that partner instead of adding him again."); return; }
+      }
       /* 6.9.753 - his words: "yes full name, what changed should changed everywhere". A new name for a partner goes
          through the server's partnerRename (V154): clients, deliveries, incentive rates and payouts, sites, visits, tools
          and the audit facts that name him - all in one request, the amounts untouched. Then this form saves as usual. */
