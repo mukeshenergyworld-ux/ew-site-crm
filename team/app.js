@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.816";
+  var APP_VERSION = "6.9.817";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -24357,11 +24357,20 @@ function viewCatalogue() {
     var rows = L.map(function (l, i) {
       var p = (typeof prodByCode === "function" ? prodByCode(l.code) : null) || {};
       tot += l.amt;
-      return { n: i + 1, desc: l.desc, code: l.code || "", hsn: String(p.hsn || ""), unit: String(p.unit || ""), qty: l.qty, mrp: l.rate, disc: l.disc, rate: l.dr, amt: l.amt, job: l.job };
+      return { n: i + 1, desc: l.desc, code: l.code || "", hsn: String(p.hsn || ""), unit: String(p.unit || ""), qty: l.qty, mrp: l.rate, disc: l.disc, rate: l.dr, amt: l.amt, job: l.job,
+               unknown: billDiscBlind() && l.preset && !l.job && !l.disc };
     });
     var taxable = Math.round(tot / 1.18 * 100) / 100, gst = Math.round((tot - taxable) * 100) / 100;
-    return { c: c, rows: rows, tot: tot, taxable: taxable, gst: gst };
+    return { c: c, rows: rows, tot: tot, taxable: taxable, gst: gst, unknown: rows.filter(function (r) { return r.unknown; }).length };
   }
+  /* ===== 6.9.817 - A PRICE THIS LOGIN CANNOT KNOW IS NOT SHOWN AS A PRICE =====
+     His report: challan 30/09/2026/204 (Tagra Sanitary Store) on Gautam's billing sheet - five Heliroma
+     lines "MRP - no discount", Rs 49,016 - while the owner sees them at 55%, Rs 23,021. Those lines carry no
+     discount of their own; the 55% is the client's preset, dated from 30/09/2026, and the server's
+     accounts branch strips the discount table (all.discounts = [] since V80). So on an accounts login
+     such a line priced at full MRP. Until the server sends the table (V161), such a line says so and the
+     sheet shows no total to bill from. */
+  function billDiscBlind() { return !roleIs("admin") && !((S.data && S.data.discounts) || []).length; }
   function modalBillSheet(id) {
     var c = (S.data.challans || []).filter(function (x) { return x.id === id; })[0];
     if (!c) return '<h2>Billing sheet</h2><div class="empty">Challan not found.</div><div class="foot"><button class="btn" data-act="close">Close</button></div>';
@@ -24375,14 +24384,16 @@ function viewCatalogue() {
       D.rows.map(function (r, i) {
         return '<tr style="background:' + (i % 2 ? '#f8fafc' : '#fff') + '"><td style="' + td + ';word-break:break-word">' + esc(r.desc) +
           '<div style="font-size:12px;color:#64748b">' + esc([r.code, r.hsn ? "HSN " + r.hsn : "", r.job ? "job work" : ""].filter(Boolean).join(" · ")) + '</div>' +
-          '<div style="font-size:12px;color:#0f766e">MRP ' + money(r.mrp) + (r.disc ? ' &middot; ' + (Math.round(r.disc * 100) / 100) + '% off' : ' &middot; no discount') + '</div></td>' +
-          '<td style="' + td + ';text-align:right">' + esc(qShow(r.qty)) + '</td><td style="' + td + ';text-align:right">' + money(r.rate) + '</td>' +
-          '<td style="' + td + ';text-align:right;font-weight:700">' + money(r.amt) + '</td></tr>';
+          (r.unknown ? '<div style="font-size:12px;color:#b91c1c;font-weight:700">MRP ' + money(r.mrp) + ' &middot; discount not on this login &mdash; ask the owner</div></td>' :
+          '<div style="font-size:12px;color:#0f766e">MRP ' + money(r.mrp) + (r.disc ? ' &middot; ' + (Math.round(r.disc * 100) / 100) + '% off' : ' &middot; no discount') + '</div></td>') +
+          '<td style="' + td + ';text-align:right">' + esc(qShow(r.qty)) + '</td><td style="' + td + ';text-align:right">' + (r.unknown ? '?' : money(r.rate)) + '</td>' +
+          '<td style="' + td + ';text-align:right;font-weight:700">' + (r.unknown ? '?' : money(r.amt)) + '</td></tr>';
       }).join("") + '</tbody></table></div>' +
       '<div style="display:grid;grid-template-columns:1fr auto;gap:4px 12px;margin-top:8px;font-size:14px">' +
       '<span>Taxable value (before GST)</span><b style="text-align:right">' + money(D.taxable) + '</b>' +
       '<span>CGST 9% + SGST 9%</span><b style="text-align:right">' + money(D.gst) + '</b>' +
       '<span><b>Total (incl. 18% GST)</b></span><b style="text-align:right;font-size:16px">' + money(D.tot) + '</b></div>' +
+      (D.unknown ? '<div class="card" style="border-color:#fca5a5;background:#fef2f2;margin-top:6px;font-size:13.5px;color:#991b1b"><b>Do not bill from these totals.</b> ' + plural(D.unknown, "line") + ' take this client&rsquo;s preset discount, which this login cannot see yet. Ask the owner for the rate, or wait for the server update.</div>' : '') +
       '<div class="meta" style="font-size:12px;margin-top:4px">GST worked out at 18%, as the MRPs include it. An item on another GST rate must be corrected in the bill.</div>' +
       '<div class="acts" style="margin-top:6px"><button class="btn sm ghost" data-act="bs-xl" data-id="' + esc(c.id) + '">Download Excel</button></div>' +
       billFormHtml(c) +
@@ -24587,6 +24598,7 @@ function viewCatalogue() {
   function billSheetXl(id) {
     var c = (S.data.challans || []).filter(function (x) { return x.id === id; })[0]; if (!c) return;
     var D = billSheetData(c), out = [];
+    if (D.unknown) { toast("Not downloaded: " + plural(D.unknown, "line") + " need this client's preset discount, which this login cannot see yet."); return; }   /* 6.9.817 */
     out.push([{ v: "Billing sheet – " + (c.challanNo || "") + " – " + (c.customerName || ""), s: XL.TITLE }]);
     out.push(["For billing only. Not added to any hisab. Made " + d10(today()) + " by " + String(S.user || "")]);
     out.push([]);
@@ -31383,7 +31395,8 @@ function viewCatalogue() {
       var disc = (i.disc != null && i.disc !== "") ? Number(i.disc) : clientDiscountOn(cl, bBrand, localDay(c && c.createdAt));   /* 6.9.666 - the local day */
       var dr = Math.round(rate * (1 - disc / 100));
       return { desc: i.desc || i.code || "", code: i.code, brand: bBrand, qty: qty, rate: rate, disc: disc, dr: dr,
-               amt: qty * dr, job: isJobLine(i), ix: ix };   /* v6.9.565 - ix: which saved line */
+               amt: qty * dr, job: isJobLine(i), ix: ix,   /* v6.9.565 - ix: which saved line */
+               preset: !(i.disc != null && i.disc !== "") };   /* 6.9.817 - priced from the client's preset, not the line */
     });
     priced.sort(function (a, b) { return (b.disc || 0) - (a.disc || 0); });
     return priced;
@@ -37518,6 +37531,7 @@ function viewCatalogue() {
         ? 'The business number is connected: <b>one tap sends all ticked</b> (to clients who agreed to WhatsApp updates; the rest go one by one from your phone).'
         : 'Sending: <b>one tap per client</b> from your own WhatsApp. One tap for all needs the business number (WhatsApp Cloud API) to be switched on.') + '</div></div>';
 
+    if (billDiscBlind()) h += '<div class="card" style="border-color:#fca5a5;background:#fef2f2;font-size:13.5px;color:#991b1b"><b>Check the amounts before sending.</b> This login cannot see the clients&rsquo; preset discounts yet, so a balance can read higher than the owner&rsquo;s. Until the server update, the owner should send these.</div>';   /* 6.9.817 */
     if (S.wrmQ && S.wrmQ.length) {
       var q = S.wrmQ[0], done = S.wrmQn || 0, totQ = done + S.wrmQ.length;
       h += '<div class="card" style="border:2px solid #16a34a;background:#f0fdf4"><div style="font-weight:700;font-size:15px">Sending ' + (done + 1) + ' of ' + totQ + '</div>' +
