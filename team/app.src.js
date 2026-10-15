@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.821";
+  var APP_VERSION = "6.9.822";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -718,10 +718,10 @@
   }
 
   var ROLE_TABS = {
-    admin:    ["dash","wareminder","myday","statements","review","agent","report","scorecard","returns","tools","rates","clients","crlog","partners","pevents","quotes","leads","brandfollow","winloss","visits","followups","challans","register","paylog","freight","payments","paidout","billing","discounts","commission","complaints","service","spares","dues","payroll","products","catalogs","brandstory","pricelist","catalogue","rules","teampins","tally","plcheck","health","trouble","changelog","booksweep","dups","stock","brief","attendance"],
+    admin:    ["dash","wareminder","msgs","myday","statements","review","agent","report","scorecard","returns","tools","rates","clients","crlog","partners","pevents","quotes","leads","brandfollow","winloss","visits","followups","challans","register","paylog","freight","payments","paidout","billing","discounts","commission","complaints","service","spares","dues","payroll","products","catalogs","brandstory","pricelist","catalogue","rules","teampins","tally","plcheck","health","trouble","changelog","booksweep","dups","stock","brief","attendance"],
     accounts: ["dash","wareminder","statements","review","agent","returns","tools","clients","crlog","partners","followups","challans","register","paylog","freight","payments","billing","complaints","service","spares","dues","products","catalogs","rates","pricelist","dups","stock","tally","trouble","attendance"],
     godown:   ["dash","agent","returns","tools","challans","freight","products","stock","trouble"],
-    sales:    ["myday","dash","review","agent","report","returns","tools","clients","crlog","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","register","paylog","freight","billing","payments","complaints","products","catalogs","dups","brief","trouble"],
+    sales:    ["myday","msgs","dash","review","agent","report","returns","tools","clients","crlog","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","register","paylog","freight","billing","payments","complaints","products","catalogs","dups","brief","trouble"],
     service:  ["dash","agent","tools","complaints","service","spares","dues","followups","products","catalogs","trouble"]
   };
   /* v6.9.320 - EVERY SCREEN EITHER OF HIS ROLES OPENS.
@@ -3625,6 +3625,8 @@ window.addEventListener("beforeunload", function (ev) {
       return;
     }
     if (t && t.id === "inc_q") { incFilter(); return; }
+    if (t && t.id === "gr_fest") { S.grFest = t.value; return; }   /* 6.9.822 */
+    if (t && (t.id === "gr_role" || t.id === "gr_own" || t.id === "msg_month")) { if (t.id === "gr_role") S.grRole = t.value; else if (t.id === "gr_own") S.grOwn = t.value; else S.msgMonth = t.value; render(); return; }
     if (t && t.id === "bdn_q") { S.bdnQ = t.value; var _bnr = document.getElementById("bdn_res"); if (_bnr) _bnr.innerHTML = billedListHtml(); return; }   /* 6.9.818 */
     if (t && t.id === "bd_q") { S.bdQ = t.value; var _bdr = document.getElementById("bd_res"); if (_bdr) _bdr.innerHTML = billDeskList(); return; }   /* 6.9.811 */
     if (t && t.id === "vl_q") { S.vlQ = t.value; var _vr = document.getElementById("vl_res"); if (_vr) _vr.innerHTML = vlFindHtml(t.value); return; }   /* 6.9.737 */
@@ -37525,6 +37527,150 @@ function viewCatalogue() {
   }
 
 
+
+  /* ===================== 6.9.822 - MESSAGES & POSTS =====================
+     His words, after asking whether to add the Grok bot: "ok build for me, i also have anthropic key, added funds
+     recently to it". What he was offered: ready WhatsApp messages for every construction stage, Diwali greetings for
+     every partner, and a monthly social-media plan from the brands that sell - kept inside his own system.
+     Three tabs on one screen. Every text is drafted from the book (EW_PITCH, the brand introductions, what sold in
+     the last 60 days), shown in a box he can edit, and sent from his own WhatsApp. "Improve with AI" sends that one
+     draft and its context to the server's aiDraft (V162), which calls Claude with the key in Script Properties - the
+     key never reaches a phone. Until the key is there the button says so and the drafts work exactly the same. */
+  var MSG_GREET_DEF = "Happy {festival} {name} Ji!\n\nThank you for your trust and support this year. May this festival bring you and your family happiness, health and prosperity.\n\nWarm wishes,\nMukesh Verma\nEnergy World, Panipat";
+  function msgSentMap(action) {
+    var m = {};
+    ((S.data && S.data.audit) || []).forEach(function (a) { if (a && a.action === action) { var k = String(a.target || ""); if (!m[k] || String(a.createdAt) > m[k]) m[k] = String(a.createdAt || ""); } });
+    return m;
+  }
+  function msgMark(action, target, detail) { return auditFact(action, target, detail || {}).catch(function () { }); }
+  function msgMob(m) { var n = String(m || "").replace(/\D/g, ""); if (n.length === 10) n = "91" + n; return n.length === 12 ? n : ""; }
+  /* ---- 1. stage messages ---- */
+  function msgStageText(site) {
+    var p = ewPitchFor(site.stage) || { t: site.stage, lines: [] };
+    return "Namaste Ji,\n\nYour site" + (site.name ? " (" + site.name + ")" : "") + " is now at the " + p.t + " stage. This is the right time to decide on:\n" +
+      p.lines.slice(0, 4).map(function (l) { return "- " + l; }).join("\n") +
+      "\n\nDeciding now saves breaking and re-work later. You are welcome to see the samples at the Energy World showroom, Panipat, or we can visit the site.\n\nEnergy World";
+  }
+  function msgSites() {
+    var all = (S.data.sites || []).filter(function (x) { return x && x.stage && String(x.status || "") !== "Lost" && ewPitchFor(x.stage) && (roleIs("admin") || mdMine(x.createdBy, S.user)); });
+    if (S.msgWin !== false) all = all.filter(function (x) { return ewPitchFor(x.stage).win; });
+    return all.sort(function (a, b) { return String(b.updatedAt || b.createdAt || "").localeCompare(String(a.updatedAt || a.createdAt || "")); });
+  }
+  function msgBox(id, text, wa, ctx, kind, act, tgt) {
+    return '<textarea id="' + id + '" rows="7" style="width:100%;box-sizing:border-box;font-size:13.5px;margin-top:4px">' + esc(text) + '</textarea>' +
+      '<div class="acts" style="flex-wrap:wrap;gap:6px;margin:4px 0 0">' +
+      (wa !== null ? '<button class="btn sm" data-act="msg-wa" data-box="' + id + '" data-to="' + esc(wa) + '" data-mk="' + esc(act || "") + '" data-tg="' + esc(tgt || "") + '" style="min-height:44px;background:#16a34a;border-color:#16a34a">WhatsApp</button>' : '') +
+      '<button class="btn sm ghost" data-act="msg-copy" data-box="' + id + '" style="min-height:44px">Copy</button>' +
+      '<button class="btn sm ghost" data-act="msg-ai" data-box="' + id + '" data-kind="' + esc(kind) + '" data-ctx="' + esc(ctx) + '" style="min-height:44px">&#10024; Improve with AI</button></div>';
+  }
+  function msgStageHtml() {
+    var L = msgSites(), sent = msgSentMap("msg:stage"), lim = S.msgAll ? L.length : 20;
+    var h = '<div class="chips" style="margin:4px 0"><button class="chip' + (S.msgWin !== false ? ' on' : '') + '" data-act="msg-win" data-k="1">Pitch moments</button>' +
+      '<button class="chip' + (S.msgWin === false ? ' on' : '') + '" data-act="msg-win" data-k="">Every stage</button></div>' +
+      '<div class="meta" style="font-size:12.5px">' + plural(L.length, "site") + (roleIs("admin") ? "" : " of yours") + ', newest change first. The message names what to decide at that stage; edit it before sending.</div>';
+    if (!L.length) return h + '<div class="empty">No site is at a pitch moment. Mark the stage on a site visit and it appears here.</div>';
+    L.slice(0, lim).forEach(function (x, i) {
+      var c = clientByName(x.client) || {}, mob = msgMob(c.mobile || c.mobile2), k = String(x.id) + "|" + ewStageKey(x.stage), was = sent[k];
+      h += '<div class="card" style="padding:8px 10px;margin:6px 0"><div style="font-size:14px"><b>' + esc(x.client || x.name || "") + '</b> &middot; ' + esc(x.name || "") + ' <span class="pill teal">' + esc(x.stage) + '</span>' +
+        (was ? ' <span class="pill Won">sent ' + esc(dmy(was.slice(0, 10))) + '</span>' : '') + '</div>' +
+        (mob ? '' : '<div class="meta" style="color:#b45309">No mobile on the client &mdash; copy the text instead.</div>') +
+        msgBox("ms_" + i, msgStageText(x), mob ? mob : null, "Construction stage: " + x.stage + ". Client: " + (x.client || "") + ". Site: " + (x.name || "") + ". Products to decide now: " + (ewPitchFor(x.stage).lines || []).join("; "), "stage message to a client", "msg:stage", k) + '</div>';
+    });
+    if (L.length > lim) h += '<button class="btn sm ghost" data-act="msg-all" style="min-height:44px">Show all ' + L.length + '</button>';
+    return h;
+  }
+  /* ---- 2. festival greetings ---- */
+  function msgGreetTpl() { try { return localStorage.getItem("ew_msg_greet") || MSG_GREET_DEF; } catch (e) { return MSG_GREET_DEF; } }
+  function msgGreetList() {
+    var f = S.grRole || "", own = S.grOwn || "";
+    return assocLive().filter(function (a) {
+      if (!a || !a.name || !msgMob(a.mobile || a.mobile2)) return false;
+      if (/zz test/i.test(a.name)) return false;
+      if (f && (f === "Other" ? /plumber|architect|builder/i.test(a.role || "") : String(a.role || "") !== f)) return false;
+      if (own && dkey(a.ownedBy) !== dkey(own)) return false;
+      return true;
+    }).sort(function (a, b) { return alpha(a.name, b.name); });
+  }
+  function msgGreetHtml() {
+    var fest = S.grFest || "Diwali", L = msgGreetList(), sent = msgSentMap("greet:sent"), key = function (a) { return fest.toLowerCase() + "|" + dkey(a.name); };
+    var left = L.filter(function (a) { return !sent[key(a)]; });
+    var h = '<div class="grid2"><div><label>Festival</label><input id="gr_fest" value="' + esc(fest) + '"/></div><div><label>Partners</label><select id="gr_role" class="msg-sel" style="min-height:44px">' +
+      ["", "Plumber", "Architect", "Builder", "Other"].map(function (r) { return '<option value="' + r + '"' + ((S.grRole || "") === r ? ' selected' : '') + '>' + (r || "All partners") + '</option>'; }).join("") + '</select></div></div>';
+    if (roleIs("admin")) {
+      var ex = []; assocLive().forEach(function (a) { var o = String(a.ownedBy || "").trim(); if (o && ex.indexOf(o) < 0) ex.push(o); }); ex.sort(alpha);
+      h += '<label>Executive</label><select id="gr_own" class="msg-sel" style="min-height:44px"><option value="">Every executive</option>' + ex.map(function (o) { return '<option' + (S.grOwn === o ? ' selected' : '') + '>' + esc(o) + '</option>'; }).join("") + '</select>';
+    }
+    h += '<label>The message ({name} and {festival} are filled in; saved on this device)</label>' + msgBox("gr_tpl", msgGreetTpl(), null, "Festival greeting from Energy World to its trade partners (plumbers, architects, builders). Festival: " + fest, "festival greeting to a trade partner", "", "") +
+      '<button class="btn sm ghost" data-act="gr-save" style="min-height:44px;margin-top:4px">Save the message</button>' +
+      '<div class="card" style="margin-top:8px;padding:8px 10px;border-color:#16a34a"><b>' + left.length + ' of ' + L.length + ' still to greet for ' + esc(fest) + '</b>' +
+      '<div class="meta" style="font-size:12.5px">One tap opens the next partner&rsquo;s chat with his name in it; press Send there and come back.</div>';
+    if (left.length) {
+      var a = left[0];
+      h += '<div style="margin-top:6px;font-size:14px">Next: <b>' + esc(a.name) + '</b>' + (a.role ? ' <span class="meta">' + esc(a.role) + '</span>' : '') + '</div>' +
+        '<div class="acts" style="gap:6px;flex-wrap:wrap"><button class="btn" data-act="gr-go" data-n="' + esc(a.name) + '" style="min-height:44px;background:#16a34a;border-color:#16a34a">Open WhatsApp &middot; ' + esc(a.name) + '</button>' +
+        '<button class="btn ghost" data-act="gr-skip" data-n="' + esc(a.name) + '" style="min-height:44px">Skip him</button></div>';
+    } else if (L.length) h += '<div style="margin-top:6px;color:#16a34a;font-weight:700">Everyone on this list is greeted.</div>';
+    return h + '</div>';
+  }
+  /* ---- 3. the month's posts ---- */
+  function msgTopBrands(days) {
+    var from = addDays(today(), -(days || 60)), by = {};
+    dedupeChallans(S.data.challans || []).forEach(function (c) {
+      if (!c || String(c.createdAt || "").slice(0, 10) < from || isCancelled("challans", c.id)) return;
+      try { pricedLines(c, c.customerName).forEach(function (x) { var b = String(x.brand || c.brand || "").trim(); if (b && !x.job && isMainBrand(b)) by[b] = (by[b] || 0) + (Number(x.amt) || 0); }); } catch (e) { }
+    });
+    return Object.keys(by).map(function (b) { return { b: b, v: by[b] }; }).sort(function (a, b) { return b.v - a.v; });
+  }
+  var MSG_FEST = { "2026-11": "Diwali (8 Nov)", "2027-01": "New Year and Lohri", "2027-03": "Holi" };
+  function msgIntro(b) {
+    var j = _qxIntros; if (!j) return null;
+    var k = dkey(b);
+    return (j.brands || []).filter(function (x) { return !x.hold && (dkey(x.brand) === k || (x.alias || []).some(function (a) { return dkey(a) === k; })); })[0] || null;
+  }
+  function msgPosts(month) {
+    var top = msgTopBrands(60).slice(0, 4), stages = ["plumb", "brick", "floor", "cp", "fitout", "water"], posts = [];
+    var tag = "#EnergyWorld #Panipat #Plumbing #HomeBuilding";
+    top.forEach(function (t, i) {
+      var it = msgIntro(t.b), first = it ? String(it.about || "").split(/(?<=\.)\s/)[0] : "";
+      posts.push({ wk: i + 1, kind: "Brand spotlight", title: t.b, text: t.b + (it && it.tagline ? " — " + it.tagline + "." : ".") + (first ? "\n\n" + first : "") +
+        "\n\nSee it, touch it and compare it at the Energy World showroom, Panipat.\n\n" + tag + " #" + t.b.replace(/[^A-Za-z0-9]/g, "") });
+      var sk = stages[i % stages.length], p = EW_PITCH[sk];
+      posts.push({ wk: i + 1, kind: "Builder's tip", title: p.t, text: "Building a house? At the " + p.t.toLowerCase() + " stage, decide these before it is too late to change:\n" +
+        p.lines.slice(0, 3).map(function (l) { return "- " + l; }).join("\n") + "\n\nOur team will guide you free of cost. Energy World, Panipat.\n\n" + tag });
+    });
+    if (MSG_FEST[month]) posts.push({ wk: 0, kind: "Festival", title: MSG_FEST[month], text: "Warm wishes on " + MSG_FEST[month].replace(/\s*\(.*\)/, "") + " from all of us at Energy World, Panipat. Thank you to every customer, plumber, architect and builder who builds with us.\n\n" + tag });
+    return { top: top, posts: posts };
+  }
+  function msgPostsHtml() {
+    if (!_qxIntros) { qxJson("brand_intros.json").then(function (j) { if (j) { _qxIntros = j; renderBg(); } }); }
+    var mo = S.msgMonth || today().slice(0, 7), D = msgPosts(mo);
+    var h = '<div class="grid2"><div><label>Month</label><input id="msg_month" type="month" class="msg-sel" value="' + esc(mo) + '"/></div><div></div></div>' +
+      '<div class="meta" style="font-size:12.5px;margin:4px 0">Top brands by what was delivered in the last 60 days: ' + (D.top.slice(0, 4).map(function (t) { return '<b>' + esc(t.b) + '</b> ' + money(t.v); }).join(" &middot; ") || "none yet") +
+      '. Two posts a week: a brand spotlight and a builder&rsquo;s tip. Copy each into Instagram, Facebook or your WhatsApp status.</div>';
+    D.posts.forEach(function (x, i) {
+      h += '<div class="card" style="padding:8px 10px;margin:6px 0"><div style="font-size:14px"><b>' + (x.wk ? 'Week ' + x.wk : 'Festival') + ' &middot; ' + esc(x.kind) + '</b> &middot; ' + esc(x.title) + '</div>' +
+        msgBox("mp_" + i, x.text, "", "Social media post for Energy World (" + x.kind + ": " + x.title + "), for Instagram and Facebook. Keep the hashtags.", "social media caption", "", "") + '</div>';
+    });
+    return h;
+  }
+  function viewMsgs() {
+    var t = S.msgTab || "stage";
+    if (!roleIs("admin") && t !== "stage") t = "stage";
+    var tb = function (k, l) { return '<button class="btn sm ' + (t === k ? '' : 'ghost') + '" data-act="msg-tab" data-k="' + k + '" style="min-height:44px">' + l + '</button>'; };
+    return '<div class="card"><h2 style="margin:0 0 4px">Messages &amp; posts</h2><div class="meta" style="font-size:13px">Drafted from your own book; edit any text before it goes. &#10024; Improve with AI rewrites one draft at a time.</div>' +
+      '<div class="acts" style="gap:6px;flex-wrap:wrap;margin-top:6px">' + tb("stage", "Stage messages") + (roleIs("admin") ? tb("greet", "Festival greetings") + tb("posts", "Posts for the month") : '') + '</div></div>' +
+      '<div class="card">' + (t === "greet" ? msgGreetHtml() : t === "posts" ? msgPostsHtml() : msgStageHtml()) + '</div>';
+  }
+  function msgAi(btn) {
+    var id = btn.getAttribute("data-box"), box = el(id); if (!box) return;
+    var before = box.value;
+    btn.disabled = true; btn.textContent = "Writing…";
+    api("aiDraft", { kind: btn.getAttribute("data-kind") || "", ctx: btn.getAttribute("data-ctx") || "", text: before }, 60000).then(function (r) {
+      btn.disabled = false; btn.innerHTML = "&#10024; Improve with AI";
+      if (r && r.ok && r.text) { var b2 = el(id); if (b2) b2.value = r.text; toast("Rewritten. Read it before sending - it is yours to change."); return; }
+      toast(r && r.error ? String(r.error) : "AI is not set up on the server yet - the draft above still works.");
+    }).catch(function (e) { btn.disabled = false; btn.innerHTML = "&#10024; Improve with AI"; toast("No answer from the server (" + apiWhy(e) + "). The draft above still works."); });
+  }
   /* ===================== 6.9.813 - WHATSAPP REMINDERS =====================
      His words: "make a whatsapp reminder section, draft a message with balance amt, due from last
      how many days to be mention, twice a week show me whome to send, will select, and how can we
@@ -41693,7 +41839,7 @@ function viewCatalogue() {
      nothing else could reach it - so the usage counter would have had to keep a second copy
      of the same forty-two names, and a second copy is how the two quietly stop agreeing.
      Hoisted, not duplicated. render() still reads exactly this. */
-  var TAB_TABS = [["search", "Search"], ["myday", "My day"], ["dash", "Today"], ["statements", "Statements"], ["review", "Twice-weekly review"], ["wareminder", "WhatsApp reminders"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits & quotes"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["register", "Challan log"], ["paylog", "Payment log"], ["freight", "Drivers & freight"], ["deliveries", "Deliveries"], ["collections", "Payments"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["crlog", "Client & lead log"], ["partners", "Partners"], ["pevents", "Partner events"], ["quotes", "Quotes"], ["commission", "Incentives"], ["complaints", "Complaints"], ["service", "Service"], ["spares", "Spares"], ["dues", "Service dues"], ["payroll", "Payroll"], ["attendance", "Attendance"], ["products", "Products"], ["payments", "Payments"], ["paidout", "Paid out"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["catalogs", "Brand catalogues"], ["brandstory", "Brand stories"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["trouble", "Troubleshoot"], ["changelog", "Change log"], ["booksweep", "Book numbers"], ["dups", "Duplicate check"], ["stock", "Stock"], ["tally", "Tally"], ["plcheck", "Supplier price list"], ["brief", "The brief"]];
+  var TAB_TABS = [["search", "Search"], ["myday", "My day"], ["dash", "Today"], ["statements", "Statements"], ["review", "Twice-weekly review"], ["wareminder", "WhatsApp reminders"], ["msgs", "Messages & posts"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits & quotes"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["register", "Challan log"], ["paylog", "Payment log"], ["freight", "Drivers & freight"], ["deliveries", "Deliveries"], ["collections", "Payments"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["crlog", "Client & lead log"], ["partners", "Partners"], ["pevents", "Partner events"], ["quotes", "Quotes"], ["commission", "Incentives"], ["complaints", "Complaints"], ["service", "Service"], ["spares", "Spares"], ["dues", "Service dues"], ["payroll", "Payroll"], ["attendance", "Attendance"], ["products", "Products"], ["payments", "Payments"], ["paidout", "Paid out"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["catalogs", "Brand catalogues"], ["brandstory", "Brand stories"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["trouble", "Troubleshoot"], ["changelog", "Change log"], ["booksweep", "Book numbers"], ["dups", "Duplicate check"], ["stock", "Stock"], ["tally", "Tally"], ["plcheck", "Supplier price list"], ["brief", "The brief"]];
   var TAB_LABEL = (function () {
     var m = {}; TAB_TABS.forEach(function (t) { m[t[0]] = t[1]; }); return m;
   })();
@@ -54788,7 +54934,7 @@ function viewCatalogue() {
     /* v6.9.533 - his third list, item 13: "merge Leads and Clients into one tab with sub-tabs",
        and item 16: "remove Leads tab from header". One group; the lead board is its second
        chip. Every chip the two groups had is still here. */
-    ["Clients",    ["clients", "leads", "visits", "crlog", "brandfollow", "followups", "quotes", "discounts", "pitch", "winloss", "review"]],   /* 6.9.737 - site visits & quotes */
+    ["Clients",    ["clients", "msgs", "leads", "visits", "crlog", "brandfollow", "followups", "quotes", "discounts", "pitch", "winloss", "review"]],   /* 6.9.737 - site visits & quotes */
     ["Service",    ["complaints", "service"]],   /* 6.9.684 - complaints first */
     ["Products",   ["products", "pricelist", "catalogue", "catalogs", "brandstory", "stock", "tally", "plcheck"]],   /* 6.9.612 - price list and add-product back */   /* v6.9.581 - the catalogue library; v6.9.605 - Stock, on his "stock entry in CRM" */
     ["Team",       ["partners", "pevents", "statements", "commission", "payroll", "scorecard", "report", "teampins"]],
@@ -55172,7 +55318,7 @@ function viewCatalogue() {
       if (!_noBookT) _noBookT = setTimeout(function () { _noBookT = null; if (!S.data && (S.pin || S.tok)) { try { refresh(); } catch (e) { } } }, 6000);
       return;
     }
-    var views = { attendance: viewAttendance, statements: viewStatements, agent: viewAgent, search: viewSearch, dossier: viewDossier, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, complaints: viewComplaints, payments: viewPayments, paidout: viewPaidOut, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, catalogs: viewCatalogues, brandstory: viewBrandStories, clients: viewClients, crlog: viewCrLog, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, register: viewRegister, paylog: viewPayLog, freight: viewFreight, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, trouble: viewTrouble, changelog: viewChangeLog, booksweep: viewBookSweep, dups: viewDups, stock: viewStock, tally: viewTally, plcheck: viewPlCheck, pevents: viewPev, brief: viewBrief, review: viewReview, myday: viewMyDay, wareminder: viewWaRem };   /* 6.9.739 - myday */
+    var views = { attendance: viewAttendance, statements: viewStatements, agent: viewAgent, search: viewSearch, dossier: viewDossier, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, complaints: viewComplaints, payments: viewPayments, paidout: viewPaidOut, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, catalogs: viewCatalogues, brandstory: viewBrandStories, clients: viewClients, crlog: viewCrLog, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, register: viewRegister, paylog: viewPayLog, freight: viewFreight, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, trouble: viewTrouble, changelog: viewChangeLog, booksweep: viewBookSweep, dups: viewDups, stock: viewStock, tally: viewTally, plcheck: viewPlCheck, pevents: viewPev, brief: viewBrief, review: viewReview, myday: viewMyDay, wareminder: viewWaRem, msgs: viewMsgs };   /* 6.9.739 - myday */
     var tabs = TAB_TABS;
 
     var h = '<div class="top">' +
@@ -63324,6 +63470,28 @@ function viewCatalogue() {
       S.bsOpen = id; S.modal = modalBillSheet(id); render(); return;
     }
     if (act === "bd-all") { S.bdAll = true; keepScroll = true; render(); return; }   /* 6.9.811 */
+    if (act === "msg-tab") { S.msgTab = t.getAttribute("data-k"); render(); return; }   /* 6.9.822 */
+    if (act === "msg-win") { S.msgWin = !!t.getAttribute("data-k"); S.msgAll = false; render(); return; }
+    if (act === "msg-all") { S.msgAll = true; keepScroll = true; render(); return; }
+    if (act === "msg-copy") { var _mb = el(t.getAttribute("data-box")); try { navigator.clipboard.writeText(_mb ? _mb.value : ""); toast("Copied."); } catch (e) { toast("Select the text and copy it."); } return; }
+    if (act === "msg-ai") { msgAi(t); return; }
+    if (act === "msg-wa") {
+      var _wb = el(t.getAttribute("data-box")), _wt = _wb ? _wb.value : "", _to = t.getAttribute("data-to") || "";
+      window.open("https://wa.me/" + _to + "?text=" + encodeURIComponent(_wt), "_blank");
+      if (t.getAttribute("data-mk")) { msgMark(t.getAttribute("data-mk"), t.getAttribute("data-tg"), { by: S.user }); }
+      return;
+    }
+    if (act === "gr-save") { var _gt = (el("gr_tpl") || {}).value || ""; if (_gt.indexOf("{name}") < 0) { toast("Keep {name} in the message - it is filled in for each partner."); return; } try { localStorage.setItem("ew_msg_greet", _gt); } catch (e) { } toast("Saved on this device."); return; }
+    if (act === "gr-go" || act === "gr-skip") {
+      var _gn = t.getAttribute("data-n"), _ga = assocLive().filter(function (x) { return x.name === _gn; })[0], _gf = String((el("gr_fest") || {}).value || S.grFest || "Diwali").trim() || "Diwali";
+      S.grFest = _gf;
+      if (act === "gr-go" && _ga) {
+        var _gtx = String((el("gr_tpl") || {}).value || msgGreetTpl()).replace(/\{name\}/g, String(_ga.name).replace(/\s*-\s*.*$/, "")).replace(/\{festival\}/g, _gf);
+        window.open("https://wa.me/" + msgMob(_ga.mobile || _ga.mobile2) + "?text=" + encodeURIComponent(_gtx), "_blank");
+      }
+      msgMark("greet:sent", _gf.toLowerCase() + "|" + dkey(_gn), { fest: _gf, name: _gn, skipped: act === "gr-skip" });
+      keepScroll = true; render(); return;
+    }
     if (act === "bd-sort") { S.bdOld = t.getAttribute("data-k") !== "new"; keepScroll = true; render(); return; }   /* 6.9.820 */
     if (act === "bdn-all") { S.bdnAll = true; keepScroll = true; render(); return; }   /* 6.9.818 */
     if (act === "bdn-xl") { if (canBill()) billedXl(); return; }
