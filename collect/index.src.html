@@ -177,7 +177,7 @@ table.ct td.wd{white-space:nowrap}
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.66.10";
+  var APP_VERSION = "1.67.0";   /* 1.67.0 - flush busy flag + B9 owner guard, narrower sign-out, Old book under ☰ */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -1457,6 +1457,14 @@ table.ct td.wd{white-space:nowrap}
     l.forEach(function (e) {
       var arr = (S.data[e.tab] || []), srv = null;
       for (var j = 0; j < arr.length; j++) { if (arr[j] && natEq(arr[j], e.row)) { srv = arr[j]; break; } }
+      /* 1.67.0 - NOT THE JOURNAL'S OWN COPY. On the two-part pull the fast half is merged, the
+         journal is laid on top of it (applyJournal), and only after the second half does this
+         run - so for a held row in a fast tab the "server copy" found here was the overlay
+         itself, identical by definition, and the entry was cleared as landed with nothing ever
+         sent. Driven in a sim: a held payment vanished from the journal with no teamSave on the
+         wire. applyJournal now marks what it lays (a non-enumerable flag, never saved or sent)
+         and a marked row is no evidence of anything. */
+      if (srv && srv.__laid) srv = null;
       if (srv && jrnLanded(e, srv)) { gone++; return; }
       keep.push(e);
     });
@@ -1476,7 +1484,12 @@ table.ct td.wd{white-space:nowrap}
     jrnLoad().forEach(function (e) {
       var arr = (S.data[e.tab] = S.data[e.tab] || []), found = false;
       for (var j = 0; j < arr.length; j++) { if (arr[j] && natEq(arr[j], e.row)) { found = true; break; } }
-      if (!found) arr.push(e.row);
+      if (!found) {
+        /* 1.67.0 - mark the overlay so jrnReconcile cannot mistake it for the server's copy. Non-enumerable:
+           JSON.stringify (the snapshot, the save payload) and Object.keys (jrnLanded) never see it. */
+        try { Object.defineProperty(e.row, "__laid", { value: true, enumerable: false, configurable: true }); } catch (eD) {}
+        arr.push(e.row);
+      }
     });
     bust();
   }
@@ -1500,7 +1513,17 @@ table.ct td.wd{white-space:nowrap}
       if (i >= l.length) { stop(); return; }
       var e = l[i];
       if (_jrnBusy[e.pk] && Date.now() - _jrnBusy[e.pk] < 90000) { i++; step(); return; }   /* 1.60.0 */
+      /* 1.67.0 - REVIEW B9, ported from the Challan app (1.102.0): held work goes up under the
+         name of the man who wrote it. If somebody else is signed in on this phone now, it waits
+         for him; it is never sent with another man's PIN and filed under his name. */
+      if (e.by && S.user && String(e.by) !== String(S.user)) { i++; step(); return; }
+      /* 1.67.0 - the flush MARKS the entry busy before it sends (saveRow did; this loop did not).
+         Without it a second flush - the 45 s ticker, "Try now", the online event - could put the
+         same held row on the wire twice while the first call was still waiting for Apps Script.
+         The Challan app's jrnFlush (1.102.0 B5) sets the flag here; this is the same line. */
+      _jrnBusy[e.pk] = Date.now();
       api("teamSave", e.chg ? { tab: e.tab, row: e.row, chg: e.chg } : { tab: e.tab, row: e.row }).then(function (r) {
+        delete _jrnBusy[e.pk];   /* 1.67.0 */
         if (r && r.ok) {
           var arr = (S.data && S.data[e.tab]) || [];
           for (var j = 0; j < arr.length; j++) {
@@ -1510,6 +1533,7 @@ table.ct td.wd{white-space:nowrap}
         } else { jrnMark(e.pk, (r && r.error) || "the server refused it"); i++; }
         step();
       }).catch(function (err) {
+        delete _jrnBusy[e.pk];   /* 1.67.0 - a failed call is not "on the wire" any more */
         jrnMark(e.pk, (err && err.message) ? err.message : "no answer from the server");
         i++; step();
       });
@@ -1554,6 +1578,14 @@ table.ct td.wd{white-space:nowrap}
     if (wrap) wrap.style.paddingBottom = "150px";
     var err = "", i;
     for (i = 0; i < l.length; i++) if (l[i].err) { err = l[i].err; break; }
+    /* 1.67.0 - REVIEW B9 (Challan 1.102.0): work written by another man waits for him, and the
+       bar SAYS so - otherwise "Try now" looks broken to whoever is signed in now. */
+    var others = l.filter(function (x) { return x.by && S.user && String(x.by) !== String(S.user); });
+    if (others.length) {
+      var whose = {}; others.forEach(function (x) { whose[x.by] = 1; });
+      err = others.length + " of these belong to " + Object.keys(whose).join(", ") +
+        " and go up when " + (Object.keys(whose).length === 1 ? "he signs" : "they sign") + " in on this phone." + (err ? " " + err : "");
+    }
     var cash = jrnHeldMoney();
     host.style.display = "block";
     host.innerHTML =
@@ -3838,7 +3870,10 @@ function cancelMap() {
       '<div style="font-size:12px;opacity:.9;margin-top:5px">' +
         agreedRows.length + ' of ' + list.length + ' agreed · ' + shortMoney(agreedAmt) + ' settled on paper' +
         (untouched ? ' · <b>' + untouched + ' not taken up yet</b>' : ' · every one has been taken up') +
-      '</div></div>';
+      '</div>' +
+      /* 1.67.0 - no bar tab lights up for this screen any more (it opens from ☰), so say where he is */
+      '<div style="font-size:12px;opacity:.85;margin-top:6px">Old book &middot; opened from the &#9776; menu. Tap Today\'s calls or Everyone below to go back.</div>' +
+      '</div>';
 
     if (!list.length) return h + '<div class="empty">No old-book balances. Everything outstanding is on a dated delivery.</div>';
 
@@ -4792,6 +4827,13 @@ function cancelMap() {
         '<div style="font-weight:700">Stays signed in</div>' +
         '<div class="muted">This phone remembers you, so the app opens straight onto today\'s calls. Sign out below if the phone is shared or you are handing it over.</div>' +
       '</div>' +
+      /* 1.67.0 - the Old book screen, moved here off the bottom bar (see renderBody). Same view,
+         one tap further in; the ☰ is where a man goes for the things he needs now and then. */
+      '<div class="card">' +
+        '<div style="font-weight:700">Old book</div>' +
+        '<div class="muted">The brought-forward balances from the books before the app. Rarely needed now, so it lives here instead of on the bar.</div>' +
+        '<div class="acts"><button class="btn sm gry" data-act="menu-oldbook" style="min-height:44px">&#128220; Open the old book</button></div>' +
+      '</div>' +
       '<div class="card" style="border-color:' + (on ? '#99f6e4' : '#e2e8f0') + ';background:' + (on ? '#f0fdfa' : '#fff') + '">' +
         '<div style="font-weight:700">Face ID / fingerprint ' + (on ? '<span class="pill grn">on</span>' : '<span class="pill">off</span>') + '</div>' +
         '<div class="muted">' +
@@ -5169,7 +5211,9 @@ function cancelMap() {
       '<div class="nav">' +
         '<button class="' + (S.tab === "today" ? "on" : "") + '" data-act="tab" data-t="today"><b>&#9742;</b>Today\'s calls</button>' +
         '<button class="' + (S.tab === "list" ? "on" : "") + '" data-act="tab" data-t="list"><b>&#8377;</b>Everyone</button>' +
-        '<button class="' + (S.tab === "oldbook" ? "on" : "") + '" data-act="tab" data-t="oldbook"><b>&#128220;</b>Old book</button>' +
+        /* 1.67.0 - "Old book" is the migration-era brought-forward list and was taking a fifth of
+           the bar every day. It lives under the ☰ sheet now (menu-oldbook); the view itself is
+           untouched and still reachable. The bar is Today's calls · Everyone · Scorecard · CRM. */
         (sccCanSee() ? '<button class="' + (S.tab === "score" ? "on" : "") + '" data-act="tab" data-t="score"><b>&#9733;</b>Scorecard</button>' : '') +
         '<button data-act="crm"><b>&#8599;</b>Open CRM</button>' +
       '</div>' +
@@ -5246,6 +5290,9 @@ function cancelMap() {
     if (act === "crash-fresh") { updateNow("ew-collect-"); return; }
     if (act === "qclear") { S.q = ""; render(); return; }
     if (act === "account") { S.sheet = sheetAccount(); render(); return; }
+    /* 1.67.0 - Old book, opened from the ☰ sheet: closes the sheet and shows the same view the
+       bottom-bar tab used to (the "tab" act leaves the sheet up, which would hide the list). */
+    if (act === "menu-oldbook") { S.sheet = null; S.tab = "oldbook"; S.open = ""; S.q = ""; render(); return; }
     if (act === "bio-go") { bioUnlock(); return; }
     if (act === "bio-on") { bioEnrol(); return; }
     if (act === "bio-off") { bioForget(); return; }
@@ -5989,7 +6036,11 @@ function cancelMap() {
     authP.then(function (r) {
       if (!r || !r.ok) {
         /* v1.49.0 - a reply that is not the server's own "no" is a failed call, not a refusal */
-        if (!(r && r.ok === false && /wrong name or pin|locked for|not allowed|blocked|removed/i.test(String(r.error || "")))) {
+        /* 1.67.0 - only the server's SIGN-IN refusals sign a man out. "not allowed" and "blocked"
+           were wide enough to match a business rule ("...not allowed from Received") or a
+           blocked number, and a man lost his saved book over a message that was not about him.
+           Wrong name or PIN, locked, a dead token, "sign in again", or taken off the team. */
+        if (!(r && r.ok === false && /wrong name or pin|not signed in|locked for|sign in again|token|removed from the team|not on the team/i.test(String(r.error || "")))) {
           try { toast("The office did not answer the sign-in check - working from what this phone holds. Try again in a minute."); } catch (e) {}
           return;
         }
