@@ -127,6 +127,23 @@ h3.sec{color:#1F3A5F}
 .nrow input{flex:1 1 150px;width:auto}
 .nrow .chip{padding:0 10px}
 .sync{font-size:12px;color:#64748b;text-align:center;margin:14px 0}
+/* 1.6.0 - the sync bar grew two buttons (Try now / Held list): 44px tall, wrapping, never off the right edge */
+.sync .btn.sm{min-height:44px;margin:4px 3px;vertical-align:middle}
+/* 1.6.0 - ADMIN: the executive chip row scrolls sideways INSIDE its own box (the page never does), the
+   attendance grid likewise. Every cell is at least 44px tall; no text under 12px. */
+.exrow{display:flex;flex-wrap:nowrap;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;margin:6px 0;padding-bottom:4px;scrollbar-width:thin}
+.exrow .chip{flex:none;white-space:nowrap}
+.attw{overflow:auto;-webkit-overflow-scrolling:touch;max-height:70vh;border:1px solid #e2e8f0;border-radius:12px;background:#fff;margin:8px 0}
+table.att{border-collapse:collapse;font-size:13px;min-width:100%}
+table.att th{position:sticky;top:0;background:#1F3A5F;color:#fff;font-size:12px;padding:6px 4px;text-align:center;min-height:44px;height:44px;border-bottom:2px solid #C9A24A}
+table.att th:first-child,table.att td:first-child{text-align:left;position:sticky;left:0;background:#fff;z-index:1;min-width:92px;max-width:120px;font-weight:700;padding-left:8px}
+table.att th:first-child{background:#1F3A5F}
+table.att td{border-top:1px solid #f1f5f9;text-align:center;height:44px;min-width:38px;padding:0 2px;font-weight:800;font-size:15px}
+table.att td.ok{color:#15803d}table.att td.no{color:#b91c1c}
+table.att td.ok,table.att td.no{font-size:16px}
+.tt{display:grid;grid-template-columns:1fr auto;gap:4px 8px;align-items:center}
+.tt .meta{white-space:normal}
+.drtxt{width:100%;min-height:220px;font:13px/1.45 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:10px;overflow:auto;max-height:50vh;margin:8px 0;word-break:break-word}
 </style>
 </head>
 <body>
@@ -191,7 +208,15 @@ h3.sec{color:#1F3A5F}
       button: function () { return '<button type="button" class="ewthm" onclick="ewTheme.next(this)">' + ewtLabel() + '</button>'; }
     };
   })();
-  var APP_VERSION = "1.5.2";
+  var APP_VERSION = "1.6.0";   /* 1.6.0 (17 Oct 2026) - a dropped POST never loses a quote; admin sees every executive; daily report; attendance grid */
+  /* 1.6.0 - ONLY THE SERVER'S OWN "NO" SIGNS A MAN OUT. The old test was /pin|locked|not allowed|blocked|removed/:
+     any data error that happened to contain "not allowed" or "removed" (a refused row, a removed brand) signed the
+     executive out and wiped his snapshot. These are the sign-in answers the server gives (teamAuth: "Wrong name or
+     PIN", "locked for N minutes"; a dead token: "sign in again" / "token"; a man taken off the team: "removed from
+     the team" / "not on the team"; a blocked device: "device is not allowed"). Nothing else. */
+  var AUTH_NO = /wrong name or pin|not signed in|sign in again|\btoken\b|locked for|removed from the team|not on the team|device is not allowed|device.*blocked/i;
+  /* 1.6.0 - a read may be asked once more when Google dropped it; a write never is from here (the journal holds it) */
+  var API_READS = { teamAuth: 1, teamGet: 1, quoteDup: 1 };
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_vq_session", JRN = "ew_vq_journal_v1", CALLQ = "ew_vq_calls_v1", SNAPK = "ew_vq_snap_";
   var CAT_KEY = "ew_team_catalog", CAT_V = 2;   /* the CRM's own shelf copy of the price list - shared, same origin */
@@ -199,7 +224,7 @@ h3.sec{color:#1F3A5F}
   var FAST = ["clients", "sites", "sitevisits", "quotes", "associates", "discounts", "brands", "brandmap", "logos", "followups", "pitch", "team"];
   var REST = ["audit", "challans"];   /* 1.1.0 - his deliveries: "already our client for this brand" */
   var API_MS = { teamSave: 60000, teamAuth: 45000, teamGet: 60000, siteVisit: 45000, pdfHost: 240000, tgSend: 60000, quoteDup: 8000 };
-  var S = { user: "", pin: "", tok: "", role: "", data: null, tab: "day", q: "", sheet: null, vk: "site", fq: "all", qz: null, busy: false, pullAt: 0, catAt: 0 };
+  var S = { user: "", pin: "", tok: "", role: "", data: null, tab: "day", q: "", sheet: null, vk: "site", fq: "all", qz: null, busy: false, pullAt: 0, catAt: 0, ex: "", drDay: "" };   /* 1.6.0 - ex: the executive admin chose ("" = all); drDay: the daily report's day */
   var KINDS = [["site", "Site"], ["plumber", "Plumber"], ["architect", "Architect"], ["showroom", "Showroom"]];
   var MET = ["Owner", "Plumber", "Architect", "Builder", "PMC", "Site only"];
   var MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -940,7 +965,14 @@ h3.sec{color:#1F3A5F}
   var FONTS = null, LOGO_B64 = null, PIC_CACHE = {};
   function loadLogo() {
     if (LOGO_B64 !== null) return Promise.resolve(LOGO_B64);
-    return fetch("../assets/logo_r.jpg").then(function (r) { return r.blob(); }).then(function (b) {
+    return fetch("../assets/logo_r.jpg").then(function (r) {
+      /* 1.6.0 - a 404 page is a blob too: it was read as a data: URL and embedded as the PDF's logo (a broken
+         picture at the top of a quotation). Only an OK answer that is a picture is a logo; anything else prints without one. */
+      if (!r || !r.ok) throw new Error("logo HTTP " + (r ? r.status : "?"));
+      var ct = ""; try { ct = String(r.headers.get("content-type") || ""); } catch (eH) { ct = ""; }
+      if (ct && !/image\//i.test(ct)) throw new Error("logo is not a picture (" + ct + ")");
+      return r.blob();
+    }).then(function (b) {
       return new Promise(function (res) {
         var fr = new FileReader();
         fr.onload = function () { LOGO_B64 = String(fr.result); res(LOGO_B64); };
@@ -1631,14 +1663,32 @@ h3.sec{color:#1F3A5F}
   }
   function partnerByName(n) {
     var t = String(n || "").trim().toLowerCase();
-    return S.data.associates.filter(function (a) { return String(a.name).trim().toLowerCase() === t; })[0] || null;
+    var exact = S.data.associates.filter(function (a) { return a && String(a.name).trim().toLowerCase() === t; })[0] || null;
+    if (exact) return exact;
+    /* 1.6.0 - a spelling variant is the same man: "Sumit - Mahavir", "Sumit Mahavir" and "sumit  mahavir" all key to
+       "sumit mahavir" (dgKey drops punctuation and doubled spaces). The owner's book has 10 partner rows for one mobile. */
+    var k = dgKey(n); if (!k) return null;
+    return S.data.associates.filter(function (a) { return a && !isCancelled("associates", a.id) && dgKey(a.name) === k; })[0] || null;
   }
-  function ensurePartner(name, role, loc, area) {
+  /* 1.6.0 - EDITED HERE (the "do not edit" lift above is from 6.9.744; there is no lift.py any more, this file is the source).
+     HIS BOOK: "Sumit - Mahavir" x10, each with the same mobile - because this created a partner by NAME with mobile ""
+     every time a client form spelt him a little differently. Now: the mobile (last 10 digits) is looked up first across
+     every associate (mobWho), then the normalised name; a match is reused, and a known mobile is written onto a match
+     that has none. A new row is made only when neither exists, and it carries the mobile. Nothing is deleted. */
+  function ensurePartner(name, role, loc, area, mob, extra) {
     if (!name) return Promise.resolve(null);
-    if (partnerByName(name)) return Promise.resolve(partnerByName(name));
-    return save("associates", { id: "", name: name, role: role, mobile: "", mobile2: "",
+    var m = mob10(mob || ""), hit = null;
+    if (m.length === 10) { var w = mobWho(m, lower(role)); if (w && w.rec) hit = w.rec; }
+    if (!hit) hit = partnerByName(name);
+    if (hit) {
+      if (m.length === 10 && mob10(hit.mobile).length !== 10 && !isCancelled("associates", hit.id)) {
+        return save("associates", Object.assign({}, hit, { mobile: m })).then(function (r) { return r || hit; });   /* the same row, now with his mobile */
+      }
+      return Promise.resolve(hit);
+    }
+    return save("associates", Object.assign({ id: "", name: name, role: role, mobile: m, mobile2: "",
       location: loc || "", area: area || "", address: "", birthday: "", anniversary: "",
-      rate: "", notes: "auto-added from a client" });
+      rate: "", notes: "auto-added from a client" }, extra || {}));
   }
   function clientPitch(clientName, brand) {
     var nm = String(clientName || "").trim().toLowerCase();
@@ -1675,7 +1725,21 @@ h3.sec{color:#1F3A5F}
   /* ---------------- the server ---------------- */
   function credPut(o) { var x = Object.assign({}, o || {}); if (S.tok) { delete x.pin; x.tok = S.tok; } try { localStorage.setItem(STORE, JSON.stringify(x)); } catch (e) { } }
   function credTook(r) { try { if (r && r.ok && r.tok && r.tok !== S.tok) { S.tok = String(r.tok); credPut({ user: S.user, role: S.role }); } } catch (e) { } }
+  /* 1.6.0 - THE ANSWER TO A QUESTION NOBODY ASKED (the Challan app's 1.89.0 fix, measured in the CRM on 23 Sep 2026).
+     Under load Google sometimes delivers a POST as a bare GET, and the server's GET door answers with the price list:
+     a plain ARRAY, valid JSON. apiRaw() used to hand that back as the answer. saveRow then saw r.ok falsy, DROPPED the
+     journal entry and said "the server refused it" - the quote the executive had just made was gone from the only place
+     that would have resent it, while still on his screen. THE OWNER'S COST: a lost quote, and nobody knows it is lost.
+     Now a reply that is not a JSON object is a dropped request: it throws, a read (teamAuth / teamGet / quoteDup) is
+     asked once more after 800 ms, and a write stays in the journal and goes with the next flush (an upsert by id). */
+  function apiDropped(e) { return /answered a different question/i.test(String((e && e.message) || "")); }
   function api(action, extra, ms) {
+    return apiRaw(action, extra, ms).catch(function (e) {
+      if (apiDropped(e) && API_READS[action]) return new Promise(function (res) { setTimeout(res, 800); }).then(function () { return apiRaw(action, extra, ms); });
+      throw e;
+    });
+  }
+  function apiRaw(action, extra, ms) {
     var body = Object.assign({ action: action, user: S.user, pin: S.pin }, extra || {});
     try { if (!body.app) body.app = "Visit " + APP_VERSION; } catch (eApp) { }   /* 1.4.19 - the server write log names the app (V160) */
     if (S.tok) body.tok = S.tok;
@@ -1689,6 +1753,8 @@ h3.sec{color:#1F3A5F}
       fetch(GAS, opts).then(function (r) {
         return r.text().then(function (txt) {
           var j = null; try { j = JSON.parse(txt); } catch (e) { j = null; }
+          /* 1.6.0 - an array, a string or a number is valid JSON and NOT an answer to this action (see apiDropped) */
+          if (j && (typeof j !== "object" || Array.isArray(j))) throw new Error("the server answered a different question - Google dropped this request (HTTP " + r.status + ")");
           if (j) return j;
           if (/<html|<!doctype/i.test(txt) && /sign in|accounts\.google/i.test(txt)) throw new Error("the server asked this browser to sign in to Google");
           if (/quota|exceeded|too many/i.test(txt)) throw new Error("Google Apps Script quota reached");
@@ -1721,43 +1787,130 @@ h3.sec{color:#1F3A5F}
     for (i = 0; i < a.length; i++) if (a[i] && String(a[i].id) === String(row.id)) { a[i] = Object.assign({}, a[i], row); return a[i]; }
     a.push(row); return row;
   }
+  /* 1.6.0 - A REFUSAL IS A FACT THE MAN MUST SEE, NOT A SILENT DELETE.
+     The server answered an OBJECT with ok:false (a rule it enforces: a locked quote, a code it does not know). Until now
+     saveRow dropped the journal entry and flush() dropped it without a word - and the row stayed on screen as if saved
+     (mergeRow had put it there first). Now: the refused entry STAYS in the journal, marked refused with the server's
+     words, until he taps Drop in the Held list; the phantom row comes off S.data (a new row is removed, an edited row
+     is put back as it was); a toast says why. flush() skips refused entries - only Retry sends one again. */
+  function jrnRefuse(e, err) {
+    var j = jrnAll(), i;
+    for (i = 0; i < j.length; i++) if (j[i] && j[i].pk === e.pk) { j[i].refused = String(err || "the server refused it"); j[i].refusedAt = Date.now(); }
+    jrnSet(j);
+    unmergeRow(e);
+  }
+  function unmergeRow(e) {
+    try {
+      if (!S.data || !e || !e.row) return;
+      var a = S.data[e.tab] || [], id = String(e.row.id), i;
+      _recent = _recent.filter(function (x) { return !(x.tab === e.tab && String(x.row.id) === id); });
+      if (e.prev) { for (i = 0; i < a.length; i++) if (a[i] && String(a[i].id) === id) a[i] = e.prev; return; }   /* an edit: the row as it was */
+      if (e.nu) S.data[e.tab] = a.filter(function (x) { return !(x && String(x.id) === id); });   /* made here and refused: it never existed */
+      /* neither known (an entry from before 1.6.0): the next pull puts the server's copy back */
+    } catch (eU) { }
+  }
   function saveRow(tab, row) {
     row = Object.assign({}, row);
+    var nu = !row.id;
     if (!row.id) row.id = mintId(tab === "audit" ? "A" : "L");
     if (!String(row.createdAt || "").trim()) row.createdAt = iso();
     delete row.updatedAt;
     if (tab === "audit" && row.recId && !row.target) row.target = row.recId;
+    var prev = null;   /* 1.6.0 - what the row was before the optimistic merge, so a refusal can put it back */
+    try { prev = ((S.data && S.data[tab]) || []).filter(function (x) { return x && String(x.id) === String(row.id); })[0] || null; if (prev) prev = Object.assign({}, prev); } catch (eP) { prev = null; }
     mergeRow(tab, row);
     _recent.push({ tab: tab, row: row, at: Date.now() });
     var pk = "J-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7), j = jrnAll();
-    j.push({ pk: pk, tab: tab, row: row, at: Date.now(), by: S.user }); jrnSet(j);
+    var ent = { pk: pk, tab: tab, row: row, at: Date.now(), by: S.user, nu: nu ? 1 : 0, prev: prev };
+    j.push(ent); jrnSet(j);
     return api("teamSave", { tab: tab, row: row }).then(function (r) {
-      if (r && r.ok) { jrnDrop(pk); if (r.row) mergeRow(tab, r.row); paintSync(); return { ok: true, row: r.row || row }; }
-      jrnDrop(pk);   /* the server answered and said no: keeping it would only resend the same refusal */
-      toast("Not saved: " + ((r && r.error) || "the server refused it"));
-      return { ok: false, refused: true, row: row, err: (r && r.error) || "" };
+      if (r && r.ok) { jrnDrop(pk); if (r.row) mergeRow(tab, r.row); _jrnOk(); paintSync(); return { ok: true, row: r.row || row }; }
+      if (r && r.ok === false) {
+        /* 1.6.0 - the server's own plain "no", and only that. Kept in the journal as refused (he can Retry or Drop it);
+           never resent by itself. Before 1.6.0 an ARRAY answer (a dropped POST) also landed here and the entry was
+           deleted - the owner's cost was a lost quote. That answer now throws in api() and lands in the catch below. */
+        jrnRefuse(ent, (r && r.error) || "");
+        toast("Not saved: " + ((r && r.error) || "the server refused it") + " - see Held on the bar below.");
+        paintSync(); render();
+        return { ok: false, refused: true, row: row, err: (r && r.error) || "" };
+      }
+      /* an object without ok (an old server, a half answer): nobody said no - it stays in the journal and is resent */
+      paintSync(); return { ok: true, held: true, row: row };
     }).catch(function () { paintSync(); return { ok: true, held: true, row: row }; });
   }
   /* the CRM's save(), for the CRM's own functions lifted into this app (stampQuotedPitch, ensurePartner) */
   function save(tab, row) { return saveRow(tab, row).then(function (r) { return r.refused ? null : r.row; }); }
   var _flushing = false, _recent = [];
-  function flush() {
+  /* 1.6.0 - BACKOFF, as the Challan app does it: after a failed flush the next 1, then 3, then 7 automatic ticks are
+     skipped (the 60 s timer and the silent pulls), so a phone in a dead zone is not hammering the server every minute.
+     A button press (Try now, Update, coming online) is always a fresh start - never make a man wait out a backoff he
+     can see. */
+  var _jrnFail = 0, _jrnSkip = 0, _jrnLastErr = "";
+  function _jrnOk() { _jrnFail = 0; _jrnSkip = 0; _jrnLastErr = ""; }
+  function flush(force) {
     if (_flushing) return Promise.resolve();
-    var j = jrnAll(), q = callAll();
+    var j = jrnAll().filter(function (e) { return e && !e.refused; }), q = callAll();
     if (!j.length && !q.length) return Promise.resolve();
+    if (!force && _jrnSkip > 0) { _jrnSkip--; return Promise.resolve(); }
     _flushing = true;
-    var chain = Promise.resolve();
+    var chain = Promise.resolve(), refusedN = 0;
     j.forEach(function (e) {
       chain = chain.then(function () {
-        return api("teamSave", { tab: e.tab, row: e.row }).then(function (r) { if (r && r.ok) jrnDrop(e.pk); else if (r && r.ok === false) jrnDrop(e.pk); }).catch(function () { throw new Error("offline"); });
+        return api("teamSave", { tab: e.tab, row: e.row }).then(function (r) {
+          if (r && r.ok) { jrnDrop(e.pk); return; }
+          if (r && r.ok === false) {   /* 1.6.0 - refused: kept, marked, taken off the screen, said out loud */
+            refusedN++; jrnRefuse(e, r.error || "");
+            toast("Not saved: " + jrnSay(e) + " - " + (r.error || "the server refused it") + ". See Held below.");
+            return;
+          }
+          /* no ok at all: nobody said no, it stays for the next flush */
+        }).catch(function (eF) { _jrnLastErr = String((eF && eF.message) || "offline"); throw new Error("offline"); });
       });
     });
     q.forEach(function (c) {
       chain = chain.then(function () {
-        return api(c.action, c.extra).then(function () { callDrop(c.pk); }).catch(function () { throw new Error("offline"); });
+        return api(c.action, c.extra).then(function () { callDrop(c.pk); }).catch(function (eF) { _jrnLastErr = String((eF && eF.message) || "offline"); throw new Error("offline"); });
       });
     });
-    return chain.catch(function () { }).then(function () { _flushing = false; paintSync(); });
+    return chain.then(function () { _jrnOk(); }, function () {
+      _jrnFail++; _jrnSkip = [1, 3, 7][Math.min(_jrnFail - 1, 2)];
+    }).then(function () { _flushing = false; paintSync(); if (refusedN) { try { render(); } catch (eR) { } } });
+  }
+  /* 1.6.0 - what a held entry is, in words a man recognises on the bar */
+  function jrnSay(e) {
+    var r = (e && e.row) || {}, t = e && e.tab;
+    if (t === "quotes") return "Quote " + (qNo(r) || "") + " " + (r.client || "");
+    if (t === "sites") return "Site " + (r.name || r.client || "");
+    if (t === "clients") return "Client " + (r.name || "");
+    if (t === "associates") return "Partner " + (r.name || "");
+    if (t === "followups") return "Follow-up " + (r.customerName || "");
+    if (t === "audit") { var d = {}; try { d = JSON.parse(r.detail || "{}") || {}; } catch (eJ) { d = {}; } return (r.action === "visit:mark" ? "Visit " : r.action === "visit:photo" ? "Photo " : (r.action || "Note") + " ") + (d.who || r.target || ""); }
+    return (t || "row") + " " + (r.id || "");
+  }
+  /* 1.6.0 - THE HELD LIST. Every entry still on this phone: waiting (goes by itself) or refused (the server said no, with
+     its words). Retry sends that one now; Drop takes it off the journal only - the server is not told anything, and a
+     refused row was never on the server. Nothing else is deleted. */
+  function jrnListSheet() {
+    var j = jrnAll(), q = callAll();
+    var h = '<h2>Held on this phone</h2><div class="meta">' + (j.length + q.length ? 'Waiting entries go up by themselves when there is signal. A refused entry stays here until you Retry or Drop it.' : 'Nothing is held. Everything is on the server.') + '</div>';
+    j.forEach(function (e) {
+      h += '<div class="card' + (e.refused ? '" style="border-color:#fecaca;background:#fef2f2' : '') + '"><div class="ttl2">' + esc(jrnSay(e)) + '</div>' +
+        '<div class="meta">' + esc(fdt(new Date(e.at || Date.now()).toISOString())) + (e.by ? ' &middot; ' + esc(e.by) : '') + '</div>' +
+        (e.refused ? '<div class="meta" style="color:#b91c1c"><b>Refused by the server:</b> ' + esc(e.refused) + '</div>' : '<div class="meta" style="color:#b45309">Waiting for signal' + (_jrnLastErr ? ' &middot; last try: ' + esc(_jrnLastErr) : '') + '</div>') +
+        '<div class="acts"><button class="btn sm" data-act="jrn-retry-one" data-id="' + esc(e.pk) + '">Retry</button><button class="btn sm red" data-act="jrn-drop" data-id="' + esc(e.pk) + '">Drop</button></div></div>';
+    });
+    q.forEach(function (c) {
+      h += '<div class="card"><div class="ttl2">' + esc(c.action === "siteVisit" ? "Site visit" : c.action) + '</div><div class="meta">' + esc(fdt(new Date(c.at || Date.now()).toISOString())) + ' &middot; waiting for signal</div></div>';
+    });
+    h += '<div class="acts">' + (j.length + q.length ? '<button class="btn" data-act="jrn-retry">Try all now</button>' : '') + '<button class="btn gry" data-act="close">Close</button></div>';
+    return h;
+  }
+  function jrnRetryOne(pk) {
+    var e = jrnAll().filter(function (x) { return x && x.pk === pk; })[0]; if (!e) return;
+    var j = jrnAll(); j.forEach(function (x) { if (x && x.pk === pk) { delete x.refused; delete x.refusedAt; } }); jrnSet(j);
+    if (e.row) mergeRow(e.tab, e.row);   /* back on the screen while it goes */
+    toast("Sending " + jrnSay(e) + "…");
+    flush(true).then(function () { if (S.sheet) { S.sheet = jrnListSheet(); render(); } });
   }
   /* a server CALL (siteVisit) that must not be lost to a dead zone either */
   function callAll() { try { return JSON.parse(localStorage.getItem(CALLQ) || "[]") || []; } catch (e) { return []; } }
@@ -1765,10 +1918,14 @@ h3.sec{color:#1F3A5F}
   function callDrop(pk) { callSet(callAll().filter(function (x) { return x.pk !== pk; })); }
   function callKeep(action, extra) { var a = callAll(); a.push({ pk: "C-" + Date.now(), action: action, extra: extra, at: Date.now() }); callSet(a); }
   function pendingN() { return jrnAll().length + callAll().length; }
+  function refusedN() { return jrnAll().filter(function (e) { return e && e.refused; }).length; }   /* 1.6.0 */
   function paintSync() { var s = el("ew_sync"); if (s) s.innerHTML = syncLine(); }
   function syncLine() {
-    var n = pendingN();
-    return (n ? '<b style="color:#b45309">' + n + ' waiting to go up</b> &middot; they go by themselves when there is signal &middot; ' : '') +
+    var n = pendingN(), rf = refusedN(), w = n - rf;
+    /* 1.6.0 - the bar says waiting and refused apart, and has Try now (a fresh start past any backoff) and Held (the list) */
+    return (w ? '<b style="color:#b45309">' + w + ' waiting to go up</b> &middot; they go by themselves when there is signal ' : '') +
+      (rf ? '<b style="color:#b91c1c">' + rf + ' refused by the server</b> ' : '') +
+      (n ? '<button class="btn sm gry" data-act="jrn-retry">Try now</button><button class="btn sm gry" data-act="jrn-list">Held</button><br/>' : '') +
       (S.pullAt ? 'updated ' + fdt(new Date(S.pullAt).toISOString()) : 'not updated yet') + ' &middot; version ' + APP_VERSION;
   }
 
@@ -1807,7 +1964,7 @@ h3.sec{color:#1F3A5F}
     tabs.forEach(function (k) { if (r && Array.isArray(r[k])) S.data[k] = r[k]; });
     /* rows still in the journal are newer than the server's copy; and a row saved in the last 15 minutes is kept even
        when a pull that left before it was written comes back without it */
-    jrnAll().forEach(function (e) { if (tabs.indexOf(e.tab) >= 0) mergeRow(e.tab, e.row); });
+    jrnAll().forEach(function (e) { if (e && !e.refused && tabs.indexOf(e.tab) >= 0) mergeRow(e.tab, e.row); });   /* 1.6.0 - a refused row is not put back on the screen */
     _recent = _recent.filter(function (e) { return Date.now() - e.at < 900000; });
     _recent.forEach(function (e) {
       if (tabs.indexOf(e.tab) < 0) return;
@@ -1820,8 +1977,11 @@ h3.sec{color:#1F3A5F}
   function pull(loud) {
     if (_pulling) return _pulling;
     if (loud) toast("Updating…");
-    _pulling = flush().then(function () { return getBook(FAST.concat(REST)); }).then(function (r) {   /* 1.4.5 - one call (p750) */
-      if (r && r.ok === false && /pin|locked|not allowed|blocked|removed/i.test(String(r.error || ""))) { signOut(String(r.error)); return; }
+    _pulling = flush(!!loud).then(function () { return getBook(FAST.concat(REST)); }).then(function (r) {   /* 1.4.5 - one call (p750) */
+      /* 1.6.0 - AUTH_NO, not /pin|locked|not allowed|blocked|removed/: a data error with "not allowed" in it signed the man
+         out and his snapshot went with it (signOut sets S.data = null). Only the server's sign-in "no" does that now. */
+      if (r && r.ok === false && AUTH_NO.test(String(r.error || ""))) { signOut(String(r.error)); return; }
+      if (r && r.ok === false) { if (loud) toast("Could not update: " + String(r.error || "the server said no")); return; }   /* 1.6.0 - said, not swallowed */
       mergeBook(r, FAST); S.pullAt = Date.now(); render(); snapSave();
       if (!S.logoAsk) { S.logoAsk = 1; try { logosReady().then(function () { if (S.tab === "visit" || S.sheet) { if (S.sl && siteById(S.sl.id)) S.sheet = svLogSheet(siteById(S.sl.id)); render(); } }).catch(function () { }); } catch (e) { } }   /* 1.2.0 */
       if (REST.every(function (k) { return r && Array.isArray(r[k]); })) { mergeBook(r, REST); render(); snapSave(); return; }   /* 1.4.5 - it came in the one call */
@@ -1883,7 +2043,8 @@ h3.sec{color:#1F3A5F}
   function siteOwner(st) { return vlOwner(st); }
   function siteMine(st) { var o = siteOwner(st); return !o.by || isMe(o.by) || roleIs("admin"); }
   function myQuotes() {
-    return (S.data.quotes || []).filter(function (q) { return q && !isCancelled("quotes", q.id) && (roleIs("admin") || isMe(q.createdBy) || isMineClient(q.client)); })
+    /* 1.6.0 - admin sees everyone's, narrowed to the executive chosen on the chip row (S.ex; "" = all) */
+    return (S.data.quotes || []).filter(function (q) { return q && !isCancelled("quotes", q.id) && (roleIs("admin") ? exOk(q.createdBy) : (isMe(q.createdBy) || isMineClient(q.client))); })
       .sort(function (a, b) { return String(b.createdAt || "").localeCompare(String(a.createdAt || "")); });
   }
   function myClients() {
@@ -1899,7 +2060,103 @@ h3.sec{color:#1F3A5F}
     var rx = kind === "plumber" ? /plumb/i : kind === "architect" ? /archit/i : null;
     return assocLive().filter(function (a) { return !rx || rx.test(String(a.role || "")); }).sort(function (a, b) { return alpha(a.name, b.name); });
   }
-  function myVisits() { return vmAll().filter(function (v) { return isMe(v.by); }); }
+  function myVisits() { return vmAll().filter(function (v) { return roleIs("admin") ? exOk(v.by) : isMe(v.by); }); }   /* 1.6.0 - admin: everyone's, or the chosen executive's */
+
+  /* ================= 1.6.0 - ADMIN SEES THE TEAM  (17 Oct 2026) =================
+     HIS WORDS: "In visit and quote app admin can view visit of all executives in visit app all, there should be executive
+     wise tab to view and attendance view also, daily report also".
+     Until now admin's Quotes list was everyone's quotes mixed with no way to pick a man, and My day and Visit showed only
+     his own visits. The server already sends admin the whole book; this is all read from it, nothing is written.
+       - exChips(): a chip row All · Mukesh · Ashish · … (team rows with role sales or admin who have at least one visit or
+         quote). The chosen one (S.ex) narrows myVisits() and myQuotes(), so My day, Visit and Quotes all follow it.
+       - teamTodayCard(): per executive, today - first and last visit time, visits, quotes; "no visit yet" in red.
+       - dailyReportSheet(day): plain text per executive (visits: who · site/kind · time; quotes: QT no · client · amount ·
+         status; totals) with Copy and WhatsApp.
+       - attGridSheet(): the last 7 days x executive, a tick for a day with a visit or a quote, a red dash for none. Sunday
+         and holidays are not special here - this is "did he enter anything", the attendance block above decides pay. */
+  function exOk(name) { return !S.ex || dkey(name) === dkey(S.ex); }
+  function execNames() {
+    var has = {};
+    vmAll().forEach(function (v) { if (v.by) has[dkey(v.by)] = v.by; });
+    (S.data.quotes || []).forEach(function (q) { if (q && q.createdBy && !isCancelled("quotes", q.id)) has[dkey(q.createdBy)] = q.createdBy; });
+    var team = (S.data.team || []).filter(function (t) { return t && t.name && /sales|admin/i.test(String(t.role || "")); }).map(function (t) { return String(t.name); });
+    var names = team.filter(function (n) { return has[dkey(n)]; });
+    if (!team.length) names = Object.keys(has).map(function (k) { return has[k]; });   /* no team tab in the book yet: the names on the rows */
+    return names.sort(alpha);
+  }
+  function exChips() {
+    if (!roleIs("admin")) return "";
+    var names = execNames(); if (!names.length) return "";
+    if (S.ex && !names.some(function (n) { return dkey(n) === dkey(S.ex); })) S.ex = "";
+    return '<div class="exrow" id="ew_exrow">' +
+      '<button class="chip' + (!S.ex ? ' on' : '') + '" data-act="ex" data-k="">All</button>' +
+      names.map(function (n) { return '<button class="chip' + (dkey(S.ex) === dkey(n) ? ' on' : '') + '" data-act="ex" data-k="' + esc(n) + '">' + esc(String(n).split(" ")[0]) + '</button>'; }).join("") +
+      '<button class="chip" data-act="att-grid" style="border-color:#1F3A5F">&#10003; Attendance</button></div>';
+  }
+  function hm(at) { var d = new Date(String(at || "")); if (isNaN(d.getTime())) return ""; return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"); }
+  function exDayStats(name, day) {
+    var k = dkey(name);
+    var vs = vmAll().filter(function (v) { return dkey(v.by) === k && dstr(v.at) === day; });   /* newest first */
+    var qs = (S.data.quotes || []).filter(function (q) { return q && !isCancelled("quotes", q.id) && dkey(q.createdBy) === k && dstr(q.createdAt) === day; })
+      .sort(function (a, b) { return String(a.createdAt || "").localeCompare(String(b.createdAt || "")); });
+    return { name: name, visits: vs.slice().reverse(), quotes: qs, n: vs.length, nq: qs.length, first: vs.length ? hm(vs[vs.length - 1].at) : "", last: vs.length ? hm(vs[0].at) : "", amt: qs.reduce(function (s, q) { return s + (Number(q.net) || 0); }, 0) };
+  }
+  function teamTodayCard() {
+    if (!roleIs("admin")) return "";
+    var names = execNames(), td = today();
+    var h = '<h3 class="sec">Team today</h3><div class="card" id="ew_teamtoday">';
+    if (!names.length) h += '<div class="meta">No executive has a visit or a quote in the book yet.</div>';
+    names.forEach(function (n) {
+      var s = exDayStats(n, td);
+      h += '<div class="row" style="min-height:44px;border-top:1px solid #f1f5f9;padding:6px 0"><div class="grow"><div class="ttl2">' + esc(n) + '</div>' +
+        (s.n ? '<div class="meta">first ' + esc(s.first) + ' &middot; last ' + esc(s.last) + '</div>' : '<div class="meta" style="color:#b91c1c;font-weight:700">no visit yet</div>') + '</div>' +
+        '<div style="text-align:right;white-space:nowrap"><b>' + s.n + '</b> <span class="meta">visit' + (s.n === 1 ? '' : 's') + '</span><br/><b>' + s.nq + '</b> <span class="meta">quote' + (s.nq === 1 ? '' : 's') + '</span></div></div>';
+    });
+    h += '<div class="acts"><button class="btn sm" data-act="dr-open">Daily report</button><button class="btn sm gry" data-act="att-grid">Attendance</button></div></div>';
+    return h;
+  }
+  function dailyReportText(day) {
+    var names = execNames(), L = [], tv = 0, tq = 0, ta = 0;
+    L.push("Energy World - daily report - " + fd(day)); L.push("");
+    names.forEach(function (n) {
+      var s = exDayStats(n, day); tv += s.n; tq += s.nq; ta += s.amt;
+      L.push(n.toUpperCase() + " - " + s.n + " visit" + (s.n === 1 ? "" : "s") + ", " + s.nq + " quote" + (s.nq === 1 ? "" : "s") + (s.n ? " (" + s.first + " to " + s.last + ")" : ""));
+      if (!s.n) L.push("  no visit");
+      s.visits.forEach(function (v) { L.push("  - " + hm(v.at) + "  " + String(v.who || "") + " · " + (VM_KINDS[v.kind] || v.kind || "visit") + (v.met ? " · met " + v.met : "")); });
+      s.quotes.forEach(function (q) { L.push("  - " + (qNo(q) || "quote") + " · " + String(q.client || "") + " · " + moneyAscii(q.net) + " · " + String(q.status || "Draft")); });
+      L.push("");
+    });
+    L.push("TOTAL: " + tv + " visit" + (tv === 1 ? "" : "s") + ", " + tq + " quote" + (tq === 1 ? "" : "s") + (tq ? " worth " + moneyAscii(ta) : "") + " by " + names.length + " executive" + (names.length === 1 ? "" : "s") + ".");
+    return L.join("\n");
+  }
+  function dailyReportSheet(day) {
+    day = /^\d{4}-\d{2}-\d{2}$/.test(day || "") ? day : today();
+    var txt = dailyReportText(day);
+    return '<h2>Daily report</h2><div class="meta">One line per visit and per quote, for the day chosen. Copy it, or send it on WhatsApp.</div>' +
+      '<label for="dr_day">Day</label><div class="nrow"><input id="dr_day" type="date" max="' + today() + '" value="' + esc(day) + '"/>' +
+      '<div class="chips" style="margin:0;flex-wrap:nowrap"><button type="button" class="chip" data-act="dr-day" data-k="-1">Yesterday</button><button type="button" class="chip" data-act="dr-day" data-k="0">Today</button></div></div>' +
+      '<pre class="drtxt" id="dr_txt">' + esc(txt) + '</pre>' +
+      '<div class="acts"><button class="btn gry" data-act="dr-copy">Copy</button><a class="btn grn" target="_blank" rel="noopener" href="https://wa.me/?text=' + encodeURIComponent(txt) + '">WhatsApp</a></div>' +
+      '<div class="acts"><button class="btn gry full" data-act="close">Close</button></div>';
+  }
+  function attGridSheet() {
+    var names = execNames(), days = [], i, d;
+    for (i = 6; i >= 0; i--) { d = new Date(); d.setDate(d.getDate() - i); days.push(ymdLocal(d)); }
+    var DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    var h = '<h2>Attendance &mdash; last 7 days</h2><div class="meta">&#10003; a visit or a quote was entered that day &middot; <span style="color:#b91c1c;font-weight:800">&ndash;</span> nothing entered. The grid scrolls inside its box.</div>' +
+      '<div class="attw"><table class="att" id="ew_attgrid"><tr><th>Executive</th>' + days.map(function (dy) { return '<th>' + DOW[attDow(dy)] + '<br/>' + Number(dy.slice(8)) + '</th>'; }).join("") + '</tr>';
+    if (!names.length) h += '<tr><td colspan="8" style="text-align:left;font-weight:400">No executive has a visit or a quote in the book yet.</td></tr>';
+    names.forEach(function (n) {
+      var vd = attVisitDays(n), k = dkey(n), qd = {};
+      (S.data.quotes || []).forEach(function (q) { if (q && !isCancelled("quotes", q.id) && dkey(q.createdBy) === k) { var dd = dstr(q.createdAt); if (dd) qd[dd] = (qd[dd] || 0) + 1; } });
+      h += '<tr><td>' + esc(String(n).split(" ")[0]) + '</td>' + days.map(function (dy) {
+        var on = !!((vd[dy] && vd[dy].n > 0) || qd[dy]);
+        return on ? '<td class="ok" title="' + esc(fd(dy)) + '">&#10003;</td>' : '<td class="no" title="' + esc(fd(dy)) + '">&ndash;</td>';
+      }).join("") + '</tr>';
+    });
+    h += '</table></div><div class="acts"><button class="btn gry full" data-act="close">Close</button></div>';
+    return h;
+  }
 
   /* ================= 1.1.0 - WHAT IS ALREADY KNOWN ABOUT HIM  (11 Oct 2026) =================
      HIS WORDS: "show what previously given to him brand wise discount, only quoted brand ... on every step show which brand
@@ -2024,7 +2281,8 @@ h3.sec{color:#1F3A5F}
   /* ================= MY DAY ================= */
   function viewDay() {
     var td = today(), mv = myVisits(), vt = mv.filter(function (v) { return dstr(v.at) === td; });
-    var qs = myQuotes().filter(function (q) { return isMe(q.createdBy) || !q.createdBy; });
+    var adm = roleIs("admin");   /* 1.6.0 - admin's day is the team's day: the chip row decides whose */
+    var qs = myQuotes().filter(function (q) { return adm || isMe(q.createdBy) || !q.createdBy; });
     var quiet = qs.filter(function (q) { return /^(Sent|Negotiating)$/.test(q.status) && qSilentDays(q) >= 5 && !quoteSnoozed(q); });
     var drafts = qs.filter(function (q) { return q.status === "Draft" && !(S.data.quotes || []).some(function (x) { return x.parentId === q.id; }); });
     var fu = (S.data.followups || []).filter(function (f) { return f.status !== "Done" && (isMe(f.createdBy) || isMineClient(f.customerName)) && dstr(f.dueDate) && dstr(f.dueDate) <= td; });
@@ -2034,14 +2292,16 @@ h3.sec{color:#1F3A5F}
       return !d || -daysTo(d) > 30;
     }).slice(0, 8);
     var h = '<h2>' + (new Date().getHours() < 12 ? 'Good morning' : new Date().getHours() < 17 ? 'Good afternoon' : 'Good evening') + ', ' + esc(String(S.user).split(" ")[0]) + '</h2>' +
-      '<div class="meta">' + esc(fd(td)) + '</div>' +
+      '<div class="meta">' + esc(fd(td)) + (adm && S.ex ? ' &middot; showing <b>' + esc(S.ex) + '</b>' : adm ? ' &middot; showing the whole team' : '') + '</div>' +
+      exChips() +   /* 1.6.0 - admin only */
       '<div class="big2"><button class="btn" data-act="go-visit">+ Mark a visit</button><button class="btn" data-act="qz-new">+ New quote</button></div>' +
       '<div class="tiles">' +
-        tile(vt.length, "Visits today", vt.length ? "good" : "", "go-visit") +
+        tile(vt.length, adm && !S.ex ? "Team visits today" : "Visits today", vt.length ? "good" : "", "go-visit") +
         tile(quiet.length, "Quotes to follow up", quiet.length ? "warn" : "good", "go-quotes", "follow") +
         tile(drafts.length, "Quotes not sent yet", drafts.length ? "warn" : "good", "go-quotes", "Draft") +
         tile(fu.length, "Follow-ups due", fu.length ? "bad" : "good", "", "") +
       '</div>' + attStripHtml();   /* 1.5.2 */
+    h += teamTodayCard();   /* 1.6.0 - admin only */
     if (fu.length) h += '<h3 class="sec">Follow-ups due</h3>' + fu.slice(0, 10).map(function (f) {
       var c = clientByName(f.customerName) || {}, m = mob10(c.mobile);
       return '<div class="card"><div class="row"><div class="grow"><div class="ttl2">' + esc(f.customerName || "") + '</div><div class="meta">' + esc(f.note || "") + ' &middot; due ' + esc(fd(f.dueDate)) + '</div></div>' +
@@ -2050,15 +2310,15 @@ h3.sec{color:#1F3A5F}
     if (quiet.length) h += '<h3 class="sec">Quotes gone quiet &mdash; call them</h3>' + quiet.slice(0, 8).map(qRow).join("");
     if (drafts.length) h += '<h3 class="sec">Made, not sent</h3>' + drafts.slice(0, 6).map(qRow).join("");
     if (stale.length) h += '<h3 class="sec">My sites not visited for 30 days</h3>' + stale.map(siteRow).join("");
-    h += '<h3 class="sec">My visits &mdash; last 7 days</h3>';
+    h += '<h3 class="sec">' + (adm ? (S.ex ? esc(S.ex) + '&rsquo;s visits' : 'Team visits') : 'My visits') + ' &mdash; last 7 days</h3>';   /* 1.6.0 */
     var wk = mv.filter(function (v) { return -daysTo(dstr(v.at)) <= 7; });
-    h += wk.length ? wk.slice(0, 15).map(visitRow).join("") : '<div class="empty">No visit marked this week.</div>';
+    h += wk.length ? wk.slice(0, adm ? 40 : 15).map(function (v) { return visitRow(v, adm); }).join("") : '<div class="empty">No visit marked this week.</div>';
     return h;
   }
   function tile(n, l, cls, act, k) { return '<button class="tile ' + (cls || "") + '"' + (act ? ' data-act="' + act + '" data-k="' + esc(k || "") + '"' : '') + '><div class="n">' + n + '</div><div class="l">' + l + '</div></button>'; }
-  function visitRow(v) {
+  function visitRow(v, withBy) {   /* 1.6.0 - withBy: admin's lists say whose visit it is */
     var k = { site: "Site", plumber: "Plumber", architect: "Architect", showroom: "Showroom" }[v.kind] || v.kind;
-    return '<div class="card"><div class="row"><div class="grow"><div class="ttl2">' + codeTag(v.who) + esc(v.who || "") + '</div><div class="meta">' + esc(k) + (v.met ? ' &middot; met ' + esc(v.met) : '') + ' &middot; ' + esc(fdt(v.at)) + '</div>' +
+    return '<div class="card"><div class="row"><div class="grow"><div class="ttl2">' + codeTag(v.who) + esc(v.who || "") + '</div><div class="meta">' + esc(k) + (v.met ? ' &middot; met ' + esc(v.met) : '') + ' &middot; ' + esc(fdt(v.at)) + (withBy && v.by ? ' &middot; by <b>' + esc(v.by) + '</b>' : '') + '</div>' +
       (v.note ? '<div class="meta" style="color:#334155">' + esc(String(v.note).slice(0, 160)) + '</div>' : '') + '</div></div></div>';
   }
 
@@ -2223,8 +2483,8 @@ h3.sec{color:#1F3A5F}
       h += partnerForm(k);
       if (k === "showroom") h += showroomLogHtml();   /* 1.5.0 */
     }
-    var mv = myVisits().slice(0, 10);
-    h += '<h3 class="sec">My latest visits</h3>' + (mv.length ? mv.map(visitRow).join("") : '<div class="empty">None yet.</div>');
+    var mv = myVisits().slice(0, 10), _adm = roleIs("admin");   /* 1.6.0 - admin: the team's latest, each saying whose */
+    h += '<h3 class="sec">' + (_adm ? (S.ex ? esc(S.ex) + '&rsquo;s latest visits' : 'Latest visits - whole team') : 'My latest visits') + '</h3>' + (mv.length ? mv.map(function (v) { return visitRow(v, _adm); }).join("") : '<div class="empty">None yet.</div>');
     return h;
   }
   function partnerForm(k) {
@@ -2291,7 +2551,8 @@ h3.sec{color:#1F3A5F}
       try { var _dd = JSON.parse(row.detail); _dd.tchk = ck.ok ? 1 : 0; if (ck.ok) _dd.netAt = row.createdAt; row.detail = JSON.stringify(_dd); } catch (eD) { }   /* 1.5.2 */
       saveRow("audit", row);
       /* a plumber or architect not on the list becomes a partner, as the CRM does from a client form */
-      if (!known && k !== "showroom" && mob.length === 10) save("associates", { id: "", name: name, role: who, mobile: mob, mobile2: "", location: "", area: "", address: "", birthday: "", anniversary: "", rate: "", notes: "added from a visit (Visit & Quote app)", ownedBy: S.user });
+      /* 1.6.0 - through ensurePartner, so the mobile is looked up first and a spelling variant does not make a second row */
+      if (!known && k !== "showroom" && mob.length === 10) ensurePartner(name, who, "", "", mob, { notes: "added from a visit (Visit & Quote app)", ownedBy: S.user });
       if (isCl) nextFollow(name, nx, "Next meeting (showroom visit) - " + brandLine(came, intr, "") + (note ? ": " + note : ""));
       if (k === "plumber") vpSend("pv_selfie", { kind: "selfie", visitKey: "PV-" + Date.now(), who: name });   /* 1.5.0 */
       S.pv = {}; render(); toast("Visit saved — " + name + (isCl ? ". Next meeting " + fd(nx) + "." : "."));
@@ -2663,7 +2924,7 @@ h3.sec{color:#1F3A5F}
       (S.qStale ? qTable(_st) : '') + '</div>' : '';
     var cnt = function (k) { return all.filter(function (x) { return fqOk(x, k); }).length; };
     var list = all.filter(function (x) { return fqOk(x, f); }).filter(function (x) { return !q || lower([x.client, x.quoteNo, x.code, x.brand, x.siteName].join(" ")).indexOf(q) >= 0; });
-    return '<h2>Quotes</h2><div class="acts"><button class="btn full" data-act="qz-new">+ New quote</button></div>' + _band +
+    return '<h2>Quotes</h2>' + exChips() + '<div class="acts"><button class="btn full" data-act="qz-new">+ New quote</button></div>' + _band +   /* 1.6.0 - the executive chips, admin only */
       '<div class="chips">' + [["all", "All"], ["Draft", "Not sent"], ["follow", "To follow up"], ["Sent", "Sent"], ["Negotiating", "Negotiating"], ["Won", "Won"], ["Lost", "Lost"]].map(function (x) {
         return '<button class="chip' + (f === x[0] ? ' on' : '') + '" data-act="fq" data-k="' + x[0] + '">' + x[1] + ' <b>' + cnt(x[0]) + '</b></button>'; }).join("") + '</div>' +
       '<div class="bar"><input id="qq" placeholder="Client, quote number or brand" value="' + esc(S.q || "") + '" autocomplete="off"/></div>' +
@@ -2914,6 +3175,17 @@ h3.sec{color:#1F3A5F}
     if (act === "tab") { S.tab = k; S.q = ""; S.near = null; S.sheet = null; render(); window.scrollTo(0, 0); return; }
     if (act === "refresh") { S.sheet = null; pull(true); loadCat(true); return; }
     if (act === "menu") { S.sheet = menuSheet(); render(); return; }
+    /* 1.6.0 - the held journal: Try now (past any backoff), the list, one Retry, one Drop (journal only) */
+    if (act === "jrn-retry") { toast("Sending…"); flush(true).then(function () { if (S.sheet && /Held on this phone/.test(S.sheet)) { S.sheet = jrnListSheet(); render(); } else paintSync(); }); return; }
+    if (act === "jrn-list") { S.sheet = jrnListSheet(); render(); return; }
+    if (act === "jrn-retry-one") { jrnRetryOne(id); return; }
+    if (act === "jrn-drop") { var _je = jrnAll().filter(function (x) { return x && x.pk === id; })[0]; if (_je) { if (!_je.refused) unmergeRow(_je); jrnDrop(id); toast("Dropped from this phone: " + jrnSay(_je) + ". The server was not told anything."); } S.sheet = jrnListSheet(); render(); return; }
+    /* 1.6.0 - admin: which executive, the attendance grid, the daily report and its day */
+    if (act === "ex") { S.ex = k || ""; render(); return; }
+    if (act === "att-grid") { S.sheet = attGridSheet(); render(); return; }
+    if (act === "dr-open") { S.drDay = S.drDay || today(); S.sheet = dailyReportSheet(S.drDay); render(); return; }
+    if (act === "dr-day") { S.drDay = addDays(Number(k) || 0); S.sheet = dailyReportSheet(S.drDay); render(); return; }
+    if (act === "dr-copy") { var _dt = el("dr_txt"); var _tx = _dt ? _dt.textContent : ""; try { navigator.clipboard.writeText(_tx).then(function () { toast("Copied."); }, function () { toast("Could not copy - select the text and copy it."); }); } catch (eC) { toast("Could not copy - select the text and copy it."); } return; }
     if (act === "signout") { if (pendingN()) toast("Kept on this phone: " + pendingN() + "."); signOut(""); return; }
     if (act === "close") { S.sheet = null; S.sl = null; render(); return; }
     if (act === "att-notif") {   /* 1.5.2 - only when he presses it */
@@ -3007,6 +3279,7 @@ h3.sec{color:#1F3A5F}
   /* live typing repaints only the result box, so the keyboard stays up */
   document.addEventListener("input", function (ev) {
     var t = ev.target; if (!t || !S.data) return;
+    if (t.id === "dr_day") { if (/^\d{4}-\d{2}-\d{2}$/.test(t.value)) { S.drDay = t.value; S.sheet = dailyReportSheet(t.value); render(); } return; }   /* 1.6.0 - the report's day */
     if (t.id === "pv_name") { S.pv = S.pv || {}; S.pv.name = t.value; S.pvSitesOpen = false; pvInfoPaint(); var _pm = el("pv_mob"); if (_pm) { var _k = S.vk, _w = _k === "showroom" ? (S.pv.whoKind || "Client") : ""; var _rec = (_k === "showroom" && _w === "Client") ? clientByName(t.value) : partnerByName(t.value); if (_rec && mob10(_rec.mobile).length === 10 && !mob10(_pm.value)) { _pm.value = _rec.mobile; S.pv.mob = _rec.mobile; } } return; }   /* 1.5.0 - a known name fills his mobile; the box stays open */
     if (t.id === "pv_mob") {   /* 1.5.0 - 10 digits: who is it */
       S.pv = S.pv || {}; S.pv.mob = t.value; var _m10 = mob10(t.value);
@@ -3035,7 +3308,7 @@ h3.sec{color:#1F3A5F}
     if (t.id === "sn_dist") { var _sd = el("sn_cdl"); if (_sd) _sd.innerHTML = dl("sn_cities", areasFor(t.value)); return; }
     if (t.id === "cn_dist") { var _cd = el("cn_adl"); if (_cd) _cd.innerHTML = dl("cn_areas", areasFor(t.value)); return; }
     if (t.id === "sq") { S.q = t.value; S.near = null; var r = el("sres"); if (r) r.innerHTML = siteResults(); return; }
-    if (t.id === "qq") { S.q = t.value; var r2 = el("qres"); if (r2) { var f = S.fq || "all", q = lower(S.q); var list = myQuotes().filter(function (x) { return fqOk(x, f); }).filter(function (x) { return !q || lower([x.client, x.quoteNo, x.code, x.brand, x.siteName].join(" ")).indexOf(q) >= 0; }); r2.innerHTML = list.length ? list.slice(0, 80).map(qRow).join("") : '<div class="empty">No quote here.</div>'; } return; }
+    if (t.id === "qq") { S.q = t.value; var r2 = el("qres"); if (r2) { var f = S.fq || "all", q = lower(S.q); var list = myQuotes().filter(function (x) { return fqOk(x, f); }).filter(function (x) { return !q || lower([x.client, x.quoteNo, x.code, x.brand, x.siteName].join(" ")).indexOf(q) >= 0; }); r2.innerHTML = list.length ? qTable(list.slice(0, 120)) : '<div class="empty">No quote here.</div>'; } return; }   /* 1.6.0 - the same table as the list it filters (it switched to cards while typing) */
     if (t.id === "qz_cq") { S.qz.cq = t.value; var q3 = lower(t.value), cl = myClients(); var hits = q3.length >= 2 ? cl.filter(function (c) { return lower([c.code, c.oldCode, c.name, c.area, c.location, c.mobile].join(" ")).indexOf(q3) >= 0; }) : []; el("qz_hits").innerHTML = qzHits(hits, q3); return; }
     if (t.id === "qz_pq") { S.qz.pq = t.value; el("qz_pres").innerHTML = qzProdHits(); return; }
     if (t.classList && (t.classList.contains("qz-qty") || t.classList.contains("qz-bd"))) { qzKeep(); return; }
@@ -4178,10 +4451,10 @@ h3.sec{color:#1F3A5F}
 
   function boot() {
     try { if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(function () { }); } catch (e) { }
-    setInterval(function () { if (document.visibilityState === "visible" && S.data) flush(); }, 60000);
+    setInterval(function () { if (document.visibilityState === "visible" && S.data) flush(false); }, 60000);   /* 1.6.0 - the automatic tick honours the backoff */
     setInterval(attTick, 60000);   /* 1.5.2 - the three reminders */
     document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") setTimeout(attTick, 4000); });
-    window.addEventListener("online", function () { if (S.data) flush(); });
+    window.addEventListener("online", function () { if (S.data) flush(true); });   /* 1.6.0 - signal is back: a fresh start */
     document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible" && S.data && Date.now() - S.pullAt > 120000) pull(false); });
     var sess = null; try { sess = JSON.parse(localStorage.getItem(STORE) || "null"); } catch (e) { sess = null; }
     if (!sess || !sess.user || !(sess.pin || sess.tok)) { renderLogin(""); return; }
@@ -4194,8 +4467,8 @@ h3.sec{color:#1F3A5F}
     loadCat(false);
     api("teamAuth", { ua: navigator.userAgent }).then(function (r) {
       if (r && r.ok) { S.user = r.user.name; S.role = String(r.user.role || "").toLowerCase(); credPut({ user: S.user, pin: S.pin, role: S.role }); pull(false); return; }
-      if (r && r.ok === false && /wrong name or pin|locked for|not allowed|blocked|removed/i.test(String(r.error || ""))) signOut(String(r.error)); else pull(false);
-    }).catch(function () { render(); });
+      if (r && r.ok === false && AUTH_NO.test(String(r.error || ""))) signOut(String(r.error)); else pull(false);   /* 1.6.0 - AUTH_NO */
+    }).catch(function () { render(); pull(false); });   /* 1.6.0 - a dropped or slow teamAuth is not a reason to sit on a stale snapshot: the pull is tried (it fails quietly with no signal) */
   }
   /* 1.4.0 - WHICH VERSION DOES THE SERVER HAVE? Asked on open, when the app comes back to the front, every 30 minutes,
      and when the worker says the file changed. Newer, and nothing half-typed on screen and nothing waiting to go up:
@@ -4230,7 +4503,7 @@ h3.sec{color:#1F3A5F}
   document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") vqCheck(); });
   try { if (navigator.serviceWorker && navigator.serviceWorker.addEventListener) navigator.serviceWorker.addEventListener("message", function (e) { if (e && e.data && e.data.ew === "new-build") vqCheck(); }); } catch (e) { }
   try { var _uf = localStorage.getItem("ew_vq_updated_from"); if (_uf && _uf !== APP_VERSION) { localStorage.removeItem("ew_vq_updated_from"); setTimeout(function () { toast("Updated to version " + APP_VERSION + "."); }, 1500); } } catch (e) { }
-  window.__vq = { S: S, render: render, pull: pull, vqCheck: vqCheck, vqNewer: vqNewer };
+  window.__vq = { S: S, render: render, pull: pull, vqCheck: vqCheck, vqNewer: vqNewer, saveRow: saveRow, flush: flush, jrnAll: jrnAll, api: api, ensurePartner: ensurePartner, dailyReportText: dailyReportText };   /* 1.6.0 - for the rig */
   boot();
 })();
 
