@@ -429,7 +429,7 @@ function ewmBuild(n, pre) {
    Nothing here deletes anything, ever. A visit is a row added.
    ========================================================================== */
 
-  var APP_VERSION = "3.1.0";
+  var APP_VERSION = "3.2.0";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -1054,14 +1054,41 @@ function ewmBuild(n, pre) {
       return isFinite(n) ? n : 0;
     }
 
-  function money(n) { return "₹" + Math.round(num(n)).toLocaleString("en-IN"); }
+  /* 3.2.0 - A MINUS IS SHOWN, as the other apps show it. money(-5) printed "₹-5" (the sign
+     inside the rupee), and money(-0.4) printed "₹-0" - a minus on a nought, read off a visit
+     whose balance was a few paise under. Rounded first, so -0.4 is ₹0; a real minus sits in
+     front of the rupee sign with a proper minus glyph: -5 -> "−₹5". */
+  function money(n) {
+      var r = Math.round(num(n));
+      if (r === 0) return "₹0";
+      return (r < 0 ? "−" : "") + "₹" + Math.abs(r).toLocaleString("en-IN");
+    }
 
   function today() {
       var d = new Date();
       return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
     }
 
-  function d10(v) { return String(v == null ? "" : v).slice(0,10); }
+  /* 3.2.0 - THE DAY A THING HAPPENED, ON THIS PHONE'S CLOCK. d10() was slice(0,10) of an ISO
+     string, which is the UTC day: a visit saved between midnight and 05:30 IST carries a
+     createdAt of the day before, and so was booked (and counted in the Account tab) a day
+     early. A bare "YYYY-MM-DD" has no "T" and no zone, so it is returned as it is. */
+  function localDay(v) {
+      var s = String(v == null ? "" : v);
+      if (s.indexOf("T") < 0) return s.slice(0, 10);
+      var d = new Date(s);
+      if (isNaN(d.getTime())) return s.slice(0, 10);
+      return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+    }
+  /* the clock beside it, for the same reason - slice(11,16) of an ISO stamp is the UTC time */
+  function localHM(v) {
+      var s = String(v == null ? "" : v);
+      if (s.indexOf("T") < 0) return "";
+      var d = new Date(s);
+      if (isNaN(d.getTime())) return s.slice(11, 16);
+      return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+    }
+  function d10(v) { return localDay(v); }
 
   function dstr(ymd) {
       if (!ymd) return "";
@@ -1757,16 +1784,24 @@ function ewmBuild(n, pre) {
       var l0 = jrnLoad();
       if (!l0.length) return;
       _flushing = true;
+      var force = _flushForce;   /* 3.2.0 - captured once: the pass runs on, the flag does not */
       /* Two belts. Every call has its own deadline, and if the loop is somehow still not
          finished long after the longest possible call, the flag is released anyway - a hung
          call once froze a whole session's queue. */
       if (_flushDog) clearTimeout(_flushDog);
       _flushDog = setTimeout(function () { _flushing = false; _flushDog = null; }, 180000);
-      var okCount = 0, i = 0;
+      var okCount = 0, i = 0, touched = 0;
       var stop = function () {
         _flushing = false;
         if (_flushDog) { clearTimeout(_flushDog); _flushDog = null; }
-        try { render(); } catch (e) {}
+        /* 3.2.0 - FOUND ON THE WAY: every pass ended in render(), which rebuilds the screen from
+           S.sheet's html and so wiped whatever he had typed into an open form - every 45
+           seconds, whenever anything was held. A pass that sent nothing has nothing to repaint
+           (the bar repaints itself in jrnStore); one that did uses renderBg(), which waits while
+           a form is open, and refreshes the held list if that is what is open. */
+        if (okCount || touched) {
+          try { if (heldOpen()) { S.sheet = sheetHeld(); render(); } else renderBg(); } catch (e) {}
+        }
         if (!jrnCount()) { if (okCount) toast("Everything held on this phone is now saved."); }
         else if (okCount) toast(okCount + " saved. " + jrnCount() + " still held — the bar shows the reason.");
       };
@@ -1775,7 +1810,18 @@ function ewmBuild(n, pre) {
         if (i >= l.length) { stop(); return; }
         var e = l[i];
         if (_jrnBusy[e.pk] && Date.now() - _jrnBusy[e.pk] < 90000) { i++; step(); return; }   /* 1.19.0 */
+        /* 3.2.0 - the Challan app's B9: held work goes up under the name of the man who wrote
+           it. Somebody else signed in on this phone does not send it with his PIN and under
+           his name; the bar says whose it is. */
+        if (e.by && S.user && String(e.by) !== String(S.user)) { i++; step(); return; }
+        /* 3.2.0 - A REFUSAL IS NOT A BAD SIGNAL. The ticker sent a row the server had refused
+           ("Only a ... may write visits") again every 45 seconds for ever, and the bar kept
+           saying it would go up by itself. It will not. A refused entry waits for a man: Try
+           now (flushNow sets _flushForce) sends it again, Drop it in the list removes it. */
+        if (!force && jrnRefused(e)) { i++; step(); return; }
+        _jrnBusy[e.pk] = Date.now();   /* 3.2.0 - a flush on the wire is a save on the wire (saveRow has had this since 1.19.0) */
         jrnSend(e).then(function (r) {
+          delete _jrnBusy[e.pk];
           if (r && r.ok) {
             if (e.kind === "row") {
               var arr = (S.data && S.data[e.tab]) || [];
@@ -1794,23 +1840,47 @@ function ewmBuild(n, pre) {
             }
             bust(); jrnDrop(e.pk); okCount++;   /* the list shifted left - same index is the next one */
           } else {
-            jrnMark(e.pk, (r && r.error) || "the server refused it"); i++;
+            jrnMark(e.pk, JRN_REFUSED + ((r && r.error) || "the server refused it")); i++; touched++;   /* 3.2.0 - named as a refusal */
           }
           step();
         }).catch(function (err) {
+          delete _jrnBusy[e.pk];
           /* The real reason, kept. "network error" for everything is how a healthy connection
              came to be blamed for a timeout in the CRM for eight releases. */
           jrnMark(e.pk, (err && err.message) ? err.message : "no answer from the server");
-          i++; step();
+          i++; touched++; step();
         });
       };
       step();
     }
 
+  /* 3.2.0 - what the bar and the list say about a held row, told truthfully (the Challan app's
+     heldTail, ported): waiting for signal, or refused and waiting for a man. */
+  var JRN_REFUSED = "Refused by the server: ";
+  function jrnRefused(e) { return String((e && e.err) || "").indexOf(JRN_REFUSED) === 0; }
+  function heldTail(r) {
+    if (!r || !r.held) return "";
+    if (r.refused) return " But the server REFUSED it (" + String(r.err || r.error || "no reason given") +
+      ") — it is kept on this phone and will not go up by itself. Put it right, then tap Try now on the orange bar.";
+    return " Held on this phone until there is signal.";
+  }
+  /* 3.2.0 - the plain words for a refusal the man can act on */
+  function refusedSay(err) {
+    var t = String(err || "").replace(JRN_REFUSED, "").trim();
+    if (t && !/[.!?]$/.test(t)) t += ".";
+    return t ? "The server refused it: " + t : "The server refused it.";
+  }
+
   /* v1.12.1 - what "Try now" means: forget the back-off and go this second. The ticker halves
      its own rate after a failure (_flushSkip), which is right for a phone in a basement and
      wrong when a man is standing there asking for it. */
-  function flushNow() { _flushFails = 0; _flushSkip = 0; flushSoon(); }
+  /* 3.2.0 - and it is the ONE path that sends a refused row again: _flushForce is on for this
+     one pass and off again when the pass ends. */
+  var _flushForce = false;
+  function flushNow() {
+      _flushFails = 0; _flushSkip = 0; _flushForce = true;
+      try { flushSoon(); } finally { _flushForce = false; }   /* jrnFlush reads it synchronously, into `force` */
+    }
   function flushSoon() {
       if (!jrnCount()) { _flushFails = 0; _flushSkip = 0; return; }
       try { if (navigator && navigator.onLine === false) return; } catch (e) {}
@@ -1848,6 +1918,15 @@ function ewmBuild(n, pre) {
       if (wrap) wrap.style.paddingBottom = "150px";
       var err = "";
       for (var i = 0; i < l.length; i++) if (l[i].err) { err = l[i].err; break; }
+      /* 3.2.0 - a refusal first: it is the one that needs a man, not a mast (Challan 1.102.0) */
+      for (var i2 = 0; i2 < l.length; i2++) if (jrnRefused(l[i2])) { err = l[i2].err; break; }
+      /* 3.2.0 - and whose they are, when they are not his (Challan B9) */
+      var others = l.filter(function (x) { return x.by && S.user && String(x.by) !== String(S.user); });
+      if (others.length) {
+        var whose = {}; others.forEach(function (x) { whose[x.by] = 1; });
+        err = others.length + (others.length === 1 ? " item belongs" : " items belong") + " to " + Object.keys(whose).join(", ") +
+          " — sign in as " + Object.keys(whose).join(" or ") + " to send " + (others.length === 1 ? "it" : "them") + "." + (err ? " " + err : "");
+      }
       host.style.display = "block";
       host.innerHTML =
         '<div style="display:flex;align-items:center;gap:8px">' +
@@ -1857,9 +1936,45 @@ function ewmBuild(n, pre) {
             '<div style="opacity:.9;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' +
               esc(err || "They will go up by themselves when there is signal.") + '</div>' +
           '</div>' +
-          '<button class="btn sm" data-act="jrn-retry" style="background:#fff;color:#7c2d12;flex:none">Try now</button>' +
+          /* 3.2.0 - "See them": the list, with Retry / Drop per entry (the Challan app's jrn-list) */
+          '<button class="btn sm" data-act="jrn-list" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.7);flex:none;min-height:44px">See them</button>' +
+          '<button class="btn sm" data-act="jrn-retry" style="background:#fff;color:#7c2d12;flex:none;min-height:44px">Try now</button>' +
         '</div>';
     }
+
+  /* 3.2.0 - WHAT IS HELD, ONE CARD EACH, with Retry and Drop. Drop removes the entry from THIS
+     PHONE'S journal only - nothing is written or deleted on the server; a refused row never
+     reached it. It exists because a refused visit otherwise sat on the bar for ever with no way
+     off it but clearing the browser. */
+  var JRN_WHAT = { visits: "Service visit", installs: "Installation", audit: "Note", clients: "Customer", challans: "Challan", returns: "Return", payments: "Payment" };
+  function sheetHeld() {
+      var l = jrnLoad();
+      var h = '<h2>' + (l.length ? esc(jrnSay(l)) : 'Nothing') + ' held on this phone</h2>' +
+        '<div class="muted" style="margin-bottom:8px">Each goes to the server by itself when there is signal. A record the server REFUSED waits here for you: put it right and Retry, or Drop it from this phone. Dropping touches nothing on the server.</div>';
+      if (!l.length) return h + '<div class="empty">Nothing is held. Everything is on the server.</div>' +
+        '<div class="acts" style="margin-top:12px"><button class="btn gry" data-act="close">Close</button></div>';
+      h += l.map(function (e) {
+        var r = e.row || {}, tab = String(e.tab || ""), what = JRN_WHAT[tab] || tab || "Record";
+        var who = r.client || r.customerName || r.name || r.target || "";
+        var amt = tab === "visits" && num(r.total) ? money(r.total) : "";
+        var when = localDay(r.date || r.createdAt || "");
+        var bits = [when ? dstr(when) : "", r.type || "", e.by && String(e.by) !== String(S.user) ? "by " + e.by : ""].filter(Boolean);
+        var ref = jrnRefused(e);
+        return '<div class="card" style="margin-top:6px;padding:10px 12px;border-left:4px solid ' + (ref ? '#b91c1c' : '#f59e0b') + '">' +
+          '<div style="display:flex;gap:8px;align-items:baseline"><div style="flex:1;min-width:0;font-weight:800">' + esc(what) + (who ? ' — ' + esc(who) : '') + '</div>' +
+          (amt ? '<div style="font-weight:800;white-space:nowrap">' + esc(amt) + '</div>' : '') + '</div>' +
+          (bits.length ? '<div class="muted" style="font-size:12.5px">' + esc(bits.join(" · ")) + '</div>' : '') +
+          '<div style="font-size:12.5px;margin-top:3px;color:' + (e.err ? (ref ? '#b91c1c' : '#b45309') : '#475569') + '">' +
+            (e.err ? 'Last try: ' + esc(e.err) : 'Not tried yet — waiting for signal') + (e.tries ? ' · tried ' + e.tries + (e.tries === 1 ? ' time' : ' times') : '') + '</div>' +
+          '<div class="row" style="margin-top:8px;gap:8px">' +
+            '<button class="btn sm gry" data-act="jrn-retry-one" data-k="' + esc(e.pk) + '" style="min-height:44px">Retry</button>' +
+            '<button class="btn sm" data-act="jrn-drop" data-k="' + esc(e.pk) + '" style="min-height:44px;background:#fff;color:#b91c1c;border:1px solid #fecaca">Drop it</button>' +
+          '</div></div>';
+      }).join("");
+      return h + '<div class="acts" style="margin-top:12px"><button class="btn gry" data-act="close">Close</button><div class="grow"></div>' +
+        '<button class="btn" data-act="jrn-retry" style="min-height:44px">Try all now</button></div>';
+    }
+  function heldOpen() { return !!(S.sheet && /held on this phone<\/h2>/.test(String(S.sheet))); }
 
   /* ================= WHO CHANGED WHAT, AND WHEN  (Service, 8 Sep 2026) =================
      HIS WORDS, after the CRM got this in 6.9.438: "do for all apps".
@@ -2001,8 +2116,11 @@ function ewmBuild(n, pre) {
       return jrnSend(e).then(function (r) {
         delete _jrnBusy[e.pk];
         if (r && r.ok) { jrnDrop(e.pk); return { ok: true, row: r.row || r2, held: false }; }
-        jrnMark(e.pk, (r && r.error) || "the server refused it");
-        return { ok: true, row: e.row, held: true, err: (r && r.error) || "the server refused it" };
+        /* 3.2.0 - a refusal is named as one (JRN_REFUSED), so the ticker stops retrying it and
+           the caller can tell the man in plain words; `refused: true` is the Challan app's shape */
+        var why = (r && r.error) || "the server refused it";
+        jrnMark(e.pk, JRN_REFUSED + why);
+        return { ok: true, row: e.row, held: true, refused: true, err: why };
       }).catch(function (err) {
         delete _jrnBusy[e.pk];
         jrnMark(e.pk, (err && err.message) ? err.message : "no answer from the server");
@@ -3151,7 +3269,7 @@ function ewmBuild(n, pre) {
     chs.forEach(function (c) {
       sv2CommLines(c).forEach(function (x) {
         if (x.st && x.st.skip) return;
-        var _cd = String(c.createdAt || "").slice(0, 10), _ws = svWarrStart(_cd, x.st && x.st.date), _wp = svParts(x.i.brand, (x.st && x.st.date) ? x.st.date : (_ws.started ? _ws.start : ""), (x.st && x.st.wm) || x.need.wm);   /* 2.2.0 */
+        var _cd = localDay(c.createdAt), _ws = svWarrStart(_cd, x.st && x.st.date), _wp = svParts(x.i.brand, (x.st && x.st.date) ? x.st.date : (_ws.started ? _ws.start : ""), (x.st && x.st.wm) || x.need.wm);   /* 2.2.0 */
         if (x.st && x.st.till && _wp.length === 1) _wp[0].till = x.st.till;
         out.push({ key: c.id + ":" + x.idx, kind: "comm", desc: String(x.i.desc || x.need.label), brand: String(x.i.brand || ""), sn: (x.st && x.st.sn) || "",
                    date: (x.st && x.st.date) || _cd, till: (x.st && x.st.till) || (_wp[0] ? _wp[0].till : ""), ch: c.challanNo || "", commissioned: !!(x.st && x.st.date),
@@ -3167,7 +3285,7 @@ function ewmBuild(n, pre) {
       sv2Items(c).forEach(function (i, idx) {
         if (sv2Need(i)) return;
         var d = String(i.desc || i.code || "").trim(); if (!d || seen[d]) return; seen[d] = 1;
-        rest.push({ key: c.id + ":" + idx, kind: "item", desc: d, brand: String(i.brand || ""), date: String(c.createdAt || "").slice(0, 10), ch: c.challanNo || "" });
+        rest.push({ key: c.id + ":" + idx, kind: "item", desc: d, brand: String(i.brand || ""), date: localDay(c.createdAt), ch: c.challanNo || "" });
       });
     });
     return out.concat(rest);
@@ -3229,13 +3347,14 @@ function ewmBuild(n, pre) {
     var tk = sv2Tickets(), pend = tk.filter(function (t) { return sv2Bucket(t) === "pending"; });
     var late = pend.filter(function (t) { var a = tkAge(t); return a && a.late; });
     var pay = tk.filter(function (t) { return sv2Bucket(t) === "payment"; }), payAmt = pay.reduce(function (s, t) { return s + sv2Due(t); }, 0);
-    var mon = sv2Month(today()), doneM = tk.filter(function (t) { return sv2Bucket(t) === "done" && t.doneAt && sv2Month(String(t.doneAt).slice(0, 10)) === mon; }).length;
+    var mon = sv2Month(today()), doneM = tk.filter(function (t) { return sv2Bucket(t) === "done" && t.doneAt && sv2Month(localDay(t.doneAt)) === mon; }).length;   /* 3.2.0 - local day */
     var _ewa = ewiAll(), _ewn = ewiCounts(_ewa), cp = _ewa.filter(function (x) { return x.open > 0; }), over = installs().filter(function (x) { return dueBand(x) === "over"; }).length, soon = installs().filter(function (x) { return dueBand(x) === "soon"; }).length;
     var web = openComplaints().filter(function (c) { return !tkRefs()[String(c.Ref || "")]; });
     var h = '<div class="sv2bar">' +
       '<button class="btn" data-act="sv2-new">+ New complaint</button>' +
       (canRecord() ? '<button class="btn ghost" data-act="tab" data-k="labour">Labour job</button>' : '') +
-      '<button class="btn ghost" data-act="tab" data-k="history">My work</button></div>';
+      '<button class="btn ghost" data-act="tab" data-k="history">My work</button>' +
+      '<button class="btn ghost" data-act="tab" data-k="complaints">All complaints' + (pend.length ? ' <b>' + pend.length + '</b>' : '') + '</button></div>';   /* 3.2.0 - the tab, as a button */
     h += '<div class="stats sv2g">' +
       sv2Tile(pend.length, 'Pending complaints', pend.length ? 'bad' : 'good', 'sv2-go', 'pending', late.length ? late.length + ' past the promise' : '') +
       sv2Tile(money(payAmt), 'Payment pending', pay.length ? 'warn' : 'good', 'sv2-go', 'payment', pay.length ? pay.length + ' customer' + (pay.length === 1 ? '' : 's') : '') +
@@ -3266,7 +3385,7 @@ function ewmBuild(n, pre) {
             var mineE = tk.filter(function (t) { return lower(t.eng) === lower(e); });
             var o = mineE.filter(function (t) { return sv2Bucket(t) === "pending"; });
             var l = o.filter(function (t) { var a = tkAge(t); return a && a.late; }).length;
-            var d = mineE.filter(function (t) { return sv2Bucket(t) !== "pending" && t.doneAt && sv2Month(String(t.doneAt).slice(0, 10)) === mon; }).length;
+            var d = mineE.filter(function (t) { return sv2Bucket(t) !== "pending" && t.doneAt && sv2Month(localDay(t.doneAt)) === mon; }).length;   /* 3.2.0 */
             return '<tr><td><b>' + esc(e) + '</b></td><td>' + o.length + '</td><td' + (l ? ' class="bad"' : '') + '>' + l + '</td><td>' + d + '</td></tr>';
           }).join("") + '</table></div>';
       }
@@ -3485,7 +3604,7 @@ function ewmBuild(n, pre) {
     });
     list.sort(function (a, b) { return f === "pending" ? String(a.at).localeCompare(String(b.at)) : String(b.at).localeCompare(String(a.at)); });
     var chip = function (k, l) { return '<button class="chip bchip' + (f === k ? ' on' : '') + '" data-act="sv2-f" data-k="' + k + '">' + l + ' <b>' + cnt[k] + '</b></button>'; };
-    return '<div class="sv2bar"><button class="btn" data-act="sv2-new">+ New complaint</button></div>' +
+    return '<div class="sv2bar"><button class="btn ghost" data-act="tab" data-k="home">&larr; Home</button><button class="btn" data-act="sv2-new">+ New complaint</button></div>' +   /* 3.2.0 - no tab of its own any more */
       '<div class="chips">' + chip("pending", "Pending") + chip("payment", "Payment pending") + chip("done", "Completed") + chip("all", "All") + (cnt.noprod ? chip("noprod", "No product entered") : '') + '</div>' +
       searchBox("Search a customer, mobile, ref or engineer") +
       (f === "payment" && list.length ? '<div class="note warn-t"><b>' + money(list.reduce(function (s, t) { return s + sv2Due(t); }, 0)) + '</b> to collect. Open one and tap <b>Payment received</b> when the money comes.</div>' : '') +
@@ -3506,7 +3625,7 @@ function ewmBuild(n, pre) {
           : t.noProd ? '<span class="sub">No product of ours</span>' : '<span class="pill red">No product entered</span>';   /* 2.5.0 */
         var urg = b === "pending" && (t.pri === "High" || (a && a.late));
         return '<tr class="cr' + (urg ? ' urg' : '') + '" data-act="sv2-open" data-id="' + esc(t.id) + '">' +
-          '<td><b>' + esc(t.ref || "") + '</b><span class="sub">' + esc(dstr(String(t.at || "").slice(0, 10))) + '</span></td>' +
+          '<td><b>' + esc(t.ref || "") + '</b><span class="sub">' + esc(dstr(localDay(t.at))) + '</span></td>' +
           '<td style="min-width:150px"><b>' + esc(t.client || t.name || "(no name)") + '</b>' + (t.mobile ? '<span class="sub">' + esc(t.mobile) + '</span>' : '') + (t.area ? '<span class="sub">' + esc(t.area) + '</span>' : '') +
             (od && od.amt > 0 ? '<span class="sub" style="color:#b91c1c;font-weight:700">Old pending ' + esc(money(od.amt)) + '</span>' : '') + '</td>' +
           '<td style="min-width:190px">' + pr + '</td>' +
@@ -3521,7 +3640,7 @@ function ewmBuild(n, pre) {
   function sv2Sheet(t) {
     var a = tkAge(t), b = sv2Bucket(t), mob = cxMob(t.mobile);
     var h = '<h2>' + esc(t.client || t.name || "Complaint") + '</h2>' +
-      '<div class="muted">' + esc(t.ref || "") + ' &middot; raised ' + esc(dstr(String(t.at || "").slice(0, 10))) + (t.by ? ' by ' + esc(t.by) : '') + (t.src ? ' &middot; ' + esc(t.src) : '') + '</div>' +
+      '<div class="muted">' + esc(t.ref || "") + ' &middot; raised ' + esc(dstr(localDay(t.at))) + (t.by ? ' by ' + esc(t.by) : '') + (t.src ? ' &middot; ' + esc(t.src) : '') + '</div>' +
       '<div class="row" style="flex-wrap:wrap;margin:8px 0">' +
         '<span class="pill ' + (b === "pending" ? (t.eng ? 'blu' : 'red') : b === "payment" ? 'amb' : 'grn') + '">' + esc(b === "payment" ? "Payment pending" : t.status) + '</span>' +
         (t.eng ? '<span class="pill">' + esc(t.eng) + '</span>' : '') + '<span class="pill' + (t.pri === "High" ? ' red' : '') + '">' + esc(t.pri) + '</span>' +
@@ -3559,7 +3678,7 @@ function ewmBuild(n, pre) {
     h += '<label>History</label><div class="card" style="padding:6px 11px">' + t.steps.map(function (s) {
       return '<div class="meta" style="padding:4px 0;border-bottom:1px solid #f1f5f9"><b>' + esc(s.to || "Note") + '</b>' + (s.eng && s.to !== "Raised" ? ' · ' + esc(s.eng) : '') +
         (s.outcome ? ' · ' + esc(s.outcome) : '') + (s.charge != null && s.to === "Resolved" ? ' · charge ' + esc(money(s.charge)) : '') + (Number(s.got) > 0 ? ' · ' + esc(money(s.got)) + ' collected' : '') +
-        (s.note ? ' · ' + esc(s.note) : '') + '<br>' + esc(dstr(String(s.at || "").slice(0, 10))) + ' ' + esc(String(s.at || "").slice(11, 16)) + (s.by ? ' · ' + esc(s.by) : '') + '</div>';
+        (s.note ? ' · ' + esc(s.note) : '') + '<br>' + esc(dstr(localDay(s.at))) + ' ' + esc(localHM(s.at)) + (s.by ? ' · ' + esc(s.by) : '') + '</div>';
     }).join("") + '</div>' +
       '<div class="acts"><button class="btn gry grow" data-act="close">Close</button></div>';
     return h;
@@ -3915,7 +4034,7 @@ function ewmBuild(n, pre) {
   function ewiRow(x, hl) {
     var c = x.c, d = Math.max(0, Math.round((Date.now() - Date.parse(String(c.createdAt || ""))) / 86400000));
     return '<div class="card" data-act="ewi-open" data-id="' + esc(c.id) + '"><div class="row" style="align-items:flex-start"><div class="grow">' +
-      '<div class="ttl">' + esc(c.customerName || "") + '</div><div class="meta">' + esc(c.challanNo || "") + (c.site ? ' &middot; ' + esc(c.site) : '') + ' &middot; ' + esc(dstr(String(c.createdAt || "").slice(0, 10))) +
+      '<div class="ttl">' + esc(c.customerName || "") + '</div><div class="meta">' + esc(c.challanNo || "") + (c.site ? ' &middot; ' + esc(c.site) : '') + ' &middot; ' + esc(dstr(localDay(c.createdAt))) +
       (x.delivered ? '' : ' &middot; <span class="pill amb">delivery not confirmed</span>') + '</div></div>' +
       '<div class="right">' + (x.open && isFinite(d) ? '<div class="amt' + (d > 15 ? ' bad' : '') + '">' + d + ' day' + (d === 1 ? '' : 's') + '</div>' : '') + '</div></div>' +
       ewiTable(x, hl) + '</div>';
@@ -3951,7 +4070,7 @@ function ewmBuild(n, pre) {
     var E = S.ew || {}, x = ewiFind(E.id);
     if (!x) return '<h2>Not found</h2><div class="acts"><button class="btn gry" data-act="close">Close</button></div>';
     var c = x.c, can = ewiCanMark(), sel = E.sel || {};
-    var h = EWI_CSS + '<h2>' + esc(c.customerName || "") + '</h2><div class="muted">' + esc(c.challanNo || "") + (c.site ? ' &middot; ' + esc(c.site) : '') + ' &middot; challan ' + esc(dstr(String(c.createdAt || "").slice(0, 10))) +
+    var h = EWI_CSS + '<h2>' + esc(c.customerName || "") + '</h2><div class="muted">' + esc(c.challanNo || "") + (c.site ? ' &middot; ' + esc(c.site) : '') + ' &middot; challan ' + esc(dstr(localDay(c.createdAt))) +
       (x.delivered ? '' : ' &middot; <span class="pill amb">delivery not confirmed</span>') + '</div>';
     if (x.legacy) h += '<div class="note ok">Commissioned before this section existed, so it is counted as handed over.</div>';
     /* the products, each with its own three steps; tick the ones you are marking */
@@ -4099,7 +4218,7 @@ function ewmBuild(n, pre) {
     var K = S.cm || {}, c = sv2Challans().filter(function (x) { return x.id === K.id; })[0];
     if (!c) return '<h2>Not found</h2><div class="acts"><button class="btn gry" data-act="close">Close</button></div>';
     var ls = sv2CommLines(c).filter(function (x) { return !x.st; });
-    var h = '<h2>Commission &mdash; ' + esc(c.customerName || "") + '</h2><div class="muted">' + esc(c.challanNo || "") + (c.site ? ' &middot; ' + esc(c.site) : '') + ' &middot; delivered ' + esc(dstr(String(c.createdAt || "").slice(0, 10))) + '</div>' +
+    var h = '<h2>Commission &mdash; ' + esc(c.customerName || "") + '</h2><div class="muted">' + esc(c.challanNo || "") + (c.site ? ' &middot; ' + esc(c.site) : '') + ' &middot; delivered ' + esc(dstr(localDay(c.createdAt))) + '</div>' +
       '<label>Date of commissioning</label><input id="cm2_date" type="date" value="' + esc(K.date || today()) + '"/>';
     h += ls.map(function (x) {
       var L = (K.l && K.l[x.idx]) || {};
@@ -4139,7 +4258,7 @@ function ewmBuild(n, pre) {
       var L = (K.l && K.l[x.idx]) || {};
       if (L.skip) return { idx: x.idx, code: x.i.code || "", desc: x.i.desc || "", brand: x.i.brand || "", skip: true };
       var wm = L.wm === "" || L.wm == null ? x.need.wm : num(L.wm), cm = L.cm === "" || L.cm == null ? x.need.cm : num(L.cm);
-      var _ws = svWarrStart(String(c.createdAt || "").slice(0, 10), date);   /* 2.2.0 - commissioning, or challan + 60 days if that came first */
+      var _ws = svWarrStart(localDay(c.createdAt), date);   /* 2.2.0 - commissioning, or challan + 60 days if that came first */
       return { idx: x.idx, code: x.i.code || "", desc: x.i.desc || "", brand: x.i.brand || "", qty: num(x.i.qty) || 1, sn: L.sn || sv2AutoSn(c, x.idx), wm: wm, till: sv2AddMonths(_ws.start, wm), cm: cm, from: _ws.start };
     });
     var real = lines.filter(function (l) { return !l.skip; });
@@ -4467,7 +4586,11 @@ function ewmBuild(n, pre) {
      have shown a dozen loyal AMC customers as defaulters on their first sight of this screen.
      Every figure here is worked out again from the visit and the contract as it stood ON THE
      DAY, so the history is right without one stored row being touched. */
-  function accMonth(d) { var t = dstr(d10(d)); return t && t.length >= 7 ? t.slice(0, 7) : ""; }
+  /* 3.2.0 - FOUND BY READING: the month key was dstr(d10(d)).slice(0, 7) - the first seven
+     letters of a DISPLAY string, "17 Oct " - so a visit matched "this month" only when it was
+     dated the same DAY as today. "Collected this month" and the month's list showed today's
+     visits and nothing else. The key is now the local YYYY-MM. */
+  function accMonth(d) { var t = localDay(d); return t && t.length >= 7 ? t.slice(0, 7) : ""; }
 
   function accRows() {
     return accVisits().map(function (v) {
@@ -4556,7 +4679,11 @@ function ewmBuild(n, pre) {
                 ? ' &middot; <b style="color:#b45309">' + esc(money9(a)) + '</b> on account' : ''; })() +
           '</div></div>' +
           '<div class="right"><div class="amt bad">' + esc(money9(c.pend)) + '</div></div></div></div>';
-        if (open) h += c.rows.map(function (r) { return histRow(r.v, r.ins); }).join("");
+        if (open) {
+          /* 3.2.0 - "if customer already opened, then why asking to choose customer" */
+          if (canRecord()) h += '<div class="acts" style="margin:4px 0 8px"><button class="btn grow" data-act="acc-visit" data-k="' + esc(c.name) + '" style="min-height:44px">Mark a visit for ' + esc(c.name) + '</button></div>';
+          h += c.rows.map(function (r) { return histRow(r.v, r.ins); }).join("");
+        }
       });
     } else {
       h += '<div class="empty ok"><b>Nothing pending.</b><br>' +
@@ -4760,21 +4887,39 @@ function ewmBuild(n, pre) {
         ? esc([ins.product, ins.model].filter(Boolean).join(" · ") || "machine not named")
         : 'Plumbing work with no machine behind it') + '</div>';
 
-    /* --- what kind of work --- */
-    h += '<label>What was done</label><div class="chips">' +
-      JOB_TYPES.filter(function (t) { return ins ? t !== "Labour job" : t === "Labour job"; })
-        .map(function (t) {
-          return '<button class="chip' + (v.type === t ? ' on' : '') + '" data-act="v-type" data-t="' + esc(t) + '">' +
+    /* ================= 3.2.0 - MADE SIMPLE. HIS WORDS (17 Oct 2026):
+       "If customer already Ayush Garg opened, then why asking to choose customer, and also for
+        choosing customer its not option to type name, and so many things app asking from
+        technical to complete visit, make it very simple way ... its very confusing now".
+       So: the customer comes prefilled wherever the app already knows him (an open account, a
+       machine, a ticket) and is one line with "change"; otherwise he TYPES and the list narrows;
+       the area is read off the customer; the date is "Today" unless he changes it; a one-chip
+       "What was done" is not asked; and Taken now, Note and the photos are behind one "More".
+       A plain labour visit is: customer, charge, Save. */
+
+    /* --- what kind of work: not asked when there is only one answer --- */
+    var _types = JOB_TYPES.filter(function (t) { return ins ? t !== "Labour job" : t === "Labour job"; });
+    if (_types.length === 1 && !v.type) v.type = _types[0];
+    if (_types.length > 1) {
+      h += '<label>What was done</label><div class="chips">' +
+        _types.map(function (t) {
+          return '<button class="chip bchip' + (v.type === t ? ' on' : '') + '" data-act="v-type" data-t="' + esc(t) + '">' +
             esc(t) + '</button>';
         }).join("") + '</div>';
-
-    /* --- who it is for, when there is no machine --- */
-    if (!ins) {
-      h += '<label>Customer</label>' + clientPicker(v.client) +
-        '<label>Area</label><input id="v_area" value="' + esc(v.area || "") + '" placeholder="Which area"/>';
     }
 
-    h += '<label>Date</label><input id="v_date" type="date" value="' + esc(v.date || today()) + '"/>';
+    /* --- who it is for, when there is no machine --- */
+    if (!ins) h += clientPicker(v);
+
+    /* --- the date: Today, unless he says otherwise --- */
+    var _d = v.date || today();
+    if (v.dateOpen || _d !== today()) {
+      h += '<label>Date</label><input id="v_date" type="date" max="' + today() + '" value="' + esc(_d) + '" style="min-height:44px"/>';
+    } else {
+      h += '<input type="hidden" id="v_date" value="' + esc(_d) + '"/>' +
+        '<div class="row" style="margin-top:8px;align-items:center;gap:8px;min-height:44px"><span class="muted">Date: <b style="color:#0f172a">Today</b>, ' + esc(dstr(_d)) + '</span>' +
+        '<button class="btn sm gry" data-act="v-date-show" style="min-height:44px">change</button></div>';
+    }
 
     /* --- salt, only where salt is a thing --- */
     /* v1.12.0 - the MACHINE makes salt a thing, not the word chosen for the visit. A softener's
@@ -4874,22 +5019,38 @@ function ewmBuild(n, pre) {
       h += '<div class="amcbox"><b>Under AMC — nothing to collect.</b><br>' +
         esc(cover.kind) + ', ' + esc(amcState(ins).say) + '. ' +
         esc(money9(gross)) + ' of work, already paid for.</div>';
-    } else if (total > 0) {
-      h += '<label>Taken now</label>' +
-        '<input id="v_got" inputmode="numeric" value="' + esc(v.collected == null ? "" : v.collected) + '" placeholder="0"/>' +
-        '<div class="meta">Leave it blank if the customer is paying the office later. ' +
-        'Whatever you type here is money you are carrying.</div>';
-      var bal = total - num(v.collected);
-      if (v.collected !== "" && v.collected != null && bal > 0.5)
-        h += '<div class="note warn-t">' + esc(money9(bal)) + ' still owing after this.</div>';
     }
 
-    h += '<label>Note</label><textarea id="v_note" rows="2" placeholder="What you found, what you did">' +
-      esc(v.notes || "") + '</textarea>';
+    /* 3.2.0 - ONE "MORE" FOR THE REST. Taken now, the note and the four photo boxes were six
+       questions on every visit; most visits answer none of them. Closed by default; what he has
+       already filled in is shown in the closed line so nothing typed is ever hidden from him. */
+    var _moreBits = [];
+    if (!covered && total > 0 && v.collected !== "" && v.collected != null) _moreBits.push("taken " + money9(v.collected));
+    if (v.notes) _moreBits.push("note: " + String(v.notes).slice(0, 40) + (String(v.notes).length > 40 ? "\u2026" : ""));
+    if (v.pics && v.pics.length) _moreBits.push(v.pics.length + " photo" + (v.pics.length === 1 ? "" : "s"));
+    h += '<button class="btn gry full" data-act="v-more" style="min-height:44px;margin-top:10px;text-align:left;display:flex;justify-content:space-between;align-items:center">' +
+      '<span>' + (v.more ? 'Less' : 'More') + ' (photos, note, cash taken)' +
+      (!v.more && _moreBits.length ? '<span class="sub" style="display:block;font-weight:500;font-size:12px">' + esc(_moreBits.join(" \u00b7 ")) + '</span>' : '') + '</span>' +
+      '<span>' + (v.more ? '\u25B2' : '\u25BC') + '</span></button>';
+    if (v.more) {
+      if (!covered && total > 0) {
+        h += '<label>Taken now</label>' +
+          '<input id="v_got" inputmode="numeric" value="' + esc(v.collected == null ? "" : v.collected) + '" placeholder="0"/>' +
+          '<div class="meta">Leave it blank if the customer is paying the office later. ' +
+          'Whatever you type here is money you are carrying.</div>';
+        var bal = total - num(v.collected);
+        if (v.collected !== "" && v.collected != null && bal > 0.5)
+          h += '<div class="note warn-t">' + esc(money9(bal)) + ' still owing after this.</div>';
+      }
 
-    /* v1.7.0 - the three photographs, and anything already taken on this machine */
-    h += picPickers(v) + picPending(v);
-    if (ins) h += picStrip(picsOf("machine", ins.id), "On this machine");
+      h += '<label>Note</label><textarea id="v_note" rows="2" placeholder="What you found, what you did">' +
+        esc(v.notes || "") + '</textarea>';
+
+      /* v1.7.0 - the three photographs, and anything already taken on this machine */
+      h += picPickers(v);
+      if (ins) h += picStrip(picsOf("machine", ins.id), "On this machine");
+    }
+    h += picPending(v);   /* photos already taken are a fact, shown open or closed */
 
     h += '<div class="acts"><button class="btn gry" data-act="close">Cancel</button>' +
       '<button class="btn grow" data-act="v-save">Save the visit</button></div>';
@@ -4897,15 +5058,58 @@ function ewmBuild(n, pre) {
   }
 
   /* A customer for a labour job. The engineer types, the list narrows - the same shape the
-     other apps use, because a man should not learn two ways to pick a name. */
-  function clientPicker(cur) {
-    var list = clients().slice().sort(function (a, b) { return alpha(a.name, b.name); });
-    return '<select id="v_client"><option value="">&mdash; pick the customer &mdash;</option>' +
-      list.map(function (c) {
-        return '<option value="' + esc(c.name) + '"' + (lower(c.name) === lower(cur) ? ' selected' : '') + '>' +
-          esc(c.name) + (c.location ? ' — ' + esc(c.location) : '') + '</option>';
-      }).join("") + '</select>' +
-      '<div class="meta">Not on the list? Type the name in the note and the office will add him.</div>';
+     other apps use, because a man should not learn two ways to pick a name.
+     3.2.0 - IT WAS A <select> OF EVERY CLIENT. The comment above was a promise the code did not
+     keep: "its not option to type name" (his words). Now a text box: two letters narrow the
+     book by name, mobile and area (the same clientHay the complaint desk uses); a chosen man is
+     one line with "change"; "+ New customer" is name and mobile, inline. The hidden #v_client
+     keeps the chosen name where readVisitForm() and saveVisit() have always read it. */
+  function clientArea(name) {
+    var c = name ? clientByName(name) : null;
+    if (!c) return "";
+    return String(c.area || c.location || "").trim();
+  }
+  function clientPicker(v) {
+    v = v || {};
+    var cur = String(v.client || "").trim(), c = cur ? clientByName(cur) : null;
+    var h = '';
+    if (v.newCust) {
+      /* a man not on the book: two fields, saved as a client row through the normal path */
+      h += '<input type="hidden" id="v_client" value=""/>' +
+        '<label>New customer</label>' +
+        '<div class="grid2"><div><input id="v_nname" value="' + esc(v.nName || "") + '" placeholder="Customer name" style="min-height:44px"/></div>' +
+        '<div><input id="v_nmob" inputmode="numeric" maxlength="10" value="' + esc(v.nMob || "") + '" placeholder="Mobile, 10 digits" style="min-height:44px"/></div></div>' +
+        '<label>Area</label><input id="v_area" value="' + esc(v.area || "") + '" placeholder="Which area / town" style="min-height:44px"/>' +
+        '<div class="row" style="margin-top:4px"><button class="btn sm gry" data-act="v-cust-change" style="min-height:44px">He is on the book after all</button></div>';
+      return h;
+    }
+    if (cur && !v.pickOpen) {
+      var _ar = String(v.area || "").trim() || clientArea(cur);
+      h += '<input type="hidden" id="v_client" value="' + esc(cur) + '"/>' +
+        '<div class="row" style="margin-top:8px;align-items:center;gap:8px;min-height:44px"><span class="grow" style="min-width:0"><span class="muted">Customer:</span> <b>' + esc(cur) + '</b>' +
+          (c && c.mobile ? ' <span class="muted">\u00b7 ' + esc(c.mobile) + '</span>' : '') +
+          (_ar ? ' <span class="muted">\u00b7 ' + esc(_ar) + '</span>' : '') + '</span>' +
+        '<button class="btn sm gry" data-act="v-cust-change" style="min-height:44px;flex:none">change</button></div>';
+      /* the area box only when the book does not know it */
+      h += _ar ? '<input type="hidden" id="v_area" value="' + esc(_ar) + '"/>'
+               : '<label>Area</label><input id="v_area" value="" placeholder="Which area / town" style="min-height:44px"/>';
+      return h;
+    }
+    h += '<input type="hidden" id="v_client" value=""/><input type="hidden" id="v_area" value="' + esc(v.area || "") + '"/>' +
+      '<label>Customer</label>' +
+      '<input id="v_cq" value="' + esc(v.cq || "") + '" placeholder="Type the name, mobile or area" autocomplete="off" style="min-height:44px"/>' +
+      '<div id="v_hits">' + clientHits(v.cq || "") + '</div>';
+    return h;
+  }
+  function clientHits(q) {
+    q = lower(q);
+    var newBtn = '<button class="btn gry sm full" data-act="v-cust-new" style="margin-top:6px;min-height:44px">+ New customer (not on the book)</button>';
+    if (q.length < 2) return '<div class="meta" style="margin-top:4px">Type two letters.</div>' + newBtn;
+    var hits = clients().filter(function (x) { return clientHay(x).indexOf(q) >= 0; }).slice(0, 8);
+    return (hits.length ? hits.map(function (x) {
+      return '<button class="tile" data-act="v-cust-pick" data-k="' + esc(x.name) + '"><span class="grow">' + esc(x.name) +
+        '<span class="sub">' + esc([x.mobile, x.area || x.location].filter(Boolean).join(" \u00b7 ")) + '</span></span></button>';
+    }).join("") : '<div class="meta" style="margin-top:4px">Nobody on the book matches that.</div>') + newBtn;
   }
 
   /* ---- the spares picker ---- */
@@ -5187,7 +5391,7 @@ function ewmBuild(n, pre) {
           : '<div style="width:44px;height:44px;border-radius:7px;border:1px dashed #cbd5e1;' +
             'display:flex;align-items:center;justify-content:center;font-size:15px;color:#94a3b8">open</div>';
         return '<a href="' + esc(p.url) + '" target="_blank" rel="noopener" ' +
-          'title="' + esc(lbl + (p.by ? " · " + p.by : "") + (p.at ? " · " + String(p.at).slice(0, 10) : "")) + '" ' +
+          'title="' + esc(lbl + (p.by ? " · " + p.by : "") + (p.at ? " · " + localDay(p.at) : "")) + '" ' +
           'style="text-decoration:none">' + img + '</a>';
       }).join("") + '</div></div>';
   }
@@ -5328,8 +5532,18 @@ function ewmBuild(n, pre) {
     v.saltBags = val("v_bags");
     v.saltAmt = val("v_saltamt");
     v.notes = (el("v_note") ? String(el("v_note").value || "") : "").trim();
-    v.collected = val("v_got");
+    if (el("v_got")) v.collected = val("v_got");   /* 3.2.0 - behind "More": absent from the DOM when closed, so the state value stands */
     if (!ins) { v.client = val("v_client"); v.area = val("v_area"); }
+    /* 3.2.0 - a customer typed in as new: name and 10-digit mobile, saved as a client row below */
+    var _newC = null;
+    if (!ins && v.newCust) {
+      v.nName = val("v_nname"); v.nMob = val("v_nmob").replace(/\D/g, "");
+      if (!v.nName) { toast("Type the new customer's name."); return; }
+      if (v.nMob.length !== 10) { toast("A new customer needs his 10-digit mobile number."); return; }
+      var _dup = clientByName(v.nName);
+      if (_dup) { v.client = _dup.name; v.newCust = false; toast(_dup.name + " is already on the book — picked."); }
+      else { v.client = v.nName; _newC = { id: mintId("CL"), name: v.nName, mobile: v.nMob, location: String(v.area || "").trim(), area: String(v.area || "").trim(), createdAt: new Date().toISOString(), createdBy: S.user || "", source: "Service app" }; }
+    }
 
     if (!v.type) { toast("Say what was done first."); return; }
     if (!ins && !v.client) { toast("Pick the customer this job was for."); return; }
@@ -5342,10 +5556,60 @@ function ewmBuild(n, pre) {
       return;
     }
 
-    /* v1.12.0 - the next screen is the two receipts. The photos already taken in the form
-       count as taken; the ones not yet taken are asked for by name. */
+    /* ================= 3.2.0 - THE SAVE IS WAITED FOR, AND TOLD TRUTHFULLY =================
+       Until today "Visit saved" was toasted and the receipts screen opened BEFORE saveRow was
+       even called, and its answer was thrown away. A technician whose role the server does not
+       let write visits ("Only a ... may write visits") saw "Visit saved", photographed his
+       receipts, and the visit sat refused on this phone for ever. Now: saveRow first; on the
+       server's yes -> "Visit saved"; held for signal -> says so; refused -> the server's words,
+       and the form stays open with everything typed still in it. */
+    if (S.vSaving) { toast("Saving\u2026 one moment."); return; }
+    S.vSaving = true;
+    var _btn = document.querySelector('[data-act="v-save"]');
+    if (_btn) { _btn.disabled = true; _btn.textContent = "Saving\u2026"; }
     var _rcGot = {};
     ((v.pics) || []).forEach(function (p) { _rcGot[p.kind] = 1; });
+
+    /* 3.2.0 - the new customer goes up first, through the normal save path. If the server will
+       not let this role write clients, the old fallback stands: his name and number go in the
+       visit's note for the office to add him, and the visit is still saved under his name. */
+    var _pre = Promise.resolve(null);
+    if (_newC) {
+      _pre = saveRow("clients", _newC).then(function (rc) {
+        if (rc && rc.refused) {
+          var _l = jrnLoad().filter(function (x) { return x.tab === "clients" && x.row && x.row.id === _newC.id; })[0];
+          if (_l) jrnDrop(_l.pk);   /* this phone's copy only; the server never had it */
+          row.notes = ("New customer (not on the book): " + _newC.name + ", " + _newC.mobile + ". " + String(row.notes || "")).trim();
+          toast("The office adds new customers — his name and number are in the note.");
+        } else {
+          try { (S.data.clients = S.data.clients || []).push(rc.row || _newC); bust(); } catch (eCl) { }
+        }
+        return null;
+      });
+    }
+    _pre.then(function () { return saveRow("visits", row); }).then(function (r) {
+      S.vSaving = false;
+      if (r && r.refused) {
+        /* the row is in the journal, marked refused; the man keeps his form and is told why */
+        var _b2 = document.querySelector('[data-act="v-save"]');
+        if (_b2) { _b2.disabled = false; _b2.textContent = "Save the visit"; }
+        toast(refusedSay(r.err) + " Nothing is saved on the server. Check the visit and try again, or ask the office.");
+        return;
+      }
+      afterVisitSaved(v, ins, row, _rcGot, r);
+    }).catch(function () {
+      /* saveRow never rejects; if it somehow did, the journal has the row and the bar says so */
+      S.vSaving = false;
+      afterVisitSaved(v, ins, row, _rcGot, { ok: true, held: true });
+    });
+  }
+
+  /* 3.2.0 - everything that used to follow the save in saveVisit(), now run only once the
+     server has taken the visit (or it is held for signal, which is honest - the bar says so).
+     The order and the words inside are the ones that were there, unchanged. */
+  function afterVisitSaved(v, ins, row, _rcGot, r) {
+    /* v1.12.0 - the next screen is the two receipts. The photos already taken in the form
+       count as taken; the ones not yet taken are asked for by name. */
     S.rcp = { visitId: row.id || "", installId: (ins && ins.id) || "", client: row.client || "",
               total: visitTotal(row), bags: num(row.saltBags), got: _rcGot, sent: {}, busy: {} };
     /* 2.1.0 - what he said about an AMC goes to the office: the CRM moves him to Offered when he is interested */
@@ -5355,7 +5619,10 @@ function ewmBuild(n, pre) {
       (S.data.audit = S.data.audit || []).push(_aq); saveRow("audit", _aq);
     }
     S.sheet = sheetVisitReceipts(); S.vis = null;
-    toast("Visit saved" + (row.collected ? " — " + money9(row.collected) + " on you." : "."));
+    var _onYou = row.collected ? " — " + money9(row.collected) + " on you." : ".";
+    toast(r && r.held
+      ? "Saved on this phone — uploads when the signal is back" + _onYou
+      : "Visit saved" + _onYou);
     render();
 
     /* ---- AND THE VISIT CLOSES THE COMPLAINT (v1.6.0) ----
@@ -5406,21 +5673,30 @@ function ewmBuild(n, pre) {
       catch (ePx) { toast("The visit is saved. The photos could not be sent."); }
     }
 
-    var _pv = saveRow("visits", row);
     /* v1.12.0 - found by the receipts harness: a visit just saved was not on My work until the
        next pull, because a journalled row only reaches S.data through applyJournal() at load.
-       The journal already has it; read it back now, so the screen says what the device knows. */
-    try { applyJournal(); } catch (eAJ) { }
-    _pv.then(function () {
+       The journal already has it; read it back now, so the screen says what the device knows.
+       3.2.0 - a held row is in the journal and shows; a server-confirmed row is in S.data by
+       the same read-back (jrnDrop ran, so it is put there from the row itself). */
+    try {
+      applyJournal();
+      if (r && !r.held && S.data) {
+        var _vs = (S.data.visits = S.data.visits || []);
+        if (!_vs.some(function (x) { return x && natEq(x, row); })) _vs.push(r.row || row);
+        bust();
+      }
+    } catch (eAJ) { }
+    try {
       var upd = installAfter(ins, row);
-      if (!upd) return null;
-      /* keep the copy on this phone in step at once, so the due list stops nagging about a
-         machine he has just serviced even before the server answers */
-      var live = installById(ins.id);
-      if (live) { live.lastService = upd.lastService; if (upd.nextService) live.nextService = upd.nextService; }
-      bust(); renderBg();
-      return saveRow("installs", upd);
-    }).catch(function () { /* the journal has it; jrnPaint says so on screen */ });
+      if (upd) {
+        /* keep the copy on this phone in step at once, so the due list stops nagging about a
+           machine he has just serviced even before the server answers */
+        var live = installById(ins.id);
+        if (live) { live.lastService = upd.lastService; if (upd.nextService) live.nextService = upd.nextService; }
+        bust(); renderBg();
+        saveRow("installs", upd);
+      }
+    } catch (eIA) { /* the journal has the visit; jrnPaint says so on screen */ }
   }
 
   var _dupPaint = null;
@@ -5431,14 +5707,18 @@ function ewmBuild(n, pre) {
 
   /* ================= THE SHELL ================= */
   var NAV = [   /* 2.0.0 - the desk: Labour job and My work are buttons on Home now */
+    /* 3.2.0 - Complaints is out of the bar: Home already lists the open complaints (past the
+       promise, waiting for an engineer, my jobs), so two tabs showed one list. The full list with
+       its filters is still viewComplaints, reached by the "All complaints" button on Home and by
+       any old link or sv2-go that sets S.tab = "complaints"; the bar is four tabs. */
     { k: "home",       t: "Home" },
-    { k: "complaints", t: "Complaints" },
     { k: "commission", t: "Install" },
     { k: "jobs",       t: "Machines" },
     { k: "account",    t: "Account" }
   ];
   function navBtn(n) {
-    return '<button class="nav' + (S.tab === n.k ? ' on' : '') + '" data-act="tab" data-k="' + esc(n.k) + '">' +
+    var on = S.tab === n.k || (n.k === "home" && (S.tab === "complaints" || S.tab === "history" || S.tab === "today"));   /* 3.2.0 - the complaint list and My work live under Home */
+    return '<button class="nav' + (on ? ' on' : '') + '" data-act="tab" data-k="' + esc(n.k) + '">' +
       esc(n.t) + '</button>';
   }
   function bodyHtml() {
@@ -5519,6 +5799,15 @@ function ewmBuild(n, pre) {
         if (box) box.innerHTML = sv2Hits(q2.length >= 2 ? clients().filter(function (x) { return clientHay(x).indexOf(q2) >= 0; }).slice(0, 8) : [], q2);
       });
       try { cq.focus({ preventScroll: true }); cq.setSelectionRange(cq.value.length, cq.value.length); } catch (e) { }
+    }
+    /* 3.2.0 - the visit form's customer type-ahead: narrows as he types, no repaint */
+    var vq = el("v_cq");
+    if (vq) {
+      vq.addEventListener("input", function () {
+        if (!S.vis) return; S.vis.cq = vq.value;
+        var box = el("v_hits"); if (box) box.innerHTML = clientHits(vq.value);
+      });
+      if (!S.vis || !S.vis.client) { try { vq.focus({ preventScroll: true }); vq.setSelectionRange(vq.value.length, vq.value.length); } catch (e) { } }
     }
     Array.prototype.forEach.call(document.querySelectorAll(".il-sel"), function (b) {   /* 3.0.0 - the log's drop-downs redraw the form */
       b.addEventListener("change", function () { if (!S.il) return; ilKeep(); S.sheet = ilSheet(); render(); });
@@ -5624,7 +5913,52 @@ function ewmBuild(n, pre) {
          here would take the other six down with it. */
       updateNow("ew-service-"); return;
     }
-    if (act === "jrn-retry") { flushNow(); toast("Trying now\u2026"); return; }
+    if (act === "jrn-retry") {
+      flushNow(); toast("Trying now\u2026");
+      /* 3.2.0 - the list, if it is open, redraws once the pass has had time to answer */
+      if (heldOpen()) setTimeout(function () { if (heldOpen()) { S.sheet = sheetHeld(); render(); } }, 9000);
+      return;
+    }
+    /* 3.2.0 - the held list: See them on the bar; Retry one; Drop one (this phone only) */
+    if (act === "jrn-list") { S.sheet = sheetHeld(); render(); return; }
+    if (act === "jrn-retry-one") {
+      var _pk1 = t.getAttribute("data-k") || "";
+      var _e1 = jrnLoad().filter(function (x) { return x.pk === _pk1; })[0];
+      if (!_e1) { S.sheet = sheetHeld(); render(); return; }
+      if (_e1.by && S.user && String(_e1.by) !== String(S.user)) { toast("That belongs to " + _e1.by + " \u2014 sign in as " + _e1.by + " to send it."); return; }
+      if (_jrnBusy[_pk1] && Date.now() - _jrnBusy[_pk1] < 90000) { toast("It is already on its way."); return; }
+      toast("Sending\u2026"); _jrnBusy[_pk1] = Date.now();
+      jrnSend(_e1).then(function (r) {
+        delete _jrnBusy[_pk1];
+        if (r && r.ok) {
+          var _arr1 = (S.data && S.data[_e1.tab]) || [];
+          for (var _j1 = 0; _j1 < _arr1.length; _j1++) { if (_arr1[_j1] && natEq(_arr1[_j1], _e1.row)) { Object.assign(_arr1[_j1], r.row || _e1.row); break; } }
+          bust(); jrnDrop(_pk1); toast("Saved on the server.");
+        } else { jrnMark(_pk1, JRN_REFUSED + ((r && r.error) || "the server refused it")); toast(refusedSay((r && r.error) || "")); }
+        if (heldOpen()) { S.sheet = sheetHeld(); render(); }
+      }).catch(function (err) {
+        delete _jrnBusy[_pk1];
+        jrnMark(_pk1, (err && err.message) ? err.message : "no answer from the server"); toast("No answer from the server. It stays on this phone.");
+        if (heldOpen()) { S.sheet = sheetHeld(); render(); }
+      });
+      return;
+    }
+    if (act === "jrn-drop") {
+      var _pk2 = t.getAttribute("data-k") || "";
+      var _e2 = jrnLoad().filter(function (x) { return x.pk === _pk2; })[0];
+      if (!_e2) { S.sheet = sheetHeld(); render(); return; }
+      /* a plain confirm: the row leaves THIS PHONE and the server never had it */
+      var _ok2 = true;
+      try { _ok2 = window.confirm("Drop this " + (JRN_WHAT[_e2.tab] || "record").toLowerCase() + " from this phone? The server never received it, so it will be gone for good."); } catch (eC) { _ok2 = true; }
+      if (!_ok2) return;
+      jrnDrop(_pk2);
+      /* the copy applyJournal() put on the screen goes with it, so the list stops showing a visit that is nowhere */
+      try {
+        if (S.data && S.data[_e2.tab] && _e2.kind === "row") S.data[_e2.tab] = S.data[_e2.tab].filter(function (x) { return !(x && natEq(x, _e2.row)); });
+      } catch (eD) { }
+      bust(); toast("Dropped from this phone. Nothing changed on the server.");
+      S.sheet = sheetHeld(); render(); return;
+    }
     if (act === "menu")    { S.sheet = sheetMenu(); render(); return; }
     if (act === "signout") { signOut(); return; }
 
@@ -5839,12 +6173,39 @@ function ewmBuild(n, pre) {
       S.sheet = sheetVisit(S.vis); render(); return;
     }
     if (act === "v-save")  { saveVisit(); return; }
-
-    if (act === "labour-new") {
-      if (!canRecord()) { toast("Recording a visit is the engineer's job. You are here to read the money."); return; }
-      S.vis = { installId: "", type: "Labour job", date: today(), parts: [], collected: "", client: "", area: "" };
+    /* 3.2.0 - the simple form's own taps */
+    if (act === "v-cust-change") { if (!S.vis) return; readVisitForm(); S.vis.pickOpen = true; S.vis.newCust = false; S.vis.client = ""; S.vis.area = ""; S.vis.cq = ""; S.sheet = sheetVisit(S.vis); render(); return; }
+    if (act === "v-cust-pick") {
+      if (!S.vis) return; readVisitForm();
+      S.vis.client = t.getAttribute("data-k") || ""; S.vis.pickOpen = false; S.vis.newCust = false; S.vis.area = clientArea(S.vis.client); S.vis.cq = "";
       S.sheet = sheetVisit(S.vis); render(); return;
     }
+    if (act === "v-cust-new") {
+      if (!S.vis) return; readVisitForm();
+      S.vis.newCust = true; S.vis.pickOpen = false; S.vis.client = "";
+      /* what he typed is probably the name - start from it */
+      if (S.vis.cq && !/^\d+$/.test(S.vis.cq)) S.vis.nName = S.vis.nName || S.vis.cq;
+      if (S.vis.cq && /^\d{10}$/.test(S.vis.cq)) S.vis.nMob = S.vis.nMob || S.vis.cq;
+      S.sheet = sheetVisit(S.vis); render(); return;
+    }
+    if (act === "v-date-show") { if (!S.vis) return; readVisitForm(); S.vis.dateOpen = true; S.sheet = sheetVisit(S.vis); render(); return; }
+    if (act === "v-more") { if (!S.vis) return; readVisitForm(); S.vis.more = !S.vis.more; S.sheet = sheetVisit(S.vis); render(); return; }
+    /* 3.2.0 - Mark a visit from an open customer account: the customer is already known */
+    if (act === "acc-visit") {
+      if (!canRecord()) { toast("Recording a visit is the engineer's job. You are here to read the money."); return; }
+      var _an = t.getAttribute("data-k") || "";
+      var _ains = installs().filter(function (x) { return lower(x.client) === lower(_an); });
+      if (_ains.length === 1) {   /* one machine: it is a service on that machine */
+        S.vis = { installId: _ains[0].id, type: "Service", date: today(), parts: [], collected: "", visitCharge: defaultCharge(_ains[0], "Service", today()) };
+        if (!amcCover(_ains[0], "Service", today()).visit) { S.vis.wCover = svWarrCover(_ains[0], today(), "Service"); S.vis.wNote = svWarrNote(_ains[0], "Service", today()); }
+      } else {
+        S.vis = { installId: "", type: "Labour job", date: today(), parts: [], collected: "", client: _an, area: clientArea(_an) };
+      }
+      S.sheet = sheetVisit(S.vis); render(); return;
+    }
+    /* 3.2.0 - the dead "labour-new" handler that lived here was removed: nothing emitted it (the
+       Home button has been data-act="tab" data-k="labour" since 2.0.0), found by scanning emitted
+       acts against handled ones, the same way v1.12.1 found its five. */
   });
 
   /* a quantity typed into a part row, kept without tearing the form down */
@@ -5921,6 +6282,10 @@ function ewmBuild(n, pre) {
     if (el("v_note"))    v.notes = String(el("v_note").value || "");
     if (el("v_client"))  v.client = val("v_client");
     if (el("v_area"))    v.area = val("v_area");
+    /* 3.2.0 - the type-ahead box and the two new-customer fields survive a repaint too */
+    if (el("v_cq"))      v.cq = val("v_cq");
+    if (el("v_nname"))   v.nName = val("v_nname");
+    if (el("v_nmob"))    v.nMob = val("v_nmob").replace(/\D/g, "").slice(0, 10);
   }
 
   function sheetMenu() {
