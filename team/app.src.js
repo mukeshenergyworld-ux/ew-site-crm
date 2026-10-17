@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.822";
+  var APP_VERSION = "6.9.827";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -615,7 +615,9 @@
        wrong the message is still the thing on top - readable beats tidy. */
     st.textContent =
       ".toast{bottom:calc(18px + env(safe-area-inset-bottom) + var(--ew-bottom,0px) + var(--ew-toast-off,0px))!important;" +
-      "z-index:100000!important;transition:bottom .16s ease}";
+      "z-index:100000!important;transition:bottom .16s ease}" +
+      /* 6.9.826 - the sheets and the page end ABOVE the banner, never under it */
+      ".mask{padding-bottom:var(--ew-bottom,0px)!important}body{padding-bottom:var(--ew-bottom,0px)}";
     (document.head || document.documentElement).appendChild(st);
   }
   var _bfWatch = false;
@@ -1860,7 +1862,12 @@
     }
     if (!el) {
       el = document.createElement("div"); el.id = "ew_sync_banner";
-      el.style.cssText = "position:fixed;left:0;right:0;bottom:0;z-index:99998;background:#b91c1c;color:#fff;padding:10px 14px;font:600 13px system-ui,sans-serif;display:flex;align-items:center;gap:10px;justify-content:center;flex-wrap:wrap;box-shadow:0 -2px 10px rgba(0,0,0,.25)";
+      /* 6.9.826 - HIS WORDS: "below red warning is hiding click button, its problem for every action".
+         The banner sat ABOVE every sheet (z 99998 over the mask's 40) and on a phone wrapped to four
+         lines over the Save and Close buttons. It now sits UNDER the sheets, the sheets and the page
+         are padded by its height (--ew-bottom, measured), and it opens as ONE line - tap it for the
+         detail and the buttons. Retrying never blocks the page: it always ran in the background. */
+      el.style.cssText = "position:fixed;left:0;right:0;bottom:0;z-index:35;background:#b91c1c;color:#fff;padding:8px 12px;font:600 13px system-ui,sans-serif;display:flex;align-items:center;gap:8px;justify-content:center;flex-wrap:wrap;box-shadow:0 -2px 10px rgba(0,0,0,.25);min-height:44px";
       document.body.appendChild(el);
     }
     ensureToastCss(); watchBottom();
@@ -1884,12 +1891,20 @@
       ageTxt = "";
     }
     var _ws = ""; try { _ws = wireTurnSay(); } catch (e) { _ws = ""; }   /* v6.9.557 */
-    el.innerHTML = "⚠ " + plural(n, "item") + " not yet on the server — kept safe on this device" +
+    var open = !!S.bannerOpen;
+    el.innerHTML = open ?
+      ("⚠ " + plural(n, "item") + " not yet on the server — kept safe on this device" +
       (_ws ? ' <span style="font-weight:400;font-size:12px">· ' + esc(_ws) + '</span>' : '') +
       (_rn ? " (" + _rn + " signed receipt" + (_rn > 1 ? "s" : "") + ")" : "") + ". " +
       '<span style="font-weight:400;font-size:12px">' + esc(lbl) + (ageTxt ? " · " + ageTxt : "") + ' · last try: “' + esc(lastErr) + '”</span> ' +
-      '<button id="ew_retry_btn" style="background:#fff;color:#b91c1c;border:0;border-radius:6px;padding:5px 11px;font-weight:700;cursor:pointer">Retry now</button>' +
-      '<button id="ew_backup_btn" style="background:#fde68a;color:#7c2d12;border:0;border-radius:6px;padding:5px 11px;font-weight:700;cursor:pointer">Save a copy</button>';
+      '<button id="ew_retry_btn" style="background:#fff;color:#b91c1c;border:0;border-radius:6px;padding:8px 11px;min-height:36px;font-weight:700;cursor:pointer">Retry now</button>' +
+      '<button id="ew_backup_btn" style="background:#fde68a;color:#7c2d12;border:0;border-radius:6px;padding:8px 11px;min-height:36px;font-weight:700;cursor:pointer">Save a copy</button>' +
+      '<button id="ew_banner_tg" style="background:transparent;color:#fff;border:1px solid #fca5a5;border-radius:6px;padding:8px 11px;min-height:36px;font-weight:700;cursor:pointer">Hide</button>')
+      :
+      ('<span id="ew_banner_tg" style="cursor:pointer;flex:1;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">⚠ ' + plural(n, "item") + ' waiting to upload · ' + esc(ageTxt || "today") + ' · <u>details</u></span>' +
+       '<button id="ew_retry_btn" style="background:#fff;color:#b91c1c;border:0;border-radius:6px;padding:6px 10px;min-height:32px;font-weight:700;cursor:pointer">Retry</button>');
+    var tg = document.getElementById("ew_banner_tg");
+    if (tg) tg.onclick = function () { S.bannerOpen = !S.bannerOpen; syncBanner(); };
     var b = document.getElementById("ew_retry_btn");
     if (b) b.onclick = function () {
       toast("Retrying...");
@@ -2959,7 +2974,7 @@ window.addEventListener("beforeunload", function (ev) {
     _rpgCache = null;      /* v6.9.489 - the preset gap is money; a stale count is the worst of them */
     /* v6.9.373 - the three new per-paint indexes. A cache that is not dropped here shows
        yesterday's money, which is the worst thing this app can do. */
-    _ledCache = null; _cqCache = null; _cwbCache = null; _dscIdx = null; _whoIx = null;
+    _ledCache = null; _cqCache = null; _cwbCache = null; _dscIdx = null; _dscFam = null; _whoIx = null;
     /* v6.9.485 - the register's four are per-PAINT indexes, busted here with the ledger's. That
        is the whole job: renderCore runs on every render and every caller of splitCancelled
        renders straight afterwards, so a second bust inside splitCancelled bought nothing - and
@@ -11007,7 +11022,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
      spaces collapsed, lower-cased. And where history has left more than one row for the same
      client+brand, discPick() always chooses the SAME winner, everywhere in the app, so what the
      challan form shows is exactly what billing charges. */
-  function dkey(s) { return String(s == null ? "" : s).replace(/\s+/g, " ").trim().toLowerCase(); }
+  function dkey(s) { if (s && typeof s === "object") s = s.name; return String(s == null ? "" : s).replace(/\s+/g, " ").trim().toLowerCase(); }   /* 17 Oct 2026 - a client record keys by its name, never "[object Object]" */
   /* ============ THE RATE FOLLOWS THE MAN, NOT THE NAME ON THE PAPER  (v6.9.465) ============
      MEASURED by run_demo_journey.mjs on 10 September 2026, against a pretend book - his own was
      never touched. clientLedgerCalc has folded a merged alias into the man since v6.9.461, so a
@@ -11061,25 +11076,76 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     });
     return _dscIdx;
   }
+  /* ===== 17 Oct 2026 - THE FAMILY RATE (CRM 6.9.824 / Challan 1.132.0) =====
+     HIS WORDS: "Huliot ULTRA SILENT items show under Huliot brand and presetting discount not
+     reflecting to all challans ... item no 9 discount not changed ... hidden fraud by us".
+     MEASURED on the Karan Chawla challan of 12/10/2026: eight lines at 52%, two at 0. The eight
+     carry brand "Huliot HT PRO", which has a discount row; "US PIPE 110/3000 SS" carries
+     "Huliot ULTRA SILENT", which has none, so the exact-string lookup below found nothing and the
+     line went out at list price. The rule was never wrong about the number - it was never asked
+     the right question. A preset filed under the family head ("Huliot") or under a sister brand
+     now reaches every line of that family, head first, and the exact brand still wins when it
+     has a row of its own. Brands with no family (Accessory, net-price items, labour) inherit
+     nothing - those are sold at list by his own rule. THE SAME BYTES LIVE IN BOTH APPS. */
+  var DISC_FAM_RULES = [
+    ["huliot", ["huliot", "ht pro", "htpro", "ultra silent", "ultrasilent"]],
+    ["heliroma", ["heliroma", "drp", "ppr"]],
+    ["stellar", ["stellar", "sanitaar", "sanitar"]],
+    ["inair", ["inair", "lunos"]],
+    ["green heat", ["green heat", "greenheat"]],
+    ["fima", ["fima"]], ["toto", ["toto"]], ["grundfos", ["grundfos"]], ["pentair", ["pentair"]],
+    ["geberit", ["geberit"]], ["oyster", ["oyster"]], ["mea", ["mea"]], ["ioncare", ["ioncare", "ion care"]],
+    ["adani", ["adani"]], ["leo", ["leo"]]
+  ];
+  function discFam(b) {
+    var s = " " + String(b == null ? "" : b).toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/^\s+|\s+$/g, "") + " ";
+    if (s === "  ") return "";
+    for (var i = 0; i < DISC_FAM_RULES.length; i++) {
+      var keys = DISC_FAM_RULES[i][1];
+      for (var j = 0; j < keys.length; j++) if (s.indexOf(" " + keys[j] + " ") > -1) return DISC_FAM_RULES[i][0];
+    }
+    return "";
+  }
+  var _dscFam = null;
+  function dscFamIndex() {
+    if (_dscFam) return _dscFam;
+    _dscFam = {};
+    ((S.data && S.data.discounts) || []).forEach(function (x) {
+      var f = discFam(x.brand);
+      if (!f) return;
+      var k = dkey(x.client) + "||" + f;
+      (_dscFam[k] || (_dscFam[k] = [])).push(x);
+    });
+    return _dscFam;
+  }
   function discRowsFor(client, brand) {
+    if (client && typeof client === "object") client = client.name;   /* 6.9.824 - C1: an object was keyed as "[object Object]" */
     var b = dkey(brand), ix = dscIndex();
     var pick = function (nm) {
       return (ix[dkey(nm) + "||" + b] || []).slice();
     };
-    var own = pick(client);
-    if (own.length) return own;
+    var names = [client];
     /* not one man under two names - there is nothing further to look at. MEASURED on his book
        on 10 Sep 2026: 167 clients, THREE live aliases, so this is the answer 164 times out of
        167 and it is the line that must stay cheap */
     var am = dupAliasMap(), k = dgKey(client);
-    if (!am.byName[k] && !am.aliasOf[k]) return own;
-    var fam = dupFamily(client);
-    for (var i = 0; i < fam.length; i++) {
-      if (dgKey(fam[i]) === k) continue;
-      var r = pick(fam[i]);
-      if (r.length) return r;
+    if (am.byName[k] || am.aliasOf[k]) {
+      var fam = dupFamily(client);
+      for (var q = 0; q < fam.length; q++) if (dgKey(fam[q]) !== k) names.push(fam[q]);
     }
-    return own;
+    var i, r;
+    for (i = 0; i < names.length; i++) { r = pick(names[i]); if (r.length) return r; }
+    /* 17 Oct 2026 - the family rate: head name first, then any sister brand, exact brand excluded */
+    var f = discFam(brand);
+    if (!f) return [];
+    var fx = dscFamIndex();
+    for (i = 0; i < names.length; i++) {
+      var rows = (fx[dkey(names[i]) + "||" + f] || []).filter(function (x) { return dkey(x.brand) !== b; });
+      if (!rows.length) continue;
+      var head = rows.filter(function (x) { return dkey(x.brand) === f; });
+      return (head.length ? head : rows).slice();
+    }
+    return [];
   }
   /* The richest row wins: a real discount counts most, then each partner incentive it carries,
      and the newest row breaks a tie. Deliberate - it keeps the row holding BOTH plumber and
@@ -24364,8 +24430,9 @@ function viewCatalogue() {
      Read only: the challan's lines at the client's preset discount (pricedLines - the same price the hisab would
      use), with the GST split worked out, to type the bill from. Nothing is saved and nothing moves in any hisab. */
   function billSheetData(c) {
-    var cl = clientByName(c.customerName) || { name: c.customerName };
-    var L = pricedLines(c, cl).slice().sort(function (a, b) { return (a.ix || 0) - (b.ix || 0); });
+    /* 6.9.824 - C1: pricedLines wants the NAME. The record was handed over and keyed as "[object Object]",
+       so every blank line on this sheet went out at list price while HISAB showed the preset. */
+    var L = pricedLines(c, c.customerName).slice().sort(function (a, b) { return (a.ix || 0) - (b.ix || 0); });
     var tot = 0;
     var rows = L.map(function (l, i) {
       var p = (typeof prodByCode === "function" ? prodByCode(l.code) : null) || {};
@@ -24462,10 +24529,10 @@ function viewCatalogue() {
       else if (f.billStatus && !String(c.billNo || "").trim()) c.billStatus = f.billStatus;
     });
   }
-  function billFactSave(c, extra) {
+  function billFactSave(c, extra, atIso) {
     var d = Object.assign({ challan: String(c.challanNo || ""), client: String(c.customerName || ""), billTo: String(c.billTo || ""),
       billNo: String(c.billNo || ""), billStatus: String(c.billStatus || ""), billedAt: String(c.billedAt || ""), billedBy: String(c.billedBy || "") }, extra || {});
-    return auditFact("bill:set", String(c.id), d).catch(function () { });
+    return auditFact("bill:set", String(c.id), d, atIso).catch(function () { });
   }
   /* billing names registered by accounts - the clients row is the owner's to write, so a new name
      is ALSO filed as an audit row "bill:name" and read back here */
@@ -24488,10 +24555,17 @@ function viewCatalogue() {
       if (!e || e.tab !== "challans" || !e.row) return;
       var r = e.row, id = String(r.id || "");
       if (!id || _billRescued[id] || !(String(r.billNo || "").trim() || String(r.billTo || "").trim())) return;
-      var f = m[id];
-      if (f && String(f.billNo || "") === String(r.billNo || "") && String(f.billTo || "") === String(r.billTo || "")) return;
+      var f = m[id], refused = /cannot edit|role/i.test(String(e.err || ""));
+      if (f && String(f.billNo || "") === String(r.billNo || "") && String(f.billTo || "") === String(r.billTo || "")) {
+        /* 6.9.825 - the fact is on the server; a row the server refuses by role has nothing left to say */
+        if (refused || !roleIs("admin")) pendDrop(e.pk);
+        return;
+      }
       _billRescued[id] = 1;
-      billFactSave(r, { rescued: true });
+      var atIso = e.at ? new Date(e.at).toISOString() : "";
+      billFactSave(r, { rescued: true }, atIso).then(function (res) {
+        if (res && (refused || !roleIs("admin"))) { pendDrop(e.pk); syncBanner(); }
+      });
     });
   }
   function billFormHtml(c, nameOnly) {
@@ -24593,7 +24667,7 @@ function viewCatalogue() {
      Accounts and the owner. Newest bill first; challan, client, billing name with GSTIN, bill number, date, who.
      Search and an Excel file. Read only - a bill is changed from its billing sheet. */
   function billedList() {
-    return (S.data.challans || []).filter(function (c) { return c && String(c.billNo || "").trim() && !isCancelled("challans", c.id); })
+    return (S.data.challans || []).filter(function (c) { return c && String(c.billNo || "").trim() && !isCancelled("challans", c.id) && !c._isReturn; })   /* 6.9.825 - as billToDo */
       .sort(function (a, b) { return String(b.billedAt || b.createdAt || "").localeCompare(String(a.billedAt || a.createdAt || "")); });
   }
   function billedRows() {
@@ -31510,7 +31584,7 @@ function viewCatalogue() {
        rupee. It would not have stayed latent: the next dated discount he sets makes every older
        delivery of that client look under-discounted, and offers to hand back money he never
        agreed to hand back. */
-    var _day = String((c && c.createdAt) || "").slice(0, 10);
+    var _day = rateDayOf(c);   /* 6.9.824 - the IST day, as pricedLines prices it */
     var items = []; try { items = JSON.parse((c && c.itemsJson) || "[]"); } catch (e) { items = []; }
     var lines = [], skipped = [], was = 0, now = 0;
     items.forEach(function (i) {
@@ -31589,7 +31663,7 @@ function viewCatalogue() {
   }
   function chRepriced(c) {
     var cl = c && c.customerName;
-    var _day = String((c && c.createdAt) || "").slice(0, 10);   /* v6.9.379 - as chDiscGap judges it */
+    var _day = rateDayOf(c);   /* 6.9.824 - the IST day, as chDiscGap and pricedLines judge it */
     var items = []; try { items = JSON.parse((c && c.itemsJson) || "[]"); } catch (e) { items = []; }
     return items.map(function (i) {
       /* v6.9.489 - the same predicate chDiscGap reads, so what is offered and what is written
@@ -31878,8 +31952,8 @@ function viewCatalogue() {
     var d = auditNewest("firm:gstin", function () { return "firm"; }, "firm");
     return d ? String(d.gstin || "").trim().toUpperCase() : "";
   }
-  function auditFact(action, target, detail) {
-    var now = new Date().toISOString();
+  function auditFact(action, target, detail, atIso) {
+    var now = atIso || new Date().toISOString();   /* 6.9.825 - a rescued fact keeps the time it was typed, so it cannot beat a later correction */
     return save("audit", {
       id: mintId("AF"),
       createdAt: now, actor: S.user || "", action: action,
@@ -37659,7 +37733,22 @@ function viewCatalogue() {
     var tb = function (k, l) { return '<button class="btn sm ' + (t === k ? '' : 'ghost') + '" data-act="msg-tab" data-k="' + k + '" style="min-height:44px">' + l + '</button>'; };
     return '<div class="card"><h2 style="margin:0 0 4px">Messages &amp; posts</h2><div class="meta" style="font-size:13px">Drafted from your own book; edit any text before it goes. &#10024; Improve with AI rewrites one draft at a time.</div>' +
       '<div class="acts" style="gap:6px;flex-wrap:wrap;margin-top:6px">' + tb("stage", "Stage messages") + (roleIs("admin") ? tb("greet", "Festival greetings") + tb("posts", "Posts for the month") : '') + '</div></div>' +
-      '<div class="card">' + (t === "greet" ? msgGreetHtml() : t === "posts" ? msgPostsHtml() : msgStageHtml()) + '</div>';
+      '<div class="card">' + (t === "greet" ? msgGreetHtml() : t === "posts" ? msgPostsHtml() : msgStageHtml()) + '</div>' + msgKeyHtml();
+  }
+  /* 6.9.823 - HIS WORDS: "not seeing how to add script property".
+     He could not: the script holds more than 50 properties, and above 50 Google makes the
+     Project Settings list read-only with no Add button. So the key goes in here, admin only, in
+     a password box. The server (aiKeySet, V162) tests it with Anthropic, saves it in Script
+     Properties and answers only ok or not - the key is never sent back, never stored on this
+     phone, and the box is emptied the moment the button is pressed. Same pattern as the bot token. */
+  function msgKeyHtml() {
+    if (!roleIs("admin")) return '';
+    var m = S.aiKeyMsg || "";
+    return '<div class="card"><h2 style="margin:0 0 4px;font-size:16px">AI key (admin)</h2>' +
+      '<div class="meta" style="font-size:13px">Paste your Anthropic key once. It is checked, saved on the server and never shown again. Paste a new one any time to replace it.</div>' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px"><input type="password" id="ai_key_box" autocomplete="off" placeholder="sk-ant-..." style="flex:1;min-width:200px;min-height:44px;font-size:16px"/>' +
+      '<button class="btn sm" data-act="ai-key-save" style="min-height:44px">Save key</button></div>' +
+      (m ? '<div class="meta" style="font-size:13px;margin-top:6px">' + esc(m) + '</div>' : '') + '</div>';
   }
   function msgAi(btn) {
     var id = btn.getAttribute("data-box"), box = el(id); if (!box) return;
@@ -40760,17 +40849,30 @@ function viewCatalogue() {
         'Pick the record that keeps the history — normally the one carrying the challans. ' +
         'The others stay exactly where they are and are recorded as <b>other names for the same man</b>, ' +
         'so the team stops opening the wrong one. <b>Nothing is deleted.</b></div>';
-      h += g.recs.map(function (r) { return dupRecRow(r, g, true); }).join("");
+      /* 6.9.827 - HIS WORDS: "CL061 and LD057 are same, CL033 is different, make provision for that".
+         A tick on every record that is NOT the main one. Unticked = a different person: recorded pair by
+         pair as "keep", so he is never asked about that pair again and his money stays his own. */
+      h += g.recs.map(function (r) {
+        var row = dupRecRow(r, g, true);
+        if (r.id === mainId) return row;
+        var on = !S.dupNot || !S.dupNot[r.id];
+        return row + '<label style="display:flex;align-items:center;gap:8px;margin:-2px 0 8px 10px;font-size:13px;min-height:32px;cursor:pointer">' +
+          '<input type="checkbox" class="dup-same" data-act="dup-same" data-id="' + esc(r.id) + '"' + (on ? ' checked' : '') + ' style="width:22px;height:22px;margin:0"/>' +
+          (on ? '<span>Same man as <b>' + esc(main.name) + '</b></span>' : '<span style="color:#b91c1c"><b>Different person</b> &mdash; stays separate, not asked again</span>') + '</label>';
+      }).join("");
+      var same = others.filter(function (r) { return !S.dupNot || !S.dupNot[r.id]; });
+      var diff = others.filter(function (r) { return S.dupNot && S.dupNot[r.id]; });
       h += '<div class="meta" style="font-size:12.5px;background:#f8fafc;border-radius:8px;padding:8px;margin-top:6px">' +
-        'After you press Confirm: <b>' + esc(main.name) + '</b> is the customer. ' +
-        esc(others.map(function (r) { return r.name; }).join(", ")) +
-        ' will show as <i>another name for ' + esc(main.name) + '</i> wherever they appear. ' +
+        (diff.length ? '<b>' + esc(diff.map(function (r) { return r.name; }).join(", ")) + '</b> ' + (diff.length === 1 ? 'is a different person and stays' : 'are different people and stay') + ' as ' + (diff.length === 1 ? 'he is' : 'they are') + '. ' : '') +
+        (same.length ? 'After you press Confirm: <b>' + esc(main.name) + '</b> is the customer. ' : 'Nothing left to merge - every other record is marked different. ') +
+        esc(same.map(function (r) { return r.name; }).join(", ")) +
+        (same.length ? ' will show as <i>another name for ' + esc(main.name) + '</i> wherever they appear. ' : '') + +
         'Their own challans and quotes stay on them &mdash; nothing moves, nothing is lost. ' +
         '<b>His money adds up under ' + esc(main.name) + ' from the moment you press this</b>, ' +
         'and \u201cEverything about him\u201d carries both histories. If you change your mind, ' +
         'answer <i>different people</i> later and they come apart again.</div>';
       h += '<div class="acts" style="margin-top:8px">' +
-        '<button class="btn" data-act="dup-fix-go" data-k="' + esc(g.key) + '">Confirm — one man, ' + (others.length + 1) + ' records</button>' +
+        '<button class="btn" data-act="dup-fix-go" data-k="' + esc(g.key) + '">' + (same.length ? 'Confirm — one man, ' + (same.length + 1) + ' records' : 'Confirm — all different people') + (diff.length ? ' · ' + diff.length + ' kept apart' : '') + '</button>' +
         '<button class="btn ghost" data-act="dup-cancel">Cancel</button></div>';
     } else {
       h += '<div class="meta" style="font-size:13px;color:#334155"><b>One customer, several sites.</b> ' +
@@ -59258,7 +59360,7 @@ function viewCatalogue() {
       }).then(function (yes) {
         if (!yes) return;
         save("discounts", { id: mintId("D"), client: _dpc, brand: _dpb, pct: _v, notes: "" }, true);
-        _dscIdx = null; _rpgCache = null;
+        _dscIdx = null; _dscFam = null; _rpgCache = null;
         toast(_dpb + " set at " + (_v > 0 ? _v + "%" : "0%, approved") + " for " + _dpc + ".");
         render();
       });
@@ -60985,7 +61087,7 @@ function viewCatalogue() {
     if (act === "dup-fix" || act === "dup-manage") {
       S.dupOpen = t.getAttribute("data-k");
       S.dupMode = act === "dup-fix" ? "fix" : "manage";
-      S.dupMain = null;
+      S.dupMain = null; S.dupNot = null;   /* 6.9.827 */
       render(); return;
     }
     if (act === "dup-keep") {
@@ -61022,20 +61124,39 @@ function viewCatalogue() {
       toast(plural(_ochs.length, "delivery") + " under " + _on + " now file under " + _oc.name + ". Nothing was deleted.");
       render(); return;
     }
+    if (act === "dup-same") {   /* 6.9.827 - the tick is read on Confirm; the panel re-draws its wording */
+      S.dupNot = S.dupNot || {};
+      var _dsid = t.getAttribute("data-id") || "";
+      if (t.checked) delete S.dupNot[_dsid]; else S.dupNot[_dsid] = 1;
+      keepScroll = true; render(); return;
+    }
     if (act === "dup-fix-go") {
+      if (!roleIs("admin")) { toast("Merging two records is the owner\u2019s call."); return; }   /* 6.9.827 */
       var fk = t.getAttribute("data-k");
       var fg = dupScan().groups.filter(function (x) { return x.key === fk; })[0];
       if (!fg) { toast("That group has already moved on — re-scanning."); render(); return; }
       var fmainId = S.dupMain || fg.main.id;
       var fmain = fg.recs.filter(function (r) { return r.id === fmainId; })[0] || fg.main;
-      dupLog("fix", fg.ids, {
-        main: fmain.id, mainName: fmain.name,
-        aliases: fg.recs.filter(function (r) { return r.id !== fmain.id; })
-          .map(function (r) { return { id: r.id, name: r.name }; }),
-        why: fg.why.join("; ")
+      var fnot = S.dupNot || {};
+      var fsame = fg.recs.filter(function (r) { return r.id !== fmain.id && !fnot[r.id]; });
+      var fdiff = fg.recs.filter(function (r) { return r.id !== fmain.id && fnot[r.id]; });
+      /* 6.9.827 - the different ones first, pair by pair, so only THOSE pairs are closed; the fix row
+         written after it wins on every pair it names (dupPairMap: later row overrides earlier) */
+      fdiff.forEach(function (d) {
+        fg.recs.forEach(function (o) {
+          if (o.id === d.id) return;
+          dupLog("keep", [d.id, o.id], { names: [d.name, o.name], why: "marked different in a partial merge" });
+        });
       });
-      S.dupOpen = null; S.dupMode = null; S.dupMain = null;
-      toast("Recorded — one man, " + fg.recs.length + " records. Nothing was deleted.");
+      if (fsame.length) {
+        dupLog("fix", [fmain.id].concat(fsame.map(function (r) { return r.id; })), {
+          main: fmain.id, mainName: fmain.name,
+          aliases: fsame.map(function (r) { return { id: r.id, name: r.name }; }),
+          why: fg.why.join("; ")
+        });
+      }
+      S.dupOpen = null; S.dupMode = null; S.dupMain = null; S.dupNot = null;
+      toast((fsame.length ? "Recorded — one man, " + (fsame.length + 1) + " records. " : "") + (fdiff.length ? plural(fdiff.length, "record") + " kept as different people. " : "") + "Nothing was deleted.");
       render(); return;
     }
     if (act === "dup-manage-go") {
@@ -63464,7 +63585,11 @@ function viewCatalogue() {
       }
       var _gnow = new Date().toISOString();
       Object.assign(_gc, { billTo: _gto, billStatus: "Billing" });
-      save("challans", Object.assign({}, _gc)).catch(function () { toast("Kept safe on this device - will sync on next refresh."); });
+      /* 6.9.825 - C3: the server refuses a challan row from an accounts login ("Your role cannot edit
+         challans"), and the refused row then sat in the journal for ever - the permanent red banner on
+         Gautam's PC. The audit fact below is the copy the server keeps for accounts; only the owner's
+         login also writes the row itself. */
+      if (roleIs("admin")) save("challans", Object.assign({}, _gc)).catch(function () { toast("Kept safe on this device - will sync on next refresh."); });
       billFactSave(_gc);   /* 6.9.814 */
       save("audit", { id: "", createdAt: _gnow, actor: S.user, action: "bill:open", target: String(id), detail: JSON.stringify({ challan: _gc.challanNo || "", client: _gc.customerName || "", billTo: _gto }), ip: "" }, true);
       S.bsOpen = id; S.modal = modalBillSheet(id); render(); return;
@@ -63475,6 +63600,21 @@ function viewCatalogue() {
     if (act === "msg-all") { S.msgAll = true; keepScroll = true; render(); return; }
     if (act === "msg-copy") { var _mb = el(t.getAttribute("data-box")); try { navigator.clipboard.writeText(_mb ? _mb.value : ""); toast("Copied."); } catch (e) { toast("Select the text and copy it."); } return; }
     if (act === "msg-ai") { msgAi(t); return; }
+    if (act === "ai-key-save") {
+      if (!roleIs("admin")) return;
+      var _akb = el("ai_key_box"), _akv = _akb ? String(_akb.value || "").trim() : "";
+      if (_akb) _akb.value = "";               /* never left in the box */
+      if (!_akv) { toast("Paste the key first."); return; }
+      if (!/^sk-ant-/.test(_akv)) { _akv = ""; toast("That does not look like an Anthropic key (it starts with sk-ant-)."); return; }
+      toast("Checking the key with Anthropic…");
+      api("aiKeySet", { key: _akv }, 60000).then(function (r) {
+        _akv = "";
+        if (!r || !r.ok) { S.aiKeyMsg = "Not saved: " + ((r && r.error) || "no answer"); toast(S.aiKeyMsg); keepScroll = true; render(); return; }
+        S.aiKeyMsg = "Saved and working" + (r.model ? " (" + r.model + ")" : "") + ". \u2728 Improve with AI is ready.";
+        toast("AI key saved."); keepScroll = true; render();
+      }).catch(function (e) { _akv = ""; S.aiKeyMsg = "Not saved: " + apiWhy(e); toast(S.aiKeyMsg); keepScroll = true; render(); });
+      return;
+    }
     if (act === "msg-wa") {
       var _wb = el(t.getAttribute("data-box")), _wt = _wb ? _wb.value : "", _to = t.getAttribute("data-to") || "";
       window.open("https://wa.me/" + _to + "?text=" + encodeURIComponent(_wt), "_blank");
@@ -63570,8 +63710,8 @@ function viewCatalogue() {
         toast("Bill " + billNo + " recorded on " + bch.challanNo + ".");
         S.bsOpen = null;   /* 6.9.810 */
         render();
-        save("challans", updated).catch(function () { toast("Kept safe on this device - will sync on next refresh."); });
-        billFactSave(updated);   /* 6.9.814 - the copy the server keeps for an accounts login */
+        if (roleIs("admin")) save("challans", updated).catch(function () { toast("Kept safe on this device - will sync on next refresh."); });   /* 6.9.825 - C3 */
+        billFactSave(updated).then(function (r) { if (r) toast("Bill " + billNo + " is on the server."); });   /* 6.9.814 - the copy the server keeps for an accounts login */
       };
       if (dupes.length) {
         /* v6.9.453 - the app's own sheet, the bill form held and put back on Go back */
