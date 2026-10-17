@@ -252,7 +252,7 @@ body{background:#F4F6F9}
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.131.7";
+  var APP_VERSION = "1.132.0";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -2620,7 +2620,7 @@ body{background:#F4F6F9}
   function dgKey(s) {
     return String(s == null ? "" : s).toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
   }
-  function dkey(s) { return String(s == null ? "" : s).replace(/\s+/g, " ").trim().toLowerCase(); }
+  function dkey(s) { if (s && typeof s === "object") s = s.name; return String(s == null ? "" : s).replace(/\s+/g, " ").trim().toLowerCase(); }   /* 17 Oct 2026 - a client record keys by its name, never "[object Object]" */
   /* v1.54.0 / v1.36.0 - the rate follows the man, not the name on the paper. The reason is
      written out in team/app.js above this function; the body is that one, byte for byte. */
   /* ---- v6.9.489 - THE SAME ANSWER, LOOKED UP INSTEAD OF SEARCHED ----
@@ -2658,25 +2658,76 @@ body{background:#F4F6F9}
     });
     return _dscIdx;
   }
+  /* ===== 17 Oct 2026 - THE FAMILY RATE (CRM 6.9.824 / Challan 1.132.0) =====
+     HIS WORDS: "Huliot ULTRA SILENT items show under Huliot brand and presetting discount not
+     reflecting to all challans ... item no 9 discount not changed ... hidden fraud by us".
+     MEASURED on the Karan Chawla challan of 12/10/2026: eight lines at 52%, two at 0. The eight
+     carry brand "Huliot HT PRO", which has a discount row; "US PIPE 110/3000 SS" carries
+     "Huliot ULTRA SILENT", which has none, so the exact-string lookup below found nothing and the
+     line went out at list price. The rule was never wrong about the number - it was never asked
+     the right question. A preset filed under the family head ("Huliot") or under a sister brand
+     now reaches every line of that family, head first, and the exact brand still wins when it
+     has a row of its own. Brands with no family (Accessory, net-price items, labour) inherit
+     nothing - those are sold at list by his own rule. THE SAME BYTES LIVE IN BOTH APPS. */
+  var DISC_FAM_RULES = [
+    ["huliot", ["huliot", "ht pro", "htpro", "ultra silent", "ultrasilent"]],
+    ["heliroma", ["heliroma", "drp", "ppr"]],
+    ["stellar", ["stellar", "sanitaar", "sanitar"]],
+    ["inair", ["inair", "lunos"]],
+    ["green heat", ["green heat", "greenheat"]],
+    ["fima", ["fima"]], ["toto", ["toto"]], ["grundfos", ["grundfos"]], ["pentair", ["pentair"]],
+    ["geberit", ["geberit"]], ["oyster", ["oyster"]], ["mea", ["mea"]], ["ioncare", ["ioncare", "ion care"]],
+    ["adani", ["adani"]], ["leo", ["leo"]]
+  ];
+  function discFam(b) {
+    var s = " " + String(b == null ? "" : b).toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/^\s+|\s+$/g, "") + " ";
+    if (s === "  ") return "";
+    for (var i = 0; i < DISC_FAM_RULES.length; i++) {
+      var keys = DISC_FAM_RULES[i][1];
+      for (var j = 0; j < keys.length; j++) if (s.indexOf(" " + keys[j] + " ") > -1) return DISC_FAM_RULES[i][0];
+    }
+    return "";
+  }
+  var _dscFam = null;
+  function dscFamIndex() {
+    if (_dscFam) return _dscFam;
+    _dscFam = {};
+    ((S.data && S.data.discounts) || []).forEach(function (x) {
+      var f = discFam(x.brand);
+      if (!f) return;
+      var k = dkey(x.client) + "||" + f;
+      (_dscFam[k] || (_dscFam[k] = [])).push(x);
+    });
+    return _dscFam;
+  }
   function discRowsFor(client, brand) {
+    if (client && typeof client === "object") client = client.name;   /* 6.9.824 - C1: an object was keyed as "[object Object]" */
     var b = dkey(brand), ix = dscIndex();
     var pick = function (nm) {
       return (ix[dkey(nm) + "||" + b] || []).slice();
     };
-    var own = pick(client);
-    if (own.length) return own;
+    var names = [client];
     /* not one man under two names - there is nothing further to look at. MEASURED on his book
        on 10 Sep 2026: 167 clients, THREE live aliases, so this is the answer 164 times out of
        167 and it is the line that must stay cheap */
     var am = dupAliasMap(), k = dgKey(client);
-    if (!am.byName[k] && !am.aliasOf[k]) return own;
-    var fam = dupFamily(client);
-    for (var i = 0; i < fam.length; i++) {
-      if (dgKey(fam[i]) === k) continue;
-      var r = pick(fam[i]);
-      if (r.length) return r;
+    if (am.byName[k] || am.aliasOf[k]) {
+      var fam = dupFamily(client);
+      for (var q = 0; q < fam.length; q++) if (dgKey(fam[q]) !== k) names.push(fam[q]);
     }
-    return own;
+    var i, r;
+    for (i = 0; i < names.length; i++) { r = pick(names[i]); if (r.length) return r; }
+    /* 17 Oct 2026 - the family rate: head name first, then any sister brand, exact brand excluded */
+    var f = discFam(brand);
+    if (!f) return [];
+    var fx = dscFamIndex();
+    for (i = 0; i < names.length; i++) {
+      var rows = (fx[dkey(names[i]) + "||" + f] || []).filter(function (x) { return dkey(x.brand) !== b; });
+      if (!rows.length) continue;
+      var head = rows.filter(function (x) { return dkey(x.brand) === f; });
+      return (head.length ? head : rows).slice();
+    }
+    return [];
   }
   function incMap(row) {
     try { var m = JSON.parse((row && row.notes) || "{}"); return (m && typeof m === "object") ? m : {}; } catch (e) { return {}; }
@@ -2929,7 +2980,7 @@ function discRowOn(client, brand, onYmd) {
 
   /* v1.20.0: the delivery-book client list dies with the book too - a client the office
      added an hour ago must not be invisible because the first paint cached the old set. */
-  function bust() { _sccCache = null; _hxCache = null; _mnCache = null; _proofCache = null; _dtCache = null; _dlCache = null; _aliasCache = null; _dscIdx = null; _pcbCache = null; _valGen++; _cxCache = null; bustBookClients(); }   /* v1.68.0 - the delivery value reads the catalogue and the discount table now */
+  function bust() { _sccCache = null; _hxCache = null; _mnCache = null; _proofCache = null; _dtCache = null; _dlCache = null; _aliasCache = null; _dscIdx = null; _dscFam = null; _pcbCache = null; _valGen++; _cxCache = null; bustBookClients(); }   /* v1.68.0 - the delivery value reads the catalogue and the discount table now */
 
   /* ======= A CANCELLED DELIVERY STOPS COUNTING HERE  (v1.69.0, 19 Sep 2026) =======
      MEASURED on his book. Four deliveries are cancelled and this app counted every one:
