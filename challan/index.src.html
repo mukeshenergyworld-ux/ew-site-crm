@@ -252,7 +252,7 @@ body{background:#F4F6F9}
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.132.0";
+  var APP_VERSION = "1.132.1";   /* 1.132.1 - driver/client/partner mobile dedupe, narrower sign-out, token refusal re-signs in, Drop in held list */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -1289,7 +1289,7 @@ body{background:#F4F6F9}
   }
   function api(action, extra, ms) {
     var p = apiRaw(action, extra, ms);
-    if (action === "teamAuth") p = p.then(function (r) { credTook(r); return r; });   /* B9 */
+    if (action === "teamAuth") p = p.then(function (r) { credTook(r); if (r && r.ok) { S.authDead = false; S.authDeadWhy = ""; } return r; });   /* B9; 1.132.1 - a good sign-in lifts the dead-sign-in screen (jrnRefuse) */
     if (!API_READS[action]) return p;
     return p.catch(function (e) {
       if (!apiDropped(e)) throw e;
@@ -1476,6 +1476,14 @@ body{background:#F4F6F9}
       }
       var arr = (S.data[e.tab] || []), srv = null;
       for (var j = 0; j < arr.length; j++) { if (arr[j] && natEq(arr[j], e.row)) { srv = arr[j]; break; } }
+      /* 1.132.1 - NOT THE JOURNAL'S OWN COPY. On the two-part pull the fast half is merged, the
+         journal is laid on top of it (applyJournal), and only after the second half does this
+         run - so for a held row in a fast tab the "server copy" found here was the overlay
+         itself, identical by definition, and the entry was cleared as landed with nothing ever
+         sent. Driven in a sim: a held payment vanished from the journal with no teamSave on the
+         wire. applyJournal now marks what it lays (a non-enumerable flag, never saved or sent)
+         and a marked row is no evidence of anything. */
+      if (srv && srv.__laid) srv = null;
       if (srv && jrnLanded(e, srv)) { gone++; return; }
       keep.push(e);
     });
@@ -1495,7 +1503,12 @@ body{background:#F4F6F9}
       if (e.kind !== "row") return;
       var arr = (S.data[e.tab] = S.data[e.tab] || []), found = false;
       for (var j = 0; j < arr.length; j++) { if (arr[j] && natEq(arr[j], e.row)) { found = true; break; } }
-      if (!found) arr.push(e.row);
+      if (!found) {
+        /* 1.132.1 - mark the overlay so jrnReconcile cannot mistake it for the server's copy. Non-enumerable:
+           JSON.stringify (the snapshot, the save payload) and Object.keys (jrnLanded) never see it. */
+        try { Object.defineProperty(e.row, "__laid", { value: true, enumerable: false, configurable: true }); } catch (eD) {}
+        arr.push(e.row);
+      }
     });
     bust();
   }
@@ -1531,6 +1544,7 @@ body{background:#F4F6F9}
 
   function jrnFlush() {
     if (_flushing) return;
+    if (S.authDead) return;   /* 1.132.1 - no PIN and no token on this phone until he signs in; a try now would only be refused again */
     var l0 = jrnLoad();
     if (!l0.length) return;
     _flushing = true;
@@ -1577,7 +1591,7 @@ body{background:#F4F6F9}
           }
           bust(); jrnDrop(e.pk); okCount++;   /* the list shifted left - same index is the next one */
         } else {
-          jrnMark(e.pk, JRN_REFUSED + ((r && r.error) || "the server refused it")); i++;
+          jrnRefuse(e.pk, (r && r.error) || "the server refused it"); i++;   /* 1.132.1 - a dead sign-in shows the sign-in screen */
         }
         step();
       }).catch(function (err) {
@@ -1617,6 +1631,31 @@ body{background:#F4F6F9}
      Sits above the tab bar and is registered furniture (ew_sync_banner is already in the
      bottom-edge watcher), so the toast lifts over it instead of hiding behind it. */
   var JRN_REFUSED = "Refused by the server: ";
+  /* 1.132.1 - THE SERVER'S OWN SIGN-IN REFUSALS, and nothing wider. One expression, used by the
+     boot (sign the device out) and by the journal (a refused save that is really a dead sign-in).
+     Deliberately NOT "not allowed" or "blocked": "Challan move not allowed from Received" is a
+     rule about a challan, not about the man, and it signed him out. */
+  var AUTH_REFUSED = /wrong name or pin|not signed in|locked for|sign in again|token|removed from the team|not on the team/i;
+  /* 1.132.1 - a save the server refused BECAUSE THE SIGN-IN IS DEAD (an expired token after the
+     phone sat for a month, a PIN the office reset) used to sit on the bar as "Refused by the
+     server: bad token" for ever, and the man pressed Try now all day. The entry is marked as
+     before - nothing is dropped - and the sign-in screen is shown, because signing in again is
+     the only thing that will let it go up. jrnMark itself is shared core (core/ew-core.js) and is
+     not touched; this wraps it at the three places a refusal is recorded. */
+  var _authAsked = 0;
+  function jrnRefuse(pk, why) {
+    jrnMark(pk, JRN_REFUSED + why);
+    if (!AUTH_REFUSED.test(String(why || ""))) return;
+    if (Date.now() - _authAsked < 15000) return;   /* one sign-in screen per flush, not one per entry */
+    _authAsked = Date.now();
+    try {
+      S.pin = ""; S.tok = "";
+      try { localStorage.removeItem(STORE); } catch (e0) {}
+      S.authDead = true;   /* render() shows the sign-in screen while this is set - see render() */
+      S.authDeadWhy = "The server says: " + String(why || "").slice(0, 80) + ". Sign in again — what is held on this phone goes up after that.";
+      renderLogin(S.authDeadWhy);
+    } catch (e) {}
+  }
   /* the tail of every "saved" toast, told truthfully: waiting for signal, or refused */
   function heldTail(r) {
     if (!r || !r.held) return "";
@@ -1781,6 +1820,23 @@ body{background:#F4F6F9}
        device but the server has not confirmed it, which is a different thing from saved and
        a different thing from lost, and every caller now says which of the three it is. */
     opts = opts || {};
+    /* 1.132.1 - THE OWNER'S RULE: A PARTNER IS NEVER MADE WITH A MOBILE ANOTHER PARTNER HAS.
+       Today this app never writes the associates tab (partners are picked from the register the
+       CRM keeps - grep: no saveRow("associates") anywhere), but the rule is put HERE, on the one
+       door every save goes through, so a button added next month cannot walk round it. A NEW
+       associate (no id, or an id not on the register) whose mobile or mobile2 is already another
+       partner's is not created: the existing partner is answered as the saved row, and the man is
+       told who it is. An EDIT of the partner who already owns the number is unaffected. */
+    try {
+      if (tab === "associates" && row) {
+        var _known = ((S.data && S.data.associates) || []).some(function (a) { return a && String(row.id || "") && String(a.id || "") === String(row.id); });
+        var _dupP = !_known ? (partnerByMobile(row.mobile, row.id) || partnerByMobile(row.mobile2, row.id)) : null;
+        if (_dupP) {
+          try { toast("That number is already " + _dupP.name + (_dupP.role ? " (" + _dupP.role + ")" : "") + " — using him, no new partner made."); } catch (eT) {}
+          return Promise.resolve({ ok: true, row: _dupP, held: false, reused: true });
+        }
+      }
+    } catch (eP) {}
     var r2 = Object.assign({}, row);
     if (!String(r2.id || "").trim() && !r2._lid) r2._lid = "L-" + Date.now() + "-" + (++_jrnSeq) + "-" + Math.floor(Math.random() * 1000000);
 /* v6.9.365 / 27 Aug 2026 - THE DATE A ROW WAS MADE, STAMPED HERE.
@@ -1810,7 +1866,7 @@ body{background:#F4F6F9}
       /* 1.102.0 - REVIEW B6: the server ANSWERED and said no. That is not a signal problem and
          must never be told as one - it will not go up by itself, however good the signal gets. */
       var why = (r && r.error) || "the server refused it";
-      jrnMark(e.pk, JRN_REFUSED + why);
+      jrnRefuse(e.pk, why);   /* 1.132.1 - a dead sign-in shows the sign-in screen, see jrnRefuse */
       return { ok: true, row: e.row, held: true, refused: true, err: why };
     }).catch(function (err) {
       delete _jrnBusy[e.pk];
@@ -2371,6 +2427,38 @@ body{background:#F4F6F9}
   function driverByName(n) {
     var t = lower(n);
     return ((S.data && S.data.drivers) || []).filter(function (d) { return lower(d.name) === t; })[0] || null;
+  }
+  /* 1.132.1 - ONE NUMBER, ONE MAN. The owner's rule, applied to every register this app writes:
+     a mobile is compared by its LAST TEN DIGITS, so "+91 98123 45678", "098123-45678" and
+     "9812345678" are the same phone. A name is not an identity here - "Ram Kumar" and "Ramkumar"
+     made two drivers for one man, and his challans split between them. */
+  function mob10(m) { var d = String(m || "").replace(/\D/g, ""); return d.length >= 10 ? d.slice(-10) : ""; }
+  function driverByMobile(m) {
+    var k = mob10(m); if (!k) return null;
+    return ((S.data && S.data.drivers) || []).filter(function (d) { return d && mob10(d.mobile) === k; })[0] || null;
+  }
+  /* the partner register (associates) - the same rule, for the guard in saveRow() */
+  function partnerByMobile(m, notId) {
+    var k = mob10(m); if (!k) return null;
+    return ((S.data && S.data.associates) || []).filter(function (a) {
+      if (!a || !a.name) return false;
+      if (notId && String(a.id || "") === String(notId)) return false;
+      return mob10(a.mobile) === k || mob10(a.mobile2) === k;   /* the CRM's own two columns on an associate */
+    })[0] || null;
+  }
+  /* every client and site that already carries this number - for the warning in dt-save */
+  function mobileOwners(m, notClientId) {
+    var k = mob10(m), out = []; if (!k) return out;
+    ((S.data && S.data.clients) || []).forEach(function (c) {
+      if (!c || !c.name || String(c.id || "") === String(notClientId || "")) return;
+      if (mob10(c.mobile) === k || mob10(c.mobile2) === k) out.push(c.name + (c.code ? " (" + c.code + ")" : ""));   /* mobile and mobile2, the CRM's columns */
+    });
+    ((S.data && S.data.sites) || []).forEach(function (st) {
+      if (!st || mob10(st.mobile) !== k) return;
+      var who = (st.name || st.site || "site") + (st.client ? " of " + st.client : "");
+      if (out.indexOf(who) < 0) out.push(who);
+    });
+    return out;
   }
 
   /* 1.120.0 - A SITE TYPED ON A CHALLAN BECOMES HIS SITE. "+ A new site" filed the name on the
@@ -2945,7 +3033,7 @@ function discRowOn(client, brand, onYmd) {
     return jrnSend(e).then(function (r) {
       delete _jrnBusy[e.pk];
       if (r && r.ok) return land(r);
-      jrnMark(e.pk, JRN_REFUSED + ((r && r.error) || "the server refused it"));
+      jrnRefuse(e.pk, (r && r.error) || "the server refused it");   /* 1.132.1 */
       /* NOT marked locally. The flag is what every money screen counts a delivery on, and
          missingReceipts() asks the flag and only the flag - so setting it here would drop
          the delivery off the one list that catches this, for a move that has not happened.
@@ -5997,10 +6085,50 @@ function discRowOn(client, brand, onYmd) {
         (amt ? '<div style="font-weight:800;white-space:nowrap">' + amt + '</div>' : '') + '</div>' +
         (bits.length ? '<div class="muted" style="font-size:12.5px">' + esc(bits.join(" · ")) + '</div>' : '') +
         '<div style="font-size:12.5px;margin-top:3px;color:' + (e.err ? '#b45309' : '#475569') + '">' +
-          (e.err ? 'Last try: ' + esc(e.err) : 'Not tried yet — waiting for signal') + (e.tries ? ' · tried ' + e.tries + (e.tries === 1 ? ' time' : ' times') : '') + '</div></div>';
+          (e.err ? 'Last try: ' + esc(e.err) : 'Not tried yet — waiting for signal') + (e.tries ? ' · tried ' + e.tries + (e.tries === 1 ? ' time' : ' times') : '') + '</div>' +
+        /* 1.132.1 - A WAY OUT. An entry the server REFUSED (a challan for a client the office has
+           since merged, a duplicate the server already holds under another id) sat on the orange
+           bar for ever: "Try now" re-sent it, the server said no again, and the bar never cleared.
+           Drop removes it from THIS PHONE'S journal only - nothing on the server is touched - and
+           asks first. Offered only once a try has failed, so untried work cannot be thrown away. */
+        (e.err ? '<div class="acts" style="margin-top:6px"><button class="btn sm gry" data-act="jrn-drop-ask" data-pk="' + esc(e.pk) + '" style="min-height:44px">Drop it from this phone</button></div>' : '') +
+        '</div>';
     }).join("");
     return h + '<div class="acts" style="margin-top:12px"><button class="btn gry" data-act="close">Close</button><div class="grow"></div>' +
       '<button class="btn" data-act="jrn-retry" style="min-height:44px">Try now</button></div>';
+  }
+  /* 1.132.1 - ONE QUESTION SHEET for every "are you sure" in this app. The yes-handler is kept in
+     memory (never in S.data, so it is never snapshotted); "ask-yes" runs it and closes the sheet,
+     Cancel closes it. Used by the Drop button above and by the mobile-clash warning in dt-save. */
+  var _askFn = null;
+  function sheetAsk(title, body, yesLabel, onYes) {
+    _askFn = onYes;
+    return '<h2>' + esc(title) + '</h2>' +
+      '<div class="muted" style="margin-bottom:12px;font-size:13.5px">' + body + '</div>' +
+      '<div class="acts" style="margin-top:14px">' +
+        '<button class="btn gry grow" data-act="close" style="min-height:44px">Cancel</button>' +
+        '<button class="btn grow" data-act="ask-yes" style="min-height:44px">' + esc(yesLabel) + '</button>' +
+      '</div>';
+  }
+  function jrnDropAsk(pk) {
+    var e = jrnLoad().filter(function (x) { return x.pk === pk; })[0];
+    if (!e) { toast("That one is no longer held."); return; }
+    var r = e.row || {}, what = JRN_WHAT[String(e.tab || "")] || e.tab || "Record";
+    var who = r.client || r.customerName || r.name || r.clientName || "";
+    S.sheet = sheetAsk("Drop this from the phone?",
+      '<b>' + esc(what) + (who ? ' — ' + esc(who) : '') + '</b>' + (r.challanNo || r.returnNo ? ' (' + esc(r.challanNo || r.returnNo) + ')' : '') +
+      '<br><br>It will be removed from this phone\'s held list only. Nothing on the server changes — ' +
+      'if it is already there, it stays there; if it never got there, it will NOT be sent. ' +
+      'The server last said: <i>' + esc(e.err || "nothing yet") + '</i>.',
+      "Drop it", function () {
+        jrnDrop(pk);
+        try { saveRow("audit", { id: "JD-" + Date.now() + "-" + Math.floor(Math.random() * 1000000), createdAt: new Date().toISOString(),
+          actor: S.user || "", action: "journal:dropped", target: String(who || what),
+          detail: JSON.stringify({ tab: e.tab, id: r.id || r._lid || "", no: r.challanNo || r.returnNo || "", err: e.err || "", tries: e.tries || 0 }).slice(0, 400) }); } catch (eA) {}   /* a note that it was dropped, and why - nothing is silently thrown away */
+        S.sheet = jrnCount() ? sheetHeld() : null; render();
+        toast("Dropped from this phone. The server was not touched.");
+      });
+    render();
   }
   /* ---------- 4. THE RECEIPTS WORKLIST ---------- */
   function viewReceipts() {
@@ -8756,6 +8884,10 @@ function discRowOn(client, brand, onYmd) {
        cannot be missed by a path added later, which calling it at each merge site could. It is
        idempotent: live.concat(held) re-decides every row every time, which is what makes it
        safe against mergeBook, whose whole job is to overwrite a tab the server just sent. */
+    /* 1.132.1 - a dead sign-in (jrnRefuse) owns the screen until the man signs in again. The
+       save handlers call render() after their toast, and that repaint was covering the sign-in
+       screen the refusal had just drawn - so he never saw it. Cleared by the next good teamAuth. */
+    if (S.authDead) { try { if (!el("ln")) renderLogin(S.authDeadWhy || "Sign in again."); } catch (eL) {} return; }   /* not redrawn over a name he is typing */
     try { splitCancelled(); renderBody(); }
     catch (e) { crashHandle("render", e); }
   }
@@ -9158,7 +9290,7 @@ function discRowOn(client, brand, onYmd) {
     if (act === "bio-off") { bioForget(); return; }
     if (act === "signout") { signOut(); return; }
     if (act === "crm")     { window.open(CRM_URL, "_blank"); return; }
-    if (act === "close" || act === "close-bg") { S.sheet = null; render(); return; }
+    if (act === "close" || act === "close-bg") { S.sheet = null; _askFn = null; render(); return; }   /* 1.132.1 - a cancelled question leaves no yes-handler behind */
     /* tapping a tab means "show me that list", so a search left in the box is cleared */
     if (act === "tab")     { S.tab = t.getAttribute("data-t"); S.sheet = null; S.q = ""; S.allTime = false; render(); return; }
     if (act === "scc-f") { S.scc = S.scc || {}; S.scc.f = t.getAttribute("data-v") || "all"; render(); return; }
@@ -9263,6 +9395,18 @@ function discRowOn(client, brand, onYmd) {
       if (nMob && nMob.length !== 10) { toast("A mobile is 10 digits, or leave it blank."); return; }
       if (driverByName(nName)) { toast(nName + " is already on the register."); return; }
       var pfx = t.getAttribute("data-p") || dn.p || "m";
+      /* 1.132.1 - THE SAME PHONE IS THE SAME DRIVER. Deduped by name alone, "Ram Kumar" typed as
+         "Ramkumar" with the same mobile made a second driver, and his challans split between the
+         two. If the number is already on the register, that man is picked - nothing new is made,
+         and nothing is deleted. */
+      var dupD = nMob ? driverByMobile(nMob) : null;
+      if (dupD) {
+        var holderD = pfx === "r" ? S.rt : S.ch;
+        if (holderD) { holderD.driver = dupD.name; holderD.veh = ""; }
+        S.dnew = null; S.sheet = null; render();
+        toast("That number is already " + dupD.name + " — using him.");
+        return;
+      }
       t.disabled = true; t.textContent = "Adding…";
       /* v1.10.0 - a key of his own, for the same reason a challan has one: this row is
          journalled now, and replaying a row with no id appends a second driver. */
@@ -9339,7 +9483,12 @@ function discRowOn(client, brand, onYmd) {
       if (dm) drow.mobile = dm;
       if (dp) drow.plumber = dp;
       if (da) drow.architect = da;
-      saveRow("clients", drow).then(function (r) {
+      /* 1.132.1 - THE NUMBER MAY ALREADY BE SOMEBODY'S. Nothing checked whether another client or
+         site carried this mobile, so a dealer's number typed against a plumber's new client split
+         one phone over two accounts and the Payment app rang the wrong man. It is a WARNING, not a
+         bar - two brothers can share a phone - and the save below is the same save, run from the
+         yes of the sheet. */
+      var dtGo = function () { saveRow("clients", drow).then(function (r) {
         Object.assign(dc, drow);                        /* on his screen at once */
         /* and the site rows, which carry their own copy - only where theirs is blank, so a
            site that genuinely has a different plumber on it is never overwritten */
@@ -9360,10 +9509,26 @@ function discRowOn(client, brand, onYmd) {
         toast(dc.name + " — " + said.join(", ") + " saved" +
               (touched ? " and copied onto " + touched + " site record" + (touched === 1 ? "" : "s") : "") +
               "." + heldTail(r));
-      });
+      }); };
+      var dtOwners = dm ? mobileOwners(dm, dc.id) : [];
+      if (dtOwners.length) {
+        S.sheet = sheetAsk("That number is already on the book",
+          '<b>' + esc(dm) + '</b> is already on <b>' + esc(dtOwners.slice(0, 3).join(", ")) + (dtOwners.length > 3 ? ' and ' + (dtOwners.length - 3) + ' more' : '') +
+          '</b>.<br><br>Add it to <b>' + esc(dc.name) + '</b> here anyway? If it is really the other man\'s phone, cancel and ask him for his own.',
+          "Add it here anyway", dtGo);
+        render(); return;
+      }
+      dtGo();
       return;
     }
     if (act === "jrn-list") { S.sheet = sheetHeld(); render(); return; }   /* 26 Sep 2026 */
+    if (act === "jrn-drop-ask") { jrnDropAsk(t.getAttribute("data-pk") || ""); return; }   /* 1.132.1 */
+    if (act === "ask-yes") {   /* 1.132.1 - the yes of sheetAsk(); the handler was set when the sheet was built */
+      var _fn = _askFn; _askFn = null;
+      if (typeof _fn === "function") { try { _fn(); } catch (eAsk) { toast("That did not go through. Try again."); } }
+      else { S.sheet = null; render(); }
+      return;
+    }
     if (act === "jrn-retry") { flushNow(); toast("Trying now…"); if (S.sheet && /held on this phone<\/h2>/.test(String(S.sheet))) setTimeout(function () { if (S.sheet && /held on this phone<\/h2>/.test(String(S.sheet))) { S.sheet = sheetHeld(); render(); } }, 9000); return; }
     if (act === "mp-tick") { var _mi = t.getAttribute("data-id"); S.mp = S.mp || {}; if (S.mp[_mi]) delete S.mp[_mi]; else S.mp[_mi] = 1; var _sy = window.scrollY; render(); window.scrollTo(0, _sy); return; }
     if (act === "mp-all") { var _ml = mpList(), _mp = S.mp || {}, _ma = _ml.every(function (c) { return _mp[c.id]; }); S.mp = {}; if (!_ma) _ml.forEach(function (c) { S.mp[c.id] = 1; }); var _sy = window.scrollY; render(); window.scrollTo(0, _sy); return; }
@@ -10720,7 +10885,11 @@ function discRowOn(client, brand, onYmd) {
     authP.then(function (r) {
       if (!r || !r.ok) {
         /* v1.89.0 - a reply that is not the server's own "no" is a failed call, not a refusal */
-        if (!(r && r.ok === false && /wrong name or pin|locked for|not allowed|blocked|removed/i.test(String(r.error || "")))) {
+        /* 1.132.1 - only the server's SIGN-IN refusals sign a man out. "not allowed" and "blocked"
+           were wide enough to match a business rule ("Challan move not allowed from Received") or
+           a blocked number, and a man lost his saved book over a message that was not about him.
+           Wrong name or PIN, locked, a dead token, "sign in again", or taken off the team. */
+        if (!(r && r.ok === false && AUTH_REFUSED.test(String(r.error || "")))) {
           try { toast("The office did not answer the sign-in check - working from what this phone holds. Try again in a minute."); } catch (e) {}
           return;
         }
