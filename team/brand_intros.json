@@ -313,5 +313,27 @@
    ]
   }
  ],
- "updated": "2026-10-13"
+ "updated": "2026-10-18",
+ "groups": [
+  {
+   "group": "Huliot Group",
+   "members": [
+    "Huliot",
+    "Huliot HT PRO",
+    "Huliot ULTRA SILENT",
+    "Heliroma",
+    "Heliroma PPR",
+    "Huliot PPR",
+    "DRP"
+   ],
+   "tagline": "One group, every pipe in the building - Israel, Slovenia, Portugal, India, Germany",
+   "about": "The Huliot Group is a global maker of advanced flow systems for homes and commercial buildings, with customers in more than 60 markets and factories in Israel, Slovenia, Portugal, India and Germany. It began in 1947 at Kibbutz Sde Nehemia in Israel's Upper Galilee and grew into a group: Huliot Slovenia (2014) and Huliot India (plant running since December 2014) make the polypropylene acoustic drainage lines HT PRO and Ultra Silent; Heliroma of Albergaria-a-Velha, Portugal (part of the group since 2019) makes the PPR hot-and-cold water supply pipes and fittings joined by heat fusion; Hofit (Israel, 2020) makes manholes, inspection chambers and separators. Water supply, drainage and infrastructure therefore come from one engineering family, made to ISO 9001, ISO 14001 and ISO 45001 and certified by DIBT, SKZ, AENOR, DVGW, DTI and Australia's WaterMark. In India the pipes are made under BMTPC approval. Energy World, Panipat, is an authorised channel for the group's HT PRO, Ultra Silent and Heliroma PPR ranges.",
+   "origin": "Israel · Portugal · India",
+   "web": "huliotgroup.com",
+   "src": [
+    "https://www.huliotgroup.com",
+    "https://huliot.com/about-huliot/"
+   ]
+  }
+ ]
 }
