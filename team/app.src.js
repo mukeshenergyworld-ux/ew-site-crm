@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.836";
+  var APP_VERSION = "6.9.840";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -720,11 +720,11 @@
   }
 
   var ROLE_TABS = {
-    admin:    ["dash","wareminder","msgs","myday","statements","review","agent","report","scorecard","returns","tools","rates","clients","crlog","partners","pevents","quotes","leads","brandfollow","winloss","visits","followups","challans","register","paylog","freight","payments","paidout","billing","discounts","commission","complaints","service","spares","dues","payroll","products","catalogs","brandstory","pricelist","catalogue","rules","teampins","tally","plcheck","health","trouble","changelog","booksweep","dups","stock","brief","attendance"],
-    accounts: ["dash","wareminder","statements","review","agent","returns","tools","clients","crlog","partners","followups","challans","register","paylog","freight","payments","billing","complaints","service","spares","dues","products","catalogs","rates","pricelist","dups","stock","tally","trouble","attendance"],
+    admin:    ["dash","wareminder","msgs","clientlist","myday","statements","review","agent","report","scorecard","returns","tools","rates","clients","crlog","partners","pevents","quotes","leads","brandfollow","winloss","visits","followups","challans","register","paylog","freight","payments","paidout","billing","discounts","commission","complaints","service","spares","dues","payroll","products","catalogs","brandstory","pricelist","catalogue","rules","teampins","tally","plcheck","health","trouble","changelog","booksweep","dups","stock","brief","attendance"],
+    accounts: ["dash","wareminder","clientlist","statements","review","agent","returns","tools","clients","crlog","partners","followups","challans","register","paylog","freight","payments","billing","complaints","service","spares","dues","products","catalogs","rates","pricelist","dups","stock","tally","trouble","attendance"],
     godown:   ["dash","agent","returns","tools","challans","freight","products","stock","trouble"],
-    sales:    ["myday","msgs","dash","review","agent","report","returns","tools","clients","crlog","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","register","paylog","freight","billing","payments","complaints","products","catalogs","dups","brief","trouble"],
-    service:  ["dash","agent","tools","complaints","service","spares","dues","followups","products","catalogs","trouble"]
+    sales:    ["myday","msgs","clientlist","dash","review","agent","report","returns","tools","clients","crlog","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","register","paylog","freight","billing","payments","complaints","products","catalogs","dups","brief","trouble"],
+    service:  ["dash","agent","clientlist","tools","complaints","service","spares","dues","followups","products","catalogs","trouble"]
   };
   /* v6.9.320 - EVERY SCREEN EITHER OF HIS ROLES OPENS.
      A man holding godown and service is entitled to the godown's six screens AND the service
@@ -37849,6 +37849,80 @@ function viewCatalogue() {
     });
     return h;
   }
+
+  /* ===================== 6.9.838 - THE CLIENT LIST =====================
+     HIS WORDS: "a separate client list section to be maintained, also fetch clients from Service app, client added for
+     service with machines added, have to make product wise client list".
+     One row per person: the CRM's clients and the Service app's installation clients (installs tab, which the Service
+     app's Installation log also writes), joined by mobile first and by name second. What he has: machines (product ·
+     model · installed) from installs, brands from his deliveries. A product chip narrows the list; Excel takes what
+     is shown. Read only - nothing is merged or written. */
+  function clProductsOf(ins) {
+    var out = [];
+    (ins || []).forEach(function (x) {
+      var list = [];
+      try { var pj = JSON.parse(x.productsJson || "[]"); if (Array.isArray(pj)) list = pj; } catch (e) { list = []; }
+      if (!list.length && x.product) list = [{ product: x.product, model: x.model, installDate: x.installDate }];
+      list.forEach(function (p) { var nm = String((p && (p.product || p.name)) || "").trim(); if (nm) out.push({ product: nm, model: String((p && p.model) || "").trim(), at: String((p && (p.installDate || p.date)) || x.installDate || "").slice(0, 10) }); });
+    });
+    return out;
+  }
+  function clientListRows() {
+    var rows = [], byMob = {}, byName = {};
+    var m10 = function (v) { return String(v || "").replace(/\D/g, "").slice(-10); };
+    (S.data.clients || []).forEach(function (c) {
+      if (!c || !String(c.name || "").trim() || isCancelled("clients", c.id)) return;
+      var r = { id: c.id, code: String(c.code || ""), name: String(c.name).trim(), mobile: m10(c.mobile) || m10(c.mobile2), area: String(c.area || c.location || ""), district: String(c.location || ""),
+                address: String(c.address || ""), src: "CRM", ins: [], brands: {}, last: "", due: 0, owner: String(c.ownedBy || c.createdBy || "") };
+      rows.push(r); if (r.mobile) byMob[r.mobile] = r; byName[dkey(r.name)] = r;
+    });
+    (S.data.installs || []).forEach(function (x) {
+      if (!x || isCancelled("installs", x.id)) return;
+      var mob = m10(x.mobile), nm = String(x.client || "").trim(); if (!nm && !mob) return;
+      var r = (mob && byMob[mob]) || byName[dkey(nm)];
+      if (!r) { r = { id: "", code: "", name: nm || mob, mobile: mob, area: String(x.area || ""), district: "", address: String(x.address || ""), src: "Service", ins: [], brands: {}, last: "", due: 0, owner: String(x.engineer || "") }; rows.push(r); if (mob) byMob[mob] = r; byName[dkey(r.name)] = r; }
+      else if (r.src === "CRM") r.src = "CRM + Service";
+      r.ins.push(x);
+      if (!r.area && x.area) r.area = String(x.area);
+    });
+    (S.data.challans || []).forEach(function (c) {
+      if (!c || isCancelled("challans", c.id)) return;
+      var r = byName[dkey(c.customerName)]; if (!r) return;
+      var day = localDay(c.createdAt); if (day > r.last) r.last = day;
+      var items = []; try { items = JSON.parse(c.itemsJson || "[]"); } catch (e) { items = []; }
+      items.forEach(function (i) { var b = String(i.brand || productBrandByCode(i.code) || "").trim(); if (b && !isJobLine(i)) r.brands[b] = 1; });
+    });
+    rows.forEach(function (r) { try { r.due = r.id ? Math.round(clientDue(r.name)) : 0; } catch (e) { r.due = 0; } r.products = clProductsOf(r.ins); });
+    return rows;
+  }
+  function viewClientList() {
+    var all = clientListRows(), q = String(S.q || "").trim().toLowerCase(), pick = String(S.clpProd || "");
+    var prodCount = {}, srcCount = { "CRM": 0, "Service": 0, "CRM + Service": 0 };
+    all.forEach(function (r) { srcCount[r.src] = (srcCount[r.src] || 0) + 1; var seen = {}; r.products.forEach(function (p) { if (!seen[p.product]) { seen[p.product] = 1; prodCount[p.product] = (prodCount[p.product] || 0) + 1; } }); Object.keys(r.brands).forEach(function (b) { var k = "Brand: " + b; if (!seen[k]) { seen[k] = 1; prodCount[k] = (prodCount[k] || 0) + 1; } }); });
+    var prods = Object.keys(prodCount).sort(function (a, b) { return (a.indexOf("Brand: ") === 0) - (b.indexOf("Brand: ") === 0) || prodCount[b] - prodCount[a]; });
+    var list = all.filter(function (r) {
+      if (pick === "Service" || pick === "CRM") { if (r.src.indexOf(pick) < 0) return false; }
+      else if (pick && pick.indexOf("Brand: ") === 0) { if (!r.brands[pick.slice(7)]) return false; }
+      else if (pick) { if (!r.products.some(function (p) { return p.product === pick; })) return false; }
+      if (!q) return true;
+      return [r.code, r.name, r.mobile, r.area, r.district, r.address, r.owner].concat(r.products.map(function (p) { return p.product + " " + p.model; })).concat(Object.keys(r.brands)).join(" ").toLowerCase().indexOf(q) >= 0;
+    }).sort(function (a, b) { return (b.last || "").localeCompare(a.last || "") || alpha(a.name, b.name); });
+    var chip = function (k, l, n) { return '<button class="btn sm ' + (pick === k ? '' : 'ghost') + '" data-act="clp-prod" data-k="' + esc(k) + '" style="min-height:40px">' + esc(l) + (n != null ? ' <span style="opacity:.7">' + n + '</span>' : '') + '</button>'; };
+    var h = '<div class="card"><h2 style="margin:0 0 4px">Client list &middot; ' + all.length + '</h2>' +
+      '<div class="meta" style="font-size:13px">Everyone on the book: CRM clients (' + (srcCount["CRM"] + srcCount["CRM + Service"]) + ') and Service-app installation clients (' + (srcCount["Service"] + srcCount["CRM + Service"]) + '), one line each, joined by mobile. Tap a product to see who has it; Excel on the right of the sheet.</div>' +
+      '<div class="acts" style="gap:6px;flex-wrap:wrap;margin-top:8px">' + chip("", "All", all.length) + chip("Service", "Has a machine", srcCount["Service"] + srcCount["CRM + Service"]) + chip("CRM", "CRM client", srcCount["CRM"] + srcCount["CRM + Service"]) +
+      prods.slice(0, 24).map(function (p) { return chip(p, p, prodCount[p]); }).join("") + '</div></div>';
+    var cols = [{ k: "name", t: "CLIENT", w: "150px" }, { k: "mobile", t: "MOBILE", nw: 1 }, { k: "area", t: "AREA / DISTRICT" }, { k: "src", t: "ON" }, { k: "machines", t: "MACHINES (SERVICE APP)", wrap: "260px" }, { k: "brands", t: "BRANDS BOUGHT", wrap: "220px" }, { k: "last", t: "LAST DELIVERY", nw: 1 }, { k: "due", t: "DUE ₹", r: 1, n: 1 }, { k: "owner", t: "EXECUTIVE / ENGINEER" }];
+    var rows = list.map(function (r) {
+      var mach = r.products.map(function (p) { return p.product + (p.model ? " " + p.model : "") + (p.at ? " · " + dmy(p.at) : ""); });
+      return { v: { name: (r.code ? r.code + " " : "") + r.name, mobile: r.mobile, area: [r.area, r.district].filter(function (x, i, a) { return x && a.indexOf(x) === i; }).join(" / "), src: r.src, machines: mach.join("; "), brands: Object.keys(r.brands).join(", "), last: r.last ? dmy(r.last) : "", due: r.due, owner: r.owner },
+        cells: { name: (r.id ? '<a data-act="cl-open" data-id="' + esc(r.id) + '" style="cursor:pointer;color:#0d766c;font-weight:700">' : '<b>') + esc((r.code ? r.code + " " : "") + r.name) + (r.id ? '</a>' : '</b>'), mobile: r.mobile ? '<a href="tel:' + esc(r.mobile) + '">' + esc(r.mobile) + '</a>' : '<span style="color:#dc2626">none</span>',
+          area: esc([r.area, r.district].filter(function (x, i, a) { return x && a.indexOf(x) === i; }).join(" / ")), src: '<span class="pill ' + (r.src === "Service" ? 'soon' : r.src === "CRM" ? 'Won' : 'due') + '" style="font-size:12px">' + esc(r.src) + '</span>',
+          machines: mach.length ? mach.map(function (x) { return '<div>' + esc(x) + '</div>'; }).join("") : '<span style="color:#94a3b8">—</span>', brands: Object.keys(r.brands).length ? esc(Object.keys(r.brands).join(", ")) : '<span style="color:#94a3b8">—</span>',
+          last: r.last ? esc(dmy(r.last)) : '<span style="color:#94a3b8">—</span>', due: r.due > 0.5 ? '<b style="color:#b45309">' + money(r.due) + '</b>' : '<span style="color:#94a3b8">—</span>', owner: esc(r.owner) } };
+    });
+    return h + '<div class="card">' + xlTable("clientlist", cols, rows, "machines, brands, due") + '</div>';
+  }
   function viewMsgs() {
     var t = S.msgTab || "stage";
     if (!roleIs("admin") && t !== "stage") t = "stage";
@@ -42063,7 +42137,7 @@ function viewCatalogue() {
      nothing else could reach it - so the usage counter would have had to keep a second copy
      of the same forty-two names, and a second copy is how the two quietly stop agreeing.
      Hoisted, not duplicated. render() still reads exactly this. */
-  var TAB_TABS = [["search", "Search"], ["myday", "My day"], ["dash", "Today"], ["statements", "Statements"], ["review", "Twice-weekly review"], ["wareminder", "WhatsApp reminders"], ["msgs", "Messages & posts"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits & quotes"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["register", "Challan log"], ["paylog", "Payment log"], ["freight", "Drivers & freight"], ["deliveries", "Deliveries"], ["collections", "Payments"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["crlog", "Client & lead log"], ["partners", "Partners"], ["pevents", "Partner events"], ["quotes", "Quotes"], ["commission", "Incentives"], ["complaints", "Complaints"], ["service", "Service"], ["spares", "Spares"], ["dues", "Service dues"], ["payroll", "Payroll"], ["attendance", "Attendance"], ["products", "Products"], ["payments", "Payments"], ["paidout", "Paid out"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["catalogs", "Brand catalogues"], ["brandstory", "Brand stories"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["trouble", "Troubleshoot"], ["changelog", "Change log"], ["booksweep", "Book numbers"], ["dups", "Duplicate check"], ["stock", "Stock"], ["tally", "Tally"], ["plcheck", "Supplier price list"], ["brief", "The brief"]];
+  var TAB_TABS = [["search", "Search"], ["myday", "My day"], ["dash", "Today"], ["statements", "Statements"], ["review", "Twice-weekly review"], ["wareminder", "WhatsApp reminders"], ["msgs", "Messages & posts"], ["clientlist", "Client list"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits & quotes"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["register", "Challan log"], ["paylog", "Payment log"], ["freight", "Drivers & freight"], ["deliveries", "Deliveries"], ["collections", "Payments"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["crlog", "Client & lead log"], ["partners", "Partners"], ["pevents", "Partner events"], ["quotes", "Quotes"], ["commission", "Incentives"], ["complaints", "Complaints"], ["service", "Service"], ["spares", "Spares"], ["dues", "Service dues"], ["payroll", "Payroll"], ["attendance", "Attendance"], ["products", "Products"], ["payments", "Payments"], ["paidout", "Paid out"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["catalogs", "Brand catalogues"], ["brandstory", "Brand stories"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["trouble", "Troubleshoot"], ["changelog", "Change log"], ["booksweep", "Book numbers"], ["dups", "Duplicate check"], ["stock", "Stock"], ["tally", "Tally"], ["plcheck", "Supplier price list"], ["brief", "The brief"]];
   var TAB_LABEL = (function () {
     var m = {}; TAB_TABS.forEach(function (t) { m[t[0]] = t[1]; }); return m;
   })();
@@ -43566,6 +43640,7 @@ function viewCatalogue() {
         '<div class="n">' + money(unb.val) + '</div><div class="l">Delivered, not billed</div></div>' +
       '<div class="stat"><div class="n">' + visitsToday.length + '</div><div class="l">Site visits today</div></div>' +
       '</div>';
+    try { h += pevGrowCard("", "Greeted, not yet grown \u2014 everyone"); } catch (e) { }   /* 6.9.837 - on the owner's Today as well */
     /* v6.9.520 - his item 17. These two were on viewDash, which an admin never reaches -
        render() sends him here. Measured on his own Mac: Today opened once since 27 August. */
     try { h += rateGapDashCard(); } catch (e) { console.warn("[rategap] card:", e); }
@@ -47529,7 +47604,7 @@ function viewCatalogue() {
      is ever deleted - a guest, a brand or an expense taken off is a row saying "removed". No server
      change is needed. Old books (the old hisab is a photo or PDF) are not in the figures yet - his
      decision on entering an "old books business" amount is open. */
-  var PEV_ST = { meet: ["Invited", "Confirmed", "Attended", "Declined"], trip: ["Shortlisted", "Invited", "Confirmed", "Travelled", "Declined"],
+  var PEV_ST = { meet: ["Invited", "Confirmed", "Attended", "Absent", "Declined"], trip: ["Shortlisted", "Invited", "Confirmed", "Travelled", "Absent", "Declined"],   /* 6.9.837 - Absent: invited, confirmed, did not come */
     greet: ["To send", "Gift packed", "Delivered", "Greeted on WhatsApp"] };
   var PEV_TYPES = [["meet", "Meet"], ["trip", "Trip"], ["greet", "Greeting"]];
   var _pevCache = null, _pevKey = "";
@@ -47598,6 +47673,46 @@ function viewCatalogue() {
       });
     });
     return out.sort(function (a, b) { return String(a.sg.due).localeCompare(String(b.sg.due)); });
+  }
+  /* 6.9.837 - HIS WORDS: "related executive have to be reminded time and again to contact partners greeted on regular
+     basis to take more references and increase business". Every partner this man greeted or hosted in the last 180
+     days whose business after it has not passed the 90 days before, oldest first, with a call button. */
+  function pevGrowCalls(who) {
+    var me = dkey(who || ""), out = [], seen = {}, t0 = today();
+    pevEvents().forEach(function (e) {
+      if (!e.date || e.date > t0) return;
+      var age = Math.round((Date.parse(t0 + "T00:00:00") - Date.parse(e.date + "T00:00:00")) / 86400000);
+      if (age < 3 || age > 180) return;
+      var m = pevMoney(e.eid);
+      m.att.forEach(function (i) {
+        if (me && dkey(i.exec) !== me) return;
+        var k = dkey(i.partner); if (seen[k]) return;
+        var bk = null; try { bk = partnerBook(i.partner); } catch (er) { bk = null; }
+        var ms = Date.parse(e.date + "T00:00:00"), b90 = new Date(ms - 90 * 86400000).toISOString().slice(0, 10), bef = 0, aft = 0;
+        ((bk && bk.rows) || []).forEach(function (r) { var amt = Number(r.amount) || 0; if (r.ret && amt > 0) amt = -amt; if (r.ymd >= b90 && r.ymd < e.date) bef += amt; else if (r.ymd >= e.date) aft += amt; });
+        if (aft > bef && aft > 0) return;
+        seen[k] = 1;
+        out.push({ e: e, i: i, bef: Math.round(bef), aft: Math.round(aft), age: age });
+      });
+    });
+    return out.sort(function (a, b) { return b.age - a.age; });
+  }
+  try { window.__ewDbg = function (f) { return eval(f); }; } catch (e) { }   /* test hook: a read-only eval inside the app scope, used by the sims */
+  function pevGrowCard(who, title) {
+    var list = pevGrowCalls(who); if (!list.length) return "";
+    var byN = {}; assocLive().forEach(function (a) { byN[dkey(a.name)] = a; });
+    var cols = [{ k: "g", t: "PARTNER" }, { k: "ev", t: "GREETED / MET" }, { k: "bef", t: "BEFORE ₹", r: 1, n: 1 }, { k: "aft", t: "SINCE ₹", r: 1, n: 1 }, { k: "go", t: "" }];
+    var rows = list.map(function (x) {
+      var a = byN[dkey(x.i.partner)] || {}, mob = String(x.i.mobile || a.mobile || "").replace(/\D/g, "").slice(-10);
+      return { v: { g: x.i.partner, ev: x.e.name + " " + dmy(x.e.date), bef: x.bef, aft: x.aft, go: "" },
+        cells: { g: '<b>' + esc((a.code ? a.code + " " : "") + x.i.partner) + '</b><div style="font-size:12px;color:#64748b">' + esc(a.role || "") + (mob ? ' · ' + esc(mob) : '') + (who ? '' : ' · ' + esc(x.i.exec || "unassigned")) + '</div>',
+          ev: esc(x.e.name) + '<div style="font-size:12px;color:#64748b">' + esc(dmy(x.e.date)) + ' · ' + x.age + ' days ago' + (x.i.gift ? ' · ' + esc(x.i.gift) : '') + '</div>',
+          bef: money(x.bef), aft: '<b style="color:#b91c1c">' + money(x.aft) + '</b>',
+          go: mob ? '<a class="btn sm" style="min-height:44px;display:inline-flex;align-items:center;text-decoration:none" href="tel:' + esc(mob) + '">Call</a>' : '' } };
+    });
+    return '<div class="card" style="border-color:#fde68a;background:#fffbeb"><h3 style="margin:0">' + esc(title || "Greeted, not yet grown — ring for references") + ' <span class="pill soon">' + list.length + '</span></h3>' +
+      '<div class="meta" style="font-size:12.5px;margin:3px 0 6px">Partners you greeted or hosted whose business since has not passed the 90 days before. A greeting that is not followed by a call is a gift, not an investment. Ask for a reference, a site, a plumber.</div>' +
+      xlTable("pevgrow", cols, rows, "the figures and Call") + '</div>';
   }
   function pevCallsCard(who, title) {
     var list = pevMyCalls(who); if (!list.length) return "";
@@ -48167,7 +48282,11 @@ function viewCatalogue() {
             (function () { var sg = pevStage(e, i); return pevStagePill(sg) +
               (i.preNote ? '<div style="font-size:12px;color:#475569;max-width:220px">Before: ' + esc(i.preNote) + ' <span style="color:#94a3b8">(' + esc(i.preBy || "") + ')</span></div>' : '') +
               (i.postNote ? '<div style="font-size:12px;color:#475569;max-width:220px">After: ' + esc(i.postNote) + ' <span style="color:#94a3b8">(' + esc(i.postBy || "") + ')</span></div>' : ''); })(),
-            '<input class="pev-cost" data-id="' + esc(e.eid) + '" data-p="' + esc(i.partner) + '" inputmode="numeric" value="' + esc(i.cost || "") + '" placeholder="0" style="width:60px;font-size:13px;text-align:right;min-height:44px;padding:4px 6px"/>',
+            '<input class="pev-cost" data-id="' + esc(e.eid) + '" data-p="' + esc(i.partner) + '" inputmode="numeric" value="' + esc(i.cost || "") + '" placeholder="0" style="width:60px;font-size:13px;text-align:right;min-height:44px;padding:4px 6px"/>' +
+              /* 6.9.837 - what the gift is, and whether it reached him */
+              '<input class="pev-gift" data-id="' + esc(e.eid) + '" data-p="' + esc(i.partner) + '" value="' + esc(i.gift || "") + '" placeholder="gift item" style="width:96px;font-size:12px;min-height:36px;padding:2px 6px;margin-top:3px;display:block"/>' +
+              (i.givenAt ? '<div style="font-size:12px;color:#166534;white-space:nowrap">&#10003; given ' + esc(dmy(String(i.givenAt).slice(0, 10)).slice(0, 5)) + (i.givenBy ? ' · ' + esc(i.givenBy) : '') + '</div>'
+                : '<button class="btn sm ghost" data-act="pev-given" data-id="' + esc(e.eid) + '" data-p="' + esc(i.partner) + '" style="min-height:36px;padding:2px 8px;font-size:12px;margin-top:3px">Given &#10003;</button>'),
             '<div style="display:flex;gap:6px;justify-content:flex-end">' + (mob ? '<a class="btn sm ghost" title="WhatsApp him the invitation" style="min-height:44px;min-width:44px;padding:0 8px;display:inline-flex;align-items:center;justify-content:center;text-decoration:none;color:#15803d;font-weight:800" target="_blank" rel="noopener" href="https://wa.me/91' + esc(mob) + '?text=' + encodeURIComponent(pevMsg(e, i.partner)) + '">WA</a>' : '') +
             '<button class="btn sm ghost" title="Take off the list (kept in the record)" style="min-height:44px;min-width:44px;padding:0 8px;white-space:nowrap" data-act="pev-rm" data-id="' + esc(e.eid) + '" data-p="' + esc(i.partner) + '">Off</button></div>'];
         }), true) + (isG ? '' : '<div class="meta" style="font-size:13px;margin-top:8px"><b>Head count for food &amp; drink: ' + came + '</b> (confirmed' + (e.type === "trip" ? ', travelling' : ' or attended') + ') &middot; ' +
@@ -48193,18 +48312,49 @@ function viewCatalogue() {
         '<div><label style="margin-top:0">Amount ₹</label><input id="pe_xamt" inputmode="numeric" style="width:110px"/></div>' +
         '<div style="flex:1 1 140px"><label style="margin-top:0">Note</label><input id="pe_xnote"/></div>' +
         '<button class="btn sm" style="min-height:44px" data-act="pev-exadd" data-id="' + esc(e.eid) + '">+ Expense</button></div></div>';
-    /* after the event: did it pay? */
-    if (e.date && e.date <= today() && m.att.length && !isG) {
-      var d0 = e.date, ms = Date.parse(d0 + "T00:00:00"), b90 = new Date(ms - 90 * 86400000).toISOString().slice(0, 10), a90 = new Date(ms + 90 * 86400000).toISOString().slice(0, 10), bef = 0, aft = 0;
-      m.att.forEach(function (i) { var bk = null; try { bk = partnerBook(i.partner); } catch (er) { bk = null; } ((bk && bk.rows) || []).forEach(function (r) { var amt = Number(r.amount) || 0; if (r.ret && amt > 0) amt = -amt; if (r.ymd >= b90 && r.ymd < d0) bef += amt; else if (r.ymd >= d0 && r.ymd < a90) aft += amt; }); });
-      var days = Math.min(90, Math.max(1, Math.round((Date.parse(today() + "T00:00:00") - ms) / 86400000)));
-      h += '<div class="card"><h3 style="margin:0">Did it pay? — the ' + plural(m.att.length, "attendee") + '’ business</h3>' +
-        '<div class="cards" style="margin-top:8px"><div class="stat"><div class="n">' + money(Math.round(bef)) + '</div><div class="l">90 days before</div></div>' +
-        '<div class="stat"><div class="n">' + money(Math.round(aft)) + '</div><div class="l">after (' + days + ' of 90 days so far)</div></div>' +
-        '<div class="stat"><div class="n">' + money(m.net) + '</div><div class="l">what the event cost us</div></div></div></div>';
-    } else if (!isG) {
+    /* 6.9.837 - COST TO US, PARTNER WISE: his gift (or his own cost) + his share of the event's net expenses */
+    if (m.inv.length) {
+      var _cc = [{ k: "p", t: "PARTNER" }, { k: "st", t: "STATUS" }, { k: "gift", t: "GIFT" }, { k: "g", t: "GIFT ₹", r: 1, n: 1 }, { k: "sh", t: "SHARE OF EVENT ₹", r: 1, n: 1 }, { k: "tot", t: "COST TO US ₹", r: 1, n: 1 }, { k: "b12", t: "HIS BUSINESS 12 M", r: 1, n: 1 }, { k: "exec", t: "EXECUTIVE" }];
+      var _sup = {}; try { pevSupport().forEach(function (x) { _sup[dkey(x.name)] = x; }); } catch (e2) { }
+      var _cr = m.inv.map(function (i) {
+        var came = m.att.indexOf(i) >= 0, g = Number(i.cost) || 0, sh = came && m.perHead > 0 ? Math.round(m.perHead) : 0, sp = _sup[dkey(i.partner)] || {};
+        return { v: { p: i.partner, st: i.st || "", gift: i.gift || "", g: g, sh: sh, tot: g + sh, b12: sp.b12 || 0, exec: i.exec || "" },
+          cells: { p: '<b>' + esc(i.partner) + '</b>', st: esc(i.st || ""), gift: esc(i.gift || "") + (i.givenAt ? ' <span style="color:#166534">&#10003;</span>' : ''), g: g ? money(g) : "—", sh: sh ? money(sh) : "—", tot: '<b>' + money(g + sh) + '</b>', b12: sp.b12 ? money(sp.b12) : "—", exec: esc(i.exec || "") } };
+      }).sort(function (a, b) { return b.v.tot - a.v.tot; });
+      var _ctot = _cr.reduce(function (a, r) { return a + r.v.tot; }, 0);
+      h += '<div class="card"><h3 style="margin:0">Cost to us, partner wise &middot; ' + money(_ctot) + '</h3>' +
+        '<div class="meta" style="font-size:12.5px;margin:3px 0 4px">Gift ₹ is what was typed on his row; share of event = (expenses − received from brands) ÷ those who came' + (m.perHead > 0 ? ' = ' + money(Math.round(m.perHead)) + ' each' : '') + '. Excel on the right.</div>' +
+        xlTable("pev-cost-" + e.eid, _cc, _cr, "the figures") + '</div>';
+    }
+    /* 6.9.837 - DID IT PAY, FOR GREETINGS TOO, PARTNER BY PARTNER. His words: "which partner business contribution
+       increased after greeting which not ... a proper pre and post greet comparison". 90 days before the event day
+       against the days since, per partner, as a bar. */
+    if (e.date && e.date <= today() && m.att.length) {
+      var _d0 = e.date, _ms = Date.parse(_d0 + "T00:00:00"), _b90 = new Date(_ms - 90 * 86400000).toISOString().slice(0, 10), _a90 = new Date(_ms + 90 * 86400000).toISOString().slice(0, 10);
+      var _days = Math.min(90, Math.max(1, Math.round((Date.parse(today() + "T00:00:00") - _ms) / 86400000)));
+      var _pp = m.att.map(function (i) {
+        var bk = null; try { bk = partnerBook(i.partner); } catch (er) { bk = null; }
+        var bef = 0, aft = 0;
+        ((bk && bk.rows) || []).forEach(function (r) { var amt = Number(r.amount) || 0; if (r.ret && amt > 0) amt = -amt; if (r.ymd >= _b90 && r.ymd < _d0) bef += amt; else if (r.ymd >= _d0 && r.ymd <= _a90) aft += amt; });
+        return { p: i.partner, exec: i.exec || "", bef: Math.round(bef), aft: Math.round(aft), d: Math.round(aft - bef) };
+      }).sort(function (a, b) { return b.d - a.d; });
+      var _mx = Math.max(1, Math.max.apply(null, _pp.map(function (x) { return Math.max(x.bef, x.aft); })));
+      var _up = _pp.filter(function (x) { return x.d > 0; }).length, _dn = _pp.filter(function (x) { return x.d < 0 || (x.bef === 0 && x.aft === 0); }).length;
+      var _bar = function (v, c) { return '<div style="height:8px;border-radius:4px;background:' + c + ';width:' + Math.max(2, Math.round(100 * v / _mx)) + '%"></div>'; };
+      var _pc = [{ k: "p", t: "PARTNER" }, { k: "bef", t: "90 D BEFORE ₹", r: 1, n: 1 }, { k: "aft", t: "AFTER ₹ (" + _days + " of 90 d)", r: 1, n: 1 }, { k: "d", t: "CHANGE ₹", r: 1, n: 1 }, { k: "bar", t: "BEFORE / AFTER", w: "160px" }, { k: "exec", t: "EXECUTIVE" }];
+      h += '<div class="card"><h3 style="margin:0">Did it pay? &mdash; ' + (isG ? m.att.length + " partner" + (m.att.length === 1 ? "" : "s") + " greeted" : plural(m.att.length, "attendee")) + ' &middot; <span style="color:#166534">' + _up + ' up</span> &middot; <span style="color:#b91c1c">' + _dn + ' not yet</span></h3>' +
+        '<div class="cards" style="margin-top:8px"><div class="stat"><div class="n">' + money(_pp.reduce(function (a, x) { return a + x.bef; }, 0)) + '</div><div class="l">90 days before</div></div>' +
+        '<div class="stat"><div class="n">' + money(_pp.reduce(function (a, x) { return a + x.aft; }, 0)) + '</div><div class="l">after (' + _days + ' of 90 days so far)</div></div>' +
+        '<div class="stat"><div class="n">' + money(m.net) + '</div><div class="l">what it cost us</div></div></div>' +
+        xlTable("pev-pay-" + e.eid, _pc, _pp.map(function (x) {
+          return { v: { p: x.p, bef: x.bef, aft: x.aft, d: x.d, bar: "", exec: x.exec },
+            cells: { p: '<b>' + esc(x.p) + '</b>', bef: money(x.bef), aft: money(x.aft), d: '<b style="color:' + (x.d > 0 ? '#166534' : x.d < 0 ? '#b91c1c' : '#64748b') + '">' + (x.d > 0 ? '+' : '') + money(x.d) + '</b>',
+              bar: _bar(x.bef, '#cbd5e1') + _bar(x.aft, x.aft >= x.bef && x.aft > 0 ? '#0d9488' : '#f59e0b'), exec: esc(x.exec) } };
+        }), "the figures") +
+        '<div class="meta" style="font-size:12.5px;margin-top:6px">The executive of every partner marked <b>not yet</b> gets him on the Today screen as a call to make, until his business after the ' + (isG ? 'greeting' : 'event') + ' passes what it was before.</div></div>';
+    } else {
       h += '<div class="card" style="background:#f8fafc"><h3 style="margin:0">Did it pay?</h3><div class="meta" style="font-size:13px;margin-top:4px">From the event day on, this shows the business of the partners marked <b>Attended</b>: 90 days before the event against the 90 days after, beside what the event cost us.' +
-        (m.att.length ? '' : ' Mark the guests who came as Attended.') + '</div></div>';
+        (m.att.length ? '' : (isG ? ' Mark the partners as Delivered or Greeted on WhatsApp.' : ' Mark the guests who came as Attended.')) + '</div></div>';
     }
     return h;
   }
@@ -48714,7 +48864,8 @@ function viewCatalogue() {
        nobody acts on, and 88 unstamped deliveries is what that costs. */
     /* v6.9.497 - his item 17. Above the tiles for the reason v6.9.374 wrote down when it moved
        the unstamped band up here, and the number is the larger of the two. */
-    var h = hisabNotStampedBand() + unsentDashCard() + (roleIs("admin") ? "" : (function () { try { return pevCallsCard(S.user); } catch (e) { return ""; } })()) + '<div class="cards">' +   /* 6.9.731 - an executive sees his event calls the moment he opens the app */
+    var h = hisabNotStampedBand() + unsentDashCard() + (roleIs("admin") ? "" : (function () { try { return pevCallsCard(S.user); } catch (e) { return ""; } })()) +
+      (function () { try { return roleIs("admin") ? pevGrowCard("", "Greeted, not yet grown \u2014 everyone") : pevGrowCard(S.user); } catch (e) { return ""; } })() + '<div class="cards">' +   /* 6.9.837 - the greeted partners to ring, on Today for everyone */   /* 6.9.731 - an executive sees his event calls the moment he opens the app */
       '<div class="stat"><div class="n">' + liveClients.length + '</div><div class="l">Clients</div></div>' +
       '<div class="stat ' + (overdue.length ? 'alert' : '') + '"><div class="n">' + overdue.length + '</div><div class="l">Follow-ups overdue</div></div>' +
       '<div class="stat"><div class="n">' + due.length + '</div><div class="l">Due today</div></div>' +
@@ -48793,6 +48944,7 @@ function viewCatalogue() {
   function viewFollowups() {
     var h = '';
     try { h += roleIs("admin") ? pevCallsCard("", "Partner events \u2014 calls waiting, everyone") : pevCallsCard(S.user); } catch (e) { }   /* 6.9.731 */
+    try { h += roleIs("admin") ? pevGrowCard("", "Greeted, not yet grown \u2014 everyone") : pevGrowCard(S.user); } catch (e) { }   /* 6.9.837 */
 
     /* ---- Follow-up radar: quotes that need chasing ---- */
     var radarAll = radarQuotes();
@@ -49730,6 +49882,20 @@ function viewCatalogue() {
       [16, 16, 18, 26, 24, 26, 9, 20, 14, 30]);
   }
 
+  /* 6.9.839 - HIS WORDS: "make agent more powerful ... as now i have also using anthropic API". The same assistant
+     that answers on Telegram (server agentAsk_, tools over HIS book, filtered by role) answers here: action aiAsk,
+     V163. Replies are text with <b> only; anything else is escaped. Nothing is written by it - it reads. */
+  function aiAskHtml() {
+    var r = S.aiAsk || {};
+    var safe = function (t) { return esc(String(t || "")).replace(/&lt;b&gt;/g, "<b>").replace(/&lt;\/b&gt;/g, "</b>").replace(/\n/g, "<br>"); };
+    return '<div class="card" style="border-color:#99f6e4;background:#f0fdfa"><h3 style="margin:0 0 4px">Ask the assistant</h3>' +
+      '<div class="meta" style="font-size:12.5px">Reads your book and answers: <i>whose receipt is pending</i>, <i>how is this month by executive</i>, <i>which quotes are stuck</i>, <i>what should we add to the CRM</i>. Same brain as the Telegram bot. It never changes anything.</div>' +
+      '<div style="display:flex;gap:6px;margin-top:6px"><input id="ai_q" value="' + esc(r.q || "") + '" placeholder="Ask in plain words\u2026" style="flex:1;min-height:44px;font-size:16px" onkeydown="if(event.key===\'Enter\'){var b=document.querySelector(\'[data-act=ai-ask]\');if(b)b.click();}"/>' +
+      '<button class="btn" data-act="ai-ask" style="min-height:44px"' + (r.busy ? ' disabled' : '') + '>' + (r.busy ? 'Thinking\u2026' : 'Ask') + '</button></div>' +
+      (r.a ? '<div style="margin-top:8px;padding:10px 12px;background:#fff;border-radius:10px;border:1px solid #ccfbf1;font-size:14px;line-height:1.45">' + safe(r.a) + '</div>' : '') +
+      (r.err ? '<div style="margin-top:8px;color:#b91c1c;font-size:13px">' + esc(r.err) + '</div>' : '') +
+      '<div class="meta" style="font-size:12px;margin-top:6px">Suggestions it gives are its own; you decide. Each question costs about a paisa of API credit.</div></div>';
+  }
   function viewAgent() {
     var all = agScan();
     try { setTimeout(agRemindStoreOnce, 50); } catch (e) { }   /* v6.9.544 */
@@ -49742,7 +49908,7 @@ function viewCatalogue() {
        the tabs: one band paints at a time, and the count on each tab is the highlight. A chip
        per kind of job under the tabs narrows the band further. The long introduction is one
        line with the rest in its title. */
-    var h = '<div class="meta" style="margin:0 0 8px;font-size:12.5px" title="Every time you open this it re-reads the whole book - each live site’s construction stage and your pitch rules, the money delivered but not yet collected, the quotations lying unanswered, the services and AMCs that have fallen due, and the partners who have gone quiet - then ranks what to do today, says plainly why, and writes the message for you. It never sends anything on its own, and nothing here ever deletes a record.">' +
+    var h = aiAskHtml() + '<div class="meta" style="margin:0 0 8px;font-size:12.5px" title="Every time you open this it re-reads the whole book - each live site’s construction stage and your pitch rules, the money delivered but not yet collected, the quotations lying unanswered, the services and AMCs that have fallen due, and the partners who have gone quiet - then ranks what to do today, says plainly why, and writes the message for you. It never sends anything on its own, and nothing here ever deletes a record.">' +
       '<b>Your agent</b> re-reads the whole book each time and ranks what to do; it never sends anything on its own.</div>';
 
     var bandRows = AG_BANDS.map(function (b, bi) { return live.filter(function (a) { return agBand(a) === bi; }); });
@@ -53447,12 +53613,12 @@ function viewCatalogue() {
       toast(_ep + ": " + (tg.value ? tg.value + " looks after him" + (_ew ? " \u2014 on this event and on his partner record" : " on this event") : "no executive") + ".");
       return;
     }
-    if (!tg.classList.contains("pev-st") && !tg.classList.contains("pev-cost")) return;
+    if (!tg.classList.contains("pev-st") && !tg.classList.contains("pev-cost") && !tg.classList.contains("pev-gift")) return;
     var eid = tg.getAttribute("data-id"), pn = tg.getAttribute("data-p");
     var cur = pevInv(eid).filter(function (i) { return dkey(i.partner) === dkey(pn); })[0] || { eid: eid, partner: pn };
     var nx = Object.assign({}, cur); delete nx._at; delete nx._by; delete nx.at;
-    if (tg.classList.contains("pev-st")) nx.st = tg.value; else nx.cost = nAmt(tg.value) || 0;
-    pevSaveRow("evt:inv", eid, nx).then(function () { keepScroll = true; renderBg(); toast(pn + ": " + (tg.classList.contains("pev-st") ? tg.value : money(nx.cost)) + " saved."); });
+    if (tg.classList.contains("pev-st")) nx.st = tg.value; else if (tg.classList.contains("pev-gift")) nx.gift = String(tg.value || "").trim(); else nx.cost = nAmt(tg.value) || 0;   /* 6.9.837 - gift item */
+    pevSaveRow("evt:inv", eid, nx).then(function () { keepScroll = true; renderBg(); toast(pn + ": " + (tg.classList.contains("pev-st") ? tg.value : tg.classList.contains("pev-gift") ? (nx.gift || "no gift") : money(nx.cost)) + " saved."); });
   });
   /* 6.9.756 - move a product to another category: column C only, through catalogCode (server V156) */
   document.addEventListener("change", function (ev) {
@@ -55202,32 +55368,26 @@ function viewCatalogue() {
      Products screen itself carries both buttons. */
   var NAV_OFF = [["rules", "Pitch rules"], ["customers", "Customers"],
                  ["spares", "Spares"], ["rates", "Rate revision"], ["tools", "Tools"]];
+  /* 6.9.840 - FEWER DOORS, EVERY ROOM STILL THERE. HIS WORDS (17 Oct): "merge tabs as there are many unused tabs, make
+     all apps simple to use, reduce complicated structure". Before: 8 groups, 50+ chips, the challan log in two groups,
+     the review and the statements in two each, three money lists spread over two groups, the admin-only screens mixed
+     into Today. Now: one home per chip. Agent first (his item 27). A role still sees only its own chips (navItemsOf),
+     so Admin is empty - and hidden - for everyone but him. Nothing was removed: NAV_OFF and the hubs keep every key. */
   var NAV_GROUPS = [
-    /* item 27, v6.9.510 - HIS WORDS: "Put agent on master tab for everyone". It was a chip
-       inside Leads, four along, on two role lists out of five. It is the first thing in the row
-       now and every role has it. */
     ["Agent",      ["agent"]],
-    /* v6.9.526 - "where is dedicated challan log under hisab". The register had no door: it was
-       a sub-tab of the old Deliveries hub ("deliveries"), which no group names. It is a tab now,
-       in both places a man would look. */
-    ["HISAB",      ["billing", "wareminder", "register", "paylog", "payments", "paidout", "dues", "review", "statements"]],   /* 6.9.667 - the Payment log beside the Challan log */   /* 6.9.635 - the twice-weekly review, in both places */
-    ["Deliveries", ["challans", "register", "freight", "returns"]],
-    /* v6.9.533 - his third list, item 13: "merge Leads and Clients into one tab with sub-tabs",
-       and item 16: "remove Leads tab from header". One group; the lead board is its second
-       chip. Every chip the two groups had is still here. */
-    ["Clients",    ["clients", "msgs", "leads", "visits", "crlog", "brandfollow", "followups", "quotes", "discounts", "pitch", "winloss", "review"]],   /* 6.9.737 - site visits & quotes */
-    ["Service",    ["complaints", "service"]],   /* 6.9.684 - complaints first */
-    ["Products",   ["products", "pricelist", "catalogue", "catalogs", "brandstory", "stock", "tally", "plcheck"]],   /* 6.9.612 - price list and add-product back */   /* v6.9.581 - the catalogue library; v6.9.605 - Stock, on his "stock entry in CRM" */
-    ["Team",       ["partners", "pevents", "statements", "commission", "payroll", "scorecard", "report", "teampins"]],
-    /* v6.9.539 - item 23: "Book numbers - what's the use, it's empty" (measured: 0 rows) - off
-       the header; the screen still opens from the Health check. Item 25: The brief is a tab
-       inside Agent now, so it is not here twice. */
-    ["Today",      ["dash", "myday", "pending", "health", "trouble", "changelog", "dups"]]   /* 6.9.739 - My day, a chip under Today (an executive lands on it) */
+    ["Today",      ["dash", "myday", "followups", "pending"]],
+    ["Clients",    ["clients", "clientlist", "leads", "quotes", "visits", "pitch", "winloss", "brandfollow", "crlog", "msgs"]],
+    ["Deliveries", ["challans", "register", "returns", "freight", "stock"]],
+    ["HISAB",      ["billing", "payments", "paylog", "paidout", "statements", "wareminder", "dues", "review", "discounts"]],
+    ["Partners",   ["partners", "pevents", "commission"]],
+    ["Service",    ["complaints", "service"]],
+    ["Products",   ["products", "catalogs", "pricelist", "catalogue", "brandstory", "tally", "plcheck"]],
+    ["Admin",      ["payroll", "scorecard", "report", "teampins", "health", "trouble", "changelog", "dups"]]
   ];
   /* The four hub tabs (v6.9.330 and before) still render if something lands on them - the two
      "Open Deliveries" buttons do - so they must light the right group. They are not listed as
      chips: their members are. */
-  var NAV_HUB_GROUP = { deliveries: "Deliveries", collections: "HISAB", pricing: "Products", payrollhub: "Team" };
+  var NAV_HUB_GROUP = { deliveries: "Deliveries", collections: "HISAB", pricing: "Products", payrollhub: "Admin" };   /* 6.9.840 */
   function navWho() { return String(S.user || "-"); }
   function navUse() {
     try {
@@ -55599,7 +55759,7 @@ function viewCatalogue() {
       if (!_noBookT) _noBookT = setTimeout(function () { _noBookT = null; if (!S.data && (S.pin || S.tok)) { try { refresh(); } catch (e) { } } }, 6000);
       return;
     }
-    var views = { attendance: viewAttendance, statements: viewStatements, agent: viewAgent, search: viewSearch, dossier: viewDossier, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, complaints: viewComplaints, payments: viewPayments, paidout: viewPaidOut, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, catalogs: viewCatalogues, brandstory: viewBrandStories, clients: viewClients, crlog: viewCrLog, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, register: viewRegister, paylog: viewPayLog, freight: viewFreight, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, trouble: viewTrouble, changelog: viewChangeLog, booksweep: viewBookSweep, dups: viewDups, stock: viewStock, tally: viewTally, plcheck: viewPlCheck, pevents: viewPev, brief: viewBrief, review: viewReview, myday: viewMyDay, wareminder: viewWaRem, msgs: viewMsgs };   /* 6.9.739 - myday */
+    var views = { attendance: viewAttendance, statements: viewStatements, agent: viewAgent, search: viewSearch, dossier: viewDossier, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, complaints: viewComplaints, payments: viewPayments, paidout: viewPaidOut, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, catalogs: viewCatalogues, brandstory: viewBrandStories, clients: viewClients, crlog: viewCrLog, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, register: viewRegister, paylog: viewPayLog, freight: viewFreight, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, trouble: viewTrouble, changelog: viewChangeLog, booksweep: viewBookSweep, dups: viewDups, stock: viewStock, tally: viewTally, plcheck: viewPlCheck, pevents: viewPev, brief: viewBrief, review: viewReview, myday: viewMyDay, wareminder: viewWaRem, msgs: viewMsgs, clientlist: viewClientList };   /* 6.9.739 - myday */
     var tabs = TAB_TABS;
 
     var h = '<div class="top">' +
@@ -63783,6 +63943,24 @@ function viewCatalogue() {
     if (act === "msg-copy") { var _mb = el(t.getAttribute("data-box")); try { navigator.clipboard.writeText(_mb ? _mb.value : ""); toast("Copied."); } catch (e) { toast("Select the text and copy it."); } return; }
     if (act === "msg-ai") { msgAi(t); return; }
     if (act === "xl-xlsx") { xlSheetXlsx(t.getAttribute("data-s") || ""); return; }   /* 6.9.831 */
+    if (act === "clp-prod") { S.clpProd = t.getAttribute("data-k") || ""; keepScroll = true; render(); return; }   /* 6.9.838 */
+    if (act === "ai-ask") {   /* 6.9.839 */
+      var _aq = String(val("ai_q") || "").trim(); if (!_aq) { toast("Type the question first."); return; }
+      S.aiAsk = { q: _aq, busy: true, a: (S.aiAsk || {}).a || "" }; keepScroll = true; render();
+      api("aiAsk", { text: _aq }, 90000).then(function (r) {
+        S.aiAsk = { q: _aq, busy: false, a: r && r.ok ? String(r.text || "") : "", err: r && r.ok ? "" : ((r && r.error) || "AI is not set up on the server yet (V163 + the key under Messages & posts).") };
+        keepScroll = true; render();
+      }).catch(function (e) { S.aiAsk = { q: _aq, busy: false, a: "", err: "No answer from the server (" + apiWhy(e) + ")." }; keepScroll = true; render(); });
+      return;
+    }
+    if (act === "pev-given") {   /* 6.9.837 - the gift reached him: who handed it over, and when */
+      var _ge = t.getAttribute("data-id"), _gp = t.getAttribute("data-p");
+      var _gc = pevInv(_ge).filter(function (i) { return dkey(i.partner) === dkey(_gp); })[0]; if (!_gc) { toast("Not on the list."); return; }
+      var _gn = Object.assign({}, _gc); delete _gn._at; delete _gn._by; delete _gn.at; _gn.givenAt = new Date().toISOString(); _gn.givenBy = S.user || "";
+      var _gev = pevEvent(_ge) || {}; if (_gev.type === "greet" && !/Delivered|Greeted/.test(_gn.st || "")) _gn.st = "Delivered";
+      pevSaveRow("evt:inv", _ge, _gn).then(function () { keepScroll = true; render(); toast((_gn.gift ? _gn.gift + " " : "Gift ") + "given to " + _gp + "."); });
+      return;
+    }
     /* 6.9.835 - duplicate partners */
     if (act === "pd-open") { var _pk = t.getAttribute("data-k") || ""; S.pdOpen = S.pdOpen === _pk ? "" : _pk; keepScroll = true; render(); return; }
     if (act === "pd-main") { S.pdMain = S.pdMain || {}; S.pdMain[t.getAttribute("data-k") || ""] = t.getAttribute("data-id") || ""; keepScroll = true; render(); return; }
