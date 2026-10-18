@@ -252,7 +252,7 @@ body{background:#F4F6F9}
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.132.1";   /* 1.132.1 - driver/client/partner mobile dedupe, narrower sign-out, token refusal re-signs in, Drop in held list */
+  var APP_VERSION = "1.133.0";   /* 1.132.1 - driver/client/partner mobile dedupe, narrower sign-out, token refusal re-signs in, Drop in held list */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -3974,6 +3974,18 @@ function discRowOn(client, brand, onYmd) {
     });
     return o;
   }
+  /* 1.133.0 - HIS WORDS: "if receipt of any client is pending from more than 5 days and godown is making new
+     challan, remind them; more than 10 days, block that account. Modern Plumbing Solution is exempted." */
+  var RCPT_WARN_DAYS = 5, RCPT_BLOCK_DAYS = 10;
+  function receiptPendingFor(cl) {
+    var nm = lower((cl && cl.name) || ""), n = 0, age = 0;
+    if (nm) challans().forEach(function (c) {
+      if (lower(c.customerName) !== nm || String(c.status || "") === "Cancelled" || !receiptOwed(c)) return;
+      n++; var a = ageDays(c); if (a > age) age = a;
+    });
+    var exempt = /modern\s*plumbing/i.test(String((cl && cl.name) || ""));
+    return { n: age > RCPT_WARN_DAYS ? n : 0, age: age, exempt: exempt, block: !exempt && age > RCPT_BLOCK_DAYS };
+  }
   function moneyBlock(cl) {
     var m = clientMoney(cl);
     if (!m.n && !m.limit) return "";
@@ -4002,6 +4014,14 @@ function discRowOn(client, brand, onYmd) {
     if (overDays) {
       h += '<div style="font-size:12px;font-weight:800;color:#b91c1c;margin-top:3px">' +
         'A challan has been unbilled ' + m.oldest + ' days on ' + m.days + '-day terms.</div>';
+    }
+    /* 1.133.0 - the earlier receipt, said before the paper is written (CRM 6.9.834 has the same rule) */
+    var rp = receiptPendingFor(cl);
+    if (rp.n) {
+      h += '<div style="font-size:12px;font-weight:800;color:' + (rp.block ? '#b91c1c' : '#b45309') + ';margin-top:3px">' +
+        (rp.block ? 'BLOCKED: a signed receipt is ' + rp.age + ' days pending on ' + rp.n + ' earlier challan' + (rp.n === 1 ? '' : 's') + '. Upload that receiving first.'
+                  : 'Earlier receipt pending ' + rp.age + ' days (' + rp.n + ' challan' + (rp.n === 1 ? '' : 's') + ') - kindly upload that also.') +
+        (rp.exempt ? ' <span style="font-weight:400">(own firm - not blocked)</span>' : '') + '</div>';
     }
     /* v1.28.0 - THIS FIGURE IS COMPUTED FROM `challans`, WHICH NOW ARRIVES SECOND.
        For the seconds between the two halves of a pull the number below is the last full one
@@ -9808,6 +9828,10 @@ function discRowOn(client, brand, onYmd) {
       /* v1.37.0 - "product" was right until job work existed. A challan for labour alone is a
          real thing and this message would have turned it away. */
       if (!lines.length) { toast("Add at least one line — material or job work."); return; }
+      /* 1.133.0 - the earlier receiving comes first */
+      var _rp = receiptPendingFor(cObj);
+      if (_rp.block) { toast("Blocked: a signed receipt is " + _rp.age + " days pending on his earlier challan. Upload that receiving first, then make this one."); return; }
+      if (_rp.n && !S.ch.rcptWarned) { S.ch.rcptWarned = true; toast("Earlier receipt pending " + _rp.age + " days - ask for it with this delivery. Press Save again to continue."); return; }
       /* v1.47.0 - the salt question, read here with everything else */
       var saltBagsV = chSaltBags(lines), svcCallV = (z.svcCall || "yes");
       /* v1.46.0 - the fare, asked for once. See chFreightBar(). It sits ahead of the mintId,
