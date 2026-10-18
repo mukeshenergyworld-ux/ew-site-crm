@@ -208,7 +208,7 @@ table.att td.ok,table.att td.no{font-size:16px}
       button: function () { return '<button type="button" class="ewthm" onclick="ewTheme.next(this)">' + ewtLabel() + '</button>'; }
     };
   })();
-  var APP_VERSION = "1.6.1";   /* 1.6.1 - Huliot Group introduction on quotes; 1.6.0 (17 Oct 2026) - a dropped POST never loses a quote; admin sees every executive; daily report; attendance grid */
+  var APP_VERSION = "1.6.2";   /* 1.6.1 - Huliot Group introduction on quotes; 1.6.0 (17 Oct 2026) - a dropped POST never loses a quote; admin sees every executive; daily report; attendance grid */
   /* 1.6.0 - ONLY THE SERVER'S OWN "NO" SIGNS A MAN OUT. The old test was /pin|locked|not allowed|blocked|removed/:
      any data error that happened to contain "not allowed" or "removed" (a refused row, a removed brand) signed the
      executive out and wiped his snapshot. These are the sign-in answers the server gives (teamAuth: "Wrong name or
@@ -1936,6 +1936,15 @@ table.att td.ok,table.att td.no{font-size:16px}
      23 Sep: the first pull after opening is whole, every Refresh after it is the difference. */
   var RAWB = { u: "", t: {}, h: {} };
   function rawbReset() { RAWB = { u: String(S.user || ""), t: {}, h: {} }; }
+  /* ===== A DELTA CAN ADD A ROW. IT CANNOT CHANGE ONE. (18 Oct 2026) =====
+     See the note above: what comes back is checked by ROW COUNT only, and passing a challan
+     does not change the count. So every tab whose rows are EDITED in place is forgotten the
+     moment the write-stamp moves, and asked for in full on the next pull. `audit` is left out
+     on purpose - it is the big one, it only ever grows, and its delta is what 1.90.0 bought. */
+  var LIVE_TABS = ["challans", "returns", "payments", "installs", "visits", "tickets", "spares", "quotes"];
+  function rawbDropLive() {
+    for (var i = 0; i < LIVE_TABS.length; i++) { delete RAWB.t[LIVE_TABS[i]]; delete RAWB.h[LIVE_TABS[i]]; }
+  }
   function teamGetD(extra, again) {
     if (RAWB.u !== String(S.user || "")) rawbReset();
     var ask = Object.assign({}, extra || {}, { have: RAWB.h });
@@ -1976,7 +1985,7 @@ table.att td.ok,table.att td.no{font-size:16px}
   var _pulling = null;
   function pull(loud) {
     if (_pulling) return _pulling;
-    if (loud) toast("Updating…");
+    if (loud) { rawbDropLive(); toast("Updating…"); }   /* 1.6.2 - the arrow answers with the truth the FIRST time */
     _pulling = flush(!!loud).then(function () { return getBook(FAST.concat(REST)); }).then(function (r) {   /* 1.4.5 - one call (p750) */
       /* 1.6.0 - AUTH_NO, not /pin|locked|not allowed|blocked|removed/: a data error with "not allowed" in it signed the man
          out and his snapshot went with it (signOut sets S.data = null). Only the server's sign-in "no" does that now. */
