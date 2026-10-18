@@ -252,7 +252,7 @@ body{background:#F4F6F9}
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.133.0";   /* 1.132.1 - driver/client/partner mobile dedupe, narrower sign-out, token refusal re-signs in, Drop in held list */
+  var APP_VERSION = "1.135.0";   /* 1.132.1 - driver/client/partner mobile dedupe, narrower sign-out, token refusal re-signs in, Drop in held list */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -632,6 +632,7 @@ body{background:#F4F6F9}
      Say which of the two actually happened. Nothing else changes: an unreachable server still
      raises no banner. */
   function refreshNow(loud) {
+    rawbDropLive();   /* the arrow answers with the truth the FIRST time */
     pull(true);
     liveVersion().then(function (v) {
       if (!v) { if (loud) toast("Could not check for a new version — you are on v" + APP_VERSION + "."); return; }
@@ -739,6 +740,15 @@ body{background:#F4F6F9}
      never kept. What is held lives in memory only, for this signed-in person. */
   var RAWB = { u: "", t: {}, h: {} };
   function rawbReset() { RAWB = { u: String(S.user || ""), t: {}, h: {} }; }
+  /* ===== A DELTA CAN ADD A ROW. IT CANNOT CHANGE ONE. (18 Oct 2026) =====
+     See the note above: what comes back is checked by ROW COUNT only, and passing a challan
+     does not change the count. So every tab whose rows are EDITED in place is forgotten the
+     moment the write-stamp moves, and asked for in full on the next pull. `audit` is left out
+     on purpose - it is the big one, it only ever grows, and its delta is what 1.90.0 bought. */
+  var LIVE_TABS = ["challans", "returns", "payments", "installs", "visits", "tickets", "spares", "quotes"];
+  function rawbDropLive() {
+    for (var i = 0; i < LIVE_TABS.length; i++) { delete RAWB.t[LIVE_TABS[i]]; delete RAWB.h[LIVE_TABS[i]]; }
+  }
   function teamGetD(extra, again) {
     if (RAWB.u !== String(S.user || "")) rawbReset();
     var ask = Object.assign({}, extra || {}, { have: RAWB.h });
@@ -3068,7 +3078,7 @@ function discRowOn(client, brand, onYmd) {
 
   /* v1.20.0: the delivery-book client list dies with the book too - a client the office
      added an hour ago must not be invisible because the first paint cached the old set. */
-  function bust() { _sccCache = null; _hxCache = null; _mnCache = null; _proofCache = null; _dtCache = null; _dlCache = null; _aliasCache = null; _dscIdx = null; _dscFam = null; _pcbCache = null; _valGen++; _cxCache = null; bustBookClients(); }   /* v1.68.0 - the delivery value reads the catalogue and the discount table now */
+  function bust() { _rgCache = null; _sccCache = null; _hxCache = null; _mnCache = null; _proofCache = null; _dtCache = null; _dlCache = null; _aliasCache = null; _dscIdx = null; _dscFam = null; _pcbCache = null; _valGen++; _cxCache = null; bustBookClients(); }   /* v1.68.0 - the delivery value reads the catalogue and the discount table now */
 
   /* ======= A CANCELLED DELIVERY STOPS COUNTING HERE  (v1.69.0, 19 Sep 2026) =======
      MEASURED on his book. Four deliveries are cancelled and this app counted every one:
@@ -3977,6 +3987,78 @@ function discRowOn(client, brand, onYmd) {
   /* 1.133.0 - HIS WORDS: "if receipt of any client is pending from more than 5 days and godown is making new
      challan, remind them; more than 10 days, block that account. Modern Plumbing Solution is exempted." */
   var RCPT_WARN_DAYS = 5, RCPT_BLOCK_DAYS = 10;
+  /* 1.135.0 - THE BLOCK HAS A SWITCH NOW. See p843. Latest `rcpt:block` audit row wins;
+     with no row at all the baseline below holds, which is the fortnight he asked for on
+     18 Oct so the godown can find and upload the old receivings. A pause always has an end:
+     when the date passes the rule comes back on with nothing pressed. */
+  var RCPT_BASE_UNTIL = "2026-11-02T18:29:59Z";   /* end of 2 Nov 2026, IST. Blocking resumes on the 3rd. */
+  var _rgCache = null;
+  function rcptGate() {
+    if (_rgCache) return _rgCache;
+    var best = null;
+    ((S.data && S.data.audit) || []).forEach(function (r) {
+      if (!r || String(r.action || "") !== "rcpt:block") return;
+      var d = {}; try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
+      if (!best || String(r.createdAt || "") >= String(best.at || "")) best = { at: String(r.createdAt || ""), d: d, by: String(r.actor || "") };
+    });
+    var g;
+    if (!best) g = { on: Date.now() > Date.parse(RCPT_BASE_UNTIL), until: RCPT_BASE_UNTIL, by: "", at: "", base: true };
+    else if (Number(best.d.on) === 1) g = { on: true, until: "", by: best.by, at: best.at };
+    else {
+      var t = Date.parse(String(best.d.until || ""));
+      g = { on: !isFinite(t) || Date.now() > t, until: String(best.d.until || ""), by: best.by, at: best.at, lapsed: isFinite(t) && Date.now() > t };
+    }
+    _rgCache = g;
+    return g;
+  }
+  function rcptUntilTxt() {
+    var u = Date.parse(rcptGate().until || "");
+    if (!isFinite(u)) return "";
+    var d = new Date(u);
+    return d.getDate() + " " + ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][d.getMonth()];
+  }
+  function rcptGateSet(on, days, why) {
+    var until = on ? "" : new Date(Date.now() + days * 86400000).toISOString();
+    _rgCache = null;
+    var row = {
+      id: "RB-" + Date.now() + "-" + Math.floor(Math.random() * 1000000),
+      createdAt: new Date().toISOString(), actor: S.user || "",
+      action: "rcpt:block", target: "firm",
+      detail: JSON.stringify({ on: on ? 1 : 0, until: until, days: on ? 0 : days, why: String(why || ""), by: S.user || "" })
+    };
+    S.data.audit = ((S.data && S.data.audit) || []).concat([row]);   /* on his screen at once */
+    bust(); render();
+    return saveRow("audit", row);
+  }
+  /* The card itself. Admin presses it; everyone else is simply told, in one grey line, that
+     the rule is down - because a godown that is not being refused should know why. */
+  function rcptGateCard() {
+    var g = rcptGate(), adm = roleIs("admin");
+    if (!adm) {
+      if (g.on) return "";
+      return '<div class="muted" style="margin:2px 2px 8px;font-size:12.5px;color:#b45309;font-weight:700">' +
+        'Receipt blocking is paused' + (rcptUntilTxt() ? ' until ' + esc(rcptUntilTxt()) : '') +
+        ' \u2014 old receivings are still to be uploaded.</div>';
+    }
+    return '<div class="card" style="margin:2px 0 8px;border-color:' + (g.on ? '#fecaca' : '#fde68a') +
+      ';background:' + (g.on ? '#fef2f2' : '#fffbeb') + '">' +
+      '<div style="font-weight:800;font-size:13.5px">Receipt blocking is ' +
+      (g.on ? '<span style="color:#b91c1c">ON</span>' : '<span style="color:#b45309">PAUSED' + (rcptUntilTxt() ? ' until ' + esc(rcptUntilTxt()) : '') + '</span>') + '</div>' +
+      '<div class="meta" style="font-size:12.5px;margin-top:3px">' +
+      (g.on ? 'A new challan is refused when a signed receipt is more than ' + RCPT_BLOCK_DAYS + ' days pending on the same client. The reminder at ' + RCPT_WARN_DAYS + ' days stays either way.'
+            : 'The godown is still TOLD about a pending receipt \u2014 it is not refused. The rule comes back on by itself on the date above; nothing need be pressed.') +
+      '</div>' +
+      '<div class="acts" style="margin-top:8px;flex-wrap:wrap;gap:6px">' +
+      (g.on
+        ? '<button class="btn sm gry" data-act="rcpt-off" data-d="15">Pause 15 days</button>' +
+          '<button class="btn sm gry" data-act="rcpt-off" data-d="1">Pause today only</button>'
+        : '<button class="btn sm" data-act="rcpt-on">Turn blocking back on</button>' +
+          '<button class="btn sm gry" data-act="rcpt-off" data-d="15">Another 15 days</button>') +
+      '</div>' +
+      (g.at ? '<div class="meta" style="font-size:12px;margin-top:5px">Last changed by ' + esc(g.by || "?") + ' on ' + esc(String(g.at).slice(8, 10) + "/" + String(g.at).slice(5, 7)) + '.</div>'
+            : '<div class="meta" style="font-size:12px;margin-top:5px">Nobody has touched the switch yet \u2014 this is the fortnight set on 18 Oct for the old uploads.</div>') +
+      '</div>';
+  }
   function receiptPendingFor(cl) {
     var nm = lower((cl && cl.name) || ""), n = 0, age = 0;
     if (nm) challans().forEach(function (c) {
@@ -3984,7 +4066,10 @@ function discRowOn(client, brand, onYmd) {
       n++; var a = ageDays(c); if (a > age) age = a;
     });
     var exempt = /modern\s*plumbing/i.test(String((cl && cl.name) || ""));
-    return { n: age > RCPT_WARN_DAYS ? n : 0, age: age, exempt: exempt, block: !exempt && age > RCPT_BLOCK_DAYS };
+    /* 1.135.0 - the SWITCH decides whether a refusal follows; the reminder is unconditional. */
+    return { n: age > RCPT_WARN_DAYS ? n : 0, age: age, exempt: exempt,
+             block: !exempt && age > RCPT_BLOCK_DAYS && rcptGate().on,
+             would: !exempt && age > RCPT_BLOCK_DAYS };
   }
   function moneyBlock(cl) {
     var m = clientMoney(cl);
@@ -4021,6 +4106,9 @@ function discRowOn(client, brand, onYmd) {
       h += '<div style="font-size:12px;font-weight:800;color:' + (rp.block ? '#b91c1c' : '#b45309') + ';margin-top:3px">' +
         (rp.block ? 'BLOCKED: a signed receipt is ' + rp.age + ' days pending on ' + rp.n + ' earlier challan' + (rp.n === 1 ? '' : 's') + '. Upload that receiving first.'
                   : 'Earlier receipt pending ' + rp.age + ' days (' + rp.n + ' challan' + (rp.n === 1 ? '' : 's') + ') - kindly upload that also.') +
+        /* 1.135.0 - when the rule is down, say so HERE, where the decision is made, and say when it returns */
+        (rp.would && !rp.block ? ' <span style="font-weight:700;color:#b45309">This would normally be blocked \u2014 blocking is paused' +
+          (rcptUntilTxt() ? ' until ' + esc(rcptUntilTxt()) : '') + '.</span>' : '') +
         (rp.exempt ? ' <span style="font-weight:400">(own firm - not blocked)</span>' : '') + '</div>';
     }
     /* v1.28.0 - THIS FIGURE IS COMPUTED FROM `challans`, WHICH NOW ARRIVES SECOND.
@@ -4629,7 +4717,7 @@ function discRowOn(client, brand, onYmd) {
           'Ask the office to check what your name is allowed to see.</div>' +
           '<div class="acts" style="margin-top:10px">' +
           '<button class="btn sm ghost" data-act="refresh">Try pulling again</button></div></div>') +
-        searchBox() + dayCard() + statBar() + chChips();
+        searchBox() + dayCard() + statBar() + rcptGateCard() + chChips();
       if (f === "reg") return h + viewRegister();   /* 1.63.0 - before the 60-day empty branch */
       if (!list.length) {
         return h + '<div class="empty">Nothing here' +
@@ -9317,7 +9405,30 @@ function discRowOn(client, brand, onYmd) {
     if (act === "scc-open") { S.scc = S.scc || {}; S.scc.open = t.getAttribute("data-n") || ""; render(); window.scrollTo(0, 0); return; }
     if (act === "scc-back") { S.scc = S.scc || {}; S.scc.open = ""; render(); return; }
     if (act === "qclear")  { S.q = ""; render(); return; }
-    if (act === "ch-filter") { S.chFilter = t.getAttribute("data-f"); render(); return; }
+    if (act === "rcpt-off") {   /* 1.135.0 */
+      if (!roleIs("admin")) { toast("Only the owner can change this."); return; }
+      var _d = Math.max(1, num(t.getAttribute("data-d")) || 15);
+      rcptGateSet(false, _d);
+      toast("Receipt blocking paused for " + _d + " day" + (_d === 1 ? "" : "s") + ". The godown is still told, never refused.");
+      return;
+    }
+    if (act === "rcpt-on") {   /* 1.135.0 */
+      if (!roleIs("admin")) { toast("Only the owner can change this."); return; }
+      rcptGateSet(true, 0);
+      toast("Receipt blocking is on. A client with a receipt more than " + RCPT_BLOCK_DAYS + " days pending cannot take new material.");
+      return;
+    }
+    if (act === "ch-filter") {
+      S.chFilter = t.getAttribute("data-f"); render();
+      /* 1.134.0 - "every time it shows old approved challan to approve". Opening the approval
+         queue is a man asking the book a question, not scrolling a screen he is already on.
+         So it re-reads - forgetting the challan rows it holds first, because a pass is an EDIT
+         and a delta checked by row count cannot see one. Guarded: only this one chip, only when
+         the book was last read more than fifteen seconds ago, never over an open form. */
+      if (S.chFilter === "draft" && !S.sheet && !S.ch && !S.rt && !_moving && !_pulling &&
+          (Date.now() - (S.syncAt || 0)) > 15000) { rawbDropLive(); S.restAt = 0; pull(false); }   /* restAt 0 so the half that HOLDS challans is asked for */
+      return;
+    }
     /* ---- the day card (1.56.0). A day is a LOCAL day - see dayOf(). ---- */
     if (act === "day-prev" || act === "day-next") {
       var base = Date.parse((S.day || today()) + "T12:00:00");   /* midday, so no DST or tz edge
@@ -10694,6 +10805,7 @@ function discRowOn(client, brand, onYmd) {
       if (!_beatSeen) { _beatSeen = st; return; }     /* baseline, not news */
       if (st === _beatSeen) return;
       _beatSeen = st;
+      rawbDropLive();   /* somebody WROTE - a row we hold may have changed under us */
       if (beatSkip()) return;                          /* a form opened while we asked */
       beatGo();
     }).catch(function () { _beatBusy = false; });
