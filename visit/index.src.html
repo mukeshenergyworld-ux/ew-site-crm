@@ -208,7 +208,7 @@ table.att td.ok,table.att td.no{font-size:16px}
       button: function () { return '<button type="button" class="ewthm" onclick="ewTheme.next(this)">' + ewtLabel() + '</button>'; }
     };
   })();
-  var APP_VERSION = "1.6.0";   /* 1.6.0 (17 Oct 2026) - a dropped POST never loses a quote; admin sees every executive; daily report; attendance grid */
+  var APP_VERSION = "1.6.1";   /* 1.6.1 - Huliot Group introduction on quotes; 1.6.0 (17 Oct 2026) - a dropped POST never loses a quote; admin sees every executive; daily report; attendance grid */
   /* 1.6.0 - ONLY THE SERVER'S OWN "NO" SIGNS A MAN OUT. The old test was /pin|locked|not allowed|blocked|removed/:
      any data error that happened to contain "not allowed" or "removed" (a refused row, a removed brand) signed the
      executive out and wiped his snapshot. These are the sign-in answers the server gives (teamAuth: "Wrong name or
@@ -4306,6 +4306,15 @@ table.att td.ok,table.att td.no{font-size:16px}
     (items || []).forEach(function (i) {
       var x = qxIntroFor(i.brand); if (!x || seen[x.brand]) return;
       seen[x.brand] = 1; out.push(x);
+    });
+    /* 18 Oct 2026 - HIS WORDS: "if any of brand quoted Huliot HT PRO, Huliot Ultra Silent, Huliot Heliroma, Huliot PPR
+       then we have to show introduction of complete Huliot Group (huliotgroup.com)". The group comes FIRST, then the
+       brand's own words. brand_intros.json -> groups[] with its member brands. */
+    var groups = (_qxIntros && _qxIntros.groups) || [];
+    groups.forEach(function (g) {
+      var mem = (g.members || []).map(function (m) { return String(m).toLowerCase(); });
+      var hit = (items || []).some(function (i) { return mem.indexOf(String(i.brand || "").trim().toLowerCase()) >= 0; });
+      if (hit && !seen[g.group]) { seen[g.group] = 1; out.unshift({ brand: g.group, alias: [g.logo || "Huliot"], tagline: g.tagline, about: g.about, origin: g.origin, web: g.web, group: true }); }
     });
     return out;
   }
