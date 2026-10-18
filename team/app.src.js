@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.840";
+  var APP_VERSION = "6.9.841";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -49887,7 +49887,24 @@ function viewCatalogue() {
      V163. Replies are text with <b> only; anything else is escaped. Nothing is written by it - it reads. */
   function aiAskHtml() {
     var r = S.aiAsk || {};
-    var safe = function (t) { return esc(String(t || "")).replace(/&lt;b&gt;/g, "<b>").replace(/&lt;\/b&gt;/g, "</b>").replace(/\n/g, "<br>"); };
+    /* 6.9.841 - the assistant answers in light markdown (bold, bullets, a table); drawn as such, everything else escaped */
+    var safe = function (t) {
+      var lines = String(t || "").replace(/\r/g, "").split("\n"), out = [], tbl = null;
+      var inl = function (x) { return esc(x).replace(/&lt;b&gt;/g, "<b>").replace(/&lt;\/b&gt;/g, "</b>").replace(/\*\*(.+?)\*\*/g, "<b>$1</b>"); };
+      var flush = function () { if (!tbl) return; out.push('<div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:13px;margin:4px 0">' + tbl.map(function (r, i) { return '<tr>' + r.map(function (c) { return '<' + (i ? 'td' : 'th') + ' style="padding:3px 8px;border:1px solid #e2e8f0;text-align:' + (i && /^[\s\d,.%+\-Rs₹]+$/.test(c) ? 'right' : 'left') + '">' + inl(c) + '</' + (i ? 'td' : 'th') + '>'; }).join("") + '</tr>'; }).join("") + '</table></div>'); tbl = null; };
+      lines.forEach(function (ln) {
+        var m = ln.match(/^\s*\|(.*)\|\s*$/);
+        if (m) { var cells = m[1].split("|").map(function (c) { return c.trim(); }); if (cells.every(function (c) { return /^:?-{2,}:?$/.test(c) || c === ""; }) && cells.some(Boolean)) return; tbl = tbl || []; tbl.push(cells); return; }
+        flush();
+        var b = ln.match(/^\s*[-*\u2022]\s+(.*)$/), n = ln.match(/^\s*(\d+)[.)]\s+(.*)$/);
+        if (b) out.push('<div style="padding-left:14px;text-indent:-10px">&bull; ' + inl(b[1]) + '</div>');
+        else if (n) out.push('<div style="padding-left:18px;text-indent:-18px">' + n[1] + '. ' + inl(n[2]) + '</div>');
+        else if (ln.trim() === "") out.push('<div style="height:6px"></div>');
+        else out.push('<div>' + inl(ln) + '</div>');
+      });
+      flush();
+      return out.join("");
+    };
     return '<div class="card" style="border-color:#99f6e4;background:#f0fdfa"><h3 style="margin:0 0 4px">Ask the assistant</h3>' +
       '<div class="meta" style="font-size:12.5px">Reads your book and answers: <i>whose receipt is pending</i>, <i>how is this month by executive</i>, <i>which quotes are stuck</i>, <i>what should we add to the CRM</i>. Same brain as the Telegram bot. It never changes anything.</div>' +
       '<div style="display:flex;gap:6px;margin-top:6px"><input id="ai_q" value="' + esc(r.q || "") + '" placeholder="Ask in plain words\u2026" style="flex:1;min-height:44px;font-size:16px" onkeydown="if(event.key===\'Enter\'){var b=document.querySelector(\'[data-act=ai-ask]\');if(b)b.click();}"/>' +
