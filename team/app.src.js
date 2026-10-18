@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.841";
+  var APP_VERSION = "6.9.842";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -32427,6 +32427,27 @@ function viewCatalogue() {
     var list = famChallansIn(name).filter(function (c) { return c && c.id !== exceptId && chNoPaper(c); });
     return { n: list.length, age: mwOldest(list), list: list, exempt: rcptExempt(name) };
   }
+  /* 6.9.842 - THE SAME SWITCH THE GODOWN PRESSES. The Challan app writes an `rcpt:block`
+     audit fact (challan 1.135.0, p843) and this reads it, so the desk and the godown can never
+     disagree about whether the rule is on. With no fact on the book the baseline holds - paused
+     to the end of 2 Nov 2026, the fortnight he gave the godown to upload the old receivings.
+     Paused stops the REFUSAL only; the 5-day reminder is unconditional and stays. */
+  var RCPT_BASE_UNTIL = "2026-11-02T18:29:59Z";
+  function rcptBlockOn() {
+    var d = auditNewest("rcpt:block", function () { return "firm"; }, "firm");
+    if (!d) return Date.now() > Date.parse(RCPT_BASE_UNTIL);
+    if (Number(d.on) === 1) return true;
+    var t = Date.parse(String(d.until || ""));
+    return !isFinite(t) || Date.now() > t;
+  }
+  function rcptPausedTxt() {
+    if (rcptBlockOn()) return "";
+    var d = auditNewest("rcpt:block", function () { return "firm"; }, "firm");
+    var u = Date.parse(String((d && d.until) || RCPT_BASE_UNTIL));
+    if (!isFinite(u)) return "blocking is paused";
+    var x = new Date(u);
+    return "blocking is paused until " + x.getDate() + " " + ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][x.getMonth()];
+  }
   function creditGate(ch) {
     var name = ch.customerName, t = creditTerms(name), ag = clientAging(name);
     var road = chOnRoad(name, ch.id), now = challanNet(ch) + chFreight(ch);
@@ -32438,7 +32459,8 @@ function viewCatalogue() {
        upload previous receiving first. Modern Plumbing Solution is exempted." */
     var paper = receiptPending(name, ch.id);
     if (paper.n && !paper.exempt) {
-      if (paper.age > RCPT_BLOCK_DAYS) reasons.push("a signed receipt is " + paper.age + " days overdue on " + plural(paper.n, "earlier delivery") + " - upload that receiving first");
+      if (paper.age > RCPT_BLOCK_DAYS && rcptBlockOn()) reasons.push("a signed receipt is " + paper.age + " days overdue on " + plural(paper.n, "earlier delivery") + " - upload that receiving first");
+      else if (paper.age > RCPT_BLOCK_DAYS) warns.push("A signed receipt is " + paper.age + " days overdue on " + plural(paper.n, "earlier delivery") + " - this would normally be blocked, but " + rcptPausedTxt() + ".");
       else if (paper.age > RCPT_WARN_DAYS) warns.push("Earlier receipt pending " + paper.age + " days on " + plural(paper.n, "delivery") + " - ask for it with this one.");
     }
     return {
