@@ -177,7 +177,7 @@ table.ct td.wd{white-space:nowrap}
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.67.0";   /* 1.67.0 - flush busy flag + B9 owner guard, narrower sign-out, Old book under ☰ */
+  var APP_VERSION = "1.68.0";   /* 1.67.0 - flush busy flag + B9 owner guard, narrower sign-out, Old book under ☰ */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -580,6 +580,7 @@ table.ct td.wd{white-space:nowrap}
      Say which of the two actually happened. Nothing else changes: an unreachable server still
      raises no banner. */
   function refreshNow(loud) {
+    rawbDropLive();   /* the arrow answers with the truth the FIRST time */
     pull(true);
     liveVersion().then(function (v) {
       if (!v) { if (loud) toast("Could not check for a new version — you are on v" + APP_VERSION + "."); return; }
@@ -687,6 +688,15 @@ table.ct td.wd{white-space:nowrap}
      never kept. What is held lives in memory only, for this signed-in person. */
   var RAWB = { u: "", t: {}, h: {} };
   function rawbReset() { RAWB = { u: String(S.user || ""), t: {}, h: {} }; }
+  /* ===== A DELTA CAN ADD A ROW. IT CANNOT CHANGE ONE. (18 Oct 2026) =====
+     See the note above: what comes back is checked by ROW COUNT only, and passing a challan
+     does not change the count. So every tab whose rows are EDITED in place is forgotten the
+     moment the write-stamp moves, and asked for in full on the next pull. `audit` is left out
+     on purpose - it is the big one, it only ever grows, and its delta is what 1.90.0 bought. */
+  var LIVE_TABS = ["challans", "returns", "payments", "installs", "visits", "tickets", "spares", "quotes"];
+  function rawbDropLive() {
+    for (var i = 0; i < LIVE_TABS.length; i++) { delete RAWB.t[LIVE_TABS[i]]; delete RAWB.h[LIVE_TABS[i]]; }
+  }
   function teamGetD(extra, again) {
     if (RAWB.u !== String(S.user || "")) rawbReset();
     var ask = Object.assign({}, extra || {}, { have: RAWB.h });
@@ -5718,6 +5728,7 @@ function cancelMap() {
       if (!_beatSeen) { _beatSeen = st; return; }     /* baseline, not news */
       if (st === _beatSeen) return;
       _beatSeen = st;
+      rawbDropLive();   /* somebody WROTE - a row we hold may have changed under us */
       if (beatSkip()) return;                          /* a form opened while we asked */
       beatGo();
     }).catch(function () { _beatBusy = false; });
