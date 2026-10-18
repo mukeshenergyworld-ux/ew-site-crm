@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.827";
+  var APP_VERSION = "6.9.829";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -25348,8 +25348,12 @@ function viewCatalogue() {
          capacity is uniform across pages. */
       var TOP = 34;
       var bottomLimit = H - FOOT_H - LOGO_H - 2;
-      var perCol = Math.floor((bottomLimit - TOP - 7) / RH);
-      var itemPages = Math.max(1, Math.ceil(items.length / (perCol * COLS)));
+      /* 6.9.829 - a name that does not fit wraps to a second line (fitCell, 2 lines) and the row grows;
+         the columns and pages are therefore measured by HEIGHT, not by a fixed count. */
+      var DESC_W = cols(0).unit - cols(0).desc - 4;
+      var rowH = function (it) { return RH * Math.max(1, fitCell(doc, F, it.desc, DESC_W, 2, "normal", 6.4).length); };
+      var colH = bottomLimit - TOP - 7;
+      var itemPages = (function () { var pg = 1, used = 0, col = 0; items.forEach(function (it) { var h = rowH(it); if (used + h > colH) { col++; used = 0; if (col >= COLS) { pg++; col = 0; } } used += h; }); return pg; })();
       var totalPages = itemPages + (alt.length ? 1 : 0);
       var idx = 0, page = 1, lastY = 0, lastX = L;
 
@@ -25361,20 +25365,22 @@ function viewCatalogue() {
           var x = L + ci * (COLW + COLGAP), y = top + 4;
           colHead(x, y); y += 6.6;
           var C = cols(x);
-          for (var k = 0; k < perCol && idx < items.length; k++, idx++) {
+          for (var k = 0; idx < items.length; k++, idx++) {
             var it = items[idx];
-            if (idx % 2 === 1) { doc.setFillColor(248, 248, 248); doc.rect(x, y - 3.3, COLW, RH, "F"); }
+            var _dl = fitCell(doc, F, it.desc, C.unit - C.desc - 4, 2, "normal", 6.4), _rh = RH * Math.max(1, _dl.length);
+            if (k > 0 && y + _rh - RH > bottomLimit - 1.1) break;   /* this column is full (the last line's baseline, as the old row count allowed) */
+            if (idx % 2 === 1) { doc.setFillColor(248, 248, 248); doc.rect(x, y - 3.3, COLW, _rh, "F"); }
             g(125); F("normal"); doc.setFontSize(5.6);
             doc.text(String(idx + 1), C.n, y);
             g(45); F("bold"); doc.setFontSize(5.6);
             doc.text(String(it.code || "").slice(0, 14), C.code, y);
             g(0); F("normal"); doc.setFontSize(6.4);
-            doc.text(fitCell(doc, F, it.desc, C.unit - C.desc - 4, 1, "normal", 6.4)[0], C.desc, y);
+            _dl.forEach(function (ln, li) { doc.text(ln, C.desc, y + li * RH); });
             g(95); F("normal"); doc.setFontSize(6);
             doc.text(String(it.unit || ""), C.unit, y, { align: "right" });
             g(0); F("bold"); doc.setFontSize(7);
             doc.text(String(it.qty || ""), C.qty, y, { align: "right" });
-            y += RH;
+            y += _rh;
           }
           dg(220); doc.setLineWidth(0.2); doc.line(x, y - 3.3, x + COLW, y - 3.3);
           lastY = y; lastX = x;
@@ -32197,7 +32203,7 @@ function viewCatalogue() {
        which can wrongly block a dispatch. It is a credit, so it goes in with the other credits. */
     chs.forEach(function (c) {
       var amt = challanNet(c) + chFreight(c);
-      if (amt > 0) items.push({ age: Math.max(0, -daysTo(localDay(c.createdAt || ""))), amt: amt });
+      if (amt > 0) items.push({ age: Math.max(0, -daysTo(localDay(c.createdAt || ""))), amt: amt, orig: amt, id: String(c.id || "") });   /* 6.9.828 - orig/id: part-paid or not, per delivery */
       /* 6.9.666 - a hand-worked CREDIT NOTE (a delivery whose lines are minus) is a credit, like a
          payment. It was dropped from both sides, so 27/08/2026/034 Ashish Goyal (-70,256) left him
          "owing" 53,215 on the ageing, the credit stop and the chase list while his balance line
@@ -32516,6 +32522,17 @@ function viewCatalogue() {
           old: payVerifyPre(p) });
       }
     });
+    /* 6.9.828 - HIS WORDS: "one more column after balance, Pending Since (how many days), if part
+       payment received then show part payment pending since". The ageing already settles his credits
+       oldest-first (agingItems, FIFO); what is left on each delivery says whether it is wholly or
+       partly unpaid and for how many days. A paid delivery shows nothing. */
+    var pendBy = {};
+    try {
+      agingItems(cl && cl.name ? cl.name : cl).forEach(function (it) {
+        if (it.id && it.amt > 0.5) pendBy[it.id] = { days: it.age, part: it.amt < (it.orig || 0) - 0.5, left: it.amt };
+      });
+    } catch (e) { pendBy = {}; }
+    out.forEach(function (r) { if (r.kind === "ch" && r.id && pendBy[r.id]) r.pend = pendBy[r.id]; });
     return { rows: out, bal: run, opening: opening, chs: chs, rets: rets, pays: pays,
              withBook: chs.filter(function (c) { return !!manualNoFor(c); }).length,
              withRcpt: chs.filter(function (c) { return chProofAny(c).has; }).length,
@@ -32531,7 +32548,15 @@ function viewCatalogue() {
      receipt still sitting on the phone that photographed it from one on Drive. Calling that
      "Attached" would be a claim about a document nobody else can open yet; calling it "Pending"
      would send a man to photograph the same paper twice. So it is amber and says "On its way". */
-  var MINI_HEAD = ["Date", "Challan No", "PTRS", "Supply/Return", "Book No", "Receipt", "GST Bill", "Debit", "Credit", "Balance"];
+  var MINI_HEAD = ["Date", "Challan No", "PTRS", "Supply/Return", "Book No", "Receipt", "GST Bill", "Debit", "Credit", "Balance", "Pending since"];   /* 6.9.828 */
+  /* 6.9.828 - "pending since 45 days" / "part pending since 45 days" (short form for the PDF column) */
+  function pendWord(r, short) {
+    var p = r && r.pend; if (!p) return "";
+    var d = Math.max(0, Number(p.days) || 0), dd = d + " day" + (d === 1 ? "" : "s");
+    if (short) return (p.part ? "part \u00b7 " : "") + dd;
+    return (p.part ? "part payment pending since " : "pending since ") + dd;
+  }
+  var MINI_MONEY = { 7: 1, 8: 1, 9: 1 };   /* the right-aligned money columns of MINI_HEAD */
   /* v6.9.444 - the number of columns, as a word, read off the header. Two sentences on this screen
      say how many there are and both had gone stale by hand - "eight" survived the ninth AND the
      tenth column under the file buttons. A number a man has to remember to change is a number
@@ -32566,7 +32591,8 @@ function viewCatalogue() {
      the particulars over Supply / Return / Payment, the receipt over the GST bill, the maker over
      the passer. Nothing is dropped. MINI_HEAD - the CUSTOMER'S statement, the PDF and the Excel -
      is untouched: this is the screen only. */
-  var MINI_HEAD2 = ["Date", "Challan No", "PTRS", "Book No", "Receipt / GST bill", "Made / passed by", "Debit", "Credit", "Balance"];
+  var MINI_HEAD2 = ["Date", "Challan No", "PTRS", "Book No", "Receipt / GST bill", "Made / passed by", "Debit", "Credit", "Balance", "Pending since"];   /* 6.9.828 */
+  var MINI2_MONEY = { 6: 1, 7: 1, 8: 1 };
   function miniInline(td) { return String(td || "").replace(/^<td/, "<span").replace(/<\/td>$/, "</span>"); }
   /* ---------------- THE NUMBER WITHOUT THE DATE (v6.9.472) ----------------
      HIS WORDS: "short down challan no".
@@ -33395,7 +33421,8 @@ function viewCatalogue() {
         '<td style="' + num + ';color:' + (r.kind === "ret" ? "#b91c1c" : "#0f766e") + '">' +
           (r.credit == null ? "" : money(r.credit)) + '</td>' +
         '<td style="' + num + '"><b style="color:' + (r.kind === "ret" ? "#b91c1c" : (r.bal < -0.5 ? "#0f766e" : "#0f172a")) + '">' +
-          moneySgn(Math.abs(r.bal) < 0.5 ? 0 : r.bal) + '</b></td></tr>';
+          moneySgn(Math.abs(r.bal) < 0.5 ? 0 : r.bal) + '</b></td>' +
+        '<td style="' + cell + ';font-size:12px;white-space:nowrap;color:' + (r.pend ? (r.pend.days > 30 ? '#b91c1c' : '#b45309') : '#94a3b8') + '">' + esc(pendWord(r)) + '</td></tr>';   /* 6.9.828 */
       /* ---- v6.9.478 - AND ITS CARD, UNDERNEATH, WHEN HE HAS OPENED IT ----
          The card is not built yet - viewBilling fills _acctCards AFTER it draws this table, which
          is the very reason v6.9.451 read the store on tap. So the row leaves a MARKED GAP and the
@@ -33485,7 +33512,7 @@ function viewCatalogue() {
           /* v6.9.444 - the three money columns are the LAST three, whatever sits before them.
              Written as "i >= 6" this right-aligned GST BILL the moment it became the seventh.
              v6.9.472 - and it kept holding when MADE BY and PASSED BY went in at 7 and 8. */
-          (i >= MINI_HEAD2.length - 3 ? 'right' : 'left') + '">' + esc(t.toUpperCase()) + '</th>';
+          (MINI2_MONEY[i] ? 'right' : 'left') + '">' + esc(t.toUpperCase()) + '</th>';
       }).join("") + '</tr>' + h + '</table></div>') +
       '<div class="acts" style="margin-top:8px;align-items:baseline;border-top:2px solid #0d766c;padding-top:7px;flex-wrap:wrap;gap:8px">' +
       '<span class="grow" style="font-weight:700;font-size:13px;color:' + (m.bal > 0.5 ? "#b91c1c" : "#0f766e") + '">' +
@@ -33557,18 +33584,18 @@ function viewCatalogue() {
       out.push([r.date, r.no, r.ptrs, r.type, r.book, miniRcptWord(r.rcpt), miniBillWord(r.bill),
                 r.debit == null ? "" : Math.round(r.debit),
                 r.credit == null ? "" : Math.round(r.credit),
-                { v: Math.round(r.bal), s: XL.BOLD }]);
+                { v: Math.round(r.bal), s: XL.BOLD }, pendWord(r)]);   /* 6.9.828 */
     });
     out.push([]);
     out.push([{ v: hisabMiniLine(m.bal), s: XL.BAND }, { v: "", s: XL.BAND }, { v: "", s: XL.BAND },
               { v: "", s: XL.BAND }, { v: "", s: XL.BAND }, { v: "", s: XL.BAND }, { v: "", s: XL.BAND },
-              { v: "", s: XL.BAND }, { v: Math.round(Math.abs(m.bal)), s: XL.BAND }]);
+              { v: "", s: XL.BAND }, { v: Math.round(Math.abs(m.bal)), s: XL.BAND }, { v: "", s: XL.BAND }]);
     out.push([]);
     out.push(["Energy World · " + cl + " · built " + fullDate(today()) +
               " · every delivery, return and payment on this account."]);
     out.push([]); ewPayXlRows().forEach(function (r) { out.push(r); });   /* 6.9.755 */
     dlXlsx("Hisab_" + String(cl).replace(/[^\w.-]/g, "_") + "_" + today() + ".xlsx",
-           String(cl).slice(0, 28), out, [11, 24, 30, 13, 16, 12, 13, 13, 14]);
+           String(cl).slice(0, 28), out, [11, 24, 30, 13, 16, 12, 13, 13, 14, 14, 26]);   /* 6.9.828 - + Pending since */
   }
 
   /* ---- THE FULL HISAB AS CELLS (v6.9.456) ----
@@ -33599,13 +33626,13 @@ function viewCatalogue() {
       out.push([r.date, r.no, r.ptrs, r.type, r.book, miniRcptWord(r.rcpt), miniBillWord(r.bill),
                 r.debit == null ? "" : Math.round(r.debit),
                 r.credit == null ? "" : Math.round(r.credit),
-                { v: Math.round(r.bal), s: XL.BOLD },
+                { v: Math.round(r.bal), s: XL.BOLD }, pendWord(r),   /* 6.9.828 */
                 "", "", "", "", "", "", link]);
       if (!src) return;
       var lines = r.kind === "ch" ? pricedLines(src, cl) : returnLines(src);
       lines.forEach(function (i) {
         nLines++;
-        out.push(["", "", "    \u00b7 " + String(i.desc || i.code || ""), "", "", "", "", "", "", "",
+        out.push(["", "", "    \u00b7 " + String(i.desc || i.code || ""), "", "", "", "", "", "", "", "",
                   String(i.desc || i.code || ""), String(i.code || ""),
                   Number(i.qty) || 0, Math.round(Number(i.rate) || 0), Number(i.disc) || 0,
                   Math.round(Number(i.amt) || 0), ""]);
@@ -33614,13 +33641,13 @@ function viewCatalogue() {
          written as its own line rather than left to be the difference nobody can account for */
       if (r.kind === "ch" && chFreight(src) > 0) {
         nLines++;
-        out.push(["", "", "    \u00b7 Freight", "", "", "", "", "", "", "",
+        out.push(["", "", "    \u00b7 Freight", "", "", "", "", "", "", "", "",
                   "Freight", "", "", "", "", Math.round(chFreight(src)), ""]);
       }
     });
     out.push([]);
     out.push([{ v: hisabMiniLine(m.bal), s: XL.BAND }].concat([1,2,3,4,5,6,7,8].map(function () { return { v: "", s: XL.BAND }; }))
-             .concat([{ v: Math.round(Math.abs(m.bal)), s: XL.BAND }]));
+             .concat([{ v: Math.round(Math.abs(m.bal)), s: XL.BAND }, { v: "", s: XL.BAND }]));
     out.push([]);
     out.push(["Energy World \u00b7 " + cl + " \u00b7 built " + fullDate(today()) +
               " \u00b7 every delivery, return and payment on this account, each with its own lines and a link to its signed receipt."]);
@@ -33646,14 +33673,16 @@ function viewCatalogue() {
   function drawAccountTable(doc, m, g) {
     var L = g.L, R = g.R, y = g.y, F = g.F, RS = g.RS, RSs = g.RSs;
     /* 6.9.674 - a caller printing larger may hand its own anchors (the hisab does) */
-    var cX = g.cX || [L, L + 18, L + 51, L + 100, L + 123, L + 141, L + 163, R - 63, R - 33, R - 1];
-    var wid = function (i) { return i === 6 ? (cX[7] - cX[6] - 17) : (cX[i + 1] - cX[i] - 1); };
+    /* 6.9.828 - eleven anchors: Pending since sits after Balance. The money anchors are RIGHT edges. */
+    var cX = g.cX || [L, L + 18, L + 51, L + 95, L + 117, L + 134, L + 154, R - 73, R - 47, R - 21, R - 19];
+    if (cX.length === 10) cX = cX.concat([cX[9] + 2]);
+    var wid = function (i) { return i === 6 ? (cX[7] - cX[6] - 17) : i === 10 ? (R - cX[10] - 1) : (cX[i + 1] - cX[i] - 1); };
     var head = function () {
       doc.setFillColor(11, 59, 54); doc.rect(L, y - 4.4, R - L, 6.2, "F");
       F("bold"); doc.setFontSize(7); doc.setTextColor(255, 255, 255);
       MINI_HEAD.forEach(function (t, i) {
-        if (i >= MINI_HEAD.length - 3) doc.text(t.toUpperCase(), cX[i], y, { align: "right" });
-        else doc.text(t.toUpperCase(), cX[i] + 1, y);
+        if (MINI_MONEY[i]) doc.text(t.toUpperCase(), cX[i], y, { align: "right" });
+        else doc.text(i === 10 ? "PENDING" : t.toUpperCase(), cX[i] + 1, y);
       });
       y += 6.4; doc.setTextColor(17, 34, 45);
     };
@@ -33669,8 +33698,8 @@ function viewCatalogue() {
       var put = function (i, v, w) {
         if (v === "" || v == null) return;
         /* 6.9.674 - money as written (with the rupee sign); pdfSafe would turn it back into "Rs." */
-        var t = doc.splitTextToSize(i >= 7 ? String(v) : pdfSafe(String(v)), w)[0] || "";
-        if (i >= 7) doc.text(t, cX[i], y, { align: "right" }); else doc.text(t, cX[i] + 1, y);
+        var t = doc.splitTextToSize(MINI_MONEY[i] ? String(v) : pdfSafe(String(v)), w)[0] || "";
+        if (MINI_MONEY[i]) doc.text(t, cX[i], y, { align: "right" }); else doc.text(t, cX[i] + 1, y);
       };
       /* v6.9.444 - a return's PTRS reads "1 item back at the godown · against RAVI0000/270726/R01",
          which no column on this page has ever held: splitTextToSize drops the whole last WORD,
@@ -33699,6 +33728,7 @@ function viewCatalogue() {
       put(7, r.debit == null ? "" : RS(r.debit), 30);
       if (r.credit != null) { doc.setTextColor(13, 118, 108); put(8, RS(r.credit), 30); doc.setTextColor(17, 34, 45); }
       F("bold"); put(9, RSs(r.bal), 30);
+      if (r.pend) { F("normal"); doc.setFontSize(6.6); doc.setTextColor(r.pend.days > 30 ? 185 : 180, r.pend.days > 30 ? 28 : 83, r.pend.days > 30 ? 28 : 9); put(10, pendWord(r, true), wid(10)); doc.setTextColor(17, 34, 45); }   /* 6.9.828 */
       y += 4.8;
     });
     return y;
@@ -34518,7 +34548,10 @@ function viewCatalogue() {
           '<td style="padding:5px 6px;color:#64748b' + _pin + ';left:0">' + (idx + 1) + '</td>' +
           /* nowrap: at 390px this column was 69px and "HR TEE 20/1/2 Female" wrapped to three
              lines, which is where the other half of the row height came from. */
-          '<td style="padding:5px 6px;white-space:nowrap' + _pin + ';left:26px">' + esc(x.desc) + '</td>' +
+          /* 6.9.829 - HIS WORDS: "all should be in single page, use 2 or 3 lines to adjust if not coming in
+             single line, but all should be in one page width". The long catalogue names (Pentair) pushed
+             the table far past the screen. The name now wraps, capped at half the screen. */
+          '<td style="padding:5px 6px;white-space:normal;min-width:120px;max-width:min(420px,52vw);line-height:1.3' + _pin + ';left:26px">' + esc(x.desc) + '</td>' +
           '<td style="padding:5px 6px;text-align:center">' + x.qty + '</td>' +
           '<td style="padding:5px 6px;text-align:right;color:#94a3b8">' + (disc > 0 ? money(x.rate) : '') + '</td>' +
           '<td style="padding:5px 6px;text-align:center">' + discCell + '</td>' +
@@ -35733,7 +35766,7 @@ function viewCatalogue() {
       var mm = hisabRowsFrom(cl, chOn, rtOn, pyOn, bf, "");   /* the summary above says what it is made of */
       y += 4.4;                                        /* the band is drawn 4.4mm above its baseline */
       y = drawAccountTable(doc, mm, { L: L, R: R, y: y, F: F, RS: RS, RSs: RSs, limitOf: function () { return lim; },
-        cX: [L, L + 20, L + 57, L + 108, L + 134, L + 152, L + 175, R - 63, R - 33, R - 1],   /* 6.9.674 - room for the larger type */
+        cX: [L, L + 20, L + 57, L + 101, L + 126, L + 142, L + 161, R - 75, R - 48, R - 21, R - 19],   /* 6.9.674 - room for the larger type; 6.9.828 - + Pending since */
         pageBreak: function () { var ny = pageMark("the account, continued"); lim = LIMITN; return ny + 4.4; } });
       if (!ev.length) {
         F("normal"); doc.setFontSize(8); ink(GREY);
