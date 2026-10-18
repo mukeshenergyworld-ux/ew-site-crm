@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.829";
+  var APP_VERSION = "6.9.836";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -3681,6 +3681,7 @@ window.addEventListener("beforeunload", function (ev) {
 
   document.addEventListener("change", function (ev) {   /* 6.9.724 */
     var t = ev && ev.target;
+    if (t && t.id === "pe_addrole") { S.pevRole = String(t.value || ""); keepScroll = true; render(); return; }   /* 6.9.832 */
     if (!t || !t.classList || !(t.classList.contains("hsb-pick") || t.classList.contains("ppk-d"))) return;
     setTimeout(function () { try { hsbPickShow(); } catch (e) { } }, 0);
   });
@@ -7143,12 +7144,67 @@ window.addEventListener("beforeunload", function (ev) {
      way partnerBook and the incentive book already are, so the money was never doubled - only the
      lists were. */
   var _asLiveCache = null, _asLiveKey = "";
+  var _pmCache = null, _pmKey = "";
+  function partnerMergeMap() {
+    var au = (S.data && S.data.audit) || [], key = String(au.length);
+    if (_pmCache && _pmKey === key) return _pmCache;
+    var m = {};
+    au.forEach(function (a) {
+      if (!a || String(a.action || "") !== "partner:merge") return;
+      var d = {}; try { d = JSON.parse(a.detail || "{}") || {}; } catch (e) { d = {}; }
+      if (d.undo) delete m[String(a.target || "")]; else m[String(a.target || "")] = String(d.into || "");
+    });
+    _pmKey = key; _pmCache = m;
+    return m;
+  }
+  /* the groups: partners sharing a 10-digit mobile, not yet merged */
+  function partnerDupGroups() {
+    var by = {}, merged = partnerMergeMap(), use = {};
+    (S.data.clients || []).forEach(function (c) { ["architect", "plumber", "builder", "pmc"].forEach(function (f) { var k = dkey(c[f]); if (k) use[k] = (use[k] || 0) + 1; }); });
+    (S.data.challans || []).forEach(function (c) { var k = dkey(c.associate); if (k) use[k] = (use[k] || 0) + 1; });
+    (S.data.associates || []).forEach(function (a) {
+      if (!a || isCancelled("associates", a.id) || merged[String(a.id || "")]) return;
+      var m = String(a.mobile || "").replace(/\D/g, "").slice(-10); if (m.length !== 10) return;
+      (by[m] = by[m] || []).push(a);
+    });
+    return Object.keys(by).filter(function (m) { return by[m].length > 1; }).map(function (m) {
+      var recs = by[m].slice().sort(function (a, b) { return (use[dkey(b.name)] || 0) - (use[dkey(a.name)] || 0) || String(a.createdAt || "").localeCompare(String(b.createdAt || "")); });
+      return { mob: m, recs: recs, main: recs[0], use: use };
+    });
+  }
+  function partnerDupsHtml() {
+    if (!roleIs("admin")) return "";
+    var gs = partnerDupGroups(); if (!gs.length) return "";
+    var open = S.pdOpen || "";
+    var h = '<div class="card" style="border-color:#fca5a5;background:#fff7f7"><h3 style="margin:0 0 4px">Duplicate partners &middot; ' + gs.length + '</h3>' +
+      '<div class="meta" style="font-size:13px">One mobile, more than one record. Pick the man who stays; the copies fold into him and his clients, deliveries and incentives keep working. Nothing is deleted.</div>';
+    gs.slice(0, 20).forEach(function (g) {
+      var k = g.mob, isOpen = open === k, mainId = (S.pdMain && S.pdMain[k]) || g.main.id;
+      h += '<div style="border:1px solid #e2e8f0;border-radius:10px;padding:8px 10px;margin:8px 0;background:#fff">' +
+        '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b style="flex:1">' + g.recs.map(function (r) { return esc((r.code ? r.code + " " : "") + r.name); }).join(" &middot; ") + '</b>' +
+        '<span class="meta" style="font-size:12px">' + esc(g.mob) + ' &middot; ' + g.recs.length + ' records</span>' +
+        '<button class="btn sm ghost" data-act="pd-open" data-k="' + esc(k) + '" style="min-height:40px">' + (isOpen ? 'Close' : 'Fix') + '</button></div>';
+      if (isOpen) {
+        h += g.recs.map(function (r) {
+          var isMain = r.id === mainId, u = g.use[dkey(r.name)] || 0;
+          return '<label style="display:flex;gap:8px;align-items:center;min-height:40px;margin:4px 0;cursor:pointer;padding:4px 6px;border-radius:8px;background:' + (isMain ? '#f0fdfa' : 'transparent') + '">' +
+            '<input type="radio" name="pd_main_' + esc(k) + '" data-act="pd-main" data-k="' + esc(k) + '" data-id="' + esc(r.id) + '"' + (isMain ? ' checked' : '') + ' style="width:22px;height:22px;margin:0"/>' +
+            '<span><b>' + esc((r.code ? r.code + " " : "") + r.name) + '</b> <span class="meta" style="font-size:12px">' + esc([r.role, r.location, r.area].filter(Boolean).join(" · ")) + ' &middot; on ' + u + ' client/delivery record' + (u === 1 ? '' : 's') + '</span></span></label>';
+        }).join("") +
+        '<div class="acts" style="margin-top:6px"><button class="btn" data-act="pd-merge" data-k="' + esc(k) + '" style="min-height:44px">Merge into the ticked one</button></div>';
+      }
+      h += '</div>';
+    });
+    return h + '</div>';
+  }
   function assocLive() {
     var all = S.data.associates || [], key = all.length + "|" + ((S.data.audit || []).length);
     if (_asLiveCache && _asLiveKey === key) return _asLiveCache;
     var by = {}, order = [];
+    var merged = partnerMergeMap();   /* 6.9.835 - a copy merged into another man is not a partner any more */
     all.forEach(function (a) {
       if (!a || !String(a.name || "").trim() || isCancelled("associates", a.id)) return;
+      if (merged[String(a.id || "")]) return;
       var k = dkey(a.name);
       if (!by[k]) { by[k] = Object.assign({}, a); order.push(k); return; }
       var cur = by[k], newer = String(a.createdAt || "") >= String(cur.createdAt || "");
@@ -17729,7 +17785,15 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
   }
   function taRank(q, items, max) {
     var out = [], lq = String(q || "").trim().toLowerCase();
-    items.forEach(function (it) { var s = taScore(q, it.v), cd = lq.length >= 2 ? taCode(it).toLowerCase() : ""; if (cd && cd.indexOf(lq) === 0) s = Math.max(s, 90); if (s) out.push({ it: it, s: s }); });
+    items.forEach(function (it) {
+      var s = taScore(q, it.v), cd = lq.length >= 2 ? taCode(it).toLowerCase() : "";
+      if (cd && cd.indexOf(lq) === 0) s = Math.max(s, 90);
+      /* 6.9.830 - HIS WORDS: "if we are searching a name from master search bar, like Yamuna Enclave, that is in
+         address of any client then it must show". Three letters or more anywhere in the record is a hit, below
+         a name match so the name still comes first. */
+      if (!s && lq.length >= 3 && it.hay && it.hay.indexOf(lq) > -1) s = 25;
+      if (s) out.push({ it: it, s: s });
+    });
     out.sort(function (a, b) { return b.s - a.s || alpha(a.it.v, b.it.v); });
     return out.slice(0, max || 8).map(function (x) { return x.it; });
   }
@@ -17737,9 +17801,11 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
   function taItems(inp) {
     var src = inp.getAttribute("data-ta");
     if (src === "client") return (S.data.clients || []).filter(function (c) { return c.name; }).map(function (c) {
-      return { v: String(c.name).trim(), code: String(c.code || ""), sub: [c.type, c.area, c.location].filter(Boolean).join(" · "), id: c.id, act: "cl-open" }; });
+      return { v: String(c.name).trim(), code: String(c.code || ""), sub: [c.type, c.area, c.location].filter(Boolean).join(" · "), id: c.id, act: "cl-open",
+               hay: clientHay(c) }; });   /* 6.9.830 - every corner: address, area, partners, notes, GSTIN */
     if (src === "partner") return assocLive().map(function (a) {   /* 6.9.730 */
-      return { v: String(a.name).trim(), code: String(a.code || ""), sub: [a.role, a.location, a.mobile].filter(Boolean).join(" · "), id: a.id, act: "as-open" }; });
+      return { v: String(a.name).trim(), code: String(a.code || ""), sub: [a.role, a.location, a.mobile].filter(Boolean).join(" · "), id: a.id, act: "as-open",
+               hay: [a.name, a.mobile, a.mobile2, a.role, a.location, a.area, a.address, a.firm, a.notes].filter(Boolean).join(" ").toLowerCase() }; });
     if (src === "brand") return (S.data.brands || []).filter(function (b) { return b.brand; }).map(function (b) {
       return { v: String(b.brand).trim(), sub: b.notes || "", id: b.id, act: "br-open" }; });
     var lid = inp.getAttribute("data-ta-list") || inp.getAttribute("list"), dl = lid && document.getElementById(lid);
@@ -22015,6 +22081,15 @@ function viewCatalogue() {
     (items || []).forEach(function (i) {
       var x = qxIntroFor(i.brand); if (!x || seen[x.brand]) return;
       seen[x.brand] = 1; out.push(x);
+    });
+    /* 18 Oct 2026 - HIS WORDS: "if any of brand quoted Huliot HT PRO, Huliot Ultra Silent, Huliot Heliroma, Huliot PPR
+       then we have to show introduction of complete Huliot Group (huliotgroup.com)". The group comes FIRST, then the
+       brand's own words. brand_intros.json -> groups[] with its member brands. */
+    var groups = (_qxIntros && _qxIntros.groups) || [];
+    groups.forEach(function (g) {
+      var mem = (g.members || []).map(function (m) { return String(m).toLowerCase(); });
+      var hit = (items || []).some(function (i) { return mem.indexOf(String(i.brand || "").trim().toLowerCase()) >= 0; });
+      if (hit && !seen[g.group]) { seen[g.group] = 1; out.unshift({ brand: g.group, alias: [g.logo || "Huliot"], tagline: g.tagline, about: g.about, origin: g.origin, web: g.web, group: true }); }
     });
     return out;
   }
@@ -32346,16 +32421,30 @@ function viewCatalogue() {
   }
   /* The judgement. Two independent reasons to stop: he is over his money limit, or he is over
      his time limit. Either one is enough. */
+  var RCPT_WARN_DAYS = 5, RCPT_BLOCK_DAYS = 10;
+  function rcptExempt(name) { return /modern\s*plumbing/i.test(String(name || "")); }   /* Energy World's own firm */
+  function receiptPending(name, exceptId) {
+    var list = famChallansIn(name).filter(function (c) { return c && c.id !== exceptId && chNoPaper(c); });
+    return { n: list.length, age: mwOldest(list), list: list, exempt: rcptExempt(name) };
+  }
   function creditGate(ch) {
     var name = ch.customerName, t = creditTerms(name), ag = clientAging(name);
     var road = chOnRoad(name, ch.id), now = challanNet(ch) + chFreight(ch);
-    var exposure = ag.due + road + now, reasons = [];
+    var exposure = ag.due + road + now, reasons = [], warns = [];
     if (t.limit > 0 && exposure > t.limit + 0.5) reasons.push("he goes past his credit limit");
     if (ag.overdue > 0.5 && ag.oldest > t.days) reasons.push("he is holding money past " + t.days + " days");
+    /* 6.9.834 - HIS WORDS: "if receipt of any client is pending from more than 5 days and godown is making new
+       challan, remind them that earlier receipt pending; more than 10 days, block that account and ask him to
+       upload previous receiving first. Modern Plumbing Solution is exempted." */
+    var paper = receiptPending(name, ch.id);
+    if (paper.n && !paper.exempt) {
+      if (paper.age > RCPT_BLOCK_DAYS) reasons.push("a signed receipt is " + paper.age + " days overdue on " + plural(paper.n, "earlier delivery") + " - upload that receiving first");
+      else if (paper.age > RCPT_WARN_DAYS) warns.push("Earlier receipt pending " + paper.age + " days on " + plural(paper.n, "delivery") + " - ask for it with this one.");
+    }
     return {
       name: name, limit: t.limit, days: t.days, ag: ag, road: road, now: now,
       exposure: exposure, over: Math.max(0, exposure - t.limit),
-      reasons: reasons, stop: reasons.length > 0
+      reasons: reasons, warns: warns, paper: paper, stop: reasons.length > 0
     };
   }
   /* Written as a statement of account, not a warning, because a man about to release sixty
@@ -44559,6 +44648,28 @@ function viewCatalogue() {
   /* pinned, so the name does not scroll away from its own row */
   function xlPin(bg) { return "position:sticky;left:0;z-index:1;background:" + bg + ";"; }
 
+  var _xlReg = {};
+  function xlStripHtml(v) {
+    if (v == null) return "";
+    if (typeof v !== "string") return v;
+    if (v.indexOf("<") < 0) return v.replace(/&amp;/g, "&").replace(/&nbsp;/g, " ").replace(/&middot;/g, "\u00b7");
+    var d = document.createElement("div"); d.innerHTML = v.replace(/<br\s*\/?>/gi, " \u00b7 ");
+    return (d.textContent || "").replace(/\s+/g, " ").trim();
+  }
+  function xlSheetXlsx(screen) {
+    var R = _xlReg[screen]; if (!R) { toast("Nothing to download on this screen."); return; }
+    var cols = R.cols, head = cols.map(function (c) { return { v: String(c.t || c.k || ""), s: XL.HEAD }; });
+    var out = [head];
+    R.rows.forEach(function (r) {
+      out.push(cols.map(function (c) {
+        var v = r.v && r.v[c.k] !== undefined ? r.v[c.k] : xlStripHtml((r.cells || {})[c.k]);
+        if (c.n && v !== "" && v != null && !isNaN(Number(v))) return Number(v);
+        return v == null ? "" : v;
+      }));
+    });
+    var widths = cols.map(function (c) { return c.n ? 12 : (c.fill || c.wrap ? 36 : 20); });
+    dlXlsx(String(screen).replace(/[^a-z0-9]+/gi, "_") + "_" + today() + ".xlsx", String(screen).slice(0, 31), out, widths, { freeze: { r: 1, c: 0 }, filter: "A1:" + xlCol(cols.length - 1) + "1" });
+  }
   function xlTable(screen, cols, rows, swipe) {
     var cur = xlState(screen);
     if (cur.k) {
@@ -44573,7 +44684,9 @@ function viewCatalogue() {
         });
       }
     }
-    var h = "";
+    /* 6.9.831 - the rows this sheet shows, kept for its Excel button (sorted as shown) */
+    try { _xlReg[screen] = { cols: cols, rows: rows }; } catch (e) { }
+    var h = '<div style="display:flex;justify-content:flex-end;margin:0 0 4px"><button class="btn sm ghost" data-act="xl-xlsx" data-s="' + esc(screen) + '" style="min-height:36px;padding:4px 10px">&#8681; Excel</button></div>';
     /* ONE LINE, AND NO FLOAT. The first draft put "tap a heading to sort" in a float:right span;
        rendered at 390px and looked at, the float escaped the hint and squeezed the table's own
        box to 263px of the 390 available, so four of the seven columns were unreachable by a
@@ -44646,7 +44759,7 @@ function viewCatalogue() {
     var roles = Object.keys(roleCount).sort(function (x, y) { return roleCount[y] - roleCount[x]; });
 
     var greet = greetToday();
-    var h = "";
+    var h = partnerDupsHtml();   /* 6.9.835 */
     if (greet.length) {
       h += '<div class="card" style="border-color:#fde68a;background:#fffbeb"><h3>Greet today</h3><div class="meta">';
       greet.forEach(function (x) {
@@ -44780,6 +44893,7 @@ function viewCatalogue() {
           xlTable("partners", _cols, gr, _first ? "what he has quoted" + (_adm ? " and his incentive" : "") : "");
         _first = false;
       });
+      _xlReg["partners"] = { cols: _cols, rows: _rows };   /* 6.9.836 - the Excel button takes EVERY tier, not the last one drawn */
       return h;
     }
 
@@ -45710,7 +45824,7 @@ function viewCatalogue() {
       if (has(q2.quoteNo) || has(q2.client) || has(q2.brand) || has(q2.site)) out.quotes.push(q2);
     });
     (d.sites || []).forEach(function (x) {
-      if (has(x.name) || has(x.client) || has(x.area) || has(x.location)) out.sites.push(x);
+      if (has(x.name) || has(x.client) || has(x.area) || has(x.location) || has(x.city) || has(x.address) || has(x.notes) || has(x.mobile)) out.sites.push(x);   /* 6.9.830 */
     });
     (d.payments || []).forEach(function (p) {
       /* the reference is where a cheque number or a UTR lives, and often the firm too */
@@ -46581,6 +46695,33 @@ function viewCatalogue() {
     seen[k] = (seen[k] || 0) + 1;
     return k + "|#" + seen[k];
   }
+  /* 6.9.833 - HIS WORDS: "here plumber is assigned as architect, always warn if PL code assigning to Architect".
+     slots: { Architect: name, Plumber: name, Builder: name, PMC: name }. A name that is a known partner of
+     ANOTHER trade is returned with his code, so the form can say "PL186 Dharambir Kawan is a Plumber". */
+  function partnerSlotMismatch(slots) {
+    var out = [], live = assocLive();
+    var byName = {}; live.forEach(function (a) { byName[dkey(a.name)] = a; });
+    var fits = { Architect: /archit/i, Plumber: /plumb/i, Builder: /build/i, PMC: /pmc|project|manage/i };
+    Object.keys(slots).forEach(function (slot) {
+      var nm = String(slots[slot] || "").trim(); if (!nm) return;
+      var a = byName[dkey(nm)]; if (!a || !a.role) return;
+      if (fits[slot] && fits[slot].test(String(a.role))) return;
+      out.push({ slot: slot, name: a.name, code: String(a.code || ""), role: String(a.role) });
+    });
+    return out;
+  }
+  function slotWarnThen(mis, saveAct) {
+    var _h = formHold();
+    askSheet({ title: "Check the partner slots", yes: "Save anyway", no: "Go back",
+      body: mis.map(function (m) { return "&bull; <b>" + esc((m.code ? m.code + " " : "") + m.name) + "</b> is a <b>" + esc(m.role) + "</b> but is in the <b>" + esc(m.slot) + "</b> slot."; }).join("<br>") +
+        '<br><br><span style="color:#64748b">A PL code in the Architect slot pays the wrong incentive. Go back to change it, or save if it is really so.</span>' })
+    .then(function (yes) {
+      formBack(_h);
+      if (!yes) return;
+      S._slotOk = 1;
+      setTimeout(function () { var b = document.querySelector('[data-act="' + saveAct + '"]'); if (b) b.click(); S._slotOk = 0; }, 60);
+    });
+  }
   function formHold() {
     var box = null; try { box = S.modal ? document.querySelector(".modal") : document.getElementById("root"); } catch (e) { box = null; }
     if (!box) return null;
@@ -46625,6 +46766,7 @@ function viewCatalogue() {
       (g.ag.oldest ? row('Oldest unpaid money', g.ag.oldest + ' days') : '') +
       (g.ag.overdue > 0.5 ? row('Past ' + g.days + ' days', money(g.ag.overdue)) : '') +
       (g.road > 0.5 ? row('Out on the road, not signed for', money(g.road)) : '') +
+      (g.paper && g.paper.n ? row('Signed receipt pending', plural(g.paper.n, 'delivery') + ' &middot; ' + g.paper.age + ' days' + (g.paper.exempt ? ' (own firm - not blocked)' : ''), g.paper.age > RCPT_WARN_DAYS && !g.paper.exempt) : '') +
       row('This challan', money(g.now)) +
       '<tr><td colspan="2" style="border-top:1px solid #cbd5e1;padding:0"></td></tr>' +
       row('Standing at his site if released', money(g.exposure), true) +
@@ -47937,7 +48079,8 @@ function viewCatalogue() {
     order.sort(function (a, b) { return (rank[a] == null ? 9 : rank[a]) - (rank[b] == null ? 9 : rank[b]) || a.localeCompare(b); });
     return order.map(function (k) {
       return '<optgroup label="' + esc(k) + ' (' + g[k].length + ')">' + g[k].slice(0, 400).map(function (x) {
-        return '<option value="' + esc(x.name) + '">' + esc(x.name) + ' · ' + esc(x.tier) + (x.b12 ? ' · ' + money(x.b12) : '') + (x.loc ? ' · ' + esc(x.loc) : '') + '</option>';
+        var cd = String((x.a && x.a.code) || x.code || "").trim();   /* 6.9.832 - PL / AR / BL / PMC code in front of the name */
+        return '<option value="' + esc(x.name) + '">' + (cd ? esc(cd) + ' ' : '') + esc(x.name) + ' · ' + esc(x.tier) + (x.b12 ? ' · ' + money(x.b12) : '') + (x.loc ? ' · ' + esc(x.loc) : '') + '</option>';
       }).join("") + '</optgroup>';
     }).join("");
   }
@@ -47996,12 +48139,15 @@ function viewCatalogue() {
     var pool = sup.filter(function (x) { return !invited[dkey(x.name)]; });
     h += '<div class="card"><h3 style="margin:0">Guests — best supporters first</h3>' +
       '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end;margin-top:8px">' +
-        '<div><label style="margin-top:0">Add everyone who is</label><select id="pe_addrole" style="min-height:44px"><option value="plumb">Plumber</option><option value="archit">Architect</option><option value="">Any role</option></select></div>' +
+        /* 6.9.832 - the trade chosen here also narrows the "or one partner" list, and the list shows his code */
+        '<div><label style="margin-top:0">Add everyone who is</label><select id="pe_addrole" style="min-height:44px">' +
+          [["plumb", "Plumber"], ["archit", "Architect"], ["builder", "Builder"], ["contract", "Contractor"], ["interior|design", "Interior designer"], ["dealer", "Dealer"], ["", "Any role"]].map(function (o) {
+            return '<option value="' + o[0] + '"' + ((S.pevRole == null ? "plumb" : S.pevRole) === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join("") + '</select></div>' +
         '<div><label style="margin-top:0">tier at least</label><select id="pe_addtier" style="min-height:44px"><option>Platinum</option><option selected>Gold</option><option>Silver</option><option>Base</option></select></div>' +
         '<button class="btn sm" style="min-height:44px" data-act="pev-addrule" data-id="' + esc(e.eid) + '">Add them</button>' +
         '<div style="flex:1 1 200px"><label style="margin-top:0">or one partner</label><select id="pe_addone" style="min-height:44px;width:100%"><option value="">— pick —</option>' +
           '<option value="__new">+ New partner (not on the list)…</option>' +   /* 6.9.730 - his ask: "add new if not in list" */
-          pevPickGroups(pool) + '</select></div>' +
+          pevPickGroups((S.pevRole == null ? "plumb" : S.pevRole) ? pool.filter(function (x) { return new RegExp(S.pevRole == null ? "plumb" : S.pevRole, "i").test(String(x.role || "")); }) : pool) + '</select></div>' +
         '<button class="btn sm ghost" style="min-height:44px" data-act="pev-addone" data-id="' + esc(e.eid) + '">Add</button></div>' +
       /* 6.9.730 - anyone who is not a partner: a company man, a brand rep, a guest of honour */
       (isG ? '' : '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end;margin-top:8px;padding-top:8px;border-top:1px dashed #e2e8f0">' +
@@ -48013,7 +48159,7 @@ function viewCatalogue() {
       (inv.length ? pevTable([["#", "right"], ["Guest"], ["Tier"], ["Business 12 m", "right"], ["Status"], ["Executive"], ["Follow-up"], [isG ? "Gift ₹" : "Cost ₹", "right"], [""]],
         inv.map(function (p, k) {
           var i = p.i, x = p.x, mob = x.mob || "";
-          return ['<span style="color:#64748b">' + (k + 1) + '</span>', '<span style="display:inline-block;max-width:210px;overflow:hidden;text-overflow:ellipsis;vertical-align:middle" title="' + esc(i.partner) + (mob ? ' \u00b7 ' + esc(mob) : '') + '"><b data-act="pev-ed" data-id="' + esc(e.eid) + '" data-n="' + esc(i.partner) + '" data-o="' + (x.other ? 1 : 0) + '" style="cursor:pointer;color:#0d766c;text-decoration:underline dotted" title="Tap to change the name">' + (function () { if (x.other) return ''; var _a = (S.data.associates || []).filter(function (a) { return dkey(a.name) === dkey(i.partner); }); var _c = _a.length === 1 ? String(_a[0].code || "") : "";   /* two partners by one name: no guess */ return _c ? '<span class="ewc">' + esc(_c) + '</span>' : ''; })() + esc(i.partner) + '</b>' + ' <span style="font-size:12px;color:#64748b">' + (x.other ? '· ' + esc(x.role || "") + ' ' : '') + (mob ? '· ' + esc(mob) : '· <span style="color:#b45309">no mobile</span>') + '</span></span>',   /* p754 - his code (PL / AR / BL) already says the role */
+          return ['<span style="color:#64748b">' + (k + 1) + '</span>', '<span style="display:inline-block;max-width:230px;white-space:normal;line-height:1.25;vertical-align:middle" title="' + esc(i.partner) + (mob ? ' \u00b7 ' + esc(mob) : '') + '"><b data-act="pev-ed" data-id="' + esc(e.eid) + '" data-n="' + esc(i.partner) + '" data-o="' + (x.other ? 1 : 0) + '" style="cursor:pointer;color:#0d766c;text-decoration:underline dotted" title="Tap to change the name">' + (function () { if (x.other) return ''; var _a = (S.data.associates || []).filter(function (a) { return dkey(a.name) === dkey(i.partner); }); var _c = _a.length === 1 ? String(_a[0].code || "") : "";   /* two partners by one name: no guess */ return _c ? '<span class="ewc">' + esc(_c) + '</span>' : ''; })() + esc(i.partner) + '</b>' + ' <span style="font-size:12px;color:#64748b">' + (x.other ? '· ' + esc(x.role || "") + ' ' : '') + (mob ? '· ' + esc(mob) : '· <span style="color:#b45309">no mobile</span>') + '</span></span>',   /* p754 - his code (PL / AR / BL) already says the role */
             x.other ? '<span style="display:inline-block;font-size:12px;font-weight:800;color:#3730a3;background:#e0e7ff;border-radius:6px;padding:1px 7px;white-space:nowrap">Guest</span>' : pevTierPill(x.tier), x.b12 ? money(x.b12) : '—',
             '<select class="pev-st" data-id="' + esc(e.eid) + '" data-p="' + esc(i.partner) + '" style="min-height:44px;font-size:13px;padding:4px 2px;width:96px">' + sts.map(function (s2) { return '<option' + (s2 === i.st ? ' selected' : '') + '>' + esc(s2) + '</option>'; }).join("") + '</select>',
             '<select class="pev-exec" data-id="' + esc(e.eid) + '" data-p="' + esc(i.partner) + '" style="min-height:44px;font-size:13px;padding:4px 2px;width:112px' + (i.exec ? '' : ';border-color:#fca5a5;color:#b91c1c') + '"><option value="">— nobody —</option>' +
@@ -58316,6 +58462,8 @@ function viewCatalogue() {
       var mob = f.mob, loc = f.loc, ar = f.ar;
       var arch = f.arch, plumb = f.plumb, build = f.build, pmc = f.pmc;
       var back = S.clBack;
+      /* 6.9.833 - a plumber in the architect slot (or any such swap) is named before the save */
+      if (!S._slotOk) { var _mis = partnerSlotMismatch({ Architect: arch, Plumber: plumb, Builder: build, PMC: pmc }); if (_mis.length) { slotWarnThen(_mis, "cl-save"); return; } }
       /* The actual write. Optimistic: save() repaints the client instantly and syncs
          behind, undoing itself on failure. anyone named here who is not yet a Partner
          gets created first - no double entry. */
@@ -61265,6 +61413,7 @@ function viewCatalogue() {
     }
     if (act === "site-save") {
       var sn = val("s_name");
+      if (!S._slotOk) { var _smis = partnerSlotMismatch({ Architect: val("s_arch"), Plumber: val("s_plumb"), Builder: val("s_build") }); if (_smis.length) { slotWarnThen(_smis, "site-save"); return; } }   /* 6.9.833 */
       if (!sn) { toast("Site name is required."); return; }
       var existS = id ? (siteById(id) || {}) : {};
       var sOwner = roleIs("admin")
@@ -63633,6 +63782,40 @@ function viewCatalogue() {
     if (act === "msg-all") { S.msgAll = true; keepScroll = true; render(); return; }
     if (act === "msg-copy") { var _mb = el(t.getAttribute("data-box")); try { navigator.clipboard.writeText(_mb ? _mb.value : ""); toast("Copied."); } catch (e) { toast("Select the text and copy it."); } return; }
     if (act === "msg-ai") { msgAi(t); return; }
+    if (act === "xl-xlsx") { xlSheetXlsx(t.getAttribute("data-s") || ""); return; }   /* 6.9.831 */
+    /* 6.9.835 - duplicate partners */
+    if (act === "pd-open") { var _pk = t.getAttribute("data-k") || ""; S.pdOpen = S.pdOpen === _pk ? "" : _pk; keepScroll = true; render(); return; }
+    if (act === "pd-main") { S.pdMain = S.pdMain || {}; S.pdMain[t.getAttribute("data-k") || ""] = t.getAttribute("data-id") || ""; keepScroll = true; render(); return; }
+    if (act === "pd-merge") {
+      if (!roleIs("admin")) { toast("Merging partners is the owner\u2019s call."); return; }
+      var _pg = partnerDupGroups().filter(function (g) { return g.mob === (t.getAttribute("data-k") || ""); })[0];
+      if (!_pg) { toast("That group has moved on - re-scanning."); render(); return; }
+      var _pmainId = (S.pdMain && S.pdMain[_pg.mob]) || _pg.main.id;
+      var _pmain = _pg.recs.filter(function (r) { return r.id === _pmainId; })[0] || _pg.main;
+      var _others = _pg.recs.filter(function (r) { return r.id !== _pmain.id; });
+      var _renames = _others.filter(function (r) { return dkey(r.name) !== dkey(_pmain.name); });
+      askSheet({ title: "Merge " + _others.length + " into " + esc((_pmain.code ? _pmain.code + " " : "") + _pmain.name) + "?",
+        body: _others.map(function (r) { return "&bull; " + esc((r.code ? r.code + " " : "") + r.name) + (dkey(r.name) !== dkey(_pmain.name) ? " &rarr; renamed everywhere to <b>" + esc(_pmain.name) + "</b>" : " (same name - folded)"); }).join("<br>") +
+          '<br><br><span style="color:#64748b">Every client, delivery and incentive row that names a copy keeps working under the one man. A record of the merge is kept; nothing is deleted.</span>',
+        yes: "Merge", no: "Go back" }).then(function (yes) {
+        if (!yes) return;
+        var chain = Promise.resolve();
+        _renames.forEach(function (r) {
+          chain = chain.then(function () {
+            return api("partnerRename", { id: r.id, from: r.name, to: _pmain.name }).then(function (res) {
+              if (!res || !res.ok) toast("Could not rename " + r.name + ": " + ((res && res.error) || "no answer") + " - folded by mobile only.");
+            }).catch(function (e) { toast("Could not rename " + r.name + " (" + apiWhy(e) + ")."); });
+          });
+        });
+        chain.then(function () {
+          _others.forEach(function (r) { auditFact("partner:merge", String(r.id), { into: String(_pmain.id), intoName: _pmain.name, was: r.name, code: r.code || "", mobile: _pg.mob }); });
+          _asLiveCache = null; _pmCache = null; S.pdOpen = "";
+          toast("Merged into " + _pmain.name + ". " + _others.length + " cop" + (_others.length === 1 ? "y" : "ies") + " folded.");
+          render(); setTimeout(function () { try { refresh(); } catch (e) { } }, 1500);
+        });
+      });
+      return;
+    }
     if (act === "ai-key-save") {
       if (!roleIs("admin")) return;
       var _akb = el("ai_key_box"), _akv = _akb ? String(_akb.value || "").trim() : "";
@@ -64569,6 +64752,7 @@ function viewCatalogue() {
         });
         return;
       }
+      if (pg.warns && pg.warns.length) toast(pg.warns.join(" "));   /* 6.9.834 - said, not stopped */
       goPass();
       return;
     }
