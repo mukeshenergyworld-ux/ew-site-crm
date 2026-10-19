@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.844";
+  var APP_VERSION = "6.9.845";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -22263,11 +22263,29 @@ function viewCatalogue() {
     });
   }
 
+  /* 6.9.845 - the section a quoted line belongs in: its own category, else the catalogue's,
+     folded into the bathroom sets. Never "Other" unless the product truly has no category. */
+  function presSection(i) {
+    try {
+      var n = qzSetOf(i);
+      if (n >= 0 && n < QZ_SETS.length - 1) return QZ_SETS[n].label;
+    } catch (e) { }
+    var c = String((i && i.cat) || "").trim();
+    if (!c) { var p = null; try { p = prodByCode(i && i.code); } catch (e2) { p = null; } c = String((p && p.cat) || "").trim(); }
+    return c || "Other";
+  }
   function presCatAgg(items) {
     var map = {}, order = [];
     (items || []).forEach(function (i) {
       if (i.optional) return;
-      var c = String(i.cat || "").trim() || "Other";
+      /* 6.9.845 - MEASURED 19 Oct: 1,523 quote lines on his book, 1,523 with no `cat`. The line
+         never copied the catalogue's category, so every proposal ever sent had ONE section called
+         "Other", no divider page was ever drawn (cats.length > 1 was never true), and every product
+         page was headed PRODUCT / Other. Ask the catalogue, and group by the SET rather than the raw
+         category: his 31 lines for Pawan Narang span eight categories, which would be eight dividers
+         in a forty-page document; the sets fold them into the four a bathroom has, in the order a
+         bathroom is built. Same rule as the Products step (qzSetOf, 6.9.843). */
+      var c = presSection(i);
       if (!map[c]) { map[c] = { cat: c, n: 0, qty: 0, mrp: 0, items: [] }; order.push(c); }
       var m = map[c];
       m.n++; m.qty += Number(i.qty) || 0;
