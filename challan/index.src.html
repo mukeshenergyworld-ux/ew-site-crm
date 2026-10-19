@@ -252,7 +252,7 @@ body{background:#F4F6F9}
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.135.0";   /* 1.132.1 - driver/client/partner mobile dedupe, narrower sign-out, token refusal re-signs in, Drop in held list */
+  var APP_VERSION = "1.136.0";   /* 1.132.1 - driver/client/partner mobile dedupe, narrower sign-out, token refusal re-signs in, Drop in held list */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -4060,16 +4060,49 @@ function discRowOn(client, brand, onYmd) {
       '</div>';
   }
   function receiptPendingFor(cl) {
-    var nm = lower((cl && cl.name) || ""), n = 0, age = 0;
+    var nm = lower((cl && cl.name) || ""), n = 0, age = 0, owed = [];
     if (nm) challans().forEach(function (c) {
       if (lower(c.customerName) !== nm || String(c.status || "") === "Cancelled" || !receiptOwed(c)) return;
       n++; var a = ageDays(c); if (a > age) age = a;
+      owed.push(c);   /* 1.136.0 - NAME them, do not merely count them */
     });
+    /* oldest first: that is the order he should chase them in */
+    owed.sort(function (x, y) { return ageDays(y) - ageDays(x); });
     var exempt = /modern\s*plumbing/i.test(String((cl && cl.name) || ""));
     /* 1.135.0 - the SWITCH decides whether a refusal follows; the reminder is unconditional. */
     return { n: age > RCPT_WARN_DAYS ? n : 0, age: age, exempt: exempt,
              block: !exempt && age > RCPT_BLOCK_DAYS && rcptGate().on,
-             would: !exempt && age > RCPT_BLOCK_DAYS };
+             would: !exempt && age > RCPT_BLOCK_DAYS, list: owed };
+  }
+  /* 1.136.0 - the rows themselves. Each carries the SAME Attach receipt button that sits on
+     the challan, with the same data-id, so the paper can be photographed from the screen where
+     the delivery was stopped instead of going to hunt the challan down first. Capped at eight:
+     past that it is a list to work through on the Receipt pending chip, not a thing to read
+     over a waiting lorry. */
+  var RCPT_SHOW_MAX = 8;
+  function rcptOwedRows(rp) {
+    var l = (rp && rp.list) || [];
+    if (!l.length) return "";
+    var can = canAttachProof();
+    var h = '<div style="margin-top:6px;border-top:1px dashed #e2e8f0;padding-top:5px">' +
+      '<div class="muted" style="font-weight:700;font-size:12px">Which ones \u2014 oldest first</div>';
+    l.slice(0, RCPT_SHOW_MAX).forEach(function (c) {
+      var a = ageDays(c);
+      h += '<div class="row" style="align-items:center;gap:6px;margin-top:4px">' +
+        '<div class="grow" style="font-size:12.5px;line-height:1.3">' +
+          '<b>' + esc(String(c.challanNo || "(no number)")) + '</b>' +
+          '<span class="muted"> \u00b7 ' + esc(d10(c.createdAt)) + ' \u00b7 ' + money(chValue(c)) + '</span>' +
+          '<div style="font-size:12px;font-weight:800;color:' + (a > RCPT_BLOCK_DAYS ? '#b91c1c' : '#b45309') + '">' +
+            a + ' day' + (a === 1 ? '' : 's') + ' waiting for the signed receipt</div>' +
+        '</div>' +
+        (can ? '<button class="btn sm amb" data-act="rc-attach" data-id="' + esc(c.id) + '" style="min-height:44px">Attach receipt</button>' : '') +
+        '</div>';
+    });
+    if (l.length > RCPT_SHOW_MAX) {
+      h += '<div class="muted" style="font-size:12px;margin-top:4px">and ' + (l.length - RCPT_SHOW_MAX) +
+        ' more \u2014 the Receipt pending heading has the whole list.</div>';
+    }
+    return h + '</div>';
   }
   function moneyBlock(cl) {
     var m = clientMoney(cl);
@@ -4109,7 +4142,8 @@ function discRowOn(client, brand, onYmd) {
         /* 1.135.0 - when the rule is down, say so HERE, where the decision is made, and say when it returns */
         (rp.would && !rp.block ? ' <span style="font-weight:700;color:#b45309">This would normally be blocked \u2014 blocking is paused' +
           (rcptUntilTxt() ? ' until ' + esc(rcptUntilTxt()) : '') + '.</span>' : '') +
-        (rp.exempt ? ' <span style="font-weight:400">(own firm - not blocked)</span>' : '') + '</div>';
+        (rp.exempt ? ' <span style="font-weight:400">(own firm - not blocked)</span>' : '') + '</div>' +
+        rcptOwedRows(rp);   /* 1.136.0 - and WHICH ones, with Attach receipt on each */
     }
     /* v1.28.0 - THIS FIGURE IS COMPUTED FROM `challans`, WHICH NOW ARRIVES SECOND.
        For the seconds between the two halves of a pull the number below is the last full one
@@ -9941,7 +9975,15 @@ function discRowOn(client, brand, onYmd) {
       if (!lines.length) { toast("Add at least one line — material or job work."); return; }
       /* 1.133.0 - the earlier receiving comes first */
       var _rp = receiptPendingFor(cObj);
-      if (_rp.block) { toast("Blocked: a signed receipt is " + _rp.age + " days pending on his earlier challan. Upload that receiving first, then make this one."); return; }
+      /* 1.136.0 - the refusal names the challans in the toast AND the card above lists them with
+         an Attach receipt button on each, so there is nothing left to go and look for. */
+      if (_rp.block) {
+        var _nos = (_rp.list || []).slice(0, 3).map(function (x) { return String(x.challanNo || "?"); }).join(", ");
+        toast("Blocked: a signed receipt is " + _rp.age + " days pending on " + _rp.n + " earlier challan" + (_rp.n === 1 ? "" : "s") +
+              (_nos ? " (" + _nos + ((_rp.list || []).length > 3 ? " and " + ((_rp.list || []).length - 3) + " more" : "") + ")" : "") +
+              ". They are listed on his card above with an Attach receipt button on each.");
+        return;
+      }
       if (_rp.n && !S.ch.rcptWarned) { S.ch.rcptWarned = true; toast("Earlier receipt pending " + _rp.age + " days - ask for it with this delivery. Press Save again to continue."); return; }
       /* v1.47.0 - the salt question, read here with everything else */
       var saltBagsV = chSaltBags(lines), svcCallV = (z.svcCall || "yes");
