@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.842";
+  var APP_VERSION = "6.9.843";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -19999,7 +19999,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
          search and the rows are the challan's. The quote's own meta line, per-room quantity and
          preset-discount chip ride on PICKERS.qz; qz-qty and qz-q write exactly as before. */
       h += qzCompanionsHtml(z);   /* v6.9.767 - TOTO: complete the set */
-      h += '<div id="qz_pick">' + prodPicker(z, PICKERS.qz) + '</div>' + pickedTable(z, PICKERS.qz);
+      h += '<div id="qz_pick">' + prodPicker(z, PICKERS.qz) + '</div>' + qzPickedView(z);   /* 6.9.843 - by room, with pictures, in set order */
       return h;
     }
 
@@ -51257,6 +51257,133 @@ function viewCatalogue() {
      showing". The challan has drawn this table since it was written; the quote never had it, so a
      quantity could only be changed by finding the product's category again. One table now, on
      every form; the challan's special line kinds and the quote's rooms ride on the profiles. */
+
+  /* ===== 6.9.843 - WHICH SET A PRODUCT BELONGS TO (p845) =====
+     Read off his own catalogue on 19 Oct: 2,109 products, 2,072 with a picture, and the `cat`
+     column spelled several ways for the same thing (ACC / Acc / Accessory / Accessories;
+     Inair / INAIR). Normalised here rather than in the sheet, because the sheet is his. */
+  var QZ_SETS = [
+    { k: "wc",   label: "WC & flushing",        cats: ["wc","seat cover","cistern","geberit - cistern","grohe - cistern","flush plate","washlet","urinal"] },
+    { k: "bas",  label: "Basin & mixer",        cats: ["wash basin","basin faucet","waste & trap"] },
+    { k: "bath", label: "Bath & shower",        cats: ["bath & shower","bathtub","showers","shower","oyster shower"] },
+    { k: "acc",  label: "Accessories",          cats: ["acc","accessory","accessories","grab bar"] },
+    { k: "pipe", label: "Pipes & fittings",     cats: ["ultra silent","ht pro","heliroma","drp","cpvc","cpvc tee","dwc","tee","stainless steel","gi nipple","brass bush","ball valve","fittings & spares"] },
+    { k: "kit",  label: "Pumps, tanks & air",   cats: ["grundfos","pentair","leo booster","green heat","water ionizer","ss water tank","lunos","mea","tece","fima sanitary"] },
+    { k: "oth",  label: "Everything else",      cats: [] }
+  ];
+  var _qzSetIx = null;
+  function qzSetIndex() {
+    if (_qzSetIx) return _qzSetIx;
+    _qzSetIx = {};
+    QZ_SETS.forEach(function (g, n) { g.cats.forEach(function (c) { _qzSetIx[c] = n; }); });
+    return _qzSetIx;
+  }
+  /* the WC parts hide in "Fittings & Spares" - TX215C "Slip-in Connector (WC part)" is one.
+     The description decides when the category cannot. */
+  var QZ_WC_WORDS = /\b(wc|toilet|pan|cistern|flush|bidet|washlet|urinal)\b/i;
+  function qzSetOf(i) {
+    var p = null; try { p = prodByCode(i && i.code); } catch (e) { p = null; }
+    var cat = String((p && p.cat) || "").trim().toLowerCase();
+    var desc = String((i && i.desc) || (p && p.desc) || "");
+    if (QZ_WC_WORDS.test(desc)) return 0;                       /* the WC set, wherever it is filed */
+    var ix = qzSetIndex();
+    if (cat && ix[cat] != null) return ix[cat];
+    if (cat.indexOf("ppr") === 0 || cat.indexOf("ss ") === 0) return 4;    /* every PPR_ and SS_ fitting */
+    if (cat.indexOf("inair") === 0) return 5;
+    /* three products on his book carry no category at all (measured 19 Oct: an HT Tee, a
+       battery and a charger). A fitting reads as a fitting from its name. */
+    if (!cat && /\b(tee|elbow|socket|union|bend|coupler|reducer|pipe|nipple|bush|clamp|collar|flange)\b/i.test(desc)) return 4;
+    return QZ_SETS.length - 1;
+  }
+  function qzPicOf(code) {
+    var p = null; try { p = prodByCode(code); } catch (e) { p = null; }
+    return (p && p.pic) ? String(p.pic) : "";
+  }
+  /* one line of the room table: picture, name, code/price/brand, this room's quantity */
+  function qzRoomLine(z, i, room, q) {
+    var pic = qzPicOf(i.code), tot = Number(i.qty) || 0, many = Math.abs(tot - q) > 0.0001;
+    return '<tr style="border-bottom:1px solid #e2e8f0">' +
+      '<td style="padding:5px 6px;width:52px">' +
+        (pic ? '<img src="' + esc(pic) + '" loading="lazy" alt="" style="width:44px;height:44px;object-fit:contain;border:1px solid #e2e8f0;border-radius:6px;background:#fff"/>'
+             : '<div style="width:44px;height:44px;border:1px dashed #cbd5e1;border-radius:6px;color:#94a3b8;font-size:10px;display:flex;align-items:center;justify-content:center;text-align:center">no<br>photo</div>') +
+      '</td>' +
+      '<td style="padding:5px 6px"><b style="font-size:13px">' + esc(descLines(i.desc).title || i.desc) + '</b>' +
+        '<div style="font-size:12px;color:#94a3b8">' + esc(i.code) + ' · ' + money(i.price) +
+        (i.brand ? ' · ' + esc(i.brand) : '') + (i.optional ? ' · <span style="color:#b45309">option</span>' : '') + '</div>' +
+        (many ? '<div style="font-size:12px;color:#64748b">of ' + esc(qShow(tot)) + ' on the whole quote</div>' : '') +
+      '</td>' +
+      '<td style="padding:4px 6px;text-align:center;width:110px">' +
+        '<input class="qz-rq" data-code="' + esc(i.code) + '" data-r="' + esc(room) + '" inputmode="decimal" value="' + esc(qShow(q)) + '" style="width:72px;text-align:center;padding:7px;font-size:15px;font-weight:700;border:1px solid #cbd5e1;border-radius:6px"/>' +
+      '</td>' +
+      '<td style="width:40px;text-align:center"><button class="stp" data-act="qz-room-qty" data-code="' + esc(i.code) + '" data-r="' + esc(room) + '" data-d="-1" title="one less in this room">&minus;</button></td>' +
+      '</tr>';
+  }
+  /* ===== THE ROOM-WISE PICKED TABLE =====
+     One section per room, the lines inside it in set order, and what is in no room at the end. */
+  function qzRoomTable(z) {
+    var rooms = [], seen = {};
+    (z.items || []).forEach(function (i) { qzRoomsOf(i).forEach(function (r) { if (!seen[r]) { seen[r] = 1; rooms.push(r); } }); });
+    rooms.sort(function (a, b) { return String(a).localeCompare(String(b)); });
+    var loose = (z.items || []).filter(function (i) { return qzFree(i) > 0; });
+    if (!rooms.length && !loose.length) return "";
+
+    var sect = function (title, sub, lines, tint, room) {
+      if (!lines.length) return "";
+      /* set order, then name - the toilet, its seat and its flush plate together */
+      lines.sort(function (a, b) {
+        var sa = qzSetOf(a.it), sb = qzSetOf(b.it);
+        return sa - sb || String(a.it.desc || "").localeCompare(String(b.it.desc || ""));
+      });
+      var body = "", last = -1;
+      lines.forEach(function (x) {
+        var g = qzSetOf(x.it);
+        if (g !== last) {
+          last = g;
+          body += '<tr style="background:#f1f5f9"><td colspan="4" style="padding:4px 8px;font-size:12px;font-weight:800;color:#334155;letter-spacing:.02em">' +
+            esc(QZ_SETS[g].label) + '</td></tr>';
+        }
+        body += qzRoomLine(z, x.it, room, x.q);
+      });
+      return '<div style="margin-top:10px;border:1px solid ' + (tint ? '#fcd34d' : '#cbd5e1') + ';border-radius:10px;overflow:hidden">' +
+        '<div style="background:' + (tint ? '#fffbeb' : '#0b3b36') + ';color:' + (tint ? '#92400e' : '#fff') + ';padding:7px 10px;font-weight:800;font-size:13.5px">' +
+        esc(title) + '<span style="font-weight:500;opacity:.85"> · ' + sub + '</span></div>' +
+        '<table style="width:100%;border-collapse:collapse"><tbody>' + body + '</tbody></table></div>';
+    };
+
+    var h = "";
+    rooms.forEach(function (r) {
+      var lines = (z.items || []).map(function (i) { return { it: i, q: Number(qzRq(i)[r] || 0) }; })
+        .filter(function (x) { return x.q > 0; });
+      var val = lines.reduce(function (a, x) { return a + (x.it.optional ? 0 : Math.round(qzRoomRate(z, x.it) * x.q)); }, 0);
+      h += sect(r, lines.length + (lines.length === 1 ? ' line · ' : ' lines · ') + money(val), lines, false, r);
+    });
+    if (loose.length) {
+      h += sect("No room set yet", loose.length + (loose.length === 1 ? ' line' : ' lines') +
+        ' — open a room above and press "+1 here"',
+        loose.map(function (i) { return { it: i, q: qzFree(i) }; }), true, "");
+    }
+    return h;
+  }
+  /* the toggle. By room is the default the moment any line has a room on it. */
+  function qzPickedView(z) {
+    var any = (z.items || []).some(function (i) { return qzRoomsOf(i).length > 0; });
+    if (!(z.items || []).length) return "";
+    var v = S.qzView || (any ? "room" : "flat");
+    var btn = function (k, txt) {
+      return '<button class="btn sm' + (v === k ? '' : ' gry') + '" data-act="qz-view" data-v="' + k + '" style="min-height:44px;font-size:12.5px">' + txt + '</button>';
+    };
+    var bar = '<div class="row" style="gap:6px;margin-top:10px;align-items:center">' +
+      '<span class="meta" style="font-size:12.5px;font-weight:700">Show the lines</span>' +
+      btn("room", "By room, with pictures") + btn("flat", "One flat list") + '</div>';
+    if (v === "flat") return bar + pickedTable(z, PICKERS.qz);
+    var rt = qzRoomTable(z);
+    return bar + (rt ||
+      '<div class="meta" style="margin-top:8px;color:#b45309">No line has a room yet. Open a room above and press “+1 here” on a line, or use the <b>Room</b> button in the flat list.</div>' +
+      pickedTable(z, PICKERS.qz)) +
+      '<div style="text-align:right;font-size:12.5px;color:#64748b;margin-top:5px"><b>' + (z.items || []).length + '</b>' +
+      ((z.items || []).length === 1 ? ' line' : ' lines') + ' on the quote · <b>' +
+      qShow((z.items || []).reduce(function (a, i) { return a + (Number(i.qty) || 0); }, 0)) + '</b> units in all</div>';
+  }
   function pickedTable(z, P) {
     var picked = ((z && z.items) || []).slice().sort(function (a, b) { return (Number(b.qty) || 0) - (Number(a.qty) || 0); });
     if (!picked.length) return "";
@@ -60617,13 +60744,16 @@ function viewCatalogue() {
     if (act === "qz-room-qty") {
       var rc = t.getAttribute("data-code");
       var rItem = (S.qz.items || []).filter(function (x) { return x.code === rc; })[0];
-      if (!rItem || !S.qz.room) return;
-      qzRoomAdd(rItem, S.qz.room, Number(t.getAttribute("data-d")) || 0);
+      /* 6.9.843 - the room table names the room on the button; the room card above still means the open one */
+      var rRoom = t.getAttribute("data-r"); if (rRoom === null) rRoom = S.qz.room;
+      if (!rItem || !rRoom) return;
+      qzRoomAdd(rItem, rRoom, Number(t.getAttribute("data-d")) || 0);
       /* a line that has run out everywhere leaves the quote entirely */
       if (!Number(rItem.qty)) S.qz.items = (S.qz.items || []).filter(function (x) { return x.code !== rc; });
       keepScroll = true; render(); return;
     }
     /* 6.9.757 - pieces of a line already on the quote, from "no room" into the room that is open */
+    if (act === "qz-view") { S.qzView = t.getAttribute("data-v") || "room"; keepScroll = true; render(); return; }   /* 6.9.843 */
     if (act === "qz-room-move") {
       var mvc = t.getAttribute("data-code"), mvIt = (S.qz.items || []).filter(function (x) { return x.code === mvc; })[0];
       if (!mvIt || !S.qz.room) return;
@@ -65677,6 +65807,17 @@ function viewCatalogue() {
        table. One bucket (a room, or none): set it. Two or more rooms: refused with the rooms named -
        a total typed over a split has no honest answer, and the app will not guess which room gets
        fewer. qzRoomSet keeps the v6.9.303 rule: 0.5 stays 0.5, 0 removes the line. */
+    /* 6.9.843 - the room table's quantity box: it sets THAT ROOM'S share and leaves the
+       other rooms on the line exactly where they are. No refusal is needed here, because the
+       box is never ambiguous - the room is written on it. */
+    if (t.classList && t.classList.contains("qz-rq") && S.qz) {
+      var rqCode = t.getAttribute("data-code"), rqRoom = t.getAttribute("data-r") || "", rqV = qnum(t.value);
+      var rqIt = (S.qz.items || []).filter(function (x) { return x.code === rqCode; })[0];
+      if (!rqIt) return;
+      qzRoomSet(rqIt, rqRoom, rqV);
+      if (rqIt.qty <= 0) S.qz.items = S.qz.items.filter(function (x) { return x.code !== rqCode; });
+      keepScroll = true; render(); return;
+    }
     if (t.classList && t.classList.contains("qz-qt") && S.qz) {
       var tqCode = t.getAttribute("data-code"), tq = qnum(t.value);
       var tqIt = (S.qz.items || []).filter(function (x) { return x.code === tqCode; })[0];
