@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.843";
+  var APP_VERSION = "6.9.844";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -20511,6 +20511,45 @@ function viewCatalogue() {
     PRODUCTS.forEach(function (p) { var v = String(p.brand || "").trim(); if (v) m[v] = 1; });
     return Object.keys(m).sort(function (a, b) { return a.toLowerCase().localeCompare(b.toLowerCase()); });
   }
+  /* ===== 6.9.844 - WHAT EACH NAME IN THE BRAND BOX REALLY IS (p846) =====
+     HIS WORDS: "adding a product showing these as brands ?" - looking at Accessory, CISTERN,
+     Heat Pump, SS Water Tank, Water Filtration in a box labelled Brand.
+     The field is right to hold the CATALOGUE VALUE: p.brand is what the price list spells, and
+     the discount presets, the incentive and realBrand() all key off it, so renaming these would
+     move money. Nothing in the data is touched. The list simply stops pretending: real brands in
+     one group, price-list buckets in another, and every name that maps to a different one says
+     which, with its product count. Measured 19 Oct: 26 catalogue values, all 26 mapped. */
+  function prBrandReal(cv) {
+    var m = ((S.data && S.data.brandmap) || []).filter(function (x) { return String(x.catalogValue || "").trim() === String(cv || "").trim(); })[0];
+    return m ? String(m.brand || "") : null;   /* null = not in brandmap at all */
+  }
+  function prBrandCounts() {
+    var m = {};
+    PRODUCTS.forEach(function (p) { var v = String(p.brand || "").trim(); if (v) m[v] = (m[v] || 0) + 1; });
+    return m;
+  }
+  function prBrandOpts(cur) {
+    var cnt = prBrandCounts(), list = prBrands();
+    if (cur && list.indexOf(cur) < 0) list = [cur].concat(list);
+    var real = [], buckets = [];
+    list.forEach(function (cv) {
+      var rb = prBrandReal(cv), n = cnt[cv] || 0, lbl = cv;
+      if (rb === null) lbl += "  — NOT MAPPED, earns nobody";
+      else {
+        if (n) lbl += " (" + n + ")"; else lbl += " — no products yet";
+        if (rb && rb.trim() && rb.trim().toLowerCase() !== cv.trim().toLowerCase()) lbl += "  → " + rb;
+      }
+      var o = '<option value="' + esc(cv) + '"' + (cv === cur ? ' selected' : '') + '>' + esc(lbl) + '</option>';
+      /* a bucket is one the owner has already marked "not a brand", or one whose real name is
+         the same non-brand word (Accessory, CPVC Pipes, Drain Chambers, Net Price Items) */
+      var judge = (rb === null || !String(rb).trim()) ? cv : rb;
+      (isRealBrandName(judge) ? real : buckets).push(o);
+    });
+    return '<option value="">— Pick the brand —</option>' +
+      (real.length ? '<optgroup label="Brands">' + real.join("") + '</optgroup>' : '') +
+      (buckets.length ? '<optgroup label="Not brands — price-list buckets">' + buckets.join("") + '</optgroup>' : '') +
+      '<option value="__new">+ New brand…</option>';
+  }
   function prVals(brand, key) {
     var m = {}, b = String(brand || "").trim().toLowerCase();
     PRODUCTS.forEach(function (p) { if (String(p.brand || "").trim().toLowerCase() !== b) return; var v = String(p[key] || "").trim(); if (v) m[v] = (m[v] || 0) + 1; });
@@ -20529,7 +20568,8 @@ function viewCatalogue() {
     var nb = function (id, ph) { return '<input id="' + id + '" autocomplete="off" placeholder="' + ph + '" style="display:none;margin-top:6px"/>'; };
     var num = function (n) { return '<span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:#0f766e;color:#fff;font-size:12px;font-weight:800;margin-right:6px">' + n + '</span>'; };
     return '<div style="margin:6px 0 10px;padding:10px 12px;border:1px solid #99f6e4;border-radius:12px;background:#f0fdfa">' +
-      '<label style="margin-top:0">' + num(1) + 'Brand</label><select id="p_mb_s" class="pr-cls" data-k="mb" ' + sel + '>' + prSelOpts(prBrands().map(function (v) { return { v: v }; }), br, "brand") + '</select>' + nb("p_mb_n", "New brand name") +
+      '<label style="margin-top:0">' + num(1) + 'Brand <span style="font-weight:400;color:#0f766e;font-size:12.5px">\u2014 as the price list spells it</span></label>' +
+      '<select id="p_mb_s" class="pr-cls" data-k="mb" ' + sel + '>' + prBrandOpts(br) + '</select>' + nb("p_mb_n", "New brand name") +
       '<div class="grid2" style="margin-top:4px"><div><label>' + num(2) + 'Product family</label><select id="p_fam_s" class="pr-cls" data-k="fam" ' + sel + (br ? '' : ' disabled') + '>' + prSelOpts(prVals(br, "family"), fam, "family", true) + '</select>' + nb("p_fam_n", "New family") + '</div>' +
       '<div><label>' + num(3) + 'Category</label><select id="p_cat_s" class="pr-cls" data-k="cat" ' + sel + (br ? '' : ' disabled') + '>' + prSelOpts(prVals(br, "cat"), cat, "category", true) + '</select>' + nb("p_cat_n", "New category") + '</div></div>' +
       (br ? '' : '<div id="p_cls_hint" style="font-size:12.5px;color:#0f766e;margin-top:6px">Pick the brand first — its families and categories then appear.</div>') +
