@@ -252,7 +252,7 @@ body{background:#F4F6F9}
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.136.0";   /* 1.132.1 - driver/client/partner mobile dedupe, narrower sign-out, token refusal re-signs in, Drop in held list */
+  var APP_VERSION = "1.137.0";   /* 1.132.1 - driver/client/partner mobile dedupe, narrower sign-out, token refusal re-signs in, Drop in held list */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -3593,7 +3593,7 @@ function discRowOn(client, brand, onYmd) {
      it will actually bill at is shown BEFORE he saves, not discovered afterwards on a
      statement. */
   function sheetOther() {
-    var x = S.oth || { desc: "", qty: "", rate: "", brand: "" };
+    var x = S.oth || { desc: "", qty: "", rate: "", brand: "", local: false, shop: "", cost: "" };
     var cn = String((S.ch && S.ch.client) || "");
     /* v1.44.0 - NOT S.data.brands. This app deliberately does not download that tab (nothing
        read it, so it was dropped from the staged pull), and a dropdown built from it would have
@@ -3613,9 +3613,25 @@ function discRowOn(client, brand, onYmd) {
       '<input id="ox_qty" inputmode="decimal" value="' + esc(x.qty || "") + '" placeholder="1"/>' +
       '<label for="ox_rate">Rate each (before discount)</label>' +
       '<input id="ox_rate" inputmode="numeric" value="' + esc(x.rate || "") + '" placeholder="0"/>' +
-      '<label for="ox_brand">Which brand is it</label>' +
+      /* 1.137.0 - a line bought in the market for this site: the shop and what WE paid */
+      '<button class="btn ' + (x.local ? '' : 'gry') + '" data-act="oth-local" style="width:100%;margin-top:12px;min-height:48px;justify-content:flex-start;text-align:left">' +
+        (x.local ? '&#10003; ' : '') + 'Bought from the local market for this site</button>' +
+      (x.local
+        ? '<label for="ox_shop">Which shop</label>' +
+          '<input id="ox_shop" value="' + esc(x.shop || "") + '" placeholder="e.g. Bansal Hardware, GT Road"/>' +
+          '<label for="ox_cost">We paid, each</label>' +
+          '<input id="ox_cost" inputmode="numeric" value="' + esc(x.cost || "") + '" placeholder="0"/>' +
+          (function () {
+            var cN = num(x.cost);
+            if (!(cN > 0) || !(rN > 0)) return '';
+            var mg = Math.round((net - cN) * qN);
+            return '<div style="font-size:13px;font-weight:800;margin-top:7px;color:' + (mg < 0 ? '#b91c1c' : '#0f766e') + '">' +
+              (mg < 0 ? 'Selling BELOW what we paid — ' + money(-mg) + ' lost on this line.' : money(mg) + ' made on this line (' + money(net) + ' billed, ' + money(cN) + ' paid, each).') + '</div>';
+          })()
+        : '') +
+      '<label for="ox_brand">' + (x.local ? 'Brand, if it is one we sell (leave blank for a market item)' : 'Which brand is it') + '</label>' +
       '<select id="ox_brand">' +
-      '<option value=""' + (pick ? '' : ' selected') + '>&mdash; tap a brand &mdash;</option>' +
+      '<option value=""' + (pick ? '' : ' selected') + '>' + (x.local ? '&mdash; no brand: market item &mdash;' : '&mdash; tap a brand &mdash;') + '</option>' +
       brands.map(function (b) {
         return '<option value="' + esc(b) + '"' + (b === pick ? ' selected' : '') + '>' + esc(b) + '</option>';
       }).join("") + '</select>' +
@@ -3623,8 +3639,10 @@ function discRowOn(client, brand, onYmd) {
         ? '<div style="font-size:12.5px;color:#0f766e;margin-top:7px">' + esc(cn || "This client") +
           '&rsquo;s ' + esc(pick) + ' discount is <b>' + dp + '%</b>' +
           (rN > 0 ? ' &middot; bills at <b>' + money(net) + '</b> each, <b>' + money(Math.round(net * qN)) + '</b> in all' : '') + '</div>'
-        : '<div style="font-size:12.5px;color:#b45309;margin-top:7px">Tap a brand and it will show ' +
-          'you the discount and the price this line will actually be billed at.</div>') +
+        : (x.local
+          ? '<div style="font-size:12.5px;color:#64748b;margin-top:7px">No brand: billed at the rate above, no discount, and it earns nobody an incentive.</div>'
+          : '<div style="font-size:12.5px;color:#b45309;margin-top:7px">Tap a brand and it will show ' +
+            'you the discount and the price this line will actually be billed at.</div>')) +
       '<div class="acts" style="margin-top:14px">' +
         '<button class="btn gry" data-act="oth-cancel">Cancel</button>' +
         '<button class="btn" data-act="oth-add">Add to the challan</button></div>';
@@ -4853,7 +4871,8 @@ function discRowOn(client, brand, onYmd) {
              to nothing. It says what it is and which brand it was billed under instead. */
           '<div class="muted">' + (isJobLine(l)
             ? 'Job work / Labour charges'
-            : (isOtherLine(l) ? 'Not in the price list · ' + esc(l.brand || "no brand") : esc(l.code)) +
+            : (isOtherLine(l) ? (l.local ? '<b style="color:#92400e">Bought locally</b> · ' + esc(l.shop || "") + ' · paid ' + money(l.cost || 0) + (l.brand ? ' · ' + esc(l.brand) : '')   /* 1.137.0 */
+                                            : 'Not in the price list · ' + esc(l.brand || "no brand")) : esc(l.code)) +
               ' · ' + esc(l.unit || "") +
               ' × ' + money(l.rate) + (d ? ' &minus;' + d + '%' : '') +
               (isOtherLine(l) ? '' : chStkTag(l.code, l.qty))) + '</div></div>' +   /* 1.116.0 - stock in hand */
@@ -9228,8 +9247,23 @@ function discRowOn(client, brand, onYmd) {
       S.oth = { desc: String((el("ox_desc") && el("ox_desc").value) || ""),
                 qty: String((el("ox_qty") && el("ox_qty").value) || ""),
                 rate: String((el("ox_rate") && el("ox_rate").value) || ""),
-                brand: oxb.value };
+                brand: oxb.value,
+                local: !!(S.oth && S.oth.local),   /* 1.137.0 */
+                shop: String((el("ox_shop") && el("ox_shop").value) || ""),
+                cost: String((el("ox_cost") && el("ox_cost").value) || "") };
       S.sheet = sheetOther(); render();
+    });
+    /* 1.137.0 - the margin line under a market item is worked out from what is typed; it is
+       redrawn when the cost or the rate box is LEFT (change, not input), so the cursor is never
+       taken away mid-number. */
+    ["ox_cost", "ox_rate"].forEach(function (oid) {
+      var ob2 = el(oid); if (!ob2 || !(S.oth && S.oth.local)) return;
+      ob2.addEventListener("change", function () {
+        S.oth = { desc: String((el("ox_desc") && el("ox_desc").value) || ""), qty: String((el("ox_qty") && el("ox_qty").value) || ""),
+                  rate: String((el("ox_rate") && el("ox_rate").value) || ""), brand: String((el("ox_brand") && el("ox_brand").value) || ""),
+                  local: true, shop: String((el("ox_shop") && el("ox_shop").value) || ""), cost: String((el("ox_cost") && el("ox_cost").value) || "") };
+        S.sheet = sheetOther(); render();
+      });
     });
     /* v1.19.0 - district, area and driver are dropdowns now. They carry data-p, which is the
        same attribute the click handlers read, so the holder is found exactly as before and
@@ -9899,6 +9933,16 @@ function discRowOn(client, brand, onYmd) {
       S.sheet = sheetOther(); render(); return;
     }
     if (act === "oth-cancel") { S.oth = null; S.sheet = sheetPicker(); render(); return; }
+    if (act === "oth-local") {   /* 1.137.0 - keep what is typed, flip the switch, redraw */
+      S.oth = { desc: String((el("ox_desc") && el("ox_desc").value) || ""),
+                qty: String((el("ox_qty") && el("ox_qty").value) || ""),
+                rate: String((el("ox_rate") && el("ox_rate").value) || ""),
+                brand: String((el("ox_brand") && el("ox_brand").value) || ""),
+                local: !(S.oth && S.oth.local),
+                shop: String((el("ox_shop") && el("ox_shop").value) || (S.oth && S.oth.shop) || ""),
+                cost: String((el("ox_cost") && el("ox_cost").value) || (S.oth && S.oth.cost) || "") };
+      S.sheet = sheetOther(); render(); return;
+    }
     if (act === "oth-add") {
       var od = String((el("ox_desc") && el("ox_desc").value) || "").trim();
       var oq = num((el("ox_qty") && el("ox_qty").value) || 0) || 1;
@@ -9907,13 +9951,21 @@ function discRowOn(client, brand, onYmd) {
       /* three different things to have got wrong, and a man should be told which */
       if (!od) { toast("Say what the item is \u2014 it is printed on his challan."); return; }
       if (!(orr > 0)) { toast("Put the rate for one of them, before discount."); return; }
-      if (!ob) { toast("Tap the brand it belongs to \u2014 that is what sets its discount and whose incentive it earns."); return; }
+      /* 1.137.0 - a market item needs the shop and what we paid; it does NOT need a brand */
+      var oLocal = !!(S.oth && S.oth.local);
+      var oShop = String((el("ox_shop") && el("ox_shop").value) || "").trim();
+      var oCost = num((el("ox_cost") && el("ox_cost").value) || 0);
+      if (oLocal && !oShop) { toast("Which shop was it bought from? Accounts needs it to book the purchase."); return; }
+      if (oLocal && !(oCost > 0)) { toast("What did we pay for one? Without it nobody knows if this line made money."); return; }
+      if (!oLocal && !ob) { toast("Tap the brand it belongs to \u2014 that is what sets its discount and whose incentive it earns."); return; }
       if (!S.ch) { toast("Open a challan first."); return; }
       S.ch.items = S.ch.items || [];
-      S.ch.items.push(otherLine(od, oq, orr, ob));
+      var oLine = otherLine(od, oq, orr, ob);
+      if (oLocal) { oLine.local = 1; oLine.shop = oShop; oLine.cost = Math.round(oCost); }
+      S.ch.items.push(oLine);
       S.oth = null;
       S.sheet = sheetPicker(); render();
-      toast(od.slice(0, 26) + " added \u2014 " + oq + " \u00d7 " + money(orr) + " (" + ob + ").");
+      toast(od.slice(0, 26) + " added \u2014 " + oq + " \u00d7 " + money(orr) + (oLocal ? " (bought at " + oShop + ")." : " (" + ob + ")."));
       return;
     }
 
@@ -10009,7 +10061,12 @@ function discRowOn(client, brand, onYmd) {
         var d = (l.disc != null && l.disc !== "") ? num(l.disc)
               : (_pr ? (num(_pr.pct) || 0) : "");
         if (!_pr && d === "" && l.brand && _noRate.indexOf(l.brand) < 0) _noRate.push(l.brand);
-        return { code:l.code, desc:l.desc, unit:l.unit, qty:num(l.qty), rate:num(l.rate), brand:l.brand, disc:d };
+        var _o = { code:l.code, desc:l.desc, unit:l.unit, qty:num(l.qty), rate:num(l.rate), brand:l.brand, disc:d };
+        /* 1.137.0 - THE SAVE REBUILDS EVERY LINE FROM A FIXED LIST OF FIELDS. A market line's shop
+           and cost would have shown on screen and then been dropped from the saved challan, so
+           they are carried across here, and only when the line is a market line. */
+        if (l.local) { _o.local = 1; _o.shop = String(l.shop || ""); _o.cost = Math.round(num(l.cost)); }
+        return _o;
       });
       var _nrNeed = !!(_noRate.length && !(S.ch && S.ch.noRateOk));   /* 1.120.0 - on the one card */
       /* ============ ONE MEANING PER COLUMN (v1.24.0) ============
