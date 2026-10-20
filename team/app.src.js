@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.849";
+  var APP_VERSION = "6.9.850";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -24788,7 +24788,43 @@ function viewCatalogue() {
       '<button class="btn sm ' + (_old ? 'ghost' : '') + '" data-act="bd-sort" data-k="new" style="min-height:44px">Newest first</button></div>' +
       '<div class="meta" style="font-size:13px">Every passed challan without a bill number, with what went. <b>Open for billing</b> asks the billing name first; the prices at the client&rsquo;s preset discount open after that, and the bill number is saved there.</div>' +
       '<input id="bd_q" type="search" autocomplete="off" placeholder="Find a challan or client" value="' + esc(S.bdQ || "") + '" style="min-height:44px;font-size:15px;width:100%;box-sizing:border-box;margin-top:6px"/>' +
-      '<div id="bd_res">' + billDeskList() + '</div></div>' + billDoneHtml();
+      '<div id="bd_res">' + billDeskList() + '</div></div>' + billDoneHtml() + localBuysHtml();   /* 6.9.850 */
+  }
+  /* ===== 6.9.850 - BOUGHT IN THE MARKET FOR A SITE (p853, with challan 1.137.0) =====
+     Every challan line marked local, last 90 days, newest first; a line sold below cost is red. */
+  function localBuysHtml() {
+    var since = new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10), rows = [];
+    (S.data.challans || []).forEach(function (c) {
+      if (String(c.status || "") === "Cancelled") return;
+      var d = String(c.createdAt || "").slice(0, 10); if (d < since) return;
+      var its = chItems(c);   /* the lines live in itemsJson; c.items is only the readable string */
+      its.forEach(function (l) {
+        if (!l || !l.local) return;
+        var q = Number(l.qty) || 0, cost = Number(l.cost) || 0;
+        var disc = Number(l.disc) || 0, net = Math.round((Number(l.rate) || 0) * (1 - disc / 100));
+        rows.push({ d: d, no: c.challanNo || "", cl: c.customerName || "", what: l.desc || "", q: q, shop: l.shop || "",
+                    cost: cost, paid: Math.round(cost * q), billed: Math.round(net * q), mg: Math.round((net - cost) * q) });
+      });
+    });
+    if (!rows.length) return '<div class="card" style="padding:10px 12px"><h3 style="margin:0">Bought in the market for a site</h3>' +
+      '<div class="meta" style="font-size:13px;margin-top:4px">Nothing in the last 90 days. When the godown adds an item with <b>Bought from the local market</b> ticked, it lands here with the shop and what we paid, to be booked.</div></div>';
+    rows.sort(function (a, b) { return a.d < b.d ? 1 : (a.d > b.d ? -1 : 0); });
+    var paid = rows.reduce(function (t, r) { return t + r.paid; }, 0), lost = rows.filter(function (r) { return r.mg < 0; });
+    var dash = '<span style="color:#94a3b8">—</span>';
+    return '<div class="card" style="padding:10px 12px"><h3 style="margin:0">Bought in the market for a site</h3>' +
+      '<div class="meta" style="font-size:13px;margin:4px 0 8px">' + plural(rows.length, "line") + ' in 90 days &middot; <b>' + money(paid) + '</b> paid to shops' +
+      (lost.length ? ' &middot; <b style="color:#b91c1c">' + plural(lost.length, "line") + ' sold below cost</b>' : '') + '. Book each purchase against the shop.</div>' +
+      xlTable("localbuys", [
+        { k: "d", t: "DATE", w: "86px" }, { k: "no", t: "CHALLAN" }, { k: "cl", t: "CLIENT" }, { k: "what", t: "ITEM" },
+        { k: "q", t: "QTY", n: 1, r: 1 }, { k: "shop", t: "SHOP" }, { k: "cost", t: "PAID EACH", n: 1, r: 1 },
+        { k: "paid", t: "PAID", n: 1, r: 1 }, { k: "billed", t: "BILLED", n: 1, r: 1 }, { k: "mg", t: "MADE", n: 1, r: 1 }
+      ], rows.map(function (r) {
+        return { v: r, cells: {
+          d: esc(dmy(r.d)), no: esc(r.no), cl: esc(r.cl), what: esc(r.what), q: esc(qShow(r.q)), shop: esc(r.shop) || dash,
+          cost: money(r.cost), paid: money(r.paid), billed: money(r.billed),
+          mg: r.mg < 0 ? '<b style="color:#b91c1c">−' + money(-r.mg) + '</b>' : '<b style="color:#0f766e">' + money(r.mg) + '</b>'
+        } };
+      }), "the shop, what we paid and what it made") + '</div>';
   }
   function billDeskList() {
     var q = String(S.bdQ || "").trim().toLowerCase(), L = billToDo(), all = L.length;
