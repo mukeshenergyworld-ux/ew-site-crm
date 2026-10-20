@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.850";
+  var APP_VERSION = "6.9.851";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -48570,6 +48570,143 @@ function viewCatalogue() {
       "\n\nWe would be glad to have your team present.\n\nWarm regards,\nMukesh Verma\nEnergy World";
   }
   function pevSaveRow(action, target, detail) { return auditFact(action, target, detail).then(function () { _pevKey = ""; }, function () { _pevKey = ""; }); }
+  /* ===== 6.9.851 - THE BILLS FOLDER ON GOOGLE DRIVE (p854, server V166) ===== */
+  /* "FIMA FJ-743-2627.pdf" -> supplier word + bill number. A space or an underscore separates them. */
+  function bdParse(name) {
+    var base = String(name || "").replace(/\.[A-Za-z0-9]{2,5}$/, "").replace(/_/g, " ").replace(/\s+/g, " ").trim();
+    var m = base.match(/^([^\s]+)\s+(.+)$/);
+    if (!m) return null;
+    var no = m[2].trim();
+    if (!/\d/.test(no)) return null;   /* no number in it - not a bill name */
+    return { sup: m[1], no: no, key: stkSupNorm(m[1]) + "|" + stkNoNorm(no) };
+  }
+  function bdDay(d) {
+    var s = String(d || "").trim(), m;
+    if ((m = s.match(/^(\d{4})-(\d{2})-(\d{2})/))) return m[1] + "-" + m[2] + "-" + m[3];
+    if ((m = s.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4})/))) return m[3] + "-" + ("0" + m[2]).slice(-2) + "-" + ("0" + m[1]).slice(-2);
+    return s.slice(0, 10);
+  }
+  /* every file in the folder with its one status against 2B and the stock rows */
+  function bdRows() {
+    var B = S.bdrive || {}, files = B.files || [];
+    var ix = stkBkIdx(), regAll = stkRegister(), byKey = {};
+    regAll.forEach(function (b) { byKey[String(b.key)] = b; });
+    var seen = {};
+    files.forEach(function (f) { var p = bdParse(f.name); if (p) seen[p.key] = (seen[p.key] || 0) + 1; });
+    return files.map(function (f) {
+      var p = bdParse(f.name), r = { f: f, p: p, st: "", reg: null, msg: (B.done || {})[f.id] || "" };
+      if (!p) { r.st = "name"; return r; }
+      if (seen[p.key] > 1) { r.st = "dup"; return r; }
+      if (stkBkFind(ix.bill, p.sup, p.no)) { r.st = "in"; return r; }
+      if (stkBkFind(ix.wait, p.sup, p.no)) { r.st = "wait"; return r; }
+      var rg = stkBkFind(ix.reg, p.sup, p.no);
+      if (rg) { r.reg = byKey[String(rg.key)] || null; r.st = r.reg ? "ready" : "no2b"; return r; }
+      r.st = "no2b"; return r;
+    });
+  }
+  var BD_ST = {
+    ready: ["In 2B — ready to read", "#0f766e"], wait: ["Waiting to match", "#b45309"], "in": ["Already in stock", "#64748b"],
+    no2b: ["Not in 2B", "#92400e"], dup: ["Same bill saved twice", "#b91c1c"], name: ["Name not in the pattern", "#b91c1c"]
+  };
+  function billDriveCard() {
+    if (!canBill()) return "";
+    var B = S.bdrive;
+    if (!B) { S.bdrive = { busy: true }; bdList(); B = S.bdrive; }
+    var h = '<div class="card" style="border-color:#99f6e4"><div class="acts" style="align-items:center;margin:0 0 4px;flex-wrap:wrap;gap:6px">' +
+      '<h3 class="grow" style="margin:0">Bills folder on Google Drive</h3>' +
+      (B.folder ? '<a class="btn sm ghost" href="' + esc(B.folder.url) + '" target="_blank" rel="noopener" style="min-height:44px">Open the folder</a>' +
+                  '<button class="btn sm ghost" data-act="bd-fchk" style="min-height:44px"' + (B.busy ? ' disabled' : '') + '>' + (B.busy ? 'Checking…' : 'Check again') + '</button>' : '') + '</div>';
+    if (B.err) h += '<div style="color:#b91c1c;font-size:13px;margin:4px 0">' + esc(B.err) + '</div>';
+    if (B.notDeployed) return h + '<div class="meta" style="font-size:13px">The server has not been given the bills-folder part yet (server <b>V166</b>). Once it is deployed this card links the folder.</div></div>';
+    if (B.busy && !B.folder) return h + '<div class="meta">Looking for the folder…</div></div>';
+    if (!B.folder) {
+      return h + '<div class="meta" style="font-size:13px;line-height:1.5">One folder for every purchase bill, so nothing has to be uploaded by hand.<br>' +
+        '<b>1.</b> In Google Drive on <b>mukesh.energyworld@gmail.com</b> make a folder, e.g. <i>Purchase bills</i>, and share it with Gautam as <b>Editor</b>.<br>' +
+        '<b>2.</b> Gautam saves each bill there named <b>SUPPLIER BILL-NUMBER</b>, the number exactly as printed with <b>/</b> written as <b>-</b>: ' +
+        '<code>FIMA FJ-743-2627.pdf</code>, <code>HULIOT HPF-26-27-14365.pdf</code>. Not just the last digits — many suppliers put the year last.<br>' +
+        '<b>3.</b> Paste the folder’s address here.</div>' +
+        '<div style="display:flex;gap:6px;margin-top:8px"><input id="bdf_link" placeholder="https://drive.google.com/drive/folders/…" style="flex:1;min-height:44px;font-size:15px"/>' +
+        '<button class="btn" data-act="bd-fset" style="min-height:44px">Link the folder</button></div></div>';
+    }
+    var rows = bdRows(), cnt = {};
+    rows.forEach(function (r) { cnt[r.st] = (cnt[r.st] || 0) + 1; });
+    h += '<div class="meta" style="font-size:13px"><b>' + esc(B.folder.name) + '</b> &middot; ' + plural(rows.length, "file") +
+      ['ready', 'wait', 'in', 'no2b', 'dup', 'name'].filter(function (k) { return cnt[k]; }).map(function (k) {
+        return ' &middot; <span style="color:' + BD_ST[k][1] + ';font-weight:700">' + cnt[k] + ' ' + esc(BD_ST[k][0].toLowerCase()) + '</span>'; }).join("") +
+      (B.at ? ' <span style="color:#94a3b8">· checked ' + esc(String(B.at).slice(11, 16)) + '</span>' : '') + '</div>';
+    if (cnt.ready) h += '<div style="margin:8px 0"><button class="btn" data-act="bd-readall" style="min-height:44px"' + (B.all ? ' disabled' : '') + '>' +
+      (B.all ? 'Reading ' + esc(B.all) + '…' : 'Read & bring in all ' + cnt.ready + ' ready') + '</button>' +
+      '<span class="meta" style="font-size:12px;margin-left:6px">Each one is checked against 2B — bill no, total, date — before it is kept.</span></div>';
+    if (!rows.length) return h + '<div class="empty">The folder is empty. Bills saved there show up here.</div></div>';
+    var ord = { dup: 0, name: 1, ready: 2, no2b: 3, wait: 4, "in": 5 };
+    rows.sort(function (a, b) { return (ord[a.st] - ord[b.st]) || String(a.f.name).localeCompare(String(b.f.name)); });
+    h += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="background:#0b3b36;color:#fff">' +
+      '<th style="padding:6px 8px;text-align:left">File</th><th style="padding:6px 8px;text-align:left">Status</th><th style="padding:6px 8px;text-align:left">2B says</th><th></th></tr></thead><tbody>' +
+      rows.map(function (r, k) {
+        var st = BD_ST[r.st] || ["", "#64748b"], reading = (B.reading || {})[r.f.id];
+        return '<tr style="border-bottom:1px solid #e2e8f0;background:' + (k % 2 ? '#f8fafc' : '#fff') + '">' +
+          '<td style="padding:6px 8px"><a href="' + esc(r.f.url) + '" target="_blank" rel="noopener" style="color:#0f766e;font-weight:700">' + esc(r.f.name) + '</a></td>' +
+          '<td style="padding:6px 8px;color:' + st[1] + ';font-weight:700">' + esc(st[0]) +
+            (r.st === "name" ? '<div style="font-size:12px;color:#64748b;font-weight:400">Rename it SUPPLIER BILL-NO, e.g. FIMA FJ-743-2627</div>' : '') +
+            (r.st === "dup" ? '<div style="font-size:12px;color:#64748b;font-weight:400">Two files are the same bill — delete or rename one in Drive</div>' : '') +
+            (r.st === "no2b" ? '<div style="font-size:12px;color:#64748b;font-weight:400">Not on the last GSTR-2B — the supplier may not have filed it yet</div>' : '') +
+            (r.msg ? '<div style="font-size:12px;font-weight:400;color:' + (/^✓/.test(r.msg) ? '#0f766e' : '#b91c1c') + '">' + esc(r.msg) + '</div>' : '') + '</td>' +
+          '<td style="padding:6px 8px;font-size:12px;color:#475569">' + (r.reg ? esc(r.reg.supplier) + '<br>' + esc(r.reg.billNo) + ' &middot; ' + esc(dmy(bdDay(r.reg.date))) + ' &middot; ' + money(r.reg.amount) : '—') + '</td>' +
+          '<td style="padding:6px 8px;text-align:right">' + (r.st === "ready"
+            ? '<button class="btn sm" data-act="bd-read" data-id="' + esc(r.f.id) + '" style="min-height:44px;white-space:nowrap"' + (reading || B.all ? ' disabled' : '') + '>' + (reading ? 'Reading…' : 'Read & bring in') + '</button>' : '') + '</td></tr>';
+      }).join("") + '</tbody></table></div>' +
+      '<div class="meta" style="font-size:12px;margin-top:6px">A bill brought in goes to <b>Waiting to match</b>. Its codes are matched there and it enters stock only when the owner commits it.</div></div>';
+    return h;
+  }
+  function bdList() {
+    S.bdrive = Object.assign(S.bdrive || {}, { busy: true, err: "" });
+    return api("billFolderList", {}).then(function (r) {
+      var B = S.bdrive; B.busy = false;
+      if (!r || !r.ok) {
+        var e = String((r && r.error) || "");
+        if (/unknown|not.*(an )?action|no such action|unsupported/i.test(e)) B.notDeployed = true; else B.err = e || "The server did not answer.";
+      } else { B.folder = r.folder || null; B.files = r.files || []; B.at = new Date().toISOString(); B.notDeployed = false; }
+      keepScroll = true; renderBg();
+    }).catch(function (e) { S.bdrive.busy = false; S.bdrive.err = "No answer from the server (" + apiWhy(e) + ")."; keepScroll = true; renderBg(); });
+  }
+  /* read one file, check it against 2B on HIS three conditions, and only then write the billwait row */
+  function bdReadOne(fid) {
+    var B = S.bdrive || {};
+    var row = bdRows().filter(function (r) { return r.f.id === fid; })[0];
+    if (!row || row.st !== "ready" || !row.reg) return Promise.resolve(false);
+    B.reading = B.reading || {}; B.done = B.done || {}; B.reading[fid] = 1; keepScroll = true; renderBg();
+    var say = function (m) { delete B.reading[fid]; B.done[fid] = m; keepScroll = true; renderBg(); };
+    return api("billPdfRead", { fileId: fid }, 150000).then(function (r) {
+      if (!r || !r.ok) { say("Not read: " + ((r && r.error) || "no answer")); return false; }
+      if (r.notInvoice) { say("This is a " + (r.what || "not a tax invoice") + " — not brought in."); return false; }
+      var bill = r.bill || {}, reg = row.reg;
+      var okNo = stkNoSame({ no: stkNoNorm(bill.billNo), tail: stkNoTail(bill.billNo) }, { no: stkNoNorm(reg.billNo), tail: stkNoTail(reg.billNo) });
+      var okTot = Math.abs((Number(bill.total) || 0) - (Number(reg.amount) || 0)) <= 1;
+      var okDay = bdDay(bill.date) === bdDay(reg.date);
+      if (!(okNo && okTot && okDay)) {
+        say("Not brought in — does not agree with 2B: " +
+          (okNo ? "" : "bill no " + (bill.billNo || "?") + " vs " + reg.billNo + "; ") +
+          (okTot ? "" : "total " + money(bill.total || 0) + " vs " + money(reg.amount) + "; ") +
+          (okDay ? "" : "date " + (bill.date || "?") + " vs " + bdDay(reg.date) + ";"));
+        return false;
+      }
+      var lines = (bill.lines || []).map(function (l, i) { return { sl: l.sl || i + 1, desc: l.desc || "", partNo: l.partNo || "", hsn: l.hsn || "", qty: Number(l.qty) || 0,
+        rate: Number(l.rate) || 0, unit: l.unit || "", disc: Number(l.disc) || 0, amount: Number(l.amount) || 0 }; });
+      if (!lines.length) { say("Read, but no item lines came out of it — open the file and check it is the full bill."); return false; }
+      /* the SAME row the Tally upload writes for a bill still to be matched - the 2B's own spelling of supplier
+         and number, so its key is the register's key and the tiles count it at once */
+      var wrow = { id: "S-" + Date.now() + "-" + Math.floor(Math.random() * 1000000) + "-wait", type: "billwait", code: "*WAIT", qty: 0,
+        ref: stkBillKey(reg.supplier, reg.billNo), asOn: bdDay(reg.date) || today(), notes: reg.supplier,
+        desc: JSON.stringify({ billNo: reg.billNo, date: bdDay(reg.date), supplier: reg.supplier, total: Number(bill.total) || 0,
+          file: (r.file && r.file.url) || "", src: "drive", lines: lines }) };
+      S.stock = (S.stock || []).concat([wrow]);
+      return api("stockSave", { row: wrow }).then(function (sv) {
+        if (!(sv && sv.ok)) { S.stock = S.stock.filter(function (x) { return x !== wrow; }); say("Read, but the server did not keep it: " + ((sv && sv.error) || "refused")); return false; }
+        say("✓ " + lines.length + " lines brought in — now in Waiting to match");
+        return true;
+      });
+    }).catch(function (e) { say("No answer from the server (" + apiWhy(e) + ")."); return false; });
+  }
   function viewTally() {
     ensureStock();
     var h = '<div class="card"><div class="acts" style="align-items:center;margin:0;flex-wrap:wrap;gap:6px"><h2 class="grow" style="margin:0">Tally</h2>' +
@@ -48591,6 +48728,7 @@ function viewCatalogue() {
       tile("Waiting to match", plural(D.wait.length, "bill"), adm ? "codes for you to match" : "with the owner", D.wait.length ? "#b91c1c" : "#0f766e") +
       (adm ? tile("Codes not Tally's", String(D.drift.length), D.alias + " part no" + (D.alias === 1 ? "" : "s") + " matched by hand", D.drift.length ? "#b45309" : "#0f766e") : "") +
       tile("GSTR-2B / registers", String(D.regs.length), D.regs.length ? "last " + esc(D.regs[0].period || dmy(D.regs[0].at)) : "none uploaded yet", D.regs.length ? "#0f766e" : "#94a3b8") + '</div>';
+    h += billDriveCard();   /* 6.9.851 - the bills folder on Google Drive */
     if (D.months.length) {
       h += '<div class="chips"><button class="chip ' + (D.mon ? "" : "on") + '" data-act="tl-mon" data-m="">All months</button>' +
         D.months.map(function (m) { return '<button class="chip ' + (D.mon === m ? "on" : "") + '" data-act="tl-mon" data-m="' + m + '">' + tlMonLabel(m) + '</button>'; }).join("") + '</div>';
@@ -60920,6 +61058,26 @@ function viewCatalogue() {
       keepScroll = true; render(); return;
     }
     /* 6.9.757 - pieces of a line already on the quote, from "no room" into the room that is open */
+    /* 6.9.851 - the bills folder */
+    if (act === "bd-fchk") { bdList(); return; }
+    if (act === "bd-fset") {
+      var _bl = String(val("bdf_link") || "").trim(); if (!_bl) { toast("Paste the folder's address from Google Drive."); return; }
+      S.bdrive = Object.assign(S.bdrive || {}, { busy: true, err: "" }); keepScroll = true; render();
+      api("billFolderSet", { folder: _bl }).then(function (r) {
+        if (!r || !r.ok) { S.bdrive.busy = false; S.bdrive.err = (r && r.error) || "Not linked."; keepScroll = true; render(); return; }
+        toast("Linked: " + r.folder.name); bdList();
+      }).catch(function (e) { S.bdrive.busy = false; S.bdrive.err = "No answer (" + apiWhy(e) + ")."; keepScroll = true; render(); });
+      return;
+    }
+    if (act === "bd-read") { bdReadOne(t.getAttribute("data-id")); return; }
+    if (act === "bd-readall") {
+      var _q = bdRows().filter(function (r) { return r.st === "ready"; }).map(function (r) { return r.f.id; });
+      if (!_q.length) return;
+      var _n = 0, _ok = 0, _ch = Promise.resolve();
+      _q.forEach(function (fid) { _ch = _ch.then(function () { _n++; S.bdrive.all = _n + " of " + _q.length; keepScroll = true; renderBg(); return bdReadOne(fid).then(function (k) { if (k) _ok++; }); }); });
+      _ch.then(function () { S.bdrive.all = ""; keepScroll = true; renderBg(); toast(_ok + " of " + _q.length + " brought in to Waiting to match."); });
+      return;
+    }
     if (act === "ps-sites") { S.modal = modalPartnerSites(t.getAttribute("data-n") || ""); render(); return; }   /* 6.9.849 */
     if (act === "qz-view") { S.qzView = t.getAttribute("data-v") || "room"; keepScroll = true; render(); return; }   /* 6.9.843 */
     if (act === "qz-room-move") {
