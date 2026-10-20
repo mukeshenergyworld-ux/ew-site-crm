@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.847";
+  var APP_VERSION = "6.9.849";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -22891,7 +22891,11 @@ function viewCatalogue() {
         var GAP = 7;
         var cw = (Rt - L - GAP * (cols - 1)) / cols;
 
-        for (var pg = 0; pg < Math.ceil(shown.length / per); pg++) {
+        /* 6.9.848 - a room that needs two pages splits EVENLY across them (13 -> 7 + 6, not
+           9 + 4), on the same grid, so neither page is left two-thirds empty */
+        var half = Math.ceil(shown.length / 2);
+        var pages = shown.length <= per ? [shown] : [shown.slice(0, half), shown.slice(half)];
+        for (var pg = 0; pg < pages.length; pg++) {
           var yTop = newPage("Room " + ("0" + (roomsIts.indexOf(rm) + 1)).slice(-2),
                              (rm.room || "Not yet assigned to a room") + (pg ? "  (continued)" : ""));
 
@@ -22918,7 +22922,7 @@ function viewCatalogue() {
           }
 
           var ch = (H - 12 - yTop - GAP * (rows - 1)) / rows;
-          var slice = shown.slice(pg * per, pg * per + per);
+          var slice = pages[pg];
 
           slice.forEach(function (x, k) {
             var i = x.i, pic = picBy[i.code], dl = descLines(i.desc);
@@ -22930,7 +22934,8 @@ function viewCatalogue() {
             fill(sc2); doc.rect(cx, cy + 3, 1.8, ch - 6, "F");   /* the set's spine */
 
             /* picture on a soft tint, text beneath - the card reads top to bottom */
-            var ph = ch * 0.52, px = cx + 6, pw = cw - 10;
+            /* 6.9.848 - on a three-row page the picture gives up room so a two-line name clears the foot */
+            var ph = ch * (rows === 3 ? 0.44 : 0.52), px = cx + 6, pw = cw - 10;
             fill([250, 251, 252]); doc.roundedRect(px, cy + 4, pw, ph, 2, 2, "F");
             if (pic) {
               var d = PIC_BIG_DIM[String(i.pic || "")] || { w: 4, h: 3 };
@@ -22941,7 +22946,7 @@ function viewCatalogue() {
               doc.text("no photograph", px + pw / 2, cy + 4 + ph / 2, { align: "center" });
             }
 
-            var ty = cy + ph + 10, tw = cw - 12;
+            var ty = cy + 4 + ph + 6.6, tw = cw - 12;   /* 6.9.848 - the name starts right under the picture */
             col(sc2); F("bold"); doc.setFontSize(4.9);
             doc.text(T(String(i.brand || "").toUpperCase() + (i.code ? "  ·  " + i.code : "")), cx + 6, ty - 3.4);
             col(INK); F("bold"); doc.setFontSize(cols === 2 ? 9 : 7.4);
@@ -22949,7 +22954,7 @@ function viewCatalogue() {
               .forEach(function (ln, z) { doc.text(ln, cx + 6, ty + z * (cols === 2 ? 4.6 : 3.9)); });
 
             /* quantity and money, pinned to the foot of every card */
-            var fy = cy + ch - 5.4;
+            var fy = cy + ch - 4.4;
             col(GREY); F("normal"); doc.setFontSize(5.6);
             doc.text(T(x.n + " " + (i.unit || "No's") + "   ×   " + R(i.price)), cx + 6, fy);
             col(INK); F("bold"); doc.setFontSize(cols === 2 ? 9.5 : 8);
@@ -30482,6 +30487,65 @@ function viewCatalogue() {
 
   /* v6.9.524 - the sites a partner is named on. One rule, read by the partners sheet and by
      his book, so the count on the sheet is the list on the card. */
+  /* ===== 6.9.849 - A PARTNER'S ONGOING SITES (p851) =====
+     Measured 20 Oct: all 202 sites are status "Active", so the STAGE decides - only
+     "Post-Handover / AMC" means the work is over. A partner reaches a site by being named on the
+     site row OR on the site's client; both are read, once, into one index. */
+  var PS_DONE = /post.?handover|\bamc\b|completed|closed/i;
+  var _psIdx = null, _psKey = "";
+  function partnerSiteIdx() {
+    var sites = (S.data && S.data.sites) || [], cls = (S.data && S.data.clients) || [];
+    var key = sites.length + "|" + cls.length + "|" + sites.reduce(function (m, x) { var u = String(x.updatedAt || x.createdAt || ""); return u > m ? u : m; }, "");
+    if (_psIdx && _psKey === key) return _psIdx;
+    var byCl = {};
+    cls.forEach(function (c) { byCl[dkey(c.name)] = c; });
+    var idx = {};
+    sites.forEach(function (st) {
+      var roles = {}, cl = byCl[dkey(st.client)] || {};
+      [["architect", "Architect"], ["plumber", "Plumber"], ["builder", "Builder"], ["pmc", "PMC"]].forEach(function (f) {
+        [st[f[0]], cl[f[0]]].forEach(function (nm) {
+          var k = dkey(nm); if (!k) return;
+          (roles[k] = roles[k] || {})[f[1]] = 1;
+        });
+      });
+      Object.keys(roles).forEach(function (k) { (idx[k] = idx[k] || []).push({ s: st, roles: Object.keys(roles[k]) }); });
+    });
+    _psIdx = idx; _psKey = key;
+    return idx;
+  }
+  function partnerSiteRows(name) { return partnerSiteIdx()[dkey(name)] || []; }
+  function partnerOngoing(name) { return partnerSiteRows(name).filter(function (r) { return !PS_DONE.test(String(r.s.stage || "")); }); }
+  function partnerSitesChip(name) {
+    var all = partnerSiteRows(name), on = all.filter(function (r) { return !PS_DONE.test(String(r.s.stage || "")); }).length;
+    if (!all.length) return '<span style="display:inline-block;font-size:12px;color:#94a3b8;margin-top:3px">no site on the book</span>';
+    return '<button class="btn sm ghost" data-act="ps-sites" data-n="' + esc(name) + '" style="min-height:36px;padding:2px 9px;font-size:12px;margin-top:3px;' +
+      (on ? 'border-color:#5eead4;color:#0f766e;font-weight:800' : 'color:#64748b') + '" title="Tap to see his sites">' +
+      on + (on === 1 ? ' site' : ' sites') + ' ongoing</button>';
+  }
+  function modalPartnerSites(name) {
+    var rows = partnerSiteRows(name);
+    var on = rows.filter(function (r) { return !PS_DONE.test(String(r.s.stage || "")); });
+    var done = rows.length - on.length;
+    on.sort(function (a, b) { return String(a.s.stage || "").localeCompare(String(b.s.stage || "")) || String(a.s.name || "").localeCompare(String(b.s.name || "")); });
+    var h = '<h2>' + esc(name) + '</h2><p class="sub">' + on.length + (on.length === 1 ? ' site' : ' sites') + ' ongoing' +
+      (done ? ' &middot; ' + done + ' handed over' : '') + '</p>';
+    if (!on.length) h += '<div class="empty">No ongoing site names him.</div>';
+    else h += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">' +
+      '<thead><tr style="background:#0b3b36;color:#fff"><th style="padding:6px 8px;text-align:left">Site</th><th style="padding:6px 8px;text-align:left">Stage</th>' +
+      '<th style="padding:6px 8px;text-align:left">He is</th><th style="padding:6px 8px;text-align:left">Executive</th></tr></thead><tbody>' +
+      on.map(function (r, k) {
+        var st = r.s;
+        return '<tr style="border-bottom:1px solid #e2e8f0;background:' + (k % 2 ? '#f8fafc' : '#fff') + '">' +
+          '<td style="padding:6px 8px"><b>' + esc(st.name || st.client || "") + '</b>' +
+            (st.client && dkey(st.client) !== dkey(st.name) ? '<div style="font-size:12px;color:#64748b">' + esc(st.client) + '</div>' : '') +
+            (st.city ? '<div style="font-size:12px;color:#94a3b8">' + esc(st.city) + '</div>' : '') + '</td>' +
+          '<td style="padding:6px 8px">' + (st.stage ? esc(st.stage) : '<span style="color:#b45309">stage not set</span>') + '</td>' +
+          '<td style="padding:6px 8px">' + esc(r.roles.join(", ")) + '</td>' +
+          '<td style="padding:6px 8px">' + esc(st.owner || st.createdBy || "") + '</td></tr>';
+      }).join("") + '</tbody></table></div>';
+    return h + '<div class="meta" style="font-size:12px;margin-top:8px">Ongoing = every stage except Post-Handover / AMC. He counts on a site when he is named on the site or on its client.</div>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Close</button></div>';
+  }
   function partnerSites(name) {
     var nm = String(name || "").trim().toLowerCase();
     if (!nm) return [];
@@ -45029,7 +45093,7 @@ function viewCatalogue() {
             name: (canSee("commission")
                     ? '<b data-act="p-open" data-n="' + esc(p.name) + '" style="cursor:pointer;color:#0f766e">'
                     : '<b data-act="as-open" data-id="' + esc(p.id) + '" style="cursor:pointer;color:#0f766e">') +
-                  esc(p.name) + '</b>' + (p.flag ? ' <span class="pill Lost">no number</span>' : ""),
+                  esc(p.name) + '</b>' + (p.flag ? ' <span class="pill Lost">no number</span>' : "") + '<div>' + partnerSitesChip(p.name) + '</div>',   /* 6.9.849 */
             new30: _new.length ? '<b style="color:#0d9488">' + _new.length + '</b>' : '<span style="color:#94a3b8">\u2014</span>',
             newby: _newest ? esc(String(_newest.createdBy || "")) + ' <span style="color:#94a3b8;font-size:12px">' + esc(dmy(_newest.createdAt)) + '</span>' : '<span style="color:#94a3b8">\u2014</span>',
             edit: '<button class="btn sm ghost" data-act="as-open" data-id="' + esc(p.id) + '" style="padding:2px 8px;font-size:12px">Edit</button>',
@@ -48363,7 +48427,7 @@ function viewCatalogue() {
       (inv.length ? pevTable([["#", "right"], ["Guest"], ["Tier"], ["Business 12 m", "right"], ["Status"], ["Executive"], ["Follow-up"], [isG ? "Gift ₹" : "Cost ₹", "right"], [""]],
         inv.map(function (p, k) {
           var i = p.i, x = p.x, mob = x.mob || "";
-          return ['<span style="color:#64748b">' + (k + 1) + '</span>', '<span style="display:inline-block;max-width:230px;white-space:normal;line-height:1.25;vertical-align:middle" title="' + esc(i.partner) + (mob ? ' \u00b7 ' + esc(mob) : '') + '"><b data-act="pev-ed" data-id="' + esc(e.eid) + '" data-n="' + esc(i.partner) + '" data-o="' + (x.other ? 1 : 0) + '" style="cursor:pointer;color:#0d766c;text-decoration:underline dotted" title="Tap to change the name">' + (function () { if (x.other) return ''; var _a = (S.data.associates || []).filter(function (a) { return dkey(a.name) === dkey(i.partner); }); var _c = _a.length === 1 ? String(_a[0].code || "") : "";   /* two partners by one name: no guess */ return _c ? '<span class="ewc">' + esc(_c) + '</span>' : ''; })() + esc(i.partner) + '</b>' + ' <span style="font-size:12px;color:#64748b">' + (x.other ? '· ' + esc(x.role || "") + ' ' : '') + (mob ? '· ' + esc(mob) : '· <span style="color:#b45309">no mobile</span>') + '</span></span>',   /* p754 - his code (PL / AR / BL) already says the role */
+          return ['<span style="color:#64748b">' + (k + 1) + '</span>', '<span style="display:inline-block;max-width:230px;white-space:normal;line-height:1.25;vertical-align:middle" title="' + esc(i.partner) + (mob ? ' \u00b7 ' + esc(mob) : '') + '"><b data-act="pev-ed" data-id="' + esc(e.eid) + '" data-n="' + esc(i.partner) + '" data-o="' + (x.other ? 1 : 0) + '" style="cursor:pointer;color:#0d766c;text-decoration:underline dotted" title="Tap to change the name">' + (function () { if (x.other) return ''; var _a = (S.data.associates || []).filter(function (a) { return dkey(a.name) === dkey(i.partner); }); var _c = _a.length === 1 ? String(_a[0].code || "") : "";   /* two partners by one name: no guess */ return _c ? '<span class="ewc">' + esc(_c) + '</span>' : ''; })() + esc(i.partner) + '</b>' + ' <span style="font-size:12px;color:#64748b">' + (x.other ? '· ' + esc(x.role || "") + ' ' : '') + (mob ? '· ' + esc(mob) : '· <span style="color:#b45309">no mobile</span>') + '</span>' + (x.other ? '' : '<div>' + partnerSitesChip(i.partner) + '</div>') + '</span>',   /* 6.9.849 sites chip; p754 - his code (PL / AR / BL) already says the role */
             x.other ? '<span style="display:inline-block;font-size:12px;font-weight:800;color:#3730a3;background:#e0e7ff;border-radius:6px;padding:1px 7px;white-space:nowrap">Guest</span>' : pevTierPill(x.tier), x.b12 ? money(x.b12) : '—',
             '<select class="pev-st" data-id="' + esc(e.eid) + '" data-p="' + esc(i.partner) + '" style="min-height:44px;font-size:13px;padding:4px 2px;width:96px">' + sts.map(function (s2) { return '<option' + (s2 === i.st ? ' selected' : '') + '>' + esc(s2) + '</option>'; }).join("") + '</select>',
             '<select class="pev-exec" data-id="' + esc(e.eid) + '" data-p="' + esc(i.partner) + '" style="min-height:44px;font-size:13px;padding:4px 2px;width:112px' + (i.exec ? '' : ';border-color:#fca5a5;color:#b91c1c') + '"><option value="">— nobody —</option>' +
@@ -60820,6 +60884,7 @@ function viewCatalogue() {
       keepScroll = true; render(); return;
     }
     /* 6.9.757 - pieces of a line already on the quote, from "no room" into the room that is open */
+    if (act === "ps-sites") { S.modal = modalPartnerSites(t.getAttribute("data-n") || ""); render(); return; }   /* 6.9.849 */
     if (act === "qz-view") { S.qzView = t.getAttribute("data-v") || "room"; keepScroll = true; render(); return; }   /* 6.9.843 */
     if (act === "qz-room-move") {
       var mvc = t.getAttribute("data-code"), mvIt = (S.qz.items || []).filter(function (x) { return x.code === mvc; })[0];
