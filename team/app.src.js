@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.846";
+  var APP_VERSION = "6.9.847";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -22239,6 +22239,41 @@ function viewCatalogue() {
 
   /* Rooms, at MRP. qzRoomTotals() answers the same question after discount, for the
      builder screen; this one is the customer's copy, so it stays at list price. */
+  /* 6.9.847 - the same rooms presRoomAgg reports, but keeping the ITEMS so the proposal can
+     walk room by room. Each room's items are ordered by set (qzSetOf, 6.9.843), so the WC and
+     its seat and its flush plate sit together on the page. */
+  function presRoomItems(items) {
+    var map = {}, order = [];
+    (items || []).forEach(function (i) {
+      if (i.optional) return;
+      var pairs = [];
+      if (i.rq && typeof i.rq === "object") {
+        for (var k in i.rq) { var n = Number(i.rq[k]) || 0; if (String(k) && n > 0) pairs.push([String(k), n]); }
+      }
+      if (!pairs.length) pairs = [["", Number(i.qty) || 0]];
+      pairs.forEach(function (pr) {
+        if (!map[pr[0]]) { map[pr[0]] = { room: pr[0], qty: 0, mrp: 0, its: [] }; order.push(pr[0]); }
+        var m = map[pr[0]];
+        m.qty += pr[1];
+        m.mrp += (Number(i.price) || 0) * pr[1];
+        m.its.push({ i: i, n: pr[1] });
+      });
+    });
+    return order.map(function (r) { return map[r]; })
+      .sort(function (a, b) { if (!a.room) return 1; if (!b.room) return -1; return a.room < b.room ? -1 : (a.room > b.room ? 1 : 0); })
+      .map(function (r) {
+        r.its.sort(function (x, y) {
+          var sx = 9, sy2 = 9;
+          try { sx = qzSetOf(x.i); sy2 = qzSetOf(y.i); } catch (e) { }
+          return sx - sy2 || String(descLines(x.i.desc).title || x.i.code).localeCompare(String(descLines(y.i.desc).title || y.i.code));
+        });
+        return r;
+      });
+  }
+  /* one colour per set, so a card's spine says what kind of thing it is without a word */
+  var PRES_SET_COL = [[13, 148, 136], [37, 99, 235], [79, 70, 229], [217, 119, 6], [100, 116, 139], [22, 163, 74], [148, 163, 184]];
+  function presSetCol(i) { var n = 6; try { n = qzSetOf(i); } catch (e) { n = 6; } return PRES_SET_COL[n] || PRES_SET_COL[6]; }
+  function presSetName(i) { var n = -1; try { n = qzSetOf(i); } catch (e) { n = -1; } return (n >= 0 && QZ_SETS[n]) ? QZ_SETS[n].label : "Other"; }
   function presRoomAgg(items) {
     var map = {}, order = [];
     (items || []).forEach(function (i) {
@@ -22837,108 +22872,117 @@ function viewCatalogue() {
           }));
       }
 
-      /* ---------------- 4. PRODUCTS, section by section ---------------- */
-      var lastCat = null, catIdx = 0;
-      /* 6.9.846 - four products to a page (p848). _cellN counts cells within the current
-         section; a new section always starts a fresh page, so a page never mixes sections and
-         is therefore always a set of related products. */
-      var CELLS = 4, _cellN = 0, _py = 32;
-      var CGAP = 9, CW = (Rt - L - CGAP) / 2, CH = (H - 12 - 32 - CGAP) / 2;
-      seq.forEach(function (sq, idx) {
-        var i = sq.it, pic = pics[idx], dl = descLines(i.desc);
-        var _tk2 = totoTechLineKeys(i.code, i.brand);   /* v6.9.772 - drawn as icon chips below */
+      /* ---------------- 4. PRODUCTS, ROOM BY ROOM (6.9.847, p849) ----------------
+         HIS WORDS: "present in some designer way, per room max 2 pages". Each room opens with
+         a hero band and then an adaptive grid: a small room gets big pictures, a full room
+         still fits in two pages, and a room that overruns lists its tail rather than dropping
+         it. Cards are ordered by set and carry that set's colour on their spine. */
+      var picBy = {};
+      seq.forEach(function (sq, idx) { if (sq.it && sq.it.code) picBy[sq.it.code] = pics[idx]; });
 
-        if (cats.length > 1 && sq.cat !== lastCat) {
-          lastCat = sq.cat;
-          var cInfo = null;
-          cats.forEach(function (c) { if (c.cat === sq.cat) cInfo = c; });
-          catIdx++;
-          doc.addPage("a4", "landscape"); markDark();
-          fill(DEEP); doc.rect(0, 0, W, H, "F");
-          fill(MINT); doc.rect(0, 0, W, 2.2, "F");
-          col([90, 150, 143]); F("bold"); doc.setFontSize(6.6);
-          doc.text("S E C T I O N   " + ("0" + catIdx).slice(-2), L, 42);
-          col(WHITE); F("bold"); doc.setFontSize(25);
-          fitCell(doc, F, T(String(sq.cat).toUpperCase()), 240, 2, "bold", 25)
-            .forEach(function (ln, k) { doc.text(ln, L, 60 + k * 11.5); });
-          draw([38, 94, 88]); doc.setLineWidth(0.5); doc.line(L, 88, L + 56, 88); doc.setLineWidth(0.2);
-          col(MINT); F("normal"); doc.setFontSize(9.6);
-          doc.text(sq.opt
-            ? "Alternatives shown for consideration - not added to the proposal value."
-            : T(cInfo.n + (cInfo.n === 1 ? " product" : " products") + "   ·   " + cInfo.qty + " pc   ·   " + R(cInfo.mrp) + " at MRP"), L, 100);
-          col([150, 195, 188]); F("normal"); doc.setFontSize(8.4);
-          (cInfo ? cInfo.items : []).slice(0, 10).forEach(function (x, k) {
-            doc.text(fitCell(doc, F, T(descLines(x.desc).title || x.code), 240, 1, "normal", 8.4)[0], L, 116 + k * 6.6);
-          });
-          _cellN = 0;   /* 6.9.846 - every section opens a fresh grid page */
-        }
+      var roomsIts = presRoomItems(items);
+      roomsIts.forEach(function (rm) {
+        var n = rm.its.length;
+        var cols = n <= 8 ? 2 : 3;
+        var rows = n <= 8 ? 2 : (n <= 12 ? 2 : 3);
+        var per = cols * rows, cap = per * 2;
+        var shown = rm.its.slice(0, cap), tail = rm.its.slice(cap);
 
-        /* ===== 6.9.846 - ONE CELL, NOT ONE PAGE ===== */
-        if (_cellN % CELLS === 0) _py = newPage(sq.opt ? "Options" : "Products", sq.cat);
-        var _s = _cellN % CELLS; _cellN++;
-        var cx = L + (_s % 2) * (CW + CGAP), cy = _py + Math.floor(_s / 2) * (CH + CGAP);
+        var GAP = 7;
+        var cw = (Rt - L - GAP * (cols - 1)) / cols;
 
-        fill([252, 253, 253]); doc.roundedRect(cx, cy, CW, CH, 3, 3, "F");
-        draw(LINE); doc.setLineWidth(0.25); doc.roundedRect(cx, cy, CW, CH, 3, 3, "S"); doc.setLineWidth(0.2);
+        for (var pg = 0; pg < Math.ceil(shown.length / per); pg++) {
+          var yTop = newPage("Room " + ("0" + (roomsIts.indexOf(rm) + 1)).slice(-2),
+                             (rm.room || "Not yet assigned to a room") + (pg ? "  (continued)" : ""));
 
-        var PX = cx + 3, PY = cy + 3, PW = 50, PH = CH - 6;
-        if (pic) {
-          var d = PIC_BIG_DIM[String(i.pic || "")] || { w: 4, h: 3 };
-          var sc = Math.min((PW - 5) / d.w, (PH - 5) / d.h);
-          var iw = d.w * sc, ih = d.h * sc;
-          try { doc.addImage(pic, "JPEG", PX + (PW - iw) / 2, PY + (PH - ih) / 2, iw, ih); } catch (e) { }
-        } else {
-          col([203, 213, 225]); F("normal"); doc.setFontSize(6);
-          doc.text("no photograph", PX + PW / 2, PY + PH / 2, { align: "center" });
-        }
-
-        var X = cx + PW + 8, CW2 = CW - PW - 11, ry = cy + 9;
-        var byy = cy + CH - 19;   /* the price strip sits in the same place in every cell */
-
-        col(TEAL); F("bold"); doc.setFontSize(5.8);
-        doc.text(T(String(i.brand || "").toUpperCase() + (i.code ? "   " + i.code : "")), X, ry);
-        ry += 6.4;
-
-        col(INK); F("bold"); doc.setFontSize(9.6);
-        var tl = fitCell(doc, F, T(dl.title || i.code), CW2, 3, "bold", 9.6);
-        tl.forEach(function (ln, k) { doc.text(ln, X, ry + k * 5); });
-        ry += (tl.length - 1) * 5 + 7;
-
-        /* which rooms this product is going into - the reason the deck exists */
-        var rms = [];
-        if (i.rq && typeof i.rq === "object") {
-          for (var rk in i.rq) {
-            var rn = Number(i.rq[rk]) || 0;
-            if (String(rk) && rn > 0) rms.push(rk + (rn > 1 ? " (" + rn + ")" : ""));
+          if (!pg) {
+            /* the hero band: what this room holds, what it comes to, which sets are in it */
+            fill([246, 250, 249]); doc.rect(0, yTop - 4, W, 17, "F");
+            fill(MINT); doc.rect(L, yTop - 4, 2.2, 17, "F");
+            col(INK); F("bold"); doc.setFontSize(8.6);
+            doc.text(T(n + (n === 1 ? " product" : " products") + "   ·   " + rm.qty + " pc"), L + 7, yTop + 2.6);
+            col(TEAL); F("bold"); doc.setFontSize(11);
+            doc.text(R(rm.mrp), Rt, yTop + 3.4, { align: "right" });
+            col(GREY); F("normal"); doc.setFontSize(5.4);
+            doc.text(SP("AT MRP"), Rt, yTop + 8.6, { align: "right" });
+            var sets = [], sCol = {};
+            rm.its.forEach(function (x) { var nm = presSetName(x.i); if (sets.indexOf(nm) < 0) { sets.push(nm); sCol[nm] = presSetCol(x.i); } });
+            var lx = L + 7;
+            col(GREY); F("normal"); doc.setFontSize(6);
+            sets.forEach(function (nm) {
+              fill(sCol[nm]); doc.rect(lx, yTop + 6.2, 2, 2, "F");
+              col(GREY); doc.text(T(nm), lx + 3.4, yTop + 8);
+              lx += 3.4 + doc.getTextWidth(T(nm)) + 7;
+            });
+            yTop += 19;
           }
-          rms.sort();
-        }
-        if (rms.length && ry + 8 < byy) {
-          col(TEAL); F("bold"); doc.setFontSize(6);
-          fitCell(doc, F, T("FOR:  " + rms.join(",   ")), CW2, 2, "bold", 6)
-            .forEach(function (ln, k) { doc.text(ln, X, ry + k * 3.9); });
-          ry += 9;
-        }
-        /* one line of the first key feature, only if the cell has the room for it */
-        if (dl.bullets.length && ry + 7 < byy) {
-          col(SLATE); F("normal"); doc.setFontSize(6.4);
-          doc.text(fitCell(doc, F, T(dl.bullets[0]), CW2, 1, "normal", 6.4)[0], X, ry);
-        }
 
-        fill(DEEP); doc.roundedRect(X, byy, CW2, 16, 2, 2, "F");
-        col(DIM); F("normal"); doc.setFontSize(5);
-        doc.text("M R P", X + 4, byy + 5.6);
-        col(WHITE); F("bold"); doc.setFontSize(10.5);
-        doc.text(R(i.price), X + 4, byy + 12.6);
-        col(DIM); F("normal"); doc.setFontSize(5);
-        doc.text(T("QTY  " + (Number(i.qty) || 0) + "  " + (i.unit || "")), X + CW2 - 4, byy + 5.6, { align: "right" });
-        col(WHITE); F("bold"); doc.setFontSize(9);
-        doc.text(R((Number(i.price) || 0) * (Number(i.qty) || 0)), X + CW2 - 4, byy + 12.6, { align: "right" });
-        if (sq.opt) {
-          col(MINT); F("normal"); doc.setFontSize(5);
-          doc.text("OPTION", X + CW2 - 4, byy + 15.4, { align: "right" });
+          var ch = (H - 12 - yTop - GAP * (rows - 1)) / rows;
+          var slice = shown.slice(pg * per, pg * per + per);
+
+          slice.forEach(function (x, k) {
+            var i = x.i, pic = picBy[i.code], dl = descLines(i.desc);
+            var cx = L + (k % cols) * (cw + GAP), cy = yTop + Math.floor(k / cols) * (ch + GAP);
+            var sc2 = presSetCol(i);
+
+            fill([255, 255, 255]); doc.roundedRect(cx, cy, cw, ch, 2.6, 2.6, "F");
+            draw(LINE); doc.setLineWidth(0.25); doc.roundedRect(cx, cy, cw, ch, 2.6, 2.6, "S"); doc.setLineWidth(0.2);
+            fill(sc2); doc.rect(cx, cy + 3, 1.8, ch - 6, "F");   /* the set's spine */
+
+            /* picture on a soft tint, text beneath - the card reads top to bottom */
+            var ph = ch * 0.52, px = cx + 6, pw = cw - 10;
+            fill([250, 251, 252]); doc.roundedRect(px, cy + 4, pw, ph, 2, 2, "F");
+            if (pic) {
+              var d = PIC_BIG_DIM[String(i.pic || "")] || { w: 4, h: 3 };
+              var k2 = Math.min((pw - 6) / d.w, (ph - 5) / d.h);
+              try { doc.addImage(pic, "JPEG", px + (pw - d.w * k2) / 2, cy + 4 + (ph - d.h * k2) / 2, d.w * k2, d.h * k2); } catch (e) { }
+            } else {
+              col([203, 213, 225]); F("normal"); doc.setFontSize(5.4);
+              doc.text("no photograph", px + pw / 2, cy + 4 + ph / 2, { align: "center" });
+            }
+
+            var ty = cy + ph + 10, tw = cw - 12;
+            col(sc2); F("bold"); doc.setFontSize(4.9);
+            doc.text(T(String(i.brand || "").toUpperCase() + (i.code ? "  ·  " + i.code : "")), cx + 6, ty - 3.4);
+            col(INK); F("bold"); doc.setFontSize(cols === 2 ? 9 : 7.4);
+            fitCell(doc, F, T(dl.title || i.code), tw, 2, "bold", cols === 2 ? 9 : 7.4)
+              .forEach(function (ln, z) { doc.text(ln, cx + 6, ty + z * (cols === 2 ? 4.6 : 3.9)); });
+
+            /* quantity and money, pinned to the foot of every card */
+            var fy = cy + ch - 5.4;
+            col(GREY); F("normal"); doc.setFontSize(5.6);
+            doc.text(T(x.n + " " + (i.unit || "No's") + "   ×   " + R(i.price)), cx + 6, fy);
+            col(INK); F("bold"); doc.setFontSize(cols === 2 ? 9.5 : 8);
+            doc.text(R((Number(i.price) || 0) * x.n), cx + cw - 6, fy, { align: "right" });
+          });
+
+          /* page two carries anything the grid could not hold, named rather than dropped */
+          if (pg === 1 && tail.length) {
+            var ty2 = H - 10;
+            col(GREY); F("normal"); doc.setFontSize(5.8);
+            doc.text(T("Also in this room:  " + tail.map(function (x) { return x.n + " x " + (descLines(x.i.desc).title || x.i.code); }).join("   ·   ")),
+                     L, ty2, { maxWidth: Rt - L });
+          }
         }
       });
+
+      /* the options, if any, keep their own page at the end of the products */
+      if (optl.length) {
+        var oy = newPage("Options", "Shown for consideration");
+        col(GREY); F("normal"); doc.setFontSize(7.2);
+        doc.text("These are alternatives. They are not added to the proposal value.", L, oy);
+        oy += 8;
+        optl.forEach(function (i, k) {
+          if (oy + 7 > H - 14) return;
+          col(INK); F("bold"); doc.setFontSize(8);
+          doc.text(fitCell(doc, F, T((descLines(i.desc).title || i.code)), 190, 1, "bold", 8)[0], L, oy);
+          col(GREY); F("normal"); doc.setFontSize(7);
+          doc.text(T(String(i.brand || "") + "  " + (i.code || "")), L + 196, oy);
+          col(INK); F("bold"); doc.setFontSize(8);
+          doc.text(R((Number(i.price) || 0) * (Number(i.qty) || 0)), Rt, oy, { align: "right" });
+          oy += 7;
+        });
+      }
 
       /* ---------------- 5. SUMMARY ---------------- */
       var sy = newPage("Summary", "Proposal summary");
