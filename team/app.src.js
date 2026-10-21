@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.855";
+  var APP_VERSION = "6.9.856";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -24815,7 +24815,7 @@ function viewCatalogue() {
       '<button class="btn sm ' + (_old ? 'ghost' : '') + '" data-act="bd-sort" data-k="new" style="min-height:44px">Newest first</button></div>' +
       '<div class="meta" style="font-size:13px">Every passed challan without a bill number, with what went. <b>Open for billing</b> asks the billing name first; the prices at the client&rsquo;s preset discount open after that, and the bill number is saved there.</div>' +
       '<input id="bd_q" type="search" autocomplete="off" placeholder="Find a challan or client" value="' + esc(S.bdQ || "") + '" style="min-height:44px;font-size:15px;width:100%;box-sizing:border-box;margin-top:6px"/>' +
-      '<div id="bd_res">' + billDeskList() + '</div></div>' + billDoneHtml() + localBuysHtml();   /* 6.9.850 */
+      '<div id="bd_res">' + billDeskList() + '</div></div>' + billDoneHtml() + localBuysHtml() + billFilesCard("sales");   /* 6.9.850; 6.9.856 - sales bills folder */
   }
   /* ===== 6.9.850 - BOUGHT IN THE MARKET FOR A SITE (p853, with challan 1.137.0) =====
      Every challan line marked local, last 90 days, newest first; a line sold below cost is red. */
@@ -38247,7 +38247,7 @@ function viewCatalogue() {
     return rows.map(function (r) {
       var lt = last[dgKey(r.name)] || "";
       return { name: r.name, due: r.due, days: r.oldest || r.age || 0, num: wrmNum(r.mobile), owner: r.owner,
-               last: lt, lastDays: lt ? -daysTo(localDay(lt)) : null };
+               last: lt, lastDays: lt ? -daysTo(localDay(lt)) : null, lpd: r.lp ? String(r.lp.date || "") : "" };   /* 6.9.856 - lpd */
     }).sort(function (a, b) { return b.days - a.days || b.due - a.due; });
   }
   /* suggested: 30 days or more, a mobile to send to, and not reminded in the last 3 days */
@@ -38273,15 +38273,18 @@ function viewCatalogue() {
       (wrmIsDay() ? '<b>Today is a reminder day.</b>' : 'Reminder days are Monday and Thursday.') + '</div>' +
       '<div class="meta" style="font-size:13px;margin-top:4px">' + (biz
         ? 'The business number is connected: <b>one tap sends all ticked</b> (to clients who agreed to WhatsApp updates; the rest go one by one from your phone).'
-        : 'Sending: <b>one tap per client</b> from your own WhatsApp. One tap for all needs the business number (WhatsApp Cloud API) to be switched on.') + '</div></div>';
+        : 'Sending: <b>one tap per client</b> from your own WhatsApp, with his hisab PDF, then one tap for the copy to his executive. One tap for all needs the business number (WhatsApp Cloud API) to be switched on.') + '</div></div>';
 
     if (billDiscBlind()) h += '<div class="card" style="border-color:#fca5a5;background:#fef2f2;font-size:13.5px;color:#991b1b"><b>Check the amounts before sending.</b> This login cannot see the clients&rsquo; preset discounts yet, so a balance can read higher than the owner&rsquo;s. Until the server update, the owner should send these.</div>';   /* 6.9.817 */
     if (S.wrmQ && S.wrmQ.length) {
       var q = S.wrmQ[0], done = S.wrmQn || 0, totQ = done + S.wrmQ.length;
       h += '<div class="card" style="border:2px solid #16a34a;background:#f0fdf4"><div style="font-weight:700;font-size:15px">Sending ' + (done + 1) + ' of ' + totQ + '</div>' +
         '<div style="font-size:14px;margin:6px 0"><b>' + esc(q.name) + '</b> &middot; ' + wrmAmt(q.due) + ' &middot; ' + q.days + ' days</div>' +
-        '<div class="meta" style="font-size:13px;margin-bottom:8px">Tap to open his chat with the message written. Press Send in WhatsApp, come back here, and the next one is ready.</div>' +
-        '<div class="acts" style="flex-wrap:wrap;gap:6px;margin:0"><button class="btn" data-act="wrm-go" style="min-height:44px">Open WhatsApp &middot; ' + esc(q.name) + '</button>' +
+        (q.stage === "exec"
+          ? '<div class="meta" style="font-size:13px;margin-bottom:8px">Sent to the client. Now the same reminder and hisab to <b>' + esc(q.ex.name) + '</b>, his executive, so he knows and can follow up.</div>' +
+            '<div class="acts" style="flex-wrap:wrap;gap:6px;margin:0"><button class="btn" data-act="wrm-go" style="min-height:44px">Send copy to ' + esc(String(q.ex.name).split(" ")[0]) + '</button>'
+          : '<div class="meta" style="font-size:13px;margin-bottom:8px">Tap to open his chat with the message and his <b>hisab PDF</b> link written. Press Send in WhatsApp and come back. Then the copy for his executive.</div>' +
+            '<div class="acts" style="flex-wrap:wrap;gap:6px;margin:0"><button class="btn" data-act="wrm-go" style="min-height:44px"' + (S.wrmBusy ? ' disabled' : '') + '>' + (S.wrmBusy ? 'Making the hisab\u2026' : 'Open WhatsApp &middot; ' + esc(q.name)) + '</button>') +
         '<button class="btn ghost" data-act="wrm-skip" style="min-height:44px">Skip</button>' +
         '<button class="btn ghost" data-act="wrm-stop" style="min-height:44px">Stop</button></div></div>';
     }
@@ -38314,16 +38317,116 @@ function viewCatalogue() {
         (r.num ? '' : ' &middot; <span style="color:#b91c1c">no mobile</span>') + '</span></div></div>';
     });
     h += '</div>';
+    var _pcl = pcRows("");   /* 6.9.856 */
+    h += '<div class="card" style="border-color:#fdba74"><h3 style="margin:0 0 4px">To call &middot; ' + _pcl.length + '</h3>' +
+      '<div class="meta" style="font-size:12.5px;margin-bottom:4px">Pending 60 days or more, or reminded twice since the last payment with nothing paid. Each executive sees his own on Today. A call saved here takes him off until the promised date.</div>' +
+      pcListHtml(_pcl) + '</div>';
     h += '<div class="card" style="position:sticky;bottom:0;z-index:5;display:flex;gap:8px;align-items:center;flex-wrap:wrap;border-color:#16a34a">' +
       '<div style="flex:1;min-width:160px;font-size:14px"><b>' + nSel + '</b> ticked</div>' +
       '<button class="btn" data-act="wrm-send"' + (nSel ? '' : ' disabled') + ' style="min-height:44px;background:#16a34a;border-color:#16a34a">' +
       (biz ? 'Send all ' + nSel + ' from the business number' : 'Send ' + nSel + ' on WhatsApp') + '</button></div>';
     return h;
   }
+  /* ===== 6.9.856 - HIS WORDS: "twice a week whatsapp reminder, reminder for both client and related executive
+     simultaneously so that related executive can also get to know what reminder sent to client, reminder message
+     with hisab pdf attached ... on click reminder to all". The statement (hisabPdf, the same paper the HISAB screen
+     prints) is made once per client per day and hosted once; the client gets it with his reminder and his executive
+     gets a copy of the same words and the same link. WhatsApp from a phone cannot carry a file, so on the phone it
+     is a link; from the business number it is the document itself. ===== */
+  function wrmLink(r) {
+    S.wrmLinks = S.wrmLinks || {};
+    var k = dgKey(r.name) + "|" + today();
+    if (S.wrmLinks[k]) return Promise.resolve(S.wrmLinks[k]);
+    return loadLogo().then(function () { return hisabPdf(r.name, false, false); }).then(function (d) {
+      return api("pdfHost", { pdfBase64: d.output("datauristring").split(",")[1], filename: String(r.name).replace(/[^\w.-]/g, "_") + "_hisab_" + today() + ".pdf" });
+    }).then(function (h) { var u = (h && h.ok && h.url) ? String(h.url) : ""; if (u) S.wrmLinks[k] = u; return u; })
+      .catch(function () { return ""; });
+  }
+  function wrmClientText(r, link) { return wrmMsg(r) + (link ? "\n\nYour hisab (PDF):\n" + link : ""); }
+  function wrmExecText(r, ex, link) {
+    return "For " + String(ex.name).split(" ")[0] + " \u2014 payment reminder sent today to " + r.name + ":\n\n" + wrmMsg(r) +
+      (link ? "\n\nHisab sent with it:\n" + link : "") + "\n\nPlease follow up with him.";
+  }
+  /* ===== 6.9.856 - THE CALL LIST. His words: "Payment Reminder call for clients whose payment pending from long time".
+     On it: 60 days or more, OR reminded twice since his last payment with nothing paid. Off it for a while once
+     called: until the date he promised, or 3 days after a call with no promise, or a week after "says paid". Each
+     call is an audit row pay:call {outcome, promise, note} - the next call starts from what the last one said. */
+  var PC_OUT = [["promise", "Will pay on a date"], ["paid", "Says he has paid"], ["noans", "Did not pick up"], ["later", "Call again later"], ["dispute", "Disputes the amount"]];
+  function pcLastMap() {
+    var out = {};
+    ((S.data && S.data.audit) || []).forEach(function (a) {
+      if (String(a.action || "") !== "pay:call") return;
+      var k = dgKey(a.target || ""), at = String(a.createdAt || "");
+      if (!k || (out[k] && out[k].at >= at)) return;
+      var d = {}; try { d = JSON.parse(a.detail || "{}") || {}; } catch (e) { d = {}; }
+      out[k] = { at: at, by: String(a.actor || ""), outcome: String(d.outcome || ""), promise: String(d.promise || ""), note: String(d.note || "") };
+    });
+    return out;
+  }
+  function pcRemSince(name, since) {
+    var k = dgKey(name), n = 0;
+    ((S.data && S.data.audit) || []).forEach(function (a) {
+      if (String(a.action || "") === "wa:remind" && dgKey(a.target || "") === k && localDay(a.createdAt || "") > String(since || "")) n++;
+    });
+    return n;
+  }
+  function pcRows(owner) {
+    var calls = pcLastMap(), t = today();
+    return wrmRows().map(function (r) {
+      r.rems = pcRemSince(r.name, r.lpd); r.call = calls[dgKey(r.name)] || null; return r;
+    }).filter(function (r) {
+      if (!(r.days >= 60 || r.rems >= 2)) return false;
+      var c = r.call;
+      if (c) {
+        var ago = -daysTo(localDay(c.at));
+        if (c.promise && c.promise >= t) return false;
+        if (c.outcome === "paid" && ago < 7) return false;
+        if (!c.promise && ago < 3) return false;
+      }
+      return !owner || dgKey(r.owner) === dgKey(owner);
+    });
+  }
+  function pcRowHtml(r) {
+    var c = r.call, tel = String(r.num || "").replace(/^91/, "");
+    var lastTxt = c ? ((PC_OUT.filter(function (x) { return x[0] === c.outcome; })[0] || ["", c.outcome])[1] +
+      (c.promise ? " (" + dmy(c.promise) + ")" : "") + " \u00b7 " + dmy(localDay(c.at)) + (c.note ? " \u2014 " + c.note : "")) : "";
+    return '<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-top:1px solid #e2e8f0;font-size:13.5px;flex-wrap:wrap">' +
+      '<div style="flex:1;min-width:180px"><b>' + esc(r.name) + '</b><br><span class="meta" style="font-size:12.5px">' + wrmAmt(r.due) + ' &middot; ' + r.days + ' days' +
+      (r.rems ? ' &middot; reminded ' + r.rems + '\u00d7 since last payment' : '') + (r.owner ? ' &middot; ' + esc(r.owner) : '') + '</span>' +
+      (lastTxt ? '<br><span style="font-size:12.5px;color:#92400e">Last call: ' + esc(lastTxt) + '</span>' : '') + '</div>' +
+      (tel ? '<a class="btn sm ghost" href="tel:' + esc(tel) + '" style="min-height:44px">Call</a>' : '<span class="meta" style="font-size:12px;color:#b91c1c">no mobile</span>') +
+      '<button class="btn sm" data-act="pcall-open" data-n="' + esc(r.name) + '" style="min-height:44px">Called</button></div>';
+  }
+  function pcListHtml(rows) {
+    if (!rows.length) return '<div class="empty">Nobody to call right now.</div>';
+    return rows.map(pcRowHtml).join("");
+  }
+  /* on Today: the owner and accounts see the count; an executive sees his own clients to call, with the buttons */
+  function pcDayCard() {
+    var exec = !canSee("wareminder");
+    var L = pcRows(exec ? S.user : "");
+    if (!L.length) return "";
+    var tot = L.reduce(function (a, r) { return a + r.due; }, 0);
+    var h = '<div class="card" style="border-left:4px solid #b45309"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
+      '<div style="flex:1;min-width:200px"><div style="font-weight:700">Payment calls to make</div>' +
+      '<div style="font-size:13px;color:var(--muted)">' + plural(L.length, "client") + ' &middot; ' + wrmAmt(tot) + ' pending 60+ days or reminded twice without paying.</div></div>' +
+      (exec ? '' : '<button class="btn sm" data-act="tab" data-tab="wareminder" style="min-height:44px">Open the call list</button>') + '</div>';
+    if (exec) h += pcListHtml(L.slice(0, 12));
+    return h + '</div>';
+  }
+  function modalPayCall(name) {
+    var r = wrmRows().filter(function (x) { return x.name === name; })[0] || { name: name, due: 0, days: 0 };
+    return '<h2>Call: ' + esc(name) + '</h2><p class="sub">' + wrmAmt(r.due) + ' &middot; ' + r.days + ' days</p>' +
+      '<label for="pc_out">What did he say?</label><select id="pc_out" style="min-height:44px">' +
+      PC_OUT.map(function (o) { return '<option value="' + o[0] + '">' + o[1] + '</option>'; }).join("") + '</select>' +
+      '<label for="pc_date">Promised date (if he gave one)</label><input id="pc_date" type="date" min="' + today() + '" style="min-height:44px"/>' +
+      '<label for="pc_note">Note</label><input id="pc_note" placeholder="e.g. cheque on Saturday, wants the hisab again" style="min-height:44px"/>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button><button class="btn" data-act="pcall-save" data-n="' + esc(name) + '">Save the call</button></div>';
+  }
   function wrmMark(r, via) {
     S.wrmDone = S.wrmDone || {}; S.wrmDone[dgKey(r.name)] = new Date().toISOString();
     if (S.wrmSel) delete S.wrmSel[r.name];
-    return auditFact("wa:remind", r.name, { name: r.name, amount: Math.round(r.due), days: r.days, via: via }).catch(function () { });
+    return auditFact("wa:remind", r.name, { name: r.name, amount: Math.round(r.due), days: r.days, via: via, exec: (r.ex && r.ex.name) || "", pdf: r.link ? 1 : 0 }).catch(function () { });
   }
   function wrmPhoneQueue(list) {
     S.wrmQ = list.slice(); S.wrmQn = 0; window.scrollTo(0, 0); render();
@@ -38339,19 +38442,38 @@ function viewCatalogue() {
       yes: biz.length ? "Send " + biz.length : "Start on my phone" }).then(function (ok) {
       if (!ok) return;
       if (!biz.length) { wrmPhoneQueue(rest); return; }
-      var sent = 0, failed = [];
-      toast("Sending " + biz.length + " from the business number…");
+      var sent = 0, failed = [], exq = [];   /* 6.9.856 - exq: executives' copies to send from the phone */
+      toast("Sending " + biz.length + " from the business number with each hisab\u2026");
       var step = function (i) {
         if (i >= biz.length) {
           toast(sent + " sent from the business number" + (failed.length ? ", " + failed.length + " could not go - they are next, on your phone" : "") + ".");
-          var nextQ = failed.concat(rest);
+          var nextQ = failed.concat(rest).concat(exq);
           if (nextQ.length) wrmPhoneQueue(nextQ); else render();
           return;
         }
         var r = biz[i];
-        api("waSend", { to: r.num, template: "due_reminder", vars: [wrmAmt(r.due), String(r.days)], note: "reminder " + r.name }, 30000)
-          .then(function (w) { if (w && w.ok) { sent++; wrmMark(r, "business"); } else failed.push(r); })
-          .catch(function () { failed.push(r); })
+        /* 6.9.856 - with his hisab as the document (template due_reminder_doc); if that template is not approved
+           yet, the plain due_reminder; if neither goes, he is next on the phone. Then the executive's copy
+           (template reminder_copy_exec); a copy that cannot go waits on the phone after the clients. */
+        var vars = [wrmAmt(r.due), String(r.days)];
+        wrmLink(r).then(function (link) {
+          r.link = link;
+          var one = function (tpl, withDoc) {
+            return api("waSend", { to: r.num, template: tpl, vars: vars, docUrl: withDoc ? link : "", docName: withDoc ? String(r.name).replace(/[^\w.-]/g, "_") + "_hisab.pdf" : "", note: "reminder " + r.name }, 30000)
+              .then(function (w) { return !!(w && w.ok); }).catch(function () { return false; });
+          };
+          return (link ? one("due_reminder_doc", true) : Promise.resolve(false)).then(function (ok) { return ok || one("due_reminder", false); });
+        }).then(function (ok) {
+          if (!ok) { failed.push(r); return; }
+          sent++;
+          var ex = waExecOf(r.name); r.ex = ex;
+          wrmMark(r, "business");
+          if (!ex || !ex.num) return;
+          return api("waSend", { to: ex.num, template: "reminder_copy_exec", vars: [String(ex.name).split(" ")[0], r.name, vars[0], vars[1]],
+            docUrl: r.link || "", docName: r.link ? String(r.name).replace(/[^\w.-]/g, "_") + "_hisab.pdf" : "", note: "copy " + r.name }, 30000)
+            .then(function (w) { if (!(w && w.ok)) exq.push(Object.assign({}, r, { stage: "exec" })); })
+            .catch(function () { exq.push(Object.assign({}, r, { stage: "exec" })); });
+        }).catch(function () { failed.push(r); })
           .then(function () { step(i + 1); });
       };
       step(0);
@@ -48765,6 +48887,235 @@ function viewCatalogue() {
       });
     }).catch(function (e) { say("No answer from the server (" + apiWhy(e) + ")."); return false; });
   }
+  /* ===== 6.9.856 - SALES AND PURCHASE BILLS ON GOOGLE DRIVE, MONTH BY MONTH (server V166) =====
+     HIS WORDS: "Google drive folder for saving Sales and purchase bills of Energy World {Monthwise} ... accounts can
+     save bills with bill no as name of file ... purchase bill list will be made as per 2B ... auto fetch purchase
+     bill from my emails, for balance show accounts to save in folder".
+     ONE ROOT, "Energy World Bills", with "Sales bills" and "Purchase bills"; inside each a folder per month
+     ("2026-10 Oct") that the server makes. A file is named by its bill no ONLY, as he chose. Two suppliers can print
+     the same number: when a name fits more than one 2B bill the row says so and asks for the supplier in front -
+     it never picks one. */
+  function bfYm(d) { var x = bdDay(d); return /^\d{4}-\d{2}/.test(x) ? x.slice(0, 7) : ""; }
+  function bfMonTxt(ym) { var m = String(ym || "").match(/^(\d{4})-(\d{2})/); return m ? ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][Number(m[2]) - 1] + " " + m[1] : "Not in a month folder"; }
+  function bfBase(name) { return String(name || "").replace(/\.[A-Za-z0-9]{2,5}$/, "").replace(/_/g, " ").replace(/\s+/g, " ").trim(); }
+  function bfFileName(no) { return String(no || "").trim().replace(/[\/\\:*?"<>|]+/g, "-").replace(/\s+/g, " ") + ".pdf"; }
+  /* which 2B bill(s) a purchase file name stands for: exact number first, then "SUPPLIER NUMBER", then the loose rule */
+  function bfRegFor(name, reg) {
+    var base = bfBase(name); if (!/\d/.test(base)) return { st: "name", c: [] };
+    var nn = stkNoNorm(base), c = reg.filter(function (b) { return stkNoNorm(b.billNo) === nn; });
+    var m = base.match(/^(\S+)\s+(.+)$/);
+    if (c.length !== 1 && m) {
+      var bySup = reg.filter(function (b) { return stkNoNorm(b.billNo) === stkNoNorm(m[2]) && stkSupNorm(b.supplier) === stkSupNorm(m[1]); });
+      if (bySup.length) c = bySup;
+    }
+    if (!c.length) { var q = { no: nn, tail: stkNoTail(base) }; c = reg.filter(function (b) { return stkNoSame({ no: stkNoNorm(b.billNo), tail: stkNoTail(b.billNo) }, q); }); }
+    if (!c.length) return { st: "no2b", c: [] };
+    if (c.length > 1) return { st: "clash", c: c };
+    return { st: "one", c: c };
+  }
+  /* purchase: every 2B bill with its file (or none), and every file that is not one 2B bill */
+  function bfPurchase() {
+    var L = (S.bf && S.bf.lists && S.bf.lists.purchase) || {}, files = L.files || [];
+    var reg = stkRegister(), ix = stkBkIdx(), byKey = {}, extra = [], noCnt = {};
+    reg.forEach(function (b) { var k = stkNoNorm(b.billNo); noCnt[k] = (noCnt[k] || 0) + 1; });   /* two suppliers, one number: the file needs the supplier in front */
+    reg.forEach(function (b) { byKey[String(b.key)] = { reg: b, files: [] }; });
+    files.forEach(function (f) {
+      var m = bfRegFor(f.name, reg);
+      if (m.st !== "one") { extra.push({ f: f, st: m.st, c: m.c }); return; }
+      byKey[String(m.c[0].key)].files.push(f);
+    });
+    var rows = reg.map(function (b) {
+      var x = byKey[String(b.key)], f = x.files[0] || null, st;
+      if (stkBkFind(ix.bill, b.supplier, b.billNo)) st = "in";
+      else if (stkBkFind(ix.wait, b.supplier, b.billNo)) st = "wait";
+      else st = f ? "ready" : "missing";
+      x.files.slice(1).forEach(function (g) { extra.push({ f: g, st: "dup", c: [b] }); });
+      return { reg: b, f: f, st: st, ym: bfYm(b.date), fname: (noCnt[stkNoNorm(b.billNo)] > 1 ? stkSupNorm(b.supplier).toUpperCase() + " " : "") + bfFileName(b.billNo) };
+    });
+    return { rows: rows, extra: extra };
+  }
+  /* sales: every bill no the CRM has recorded (billed challans), with its file (or none) */
+  function bfSales() {
+    var L = (S.bf && S.bf.lists && S.bf.lists.sales) || {}, files = L.files || [];
+    var bills = {}, order = [];
+    billedList().forEach(function (c) {
+      var no = String(c.billNo || "").trim(); if (!no) return;
+      var k = stkNoNorm(no); if (!k) return;
+      if (!bills[k]) { bills[k] = { no: no, at: String(c.billedAt || "").slice(0, 10), client: c.billTo || c.customerName || "", chs: [], files: [] }; order.push(k); }
+      bills[k].chs.push(c.challanNo || "");
+    });
+    var extra = [];
+    files.forEach(function (f) {
+      var k = stkNoNorm(bfBase(f.name));
+      if (bills[k]) bills[k].files.push(f); else extra.push({ f: f, st: /\d/.test(bfBase(f.name)) ? "nobill" : "name" });
+    });
+    var rows = order.map(function (k) {
+      var b = bills[k];
+      b.files.slice(1).forEach(function (g) { extra.push({ f: g, st: "dup" }); });
+      return { no: b.no, at: b.at, client: b.client, chs: b.chs, f: b.files[0] || null, st: b.files.length ? "saved" : "missing", ym: bfYm(b.at) };
+    });
+    return { rows: rows, extra: extra };
+  }
+  function bfLoad(kind) {
+    S.bf = S.bf || { lists: {} }; S.bf.lists = S.bf.lists || {};
+    var L = S.bf.lists[kind] = Object.assign(S.bf.lists[kind] || {}, { busy: true, err: "" });
+    return api("billFolderList", { kind: kind }).then(function (r) {
+      L.busy = false;
+      if (!r || !r.ok) {
+        var e = String((r && r.error) || "");
+        if (/unknown|not.*(an )?action|no such action|unsupported/i.test(e)) S.bf.notDeployed = true; else L.err = e || "The server did not answer.";
+      } else { S.bf.folders = r.folders || {}; L.files = r.files || []; L.month = r.month || null; L.at = new Date().toISOString(); S.bf.notDeployed = false; }
+      keepScroll = true; renderBg();
+    }).catch(function (e) { L.busy = false; L.err = "No answer from the server (" + apiWhy(e) + ")."; keepScroll = true; renderBg(); });
+  }
+  var BF_ST = {
+    ready: ["Saved — ready to read", "#0f766e"], wait: ["Brought in — waiting to match", "#b45309"], "in": ["In stock", "#64748b"],
+    missing: ["Not saved yet", "#b91c1c"], saved: ["Saved", "#0f766e"],
+    no2b: ["Not in 2B", "#92400e"], clash: ["Two suppliers have this bill no", "#b91c1c"], dup: ["Same bill saved twice", "#b91c1c"],
+    name: ["Name has no bill no", "#b91c1c"], nobill: ["No such bill no in the CRM", "#92400e"]
+  };
+  function billFilesCard(fixed) {
+    if (!canBill()) return "";
+    S.bf = S.bf || { lists: {} };
+    var kind = fixed || S.bf.kind || "purchase";
+    var L = S.bf.lists[kind];
+    if (!L) { bfLoad(kind); L = S.bf.lists[kind]; }
+    var F = S.bf.folders || {};
+    var h = '<div class="card" style="border-color:#99f6e4"><div class="acts" style="align-items:center;margin:0 0 6px;flex-wrap:wrap;gap:6px">' +
+      '<h3 class="grow" style="margin:0">' + (fixed === "sales" ? 'Sales bills on Google Drive' : 'Bills on Google Drive') + '</h3>' +
+      (fixed ? '' : ['purchase', 'sales'].map(function (k) {
+        return '<button class="btn sm ' + (kind === k ? '' : 'ghost') + '" data-act="bf-kind" data-k="' + k + '" style="min-height:44px">' + (k === 'sales' ? 'Sales' : 'Purchase') + '</button>'; }).join("")) +
+      (F[kind] ? '<a class="btn sm ghost" href="' + esc(F[kind].url) + '" target="_blank" rel="noopener" style="min-height:44px">Open the folder</a>' : '') +
+      (F.root ? '<button class="btn sm ghost" data-act="bf-chk" data-k="' + kind + '" style="min-height:44px"' + (L.busy ? ' disabled' : '') + '>' + (L.busy ? 'Checking…' : 'Check again') + '</button>' : '') + '</div>';
+    if (S.bf.notDeployed) return h + '<div class="meta" style="font-size:13px">The server has not been given the bills part yet (server <b>V166</b>). Once it is deployed this card makes the folders.</div></div>';
+    if (L.err) h += '<div style="color:#b91c1c;font-size:13px;margin:4px 0">' + esc(L.err) + '</div>';
+    if (L.busy && !F.root) return h + '<div class="meta">Looking for the folders…</div></div>';
+    if (!F.root) {
+      return h + '<div class="meta" style="font-size:13px;line-height:1.5">One Google Drive folder, <b>Energy World Bills</b>, with <b>Sales bills</b> and <b>Purchase bills</b> inside and a folder for each month. Accounts saves each bill in its month, named by the bill no.</div>' +
+        '<div class="acts" style="margin-top:8px;flex-wrap:wrap;gap:6px"><button class="btn" data-act="bf-make" style="min-height:44px"' + (S.bf.making ? ' disabled' : '') + '>' + (S.bf.making ? 'Making…' : 'Make the folders') + '</button></div>' +
+        '<div class="meta" style="font-size:12.5px;margin-top:6px">Or, if you have made it already, paste its link:</div>' +
+        '<div style="display:flex;gap:6px;margin-top:4px"><input id="bf_link" placeholder="https://drive.google.com/drive/folders/…" style="flex:1;min-height:44px;font-size:15px"/>' +
+        '<button class="btn ghost" data-act="bf-link" style="min-height:44px">Use this folder</button></div></div>';
+    }
+    h += '<div class="meta" style="font-size:12.5px;margin-bottom:6px">Save each bill in <b>' + (kind === "sales" ? 'Sales bills' : 'Purchase bills') + ' &rsaquo; its month</b>, named by the <b>bill no only</b>, a <b>/</b> written as <b>-</b>: <code>' + (kind === "sales" ? 'EW-1234.pdf' : 'FJ-743-2627.pdf') + '</code>. ' +
+      (F.root ? 'Share <a href="' + esc(F.root.url) + '" target="_blank" rel="noopener">' + esc(F.root.name) + '</a> with Gautam as <b>Editor</b> once.' : '') + '</div>';
+    var D = kind === "sales" ? bfSales() : bfPurchase();
+    var months = {}; D.rows.forEach(function (r) { if (r.ym) months[r.ym] = 1; });
+    var nowYm = today().slice(0, 7); months[nowYm] = 1;
+    var ms = Object.keys(months).sort().reverse().slice(0, 8);
+    var ym = S.bf.ym && months[S.bf.ym] ? S.bf.ym : ms[0];
+    h += '<div class="chips">' + ms.map(function (m) { return '<button class="chip ' + (m === ym ? 'on' : '') + '" data-act="bf-ym" data-m="' + m + '">' + bfMonTxt(m) + '</button>'; }).join("") + '</div>';
+    var rows = D.rows.filter(function (r) { return r.ym === ym; });
+    var cnt = {}; rows.forEach(function (r) { cnt[r.st] = (cnt[r.st] || 0) + 1; });
+    var miss = rows.filter(function (r) { return r.st === "missing"; });
+    if (kind === "purchase") {
+      var M = S.bf.mail || {};
+      h += '<div class="meta" style="font-size:13px;margin:4px 0"><b>' + plural(rows.length, "bill") + '</b> in 2B for ' + bfMonTxt(ym) +
+        ['in', 'wait', 'ready', 'missing'].filter(function (k) { return cnt[k]; }).map(function (k) { return ' &middot; <span style="color:' + BF_ST[k][1] + ';font-weight:700">' + cnt[k] + ' ' + esc(BF_ST[k][0].toLowerCase()) + '</span>'; }).join("") + '</div>' +
+        (rows.length ? '' : '<div class="meta" style="font-size:12.5px">No GSTR-2B for this month yet — upload it above and the list makes itself.</div>');
+      h += '<div class="acts" style="flex-wrap:wrap;gap:6px;margin:6px 0">' +
+        (miss.length ? '<button class="btn" data-act="bf-mail" data-m="' + ym + '" style="min-height:44px"' + (M.busy ? ' disabled' : '') + '>' + (M.busy ? 'Looking in the mail… ' + esc(M.busy) : 'Fetch the ' + miss.length + ' missing from email') + '</button>' : '') +
+        (cnt.ready ? '<button class="btn ghost" data-act="bf-readall" data-m="' + ym + '" style="min-height:44px"' + (S.bf.all ? ' disabled' : '') + '>' + (S.bf.all ? 'Reading ' + esc(S.bf.all) + '…' : 'Read & bring in all ' + cnt.ready + ' saved') + '</button>' : '') + '</div>' +
+        (M.say ? '<div class="meta" style="font-size:12.5px;margin-bottom:4px">' + esc(M.say) + '</div>' : '');
+      if (rows.length) {
+        h += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="background:#0b3b36;color:#fff">' +
+          '<th style="padding:6px 8px;text-align:left">Supplier &middot; bill no</th><th style="padding:6px 8px;text-align:left">Date</th><th style="padding:6px 8px;text-align:right">Amount</th><th style="padding:6px 8px;text-align:left">File</th><th></th></tr></thead><tbody>' +
+          rows.sort(function (a, b) { var o = { missing: 0, ready: 1, wait: 2, "in": 3 }; return (o[a.st] - o[b.st]) || String(a.reg.date).localeCompare(String(b.reg.date)); }).map(function (r, k) {
+            var st = BF_ST[r.st], reading = r.f && (S.bf.reading || {})[r.f.id], msg = r.f ? (S.bf.done || {})[r.f.id] : "", mr = (M.res || {})[stkNoNorm(r.reg.billNo)];
+            return '<tr style="border-bottom:1px solid #e2e8f0;background:' + (k % 2 ? '#f8fafc' : '#fff') + '">' +
+              '<td style="padding:6px 8px"><b>' + esc(r.reg.billNo) + '</b><br><span style="font-size:12px;color:#475569">' + esc(r.reg.supplier) + '</span></td>' +
+              '<td style="padding:6px 8px;white-space:nowrap">' + esc(dmy(bdDay(r.reg.date))) + '</td>' +
+              '<td style="padding:6px 8px;text-align:right;white-space:nowrap">' + money(r.reg.amount) + '</td>' +
+              '<td style="padding:6px 8px;color:' + st[1] + ';font-weight:700">' + (r.f ? '<a href="' + esc(r.f.url) + '" target="_blank" rel="noopener" style="color:inherit">' + esc(st[0]) + '</a>' : esc(st[0])) +
+                (r.st === "missing" ? '<div style="font-size:12px;color:#64748b;font-weight:400">Save as <code>' + esc(r.fname) + '</code> in ' + esc(bfMonTxt(ym)) + (mr && !mr.ok ? ' &middot; email: ' + esc(mr.why || "not found") : '') + '</div>' : '') +
+                (mr && mr.ok && !mr.already ? '<div style="font-size:12px;color:#0f766e;font-weight:400">Found in mail: ' + esc(mr.from || "") + '</div>' : '') +
+                (msg ? '<div style="font-size:12px;font-weight:400;color:' + (/^✓/.test(msg) ? '#0f766e' : '#b91c1c') + '">' + esc(msg) + '</div>' : '') + '</td>' +
+              '<td style="padding:6px 8px;text-align:right">' + (r.st === "ready"
+                ? '<button class="btn sm" data-act="bf-read" data-id="' + esc(r.f.id) + '" style="min-height:44px;white-space:nowrap"' + (reading || S.bf.all ? ' disabled' : '') + '>' + (reading ? 'Reading…' : 'Read & bring in') + '</button>' : '') + '</td></tr>';
+          }).join("") + '</tbody></table></div>';
+      }
+    } else {
+      h += '<div class="meta" style="font-size:13px;margin:4px 0"><b>' + plural(rows.length, "bill") + '</b> recorded in the CRM for ' + bfMonTxt(ym) +
+        (cnt.saved ? ' &middot; <span style="color:#0f766e;font-weight:700">' + cnt.saved + ' saved</span>' : '') +
+        (cnt.missing ? ' &middot; <span style="color:#b91c1c;font-weight:700">' + cnt.missing + ' not saved yet</span>' : '') + '</div>';
+      if (rows.length) h += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="background:#0b3b36;color:#fff">' +
+        '<th style="padding:6px 8px;text-align:left">Bill no</th><th style="padding:6px 8px;text-align:left">Date</th><th style="padding:6px 8px;text-align:left">Billed to</th><th style="padding:6px 8px;text-align:left">File</th></tr></thead><tbody>' +
+        rows.sort(function (a, b) { return (a.st === b.st ? 0 : (a.st === "missing" ? -1 : 1)) || String(a.at).localeCompare(String(b.at)); }).map(function (r, k) {
+          var st = BF_ST[r.st];
+          return '<tr style="border-bottom:1px solid #e2e8f0;background:' + (k % 2 ? '#f8fafc' : '#fff') + '"><td style="padding:6px 8px"><b>' + esc(r.no) + '</b><br><span style="font-size:12px;color:#475569">' + esc(r.chs.join(", ")) + '</span></td>' +
+            '<td style="padding:6px 8px;white-space:nowrap">' + esc(dmy(r.at)) + '</td><td style="padding:6px 8px">' + esc(r.client) + '</td>' +
+            '<td style="padding:6px 8px;color:' + st[1] + ';font-weight:700">' + (r.f ? '<a href="' + esc(r.f.url) + '" target="_blank" rel="noopener" style="color:inherit">' + esc(st[0]) + '</a>' : esc(st[0]) +
+              '<div style="font-size:12px;color:#64748b;font-weight:400">Save as <code>' + esc(bfFileName(r.no)) + '</code> in ' + esc(bfMonTxt(ym)) + '</div>') + '</td></tr>';
+        }).join("") + '</tbody></table></div>';
+    }
+    var ex = D.extra.filter(function (x) { var fy = String(x.f.month || "").slice(0, 7); return !fy || fy === ym; });
+    if (ex.length) {
+      h += '<div style="margin-top:10px;font-weight:700;font-size:13.5px;color:#92400e">Files to look at &middot; ' + ex.length + '</div>' +
+        ex.map(function (x) {
+          var st = BF_ST[x.st] || ["", "#64748b"];
+          return '<div style="padding:6px 0;border-top:1px solid #e2e8f0;font-size:13px"><a href="' + esc(x.f.url) + '" target="_blank" rel="noopener" style="font-weight:700;color:#0f766e">' + esc(x.f.name) + '</a>' +
+            (x.f.month ? ' <span class="meta" style="font-size:12px">in ' + esc(x.f.month) + '</span>' : ' <span class="meta" style="font-size:12px">not in a month folder</span>') +
+            ' &middot; <span style="color:' + st[1] + ';font-weight:700">' + esc(st[0]) + '</span>' +
+            (x.st === "clash" ? '<div style="font-size:12px;color:#475569">2B has it from ' + esc(x.c.map(function (b) { return b.supplier; }).join(" and ")) + '. Rename it with the supplier first, e.g. <code>' + esc(stkSupNorm(x.c[0].supplier).toUpperCase() + " " + bfFileName(x.c[0].billNo)) + '</code></div>' : '') +
+            (x.st === "dup" ? '<div style="font-size:12px;color:#475569">Another file is already this bill — keep one.</div>' : '') +
+            (x.st === "no2b" ? '<div style="font-size:12px;color:#475569">Not on the GSTR-2B uploaded so far — the supplier may not have filed it yet, or the name is not its bill no.</div>' : '') + '</div>';
+        }).join("");
+    }
+    return h + '</div>';
+  }
+  /* read one saved purchase bill; it must agree with its 2B line on bill no, total and date before it is kept */
+  function bfReadOne(fid) {
+    var row = bfPurchase().rows.filter(function (r) { return r.f && r.f.id === fid; })[0];
+    if (!row || row.st !== "ready") return Promise.resolve(false);
+    S.bf.reading = S.bf.reading || {}; S.bf.done = S.bf.done || {}; S.bf.reading[fid] = 1; keepScroll = true; renderBg();
+    var say = function (m) { delete S.bf.reading[fid]; S.bf.done[fid] = m; keepScroll = true; renderBg(); };
+    var reg = row.reg;
+    return api("billPdfRead", { fileId: fid }, 150000).then(function (r) {
+      if (!r || !r.ok) { say("Not read: " + ((r && r.error) || "no answer")); return false; }
+      if (r.notInvoice) { say("This is a " + (r.what || "not a tax invoice") + " — not brought in."); return false; }
+      var bill = r.bill || {};
+      var okNo = stkNoSame({ no: stkNoNorm(bill.billNo), tail: stkNoTail(bill.billNo) }, { no: stkNoNorm(reg.billNo), tail: stkNoTail(reg.billNo) });
+      var okTot = Math.abs((Number(bill.total) || 0) - (Number(reg.amount) || 0)) <= 1;
+      var okDay = bdDay(bill.date) === bdDay(reg.date);
+      if (!(okNo && okTot && okDay)) {
+        say("Not brought in — does not agree with 2B: " + (okNo ? "" : "bill no " + (bill.billNo || "?") + " vs " + reg.billNo + "; ") +
+          (okTot ? "" : "total " + money(bill.total || 0) + " vs " + money(reg.amount) + "; ") + (okDay ? "" : "date " + (bill.date || "?") + " vs " + bdDay(reg.date) + ";"));
+        return false;
+      }
+      var lines = (bill.lines || []).map(function (l, i) { return { sl: l.sl || i + 1, desc: l.desc || "", partNo: l.partNo || "", hsn: l.hsn || "", qty: Number(l.qty) || 0,
+        rate: Number(l.rate) || 0, unit: l.unit || "", disc: Number(l.disc) || 0, amount: Number(l.amount) || 0 }; });
+      if (!lines.length) { say("Read, but no item lines came out of it — open the file and check it is the full bill."); return false; }
+      var wrow = { id: "S-" + Date.now() + "-" + Math.floor(Math.random() * 1000000) + "-wait", type: "billwait", code: "*WAIT", qty: 0,
+        ref: stkBillKey(reg.supplier, reg.billNo), asOn: bdDay(reg.date) || today(), notes: reg.supplier,
+        desc: JSON.stringify({ billNo: reg.billNo, date: bdDay(reg.date), supplier: reg.supplier, total: Number(bill.total) || 0,
+          file: (r.file && r.file.url) || "", src: "drive", lines: lines }) };
+      S.stock = (S.stock || []).concat([wrow]);
+      return api("stockSave", { row: wrow }).then(function (sv) {
+        if (!(sv && sv.ok)) { S.stock = S.stock.filter(function (x) { return x !== wrow; }); say("Read, but the server did not keep it: " + ((sv && sv.error) || "refused")); return false; }
+        say("✓ " + lines.length + " lines brought in — now in Waiting to match"); return true;
+      });
+    }).catch(function (e) { say("No answer from the server (" + apiWhy(e) + ")."); return false; });
+  }
+  /* the missing ones of a month, 25 at a time, to the server's Gmail search */
+  function bfMail(ym) {
+    var miss = bfPurchase().rows.filter(function (r) { return r.ym === ym && r.st === "missing"; });
+    if (!miss.length) return;
+    S.bf.mail = { busy: "0/" + miss.length, res: (S.bf.mail && S.bf.mail.res) || {} };
+    var got = 0, i = 0;
+    var next = function () {
+      if (i >= miss.length) {
+        S.bf.mail.busy = ""; S.bf.mail.say = got + " of " + miss.length + " found in your mail and saved. The rest are listed for accounts to save.";
+        toast(S.bf.mail.say); bfLoad("purchase"); return;
+      }
+      var part = miss.slice(i, i + 25); i += part.length;
+      api("billMailFetch", { bills: part.map(function (r) { return { no: r.reg.billNo, sup: r.reg.supplier, date: bdDay(r.reg.date), name: r.fname, clash: r.fname !== bfFileName(r.reg.billNo) ? 1 : 0 }; }) }, 330000).then(function (r) {
+        if (!r || !r.ok) { S.bf.mail.busy = ""; S.bf.mail.say = "The mail search did not run: " + ((r && r.error) || "no answer"); keepScroll = true; renderBg(); return; }
+        (r.results || []).forEach(function (x) { S.bf.mail.res[stkNoNorm(x.no)] = x; if (x.ok && !x.already) got++; });
+        S.bf.mail.busy = i + "/" + miss.length; keepScroll = true; renderBg(); next();
+      }).catch(function (e) { S.bf.mail.busy = ""; S.bf.mail.say = "No answer from the server (" + apiWhy(e) + ")."; keepScroll = true; renderBg(); });
+    };
+    keepScroll = true; renderBg(); next();
+  }
   function viewTally() {
     ensureStock();
     var h = '<div class="card"><div class="acts" style="align-items:center;margin:0;flex-wrap:wrap;gap:6px"><h2 class="grow" style="margin:0">Tally</h2>' +
@@ -48786,7 +49137,7 @@ function viewCatalogue() {
       tile("Waiting to match", plural(D.wait.length, "bill"), adm ? "codes for you to match" : "with the owner", D.wait.length ? "#b91c1c" : "#0f766e") +
       (adm ? tile("Codes not Tally's", String(D.drift.length), D.alias + " part no" + (D.alias === 1 ? "" : "s") + " matched by hand", D.drift.length ? "#b45309" : "#0f766e") : "") +
       tile("GSTR-2B / registers", String(D.regs.length), D.regs.length ? "last " + esc(D.regs[0].period || dmy(D.regs[0].at)) : "none uploaded yet", D.regs.length ? "#0f766e" : "#94a3b8") + '</div>';
-    h += billDriveCard();   /* 6.9.851 - the bills folder on Google Drive */
+    h += billFilesCard();   /* 6.9.856 - sales and purchase bills on Google Drive, month by month (was billDriveCard, 6.9.851) */
     if (D.months.length) {
       h += '<div class="chips"><button class="chip ' + (D.mon ? "" : "on") + '" data-act="tl-mon" data-m="">All months</button>' +
         D.months.map(function (m) { return '<button class="chip ' + (D.mon === m ? "on" : "") + '" data-act="tl-mon" data-m="' + m + '">' + tlMonLabel(m) + '</button>'; }).join("") + '</div>';
@@ -56367,7 +56718,7 @@ function viewCatalogue() {
     var _rst = ""; try { _rst = restartCard(); } catch (eRs) { _rst = ""; }   /* 6.9.631 */
     var _mw = ""; try { _mw = moneyWaitStrip(); } catch (eMw) { _mw = ""; }   /* 6.9.723 */
     var _dm = ""; try { _dm = dupMobileCard(); } catch (eDm) { _dm = ""; }
-    if (S.tab === "dash") { try { _dm += wrmDayCard(); } catch (eWr) { } }   /* 6.9.813 - Monday and Thursday */   /* 6.9.742 - on every page, for the owner */
+    if (S.tab === "dash") { try { _dm += wrmDayCard(); } catch (eWr) { } try { _dm += pcDayCard(); } catch (ePc) { } }   /* 6.9.856 - payment calls */   /* 6.9.813 - Monday and Thursday */   /* 6.9.742 - on every page, for the owner */
     h += '<main>' + _rst + _appr + _mw + _dm + body +
       '<div class="foot-note">Energy World Team <span data-act="crash-log" style="cursor:pointer;border-bottom:1px dotted #cbd5e1;display:inline-block;padding:13px 6px;margin:-13px 0" title="View crash log">v' + APP_VERSION + '</span> &middot; data lives in your Google Sheet</div></main>';
 
@@ -61127,6 +61478,37 @@ function viewCatalogue() {
     /* 6.9.757 - pieces of a line already on the quote, from "no room" into the room that is open */
     /* 6.9.851 - the bills folder */
     if (act === "bd-fchk") { bdList(); return; }
+    /* 6.9.856 - bills on Drive, month by month */
+    if (act === "bf-kind") { S.bf = S.bf || { lists: {} }; S.bf.kind = t.getAttribute("data-k"); keepScroll = true; render(); return; }
+    if (act === "bf-ym") { S.bf.ym = t.getAttribute("data-m"); keepScroll = true; render(); return; }
+    if (act === "bf-chk") { bfLoad(t.getAttribute("data-k") || "purchase"); keepScroll = true; render(); return; }
+    if (act === "bf-make" || act === "bf-link") {
+      var _bfl = act === "bf-link" ? val("bf_link") : "";
+      if (act === "bf-link" && !_bfl) { toast("Paste the folder's link from the Drive address bar."); return; }
+      S.bf.making = 1; keepScroll = true; render();
+      api("billFolderSet", act === "bf-make" ? { create: true } : { folder: _bfl }, 60000).then(function (r) {
+        S.bf.making = 0;
+        if (!r || !r.ok) { toast((r && r.error) || "The server did not make the folders."); keepScroll = true; renderBg(); return; }
+        S.bf.folders = r.folders || {}; S.bf.lists = {};
+        toast("Folders ready. Share “" + ((r.folders && r.folders.root && r.folders.root.name) || "Energy World Bills") + "” with Gautam as Editor.");
+        keepScroll = true; renderBg();
+      }).catch(function (e) { S.bf.making = 0; toast("No answer from the server (" + apiWhy(e) + ")."); keepScroll = true; renderBg(); });
+      return;
+    }
+    if (act === "bf-read") { bfReadOne(t.getAttribute("data-id")); return; }
+    if (act === "bf-mail") { bfMail(t.getAttribute("data-m")); return; }
+    if (act === "bf-readall") {
+      var _bym = t.getAttribute("data-m");
+      var _bq = bfPurchase().rows.filter(function (r) { return r.ym === _bym && r.st === "ready"; }).map(function (r) { return r.f.id; });
+      if (!_bq.length) return;
+      var _bn = 0, _bk = 0;
+      var _bstep = function () {
+        if (!_bq.length) { S.bf.all = ""; toast(_bk + " of " + _bn + " brought in to Waiting to match."); keepScroll = true; renderBg(); return; }
+        _bn++; S.bf.all = _bn + " of " + (_bn + _bq.length - 1); keepScroll = true; renderBg();
+        bfReadOne(_bq.shift()).then(function (ok) { if (ok) _bk++; _bstep(); });
+      };
+      _bstep(); return;
+    }
     if (act === "bd-fset") {
       var _bl = String(val("bdf_link") || "").trim(); if (!_bl) { toast("Paste the folder's address from Google Drive."); return; }
       S.bdrive = Object.assign(S.bdrive || {}, { busy: true, err: "" }); keepScroll = true; render();
@@ -64618,13 +65000,43 @@ function viewCatalogue() {
     if (act === "wrm-tpl-reset") { try { localStorage.removeItem("ew_wrm_tpl"); } catch (e) { } keepScroll = true; render(); return; }
     if (act === "wrm-send") { wrmSend(); return; }
     if (act === "wrm-go") {
+      /* 6.9.856 - two taps per client: his reminder with the hisab link, then the same to his executive */
       var _q = (S.wrmQ || [])[0]; if (!_q) return;
-      window.open("https://wa.me/" + _q.num + "?text=" + encodeURIComponent(wrmMsg(_q)), "_blank");
-      wrmMark(_q, "phone"); S.wrmQ.shift(); S.wrmQn = (S.wrmQn || 0) + 1;
-      if (!S.wrmQ.length) { toast("All " + S.wrmQn + " opened. Each one is marked as reminded today."); S.wrmQ = null; }
-      keepScroll = true; render(); return;
+      var _adv = function () {
+        S.wrmQ.shift(); S.wrmQn = (S.wrmQn || 0) + 1;
+        if (!S.wrmQ.length) { toast("All " + S.wrmQn + " done. Each one is marked as reminded today."); S.wrmQ = null; }
+        keepScroll = true; render();
+      };
+      if (_q.stage === "exec") {
+        window.open("https://wa.me/" + _q.ex.num + "?text=" + encodeURIComponent(wrmExecText(_q, _q.ex, _q.link || "")), "_blank");
+        _adv(); return;
+      }
+      var _win = window.open("", "_blank");   /* inside the tap, so it is not blocked; pointed at WhatsApp once the PDF is hosted */
+      S.wrmBusy = 1; keepScroll = true; render();
+      toast("Making " + _q.name + "\u2019s hisab PDF\u2026");
+      wrmLink(_q).then(function (link) {
+        S.wrmBusy = 0;
+        var url = "https://wa.me/" + _q.num + "?text=" + encodeURIComponent(wrmClientText(_q, link));
+        try { if (_win && !_win.closed) _win.location = url; else window.open(url, "_blank"); } catch (e) { window.open(url, "_blank"); }
+        if (!link) toast("The hisab PDF could not be hosted \u2014 the message went without it.");
+        var ex = waExecOf(_q.name);
+        _q.link = link; _q.ex = ex;
+        wrmMark(_q, "phone");
+        if (ex && ex.num) { _q.stage = "exec"; keepScroll = true; render(); }
+        else _adv();
+      });
+      return;
     }
     if (act === "wrm-skip") { if (S.wrmQ) { S.wrmQ.shift(); if (!S.wrmQ.length) S.wrmQ = null; } keepScroll = true; render(); return; }
+    if (act === "pcall-open") { S.modal = modalPayCall(t.getAttribute("data-n") || ""); render(); return; }   /* 6.9.856 */
+    if (act === "pcall-save") {
+      var _pn = t.getAttribute("data-n") || "", _po = val("pc_out"), _pd = val("pc_date"), _pnote = val("pc_note");
+      if (_po === "promise" && !_pd) { toast("Put the date he promised."); return; }
+      var _pr = wrmRows().filter(function (x) { return x.name === _pn; })[0] || {};
+      auditFact("pay:call", _pn, { name: _pn, outcome: _po, promise: _pd, note: _pnote.slice(0, 300), due: Math.round(_pr.due || 0), days: _pr.days || 0 })
+        .then(function () { toast("Call saved for " + _pn + "."); }, function () { toast("Saved on this phone; it goes to the server with the next sync."); });
+      S.modal = null; keepScroll = true; render(); return;
+    }
     if (act === "wrm-stop") { S.wrmQ = null; keepScroll = true; render(); return; }
     if (act === "bill-sheet" || act === "bs-xl") {   /* 6.9.809 - accounts and the owner only */
       if (!canBill()) { toast("The billing sheet is for accounts and the owner."); return; }
