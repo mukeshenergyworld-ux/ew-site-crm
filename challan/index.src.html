@@ -252,7 +252,7 @@ body{background:#F4F6F9}
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.139.0";   /* 1.132.1 - driver/client/partner mobile dedupe, narrower sign-out, token refusal re-signs in, Drop in held list */
+  var APP_VERSION = "1.140.0";   /* 1.132.1 - driver/client/partner mobile dedupe, narrower sign-out, token refusal re-signs in, Drop in held list */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -3393,6 +3393,19 @@ function discRowOn(client, brand, onYmd) {
     });
     return Math.round(bags * 10) / 10;
   }
+  /* 1.140.0 - BILL REQUIRED, ASKED WHERE THE CHALLAN IS MADE. His words: "give godown a option to send for billing during
+     challan creation, if godown submit challan with ticking billing required it will auto show to accounts challan with
+     all calculations". Yes writes the same "bill:now" fact the owner and accounts set (1.139.0 / CRM 6.9.857), on save. */
+  function chBillBar() {
+    if (!S.ch) return "";
+    var yes = S.ch.billNow === "yes";
+    return '<div class="card" style="border:1px solid ' + (yes ? '#fca5a5' : '#e2e8f0') + ';background:' + (yes ? '#fef2f2' : '#fff') + ';margin-top:8px">' +
+      '<div style="font-weight:700;font-size:14px;margin-bottom:3px">Does the bill have to go with this material?</div>' +
+      '<div class="muted">Yes sends it to accounts the moment it is saved, with every line priced at the client\u2019s discount, so the bill is ready before the material leaves.</div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">' +
+      '<button class="btn sm' + (yes ? ' red' : ' gry') + '" data-act="ch-bnow" data-v="yes" style="min-height:44px">' + (yes ? '&#10003; ' : '') + 'Yes, billing required</button>' +
+      '<button class="btn sm' + (yes ? ' gry' : '') + '" data-act="ch-bnow" data-v="no" style="min-height:44px">No, bill later</button></div></div>';
+  }
   function chSaltBar() {
     if (!S.ch) return "";
     var bags = chSaltBags(S.ch.items);
@@ -4927,6 +4940,7 @@ function discRowOn(client, brand, onYmd) {
 
     /* v1.46.0 - beside the Save button, not up beside the fare box: that is where he is
        looking when he taps Create, and it is the tap this is answering. */
+    h += chBillBar();   /* 1.140.0 */
     h += chSaltBar();
     h += chFreightBar();
     h += '<button class="btn full" data-act="ch-save" style="margin:14px 0 6px">' +
@@ -9826,6 +9840,7 @@ function discRowOn(client, brand, onYmd) {
       var eItems = []; try { eItems = JSON.parse(ce.itemsJson || "[]"); } catch (e) { eItems = []; }
       S.ch = {
         editId: ce.id, editNo: ce.challanNo, editStatus: cst,
+        billNow: bnOn(ce) ? "yes" : "no",   /* 1.140.0 */
         client: ce.customerName || "", site: ce.site || "",
         dist: ce.location || "", area: "", cq: "", gq: "",
         freight: (ce.freight != null ? ce.freight : ""), fto: ce.freightTo || "Client",
@@ -10036,6 +10051,7 @@ function discRowOn(client, brand, onYmd) {
     /* ---- save the challan ----
        Same row shape, same numbering endpoint and the same frozen discount as the CRM, so a
        challan made in the godown is indistinguishable from one made at the desk. */
+    if (act === "ch-bnow") { if (S.ch) S.ch.billNow = t.getAttribute("data-v") === "yes" ? "yes" : "no"; render(); return; }   /* 1.140.0 */
     if (act === "ch-svc") {
       if (S.ch) S.ch.svcCall = t.getAttribute("data-v") === "no" ? "no" : "yes";
       render(); return;
@@ -10297,6 +10313,17 @@ function discRowOn(client, brand, onYmd) {
             }
           } else _list.push(saved);
           var shown = String(saved.challanNo || no || "");
+          /* 1.140.0 - billing required: the bill:now fact, written once the challan has its id. Only when the answer
+             CHANGED, so re-saving an edit does not write the same fact again. */
+          try {
+            var _bnWas = saved.id ? bnOn(saved) : false, _bnNow = z.billNow === "yes";
+            if (saved.id && (_bnNow !== _bnWas) && (_bnNow || _editRow)) {
+              var _bnRow = { id: "BN-" + Date.now() + "-" + Math.floor(Math.random() * 1000000), createdAt: new Date().toISOString(), actor: S.user || "",
+                action: "bill:now", target: String(saved.id), detail: JSON.stringify({ on: _bnNow ? 1 : 0, challan: shown, client: String(saved.customerName || z.client || ""), from: "made" }) };
+              S.data.audit = ((S.data && S.data.audit) || []).concat([_bnRow]);
+              saveRow("audit", _bnRow);
+            }
+          } catch (eBn) { }
           /* v1.47.0 - salt on a softener client's challan is a service call, on his say-so.
              A NEW challan only: an edit would write a second delivery for the same bags. */
           if (!_editRow && saltBagsV > 0 && svcCallV === "yes") {
