@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.857";
+  var APP_VERSION = "6.9.858";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -24625,6 +24625,16 @@ function viewCatalogue() {
      such a line priced at full MRP. Until the server sends the table (V161), such a line says so and the
      sheet shows no total to bill from. */
   function billDiscBlind() { return !roleIs("admin") && !((S.data && S.data.discounts) || []).length; }
+  /* 6.9.858 - THE BILL ITSELF, BACK ONTO THE BOOK. Straight after the bill no is saved: pick the bill (PDF or a photo)
+     and it goes to Google Drive, Sales bills › its month, named by the bill no - the same folder the Sales bills card
+     reads. "Skip for now" closes it; the bill then shows "Not saved yet" on that card until it is put there. */
+  function modalBillUpload(id, billNo) {
+    var c = (S.data.challans || []).filter(function (x) { return x.id === id; })[0] || {};
+    return '<h2>Upload bill ' + esc(billNo) + '?</h2><p class="sub">' + esc(c.challanNo || "") + ' &middot; ' + esc(c.customerName || "") + '</p>' +
+      '<div class="meta" style="font-size:13.5px;margin-bottom:8px">The bill no is saved. Now the bill itself: choose the PDF from Tally (or a photo of it). It is kept in Google Drive, <b>Sales bills &rsaquo; ' + esc(bfMonTxt(String(c.billedAt || today()).slice(0, 7))) + '</b>, as <code>' + esc(bfFileName(billNo)) + '</code>.</div>' +
+      '<input id="bu_file" type="file" accept="application/pdf,image/*" style="min-height:44px;font-size:15px;width:100%"/>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Skip for now</button><button class="btn" data-act="bu-go" data-id="' + esc(id) + '" data-no="' + esc(billNo) + '">Upload the bill</button></div>';
+  }
   function modalBillSheet(id) {
     var c = (S.data.challans || []).filter(function (x) { return x.id === id; })[0];
     if (!c) return '<h2>Billing sheet</h2><div class="empty">Challan not found.</div><div class="foot"><button class="btn" data-act="close">Close</button></div>';
@@ -24821,17 +24831,25 @@ function viewCatalogue() {
         '<button class="btn sm ghost" data-act="bn-tog" data-id="' + esc(c.id) + '" data-on="0" style="min-height:44px">Not needed now</button>'
       : '<button class="btn sm ghost" data-act="bn-tog" data-id="' + esc(c.id) + '" data-on="1" style="min-height:44px;color:#991b1b;border-color:#fca5a5">&#9889; Bill with the material</button>') + '</div>';
   }
+  /* 6.9.858 - marked "billing required" by the godown when the challan was made: accounts sees it AT ONCE, even before
+     the owner passes it, so the bill can be prepared; the bill no is saved once it is passed. */
   function billNowList() {
     var m = billNowMap();
-    return billToDo().filter(function (c) { return billNowOn(c, m); });
+    return (S.data.challans || []).filter(function (c) {
+      return c && billNowOn(c, m) && ["Draft", "Approved", "Dispatched", "Received"].indexOf(String(c.status || "Draft")) >= 0 &&
+        !String(c.billNo || "").trim() && !isCancelled("challans", c.id) && !c._isReturn;
+    }).sort(function (a, b) { return String(a.createdAt || "").localeCompare(String(b.createdAt || "")); });
   }
   function billNowCard() {
     if (!canBill()) return "";
     var L = billNowList(); if (!L.length) return "";
     return '<div class="card" style="border:2px solid #dc2626;background:#fef2f2"><div style="font-weight:800;color:#991b1b">&#9889; ' + plural(L.length, "bill") + ' to make before the material leaves</div>' +
+      '<div class="meta" style="font-size:12.5px;color:#7f1d1d">Marked \u201cbilling required\u201d by the godown or the office. Billing sheet = every line at the client\u2019s preset discount, GST and the final amount.</div>' +
       L.slice(0, 8).map(function (c) {
-        return '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:6px 0;border-top:1px solid #fecaca;font-size:13.5px"><div style="flex:1;min-width:180px"><b>' + esc(c.challanNo || "") + '</b> &middot; ' + esc(c.customerName || "") +
-          ' <span class="meta">&middot; ' + esc(c.status || "") + ' &middot; ' + money(chValue(c)) + '</span></div>' +
+        var _dr = String(c.status || "Draft") === "Draft";
+        return '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:6px 0;border-top:1px solid #fecaca;font-size:13.5px"><div style="flex:1;min-width:180px"><b>' + esc(c.challanNo || "held on a phone") + '</b> &middot; ' + esc(c.customerName || "") +
+          ' <span class="meta">&middot; ' + money(chValue(c)) + '</span>' +
+          (_dr ? '<br><span style="font-size:12.5px;color:#b45309;font-weight:700">Not passed yet \u2014 prepare the bill; the bill no is saved once it is passed</span>' : ' <span class="meta">&middot; ' + esc(c.status || "") + '</span>') + '</div>' +
           '<button class="btn sm" data-act="bill-sheet" data-id="' + esc(c.id) + '" style="min-height:44px;background:#b91c1c;border-color:#b91c1c">Billing sheet</button></div>';
       }).join("") + '</div>';
   }
@@ -24896,7 +24914,11 @@ function viewCatalogue() {
       }), "the shop, what we paid and what it made") + '</div>';
   }
   function billDeskList() {
-    var q = String(S.bdQ || "").trim().toLowerCase(), L = billToDo(), all = L.length;
+    var q = String(S.bdQ || "").trim().toLowerCase(), L = billToDo();
+    /* 6.9.858 - his words: "all challan require billing will show under billing section" - marked ones not passed yet too */
+    var _inL = {}; L.forEach(function (c) { _inL[String(c.id)] = 1; });
+    L = L.concat(billNowList().filter(function (c) { return !_inL[String(c.id)]; }));
+    var all = L.length;
     if (S.bdOld !== false) L = L.slice().reverse();   /* 6.9.820 - oldest first by default */
     var _bnm = billNowMap();   /* 6.9.857 - a bill that must go with the material comes first */
     L = L.filter(function (c) { return billNowOn(c, _bnm); }).concat(L.filter(function (c) { return !billNowOn(c, _bnm); }));
@@ -24907,7 +24929,7 @@ function viewCatalogue() {
     h += L.slice(0, lim).map(function (c) {
       var _bn = billNowOn(c, _bnm);
       return '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-top:1px solid #e2e8f0;font-size:13px' + (_bn ? ';background:#fef2f2;box-shadow:inset 4px 0 0 #dc2626;padding-left:8px' : '') + '">' +
-        '<span style="min-width:0">' + (_bn ? '<b style="color:#991b1b">&#9889; Bill with the material</b><br>' : '') + '<b>' + esc(c.challanNo || "") + '</b> &middot; ' + esc(dmy(String(c.createdAt || "").slice(0, 10))) + ' &middot; ' + esc(c.customerName || "") +
+        '<span style="min-width:0">' + (_bn ? '<b style="color:#991b1b">&#9889; Bill with the material</b>' + (String(c.status || "Draft") === "Draft" ? ' <span style="color:#b45309;font-weight:700">&middot; not passed yet</span>' : '') + '<br>' : '') + '<b>' + esc(c.challanNo || "") + '</b> &middot; ' + esc(dmy(String(c.createdAt || "").slice(0, 10))) + ' &middot; ' + esc(c.customerName || "") +
         (c.site ? ' <span class="meta">&middot; ' + esc(c.site) + '</span>' : '') + ' <span class="meta">&middot; ' + esc(c.status || "") + '</span>' +
         (c.billTo ? '<br><span style="color:#b45309">Billing started &middot; ' + esc(c.billTo) + '</span>' : '') +
         '<div style="margin-top:3px;color:#334155">' + chItemsSummary(c, 4) + '</div></span>' +
@@ -65111,6 +65133,8 @@ function viewCatalogue() {
     if (act === "bill-save") {
       var bch = (S.data.challans || []).filter(function (x) { return x.id === id; })[0];
       if (!bch) { toast("Challan not found."); return; }
+      /* 6.9.858 - a challan marked billing-required is shown before it is passed, to prepare; the bill no waits for the pass */
+      if (String(bch.status || "Draft") === "Draft" && String(val("b_no") || "").trim()) { toast("Not passed yet \u2014 the bill no is saved once the owner passes it. The figures above are ready."); return; }
       var sel = val("b_to"), billTo = "";
       if (!sel) { toast("Choose the billing name from the list, or + New billing name."); return; }   /* 6.9.810 */
       if (sel && sel !== "__new") {
@@ -65144,6 +65168,7 @@ function viewCatalogue() {
         Object.assign(bch, { billTo: billTo, billNo: billNo, billStatus: "Billed", billedAt: bch.billedAt || _bnow, billedBy: S.user });
         toast("Bill " + billNo + " recorded on " + bch.challanNo + ".");
         S.bsOpen = null;   /* 6.9.810 */
+        S.modal = modalBillUpload(bch.id, billNo);   /* 6.9.858 - "ask gautam to upload back bill before closing window, he can avoid also" */
         render();
         if (roleIs("admin")) save("challans", updated).catch(function () { toast("Kept safe on this device - will sync on next refresh."); });   /* 6.9.825 - C3 */
         billFactSave(updated).then(function (r) { if (r) toast("Bill " + billNo + " is on the server."); });   /* 6.9.814 - the copy the server keeps for an accounts login */
@@ -65159,6 +65184,31 @@ function viewCatalogue() {
         return;
       }
       billSaveGo();
+      return;
+    }
+    if (act === "bu-go") {   /* 6.9.858 */
+      var _buF = (document.getElementById("bu_file") || {}).files, _bf1 = _buF && _buF[0];
+      var _buNo = t.getAttribute("data-no") || "", _buC = (S.data.challans || []).filter(function (x) { return x.id === id; })[0] || {};
+      if (!_bf1) { toast("Choose the bill file first \u2014 or Skip for now."); return; }
+      if (_bf1.size > 15 * 1024 * 1024) { toast("That file is over 15 MB. Save the bill pages only."); return; }
+      t.disabled = true; t.textContent = "Uploading\u2026";
+      var _rd = new FileReader();
+      _rd.onload = function () {
+        var b64 = String(_rd.result || "").split(",")[1] || "";
+        api("billFileSave", { kind: "sales", no: _buNo, date: String(_buC.billedAt || today()).slice(0, 10), b64: b64, mime: _bf1.type || "application/pdf" }, 120000).then(function (r) {
+          if (r && r.ok) {
+            S.modal = null; if (S.bf && S.bf.lists) delete S.bf.lists.sales;
+            toast("Bill " + _buNo + " saved in Sales bills \u203a " + (r.month || "its month") + ".");
+            render(); return;
+          }
+          var e = String((r && r.error) || "");
+          t.disabled = false; t.textContent = "Upload the bill";
+          if (/unknown|not.*(an )?action|no such action|unsupported/i.test(e)) toast("The server has not got the bills part yet (V166). The bill no is saved \u2014 put the file in the folder later.");
+          else toast(e || "The server did not keep it. Try again, or Skip for now.");
+        }).catch(function (er) { t.disabled = false; t.textContent = "Upload the bill"; toast("No answer from the server (" + apiWhy(er) + "). Try again, or Skip for now."); });
+      };
+      _rd.onerror = function () { t.disabled = false; t.textContent = "Upload the bill"; toast("Could not read that file on this phone."); };
+      _rd.readAsDataURL(_bf1);
       return;
     }
     if (act === "bill-send") {
