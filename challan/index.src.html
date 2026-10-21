@@ -252,7 +252,7 @@ body{background:#F4F6F9}
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.138.0";   /* 1.132.1 - driver/client/partner mobile dedupe, narrower sign-out, token refusal re-signs in, Drop in held list */
+  var APP_VERSION = "1.139.0";   /* 1.132.1 - driver/client/partner mobile dedupe, narrower sign-out, token refusal re-signs in, Drop in held list */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -5929,6 +5929,33 @@ function discRowOn(client, brand, onYmd) {
     ];
   }
 
+  /* 1.139.0 / CRM 6.9.857 - BILL WITH THE MATERIAL. His words: "sometimes we have to raise bill at the time of material
+     dispatch". The audit fact "bill:now" {on} on the challan id, latest wins - the same fact the CRM writes and reads.
+     Admin or accounts switch it; everyone sees it, so the godown knows to wait for the bill and send it along. A bill
+     no is read off the challan or off accounts' "bill:set" fact (accounts' challan edits do not reach the sheet). */
+  function bnFact(id, action) {
+    var best = null;
+    ((S.data && S.data.audit) || []).forEach(function (a) {
+      if (!a || String(a.action || "") !== action || String(a.target || "") !== String(id)) return;
+      if (best && String(best.createdAt || "") >= String(a.createdAt || "")) return;
+      best = a;
+    });
+    if (!best) return null;
+    try { return JSON.parse(best.detail || "{}") || {}; } catch (e) { return {}; }
+  }
+  function bnBillNo(c) { var f = bnFact(c.id, "bill:set"); return String((c && c.billNo) || (f && f.billNo) || "").trim(); }
+  function bnOn(c) { var f = bnFact(c.id, "bill:now"); return !!(f && Number(f.on) === 1); }
+  function bnCan() { return roleIs("admin") || roleIs("accounts"); }
+  function billNowLine(c) {
+    if (!c || !c.id) return "";
+    var st = String(c.status || "Draft"), on = bnOn(c), no = bnBillNo(c);
+    if (no) return on ? '<div style="font-size:12.5px;color:#0f766e;font-weight:700;margin-top:4px">&#10003; Bill ' + esc(no) + ' made — send it with the material</div>' : '';
+    if (on) return '<div class="acts" style="margin:5px 0 0;gap:6px;flex-wrap:wrap;align-items:center"><span class="pill red">Bill to go with the material — not billed yet</span>' +
+      (bnCan() ? '<button class="btn sm ghost" data-act="bn-tog" data-id="' + esc(c.id) + '" data-on="0" style="min-height:44px">Not needed now</button>' : '') + '</div>';
+    if (bnCan() && (st === "Draft" || st === "Approved"))
+      return '<div class="acts" style="margin:5px 0 0"><button class="btn sm ghost" data-act="bn-tog" data-id="' + esc(c.id) + '" data-on="1" style="min-height:44px;color:#991b1b;border-color:#fca5a5">&#9889; Bill with the material</button></div>';
+    return "";
+  }
   function chStepStrip(c, btns) {
     var b = btns || {};
     var out = chSteps(c).map(function (p, i) {
@@ -5937,7 +5964,7 @@ function discRowOn(client, brand, onYmd) {
       if (b[p.k]) return sep + b[p.k];
       return sep + '<span class="stp wait" title="' + esc(p.why || "Not yet") + '">' + esc(p.label) + '</span>';
     }).join("");
-    return '<div class="stp-row">' + out + '</div>';
+    return '<div class="stp-row">' + out + '</div>' + billNowLine(c);   /* 1.139.0 */
   }
 
   function chRow(c) {
@@ -9935,6 +9962,18 @@ function discRowOn(client, brand, onYmd) {
       return;
     }
 
+    if (act === "bn-tog") {   /* 1.139.0 - bill with the material */
+      if (!bnCan()) { toast("Admin or accounts sets this."); return; }
+      var _bc = (S.data.challans || []).filter(function (x) { return String(x.id) === String(t.getAttribute("data-id")); })[0];
+      if (!_bc) return;
+      var _bon = t.getAttribute("data-on") === "1";
+      var _brow = { id: "BN-" + Date.now() + "-" + Math.floor(Math.random() * 1000000), createdAt: new Date().toISOString(), actor: S.user || "",
+        action: "bill:now", target: String(_bc.id), detail: JSON.stringify({ on: _bon ? 1 : 0, challan: String(_bc.challanNo || ""), client: String(_bc.customerName || "") }) };
+      S.data.audit = ((S.data && S.data.audit) || []).concat([_brow]);
+      bust(); render(); saveRow("audit", _brow);
+      toast(_bon ? "Marked: accounts makes the bill before it leaves." : "Unmarked.");
+      return;
+    }
     if (act === "oth-open") {
       S.oth = { desc: "", qty: "", rate: "", brand: "" };
       S.sheet = sheetOther(); render(); return;
