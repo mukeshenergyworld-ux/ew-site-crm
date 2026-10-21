@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.854";
+  var APP_VERSION = "6.9.855";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -12484,7 +12484,9 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
   /* Every tickable line: single-member groups collapse to one row, multi-member groups open. */
   function bbLines() {
     var out = [];
-    brandGroupList().forEach(function (g) {
+    /* 6.9.855 - Grundfos is asked about here too (his words: "Grundfos brand not included why?"); it stays
+       off the quote pickers under the p747 rule */
+    brandGroupIndex().order.filter(function (g) { return isMainBrand(g) || /grundfos/i.test(g); }).sort(alpha).forEach(function (g) {
       var l = String(g).toLowerCase();
       if (l.indexOf("accessor") > -1 || l.indexOf("net price") > -1) return;  /* allied heads, not brands */
       var mem = groupMembers(g);
@@ -12503,8 +12505,9 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     ["adani", "adani.webp"], ["fima", "fima.webp"], ["toto", "toto.webp"], ["mea", "mea.webp"],
     ["sanitaar", "web/sanitaar.png"], ["lunos", "web/lunos.png"], ["inair", "web/inair.png"], ["leo", "web/leo.png"],
     ["ioncare", "web/ioncare.png"], ["tece", "web/tece.png"], ["eureka", "card/eureka.png"]];
-  function bbLogo(brand, group) {
-    var keys = [brand, group].map(function (x) { return String(x || "").toLowerCase().replace(/[^a-z0-9]/g, ""); });
+  function bbLogo(brand) {
+    /* 6.9.855 - the brand's OWN mark only. DRP is DRP, not Heliroma: a sub-brand no longer borrows its group's logo */
+    var keys = [brand].map(function (x) { return String(x || "").toLowerCase().replace(/[^a-z0-9]/g, ""); });
     for (var j = 0; j < keys.length; j++) {
       if (!keys[j]) continue;
       for (var i = 0; i < BB_LOGO.length; i++) if (keys[j].indexOf(BB_LOGO[i][0]) === 0) return "../assets/brands/" + BB_LOGO[i][1];
@@ -12570,10 +12573,20 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         ? 'Tap once for <b>Won</b>, again for <b>Not required</b>, again to clear. Leave a brand alone and nothing about it changes.'
         : 'Every brand is settled for him. Nothing to answer here.') + '</div>' +
       '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:7px">';
+    /* 6.9.855 - "only brand logo enough, brand name below not required". The name is written only where the
+       logo cannot say it: no logo of its own (DRP), or two tiles wearing the same mark (Huliot HT PRO / ULTRA SILENT,
+       Heliroma / Heliroma PPR) - there the part after the brand is enough. */
+    var lgUse = {};
+    tiles.forEach(function (ln) { ln.lg = bbLogo(ln.brand); if (ln.lg) lgUse[ln.lg] = (lgUse[ln.lg] || 0) + 1; });
     tiles.forEach(function (ln) {
-      var lg = bbLogo(ln.brand, ln.grp);
-      var img = lg ? '<img src="' + lg + '" alt="" loading="lazy" style="max-width:92px;max-height:26px;object-fit:contain;display:block;margin:0 auto 3px"/>' : '';
-      var nm = '<span style="display:block;font-size:12px;font-weight:700;line-height:1.15;text-align:center;word-break:break-word">' + esc(ln.label) + '</span>';
+      var lg = ln.lg;
+      var img = lg ? '<img src="' + lg + '" alt="' + esc(ln.label) + '" title="' + esc(ln.label) + '" loading="lazy" style="max-width:96px;max-height:30px;object-fit:contain;display:block;margin:0 auto 3px"/>' : '';
+      var nm = "";
+      if (!lg) nm = '<span style="display:block;font-size:17px;font-weight:900;letter-spacing:.5px;line-height:1.1;text-align:center;word-break:break-word">' + esc(ln.label) + '</span>';
+      else if (lgUse[lg] > 1) {
+        var gw = String(ln.grp || "").toLowerCase(), rest = String(ln.label).replace(new RegExp("^" + gw.replace(/[^a-z0-9 ]/g, ""), "i"), "").trim();
+        nm = rest ? '<span style="display:block;font-size:12px;font-weight:700;line-height:1.15;text-align:center">' + esc(rest) + '</span>' : '';
+      }
       var box = 'display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:72px;padding:7px 5px;border-radius:10px;border:1.5px solid;';
       if (ln.was === "won" || ln.was === "nr") {   /* settled: shown, not asked */
         var w = ln.was === "won";
