@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.853";
+  var APP_VERSION = "6.9.854";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -12488,16 +12488,32 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       var l = String(g).toLowerCase();
       if (l.indexOf("accessor") > -1 || l.indexOf("net price") > -1) return;  /* allied heads, not brands */
       var mem = groupMembers(g);
-      if (mem.length <= 1) { out.push({ head: "", brand: mem[0] || g, label: g }); return; }
+      if (mem.length <= 1) { out.push({ head: "", brand: mem[0] || g, label: mem[0] || g, grp: g }); return; }   /* 6.9.854 - its real name, "Green Heat Plus" */
       out.push({ head: g, brand: "", label: g });
-      mem.forEach(function (m) { out.push({ head: "", brand: m, label: m, sub: 1 }); });
+      mem.forEach(function (m) { out.push({ head: "", brand: m, label: m, sub: 1, grp: g }); });
     });
     return out;
   }
   var BB_NEXT = { "": "won", "won": "nr", "nr": "" };
+  /* 6.9.854 - the brand's own mark, served with the site (the same files the Visit app's tiles and the
+     quote PDF use). Small .webp where we have one, else the PNG from the brand's website. A sub-brand with
+     no mark of its own (DRP, Huliot HT PRO) wears its group's. */
+  var BB_LOGO = [["greenheat", "greenheat.webp"], ["heliroma", "heliroma.webp"], ["huliot", "huliot.webp"], ["geberit", "geberit.webp"],
+    ["grundfos", "grundfos.webp"], ["pentair", "pentair.webp"], ["stellar", "stellar.webp"], ["oyster", "oyster.webp"],
+    ["adani", "adani.webp"], ["fima", "fima.webp"], ["toto", "toto.webp"], ["mea", "mea.webp"],
+    ["sanitaar", "web/sanitaar.png"], ["lunos", "web/lunos.png"], ["inair", "web/inair.png"], ["leo", "web/leo.png"],
+    ["ioncare", "web/ioncare.png"], ["tece", "web/tece.png"], ["eureka", "card/eureka.png"]];
+  function bbLogo(brand, group) {
+    var keys = [brand, group].map(function (x) { return String(x || "").toLowerCase().replace(/[^a-z0-9]/g, ""); });
+    for (var j = 0; j < keys.length; j++) {
+      if (!keys[j]) continue;
+      for (var i = 0; i < BB_LOGO.length; i++) if (keys[j].indexOf(BB_LOGO[i][0]) === 0) return "../assets/brands/" + BB_LOGO[i][1];
+    }
+    return "";
+  }
   var BB_FACE = {
-    "":    { t: "–",  s: "background:#fff;color:#94a3b8;border-color:#e2e8f0" },
-    "won": { t: "Won",     s: "background:#047857;color:#fff;border-color:#047857" },
+    "":    { t: "–",  s: "background:#fff;color:#334155;border-color:#e2e8f0" },   /* 6.9.854 - a name you can read */
+    "won": { t: "Won",     s: "background:#d1fae5;color:#065f46;border-color:#047857" },   /* 6.9.854 - light, so the logo on the tile still reads */
     "nr":  { t: "Not req", s: "background:#f1f5f9;color:#64748b;border-color:#cbd5e1" }
   };
   function bbCount(sel) {
@@ -12535,58 +12551,46 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
        are lifted out of the grid and stated as fact on one line. The grid holds only what is
        genuinely still open. If nothing is open, the whole control says so and offers nothing
        to tap. */
-    var settledWon = [], settledNr = [], open = [];
-    lines.forEach(function (ln) {
-      if (ln.head) { open.push(ln); return; }
-      var was = clientBrandState(name, ln.brand);
-      if (was === "won") { settledWon.push(ln.label); return; }
-      if (was === "nr") { settledNr.push(ln.label); return; }
-      open.push(ln);
+    /* 6.9.854 - EVERY BRAND, AS A TILE WITH ITS OWN MARK. His screenshot: the chips ran on after a group's
+       heading, so LEO, MEA, OYSTER and PENTAIR read as if they were INAIR's, and a settled brand vanished into a
+       sentence above the grid. Now every main brand is a tile in one grid, alphabetical by group with a group's
+       members side by side. A brand already Won or Not required is still shown, locked, with what it is - the
+       v6.9.290 rule stands: an answered question is not asked again, but it is no longer hidden either. */
+    var tiles = lines.filter(function (ln) { return !ln.head; });
+    var nWon = 0, anyOpen = false;
+    tiles.forEach(function (ln) {
+      ln.was = clientBrandState(name, ln.brand);
+      if (ln.was === "won") nWon++;
+      if (ln.was !== "won" && ln.was !== "nr") anyOpen = true;
     });
-    /* a group heading whose every member turned out to be settled would head an empty run */
-    open = open.filter(function (ln, i) {
-      if (!ln.head) return true;
-      for (var j = i + 1; j < open.length; j++) {
-        if (open[j].head) return false;
-        if (open[j].sub) return true;
-      }
-      return false;
-    });
-    var anyOpen = open.some(function (ln) { return !ln.head; });
-
     var h = '<div id="bb_wrap" style="border:1.5px solid #99f6e4;background:#f0fdfa;border-radius:12px;padding:11px 12px;margin:12px 0">' +
       '<div style="font-size:12px;font-weight:800;color:#0f766e;text-transform:uppercase;letter-spacing:.4px">' +
-      (settledWon.length ? 'Anything else he buys?' : 'Brands he already buys') + '</div>';
-    if (settledWon.length) {
-      h += '<div class="meta" style="margin:5px 0 2px"><b style="color:#047857">Already Won \u2014 ' +
-        esc(settledWon.join(", ")) + '</b>. Recorded, not asked again.</div>';
-    }
-    if (settledNr.length) {
-      h += '<div class="meta" style="margin:2px 0"><b>Not required \u2014 ' + esc(settledNr.join(", ")) + '</b>.</div>';
-    }
-    if (!anyOpen) {
-      h += '<div class="meta" style="margin:8px 0 0">Every brand is settled for him. Nothing to answer here.</div></div>';
-      return h;
-    }
-    h += '<div class="meta" style="margin:6px 0 9px">Tap once for <b>Won</b>, again for <b>Not required</b>, ' +
-      'again to clear. Leave a brand alone and nothing about it changes.</div>' +
-      '<div style="display:flex;flex-wrap:wrap;gap:6px">';
-    open.forEach(function (ln) {
-      if (ln.head) {
-        h += '<div style="flex:0 0 100%;font-size:12px;font-weight:800;color:#0f766e;margin:6px 0 0">' +
-             esc(ln.head) + ' <span style="font-weight:600;opacity:.7">— pick the exact one</span></div>';
+      (nWon ? 'Anything else he buys?' : 'Brands he already buys') + '</div>' +
+      '<div class="meta" style="margin:6px 0 9px">' + (anyOpen
+        ? 'Tap once for <b>Won</b>, again for <b>Not required</b>, again to clear. Leave a brand alone and nothing about it changes.'
+        : 'Every brand is settled for him. Nothing to answer here.') + '</div>' +
+      '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:7px">';
+    tiles.forEach(function (ln) {
+      var lg = bbLogo(ln.brand, ln.grp);
+      var img = lg ? '<img src="' + lg + '" alt="" loading="lazy" style="max-width:92px;max-height:26px;object-fit:contain;display:block;margin:0 auto 3px"/>' : '';
+      var nm = '<span style="display:block;font-size:12px;font-weight:700;line-height:1.15;text-align:center;word-break:break-word">' + esc(ln.label) + '</span>';
+      var box = 'display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:72px;padding:7px 5px;border-radius:10px;border:1.5px solid;';
+      if (ln.was === "won" || ln.was === "nr") {   /* settled: shown, not asked */
+        var w = ln.was === "won";
+        h += '<div title="' + (w ? 'Already Won - recorded' : 'Already Not required') + '" style="' + box +
+          (w ? 'background:#ecfdf5;color:#065f46;border-color:#6ee7b7' : 'background:#f8fafc;color:#64748b;border-color:#e2e8f0') + '">' +
+          img + nm + '<span style="font-size:12px;font-weight:800;margin-top:2px">' + (w ? '&#10003; Already won' : 'Not required') + '</span></div>';
         return;
       }
       var cur = bb.sel[ln.brand] || "";
       var f = BB_FACE[cur];
+      /* the tile's colours sit in ONE "background;color;border-color" run - bb-tog repaints exactly that run */
       h += '<button type="button" data-act="bb-tog" data-brand="' + esc(ln.brand) + '"' +
-        ' style="' + (ln.sub ? "margin-left:10px;" : "") +
-        'display:inline-flex;align-items:center;gap:6px;padding:7px 11px;border-radius:12px;' +
-        'font-size:12.5px;font-weight:600;border:1.5px solid;cursor:pointer;' + f.s + '">' +
-        esc(ln.label) +
-        '<span data-bbface="1" style="font-size:12px;font-weight:800;opacity:.85">' + f.t + '</span>' +
+        ' style="' + box + 'cursor:pointer;font:inherit;' + f.s + '">' + img + nm +
+        '<span data-bbface="1" style="font-size:12px;font-weight:800;margin-top:2px;opacity:.9">' + f.t + '</span>' +
         '</button>';
     });
+    if (!anyOpen) { h += '</div></div>'; return h; }
     h += '</div>' +
       '<label style="margin-top:10px">Why not required (optional, applies to the Not required ones)</label>' +
       '<input id="bb_note" placeholder="e.g. already has it, competitor tied up, not in scope" value="' + esc(bb.note) + '"/>' +
