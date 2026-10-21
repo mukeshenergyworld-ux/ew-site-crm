@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.852";
+  var APP_VERSION = "6.9.853";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -32870,9 +32870,10 @@ function viewCatalogue() {
   /* 6.9.828 - "pending since 45 days" / "part pending since 45 days" (short form for the PDF column) */
   function pendWord(r, short) {
     var p = r && r.pend; if (!p) return "";
-    var d = Math.max(0, Number(p.days) || 0), dd = d + " day" + (d === 1 ? "" : "s");
-    if (short) return (p.part ? "part \u00b7 " : "") + dd;
-    return (p.part ? "part payment pending since " : "pending since ") + dd;
+    /* 6.9.853 - HIS WORDS: "29 Days ... write only this, no need of repeating Pending since as its
+       written on header". A part-paid delivery keeps a short "(part)" so it is not read as unpaid. */
+    var d = Math.max(0, Number(p.days) || 0), dd = d + (d === 1 ? " Day" : " Days");
+    return dd + (p.part ? " (part)" : "");
   }
   var MINI_MONEY = { 7: 1, 8: 1, 9: 1 };   /* the right-aligned money columns of MINI_HEAD */
   /* v6.9.444 - the number of columns, as a word, read off the header. Two sentences on this screen
