@@ -252,7 +252,7 @@ body{background:#F4F6F9}
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.137.0";   /* 1.132.1 - driver/client/partner mobile dedupe, narrower sign-out, token refusal re-signs in, Drop in held list */
+  var APP_VERSION = "1.138.0";   /* 1.132.1 - driver/client/partner mobile dedupe, narrower sign-out, token refusal re-signs in, Drop in held list */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -3298,7 +3298,8 @@ function discRowOn(client, brand, onYmd) {
          fallback it would inherit whichever brand the first material line happened to carry,
          and then be priced against that brand's client discount - a discount on labour, taken
          from a brand that had nothing to do with it. */
-      var bBrand = isJobLine(i) ? "" :
+      var _nb = noBrandLine(i);   /* 6.9.852 */
+      var bBrand = (isJobLine(i) || _nb) ? "" :
         (i.brand || productBrandByCode(i.code) || c.brand || "");
       /* 24 Sep 2026 (CRM 6.9.598 / Challan 1.92.0 / Collect 1.51.0) - a line with no discount of
          its own is priced at the rate IN FORCE ON THE DAY IT WAS DELIVERED, not today's. With
@@ -3307,10 +3308,10 @@ function discRowOn(client, brand, onYmd) {
          agreeing with the account. Measured before shipping: not one of those lines has a dated
          rate that started after its delivery, so no figure moves today; this is what stops them
          moving tomorrow. */
-      var disc = (i.disc != null && i.disc !== "") ? Number(i.disc) : clientDiscountOn(cl, bBrand, localDay(c && c.createdAt));   /* 6.9.666 - the local day */
+      var disc = (i.disc != null && i.disc !== "") ? Number(i.disc) : (_nb ? 0 : clientDiscountOn(cl, bBrand, localDay(c && c.createdAt)));   /* 6.9.666 - the local day; 6.9.852 - no brand, no discount */
       var dr = Math.round(rate * (1 - disc / 100));
       return { desc: i.desc || i.code || "", code: i.code, brand: bBrand, qty: qty, rate: rate, disc: disc, dr: dr,
-               amt: qty * dr, job: isJobLine(i), ix: ix };   /* v6.9.565 - ix: which saved line */
+               amt: qty * dr, job: isJobLine(i), nb: _nb, ix: ix };   /* v6.9.565 - ix: which saved line */
     });
     priced.sort(function (a, b) { return (b.disc || 0) - (a.disc || 0); });
     return priced;
@@ -3368,6 +3369,12 @@ function discRowOn(client, brand, onYmd) {
      both on the line so that whichever way he answers is one condition, not an archaeology. */
   var JOB_CODE = "JOBWORK";
   function isJobLine(l) { return !!(l && (l.job === true || String(l.code || "") === JOB_CODE)); }
+  /* 1.138.0 / CRM 6.9.852 - A LINE THAT SAYS "NO BRAND" HAS NO BRAND: a hand-worked figure or a market
+     buy left without a brand is priced at no discount and earns nobody, instead of borrowing the challan's. */
+  function noBrandLine(l) {
+    return !!(l && !String(l.brand || "").trim() &&
+      (String(l.code || "").indexOf("M-") === 0 || (String(l.code || "").indexOf("X-") === 0 && l.local)));
+  }
   /* ================= SALT ON A CHALLAN IS A SERVICE CALL  (v1.47.0, 2 Sep 2026) =================
      The CRM asks it since 6.9.402; this is the same question at the counter. isSaltLine and
      chSaltBags are byte-for-byte the CRM's, so the two apps count a bag the same way:
@@ -7899,7 +7906,7 @@ function discRowOn(client, brand, onYmd) {
   function chPriced(c) {
     return chLines(c).map(function (l) {
       var d = num(l.disc);
-      return { brand: isJobLine(l) ? "" : String(l.brand || (c && c.brand) || ""),
+      return { brand: (isJobLine(l) || noBrandLine(l)) ? "" : String(l.brand || (c && c.brand) || ""),   /* 1.138.0 */
                amt: num(l.qty) * Math.round(num(l.rate) * (1 - d / 100)),
                disc: (l.disc === "" || l.disc == null) ? null : d,   /* 1.124.0 - the incentive card's slab is picked by it */
                job: isJobLine(l) };
@@ -10065,7 +10072,7 @@ function discRowOn(client, brand, onYmd) {
         /* 1.137.0 - THE SAVE REBUILDS EVERY LINE FROM A FIXED LIST OF FIELDS. A market line's shop
            and cost would have shown on screen and then been dropped from the saved challan, so
            they are carried across here, and only when the line is a market line. */
-        if (l.local) { _o.local = 1; _o.shop = String(l.shop || ""); _o.cost = Math.round(num(l.cost)); }
+        if (l.local) { _o.local = 1; _o.shop = String(l.shop || ""); _o.cost = Math.round(num(l.cost)); if (!String(l.brand || "").trim()) _o.disc = 0; }   /* 1.138.0 - no brand, a stored 0 */
         return _o;
       });
       var _nrNeed = !!(_noRate.length && !(S.ch && S.ch.noRateOk));   /* 1.120.0 - on the one card */
