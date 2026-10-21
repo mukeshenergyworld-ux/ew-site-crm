@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.856";
+  var APP_VERSION = "6.9.857";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -24793,6 +24793,48 @@ function viewCatalogue() {
      Every challan passed (Approved, Dispatched or Received) and not cancelled, without a bill number, newest first,
      each one tap from its billing sheet; the ones opened and left without a bill at the top; the bills made lately
      below. Read only - the bill itself is saved from the sheet. */
+  /* ===== 6.9.857 - BILL WITH THE MATERIAL =====
+     An audit fact "bill:now" {on} on the challan id, latest wins; admin or accounts set it, in the CRM or the Challan
+     app. While it is on and the challan has no bill no: it heads the billing list in red, it is on Today for admin and
+     accounts, and every card - the godown's too - says the bill must go with the material. */
+  function billNowMap() {
+    var m = {};
+    ((S.data && S.data.audit) || []).forEach(function (a) {
+      if (!a || String(a.action || "") !== "bill:now") return;
+      var k = String(a.target || ""), at = String(a.createdAt || "");
+      if (!k || (m[k] && m[k].at >= at)) return;
+      var d = {}; try { d = JSON.parse(a.detail || "{}") || {}; } catch (e) { d = {}; }
+      m[k] = { on: Number(d.on) === 1, at: at, by: String(a.actor || "") };
+    });
+    return m;
+  }
+  function billNowOn(c, m) { var x = (m || billNowMap())[String(c && c.id)]; return !!(x && x.on); }
+  function billNowLine(c) {
+    if (!c || isCancelled("challans", c.id) || c._isReturn) return "";
+    var on = billNowOn(c), billed = String(c.billNo || "").trim(), st = String(c.status || "Draft");
+    if (billed) return on ? '<div style="font-size:12.5px;color:#0f766e;font-weight:700;margin-top:4px">&#10003; Bill ' + esc(billed) + ' made — it goes with the material</div>' : '';
+    if (["Draft", "Approved", "Dispatched"].indexOf(st) < 0) return on ? '<div style="font-size:12.5px;color:#b91c1c;font-weight:700;margin-top:4px">Bill with the material — no bill no yet</div>' : '';
+    if (!canBill()) return on ? '<div style="margin-top:4px"><span class="pill" style="background:#fef2f2;color:#991b1b;border:1px solid #fca5a5">Bill to go with the material — wait for it</span></div>' : '';
+    return '<div class="acts" style="margin:5px 0 0;gap:6px;flex-wrap:wrap;align-items:center">' + (on
+      ? '<span class="pill" style="background:#fef2f2;color:#991b1b;border:1px solid #fca5a5;font-weight:700">Bill with the material — not billed yet</span>' +
+        '<button class="btn sm" data-act="bill-sheet" data-id="' + esc(c.id) + '" style="min-height:44px;background:#b91c1c;border-color:#b91c1c">Billing sheet</button>' +
+        '<button class="btn sm ghost" data-act="bn-tog" data-id="' + esc(c.id) + '" data-on="0" style="min-height:44px">Not needed now</button>'
+      : '<button class="btn sm ghost" data-act="bn-tog" data-id="' + esc(c.id) + '" data-on="1" style="min-height:44px;color:#991b1b;border-color:#fca5a5">&#9889; Bill with the material</button>') + '</div>';
+  }
+  function billNowList() {
+    var m = billNowMap();
+    return billToDo().filter(function (c) { return billNowOn(c, m); });
+  }
+  function billNowCard() {
+    if (!canBill()) return "";
+    var L = billNowList(); if (!L.length) return "";
+    return '<div class="card" style="border:2px solid #dc2626;background:#fef2f2"><div style="font-weight:800;color:#991b1b">&#9889; ' + plural(L.length, "bill") + ' to make before the material leaves</div>' +
+      L.slice(0, 8).map(function (c) {
+        return '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:6px 0;border-top:1px solid #fecaca;font-size:13.5px"><div style="flex:1;min-width:180px"><b>' + esc(c.challanNo || "") + '</b> &middot; ' + esc(c.customerName || "") +
+          ' <span class="meta">&middot; ' + esc(c.status || "") + ' &middot; ' + money(chValue(c)) + '</span></div>' +
+          '<button class="btn sm" data-act="bill-sheet" data-id="' + esc(c.id) + '" style="min-height:44px;background:#b91c1c;border-color:#b91c1c">Billing sheet</button></div>';
+      }).join("") + '</div>';
+  }
   function billToDo() {
     return (S.data.challans || []).filter(function (c) {
       return c && ["Approved", "Dispatched", "Received"].indexOf(String(c.status || "")) >= 0 && !String(c.billNo || "").trim() &&
@@ -24856,13 +24898,16 @@ function viewCatalogue() {
   function billDeskList() {
     var q = String(S.bdQ || "").trim().toLowerCase(), L = billToDo(), all = L.length;
     if (S.bdOld !== false) L = L.slice().reverse();   /* 6.9.820 - oldest first by default */
+    var _bnm = billNowMap();   /* 6.9.857 - a bill that must go with the material comes first */
+    L = L.filter(function (c) { return billNowOn(c, _bnm); }).concat(L.filter(function (c) { return !billNowOn(c, _bnm); }));
     if (q) L = L.filter(function (c) { return (String(c.challanNo || "") + " " + String(c.customerName || "") + " " + String(c.site || "")).toLowerCase().indexOf(q) >= 0; });
     var lim = S.bdAll ? L.length : 40;
     var h = '<div class="meta" style="margin:6px 0"><b>' + plural(L.length, "challan") + '</b> to bill' + (q ? ' (of ' + all + ')' : '') + '</div>';
     if (!L.length) return h + '<div class="empty">Nothing to bill' + (q ? ' for &ldquo;' + esc(S.bdQ) + '&rdquo;' : '') + '.</div>';
     h += L.slice(0, lim).map(function (c) {
-      return '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-top:1px solid #e2e8f0;font-size:13px">' +
-        '<span style="min-width:0"><b>' + esc(c.challanNo || "") + '</b> &middot; ' + esc(dmy(String(c.createdAt || "").slice(0, 10))) + ' &middot; ' + esc(c.customerName || "") +
+      var _bn = billNowOn(c, _bnm);
+      return '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-top:1px solid #e2e8f0;font-size:13px' + (_bn ? ';background:#fef2f2;box-shadow:inset 4px 0 0 #dc2626;padding-left:8px' : '') + '">' +
+        '<span style="min-width:0">' + (_bn ? '<b style="color:#991b1b">&#9889; Bill with the material</b><br>' : '') + '<b>' + esc(c.challanNo || "") + '</b> &middot; ' + esc(dmy(String(c.createdAt || "").slice(0, 10))) + ' &middot; ' + esc(c.customerName || "") +
         (c.site ? ' <span class="meta">&middot; ' + esc(c.site) + '</span>' : '') + ' <span class="meta">&middot; ' + esc(c.status || "") + '</span>' +
         (c.billTo ? '<br><span style="color:#b45309">Billing started &middot; ' + esc(c.billTo) + '</span>' : '') +
         '<div style="margin-top:3px;color:#334155">' + chItemsSummary(c, 4) + '</div></span>' +
@@ -28904,7 +28949,7 @@ function viewCatalogue() {
     }).join('<span style="color:#cbd5e1;font-size:12px">\u203a</span>');
     return '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:5px;margin:6px 0 2px;padding:5px 8px;' +
       'background:#f8fafc;border-left:3px solid #cbd5e1;border-radius:0 8px 8px 0" ' +
-      'class="stp1">' + chReopenNote(c) + cells.replace(/class="btn sm/g, 'style="padding:2px 10px;min-height:0;font-size:12px" class="btn sm') + '</div>';
+      'class="stp1">' + chReopenNote(c) + cells.replace(/class="btn sm/g, 'style="padding:2px 10px;min-height:0;font-size:12px" class="btn sm') + '</div>' + billNowLine(c);   /* 6.9.857 */
   }
   function chStepStrip(c, btns) {
     var b = btns || {};
@@ -28914,7 +28959,7 @@ function viewCatalogue() {
       if (b[p.k]) return sep + b[p.k];
       return sep + '<span class="stp wait" title="' + esc(p.why || "Not yet") + '">' + esc(p.label) + '</span>';
     }).join("");
-    return '<div class="stp-row">' + out + '</div>';
+    return '<div class="stp-row">' + out + '</div>' + billNowLine(c);   /* 6.9.857 */
   }
 
   /* ============ THE DELIVERY CARD, WHERE EVERY LIST CAN REACH IT  (v6.9.483) ============
@@ -56718,7 +56763,8 @@ function viewCatalogue() {
     var _rst = ""; try { _rst = restartCard(); } catch (eRs) { _rst = ""; }   /* 6.9.631 */
     var _mw = ""; try { _mw = moneyWaitStrip(); } catch (eMw) { _mw = ""; }   /* 6.9.723 */
     var _dm = ""; try { _dm = dupMobileCard(); } catch (eDm) { _dm = ""; }
-    if (S.tab === "dash") { try { _dm += wrmDayCard(); } catch (eWr) { } try { _dm += pcDayCard(); } catch (ePc) { } }   /* 6.9.856 - payment calls */   /* 6.9.813 - Monday and Thursday */   /* 6.9.742 - on every page, for the owner */
+    if (S.tab === "dash") { try { _dm += wrmDayCard(); } catch (eWr) { } try { _dm += pcDayCard(); } catch (ePc) { } }
+    if (S.tab === "dash" || S.tab === "billing" || S.tab === "challans") { try { _dm = billNowCard() + _dm; } catch (eBn) { } }   /* 6.9.857 */   /* 6.9.856 - payment calls */   /* 6.9.813 - Monday and Thursday */   /* 6.9.742 - on every page, for the owner */
     h += '<main>' + _rst + _appr + _mw + _dm + body +
       '<div class="foot-note">Energy World Team <span data-act="crash-log" style="cursor:pointer;border-bottom:1px dotted #cbd5e1;display:inline-block;padding:13px 6px;margin:-13px 0" title="View crash log">v' + APP_VERSION + '</span> &middot; data lives in your Google Sheet</div></main>';
 
@@ -61479,6 +61525,15 @@ function viewCatalogue() {
     /* 6.9.851 - the bills folder */
     if (act === "bd-fchk") { bdList(); return; }
     /* 6.9.856 - bills on Drive, month by month */
+    if (act === "bn-tog") {   /* 6.9.857 - bill with the material */
+      if (!canBill()) { toast("Admin or accounts sets this."); return; }
+      var _bnc = (S.data.challans || []).filter(function (x) { return String(x.id) === String(t.getAttribute("data-id")); })[0];
+      if (!_bnc) return;
+      var _bnOn = t.getAttribute("data-on") === "1";
+      auditFact("bill:now", String(_bnc.id), { on: _bnOn ? 1 : 0, challan: String(_bnc.challanNo || ""), client: String(_bnc.customerName || "") }).catch(function () { });
+      toast(_bnOn ? "Marked: the bill goes with the material. It is at the top of the billing list." : "Unmarked.");
+      keepScroll = true; render(); return;
+    }
     if (act === "bf-kind") { S.bf = S.bf || { lists: {} }; S.bf.kind = t.getAttribute("data-k"); keepScroll = true; render(); return; }
     if (act === "bf-ym") { S.bf.ym = t.getAttribute("data-m"); keepScroll = true; render(); return; }
     if (act === "bf-chk") { bfLoad(t.getAttribute("data-k") || "purchase"); keepScroll = true; render(); return; }
