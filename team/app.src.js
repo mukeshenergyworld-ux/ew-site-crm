@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.851";
+  var APP_VERSION = "6.9.852";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -3741,6 +3741,8 @@ window.addEventListener("beforeunload", function (ev) {
     /* v6.9.356 - the off-list item's brand box. Changing it re-draws the little form so the
        discount and the price it will actually bill at are true BEFORE he saves, not after. */
     if (t && t.id === "ox_brand") { chxSyncOther(); return; }
+    /* 6.9.852 - the margin under a market line is redrawn when the cost or rate box is LEFT */
+    if (t && (t.id === "ox_cost" || t.id === "ox_rate") && S.chx && S.chx.local) { chxSyncOther(); return; }
     if (t && t.id === "mx_brand") {
       if (S.chx && S.chx.kind === "man") {
         S.chx.desc = val("mx_desc"); S.chx.amt = val("mx_amt"); S.chx.brand = val("mx_brand");
@@ -22901,8 +22903,12 @@ function viewCatalogue() {
 
           if (!pg) {
             /* the hero band: what this room holds, what it comes to, which sets are in it */
-            fill([246, 250, 249]); doc.rect(0, yTop - 4, W, 17, "F");
-            fill(MINT); doc.rect(L, yTop - 4, 2.2, 17, "F");
+            /* 6.9.852 - and the collection and finish he chose for it, on a line of its own, 8pt */
+            var _rx = (rm.room && items[0] && items[0].rx && items[0].rx[rm.room]) || null;
+            var _rxT = _rx ? [_rx.c ? "Collection: " + _rx.c : "", _rx.f ? "Finish: " + _rx.f : ""].filter(Boolean).join("     \u00b7     ") : "";
+            var bandH = _rxT ? 23 : 17;
+            fill([246, 250, 249]); doc.rect(0, yTop - 4, W, bandH, "F");
+            fill(MINT); doc.rect(L, yTop - 4, 2.2, bandH, "F");
             col(INK); F("bold"); doc.setFontSize(8.6);
             doc.text(T(n + (n === 1 ? " product" : " products") + "   ·   " + rm.qty + " pc"), L + 7, yTop + 2.6);
             col(TEAL); F("bold"); doc.setFontSize(11);
@@ -22918,7 +22924,11 @@ function viewCatalogue() {
               col(GREY); doc.text(T(nm), lx + 3.4, yTop + 8);
               lx += 3.4 + doc.getTextWidth(T(nm)) + 7;
             });
-            yTop += 19;
+            if (_rxT) {
+              col(TEAL); F("bold"); doc.setFontSize(8);
+              doc.text(fitCell(doc, F, T(_rxT), Rt - L - 50, 1, "bold", 8)[0], L + 7, yTop + 14.6);
+            }
+            yTop += bandH + 2;
           }
 
           var ch = (H - 12 - yTop - GAP * (rows - 1)) / rows;
@@ -29639,7 +29649,7 @@ function viewCatalogue() {
       var items = []; try { items = JSON.parse(c.itemsJson || "[]"); } catch (e) { items = []; }
       var here = {};
       items.forEach(function (i) {
-        if (isJobLine(i)) return;
+        if (isJobLine(i) || noBrandLine(i)) return;   /* 6.9.852 */
         var b = String(i.brand || productBrandByCode(i.code) || c.brand || "").trim();
         var k = dkey(b); if (!b || !k) return;
         var e = out[k] || (out[k] = { brand: b, n: 0, no: "", day: "", discs: {} });
@@ -30195,7 +30205,7 @@ function viewCatalogue() {
     return (line || []).map(function (m) {
       var amt = 0, pcts = {};
       (lines || []).forEach(function (x) {
-        if (x.job) return;
+        if (x.job || x.nb) return;   /* 6.9.852 */
         var _b = x.brand || fallbackBrand || "", _f = _sh ? (_sh[dkey(_b)] || 0) : 0;
         var _d = _f ? 100 - (100 - (Number(x.disc) || 0)) * (1 - _f) : x.disc;
         var r = ctx && ctx.c ? ((m.role === "exec") ? execRateFor(cl, _b, _day, _d) : incRate(cl, _b, m.role, _day, _d)) : admRateOf(cl, _b, m.role);
@@ -30390,7 +30400,7 @@ function viewCatalogue() {
 
              The line is marked in pricedLines(), so this is the only place that has to know. */
           base += x.amt;
-          if (x.job) return;
+          if (x.job || x.nb) return;   /* 6.9.852 - no brand earns nobody */
           /* v6.9.325 - the DELIVERY is handed to rateFor now, not just the client and the
              brand. That is the whole of the partner-change fix: a delivery that carries its own
              line-up answers for itself, and one that does not falls back to the client record
@@ -30447,7 +30457,7 @@ function viewCatalogue() {
           /* v6.9.354 - the mirror of the sale four hundred lines above: job work counts as
              RETURNED value, because the client is credited for it, and reverses nobody's
              incentive, because nobody earned one on it. Same flag, same rule, both directions. */
-          if (x.job) return;
+          if (x.job || x.nb) return;   /* 6.9.852 */
           var _rf = _rsh ? (_rsh[dkey(x.brand)] || 0) : 0;
           var _rd = _rf ? 100 - (100 - (Number(x.disc) || 0)) * (1 - _rf) : x.disc;   /* 6.9.694 - as it was earned */
           var _rpd = deductFor ? deductFor(cl, x.brand, rCh, _rd) : 0;   /* 6.9.668 - the mirror */
@@ -31625,6 +31635,14 @@ function viewCatalogue() {
      earn somebody an incentive on a number he calculated by hand. Same trap as job work. */
   var MANUAL_PFX = "M-";
   function isManualLine(l) { return !!(l && String(l.code || "").indexOf(MANUAL_PFX) === 0); }
+  /* 6.9.852 - A LINE THAT SAYS "NO BRAND" HAS NO BRAND. A hand-worked figure or a market buy left
+     with no brand fell through pricedLines to the CHALLAN's brand - priced at that brand's discount
+     and earning that brand's incentive, while the screen that made it said "nobody earns on it".
+     Measured 21 Oct 2026: 0 such lines on 386 challans, so this moves no figure today. */
+  function noBrandLine(l) {
+    return !!(l && !String(l.brand || "").trim() &&
+      (isManualLine(l) || (String(l.code || "").indexOf("X-") === 0 && l.local)));
+  }
   function manualLine(desc, amt, brand) {
     var v = Math.round(num(amt));
     return { code: MANUAL_PFX + Date.now(), desc: String(desc || "").trim(), unit: "amount",
@@ -31643,6 +31661,8 @@ function viewCatalogue() {
     if (!S.chx || S.chx.kind !== "other") return;
     S.chx.desc = val("ox_desc"); S.chx.qty = val("ox_qty");
     S.chx.rate = val("ox_rate"); S.chx.brand = val("ox_brand");
+    if (el("ox_shop")) S.chx.shop = val("ox_shop");   /* 6.9.852 - kept even when the switch is off */
+    if (el("ox_cost")) S.chx.cost = val("ox_cost");
     var restore = keepFields(CH_FIELDS);
     keepScroll = true;
     S.modal = modalChallan(); render(); restore();
@@ -31731,9 +31751,26 @@ function viewCatalogue() {
       '<div><label for="ox_qty">Quantity</label><input id="ox_qty" inputmode="decimal" value="' + esc(x.qty || "") + '" placeholder="1"/></div>' +
       '<div><label for="ox_rate">Rate each (before discount)</label><input id="ox_rate" inputmode="numeric" value="' + esc(x.rate || "") + '" placeholder="0"/></div>' +
       '</div>' +
-      '<label for="ox_brand">Which brand is it</label>' +
+      /* 6.9.852 - bought in the market for this site: the shop and what WE paid (Challan 1.137.0's switch) */
+      '<button class="btn sm ' + (x.local ? '' : 'ghost') + '" data-act="ch-other-local" style="width:100%;margin-top:9px;min-height:44px;justify-content:flex-start;text-align:left">' +
+        (x.local ? '&#10003; ' : '') + 'Bought from the local market for this site</button>' +
+      (x.local
+        ? '<div class="grid2">' +
+          '<div><label for="ox_shop">Which shop</label><input id="ox_shop" value="' + esc(x.shop || "") + '" placeholder="e.g. Bansal Hardware, GT Road"/></div>' +
+          '<div><label for="ox_cost">We paid, each</label><input id="ox_cost" inputmode="numeric" value="' + esc(x.cost || "") + '" placeholder="0"/></div>' +
+          '</div>' +
+          (function () {
+            var cN = num(x.cost);
+            if (!(cN > 0) || !(rNum > 0)) return '';
+            var mg = Math.round((net - cN) * qNum);
+            return '<div style="font-size:13px;font-weight:800;margin-top:6px;color:' + (mg < 0 ? '#b91c1c' : '#0f766e') + '">' +
+              (mg < 0 ? 'Selling BELOW what we paid \u2014 ' + money(-mg) + ' lost on this line.'
+                      : money(mg) + ' made on this line (' + money(net) + ' billed, ' + money(cN) + ' paid, each).') + '</div>';
+          })()
+        : '') +
+      '<label for="ox_brand">' + (x.local ? 'Brand, if it is one we sell (leave blank for a market item)' : 'Which brand is it') + '</label>' +
       '<select id="ox_brand">' +
-      '<option value=""' + (pick ? '' : ' selected') + '>\u2014 tap a brand \u2014</option>' +
+      '<option value=""' + (pick ? '' : ' selected') + '>' + (x.local ? '\u2014 no brand: market item \u2014' : '\u2014 tap a brand \u2014') + '</option>' +
       brands.map(function (b) {
         return '<option value="' + esc(b) + '"' + (b === pick ? ' selected' : '') + '>' + esc(b) + '</option>';
       }).join("") + '</select>' +
@@ -31742,8 +31779,10 @@ function viewCatalogue() {
           esc(cn || "This client") + '\u2019s ' + esc(pick) + ' discount is <b>' + dpct + '%</b>' +
           (rNum > 0 ? ' \u00b7 bills at <b>' + money(net) + '</b> each, <b>' + money(Math.round(net * qNum)) + '</b> in all' : '') +
           '</div>'
-        : '<div style="font-size:12.5px;color:#b45309;margin-top:6px">Tap a brand and it will show ' +
-          'you the discount and the price this line will actually be billed at.</div>') +
+        : (x.local
+          ? '<div style="font-size:12.5px;color:#64748b;margin-top:6px">No brand: billed at the rate above, no discount, and it earns nobody an incentive.</div>'
+          : '<div style="font-size:12.5px;color:#b45309;margin-top:6px">Tap a brand and it will show ' +
+            'you the discount and the price this line will actually be billed at.</div>')) +
       '<div style="display:flex;gap:8px;margin-top:9px">' +
       '<button class="btn sm ghost" data-act="ch-x-cancel">Cancel</button>' +
       '<button class="btn sm" data-act="ch-other-add">Put it on the challan</button></div></div>';
@@ -31773,7 +31812,8 @@ function viewCatalogue() {
          fallback it would inherit whichever brand the first material line happened to carry,
          and then be priced against that brand's client discount - a discount on labour, taken
          from a brand that had nothing to do with it. */
-      var bBrand = isJobLine(i) ? "" :
+      var _nb = noBrandLine(i);   /* 6.9.852 */
+      var bBrand = (isJobLine(i) || _nb) ? "" :
         (i.brand || productBrandByCode(i.code) || c.brand || "");
       /* 24 Sep 2026 (CRM 6.9.598 / Challan 1.92.0 / Collect 1.51.0) - a line with no discount of
          its own is priced at the rate IN FORCE ON THE DAY IT WAS DELIVERED, not today's. With
@@ -31782,10 +31822,10 @@ function viewCatalogue() {
          agreeing with the account. Measured before shipping: not one of those lines has a dated
          rate that started after its delivery, so no figure moves today; this is what stops them
          moving tomorrow. */
-      var disc = (i.disc != null && i.disc !== "") ? Number(i.disc) : clientDiscountOn(cl, bBrand, localDay(c && c.createdAt));   /* 6.9.666 - the local day */
+      var disc = (i.disc != null && i.disc !== "") ? Number(i.disc) : (_nb ? 0 : clientDiscountOn(cl, bBrand, localDay(c && c.createdAt)));   /* 6.9.666 - the local day; 6.9.852 - no brand, no discount */
       var dr = Math.round(rate * (1 - disc / 100));
       return { desc: i.desc || i.code || "", code: i.code, brand: bBrand, qty: qty, rate: rate, disc: disc, dr: dr,
-               amt: qty * dr, job: isJobLine(i), ix: ix,   /* v6.9.565 - ix: which saved line */
+               amt: qty * dr, job: isJobLine(i), nb: _nb, ix: ix,   /* v6.9.565 - ix: which saved line */
                preset: !(i.disc != null && i.disc !== "") };   /* 6.9.817 - priced from the client's preset, not the line */
     });
     priced.sort(function (a, b) { return (b.disc || 0) - (a.disc || 0); });
@@ -32306,7 +32346,7 @@ function viewCatalogue() {
   function chOffOrder(c, lines, day) {
     var cn = (c && c.customerName) || "", by = {}, order = [];
     (lines || []).forEach(function (x) {
-      if (x.job) return;
+      if (x.job || x.nb) return;   /* 6.9.852 */
       var b = String(x.brand || (c && c.brand) || "").trim(); if (!b) return;
       var k = dkey(b);
       if (!by[k]) { by[k] = { brand: b, amt: 0, disc: null, inc: 0 }; order.push(k); }
@@ -38002,7 +38042,7 @@ function viewCatalogue() {
     var from = addDays(today(), -(days || 60)), by = {};
     dedupeChallans(S.data.challans || []).forEach(function (c) {
       if (!c || String(c.createdAt || "").slice(0, 10) < from || isCancelled("challans", c.id)) return;
-      try { pricedLines(c, c.customerName).forEach(function (x) { var b = String(x.brand || c.brand || "").trim(); if (b && !x.job && isMainBrand(b)) by[b] = (by[b] || 0) + (Number(x.amt) || 0); }); } catch (e) { }
+      try { pricedLines(c, c.customerName).forEach(function (x) { var b = String(x.brand || c.brand || "").trim(); if (b && !x.job && !x.nb && isMainBrand(b)) by[b] = (by[b] || 0) + (Number(x.amt) || 0); }); } catch (e) { }
     });
     return Object.keys(by).map(function (b) { return { b: b, v: by[b] }; }).sort(function (a, b) { return b.v - a.v; });
   }
@@ -48365,7 +48405,7 @@ function viewCatalogue() {
       if (!cls[dkey(c.customerName)] || String(c.createdAt || "").slice(0, 10) < y1 || seen[c.challanNo]) return;
       try { if (stkChDead(c)) return; } catch (e) { }
       seen[c.challanNo] = 1;
-      try { pricedLines(c, c.customerName).forEach(function (x) { if (dkey(x.brand || c.brand || "") === b) tot += Number(x.amt) || 0; }); } catch (e) { }
+      try { pricedLines(c, c.customerName).forEach(function (x) { if (!x.nb && dkey(x.brand || c.brand || "") === b) tot += Number(x.amt) || 0; }); } catch (e) { }
     });
     return Math.round(tot);
   }
@@ -51649,9 +51689,18 @@ function viewCatalogue() {
         }
         body += qzRoomLine(z, x.it, room, x.q);
       });
+      /* 6.9.852 - HIS ANSWER: "collection + finish boxes per room". Printed on the room's page of the proposal. */
+      var rxv = (room && z.rx && z.rx[room]) || {};
+      var rxBox = function (k, lab, ph) {
+        return '<label style="flex:1 1 150px;font-size:12px;font-weight:700;color:#475569;margin:0">' + lab +
+          '<input class="qz-rx" data-r="' + esc(room) + '" data-k="' + k + '" value="' + esc(rxv[k] || "") + '" placeholder="' + ph + '" ' +
+          'style="display:block;width:100%;box-sizing:border-box;min-height:44px;font-size:14px;padding:8px;border:1px solid #cbd5e1;border-radius:6px;margin-top:3px;font-weight:500"/></label>';
+      };
       return '<div style="margin-top:10px;border:1px solid ' + (tint ? '#fcd34d' : '#cbd5e1') + ';border-radius:10px;overflow:hidden">' +
         '<div style="background:' + (tint ? '#fffbeb' : '#0b3b36') + ';color:' + (tint ? '#92400e' : '#fff') + ';padding:7px 10px;font-weight:800;font-size:13.5px">' +
         esc(title) + '<span style="font-weight:500;opacity:.85"> · ' + sub + '</span></div>' +
+        (room ? '<div style="display:flex;gap:8px;flex-wrap:wrap;padding:8px 10px;background:#f8fafc;border-bottom:1px solid #e2e8f0">' +
+          rxBox("c", "Collection", "e.g. Carlo Mini") + rxBox("f", "Finish", "e.g. Chrome, Matt Black") + '</div>' : '') +
         '<table style="width:100%;border-collapse:collapse"><tbody>' + body + '</tbody></table></div>';
     };
 
@@ -61271,6 +61320,7 @@ function viewCatalogue() {
         parentId: _sameDay ? (old.parentId || "") : old.id,
         version: _sameDay ? (Number(old.version) || 1) : (Number(old.version) || 1) + 1, quoteNo: old.quoteNo,
         editId: _sameDay ? old.id : "", editNo: _sameDay ? qNo(old) : "", rooms: _ro0.length ? _ro0 : undefined,
+        rx: (its[0] && its[0].rx && typeof its[0].rx === "object") ? JSON.parse(JSON.stringify(its[0].rx)) : undefined,   /* 6.9.852 */
         gst: its.some(function (i) { return Number(i.gst) === 1; }),
         noTotal: its.some(function (i) { return Number(i.noTotal) === 1; }) };
       toast(_sameDay ? "Editing " + (qNo(old) || "the quote") + " \u2014 made today, so it stays the same quote." : "Making the next revision of " + (qNo(old) || "the quote") + ".");
@@ -61326,6 +61376,17 @@ function viewCatalogue() {
           qzRoomList({ items: z.items }).forEach(function (r) { if (_ro.indexOf(r) < 0) _ro.push(r); });
           _ro = _ro.filter(function (r) { return savedItems.some(function (o) { return o.rq && Number(o.rq[r]) > 0; }); });
           if (_ro.length && savedItems[0]) savedItems[0].ro = _ro;
+        } catch (e) { }
+        /* 6.9.852 - each room's collection and finish ride on the first line too, for rooms still on the quote */
+        try {
+          var _rx = {}, _rxN = 0;
+          Object.keys(z.rx || {}).forEach(function (r) {
+            var v = z.rx[r] || {}, c1 = String(v.c || "").trim(), f1 = String(v.f || "").trim();
+            if (!(c1 || f1)) return;
+            if (!savedItems.some(function (o) { return o.rq && Number(o.rq[r]) > 0; })) return;
+            _rx[r] = { c: c1, f: f1 }; _rxN++;
+          });
+          if (_rxN && savedItems[0]) savedItems[0].rx = _rx;
         } catch (e) { }
         var blended = tot.gross > 0 ? Math.round((tot.gross - tot.net) / tot.gross * 100) : 0;
         /* save() adds the quote to the list and repaints SYNCHRONOUSLY, then syncs to the server
@@ -64847,6 +64908,11 @@ function viewCatalogue() {
       S.modal = modalChallan(); render(); restoreX();
       return;
     }
+    if (act === "ch-other-local") {   /* 6.9.852 - keep what is typed, flip the switch, redraw */
+      if (!S.chx || S.chx.kind !== "other") return;
+      S.chx.local = !S.chx.local;
+      chxSyncOther(); return;
+    }
     if (act === "ch-man-add") {
       if (!S.ch) { toast("Open a challan first."); return; }
       var md = val("mx_desc"), mrRaw = String(val("mx_amt") || "").trim(), mb = val("mx_brand");
@@ -64882,9 +64948,15 @@ function viewCatalogue() {
            out is not, and belongs on the manual line. */
         if (orr < 0) { toast("A minus cannot go here \u2014 the brand discount would be applied to it. Use \u00b1 Amount I worked out myself."); return; }
         if (!(orr > 0)) { toast("Put the rate for one of them, before discount."); return; }
-        if (!ob) { toast("Tap the brand it belongs to \u2014 that is what sets its discount and whose incentive it earns."); return; }
-        S.ch.items.push(otherLine(od, oq, orr, ob));
-        toast(esc(od).slice(0, 30) + " added \u2014 " + oq + " \u00d7 " + money(orr) + " (" + ob + ").");
+        /* 6.9.852 - a market line needs the shop and what we paid; it does NOT need a brand */
+        var oLocal = !!(S.chx && S.chx.local), oShop = val("ox_shop"), oCost = num(val("ox_cost"));
+        if (oLocal && !oShop) { toast("Which shop was it bought from? Accounts needs it to book the purchase."); return; }
+        if (oLocal && !(oCost > 0)) { toast("What did we pay for one? Without it nobody knows if this line made money."); return; }
+        if (!oLocal && !ob) { toast("Tap the brand it belongs to \u2014 that is what sets its discount and whose incentive it earns."); return; }
+        var oLine = otherLine(od, oq, orr, ob);
+        if (oLocal) { oLine.local = 1; oLine.shop = oShop; oLine.cost = Math.round(oCost); if (!ob) oLine.disc = 0; }
+        S.ch.items.push(oLine);
+        toast(esc(od).slice(0, 30) + " added \u2014 " + oq + " \u00d7 " + money(orr) + (oLocal ? " (bought at " + oShop + ")." : " (" + ob + ")."));
       }
       S.chx = null;
       var restoreA = keepFields(CH_FIELDS);
@@ -65026,6 +65098,11 @@ function viewCatalogue() {
           return { code: l.code, desc: l.desc, unit: l.unit, qty: 1, rate: l.rate,
                    brand: String(l.brand || ""), disc: 0, job: false };
         }
+        /* 6.9.852 - a market line with no brand keeps NO brand and a stored 0, like a hand-worked figure */
+        if (isOtherLine(l) && l.local && !String(l.brand || "").trim()) {
+          return { code: l.code, desc: l.desc, unit: l.unit, qty: l.qty, rate: l.rate, brand: "", disc: 0,
+                   local: 1, shop: String(l.shop || ""), cost: Math.round(num(l.cost)) };
+        }
         var prod = (PRODUCTS.filter(function (x) { return x.code === l.code; })[0]) || {};
         var lb = l.brand || realBrand(prod) || chBrandV;
         /* ===== NO RATE ON FILE IS NOT A RATE OF ZERO  (v6.9.517, 19 September 2026) =====
@@ -65042,7 +65119,11 @@ function viewCatalogue() {
         var pd = (l.disc != null && l.disc !== "") ? Number(l.disc)
                : (_pr ? (Number(_pr.pct) || 0) : "");
         if (!_pr && pd === "" && lb && presRealBrand(lb) && _noRate.indexOf(lb) < 0) _noRate.push(lb);
-        return { code: l.code, desc: l.desc, unit: l.unit, qty: l.qty, rate: l.rate, brand: lb, disc: pd };
+        var _lo = { code: l.code, desc: l.desc, unit: l.unit, qty: l.qty, rate: l.rate, brand: lb, disc: pd };
+        /* 6.9.852 - THE SAVE REBUILDS EVERY LINE FROM A FIXED LIST. A challan the godown made with a market
+           line (Challan 1.137.0) lost its shop and cost the first time the desk re-saved it. */
+        if (l.local) { _lo.local = 1; _lo.shop = String(l.shop || ""); _lo.cost = Math.round(num(l.cost)); }
+        return _lo;
       });
       /* v6.9.517 - said out loud, once, with the brand named. The challan still saves: a man
          at the counter must not be blocked by an office decision, but he and the office must
@@ -66136,6 +66217,13 @@ function viewCatalogue() {
     /* 6.9.843 - the room table's quantity box: it sets THAT ROOM'S share and leaves the
        other rooms on the line exactly where they are. No refusal is needed here, because the
        box is never ambiguous - the room is written on it. */
+    if (t.classList && t.classList.contains("qz-rx") && S.qz) {   /* 6.9.852 - stored, no redraw */
+      var rxR = t.getAttribute("data-r") || "", rxK = t.getAttribute("data-k") === "f" ? "f" : "c";
+      if (!rxR) return;
+      S.qz.rx = S.qz.rx || {}; S.qz.rx[rxR] = S.qz.rx[rxR] || {};
+      S.qz.rx[rxR][rxK] = String(t.value || "").trim();
+      return;
+    }
     if (t.classList && t.classList.contains("qz-rq") && S.qz) {
       var rqCode = t.getAttribute("data-code"), rqRoom = t.getAttribute("data-r") || "", rqV = qnum(t.value);
       var rqIt = (S.qz.items || []).filter(function (x) { return x.code === rqCode; })[0];
