@@ -177,7 +177,7 @@ table.ct td.wd{white-space:nowrap}
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.68.0";   /* 1.67.0 - flush busy flag + B9 owner guard, narrower sign-out, Old book under ☰ */
+  var APP_VERSION = "1.69.0";   /* 1.67.0 - flush busy flag + B9 owner guard, narrower sign-out, Old book under ☰ */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -1779,6 +1779,12 @@ table.ct td.wd{white-space:nowrap}
 
   var JOB_CODE = "JOBWORK";
   function isJobLine(l) { return !!(l && (l.job === true || String(l.code || "") === JOB_CODE)); }
+  /* 1.138.0 / CRM 6.9.852 - A LINE THAT SAYS "NO BRAND" HAS NO BRAND: a hand-worked figure or a market
+     buy left without a brand is priced at no discount and earns nobody, instead of borrowing the challan's. */
+  function noBrandLine(l) {
+    return !!(l && !String(l.brand || "").trim() &&
+      (String(l.code || "").indexOf("M-") === 0 || (String(l.code || "").indexOf("X-") === 0 && l.local)));
+  }
   /* v1.26.2 - spelled exactly as the CRM's and the Challan app's. It always did the same
      arithmetic; it just used an intermediate variable, and an exemption for a money function
      that differs only cosmetically is an exemption that teaches you to ignore the guard. */
@@ -2212,7 +2218,8 @@ function cancelMap() {
          fallback it would inherit whichever brand the first material line happened to carry,
          and then be priced against that brand's client discount - a discount on labour, taken
          from a brand that had nothing to do with it. */
-      var bBrand = isJobLine(i) ? "" :
+      var _nb = noBrandLine(i);   /* 6.9.852 */
+      var bBrand = (isJobLine(i) || _nb) ? "" :
         (i.brand || productBrandByCode(i.code) || c.brand || "");
       /* 24 Sep 2026 (CRM 6.9.598 / Challan 1.92.0 / Collect 1.51.0) - a line with no discount of
          its own is priced at the rate IN FORCE ON THE DAY IT WAS DELIVERED, not today's. With
@@ -2221,10 +2228,10 @@ function cancelMap() {
          agreeing with the account. Measured before shipping: not one of those lines has a dated
          rate that started after its delivery, so no figure moves today; this is what stops them
          moving tomorrow. */
-      var disc = (i.disc != null && i.disc !== "") ? Number(i.disc) : clientDiscountOn(cl, bBrand, localDay(c && c.createdAt));   /* 6.9.666 - the local day */
+      var disc = (i.disc != null && i.disc !== "") ? Number(i.disc) : (_nb ? 0 : clientDiscountOn(cl, bBrand, localDay(c && c.createdAt)));   /* 6.9.666 - the local day; 6.9.852 - no brand, no discount */
       var dr = Math.round(rate * (1 - disc / 100));
       return { desc: i.desc || i.code || "", code: i.code, brand: bBrand, qty: qty, rate: rate, disc: disc, dr: dr,
-               amt: qty * dr, job: isJobLine(i), ix: ix };   /* v6.9.565 - ix: which saved line */
+               amt: qty * dr, job: isJobLine(i), nb: _nb, ix: ix };   /* v6.9.565 - ix: which saved line */
     });
     priced.sort(function (a, b) { return (b.disc || 0) - (a.disc || 0); });
     return priced;
