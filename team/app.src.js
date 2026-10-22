@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.858";
+  var APP_VERSION = "6.9.859";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -545,7 +545,9 @@
         if (m[n] && m[n] !== c) bad[n] = 1; else m[n] = c;
       }
       cl.forEach(function (c) { if (c) ewcPut(c.name, c.code); });
-      as.forEach(function (a) { if (a && !m[ewcLow(a.name)]) ewcPut(a.name, a.code); });   /* a client's number wins over his partner number */
+      /* 6.9.859 - a name that is one of OUR TEAM is never given a partner's number: "Dinesh" the admin was tagged PL026 */
+      var staff = {}; (d.team || []).forEach(function (u) { var n = ewcLow(u && u.name); if (n) { staff[n] = 1; staff[n.split(" ")[0]] = 1; } });
+      as.forEach(function (a) { if (a && !m[ewcLow(a.name)] && !staff[ewcLow(a.name)]) ewcPut(a.name, a.code); });   /* a client's number wins over his partner number; 6.9.859 - not on a team name */
       Object.keys(bad).forEach(function (n) { delete m[n]; });
       MAP = Object.keys(m).length ? m : null;
       return MAP;
@@ -24603,6 +24605,16 @@ function viewCatalogue() {
      details at preset discount, so billing can be raised. It's just to help accounts, not included in any hisab."
      Read only: the challan's lines at the client's preset discount (pricedLines - the same price the hisab would
      use), with the GST split worked out, to type the bill from. Nothing is saved and nothing moves in any hisab. */
+  function billFreightTo(c) {
+    var best = null;
+    ((S.data && S.data.audit) || []).forEach(function (a) {
+      if (!a || String(a.action || "") !== "bill:freight" || String(a.target || "") !== String(c && c.id)) return;
+      if (!best || String(a.createdAt || "") >= String(best.createdAt || "")) best = a;
+    });
+    var d = {}; if (best) { try { d = JSON.parse(best.detail || "{}") || {}; } catch (e) { d = {}; } }
+    var to = String(d.to || (c && c.freightTo) || "Client");
+    return to === "Energy World" ? "Energy World" : "Client";
+  }
   function billSheetData(c) {
     /* 6.9.824 - C1: pricedLines wants the NAME. The record was handed over and keyed as "[object Object]",
        so every blank line on this sheet went out at list price while HISAB showed the preset. */
@@ -24615,7 +24627,13 @@ function viewCatalogue() {
                unknown: billDiscBlind() && l.preset && !l.job && !l.disc };
     });
     var taxable = Math.round(tot / 1.18 * 100) / 100, gst = Math.round((tot - taxable) * 100) / 100;
-    return { c: c, rows: rows, tot: tot, taxable: taxable, gst: gst, unknown: rows.filter(function (r) { return r.unknown; }).length };
+    /* 6.9.859 - THE FREIGHT GOES ON THE BILL, WITH 18% GST ON IT, unless accounts says Energy World bears it. The
+       challan's own "freight borne by" is the default; accounts' choice on the sheet is the audit fact bill:freight. */
+    var frTo = billFreightTo(c), frAll = Math.round(nAmt(c.freight) * 100) / 100;
+    var fr = frTo === "Client" ? frAll : 0, frGst = Math.round(fr * 0.18 * 100) / 100;
+    return { c: c, rows: rows, goods: tot, goodsTaxable: taxable, goodsGst: gst, frAll: frAll, frTo: frTo, fr: fr, frGst: frGst,
+             tot: Math.round((tot + fr + frGst) * 100) / 100, taxable: Math.round((taxable + fr) * 100) / 100, gst: Math.round((gst + frGst) * 100) / 100,
+             unknown: rows.filter(function (r) { return r.unknown; }).length };
   }
   /* ===== 6.9.817 - A PRICE THIS LOGIN CANNOT KNOW IS NOT SHOWN AS A PRICE =====
      His report: challan 30/09/2026/204 (Tagra Sanitary Store) on Gautam's billing sheet - five Heliroma
@@ -24653,10 +24671,20 @@ function viewCatalogue() {
           '<td style="' + td + ';text-align:right">' + esc(qShow(r.qty)) + '</td><td style="' + td + ';text-align:right">' + (r.unknown ? '?' : money(r.rate)) + '</td>' +
           '<td style="' + td + ';text-align:right;font-weight:700">' + (r.unknown ? '?' : money(r.amt)) + '</td></tr>';
       }).join("") + '</tbody></table></div>' +
+      (D.frAll > 0 ? '<div class="card" style="margin:8px 0 0;padding:8px 10px;border-color:' + (D.fr ? '#99f6e4' : '#e2e8f0') + '">' +
+        '<div style="display:flex;justify-content:space-between;gap:8px;font-size:14px"><b>Freight</b><b>' + money(D.frAll) + '</b></div>' +
+        (D.fr ? '<div style="display:flex;justify-content:space-between;gap:8px;font-size:13px;color:#0f766e"><span>GST 18% on freight</span><b>' + money(D.frGst) + '</b></div>' +
+                '<div class="meta" style="font-size:12.5px">Added to the bill, as every freight is unless Energy World bears it.</div>'
+              : '<div class="meta" style="font-size:12.5px;color:#b45309">Borne by Energy World \u2014 not on the bill.</div>') +
+        '<div class="acts" style="margin:6px 0 0;gap:6px;flex-wrap:wrap">' +
+          '<button class="btn sm ' + (D.fr ? '' : 'ghost') + '" data-act="bfr-set" data-id="' + esc(c.id) + '" data-to="Client" style="min-height:44px">Client pays \u2014 on the bill</button>' +
+          '<button class="btn sm ' + (D.fr ? 'ghost' : '') + '" data-act="bfr-set" data-id="' + esc(c.id) + '" data-to="Energy World" style="min-height:44px">Energy World bears it</button></div></div>' : '') +
       '<div style="display:grid;grid-template-columns:1fr auto;gap:4px 12px;margin-top:8px;font-size:14px">' +
+      (D.fr ? '<span>Goods (incl. GST)</span><b style="text-align:right">' + money(D.goods) + '</b>' +
+              '<span>Freight + 18% GST</span><b style="text-align:right">' + money(D.fr + D.frGst) + '</b>' : '') +
       '<span>Taxable value (before GST)</span><b style="text-align:right">' + money(D.taxable) + '</b>' +
       '<span>CGST 9% + SGST 9%</span><b style="text-align:right">' + money(D.gst) + '</b>' +
-      '<span><b>Total (incl. 18% GST)</b></span><b style="text-align:right;font-size:16px">' + money(D.tot) + '</b></div>' +
+      '<span><b>Total to bill (incl. 18% GST)</b></span><b style="text-align:right;font-size:16px">' + money(D.tot) + '</b></div>' +
       (D.unknown ? '<div class="card" style="border-color:#fca5a5;background:#fef2f2;margin-top:6px;font-size:13.5px;color:#991b1b"><b>Do not bill from these totals.</b> ' + plural(D.unknown, "line") + ' take this client&rsquo;s preset discount, which this login cannot see yet. Ask the owner for the rate, or wait for the server update.</div>' : '') +
       '<div class="meta" style="font-size:12px;margin-top:4px">GST worked out at 18%, as the MRPs include it. An item on another GST rate must be corrected in the bill.</div>' +
       '<div class="acts" style="margin-top:6px"><button class="btn sm ghost" data-act="bs-xl" data-id="' + esc(c.id) + '">Download Excel</button></div>' +
@@ -25020,6 +25048,10 @@ function viewCatalogue() {
     out.push([]);
     out.push(rsHead(["#", "Item", "Code", "HSN", "Qty", "MRP", "Disc %", "Rate", "Amount (incl. GST)"]));
     D.rows.forEach(function (r) { out.push([r.n, r.desc, r.code, r.hsn, r.qty, { v: r.mrp, s: XL.MONEY }, r.disc || 0, { v: r.rate, s: XL.MONEY }, { v: r.amt, s: XL.MONEY }]); });
+    if (D.fr) {   /* 6.9.859 */
+      out.push(["", "Freight", "", "", "", "", "", "", { v: D.fr, s: XL.MONEY }]);
+      out.push(["", "GST 18% on freight", "", "", "", "", "", "", { v: D.frGst, s: XL.MONEY }]);
+    } else if (D.frAll) out.push(["", "Freight " + D.frAll + " - borne by Energy World, not billed"]);
     out.push([]);
     out.push(["", "Taxable value (before GST)", "", "", "", "", "", "", { v: D.taxable, s: XL.MONEY }]);
     out.push(["", "CGST 9% + SGST 9%", "", "", "", "", "", "", { v: D.gst, s: XL.MONEY }]);
@@ -27233,7 +27265,7 @@ function viewCatalogue() {
     var nm = regFirst(name);
     if (!nm) return esc(fallback || "\u2014");
     var ink = whoInk(name);
-    return '<span style="display:inline-block;padding:1px 7px;border-radius:999px;font-size:12px;font-weight:700;' +
+    return '<span ewcdata-nocode="1" style="display:inline-block;padding:1px 7px;border-radius:999px;font-size:12px;font-weight:700;' +   /* 6.9.859 - staff, never a partner number */
       'white-space:nowrap;color:' + ink[0] + ';background:' + ink[1] + '">' + esc(nm) + '</span>';
   }
   function regRow(n, c, alt, dup) {
@@ -65184,6 +65216,20 @@ function viewCatalogue() {
         return;
       }
       billSaveGo();
+      return;
+    }
+    if (act === "bfr-set") {   /* 6.9.859 - who bears the freight on this bill */
+      if (!canBill()) { toast("Accounts or the owner decides this."); return; }
+      var _fc = (S.data.challans || []).filter(function (x) { return x.id === id; })[0]; if (!_fc) return;
+      var _fto = t.getAttribute("data-to") === "Energy World" ? "Energy World" : "Client";
+      if (billFreightTo(_fc) === _fto) return;
+      var _fhold = formHold();
+      var _frow = { id: mintId("AF"), createdAt: new Date().toISOString(), actor: S.user || "", action: "bill:freight", target: String(_fc.id),
+        detail: JSON.stringify({ to: _fto, challan: String(_fc.challanNo || ""), freight: nAmt(_fc.freight) }), ip: "" };
+      S.data.audit = (S.data.audit || []).concat([_frow]);
+      save("audit", _frow, true);
+      S.modal = modalBillSheet(_fc.id); render(); formBack(_fhold);
+      toast(_fto === "Client" ? "Freight goes on the bill, with 18% GST." : "Freight borne by Energy World \u2014 left off the bill.");
       return;
     }
     if (act === "bu-go") {   /* 6.9.858 */
