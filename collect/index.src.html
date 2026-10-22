@@ -177,7 +177,7 @@ table.ct td.wd{white-space:nowrap}
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.69.0";   /* 1.67.0 - flush busy flag + B9 owner guard, narrower sign-out, Old book under ☰ */
+  var APP_VERSION = "1.70.0";   /* 1.67.0 - flush busy flag + B9 owner guard, narrower sign-out, Old book under ☰ */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -1907,7 +1907,7 @@ table.ct td.wd{white-space:nowrap}
     /* v1.26.2 - less whatever was taken off at the counter, exactly as the CRM does it. */
     var off = hisabExtraOf(c);
     var net = goods > 0 ? Math.max(0, goods - Math.min(Math.max(0, off), goods)) : goods;
-    var freight = String(c.freightTo) === "Client" ? num(c.freight) : 0;
+    var freight = frxBilled(c);   /* 1.70.0 - 18% GST on freight once billed, as the CRM */
     return net + freight;
   }
 
@@ -2209,6 +2209,31 @@ function cancelMap() {
       });
     }
     return _pcbCache[String(code == null ? "" : code)] || "";
+  }
+  /* 6.9.860 / CRM - FREIGHT ON A BILLED DELIVERY CARRIES 18% GST. A bill no (on the challan, or accounts' bill:set fact)
+     turns the client-borne freight into freight x 1.18; accounts' bill:freight fact can say Energy World bears it (0). */
+  var _frxKey = "", _frxMap = null;
+  function frxFacts() {
+    var A = (S.data && S.data.audit) || [], k = A.length + "|" + ((A[A.length - 1] || {}).id || "");
+    if (_frxMap && _frxKey === k) return _frxMap;
+    var m = { no: {}, to: {} }, at = { no: {}, to: {} };
+    A.forEach(function (a) {
+      var act = String((a && a.action) || ""), kk = act === "bill:set" ? "no" : (act === "bill:freight" ? "to" : "");
+      if (!kk) return;
+      var t = String(a.target || ""), w = String(a.createdAt || "");
+      if (at[kk][t] && at[kk][t] > w) return;
+      var d = {}; try { d = JSON.parse(a.detail || "{}") || {}; } catch (e) { d = {}; }
+      at[kk][t] = w; m[kk][t] = kk === "no" ? String(d.billNo || "") : String(d.to || "");
+    });
+    _frxKey = k; _frxMap = m; return m;
+  }
+  function frxBilled(c) {
+    var f = frxFacts(), id = String((c && c.id) || "");
+    var billed = String((c && c.billNo) || f.no[id] || "").trim();
+    var to = String(f.to[id] || (c && c.freightTo) || "Client") === "Energy World" ? "Energy World" : (String(f.to[id] || "") ? "Client" : String((c && c.freightTo) || ""));
+    var fr = num(c && c.freight);
+    if (!billed) return String(c && c.freightTo) === "Client" ? fr : 0;
+    return to === "Client" ? Math.round(fr * 118) / 100 : 0;
   }
   function pricedLines(c, cl) {
     var items = []; try { items = JSON.parse(c.itemsJson || "[]"); } catch (e) { items = []; }
@@ -4575,7 +4600,7 @@ function cancelMap() {
             if (c) {   /* the items must add up to the figure on the header: show what came off and the freight */
               var _gd = its.reduce(function (t, i) { return t + (Number(i.amt) || 0); }, 0);
               var _off = _gd > 0 ? Math.min(Math.max(0, hisabExtraOf(c)), _gd) : 0;
-              var _fr = String(c.freightTo) === "Client" ? num(c.freight) : 0;
+              var _fr = frxBilled(c);   /* 1.70.0 */
               if (_off > 0) { doc.setTextColor(185, 28, 28); doc.text("Less: extra discount" + (c.discNote ? " (" + doc.splitTextToSize(String(c.discNote), 60)[0] + ")" : ""), L + 2, y); doc.text("- " + RS(_off), cAm, y, { align: "right" }); y += 4.2; }
               if (_fr > 0) { doc.setTextColor(17, 34, 45); doc.text("Freight", L + 2, y); doc.text(RS(_fr), cAm, y, { align: "right" }); y += 4.2; }
               var pu = hisabProofUrl(c.id);
