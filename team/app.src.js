@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.859";
+  var APP_VERSION = "6.9.860";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -24606,13 +24606,7 @@ function viewCatalogue() {
      Read only: the challan's lines at the client's preset discount (pricedLines - the same price the hisab would
      use), with the GST split worked out, to type the bill from. Nothing is saved and nothing moves in any hisab. */
   function billFreightTo(c) {
-    var best = null;
-    ((S.data && S.data.audit) || []).forEach(function (a) {
-      if (!a || String(a.action || "") !== "bill:freight" || String(a.target || "") !== String(c && c.id)) return;
-      if (!best || String(a.createdAt || "") >= String(best.createdAt || "")) best = a;
-    });
-    var d = {}; if (best) { try { d = JSON.parse(best.detail || "{}") || {}; } catch (e) { d = {}; } }
-    var to = String(d.to || (c && c.freightTo) || "Client");
+    var to = String(billFreightMap()[String(c && c.id)] || (c && c.freightTo) || "Client");   /* 6.9.860 - one pass, cached */
     return to === "Energy World" ? "Energy World" : "Client";
   }
   function billSheetData(c) {
@@ -32399,7 +32393,29 @@ function viewCatalogue() {
      hisabPayable read the same money TWICE, six lines apart - one line nAmt, the next Number.
      That is what a rule without a single reader looks like after three months. */
   function payAmt(p) { return nAmt((p || {}).amount); }
-  function chFreight(c) { return String(c.freightTo) === "Client" ? nAmt(c.freight) : 0; }
+  /* 6.9.860 - his words: "challan entered for billing and bill no entered must auto add 18% gst to freight amount", and
+     asked whether the account should carry it too: "ye for all". A delivery with a bill no carries its client-borne freight
+     at 118%; who bears it is accounts' choice on the billing sheet (bill:freight), else the challan's own. Without a bill no,
+     exactly as before. MEASURED 22 Oct: 18 billed deliveries, Rs 12,600 freight, + Rs 2,268 GST, on 10 clients. */
+  var _bfMapK = "", _bfMap = null;
+  function billFreightMap() {
+    var A = (S.data && S.data.audit) || [], k = A.length + "|" + ((A[A.length - 1] || {}).id || "");
+    if (_bfMap && _bfMapK === k) return _bfMap;
+    var m = {}, at = {};
+    A.forEach(function (a) {
+      if (!a || String(a.action || "") !== "bill:freight") return;
+      var t = String(a.target || ""), w = String(a.createdAt || "");
+      if (at[t] && at[t] > w) return;
+      var d = {}; try { d = JSON.parse(a.detail || "{}") || {}; } catch (e) { d = {}; }
+      at[t] = w; m[t] = String(d.to || "");
+    });
+    _bfMapK = k; _bfMap = m; return m;
+  }
+  function chFreightGst(c) { return !!String((c && c.billNo) || "").trim() && billFreightTo(c) === "Client" && nAmt(c && c.freight) > 0; }
+  function chFreight(c) {
+    if (!String((c && c.billNo) || "").trim()) return String(c.freightTo) === "Client" ? nAmt(c.freight) : 0;
+    return billFreightTo(c) === "Client" ? Math.round(nAmt(c.freight) * 118) / 100 : 0;
+  }
   /* v6.9.325 - ONE EXPRESSION FOR WHAT A DELIVERY IS WORTH: net goods - which from v6.9.324
      has any further discount already taken off it - plus the freight the client is carrying.
      Five screens were spelling this out longhand, as a reduce over pricedLines plus chFreight,
@@ -36330,7 +36346,7 @@ function viewCatalogue() {
             total = sub + frt - xOff;
             if (frt > 0) {
               more(4.4); F("normal"); doc.setFontSize(6.8); ink(AMBER);
-              doc.text("Freight" + (c.driver ? " (" + pdfSafe(String(c.driver)) + ")" : ""), pX, y);
+              doc.text("Freight" + (chFreightGst(c) ? " + 18% GST" : "") + (c.driver ? " (" + pdfSafe(String(c.driver)) + ")" : ""), pX, y);
               doc.text(RS(frt), cA, y, { align: "right" }); y += 4.4;
             }
             if (xOff > 0) {
@@ -39794,7 +39810,7 @@ function viewCatalogue() {
       l.chs.forEach(function (c) {
         lines.push({ d: dstr(c.createdAt), p: "Challan " + c.challanNo + (c.brand ? " (" + c.brand + ")" : ""), dr: challanNet(c), cr: 0 });
         if (chFreight(c) > 0) {
-          lines.push({ d: dstr(c.createdAt), p: "Freight - " + c.challanNo + (c.driver ? " (" + c.driver + ")" : ""), dr: chFreight(c), cr: 0 });
+          lines.push({ d: dstr(c.createdAt), p: "Freight" + (chFreightGst(c) ? " + 18% GST" : "") + " - " + c.challanNo + (c.driver ? " (" + c.driver + ")" : ""), dr: chFreight(c), cr: 0 });
         }
       });
       l.pays.forEach(function (p) {
