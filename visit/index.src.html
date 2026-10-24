@@ -208,7 +208,7 @@ table.att td.ok,table.att td.no{font-size:16px}
       button: function () { return '<button type="button" class="ewthm" onclick="ewTheme.next(this)">' + ewtLabel() + '</button>'; }
     };
   })();
-  var APP_VERSION = "1.7.1";   /* 1.6.1 - Huliot Group introduction on quotes; 1.6.0 (17 Oct 2026) - a dropped POST never loses a quote; admin sees every executive; daily report; attendance grid */
+  var APP_VERSION = "1.8.0";   /* 1.6.1 - Huliot Group introduction on quotes; 1.6.0 (17 Oct 2026) - a dropped POST never loses a quote; admin sees every executive; daily report; attendance grid */
   /* 1.6.0 - ONLY THE SERVER'S OWN "NO" SIGNS A MAN OUT. The old test was /pin|locked|not allowed|blocked|removed/:
      any data error that happened to contain "not allowed" or "removed" (a refused row, a removed brand) signed the
      executive out and wiped his snapshot. These are the sign-in answers the server gives (teamAuth: "Wrong name or
@@ -2144,7 +2144,7 @@ table.att td.ok,table.att td.no{font-size:16px}
     var k = dkey(name), ev = [], inR = function (d) { return d && d >= from && d <= to; };
     (S.data.sitevisits || []).forEach(function (v) {
       if (!v || dkey(v.createdBy) !== k) return; var at = String(v.createdAt || v.date || ""), d = dstr(at); if (!inR(d)) return;
-      ev.push({ d: d, at: at, t: "visit", k: "Site visit", what: String(v.siteName || v.client || ""), more: [v.visitType, v.purpose || v.note].filter(Boolean).join(" · ") });
+      ev.push({ d: d, at: at, t: "visit", k: "Site visit", what: String(v.siteName || v.client || ""), more: [v.visitType ? "met " + v.visitType : "", v.purpose || v.note].filter(Boolean).join(" · ") });   /* 1.8.0 */
     });
     (S.data.audit || []).forEach(function (r) {
       if (!r) return;
@@ -2770,10 +2770,42 @@ table.att td.ok,table.att td.no{font-size:16px}
     h += '<div class="acts"><button class="btn gry" data-act="close">Close</button></div>';
     return h;
   }
+  /* 1.8.0 - WHOM DID YOU MEET, BY NAME. Owner = the client of the site (or another client on the book); Plumber / Architect /
+     Builder / PMC = a partner on the register, picked from the list, or added here with his mobile (the same register the CRM
+     keeps - ensurePartner never makes a second partner for a mobile already on it). The name is filed on the visit as
+     "Plumber: Ramesh Kumar", so every report and the day-by-day log say who it was. A site with no plumber / architect / builder
+     on it takes the one met. "Site only" needs no name. */
+  var MET_RX = { Plumber: /plumb/i, Architect: /archit/i, Builder: /build/i, PMC: /pmc/i };
+  function metList(met) {
+    if (met === "Owner") return myClients().map(function (c) { return c.name; });
+    var rx = MET_RX[met]; if (!rx) return [];
+    return assocLive().filter(function (a) { return a && a.name && rx.test(String(a.role || "")); }).map(function (a) { return String(a.name); }).sort(alpha);
+  }
+  function metKnown(met, name) { var k = dkey(name); return !!k && metList(met).some(function (n) { return dkey(n) === k; }); }
+  function metDefault(met, st) {
+    if (met === "Owner") return st.client || "";
+    if (met === "Plumber") return st.plumber || ""; if (met === "Architect") return st.architect || ""; if (met === "Builder") return st.builder || "";
+    return "";
+  }
+  function metPickHtml(L, st) {
+    if (!L.met || L.met === "Site only") return "";
+    if (L.metName == null) L.metName = metDefault(L.met, st);
+    var known = metKnown(L.met, L.metName), typed = String(L.metName || "").trim();
+    var h = '<label for="sl_who">' + esc(L.met === "Owner" ? "Which client" : "Which " + L.met.toLowerCase()) + ' <span class="req">*</span></label>' +
+      '<input id="sl_who" list="sl_whos" value="' + esc(L.metName || "") + '" placeholder="Pick from the list, or type a new name" autocomplete="off"/>' + dl("sl_whos", metList(L.met));
+    if (typed && !known) {
+      h += L.met === "Owner"
+        ? '<div class="note warn" style="margin-top:6px">Not on the book as a client. It is saved on the visit by name; add him as a client to quote.</div>'
+        : '<div class="note warn" style="margin-top:6px"><b>New ' + esc(L.met.toLowerCase()) + '</b> &mdash; he is added to the partner register with this mobile.</div>' +
+          '<label for="sl_wmob">His mobile <span class="req">*</span></label><input id="sl_wmob" inputmode="numeric" value="' + esc(L.metMob || "") + '" placeholder="10 digits"/>';
+    }
+    return h;
+  }
   function svLogSheet(st) {
     var L = S.sl || (S.sl = { id: st.id, met: "" });
     return '<h2>Log a visit</h2><div class="meta">' + esc(st.name || st.client || "") + '</div>' +
       '<label>Whom did you meet</label><div class="chips">' + MET.map(function (m) { return '<button class="chip' + (L.met === m ? ' on' : '') + '" data-act="sl-met" data-k="' + esc(m) + '">' + esc(m) + '</button>'; }).join("") + '</div>' +
+      '<div id="sl_whobox">' + metPickHtml(L, st) + '</div>' +   /* 1.8.0 */
       '<label for="sl_note">What happened</label><textarea id="sl_note" placeholder="e.g. slab done, plumbing starts in two weeks, owner wants a CPVC quote">' + esc(L.note || "") + '</textarea>' +
       '<label>Visit for which brand <span class="req">*</span></label>' + brandTiles(L.brands || (L.brands = []), "sl-brand", "sl") +   /* 1.2.0 */
       nextHtml("sl_next", L.next) +
@@ -2786,6 +2818,16 @@ table.att td.ok,table.att td.no{font-size:16px}
     var L = S.sl || {}, st = siteById(L.id); if (!st) return;
     L.note = val("sl_note"); L.stage = val("sl_stage"); L.next = val("sl_next");
     if (!L.met) { toast("Whom did you meet?"); return; }
+    /* 1.8.0 - the name of the man met */
+    var _wEl = document.getElementById("sl_who"); if (_wEl) L.metName = String(_wEl.value || "").trim().replace(/\s+/g, " ");
+    var _mEl = document.getElementById("sl_wmob"); if (_mEl) L.metMob = String(_mEl.value || "");
+    var _wNm = L.met === "Site only" ? "" : String(L.metName || "").trim(), _wNew = false;
+    if (L.met !== "Site only") {
+      if (_wNm.length < 2) { toast("Pick or type the " + (L.met === "Owner" ? "client" : L.met.toLowerCase()) + "\u2019s name."); return; }
+      var _hit = metList(L.met).filter(function (n) { return dkey(n) === dkey(_wNm); })[0]; if (_hit) _wNm = _hit;
+      _wNew = !_hit && L.met !== "Owner";
+      if (_wNew && mob10(L.metMob).length !== 10) { S.sheet = svLogSheet(st); render(); toast("A new " + L.met.toLowerCase() + " needs his 10-digit mobile."); return; }
+    }
     if (L.note.length < 3) { toast("Write a line about the visit."); return; }
     if (!(L.brands || []).length) { toast("Tap the brand this visit is for."); return; }   /* 1.2.0 */
     if (!nextOk(L.next)) { toast("Pick the next meeting date."); return; }
@@ -2794,9 +2836,15 @@ table.att td.ok,table.att td.no{font-size:16px}
     var _bl = brandLine(L.brands, null, L.next), _purp = (L.note + " · " + _bl).slice(0, 700), _brands = L.brands.slice(), _next = L.next;
     if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
     gps(5000).then(function (g) {
-      var extra = { siteId: st.id, setLocation: false, purpose: _purp, photoB64: "", visitType: L.met, lat: g.lat || "", lng: g.lng || "", accuracy: g.acc || "" };
+      var _vt = _wNm ? (L.met + ": " + _wNm).slice(0, 120) : L.met;   /* 1.8.0 - "Plumber: Ramesh Kumar" */
+      if (_wNew) { try { ensurePartner(_wNm, L.met, st.location || "", st.city || st.area || "", L.metMob, { notes: "added at a site visit (" + (st.name || "") + ")" }); } catch (eP) { } }
+      if (_wNm && ({ Plumber: "plumber", Architect: "architect", Builder: "builder" })[L.met]) {
+        var _fld = ({ Plumber: "plumber", Architect: "architect", Builder: "builder" })[L.met];
+        if (!String(st[_fld] || "").trim()) { var _up = {}; _up[_fld] = _wNm; saveRow("sites", Object.assign({}, st, _up)); st[_fld] = _wNm; }   /* the site had none: he is the one */
+      }
+      var extra = { siteId: st.id, setLocation: false, purpose: _purp, photoB64: "", visitType: _vt, lat: g.lat || "", lng: g.lng || "", accuracy: g.acc || "" };
       /* shown at once; the server's own row replaces it on the next update */
-      var local = { id: "LV-" + Date.now(), siteId: st.id, siteName: st.name || "", client: st.client || "", createdBy: S.user, createdAt: iso(), date: today(), visitType: L.met, purpose: _purp, verified: "" };
+      var local = { id: "LV-" + Date.now(), siteId: st.id, siteName: st.name || "", client: st.client || "", createdBy: S.user, createdAt: iso(), date: today(), visitType: _vt, purpose: _purp, verified: "" };
       (S.data.sitevisits = S.data.sitevisits || []).push(local);
       var stageCh = L.stage && L.stage !== st.stage;
       if (stageCh) { saveRow("sites", Object.assign({}, st, { stage: L.stage })); st.stage = L.stage; S.stageMoved = st.id; }   /* 1.4.21 - the pitch band shows on the sheet below */
@@ -3339,7 +3387,7 @@ table.att td.ok,table.att td.no{font-size:16px}
     if (act === "sl-brand") { if (!S.sl) return; S.sl.brands = S.sl.brands || []; var _on = togIn(S.sl.brands, k); t.classList.toggle("on", _on); t.setAttribute("aria-pressed", _on); return; }   /* 1.2.0 - in place, nothing typed is lost */
     if (act === "pv-came" || act === "pv-int") { S.pv = S.pv || {}; var _a = act === "pv-came" ? (S.pv.came = S.pv.came || []) : (S.pv.int = S.pv.int || []); var _on2 = togIn(_a, k); t.classList.toggle("on", _on2); t.setAttribute("aria-pressed", _on2); return; }
     if (act === "nd") { var _ni = el(id); if (_ni) { _ni.value = addDays(Number(k) || 1); if (id === "pv_next") { S.pv = S.pv || {}; S.pv.next = _ni.value; } else if (S.sl) S.sl.next = _ni.value; } return; }
-    if (act === "sl-met") { if (!S.sl) return; S.sl.note = val("sl_note"); S.sl.stage = val("sl_stage"); S.sl.next = val("sl_next"); S.sl.met = k; S.sheet = svLogSheet(siteById(S.sl.id)); render(); return; }
+    if (act === "sl-met") { if (!S.sl) return; S.sl.note = val("sl_note"); S.sl.stage = val("sl_stage"); S.sl.next = val("sl_next"); if (S.sl.met !== k) { S.sl.metName = null; S.sl.metMob = ""; } S.sl.met = k; S.sheet = svLogSheet(siteById(S.sl.id)); render(); return; }
     if (act === "sl-save") { slSave(t); return; }
     if (act === "cl-new") { var s0 = k ? siteById(k) : null; S.cn = { name: s0 ? (s0.client || s0.name) : "", mobile: s0 ? s0.mobile : "", dist: s0 ? (s0.location || districts()[0]) : districts()[0], area: s0 ? s0.city : "", plumber: s0 ? s0.plumber : "", architect: s0 ? s0.architect : "", siteId: s0 ? s0.id : "" }; S.sheet = clNewSheet(); render(); return; }
     if (act === "cn-save") { cnSave(); return; }
