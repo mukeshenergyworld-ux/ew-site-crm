@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.860";
+  var APP_VERSION = "6.9.861";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -33820,7 +33820,23 @@ function viewCatalogue() {
     var num = 'padding:3px 5px;text-align:right;white-space:nowrap;border-top:1px solid #e2e8f0;font-variant-numeric:tabular-nums';
     var cell = 'padding:3px 5px;white-space:nowrap;border-top:1px solid #e2e8f0';
     var h = '';
+    /* 6.9.861 - HIS WORDS: "if any account settled in full, hide that with date like settled on date ..., dont show, if one
+       want old account then can click and download pdf". Everything up to the LAST line where the running balance came
+       to nil is folded into one line that says so; the lines after it (new business since) stay. Tap to show them, or
+       take the full statement as a PDF. Nothing is removed from the account - only from this screen. */
+    var _cut = -1;
+    m.rows.forEach(function (r, i) { if (i > 0 && Math.abs(Number(r.bal) || 0) < 0.5) _cut = i; });
+    var _showOld = !!(S.miniOld && S.miniOld[cl]);
+    if (_cut > 0) {
+      var _sr = m.rows[_cut];
+      h += '<tr style="background:#f0fdf4"><td colspan="' + MINI_HEAD2.length + '" style="padding:8px 6px;border-top:1px solid #bbf7d0;white-space:normal">' +
+        '<b style="color:#15803d">&#10003; Settled in full on ' + esc(_sr.date) + '</b>' +
+        ' <span style="color:#64748b">&middot; ' + plural(_cut + 1, "earlier line") + (_showOld ? ' shown below' : ' hidden') + '</span> ' +
+        '<button class="btn sm ghost" data-act="mini-old" data-n="' + esc(cl) + '" style="min-height:44px;margin-left:6px">' + (_showOld ? 'Hide them again' : 'Show them') + '</button> ' +
+        '<button class="btn sm ghost" data-act="bill-pdf" data-n="' + esc(cl) + '" data-all="1" data-pp="0" style="min-height:44px">&#8681; Old account PDF</button></td></tr>';
+    }
     m.rows.forEach(function (r, i) {
+      if (_cut > 0 && i <= _cut && !_showOld) return;   /* 6.9.861 */
       var bg = r.kind === "ret" ? "#fef2f2" : (r.kind === "bf" ? "#fff" : (i % 2 ? "#f8fafc" : "#fff"));
       var tone = r.kind === "ret" ? "#b91c1c" : (r.kind === "pay" ? "#0f766e" : "#0f172a");
       h += '<tr style="background:' + bg + '">' +
@@ -60354,6 +60370,7 @@ function viewCatalogue() {
        array the screen draws, so a file he sends can never disagree with the screen he
        read it off. Neither writes anything. */
     if (act === "mini-fold") { S.miniShut = !S.miniShut; render(); return; }
+    if (act === "mini-old") { var _mo = t.getAttribute("data-n") || ""; S.miniOld = S.miniOld || {}; S.miniOld[_mo] = !S.miniOld[_mo]; keepScroll = true; render(); return; }   /* 6.9.861 */
     if (act === "itf-open") {   /* 6.9.698 */
       var _ik = t.getAttribute("data-k") || "";
       S.itf = S.itf || { cl: t.getAttribute("data-cl") || "", q: "" };
