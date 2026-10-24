@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.861";
+  var APP_VERSION = "6.9.863";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -15345,6 +15345,38 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     });
     box.innerHTML = rows.join("");
   }
+  /* ---- WHO HE IS, ABOVE EVERYTHING ELSE  (v6.9.862, 24 Oct 2026) ----
+     HIS WORDS, on the finalise sheet for Sachin Bansal: "show at top that client is under which
+     executive and which builder, also previous balance". Three facts the man pressing Finalise
+     reaches for first, and none of them was on this screen: the executive (the client's owner,
+     execForClient - the same one the reminders copy), the builder (named on this delivery, else on
+     the client), and the balance before this delivery (hisabStanding - the same figure as the box
+     below, so the two can never disagree). When the client is billed through a master account,
+     that account and what it owes in all are shown too, because that is who actually pays.
+     Read only: nothing here is saved and no figure moves. */
+  function hsbWhoStrip(c, cl) {
+    var k = clientByName(cl) || {};
+    var ex = execForClient(cl);
+    var bld = String(c.builder || k.builder || "").trim();
+    var st = hisabStanding(c, cl);
+    var led = clientLedger(cl) || {};
+    var op = Number(led.opening) || 0;
+    var m = mstOf(cl), mt = null;
+    if (m && mstKey(m) !== mstKey(cl)) { try { mt = mstRows(m).tot; } catch (e) { mt = null; } }
+    var cell = function (lab, val) {
+      return '<div style="flex:1 1 150px;min-width:0">' +
+        '<div style="font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:#64748b">' + lab + '</div>' +
+        '<div style="font-size:14px;font-weight:700;color:#0f172a;margin-top:2px;overflow-wrap:anywhere">' + val + '</div></div>';
+    };
+    return '<div class="card" style="padding:9px 11px;background:#eef2ff;border-color:#c7d2fe;display:flex;flex-wrap:wrap;gap:10px 14px">' +
+      cell("Executive", ex ? (function () { var ink = whoInk(ex); return '<span style="display:inline-block;padding:2px 9px;border-radius:999px;color:' + ink[0] + ';background:' + ink[1] + '">' + esc(ex) + '</span>'; })() : '<span style="color:#b45309">none assigned</span>') +
+      cell("Builder", bld ? esc(bld) : '<span style="color:#64748b;font-weight:500">&mdash; not named</span>') +
+      cell("Previous balance", '<span style="color:' + (st.before > 0.5 ? '#b91c1c' : '#15803d') + '">' + money(st.before) + '</span>' +
+        (Math.abs(op) > 0.5 ? '<div style="font-size:12px;font-weight:500;color:#475569">incl. ' + money(op) + ' carried over from the old book</div>' : '')) +
+      (m && mt ? '<div style="flex:1 1 100%;font-size:12.5px;color:#312e81;border-top:1px solid #c7d2fe;padding-top:6px">' +
+        '&#127970; Billed through <b>' + esc(m) + '</b> &mdash; that account owes <b>' + money(mt.due) + '</b> across all its sites.</div>' : '') +
+      '</div>';
+  }
   function modalAddToHisab(id) {
     var c = (S.data.challans || []).filter(function (x) { return x.id === id; })[0];
     if (!c) return '<h2>Not found</h2><div class="foot"><button class="btn" data-act="close">Close</button></div>';
@@ -15357,6 +15389,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
                                  : (p.queued ? '<b>on this phone, still uploading</b>' : '<b>on file</b>')) +
       '. ' + (p.has ? 'Check the paper first &mdash; this' : 'This') +
       ' is the last look before the delivery counts as part of his hisab.</p>' +
+      hsbWhoStrip(c, cl) +   /* 6.9.862 */
       hisabStandingHtml(c, cl) + hisabReceiptPic(p) + chTrailBox(c) + hisabGapBox(c);
 
     /* ---- 0. NO PAPER, AND ONE LINE SAYING WHY  (v6.9.342) ----
@@ -18218,6 +18251,102 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
 
   /* The reassuring "flash": show the client's pre-set brand discounts right on the challan form, so
      the user SEES the bargain that will be frozen onto every line at billing time. */
+  /* ===== 6.9.863 - A CHALLAN ON A BUILDER'S NAME ASKS WHICH SITE  (24 Oct 2026) =====
+     HIS WORDS: "if there is more than one site under a builder, then stop when anyone making challan with that
+     builder name, show him list of sites under that builder to choose, if not then add new site and carry on".
+     His answers: the list shows for a builder with 1+ sites (mstSites); a site not on the list is typed and the
+     challan carries on on the builder's own account with that site name, and the OFFICE opens the site - the
+     owner does it at once, anyone else leaves a site:ask fact that lands on the owner's Today as "New sites to
+     open". Opening one makes a client "<builder> - <site>" billed through the builder, with the builder's
+     executive, district, number and bill-to, and his brand preset (or, with no preset, his own discounts).
+     The Challan app (1.142.0) asks the same question and writes the same fact. */
+  function msAsked(z, name) { return !!(z && z.siteAsk && mstKey(z.siteAskFor) === mstKey(name)); }
+  function msAskHtml(name) {
+    var sites = mstSites(name); if (!name || !sites.length) return "";
+    var z = S.ch || {};
+    if (msAsked(z, name)) {
+      return '<div class="card" style="border-color:#c7d2fe;background:#eef2ff;padding:9px 11px;margin-top:6px">' +
+        '<b style="color:#312e81">New site: ' + esc(z.siteAsk) + '</b>' +
+        '<div class="meta" style="font-size:12.5px;margin-top:2px">This challan goes on ' + esc(name) + '\u2019s own account with the site name on it. The site is opened in the CRM by the office.</div>' +
+        '<div class="acts" style="margin-top:6px"><button class="btn sm ghost" data-act="ms-undo">Pick a site again</button></div></div>';
+    }
+    return '<div class="card" style="border-color:#f59e0b;background:#fffbeb;padding:9px 11px;margin-top:6px">' +
+      '<b style="color:#92400e">' + esc(name) + ' is a builder with ' + plural(sites.length, "site") + '. Which site is this delivery for?</b>' +
+      '<div class="meta" style="font-size:12.5px;margin:2px 0 6px;color:#92400e">Each site keeps its own hisab. Pick it, so the bill and the receipt go on the right one.</div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:6px">' + sites.map(function (n) {
+        return '<button class="btn sm" data-act="ms-pick" data-n="' + esc(n) + '" style="min-height:44px;white-space:normal;text-align:left">' + esc(n) + '</button>';
+      }).join("") + '</div>' +
+      (z.msNew
+        ? '<label style="margin-top:8px">The new site\u2019s name</label><input id="ms_new" placeholder="e.g. Tower B, Sector 18" autocomplete="off"/>' +
+          '<div class="acts" style="margin-top:6px;gap:6px;flex-wrap:wrap"><button class="btn sm" data-act="ms-go" data-n="' + esc(name) + '">' +
+            (roleIs("admin") ? 'Open this site and pick it' : 'Carry on with this site') + '</button>' +
+          '<button class="btn sm ghost" data-act="ms-new" data-off="1">Back to the list</button></div>'
+        : '<div class="acts" style="margin-top:8px"><button class="btn sm ghost" data-act="ms-new" style="border-color:#f59e0b;color:#92400e">+ Not in the list \u2014 a new site</button></div>') +
+      '</div>';
+  }
+  function msAskPaint() { var b = el("m_client_mst"); if (b) b.innerHTML = msAskHtml(val("m_client")); }
+  function msPickClient(n) {
+    var e2 = el("m_client"); if (!e2) return;
+    e2.value = n; S.ch = S.ch || {}; S.ch.client = n; S.ch.siteAsk = ""; S.ch.siteAskFor = ""; S.ch.msNew = false;
+    var ms = el("m_site"); if (ms) ms.value = "";
+    try { e2.dispatchEvent(new Event("change", { bubbles: true })); } catch (e) { }
+    msAskPaint();
+  }
+  /* the owner opens a site: a client under the builder, priced as the builder */
+  function msOpenSite(master, site) {
+    var m = clientByName(master); if (!m) { toast(master + " is not on this device - refresh."); return Promise.resolve(null); }
+    var nm = String(m.name).trim() + " - " + String(site).trim();
+    var have = clientByName(nm); if (have) return Promise.resolve(have.name);
+    var rates = {}, pp = mstPreset(m.name);
+    if (pp && Object.keys(pp.rates || {}).length) rates = pp.rates;
+    else mstBrands(m.name).forEach(function (b) { var d = discRow(m.name, b); if (d && d.pct !== "" && d.pct != null) rates[b] = Number(d.pct) || 0; });
+    return save("clients", {
+      id: "", createdBy: S.user, name: nm, shortName: shortNameOf(nm, m.mobile || ""),
+      location: m.location || "", area: m.area || "", mobile: m.mobile || "", mobile2: m.mobile2 || "",
+      address: "", type: m.type || "Builder", segment: m.segment || "",
+      architect: "", plumber: "", builder: m.builder || "", pmc: "",
+      notes: "Site of " + m.name + " - opened " + today() + " by " + S.user,
+      billingJson: m.billingJson || "[]", openingAmt: "", openingAsOn: "", leadType: "Old",
+      creditLimit: "", creditDays: m.creditDays || "", stage: "",
+      ownedBy: String(m.ownedBy || m.createdBy || S.user), billedThrough: m.name
+    }).then(function (r) {
+      if (!r) return null;
+      var made = r.name || nm;
+      var cc = clientByName(made); if (cc) cc.billedThrough = m.name;
+      try { save("audit", { action: "client:master", actor: S.user, recId: (r && r.id) || "", detail: JSON.stringify({ site: made, master: m.name, why: "opened as a site of " + m.name }) }, true); } catch (e) { }
+      try { save("audit", { action: "site:open", actor: S.user, recId: mstKey(m.name), detail: JSON.stringify({ master: m.name, site: String(site).trim(), name: made }) }, true); } catch (e) { }
+      bustCaches();
+      try { if (Object.keys(rates).length) mstPPApply(m.name, rates, [made]); } catch (e) { }
+      return made;
+    });
+  }
+  /* what the counter typed and the office has not opened yet */
+  function msAsks() {
+    var done = {}, out = [], seen = {};
+    (S.data.audit || []).forEach(function (a) {
+      if (a.action !== "site:open") return; var d = cmpJ(a.detail);
+      done[mstKey(d.master) + "|" + mstKey(d.site)] = 1;
+    });
+    (S.data.audit || []).forEach(function (a) {
+      if (a.action !== "site:ask") return; var d = cmpJ(a.detail), k = mstKey(d.master) + "|" + mstKey(d.site);
+      if (!d.master || !d.site || done[k] || clientByName(String(d.master).trim() + " - " + String(d.site).trim())) return;
+      if (seen[k]) { seen[k].chs.push(d.challan); return; }
+      out.push(seen[k] = { master: d.master, site: d.site, by: a.actor || "", at: a.createdAt, chs: [d.challan] });
+    });
+    return out;
+  }
+  function msAskCard() {
+    if (!roleIs("admin")) return "";
+    var L = msAsks(); if (!L.length) return "";
+    return '<div class="card" style="border-color:#c7d2fe;background:#f8faff"><h3 style="margin:0 0 4px;color:#312e81">New sites to open (' + L.length + ')</h3>' +
+      '<div class="meta" style="font-size:12.5px">Typed at the counter on a builder\u2019s challan. Opening one makes it a site billed through the builder, priced at his discounts.</div>' +
+      L.map(function (x) {
+        return '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;border-top:1px solid #e0e7ff;padding:8px 0 0;margin-top:8px">' +
+          '<div style="flex:1 1 220px;min-width:0"><b>' + esc(x.master) + ' &rarr; ' + esc(x.site) + '</b>' +
+          '<div class="meta" style="font-size:12px">Challan ' + esc(x.chs.filter(Boolean).join(", ")) + ' &middot; by ' + esc(regFirst(x.by)) + ' &middot; ' + esc(dmy(x.at)) + '</div></div>' +
+          '<button class="btn sm" data-act="ms-open" data-m="' + esc(x.master) + '" data-s="' + esc(x.site) + '" style="min-height:44px">Open it</button></div>';
+      }).join("") + '</div>';
+  }
   function presetFlashHtml(name) {
     var c = clientByName(name); if (!c) return '';
     /* v6.9.207: ONE chip per brand. Where history left two rows for the same brand this shows the
@@ -52422,6 +52551,7 @@ function viewCatalogue() {
       ((z && z.copyOf) ? '<div class="empty" style="text-align:left;padding:0 0 10px;color:#1d4ed8">Copied from challan <b>' + esc(z.copyOf) + '</b> \u2014 same client, site and products. Check the quantities, then create. <b>The old challan is not changed</b>, and this becomes a new challan with its own number.</div>' : "") +
       '<label>Location</label><select id="m_loc">' + opts(LOCATIONS, (z && z.loc) || LOCATIONS[0]) + '</select>' +
       strictClientField("m_client", (S.ch && S.ch.client) || "") +
+      (isEdit ? '' : '<div id="m_client_mst">' + msAskHtml((S.ch && S.ch.client) || "") + '</div>') +   /* 6.9.863 */
       /* v6.9.253 - SMALL, AND IN THE CORNER.
          It shouted for a reason once: in v6.9.238 every challan was still being written in
          the paper book first, and a blank box had to be visible from across the room. That
@@ -56850,6 +56980,7 @@ function viewCatalogue() {
     var _mw = ""; try { _mw = moneyWaitStrip(); } catch (eMw) { _mw = ""; }   /* 6.9.723 */
     var _dm = ""; try { _dm = dupMobileCard(); } catch (eDm) { _dm = ""; }
     if (S.tab === "dash") { try { _dm += wrmDayCard(); } catch (eWr) { } try { _dm += pcDayCard(); } catch (ePc) { } }
+    if (S.tab === "dash" && roleIs("admin")) { try { _dm = msAskCard() + _dm; } catch (eMs) { } }   /* 6.9.863 */
     if (S.tab === "dash" || S.tab === "billing" || S.tab === "challans") { try { _dm = billNowCard() + _dm; } catch (eBn) { } }   /* 6.9.857 */   /* 6.9.856 - payment calls */   /* 6.9.813 - Monday and Thursday */   /* 6.9.742 - on every page, for the owner */
     h += '<main>' + _rst + _appr + _mw + _dm + body +
       '<div class="foot-note">Energy World Team <span data-act="crash-log" style="cursor:pointer;border-bottom:1px dotted #cbd5e1;display:inline-block;padding:13px 6px;margin:-13px 0" title="View crash log">v' + APP_VERSION + '</span> &middot; data lives in your Google Sheet</div></main>';
@@ -57077,6 +57208,7 @@ function viewCatalogue() {
         if (S[pair[1]]) S[pair[1]].client = e.target.value;
         if (pair[1] === "rt") { var _rpk = el("rt_picked"); if (_rpk && S.rt) _rpk.innerHTML = rtPickedHtml(S.rt); }   /* 6.9.713 - his lines against his challans */
         var fl = el(pair[0] + "_flash"); if (fl) fl.innerHTML = presetFlashHtml(e.target.value);
+        if (pair[0] === "m_client") { if (S.ch && !msAsked(S.ch, e.target.value)) { S.ch.siteAsk = ""; S.ch.siteAskFor = ""; } msAskPaint(); }   /* 6.9.863 */
         /* v6.9.251 - a different client has different sites and different deliveries. Rebuild
            both from him, or the boxes go on offering the previous man's - and a challan filed
            against another client's site is worse than one filed against none. */
@@ -65434,6 +65566,37 @@ function viewCatalogue() {
       }
       S.modal = null; render(); return;
     }
+    /* 6.9.863 - a builder's sites on the challan form */
+    if (act === "ms-pick") { msPickClient(t.getAttribute("data-n") || ""); return; }
+    if (act === "ms-new") { S.ch = S.ch || {}; S.ch.msNew = !t.getAttribute("data-off"); msAskPaint(); var _mi = el("ms_new"); if (_mi) _mi.focus(); return; }
+    if (act === "ms-undo") { if (S.ch) { S.ch.siteAsk = ""; S.ch.siteAskFor = ""; S.ch.msNew = false; } var _ms0 = el("m_site"); if (_ms0) _ms0.value = ""; msAskPaint(); return; }
+    if (act === "ms-go") {
+      var _mm = t.getAttribute("data-n") || "", _mt = String(val("ms_new") || "").trim().replace(/\s+/g, " ");
+      if (_mt.length < 2) { toast("Type the new site\u2019s name first."); return; }
+      var _mk = mstKey(_mt), _hit = mstSites(_mm).filter(function (n) { var l = mstKey(n); return l === _mk || l === mstKey(_mm + " - " + _mt) || l.slice(-(_mk.length + 3)) === " - " + _mk; })[0];
+      if (_hit) { msPickClient(_hit); toast("That site is already on the book \u2014 picked " + _hit + "."); return; }
+      if (roleIs("admin")) {
+        t.disabled = true;
+        msOpenSite(_mm, _mt).then(function (made) {
+          t.disabled = false; if (!made) return;
+          var _sel = el("m_client");
+          if (_sel && !Array.prototype.some.call(_sel.options, function (o) { return o.value === made; })) { var _o = document.createElement("option"); _o.value = made; _o.textContent = made; _sel.appendChild(_o); }
+          msPickClient(made); toast(made + " is opened under " + _mm + " and picked.");
+        });
+        return;
+      }
+      S.ch = S.ch || {}; S.ch.siteAsk = _mt; S.ch.siteAskFor = _mm; S.ch.msNew = false;
+      var _ms1 = el("m_site"); if (_ms1) _ms1.value = _mt;
+      msAskPaint(); toast("Carry on. The office will open " + _mt + " under " + _mm + ".");
+      return;
+    }
+    if (act === "ms-open") {
+      if (!roleIs("admin")) return;
+      var _om = t.getAttribute("data-m") || "", _os = t.getAttribute("data-s") || "";
+      t.disabled = true;
+      msOpenSite(_om, _os).then(function (made) { t.disabled = false; if (!made) return; toast(made + " is opened under " + _om + "."); render(); });
+      return;
+    }
     if (act === "cl-inline") {
       S.billDraft = []; S.clEditing = null;
       var forId = t.getAttribute("data-for");
@@ -65658,6 +65821,13 @@ function viewCatalogue() {
       var cn = val("m_client");
       if (!cn) { toast("Pick a registered client from the list, or tap + Register new."); return; }
       if (!clientByName(cn)) { toast("“" + cn + "” isn’t a registered client — register it first so the preset discount applies."); return; }
+      /* 6.9.863 - a builder with sites: which site, before anything else */
+      var _msAsk = (S.ch && !S.ch.editId && msAsked(S.ch, cn)) ? String(S.ch.siteAsk) : "";
+      if (S.ch && !S.ch.editId && mstSites(cn).length && !_msAsk) {
+        toast(cn + " is a builder with sites \u2014 pick which site this is for, or add a new one.");
+        var _mb = el("m_client_mst"); if (_mb) _mb.scrollIntoView({ block: "center" });
+        return;
+      }
       /* v6.9.289 - and being ON the book is not the same as being a client. See
          modalNotYetClient(). Anyone already delivered to passes this by the second half of
          isClient(), so no existing customer is stopped. */
@@ -65910,7 +66080,9 @@ function viewCatalogue() {
         return save("challans", ch).then(function (r) {
           chSaved = true;
           if (!r) return;
-          try { siteFromChallan(cn, siteName); } catch (eSf) {}   /* 6.9.669 */
+          if (_msAsk) {   /* 6.9.863 - the new site, for the office to open */
+            try { save("audit", { action: "site:ask", actor: S.user, recId: (r && r.id) || "", detail: JSON.stringify({ master: cn, site: _msAsk, challan: no, from: "crm" }) }, true); } catch (eSa) { }
+          } else { try { siteFromChallan(cn, siteName); } catch (eSf) {} }   /* 6.9.669 */
           /* v6.9.237 - the paper book's number, filed beside the challan. Written after the
              challan itself, never before: the delivery is the thing that matters and it must
              never be held up by a second write. */
