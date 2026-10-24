@@ -208,7 +208,7 @@ table.att td.ok,table.att td.no{font-size:16px}
       button: function () { return '<button type="button" class="ewthm" onclick="ewTheme.next(this)">' + ewtLabel() + '</button>'; }
     };
   })();
-  var APP_VERSION = "1.8.0";   /* 1.6.1 - Huliot Group introduction on quotes; 1.6.0 (17 Oct 2026) - a dropped POST never loses a quote; admin sees every executive; daily report; attendance grid */
+  var APP_VERSION = "1.8.1";   /* 1.6.1 - Huliot Group introduction on quotes; 1.6.0 (17 Oct 2026) - a dropped POST never loses a quote; admin sees every executive; daily report; attendance grid */
   /* 1.6.0 - ONLY THE SERVER'S OWN "NO" SIGNS A MAN OUT. The old test was /pin|locked|not allowed|blocked|removed/:
      any data error that happened to contain "not allowed" or "removed" (a refused row, a removed brand) signed the
      executive out and wiped his snapshot. These are the sign-in answers the server gives (teamAuth: "Wrong name or
@@ -2144,14 +2144,18 @@ table.att td.ok,table.att td.no{font-size:16px}
     var k = dkey(name), ev = [], inR = function (d) { return d && d >= from && d <= to; };
     (S.data.sitevisits || []).forEach(function (v) {
       if (!v || dkey(v.createdBy) !== k) return; var at = String(v.createdAt || v.date || ""), d = dstr(at); if (!inR(d)) return;
-      ev.push({ d: d, at: at, t: "visit", k: "Site visit", what: String(v.siteName || v.client || ""), more: [v.visitType ? "met " + v.visitType : "", v.purpose || v.note].filter(Boolean).join(" · ") });   /* 1.8.0 */
+      var _pp = exlPurpose(v.purpose || v.note);
+      ev.push({ d: d, at: at, t: "visit", k: "Site visit", what: String(v.siteName || v.client || ""), more: [v.visitType ? "met " + v.visitType : "", v.purpose || v.note].filter(Boolean).join(" · "),   /* 1.8.0 */
+        met: String(v.visitType || ""), note: _pp.note, brands: _pp.brands, next: _pp.next, ver: String(v.verified || "") });   /* 1.8.1 */
     });
     (S.data.audit || []).forEach(function (r) {
       if (!r) return;
       if (r.action === "visit:mark" && dkey(r.actor) === k) {
         var x = {}; try { x = JSON.parse(r.detail || "{}") || {}; } catch (e) { x = {}; }
         var at2 = String(x.netAt || r.createdAt || ""), d2 = dstr(at2); if (!inR(d2)) return;
-        ev.push({ d: d2, at: at2, t: "visit", k: (VM_KINDS[x.kind] || x.kind || "Visit") + " visit", what: String(x.who || r.target || ""), more: [x.whoKind, x.note].filter(Boolean).join(" · "), unchk: x.tchk === 0 });
+        var _px = exlPurpose(x.note);
+        ev.push({ d: d2, at: at2, t: "visit", k: (VM_KINDS[x.kind] || x.kind || "Visit") + " visit", what: String(x.who || r.target || ""), more: [x.whoKind, x.note].filter(Boolean).join(" · "), unchk: x.tchk === 0,
+          met: String(x.whoKind || VM_KINDS[x.kind] || ""), note: _px.note, brands: _px.brands, next: _px.next });   /* 1.8.1 */
       } else if (r.action === "att:mark") {
         var y = {}; try { y = JSON.parse(r.detail || "{}") || {}; } catch (e) { y = {}; }
         var dd = String(y.day || "").slice(0, 10); if (!inR(dd) || (y.who !== "*" && dkey(y.who) !== k)) return;
@@ -2160,7 +2164,7 @@ table.att td.ok,table.att td.no{font-size:16px}
     });
     (S.data.quotes || []).forEach(function (q) {
       if (!q || isCancelled("quotes", q.id) || dkey(q.createdBy) !== k) return; var at3 = String(q.createdAt || ""), d3 = dstr(at3); if (!inR(d3)) return;
-      ev.push({ d: d3, at: at3, t: "quote", k: "Quote " + (qNo(q) || ""), what: String(q.client || ""), more: money(q.net) + " · " + String(q.status || "Draft"), amt: Number(q.net) || 0 });
+      ev.push({ d: d3, at: at3, t: "quote", k: "Quote " + (qNo(q) || ""), what: String(q.client || ""), more: money(q.net) + " · " + String(q.status || "Draft"), amt: Number(q.net) || 0, no: qNo(q) || "", st: String(q.status || "Draft") });
     });
     (S.data.clients || []).forEach(function (c) {
       if (!c || dkey(c.createdBy) !== k) return; var at4 = String(c.createdAt || ""), d4 = dstr(at4); if (!inR(d4)) return;
@@ -2168,12 +2172,23 @@ table.att td.ok,table.att td.no{font-size:16px}
     });
     (S.data.followups || []).forEach(function (f) {
       if (!f || dkey(f.createdBy) !== k) return; var at5 = String(f.createdAt || ""), d5 = dstr(at5); if (!inR(d5)) return;
-      ev.push({ d: d5, at: at5, t: "fu", k: "Follow-up set", what: String(f.customerName || ""), more: [f.purpose || f.note || f.notes, f.dueDate ? "due " + fd(f.dueDate) : "", f.status].filter(Boolean).join(" · ") });
+      var _ft = String(f.purpose || f.note || f.notes || "");
+      ev.push({ d: d5, at: at5, t: "fu", k: "Follow-up set", what: String(f.customerName || ""), more: [_ft, f.dueDate ? "due " + fd(f.dueDate) : "", f.status].filter(Boolean).join(" · "),
+        auto: /^Next meeting \(/.test(_ft), due: f.dueDate ? fd(f.dueDate) : "", txt: _ft.replace(/^Next meeting \([^)]*\)\s*-\s*/, "") });   /* 1.8.1 - auto = the one a visit sets for itself */
     });
     return ev.sort(function (a, b) { return a.at.localeCompare(b.at); });
   }
+  /* 1.8.1 - HIS WORDS: "show sunday as holiday if not entered any visit". A Sunday with nothing entered is a holiday. */
   var EXL_ATT = { P: ["Present", "#dcfce7", "#166534"], A: ["Absent", "#fee2e2", "#b91c1c"], L: ["Leave", "#fef3c7", "#92400e"], H: ["Holiday", "#e2e8f0", "#475569"],
-    O: ["Sunday", "#e2e8f0", "#475569"], W: ["Worked on a day off", "#dbeafe", "#1e40af"], T: ["Today - no visit yet", "#fef3c7", "#92400e"] };
+    O: ["Holiday · Sunday", "#e2e8f0", "#475569"], W: ["Worked on a holiday", "#dbeafe", "#1e40af"], T: ["Today - no visit yet", "#fef3c7", "#92400e"] };
+  /* a visit's purpose as it is filed: "what happened · For: brands · Next meeting: date" */
+  function exlPurpose(p) {
+    var t = String(p || ""), out = { note: t, brands: [], next: "" };
+    var mN = t.match(/\s*·\s*Next meeting:\s*([^·]+)$/); if (mN) { out.next = mN[1].trim(); t = t.slice(0, mN.index); }
+    var mB = t.match(/\s*·\s*For:\s*([^·]+)$/); if (mB) { out.brands = mB[1].split(",").map(function (x) { return x.trim(); }).filter(Boolean); t = t.slice(0, mB.index); }
+    out.note = t.trim(); return out;
+  }
+  var EXL_QST = { Won: "grn", Lost: "red", Sent: "blu", Draft: "amb" };
   function exLogSheet(name, per) {
     per = per || S.exlPer || "7";
     var R = exlRange(per), ev = exlEvents(name, R.from, R.to), vd = attVisitDays(name), marks = attMarks();
@@ -2189,12 +2204,34 @@ table.att td.ok,table.att td.no{font-size:16px}
         (b ? '<span style="display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:800;background:' + b[1] + ';color:' + b[2] + '">' + b[0] + '</span>' : '<span class="meta">not counted</span>') + '</div>' +
         '<div class="meta" style="margin-top:2px">' + vs.length + ' visit' + (vs.length === 1 ? '' : 's') + (vs.length ? ' &middot; ' + esc(hm(vs[0].at)) + ' to ' + esc(hm(vs[vs.length - 1].at)) : '') +
         ' &middot; ' + qs.length + ' quote' + (qs.length === 1 ? '' : 's') + (qs.length ? ' &middot; ' + esc(money(qs.reduce(function (a, x) { return a + x.amt; }, 0))) : '') + '</div>';
-      var log = de.length ? '<div style="margin-top:6px;border-left:3px solid #cbd5e1;padding-left:8px">' + de.map(function (e) {
-        var col = e.t === "visit" ? "#1F3A5F" : e.t === "quote" ? "#0f766e" : e.t === "att" ? "#92400e" : "#475569";
-        return '<div style="padding:3px 0;font-size:13px"><span style="font-variant-numeric:tabular-nums;color:#64748b">' + esc(hm(e.at) || "--:--") + '</span> &nbsp;<b style="color:' + col + '">' + esc(e.k) + '</b> &middot; ' + esc(e.what) +
-          (e.more ? ' <span class="meta">&middot; ' + esc(e.more) + '</span>' : '') + (e.unchk ? ' <span style="color:#b45309;font-size:12px;font-weight:700">time not checked</span>' : '') + '</div>';
-      }).join("") + '</div>' : '';
-      return '<div class="card" style="padding:9px 11px">' + head + log + '</div>';
+      /* 1.8.1 - laid out by kind: visits, quotes, new clients, other follow-ups, attendance marks. The follow-up a visit sets for
+         itself is not repeated - its date shows on the visit as "Next". A day with nothing in it is one line. */
+      if (!de.length) {
+        return '<div class="card" style="padding:8px 11px;display:flex;align-items:center;gap:8px;flex-wrap:wrap"><div class="grow"><b>' + esc(fd(day)) + '</b> <span class="meta">' + ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][attDow(day)] + ' &middot; nothing entered</span></div>' +
+          (b ? '<span style="display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:800;background:' + b[1] + ';color:' + b[2] + '">' + b[0] + '</span>' : '') + '</div>';
+      }
+      var T = function (at) { return '<div style="flex:0 0 46px;font-variant-numeric:tabular-nums;color:#64748b;font-size:13px;padding-top:1px">' + esc(hm(at) || "--:--") + '</div>'; };
+      var line = function (inner) { return '<div style="display:flex;gap:6px;padding:7px 0;border-top:1px solid #f1f5f9">' + inner + '</div>'; };
+      var sec = function (t, n) { return '<div style="margin-top:8px;font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#64748b">' + t + (n != null ? ' &middot; ' + n : '') + '</div>'; };
+      var cl = de.filter(function (e) { return e.t === "client"; }), fu = de.filter(function (e) { return e.t === "fu" && !e.auto; }), am = de.filter(function (e) { return e.t === "att"; });
+      var body = "";
+      if (vs.length) body += sec("Visits", vs.length) + vs.map(function (e) {
+        var met = String(e.met || ""), who = met.indexOf(":") > 0 ? met : met;
+        return line(T(e.at) + '<div style="flex:1;min-width:0"><div><b>' + esc(e.what) + '</b> <span class="meta">' + esc(e.k) + '</span>' +
+          (who ? ' <span class="pill ' + (/^site only$/i.test(who) ? '' : 'blu') + '">' + esc(/^site only$/i.test(who) ? "site only" : "met " + who) + '</span>' : '') +
+          (e.ver === "Verified" ? ' <span class="pill grn">at the site</span>' : e.ver === "Far" ? ' <span class="pill amb">away from the site</span>' : '') +
+          (e.unchk ? ' <span class="pill amb">time not checked</span>' : '') + '</div>' +
+          (e.note ? '<div style="font-size:13px;color:#334155;margin-top:2px">' + esc(e.note) + '</div>' : '') +
+          ((e.brands && e.brands.length) || e.next ? '<div class="meta" style="margin-top:3px">' + (e.brands || []).map(function (x) { return '<span class="pill" style="margin:0 4px 3px 0">' + esc(x) + '</span>'; }).join("") +
+            (e.next ? '<span style="white-space:nowrap">Next: <b>' + esc(e.next) + '</b></span>' : '') + '</div>' : '') + '</div>');
+      }).join("");
+      if (qs.length) body += sec("Quotes", qs.length + ' &middot; ' + esc(money(qs.reduce(function (a, x) { return a + x.amt; }, 0)))) + qs.map(function (e) {
+        return line(T(e.at) + '<div style="flex:1;min-width:0"><b>' + esc(e.no) + '</b> &middot; ' + esc(e.what) + '</div><div style="text-align:right;white-space:nowrap"><b>' + esc(money(e.amt)) + '</b><br/><span class="pill ' + (EXL_QST[e.st] || '') + '">' + esc(e.st) + '</span></div>');
+      }).join("");
+      if (cl.length) body += sec("New clients", cl.length) + cl.map(function (e) { return line(T(e.at) + '<div style="flex:1;min-width:0"><b>' + esc(e.what) + '</b> <span class="meta">' + esc(e.more) + '</span></div>'); }).join("");
+      if (fu.length) body += sec("Follow-ups set", fu.length) + fu.map(function (e) { return line(T(e.at) + '<div style="flex:1;min-width:0"><b>' + esc(e.what) + '</b>' + (e.due ? ' <span class="meta">due ' + esc(e.due) + '</span>' : '') + (e.txt ? '<div style="font-size:13px;color:#334155">' + esc(e.txt) + '</div>' : '') + '</div>'); }).join("");
+      if (am.length) body += sec("Attendance") + am.map(function (e) { return line(T(e.at) + '<div style="flex:1;min-width:0">Marked <b>' + esc(e.what) + '</b> <span class="meta">' + esc(e.more) + '</span></div>'); }).join("");
+      return '<div class="card" style="padding:9px 11px">' + head + body + '</div>';
     }).join("");
     var tile = function (n, l, c) { return '<div class="card" style="flex:1 1 90px;padding:8px 10px;margin:0"><div style="font-size:20px;font-weight:800;color:' + (c || '#0f172a') + '">' + n + '</div><div class="meta">' + l + '</div></div>'; };
     return '<h2>' + esc(name) + ' &mdash; day by day</h2>' +
@@ -2210,7 +2247,7 @@ table.att td.ok,table.att td.no{font-size:16px}
     var d = new Date(R.to + "T12:00:00"), stop = new Date(R.from + "T12:00:00");
     while (d >= stop) {
       var day = ymdLocal(d), st = attDay(name, day, vd, marks), de = ev.filter(function (e) { return e.d === day; });
-      L.push(fd(day) + " - " + (ATT_SAY[st] || "not counted"));
+      L.push(fd(day) + " - " + ((EXL_ATT[st] || [])[0] || ATT_SAY[st] || "not counted"));
       de.forEach(function (e) { L.push("  " + (hm(e.at) || "--:--") + "  " + e.k + " - " + e.what + (e.more ? " - " + e.more : "")); });
       if (!de.length) L.push("  nothing entered");
       L.push(""); d.setDate(d.getDate() - 1);
