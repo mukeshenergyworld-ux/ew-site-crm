@@ -208,7 +208,7 @@ table.att td.ok,table.att td.no{font-size:16px}
       button: function () { return '<button type="button" class="ewthm" onclick="ewTheme.next(this)">' + ewtLabel() + '</button>'; }
     };
   })();
-  var APP_VERSION = "1.7.0";   /* 1.6.1 - Huliot Group introduction on quotes; 1.6.0 (17 Oct 2026) - a dropped POST never loses a quote; admin sees every executive; daily report; attendance grid */
+  var APP_VERSION = "1.7.1";   /* 1.6.1 - Huliot Group introduction on quotes; 1.6.0 (17 Oct 2026) - a dropped POST never loses a quote; admin sees every executive; daily report; attendance grid */
   /* 1.6.0 - ONLY THE SERVER'S OWN "NO" SIGNS A MAN OUT. The old test was /pin|locked|not allowed|blocked|removed/:
      any data error that happened to contain "not allowed" or "removed" (a refused row, a removed brand) signed the
      executive out and wiped his snapshot. These are the sign-in answers the server gives (teamAuth: "Wrong name or
@@ -2402,7 +2402,8 @@ table.att td.ok,table.att td.no{font-size:16px}
         tile(quiet.length, "Quotes to follow up", quiet.length ? "warn" : "good", "go-quotes", "follow") +
         tile(drafts.length, "Quotes not sent yet", drafts.length ? "warn" : "good", "go-quotes", "Draft") +
         tile(fu.length, "Follow-ups due", fu.length ? "bad" : "good", "", "") +
-      '</div>' + attStripHtml();   /* 1.5.2 */
+      '</div>' + attStripHtml() +   /* 1.5.2 */
+      (!roleIs("admin") && S.user ? '<div class="acts" style="margin-top:8px"><button class="btn gry full" data-act="exl-open" data-n="' + esc(S.user) + '">&#128197; My day by day &mdash; attendance, visits, quotes</button></div>' : '');   /* 1.7.1 - his words: "show his log to executive also" */
     h += teamTodayCard();   /* 1.6.0 - admin only */
     if (fu.length) h += '<h3 class="sec">Follow-ups due</h3>' + fu.slice(0, 10).map(function (f) {
       var c = clientByName(f.customerName) || {}, m = mob10(c.mobile);
@@ -3286,8 +3287,8 @@ table.att td.ok,table.att td.no{font-size:16px}
     if (act === "ex") { S.ex = k || ""; render(); return; }
     if (act === "att-grid") { S.sheet = attGridSheet(); render(); return; }
     /* 1.7.0 - one executive, day by day */
-    if (act === "exl-open") { if (!roleIs("admin")) return; S.exlN = t.getAttribute("data-n") || ""; S.sheet = exLogSheet(S.exlN, S.exlPer); render(); return; }
-    if (act === "exl-per") { S.exlPer = t.getAttribute("data-k") || "7"; S.exlN = t.getAttribute("data-n") || S.exlN; S.sheet = exLogSheet(S.exlN, S.exlPer); render(); return; }
+    if (act === "exl-open") { if (!roleIs("admin") && dkey(t.getAttribute("data-n")) !== dkey(S.user)) return; S.exlN = t.getAttribute("data-n") || ""; S.sheet = exLogSheet(S.exlN, S.exlPer); render(); return; }
+    if (act === "exl-per") { if (!roleIs("admin") && dkey(t.getAttribute("data-n")) !== dkey(S.user)) return; S.exlPer = t.getAttribute("data-k") || "7"; S.exlN = t.getAttribute("data-n") || S.exlN; S.sheet = exLogSheet(S.exlN, S.exlPer); render(); return; }
     if (act === "exl-copy") {
       var _xt = exLogText(t.getAttribute("data-n") || S.exlN, S.exlPer);
       try { navigator.clipboard.writeText(_xt).then(function () { toast("Copied - paste it anywhere."); }, function () { toast("Could not copy on this device."); }); } catch (e) { toast("Could not copy on this device."); }
