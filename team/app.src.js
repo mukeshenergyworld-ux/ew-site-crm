@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.867";
+  var APP_VERSION = "6.9.868";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -5197,6 +5197,76 @@ window.addEventListener("beforeunload", function (ev) {
   }
   function rvStat(n, l, alert) { return '<div class="stat' + (alert ? ' alert' : '') + '"><div class="n">' + n + '</div><div class="l">' + l + '</div></div>'; }
   function rvHead(t, sub) { return '<h3 style="margin:16px 0 2px;font-size:15px">' + t + '</h3>' + (sub ? '<div style="font-size:12px;color:var(--muted);margin-bottom:4px">' + sub + '</div>' : ''); }
+  /* ===== 6.9.868 - ONE EXECUTIVE, EVERYTHING  (24 Oct 2026) =====
+     HIS WORDS, on Review > By executive: "click executive will show all details ... no of site, challan wise, all
+     details". The review's own figures for the period on screen (rvData with him picked), laid out for one man:
+     his book (clients/sites, how many owe, how many took material), every client with what went and came in the
+     period and what he owes now, every challan with its status, receipt and bill number, every payment, and his
+     quotes. A client opens his hisab. */
+  function modalExecDetail(e) {
+    var D = rvData(S.rvPer, e), R = D.R;
+    var mine = (S.data.clients || []).filter(function (c) { return c && c.name && rvOwner(c.name) === e && !isCancelled("clients", c.id); });
+    var byId = {}; (S.data.challans || []).forEach(function (c) { if (c && c.id) byId[c.id] = c; });
+    var cl = {};
+    var C = function (n) { return cl[n] = cl[n] || { name: n, nCh: 0, disp: 0, nPay: 0, coll: 0, due: 0, d90: 0, oldest: 0 }; };
+    D.dues.forEach(function (r) { var x = C(r.name); x.due = r.due; x.d90 = r.b.d90 || 0; x.oldest = r.oldest || 0; });
+    D.disp.forEach(function (r) { var x = C(r.name); x.nCh++; x.disp += r.amt; });
+    D.coll.forEach(function (r) { var x = C(r.name); x.nPay++; x.coll += r.amt; });
+    var rows = Object.keys(cl).map(function (k) { return cl[k]; }).sort(function (a, b) { return b.due - a.due || b.disp - a.disp; });
+    var owe = D.dues.length, took = rows.filter(function (x) { return x.nCh; }).length;
+    var td = 'padding:7px 8px;border-top:1px solid #e2e8f0;vertical-align:top;';
+    var th = function (t, r) { return '<th style="padding:7px 8px;text-align:' + (r ? 'right' : 'left') + ';white-space:nowrap;font-size:12px;color:#fff;background:#1e293b">' + t + '</th>'; };
+    var tbl = function (heads, body, minw) { return '<div style="overflow-x:auto"><table style="width:100%;min-width:' + (minw || 520) + 'px;border-collapse:collapse;font-size:13px"><thead><tr>' + heads + '</tr></thead><tbody>' + body + '</tbody></table></div>'; };
+    var R0 = function (v) { return '<td style="' + td + 'text-align:right;white-space:nowrap">' + v + '</td>'; };
+    var h = '<h2 data-mwide="1">' + esc(e) + '</h2><p class="sub">' + esc(R.label) + ' &middot; ' + esc(R.span) + ' &middot; change the period on the review to see another one.</p>';
+    h += '<div class="cards">' +
+      rvStat(mine.length, "Clients &amp; sites on his book") +
+      rvStat(owe, "Owe money today") +
+      rvStat(money(D.dueTot), "Total due till date", D.dueTot > 0.5) +
+      rvStat(money(D.age.d90), "90+ days", D.age.d90 > 0.5) +
+      rvStat(money(D.dispTot), "Dispatched &middot; " + plural(D.disp.length, "challan") + " &middot; " + plural(took, "site")) +
+      rvStat(money(D.collTot), "Collected &middot; " + plural(D.coll.length, "payment")) +
+      rvStat(D.newCl.length, "New clients") +
+      rvStat(D.newQ.length + " / " + D.wait.length, "New quotes / waiting") + '</div>';
+    h += rvHead("Clients &amp; sites", "Owing now, or with material or money in this period &middot; tap one for his hisab");
+    h += rows.length ? tbl(th("Client / site") + th("Challans", 1) + th("Dispatched", 1) + th("Collected", 1) + th("Due now", 1) + th("90+", 1) + th("Oldest", 1),
+      rows.map(function (x, i) {
+        return '<tr data-act="rv-excl" data-n="' + esc(x.name) + '" style="cursor:pointer;background:' + (i % 2 ? '#f8fafc' : '#fff') + '">' +
+          '<td style="' + td + 'font-weight:600;color:#1d4ed8">' + esc(x.name) + '</td>' + R0(x.nCh || '&mdash;') + R0(x.disp ? money(x.disp) : '&mdash;') +
+          R0(x.coll ? '<span style="color:#15803d">' + money(x.coll) + '</span>' : '&mdash;') +
+          R0('<b style="color:' + (x.due > 100000 ? '#b91c1c' : x.due >= 50000 ? '#b45309' : '#0f172a') + '">' + money(x.due) + '</b>') +
+          R0(x.d90 > 0.5 ? '<span style="color:#b91c1c">' + money(x.d90) + '</span>' : '&mdash;') + R0(x.oldest ? x.oldest + ' d' : '&mdash;') + '</tr>';
+      }).join("") + '<tr style="background:#eef2ff;font-weight:700"><td style="' + td + '">Total</td>' + R0(D.disp.length) + R0(money(D.dispTot)) + R0(money(D.collTot)) + R0(money(D.dueTot)) + R0(money(D.age.d90)) + R0('') + '</tr>', 640)
+      : '<div class="meta" style="padding:8px 0">Nothing owed and nothing moved in this period.</div>';
+    h += rvHead("Challans dispatched", plural(D.disp.length, "challan") + " &middot; " + money(D.dispTot));
+    h += D.disp.length ? tbl(th("Date") + th("Challan") + th("Client / site") + th("Value", 1) + th("Status") + th("Receipt") + th("Bill no"),
+      D.disp.slice().sort(function (a, b) { return a.d.localeCompare(b.d); }).map(function (x, i) {
+        var c = byId[x.id] || {}, rc = String(c.receiptReceived || "").toUpperCase() === "Y", bn = String(c.billNo || "").trim();
+        return '<tr style="background:' + (i % 2 ? '#f8fafc' : '#fff') + '"><td style="' + td + 'white-space:nowrap">' + esc(d10(x.d)) + '</td>' +
+          '<td style="' + td + 'white-space:nowrap;font-weight:600">' + esc(x.no) + '</td><td style="' + td + '">' + esc(x.name) + '</td>' + R0(money(x.amt)) +
+          '<td style="' + td + '">' + esc(String(c.status || "")) + '</td>' +
+          '<td style="' + td + 'color:' + (rc ? '#15803d' : '#b45309') + '">' + (rc ? 'in' : 'pending') + '</td>' +
+          '<td style="' + td + 'color:' + (bn ? '#0f172a' : '#94a3b8') + '">' + (bn ? esc(bn) : 'not billed') + '</td></tr>';
+      }).join(""), 700) : '<div class="meta" style="padding:8px 0">Nothing dispatched in this period.</div>';
+    h += rvHead("Payments received", plural(D.coll.length, "payment") + " &middot; " + money(D.collTot));
+    h += D.coll.length ? tbl(th("Date") + th("Client / site") + th("Mode") + th("Reference") + th("Amount", 1),
+      D.coll.slice().sort(function (a, b) { return a.d.localeCompare(b.d); }).map(function (x, i) {
+        return '<tr style="background:' + (i % 2 ? '#f8fafc' : '#fff') + '"><td style="' + td + 'white-space:nowrap">' + esc(d10(x.d)) + '</td><td style="' + td + '">' + esc(x.name) + '</td>' +
+          '<td style="' + td + '">' + esc(x.mode) + '</td><td style="' + td + '">' + esc(x.ref) + '</td>' + R0('<b style="color:#15803d">' + money(x.amt) + '</b>') + '</tr>';
+      }).join("")) : '<div class="meta" style="padding:8px 0">Nothing collected in this period.</div>';
+    if (D.newQ.length || D.wait.length) {
+      h += rvHead("Quotes", D.newQ.length + " new in this period &middot; " + D.wait.length + " waiting");
+      var qs = D.newQ.concat(D.wait.filter(function (q) { return !D.newQ.some(function (n) { return n.id === q.id; }); }));
+      h += tbl(th("Date") + th("Quote") + th("Client") + th("Brands") + th("Value", 1) + th("Status") + th("Days", 1),
+        qs.slice(0, 40).map(function (q, i) {
+          return '<tr style="background:' + (i % 2 ? '#f8fafc' : '#fff') + '"><td style="' + td + 'white-space:nowrap">' + esc(d10(q.d)) + '</td><td style="' + td + 'white-space:nowrap">' + esc(q.no) + '</td>' +
+            '<td style="' + td + '">' + esc(q.name) + '</td><td style="' + td + 'font-size:12px">' + esc(q.brands) + '</td>' + R0(money(q.amt)) +
+            '<td style="' + td + '">' + esc(q.status) + '</td>' + R0(q.age == null ? '' : q.age) + '</tr>';
+        }).join(""), 700) + (qs.length > 40 ? '<div class="meta">and ' + (qs.length - 40) + ' more in the Excel</div>' : '');
+    }
+    h += '<div class="foot"><button class="btn ghost" data-act="rv-exdet-xlsx" data-k="' + esc(e) + '">&#8681; Excel</button><button class="btn" data-act="close">Close</button></div>';
+    return h;
+  }
   function viewReview() {
     var D = rvData(S.rvPer, S.rvExec);
     var R = D.R, all = seesAllClients();
@@ -5222,9 +5292,10 @@ window.addEventListener("beforeunload", function (ev) {
       ages.map(function (a) { return '<div style="background:' + a[2] + ';color:' + a[3] + ';border-radius:10px;padding:8px 12px;min-width:120px"><div style="font-size:12px">' + a[0] + '</div><div style="font-weight:700;font-size:16px">' + money(a[1]) + '</div></div>'; }).join("") + '</div>';
     if (all && !D.ex) {
       var be = rvByExec(D);
-      if (be.length) h += rvHead("By executive") + be.map(function (x) {
-        return rvRow(rvExecPill(x.exec), "Dispatched " + money(x.disp) + " · Collected " + money(x.coll) + " · " + x.newQ + " new quotes · " + x.wait + " waiting",
-          money(x.due), x.d90 > 0.5 ? '<span style="font-size:12px;color:#b91c1c">90+ ' + money(x.d90) + '</span>' : "");
+      if (be.length) h += rvHead("By executive", "Tap a name for his clients, every challan and every payment.") + be.map(function (x) {
+        return '<div data-act="rv-exdet" data-k="' + esc(x.exec) + '" style="cursor:pointer" title="Open ' + esc(x.exec) + '">' +   /* 6.9.868 */
+          rvRow(rvExecPill(x.exec) + ' <span style="font-size:12px;color:#2563eb;font-weight:600">details &rsaquo;</span>', "Dispatched " + money(x.disp) + " · Collected " + money(x.coll) + " · " + x.newQ + " new quotes · " + x.wait + " waiting",
+          money(x.due), x.d90 > 0.5 ? '<span style="font-size:12px;color:#b91c1c">90+ ' + money(x.d90) + '</span>' : "") + '</div>';
       }).join("");
     }
     h += rvHead("Who owes", "Largest first. The full list is in the Excel.") +
@@ -57279,7 +57350,7 @@ function viewCatalogue() {
          is max-height:92vh with overflow:auto, so this bar stays visible no matter how far down
          a long form he has scrolled. Negative top/margins pull it over the popup's 18px padding
          so it spans the full width and nothing shows through above it. */
-      h += '<div class="mask" data-act="mask"><div class="modal">' +
+      h += '<div class="mask" data-act="mask"><div class="modal"' + (String(S.modal).indexOf('data-mwide="1"') >= 0 ? ' style="max-width:980px"' : '') + '>' +   /* 6.9.868 - a sheet that is a table gets the width */
         '<div class="modalx">' +
         '<button class="btn sm ghost" data-act="close" aria-label="Close">✕ Close</button>' +
         '</div>' + S.modal + '</div></div>';
@@ -58591,6 +58662,9 @@ function viewCatalogue() {
     if (act === "stk-lv-xlsx") { stkLevelsXlsx(); return; }   /* 6.9.629 */
     /* 6.9.635 - the twice-weekly review */
     if (act === "rv-per") { S.rvPer = t.getAttribute("data-k") || "since"; S.rvMore = {}; keepScroll = true; render(); return; }
+    if (act === "rv-exdet") { var _xe = t.getAttribute("data-k") || ""; if (!_xe) return; S.modal = modalExecDetail(_xe); render(); return; }   /* 6.9.868 */
+    if (act === "rv-excl") { S.modal = null; S.q = t.getAttribute("data-n"); S.tab = "billing"; render(); window.scrollTo(0, 0); try { rcptWarm(hisabResolve(S.q)); } catch (eR) { } return; }   /* 6.9.868 - a client from the executive sheet: his hisab */
+    if (act === "rv-exdet-xlsx") { try { rvXlsx(rvData(S.rvPer, t.getAttribute("data-k") || "")); } catch (eX) { toast("Could not make the Excel on this device."); } return; }
     if (act === "rv-exec") { S.rvExec = t.getAttribute("data-k") || ""; S.rvMore = {}; keepScroll = true; render(); return; }
     if (act === "rv-more") { S.rvMore = S.rvMore || {}; var _rk = t.getAttribute("data-k") || ""; S.rvMore[_rk] = !S.rvMore[_rk]; keepScroll = true; render(); return; }
     if (act === "rv-xlsx") { rvXlsx(rvData(S.rvPer, S.rvExec)); return; }
