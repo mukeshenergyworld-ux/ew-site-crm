@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.864";
+  var APP_VERSION = "6.9.865";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -17950,12 +17950,31 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
   function taWants(t) {
     return t && t.tagName === "INPUT" && (t.hasAttribute("list") || t.hasAttribute("data-ta-list") || t.hasAttribute("data-ta"));
   }
+  /* 6.9.865 - THE LIST OPENS ONLY WHEN HE ASKS FOR IT. HIS WORDS, over Billing's "Type a client to bill" with the
+     list of 225 names open over the page: "this is flashing time and again ... fix this permanently, earlier also
+     i have requested for the same". The cause: the app redraws the page on every background refresh and puts the
+     cursor back in the box he was in - and that programmatic focus opened the list, every refresh, over the tabs
+     below it. Now focus alone opens it only when HE caused it (a tap/click on the box or Tab in the last 0.8 s);
+     typing, a tap on a box that already has the cursor, and the down arrow still open it. And a list whose box has
+     been redrawn away, or no longer has the cursor, is closed within half a second instead of floating there. */
   try {
+    var _taUser = function (e) { _ta.userAt = Date.now(); };
+    document.addEventListener("pointerdown", _taUser, true);
+    document.addEventListener("keydown", function (e) { if (e.key === "Tab") _ta.userAt = Date.now(); }, true);
+    document.addEventListener("click", function (e) {
+      var t = e.target; if (!taWants(t) || document.activeElement !== t) return;
+      if (!_ta.box || _ta.box.style.display === "none" || _ta.inp !== t) { _ta.hi = -1; taShow(t, true); }
+    }, true);
+    setInterval(function () {
+      if (!_ta.box || _ta.box.style.display === "none") return;
+      if (!_ta.inp || !document.body.contains(_ta.inp) || document.activeElement !== _ta.inp) taHide();
+    }, 500);
     document.addEventListener("focusin", function (e) {
       var t = e.target;
       if (!taWants(t)) return;
       if (t.hasAttribute("list")) { t.setAttribute("data-ta-list", t.getAttribute("list")); t.removeAttribute("list"); }
       t.setAttribute("autocomplete", "off");
+      if (Date.now() - (_ta.userAt || 0) > 800) return;   /* 6.9.865 - the redraw put the cursor back: no list */
       _ta.hi = -1; taShow(t, true);
     }, true);
     document.addEventListener("input", function (e) {
