@@ -252,7 +252,7 @@ body{background:#F4F6F9}
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.142.0";   /* 1.132.1 - driver/client/partner mobile dedupe, narrower sign-out, token refusal re-signs in, Drop in held list */
+  var APP_VERSION = "1.143.0";   /* 1.132.1 - driver/client/partner mobile dedupe, narrower sign-out, token refusal re-signs in, Drop in held list */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -4575,13 +4575,29 @@ function discRowOn(client, brand, onYmd) {
     });
     return n;
   }
+  /* CRM 6.9.864 / Challan 1.143.0 - A PRODUCT NEVER COUNTED HAD NOTHING ON THE COUNT DAY.
+     HIS WORDS, over Stock to order ("Not counted - CRM says 1,120?"): "not counted means qty is 0 at that
+     time, so fix that accordingly". Every count on the sheet was taken on one day (632 rows, 25 Sep 2026),
+     so a product with no count is given that day - the FIRST count day - as its cut-off with 0 in hand:
+     purchases, challans and returns before it no longer count, those after it do, exactly as for a counted
+     product. Measured on his book: 103 lines leave "Not counted" (101 of them now short and suggested), no
+     counted product moves by a single piece. Which ones were zeroed is kept on the map, not as a key
+     (Object.keys over the cut-off is used for "counted" lists). */
   function stkCutoff() {
-    var m = {};
+    var m = {}, z = "";
     (S.stock || []).forEach(function (r) {
       if (String(r.type) !== "opening") return;
       var k = String(r.code || "").trim(), d = String(r.asOn || "").slice(0, 10);
       if (k && d && (!m[k] || d > m[k])) m[k] = d;
+      if (k && d && (!z || d < z)) z = d;
     });
+    var zs = {};
+    if (z) {
+      var add = function (k) { k = String(k || "").trim(); if (k && k !== "*" && !m[k]) { m[k] = z; zs[k] = 1; } };
+      (PRODUCTS || []).forEach(function (p) { add(p && p.code); });
+      (S.stock || []).forEach(function (r) { add(r && r.code); });
+    }
+    try { Object.defineProperty(m, "_zero", { value: zs, enumerable: false }); Object.defineProperty(m, "_day", { value: z, enumerable: false }); } catch (e) { }
     return m;
   }
   function stkCounts(code, ymd, cut) { var c = cut[code]; return !c || String(ymd || "").slice(0, 10) >= c; }
