@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.865";
+  var APP_VERSION = "6.9.866";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -59960,6 +59960,22 @@ function viewCatalogue() {
         }).then(function (r) {
           if (!r) return;
           toast("Client saved as " + r.shortName + ".");
+          /* 6.9.866 - A NEW NAME IS THE SAME MAN. HIS WORDS, after correcting "Viajy Gupta - A 51-52, TDI Toll Plaza"
+             to "Vijay Gupta - ...": "its still showing hisab under wrong name". Every challan, payment, return,
+             discount and stage is filed under the NAME it was written with, so the corrected record started with
+             an empty hisab (7 challans, Rs 2,79,370 stayed under the old spelling) and no discounts. Nothing is
+             rewritten - the rule is that rows are never edited away. The rename is filed as the same join the
+             Duplicate check makes (dup:fix, the old name an alias of the new), which every ledger, statement,
+             discount lookup and the Payment and Challan apps already read as one man. A change of capitals or
+             spaces only is not joined (the join is keyed without them) - none is on the book today. */
+          try {
+            var _oldNm = String((keep && keep.name) || "").trim(), _newNm = String(r.name || cn || "").trim();
+            if (id && _oldNm && _newNm && dgKey(_oldNm) !== dgKey(_newNm)) {
+              dupLog("fix", [id], { main: id, mainName: _newNm, aliases: [{ id: id, name: _oldNm }], why: "renamed from \u201c" + _oldNm + "\u201d to \u201c" + _newNm + "\u201d", rename: 1 });
+              _aliasCache = null; bustCaches();
+              toast("Renamed \u2014 his hisab, discounts and history under \u201c" + _oldNm + "\u201d stay with him.");
+            }
+          } catch (eRn) { }
           /* v6.9.549 - file the consent only when the answer CHANGED, under the name the server
              recorded - no row for an untouched box, so the audit stays quiet */
           try { if (f.waok !== null && f.waok !== waConsent(r.name).yes) waConsentSave(r.name, f.waok); } catch (e) { }
