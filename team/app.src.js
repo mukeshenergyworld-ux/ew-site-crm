@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.863";
+  var APP_VERSION = "6.9.864";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -53431,13 +53431,29 @@ function viewCatalogue() {
      So a COUNT is where a product's stock starts: the latest count's date is its cut-off, and only
      what moved on or after that day (goods received, deliveries, returns, adjustments) moves its
      balance. Count before the day's first dispatch. A product never counted has no cut-off. */
+  /* CRM 6.9.864 / Challan 1.143.0 - A PRODUCT NEVER COUNTED HAD NOTHING ON THE COUNT DAY.
+     HIS WORDS, over Stock to order ("Not counted - CRM says 1,120?"): "not counted means qty is 0 at that
+     time, so fix that accordingly". Every count on the sheet was taken on one day (632 rows, 25 Sep 2026),
+     so a product with no count is given that day - the FIRST count day - as its cut-off with 0 in hand:
+     purchases, challans and returns before it no longer count, those after it do, exactly as for a counted
+     product. Measured on his book: 103 lines leave "Not counted" (101 of them now short and suggested), no
+     counted product moves by a single piece. Which ones were zeroed is kept on the map, not as a key
+     (Object.keys over the cut-off is used for "counted" lists). */
   function stkCutoff() {
-    var m = {};
+    var m = {}, z = "";
     (S.stock || []).forEach(function (r) {
       if (String(r.type) !== "opening") return;
       var k = String(r.code || "").trim(), d = String(r.asOn || "").slice(0, 10);
       if (k && d && (!m[k] || d > m[k])) m[k] = d;
+      if (k && d && (!z || d < z)) z = d;
     });
+    var zs = {};
+    if (z) {
+      var add = function (k) { k = String(k || "").trim(); if (k && k !== "*" && !m[k]) { m[k] = z; zs[k] = 1; } };
+      (PRODUCTS || []).forEach(function (p) { add(p && p.code); });
+      (S.stock || []).forEach(function (r) { add(r && r.code); });
+    }
+    try { Object.defineProperty(m, "_zero", { value: zs, enumerable: false }); Object.defineProperty(m, "_day", { value: z, enumerable: false }); } catch (e) { }
     return m;
   }
   function stkCounts(code, ymd, cut) { var c = cut[code]; return !c || String(ymd || "").slice(0, 10) >= c; }
@@ -53843,7 +53859,7 @@ function viewCatalogue() {
     var codes = {}; [mv.m, del, reo, res].forEach(function (o) { Object.keys(o).forEach(function (k) { codes[k] = 1; }); });
     Object.keys(codes).forEach(function (k) {
       var onh = Math.round(((mv.m[k] || 0) - (del[k] || 0) + (ret[k] || 0)) * 100) / 100, held = res[k] || 0;
-      m[k] = { code: k, counted: !!cut[k], countedOn: cut[k] || "", onhand: onh, held: held,
+      m[k] = { code: k, counted: !!cut[k], countedOn: cut[k] || "", zeroed: !!(cut._zero && cut._zero[k]), onhand: onh, held: held,   /* 6.9.864 */
         free: Math.round((onh - held) * 100) / 100, min: reo[k] || 0, desc: mv.desc[k] || "" };
     });
     return m;
@@ -54234,7 +54250,7 @@ function viewCatalogue() {
       '<button class="btn sm ghost" style="min-height:44px" data-act="so-clear">Clear my quantities</button></div>' +
       '<div class="meta" style="font-size:12.5px;margin-top:6px">Type <b>Pcs</b> or <b>Boxes</b> on any line &mdash; the other fills itself and <b>Total</b> is what goes in the order, in whole boxes when Per box is set. Leave both empty to order the <b>suggested</b> quantity; type 0 to leave a line out. Set <b>Per box</b> here and press Save once. Your quantities stay on this device until you clear them.</div>';
     stkByBrand(L).forEach(function (g) {
-      var gt = stkOrdTotals(g.list);
+      var gt = stkOrdTotals(g.list), _mvPrev = -1, _mvCtx = null; try { _mvCtx = stkCtx(); } catch (eMv) { }   /* 6.9.864 */
       h += '<div class="acts" style="align-items:center;margin:14px 0 6px;gap:6px;flex-wrap:wrap"><b class="grow" style="font-size:15px">' + esc(g.brand) + ' <span style="font-weight:400;color:#64748b">&middot; ' + plural(g.list.length, "item") +
           ' &middot; <span class="so-bt" data-b="' + esc(g.brand) + '">' + (gt.val ? money(gt.val) : '') + '</span></span></b>' +
         '<button class="btn sm ghost" style="min-height:44px" data-act="so-pdf" data-b="' + esc(g.brand) + '">&#8681; PDF</button>' +
@@ -54244,12 +54260,20 @@ function viewCatalogue() {
         g.list.map(function (x) {
           i++;
           var pk = x.pack || 0, t = x.typed, c = t === undefined ? null : stkOrdCalc(t, pk);
+          var _mvG = _mvCtx ? stkMoveGroup(x.code, _mvCtx) : -1, _mvH = '';
+          if (_mvCtx && _mvG !== _mvPrev) {
+            _mvPrev = _mvG;
+            var _mvN = g.list.filter(function (y) { return stkMoveGroup(y.code, _mvCtx) === _mvG; }).length;
+            var _mvC = ["#15803d", "#b45309", "#b91c1c", "#64748b"][_mvG];
+            _mvH = '<tr class="so-mvh"><td colspan="13" style="position:static;background:' + _mvC + ';color:#fff;font-weight:800;font-size:13px;padding:6px 10px;box-shadow:none">' + STK_MV_HEAD[_mvG] + ' &middot; ' + plural(_mvN, "item") + '</td></tr>';
+          }
           var mrp = nAmt((pm[x.code] || {}).rate), val = mrp > 0 && x.qty > 0 ? Math.round(mrp * x.qty) : 0;
           var pkDraft = (S.stkPkDraft || {})[x.code];
           var sugTxt = x.added ? '<span style="color:#94a3b8">added</span>' : (x.sug > 0 ? '<b style="color:#b91c1c">' + esc(stkOrdN(x.sug)) + '</b>' + (pk ? '<div style="font-size:12px;color:#64748b">' + (x.sug / pk) + ' box' + (x.sug / pk === 1 ? '' : 'es') + '</div>' : '') : 'at min');
           if (x.unc) sugTxt = '<span style="display:inline-block;font-size:12px;font-weight:800;padding:2px 7px;border-radius:6px;background:#f59e0b;color:#fff;white-space:nowrap">Not counted</span>' +
             (x.sug > 0 ? '<div style="font-size:12px;color:#92400e">CRM says ' + esc(stkOrdN(x.sug)) + '?</div>' : '');   /* 6.9.721 */
-          return '<tr id="so_r' + i + '"' + (x.unc ? ' class="so-unc"' : '') + '>' +
+          if (x.zero && !x.added) sugTxt += '<div style="font-size:12px;color:#64748b;white-space:normal">never counted &middot; 0 on ' + esc(dmy(stkCutoff()._day || "")) + (x.free < 0 ? ', ordered from 0' : '') + '</div>';   /* 6.9.864 */
+          return _mvH + '<tr id="so_r' + i + '"' + (x.unc ? ' class="so-unc"' : '') + '>' +
             td('<div style="display:flex;gap:8px;align-items:center">' + stkOrdPic(x.code) + '<div style="min-width:0"><div style="font-weight:700;white-space:normal;min-width:120px">' + esc(x.desc) + '</div><div style="font-size:12px;color:#64748b;white-space:normal">' + esc(x.code) + '</div>' +
               (wi && wi.by[x.code] ? '<div style="font-size:12px;color:#b45309;white-space:normal">+' + stkOrdN(wi.by[x.code].qty) + ' on ' + esc(wi.by[x.code].bills.join(", ")) + ', not matched</div>' : '') + '</div></div>', 'left') +
             td(oc ? stkMoveTag(x.code, oc) : '', 'left') +
@@ -54272,29 +54296,113 @@ function viewCatalogue() {
     return h;
   }
   /* the order as a PDF - the same lines and quantities as the screen */
-  function stkOrdPdf(brand) {
+  /* 6.9.864 - HIS WORDS, over Order_Heliroma_2026-10-24.pdf: "make it compact, show product pic also".
+     Drawn straight with jsPDF instead of through the spreadsheet-shaped rsRowsPdf: A4 portrait, one
+     8 mm picture per line beside the product (code under the name, so the Code column goes), tight
+     rows, the order quantity in the dark box as before. MRP and Value appear only when some line has
+     an MRP - the Heliroma order had none and printed two empty columns. Same lines, same quantities
+     as the screen; nothing below 8pt. A picture that will not load leaves a blank box and is named. */
+  async function stkOrdPdf(brand) {
     var L = stkOrdLines().filter(function (x) { return x.qty > 0 && (brand ? (x.brand || "Other") === brand : stkOrdInSel(x)); });
     if (!L.length) { toast("Nothing to order" + (brand ? " for " + brand : "") + "."); return; }
-    var pm = stkPMap(), M = function (v) { return { v: v, s: XL.MID }; };
-    var HEAD = ["#", "Product", "Code", "Unit", "Free", "Reorder", "Per box", "Boxes", "Order qty", "MRP", "Value (MRP)"].map(function (t) { return { v: t, s: XL.HEADW }; });
-    var rows = [[{ v: "Energy World · Order" + (brand ? " · " + brand : "") + " · " + fullDate(today()) + " · " + plural(L.length, "item"), s: XL.TITLE }]];
-    var grand = 0;
-    stkByBrand(L).forEach(function (g) {
-      if (!brand) rows.push([{ v: g.brand + "  (" + plural(g.list.length, "item") + ")", s: XL.SECT }]);
-      rows.push(HEAD);
-      var sub = 0;
-      g.list.forEach(function (x, j) {
-        var mrp = nAmt((pm[x.code] || {}).rate), v = mrp > 0 ? Math.round(mrp * x.qty) : 0; sub += v;
-        rows.push([M(j + 1), { v: x.desc, s: XL.MIDB }, M(x.code), M(x.unit || ""), M(x.free), M(x.min || ""), M(x.pack || ""), M(x.pack > 0 ? Math.ceil(x.qty / x.pack) : ""), { v: x.qty, s: XL.QTYB }, mrp > 0 ? { v: mrp, s: XL.MONEY } : M(""), v ? { v: v, s: XL.MONEY } : M("")]);
-      });
-      grand += sub;
-      rows.push(["", { v: "Total · " + g.brand, s: XL.BOLD }, "", "", "", "", "", "", "", "", { v: sub, s: XL.MONEYB }]);
-      rows.push([]);
-    });
-    if (!brand) rows.push(["", { v: "TOTAL ORDER VALUE AT MRP", s: XL.BOLD }, "", "", "", "", "", "", "", "", { v: grand, s: XL.MONEYB }]);
+    toast("Making the order PDF…");
+    var pm = stkPMap();
+    var urls = [], codeOf = {};
+    L.forEach(function (x) { var u = String((pm[x.code] || {}).pic || "").trim(); if (u && urls.indexOf(u) < 0) { urls.push(u); codeOf[u] = x.code; } });
+    var pics = {};
+    try {
+      var got = await picsForList(urls, function (u) { return u; }, function (u) { return codeOf[u] || u; });
+      urls.forEach(function (u, i) { pics[u] = got[i]; });
+      if (got.miss && got.miss.length) toast(picMissSay(got.miss));
+    } catch (e) { }
     var name = "Order_" + (brand ? brand.replace(/[^\w]+/g, "_") + "_" : "") + today() + ".pdf";
-    try { var doc = rsRowsPdf("Energy World order" + (brand ? " · " + brand : ""), rows, [4, 40, 14, 9, 8, 8, 8, 7, 9, 9, 11]); pdfOut(doc, name); toast("Downloaded " + name + " — " + plural(L.length, "item") + "."); }
-    catch (e) { toast("Could not make the PDF: " + ((e && e.message) || "error")); }
+    try {
+      var doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4" });
+      var F = function (st) { doc.setFont(ppEmbed(doc), st || "normal"); };
+      var W = 210, Lm = 8, Rm = W - 8, ROW = 9.4, PIC = 8;
+      var anyMrp = L.some(function (x) { return nAmt((pm[x.code] || {}).rate) > 0; });
+      /* right edges of the number columns, right to left */
+      var cols = anyMrp
+        ? [["Value", Rm], ["MRP", Rm - 20], ["Order", Rm - 37], ["Boxes", Rm - 54], ["/box", Rm - 67], ["Reord.", Rm - 80], ["Free", Rm - 95], ["Unit", Rm - 109]]
+        : [["Order", Rm], ["Boxes", Rm - 20], ["/box", Rm - 34], ["Reord.", Rm - 48], ["Free", Rm - 64], ["Unit", Rm - 80]];
+      var cx = {}; cols.forEach(function (c) { cx[c[0]] = c[1]; });
+      var unitX = cx.Unit - 12, prodX = Lm + 6 + PIC + 2, prodW = unitX - prodX - 2;
+      var nf = function (v) { var n = Number(v); if (!isFinite(n) || v === "" || v == null) return ""; return (Math.round(n * 10) / 10).toLocaleString("en-IN"); };
+      var y = 0, page = 1, grand = 0;
+      var band = function () {
+        doc.setFillColor(47, 111, 103); doc.rect(0, 0, W, 15, "F");
+        F("bold"); doc.setFontSize(13); doc.setTextColor(255, 255, 255);
+        doc.text("Energy World · Order" + (brand ? " · " + brand : ""), Lm, 9.6);
+        F("normal"); doc.setFontSize(9);
+        doc.text(fullDate(today()) + " · " + plural(L.length, "item"), Rm, 9.6, { align: "right" });
+        y = 20;
+      };
+      var head = function () {
+        doc.setFillColor(30, 41, 59); doc.rect(Lm, y, Rm - Lm, 6, "F");
+        F("bold"); doc.setFontSize(8); doc.setTextColor(255, 255, 255);
+        doc.text("#", Lm + 1.2, y + 4.1);
+        doc.text("Product", prodX, y + 4.1);
+        doc.text("Unit", unitX, y + 4.1);
+        cols.forEach(function (c) { if (c[0] !== "Unit") doc.text(c[0], c[1] - 1.2, y + 4.1, { align: "right" }); });
+        y += 7;
+      };
+      var room = function (h) { if (y + h > 287) { doc.addPage(); page++; y = 10; head(); } };
+      band();
+      stkByBrand(L).forEach(function (g) {
+        if (!brand) { room(14); F("bold"); doc.setFontSize(10); doc.setTextColor(47, 111, 103); doc.text(g.brand + "  ·  " + plural(g.list.length, "item"), Lm, y + 4); y += 6; }
+        head();
+        var sub = 0, _pv = -1, _pc = null; try { _pc = stkCtx(); } catch (e) { }
+        g.list.forEach(function (x, j) {
+          var _pg = _pc ? stkMoveGroup(x.code, _pc) : -1;   /* 6.9.864 - Fast, Slow, Non-moving headings */
+          if (_pc && _pg !== _pv) {
+            _pv = _pg; room(6 + ROW);
+            var _rgb = [[21, 128, 61], [180, 83, 9], [185, 28, 28], [100, 116, 139]][_pg];
+            doc.setFillColor(_rgb[0], _rgb[1], _rgb[2]); doc.rect(Lm, y, Rm - Lm, 5.4, "F");
+            F("bold"); doc.setFontSize(8.5); doc.setTextColor(255, 255, 255);
+            doc.text(STK_MV_HEAD[_pg].replace(/ \u2014.*$/, "") + "  \u00b7  " + plural(g.list.filter(function (q) { return stkMoveGroup(q.code, _pc) === _pg; }).length, "item"), Lm + 2, y + 3.8);
+            y += 6.2;
+          }
+          room(ROW);
+          var p = pm[x.code] || {}, mrp = nAmt(p.rate), v = mrp > 0 ? Math.round(mrp * x.qty) : 0; sub += v;
+          if (j % 2) { doc.setFillColor(248, 250, 252); doc.rect(Lm, y, Rm - Lm, ROW, "F"); }
+          var mid = y + ROW / 2 + 1.1;
+          F("normal"); doc.setFontSize(8); doc.setTextColor(100, 116, 139);
+          doc.text(String(j + 1), Lm + 1.2, mid);
+          var img = pics[String(p.pic || "").trim()];
+          var px = Lm + 6, py = y + (ROW - PIC) / 2;
+          if (img) { try { doc.addImage(img, "JPEG", px, py, PIC, PIC, undefined, "FAST"); } catch (e) { } }
+          else { doc.setDrawColor(226, 232, 240); doc.setLineWidth(0.2); doc.rect(px, py, PIC, PIC); }
+          var nm = fitCell(doc, F, String(x.desc || "").split("\n")[0], prodW, 1, "bold", 9)[0];
+          F("bold"); doc.setFontSize(9); doc.setTextColor(15, 23, 42); doc.text(nm, prodX, y + 4.1);
+          F("normal"); doc.setFontSize(8); doc.setTextColor(100, 116, 139); doc.text(String(x.code || ""), prodX, y + 7.9);
+          doc.setTextColor(71, 85, 105); doc.text(String(x.unit || "").replace(/^Per\s+/i, "").replace(/\.$/, ""), unitX, mid);
+          doc.setTextColor(Number(x.free) < 0 ? 185 : 30, Number(x.free) < 0 ? 28 : 41, Number(x.free) < 0 ? 28 : 59);
+          doc.text(nf(x.free), cx.Free - 1.2, mid, { align: "right" });
+          doc.setTextColor(30, 41, 59);
+          doc.text(nf(x.min), cx["Reord."] - 1.2, mid, { align: "right" });
+          doc.text(x.pack > 0 ? nf(x.pack) : "", cx["/box"] - 1.2, mid, { align: "right" });
+          doc.text(x.pack > 0 ? String(Math.ceil(x.qty / x.pack)) : "", cx.Boxes - 1.2, mid, { align: "right" });
+          var ow = anyMrp ? 16 : 19;
+          doc.setFillColor(15, 23, 42); doc.rect(cx.Order - ow, y + 1, ow, ROW - 2, "F");
+          F("bold"); doc.setFontSize(10); doc.setTextColor(255, 255, 255);
+          doc.text(nf(x.qty), cx.Order - 1.5, mid + 0.2, { align: "right" });
+          if (anyMrp) {
+            F("normal"); doc.setFontSize(8); doc.setTextColor(30, 41, 59);
+            doc.text(mrp > 0 ? nf(mrp) : "", cx.MRP - 1.2, mid, { align: "right" });
+            doc.text(v ? nf(v) : "", cx.Value - 1.2, mid, { align: "right" });
+          }
+          doc.setDrawColor(226, 232, 240); doc.setLineWidth(0.15); doc.line(Lm, y + ROW, Rm, y + ROW);
+          y += ROW;
+        });
+        grand += sub;
+        if (anyMrp) { room(7); F("bold"); doc.setFontSize(9); doc.setTextColor(15, 23, 42); doc.text("Total · " + g.brand, prodX, y + 4.6); doc.text(nf(sub), cx.Value - 1.2, y + 4.6, { align: "right" }); y += 7; }
+        y += 3;
+      });
+      if (!brand && anyMrp) { room(8); F("bold"); doc.setFontSize(10); doc.setTextColor(15, 23, 42); doc.text("Total order value at MRP", prodX, y + 4.6); doc.text(nf(grand), cx.Value - 1.2, y + 4.6, { align: "right" }); }
+      var n = doc.getNumberOfPages();
+      for (var i = 1; i <= n; i++) { doc.setPage(i); F("normal"); doc.setFontSize(8); doc.setTextColor(148, 163, 184); doc.text("Energy World, Panipat", Lm, 293); doc.text(i + " / " + n, Rm, 293, { align: "right" }); }
+      pdfOut(doc, name); toast("Downloaded " + name + " — " + plural(L.length, "item") + ", " + plural(n, "page") + ".");
+    } catch (e) { toast("Could not make the PDF: " + ((e && e.message) || "error")); }
   }
   /* one line typed: the other box, the total, the value and the bar follow - no repaint */
   function stkOrdTyping(t) {
@@ -54322,17 +54430,35 @@ function viewCatalogue() {
       var p = pm[k] || {}, L = lvl[k] || {};
       var r = { code: k, desc: p.desc || x.desc || k, brand: p.brand || "", unit: p.unit || "", onhand: x.onhand, held: x.held, free: x.free, min: x.min,
         max: L.max || 0, pack: L.pack || 0, crit: L.crit || 0 };
-      r.need = stkRoundPack(Math.round(((r.max > r.min ? r.max : r.min) - x.free) * 100) / 100, r.pack);
+      /* 6.9.864 - a never-counted line below 0 means a purchase was not entered since the count day; it is ordered from 0, not from the hole */
+      r.zero = !!x.zeroed;
+      r.need = stkRoundPack(Math.round(((r.max > r.min ? r.max : r.min) - (r.zero && x.free < 0 ? 0 : x.free)) * 100) / 100, r.pack);
       if (!x.counted) uncounted.push(r); else if (stkShort(x)) out.push(r);
     });
     out.sort(function (a, b) { return String(a.brand).localeCompare(String(b.brand)) || (a.free / a.min) - (b.free / b.min); });
     uncounted.sort(function (a, b) { return String(a.desc).localeCompare(String(b.desc)); });
     return { list: out, uncounted: uncounted };
   }
+  /* 6.9.864 - HIS WORDS: "show category wise like fast moving item on top then below all ... manage it in a
+     better easy way". Inside each brand the lines go Fast, Slow, Non-moving, then no history yet, and within a
+     group by class (A, B, C) then name. One sort here, so the screen, the PDF, the Excel and the WhatsApp text
+     all read in the same order. stkMoveGroup names the group a line falls in, for the headings. */
+  var STK_MV_RANK = { F: 0, S: 1, N: 2 }, STK_MV_HEAD = ["Fast moving", "Slow moving", "Non-moving \u2014 think before ordering", "No sales history yet"];
+  function stkMoveGroup(code, ctx) { var f = ctx && ctx.fsn ? ctx.fsn[code] : ""; return f in STK_MV_RANK ? STK_MV_RANK[f] : 3; }
   function stkByBrand(L) {
-    var g = {}, order = [];
+    var g = {}, order = [], ctx = null;
+    try { ctx = stkCtx(); } catch (e) { ctx = null; }
+    var cr = { A: 0, B: 1, C: 2 };
     L.forEach(function (x) { var b = x.brand || "Other"; if (!g[b]) { g[b] = []; order.push(b); } g[b].push(x); });
-    return order.map(function (b) { return { brand: b, list: g[b] }; });
+    return order.map(function (b) {
+      var list = g[b];
+      if (ctx) list = list.map(function (x, i) { return { x: x, i: i }; }).sort(function (p, q) {
+        var a = stkMoveGroup(p.x.code, ctx) - stkMoveGroup(q.x.code, ctx); if (a) return a;
+        var ca = (cr[ctx.cls[p.x.code]] != null ? cr[ctx.cls[p.x.code]] : 3) - (cr[ctx.cls[q.x.code]] != null ? cr[ctx.cls[q.x.code]] : 3); if (ca) return ca;
+        return p.i - q.i;
+      }).map(function (o) { return o.x; });
+      return { brand: b, list: list };
+    });
   }
   function stkOrderHtml(full) {
     var o = stkToOrder(), L = o.list, _uncS = o.uncounted.filter(function (x) { return x.free <= x.min; });   /* 6.9.721 */
