@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.866";
+  var APP_VERSION = "6.9.867";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -5351,7 +5351,9 @@ window.addEventListener("beforeunload", function (ev) {
     { k: "money", t: "Money check", when: "every day" },   /* 6.9.662 */
     { k: "risk", t: "Morning money risk", when: "every day" },   /* 6.9.739 */
     { k: "attweek", t: "Weekly attendance", when: "every Monday" },   /* 6.9.805 */
-    { k: "attmonth", t: "Monthly attendance (for salary)", when: "the 1st" }   /* 6.9.805 */
+    { k: "attmonth", t: "Monthly attendance (for salary)", when: "the 1st" },   /* 6.9.805 */
+    { k: "dcweek", t: "Weekly dispatch & collection", when: "every Monday, for last week" },   /* 6.9.867 */
+    { k: "dcmonth", t: "Monthly dispatch & collection", when: "the 1st, for last month" }      /* 6.9.867 */
   ];
   /* ================= ATTENDANCE FROM VISITS  (CRM 6.9.805 / Visit 1.5.2, 14 Oct 2026) =================
      HIS WORDS: "remind executive by popup in their device that attendance will only be marked when visits
@@ -5534,6 +5536,137 @@ window.addEventListener("beforeunload", function (ev) {
       text: "", xlsx: { sheet: k === "attweek" ? "Weekly attendance" : "Monthly attendance", rows: X.rows, cols: X.cols, opts: X.opts, file: X.file } };
     return { team: team, men: [] };
   }
+  /* ================= DISPATCH & COLLECTION STATEMENT  (CRM 6.9.867, 24 Oct 2026) =================
+     HIS WORDS: "we need a statement on regular basis that, how much material dispatched weekly executive wise below
+     it client wise, payment received in that week, same statement monthly, all summary in professional ways".
+     The figures are the review's own (rvData): dispatched = challans out of the godown in the period, by the day they
+     left (dispatchedAt, or the day made for one already delivered), valued as the hisab values them (net + freight);
+     received = payments dated in the period, a discount entry is not money. The executive is the client's owner.
+     Weekly = last Monday to Sunday, sent Monday. Monthly = last calendar month, sent on the 1st. "So far" = the
+     current week or month to today, on demand. Due now = what the client owes today, all periods. */
+  function dcRange(k, cur, t) {
+    t = t || today();
+    var R;
+    if (k === "dcmonth") {
+      var m1 = t.slice(0, 8) + "01";
+      R = cur ? { from: m1, to: t } : { from: addDays(m1, -1).slice(0, 8) + "01", to: addDays(m1, -1) };
+      R.title = "Monthly dispatch & collection";
+      R.label = (cur ? "This month so far – " : "") + monthLabel(R.from.slice(0, 7));
+    } else {
+      var mon = addDays(t, -((rvDow(t) + 6) % 7));
+      R = cur ? { from: mon, to: t } : { from: addDays(mon, -7), to: addDays(mon, -1) };
+      R.title = "Weekly dispatch & collection";
+      R.label = (cur ? "This week so far" : "Week") + " " + rvShort(R.from) + " – " + rvShort(R.to);
+    }
+    R.span = fullDate(R.from) + " to " + fullDate(R.to);
+    return R;
+  }
+  function dcData(R) {
+    var inR = function (d) { return !!d && d >= R.from && d <= R.to; };
+    var NOEX = "(no executive)";
+    var disp = dedupeChallans((S.data.challans || []).filter(function (c) { return !stkChDead(c); })).map(function (c) {
+      var d = dstr(c.dispatchedAt) || (FR_DONE.indexOf(String(c.status || "")) >= 0 ? dstr(c.createdAt) : "");
+      var n = String(c.customerName || "").trim();
+      return { d: d, no: String(c.challanNo || ""), name: n, exec: rvOwner(n) || NOEX, amt: chValue(c) };
+    }).filter(function (x) { return inR(x.d) && x.name; }).sort(function (a, b) { return a.d.localeCompare(b.d) || a.no.localeCompare(b.no); });
+    var coll = (S.data.payments || []).filter(function (p) { return !payIsDisc(p); }).map(function (p) {
+      var n = String(p.client || "").trim();
+      return { d: dstr(p.date || p.createdAt), name: n, exec: rvOwner(n) || NOEX, amt: payAmt(p), mode: String(p.mode || ""), ref: String(p.ref || "") };
+    }).filter(function (x) { return inR(x.d) && x.amt > 0 && x.name; }).sort(function (a, b) { return a.d.localeCompare(b.d); });
+    var ex = {};
+    var get = function (e, n) {
+      var X = ex[e] = ex[e] || { exec: e, disp: 0, nCh: 0, coll: 0, nPay: 0, cl: {} };
+      var C = X.cl[n] = X.cl[n] || { name: n, disp: 0, nCh: 0, coll: 0, nPay: 0, nos: [] };
+      return [X, C];
+    };
+    disp.forEach(function (x) { var g = get(x.exec, x.name); g[0].disp += x.amt; g[0].nCh++; g[1].disp += x.amt; g[1].nCh++; g[1].nos.push(x.no); });
+    coll.forEach(function (x) { var g = get(x.exec, x.name); g[0].coll += x.amt; g[0].nPay++; g[1].coll += x.amt; g[1].nPay++; });
+    var execs = Object.keys(ex).map(function (e) {
+      var X = ex[e];
+      X.clients = Object.keys(X.cl).map(function (n) { var C = X.cl[n]; C.due = (clientLedger(n) || {}).due || 0; return C; })
+        .sort(function (a, b) { return b.disp - a.disp || b.coll - a.coll || alpha(a.name, b.name); });
+      X.due = X.clients.reduce(function (a, c) { return a + c.due; }, 0);
+      X.nCl = X.clients.length;
+      return X;
+    }).sort(function (a, b) { return (a.exec === NOEX) - (b.exec === NOEX) || b.disp - a.disp || b.coll - a.coll; });
+    var T = { disp: 0, nCh: disp.length, coll: 0, nPay: coll.length };
+    disp.forEach(function (x) { T.disp += x.amt; }); coll.forEach(function (x) { T.coll += x.amt; });
+    T.nCl = {}; disp.forEach(function (x) { T.nCl[x.name] = 1; }); T.nCl = Object.keys(T.nCl).length;
+    return { R: R, disp: disp, coll: coll, execs: execs, T: T };
+  }
+  function dcDue(n) { n = Number(n) || 0; return n < -0.5 ? rsInr(-n) + " advance" : rsInr(n); }
+  function dcPer100(disp, coll) { return disp > 0.5 ? Math.round(coll / disp * 100) : null; }
+  function dcSheet(k, cur) {
+    var D = dcData(dcRange(k, cur)), R = D.R, T = D.T, W = 7, out = [];
+    var M = function (n, st) { return { v: Math.round(Number(n) || 0), s: st || XL.MONEY }; };
+    var p100 = dcPer100(T.disp, T.coll);
+    out.push(rsFill("Energy World – " + R.title.toLowerCase(), XL.TITLE, W));
+    out.push([rsMadeLine(R.label + " (" + R.span + ").")]);
+    out.push([]);
+    out.push(rsFill("Summary", XL.SECT, W));
+    out.push([{ v: "Material dispatched", s: XL.BOLD }, M(T.disp, XL.MONEYB), plural(T.nCh, "challan") + " · " + plural(T.nCl, "client")]);
+    out.push([{ v: "Payment received", s: XL.BOLD }, M(T.coll, XL.G_M), plural(T.nPay, "payment")]);
+    out.push([{ v: "Net added to dues", s: XL.BOLD }, M(T.disp - T.coll, T.disp - T.coll > 0.5 ? XL.R_M : XL.G_M), T.disp - T.coll > 0.5 ? "dues went up" : "dues came down"]);
+    out.push([{ v: "Received per ₹100 dispatched", s: XL.BOLD }, p100 == null ? "—" : { v: "₹" + p100, s: p100 >= 100 ? XL.G : p100 >= 50 ? XL.A : XL.R }, ""]);
+    out.push([]);
+    out.push(rsFill("By executive", XL.SECT, W));
+    out.push(rsHead(["Executive", "Clients", "Challans", "Dispatched", "Payments", "Received", "Due now (his clients)"]));
+    D.execs.forEach(function (X) { out.push([{ v: X.exec, s: XL.BOLD }, X.nCl, X.nCh, M(X.disp), X.nPay, M(X.coll, X.coll > 0.5 ? XL.G_M : XL.MONEY), M(X.due)]); });
+    out.push([{ v: "Total", s: XL.BOLD }, "", T.nCh, M(T.disp, XL.MONEYB), T.nPay, M(T.coll, XL.MONEYB), ""]);
+    D.execs.forEach(function (X) {
+      out.push([]);
+      out.push(rsFill(X.exec + " – " + plural(X.nCl, "client") + " · dispatched " + rsInr(X.disp) + " · received " + rsInr(X.coll), XL.EXEC, W));
+      out.push(rsHead(["Client", "Challans", "Challan numbers", "Dispatched", "Payments", "Received", "Due now"]));
+      X.clients.forEach(function (C) {
+        out.push([C.name, C.nCh || "", C.nos.join(", "), C.disp ? M(C.disp) : "", C.nPay || "", C.coll ? M(C.coll, XL.G_M) : "", M(C.due, C.due > 100000 ? XL.R_M : C.due >= 50000 ? XL.A_M : XL.MONEY)]);
+      });
+      out.push([{ v: "Total · " + X.exec, s: XL.BOLD }, X.nCh, "", M(X.disp, XL.MONEYB), X.nPay, M(X.coll, XL.MONEYB), M(X.due, XL.MONEYB)]);
+    });
+    out.push([]);
+    out.push(rsFill("Every challan dispatched", XL.SECT, W));
+    out.push(rsHead(["Date", "Challan", "Client", "Executive", "Value", "", ""]));
+    D.disp.forEach(function (x) { out.push([d10(x.d), x.no, x.name, x.exec, M(x.amt)]); });
+    if (!D.disp.length) out.push(["none"]);
+    out.push([]);
+    out.push(rsFill("Every payment received", XL.SECT, W));
+    out.push(rsHead(["Date", "Client", "Executive", "Mode", "Amount", "Reference", ""]));
+    D.coll.forEach(function (x) { out.push([d10(x.d), x.name, x.exec, x.mode, M(x.amt, XL.G_M), x.ref]); });
+    if (!D.coll.length) out.push(["none"]);
+    var file = (k === "dcmonth" ? "Monthly" : "Weekly") + "_dispatch_collection_" + R.from + "_to_" + R.to + ".xlsx";
+    return { D: D, text: "", rows: out, cols: [36, 10, 30, 16, 10, 16, 18], opts: rsOpts(out, W, 2), file: file, caption: R.title };
+  }
+  /* the picture for the group: the summary, the executives, then each executive's clients */
+  function rsSetDC(k, cur) {
+    var X = dcSheet(k, cur), D = X.D, R = D.R, T = D.T, p100 = dcPer100(T.disp, T.coll);
+    var blocks = [{ h: "Summary" }, { cols: [["", 46, "l"], ["Amount", 28, "r"], ["", 26, "l"]], rows: [
+      [rsC("Material dispatched", "", true), rsC(rsInr(T.disp), "", true), plural(T.nCh, "challan") + " · " + plural(T.nCl, "client")],
+      [rsC("Payment received", "G", true), rsC(rsInr(T.coll), "G", true), plural(T.nPay, "payment")],
+      [rsC("Net added to dues", T.disp - T.coll > 0.5 ? "R" : "G"), rsC(rsInr(Math.abs(T.disp - T.coll)), T.disp - T.coll > 0.5 ? "R" : "G", true), T.disp - T.coll > 0.5 ? "dues went up" : "dues came down"],
+      [rsC("Received per ₹100 dispatched", ""), p100 == null ? "—" : rsC("₹" + p100, p100 >= 100 ? "G" : p100 >= 50 ? "A" : "R", true), ""]] }];
+    if (D.execs.length) blocks.push({ h: "By executive" }, { cols: [["Executive", 24, "l"], ["Clients", 10, "r"], ["Dispatched", 20, "r"], ["Received", 20, "r"], ["Due now", 26, "r"]],
+      rows: D.execs.map(function (E) { return [rsC(E.exec, "B", true), E.nCl, rsC(rsInr(E.disp), "", true), rsC(rsInr(E.coll), E.coll > 0.5 ? "G" : "", true), rsC(dcDue(E.due), rsDueSt(E.due))]; }).concat([[rsC("Total", "", true), "", rsC(rsInr(T.disp), "", true), rsC(rsInr(T.coll), "G", true), ""]]) });
+    D.execs.forEach(function (E) {
+      blocks.push({ band: E.exec + " – dispatched " + rsInr(E.disp) + " · received " + rsInr(E.coll) });
+      blocks.push({ cols: [["Client", 40, "l", "w"], ["Dispatched", 20, "r"], ["Received", 20, "r"], ["Due now", 20, "r"]],
+        rows: E.clients.slice(0, 15).map(function (C) { return [rsC(C.name, "", true), C.disp ? rsInr(C.disp) : "—", C.coll ? rsC(rsInr(C.coll), "G") : "—", rsC(dcDue(C.due), rsDueSt(C.due))]; }) });
+      if (E.clients.length > 15) blocks.push({ note: "and " + (E.clients.length - 15) + " more clients in the Excel" });
+    });
+    if (!D.execs.length) blocks.push({ note: "Nothing dispatched and nothing received in this period." });
+    blocks.push({ note: "Dispatched = challans out of the godown in the period, after discount, with freight." });
+    blocks.push({ note: "Received = payments dated in the period. Due now = what the client owes today." });
+    var names = D.execs.map(function (E) { return E.exec; }).filter(function (n) { return n !== "(no executive)"; });
+    return { team: { who: rsOwners().concat(names), head: R.title + " – " + R.label,
+      line: "Dispatched " + rsInr(T.disp) + " · received " + rsInr(T.coll) + " · " + plural(D.execs.length, "executive"),
+      spec: { title: R.title, sub: R.label + " · " + R.span, key: [["Received", "G"], ["Due ₹50k–1L", "A"], ["Due over ₹1L", "R"]], blocks: blocks },
+      text: "", xlsx: { sheet: k === "dcmonth" ? "Monthly" : "Weekly", rows: X.rows, cols: X.cols, opts: X.opts, file: X.file } }, men: [] };
+  }
+  /* the same statement as a PDF, for printing or sending on */
+  function dcPdf(k, cur) {
+    var X; try { X = dcSheet(k, cur); } catch (e) { toast("Could not build the statement on this device."); return; }
+    var name = X.file.replace(/\.xlsx$/, ".pdf");
+    try { pdfOut(rsRowsPdf(X.D.R.title + " – " + X.D.R.label, X.rows, X.cols), name); toast("Downloaded " + name + "."); }
+    catch (e) { toast("Could not make the PDF: " + ((e && e.message) || "error")); }
+  }
   /* the latest slot of each report on or before today, if it is still fresh enough to send */
   function rsSlots(t) {
     t = t || today();
@@ -5550,6 +5683,8 @@ window.addEventListener("beforeunload", function (ev) {
     if (mon && addDays(mon, -1) >= ATT_FROM) out.push({ k: "attweek", slot: "attweek:" + mon, day: mon });
     var _a1 = back(function (d) { return d.slice(8, 10) === "01"; }, 4);
     if (_a1 && addDays(_a1, -1) >= ATT_FROM) out.push({ k: "attmonth", slot: "attmonth:" + _a1, day: _a1 });
+    if (mon) out.push({ k: "dcweek", slot: "dcweek:" + mon, day: mon });   /* 6.9.867 */
+    if (_a1) out.push({ k: "dcmonth", slot: "dcmonth:" + _a1, day: _a1 });   /* 6.9.867 */
     return out;
   }
   function rsLocal() { try { return JSON.parse(localStorage.getItem("ew_rs_sent") || "{}") || {}; } catch (e) { return {}; } }
@@ -5605,6 +5740,7 @@ window.addEventListener("beforeunload", function (ev) {
     if (k === "pitch") return rsPitchSheet();
     if (k === "pulse") return rsPulseSheet();   /* 6.9.652 */
     if (k === "money") return rsMoneySheet();   /* 6.9.662 */
+    if (k === "dcweek" || k === "dcmonth") return dcSheet(k);   /* 6.9.867 */
     if (k === "attweek" || k === "attmonth") { var _ak = rsSetAtt(k).team.xlsx; return { rows: _ak.rows, cols: _ak.cols, opts: _ak.opts, file: _ak.file, text: "", caption: "" }; }   /* 6.9.805 */
     if (k === "risk") { var _rk = rsSetRisk().team.xlsx; return { rows: _rk.rows, cols: _rk.cols, opts: _rk.opts, file: _rk.file, text: "", caption: "" }; }   /* 6.9.739 */
     return rsPartnerReport();
@@ -6468,6 +6604,7 @@ window.addEventListener("beforeunload", function (ev) {
     if (k === "money") return rsSetMoney();   /* 6.9.662 */
     if (k === "risk") return rsSetRisk();      /* 6.9.739 */
     if (k === "attweek" || k === "attmonth") return rsSetAtt(k);   /* 6.9.805 */
+    if (k === "dcweek" || k === "dcmonth") return rsSetDC(k);   /* 6.9.867 */
     return rsSetPartner();
   }
 
@@ -6777,7 +6914,9 @@ window.addEventListener("beforeunload", function (ev) {
     RS_KINDS.forEach(function (r) {
       var last = rsLastSent(r.k), sl = slots[r.k], pend = sl && !rsSentAt(sl.slot);
       h += rvRow(esc(r.t), esc(r.when) + " · " + (last ? "last sent " + esc(fullDate(last)) : "not sent yet") + (pend ? ' · <b style="color:#b45309">due now</b>' : ""), "",
-        rvBtn("rs-send", "Send now", ' data-k="' + r.k + '"', true) + rvBtn("rs-xlsx", "⇩ Excel", ' data-k="' + r.k + '"', true));
+        rvBtn("rs-send", "Send now", ' data-k="' + r.k + '"', true) + rvBtn("rs-xlsx", "⇩ Excel", ' data-k="' + r.k + '"', true) +
+        (/^dc/.test(r.k) ? rvBtn("dc-pdf", "⇩ PDF", ' data-k="' + r.k + '"', true) +
+          rvBtn("dc-cur", r.k === "dcmonth" ? "This month so far" : "This week so far", ' data-k="' + r.k + '"', true) : ""));   /* 6.9.867 */
     });
     return h + '</div>';
   }
@@ -58484,6 +58623,15 @@ function viewCatalogue() {
         rsMark(_sl ? _sl.slot : _rsk + ":" + today(), "hand");
         toast("Sent: " + rsTitle(_rsk) + "."); keepScroll = true; render();
       }, function (e) { toast("Not sent: " + rvTgWhy(e)); });
+      return;
+    }
+    /* 6.9.867 - the dispatch & collection statement: PDF of the last period, and the current one so far (PDF + Excel) */
+    if (act === "dc-pdf") { if (!roleAny(["admin", "accounts"])) return; dcPdf(t.getAttribute("data-k") || "dcweek"); return; }
+    if (act === "dc-cur") {
+      if (!roleAny(["admin", "accounts"])) return;
+      var _dk = t.getAttribute("data-k") || "dcweek", _dx;
+      try { _dx = dcSheet(_dk, true); } catch (e) { toast("Could not build the statement on this device."); return; }
+      dcPdf(_dk, true); dlXlsx(_dx.file, (_dk === "dcmonth" ? "Month so far" : "Week so far"), _dx.rows, _dx.cols, _dx.opts);
       return;
     }
     if (act === "rs-xlsx") { if (!roleAny(["admin", "accounts"])) return; rsXlsx(t.getAttribute("data-k") || ""); return; }
