@@ -208,7 +208,7 @@ table.att td.ok,table.att td.no{font-size:16px}
       button: function () { return '<button type="button" class="ewthm" onclick="ewTheme.next(this)">' + ewtLabel() + '</button>'; }
     };
   })();
-  var APP_VERSION = "1.6.2";   /* 1.6.1 - Huliot Group introduction on quotes; 1.6.0 (17 Oct 2026) - a dropped POST never loses a quote; admin sees every executive; daily report; attendance grid */
+  var APP_VERSION = "1.7.0";   /* 1.6.1 - Huliot Group introduction on quotes; 1.6.0 (17 Oct 2026) - a dropped POST never loses a quote; admin sees every executive; daily report; attendance grid */
   /* 1.6.0 - ONLY THE SERVER'S OWN "NO" SIGNS A MAN OUT. The old test was /pin|locked|not allowed|blocked|removed/:
      any data error that happened to contain "not allowed" or "removed" (a refused row, a removed brand) signed the
      executive out and wiped his snapshot. These are the sign-in answers the server gives (teamAuth: "Wrong name or
@@ -2100,7 +2100,8 @@ table.att td.ok,table.att td.no{font-size:16px}
     return '<div class="exrow" id="ew_exrow">' +
       '<button class="chip' + (!S.ex ? ' on' : '') + '" data-act="ex" data-k="">All</button>' +
       names.map(function (n) { return '<button class="chip' + (dkey(S.ex) === dkey(n) ? ' on' : '') + '" data-act="ex" data-k="' + esc(n) + '">' + esc(String(n).split(" ")[0]) + '</button>'; }).join("") +
-      '<button class="chip" data-act="att-grid" style="border-color:#1F3A5F">&#10003; Attendance</button></div>';
+      '<button class="chip" data-act="att-grid" style="border-color:#1F3A5F">&#10003; Attendance</button>' +
+      (S.ex ? '<button class="chip" data-act="exl-open" data-n="' + esc(S.ex) + '" style="border-color:#1F3A5F">&#128197; ' + esc(String(S.ex).split(" ")[0]) + '&rsquo;s day by day</button>' : '') + '</div>';   /* 1.7.0 */
   }
   function hm(at) { var d = new Date(String(at || "")); if (isNaN(d.getTime())) return ""; return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"); }
   function exDayStats(name, day) {
@@ -2117,12 +2118,104 @@ table.att td.ok,table.att td.no{font-size:16px}
     if (!names.length) h += '<div class="meta">No executive has a visit or a quote in the book yet.</div>';
     names.forEach(function (n) {
       var s = exDayStats(n, td);
-      h += '<div class="row" style="min-height:44px;border-top:1px solid #f1f5f9;padding:6px 0"><div class="grow"><div class="ttl2">' + esc(n) + '</div>' +
+      h += '<div class="row" data-act="exl-open" data-n="' + esc(n) + '" style="cursor:pointer;min-height:44px;border-top:1px solid #f1f5f9;padding:6px 0"><div class="grow"><div class="ttl2">' + esc(n) + ' <span style="font-size:12px;color:#2563eb;font-weight:600">day by day &rsaquo;</span></div>' +   /* 1.7.0 */
         (s.n ? '<div class="meta">first ' + esc(s.first) + ' &middot; last ' + esc(s.last) + '</div>' : '<div class="meta" style="color:#b91c1c;font-weight:700">no visit yet</div>') + '</div>' +
         '<div style="text-align:right;white-space:nowrap"><b>' + s.n + '</b> <span class="meta">visit' + (s.n === 1 ? '' : 's') + '</span><br/><b>' + s.nq + '</b> <span class="meta">quote' + (s.nq === 1 ? '' : 's') + '</span></div></div>';
     });
     h += '<div class="acts"><button class="btn sm" data-act="dr-open">Daily report</button><button class="btn sm gry" data-act="att-grid">Attendance</button></div></div>';
     return h;
+  }
+  /* ================= 1.7.0 - ONE EXECUTIVE, DAY BY DAY  (24 Oct 2026) =================
+     HIS WORDS: "make provision to see daily report of each executive, like clicking a executive see date wise visit, date wise
+     quote made, attendance status depends on visit, proper log of everything". Admin taps a name (Team today, the attendance grid,
+     or the Log chip beside the executive chips) and gets every day of the chosen period, newest first: the attendance the salary
+     report uses (attDay - a visit makes a present day; Sunday, holiday, leave, a mark by the office), first and last visit time,
+     and the log of that day in time order - every visit (site / plumber / architect / showroom, who, met, note, and whether the
+     phone's clock was checked), every quote made (number, client, value, status), every client he added, every follow-up he
+     set, and the office's attendance mark with its note. Read from the book; nothing is written. */
+  var EXL_PER = [["7", "Last 7 days"], ["14", "Last 14 days"], ["m", "This month"], ["lm", "Last month"]];
+  function exlRange(k) {
+    var td = today(), d = new Date(td + "T12:00:00");
+    if (k === "m") return { from: td.slice(0, 8) + "01", to: td };
+    if (k === "lm") { var f = new Date(d.getFullYear(), d.getMonth() - 1, 1), l = new Date(d.getFullYear(), d.getMonth(), 0); return { from: ymdLocal(f), to: ymdLocal(l) }; }
+    var n = Number(k) || 7, s0 = new Date(d); s0.setDate(s0.getDate() - (n - 1)); return { from: ymdLocal(s0), to: td };
+  }
+  function exlEvents(name, from, to) {
+    var k = dkey(name), ev = [], inR = function (d) { return d && d >= from && d <= to; };
+    (S.data.sitevisits || []).forEach(function (v) {
+      if (!v || dkey(v.createdBy) !== k) return; var at = String(v.createdAt || v.date || ""), d = dstr(at); if (!inR(d)) return;
+      ev.push({ d: d, at: at, t: "visit", k: "Site visit", what: String(v.siteName || v.client || ""), more: [v.visitType, v.purpose || v.note].filter(Boolean).join(" · ") });
+    });
+    (S.data.audit || []).forEach(function (r) {
+      if (!r) return;
+      if (r.action === "visit:mark" && dkey(r.actor) === k) {
+        var x = {}; try { x = JSON.parse(r.detail || "{}") || {}; } catch (e) { x = {}; }
+        var at2 = String(x.netAt || r.createdAt || ""), d2 = dstr(at2); if (!inR(d2)) return;
+        ev.push({ d: d2, at: at2, t: "visit", k: (VM_KINDS[x.kind] || x.kind || "Visit") + " visit", what: String(x.who || r.target || ""), more: [x.whoKind, x.note].filter(Boolean).join(" · "), unchk: x.tchk === 0 });
+      } else if (r.action === "att:mark") {
+        var y = {}; try { y = JSON.parse(r.detail || "{}") || {}; } catch (e) { y = {}; }
+        var dd = String(y.day || "").slice(0, 10); if (!inR(dd) || (y.who !== "*" && dkey(y.who) !== k)) return;
+        ev.push({ d: dd, at: String(r.createdAt || ""), t: "att", k: "Attendance marked", what: (y.kind || "") + (y.who === "*" ? " (everyone)" : ""), more: [y.note, "by " + String(r.actor || "")].filter(Boolean).join(" · ") });
+      }
+    });
+    (S.data.quotes || []).forEach(function (q) {
+      if (!q || isCancelled("quotes", q.id) || dkey(q.createdBy) !== k) return; var at3 = String(q.createdAt || ""), d3 = dstr(at3); if (!inR(d3)) return;
+      ev.push({ d: d3, at: at3, t: "quote", k: "Quote " + (qNo(q) || ""), what: String(q.client || ""), more: money(q.net) + " · " + String(q.status || "Draft"), amt: Number(q.net) || 0 });
+    });
+    (S.data.clients || []).forEach(function (c) {
+      if (!c || dkey(c.createdBy) !== k) return; var at4 = String(c.createdAt || ""), d4 = dstr(at4); if (!inR(d4)) return;
+      ev.push({ d: d4, at: at4, t: "client", k: "New client", what: String(c.name || ""), more: [c.area, c.location, c.mobile].filter(Boolean).join(" · ") });
+    });
+    (S.data.followups || []).forEach(function (f) {
+      if (!f || dkey(f.createdBy) !== k) return; var at5 = String(f.createdAt || ""), d5 = dstr(at5); if (!inR(d5)) return;
+      ev.push({ d: d5, at: at5, t: "fu", k: "Follow-up set", what: String(f.customerName || ""), more: [f.purpose || f.note || f.notes, f.dueDate ? "due " + fd(f.dueDate) : "", f.status].filter(Boolean).join(" · ") });
+    });
+    return ev.sort(function (a, b) { return a.at.localeCompare(b.at); });
+  }
+  var EXL_ATT = { P: ["Present", "#dcfce7", "#166534"], A: ["Absent", "#fee2e2", "#b91c1c"], L: ["Leave", "#fef3c7", "#92400e"], H: ["Holiday", "#e2e8f0", "#475569"],
+    O: ["Sunday", "#e2e8f0", "#475569"], W: ["Worked on a day off", "#dbeafe", "#1e40af"], T: ["Today - no visit yet", "#fef3c7", "#92400e"] };
+  function exLogSheet(name, per) {
+    per = per || S.exlPer || "7";
+    var R = exlRange(per), ev = exlEvents(name, R.from, R.to), vd = attVisitDays(name), marks = attMarks();
+    var days = [], d = new Date(R.to + "T12:00:00"), stop = new Date(R.from + "T12:00:00");
+    while (d >= stop) { days.push(ymdLocal(d)); d.setDate(d.getDate() - 1); }
+    var cnt = { P: 0, A: 0, L: 0, H: 0, O: 0, W: 0 }, nv = 0, nq = 0, qa = 0;
+    ev.forEach(function (e) { if (e.t === "visit") nv++; if (e.t === "quote") { nq++; qa += e.amt; } });
+    var rows = days.map(function (day) {
+      var st = attDay(name, day, vd, marks); if (cnt[st] != null) cnt[st]++;
+      var de = ev.filter(function (e) { return e.d === day; }), vs = de.filter(function (e) { return e.t === "visit"; }), qs = de.filter(function (e) { return e.t === "quote"; });
+      var b = EXL_ATT[st];
+      var head = '<div class="row" style="align-items:center;gap:8px;flex-wrap:wrap"><div class="grow"><b>' + esc(fd(day)) + '</b> <span class="meta">' + ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][attDow(day)] + '</span></div>' +
+        (b ? '<span style="display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:800;background:' + b[1] + ';color:' + b[2] + '">' + b[0] + '</span>' : '<span class="meta">not counted</span>') + '</div>' +
+        '<div class="meta" style="margin-top:2px">' + vs.length + ' visit' + (vs.length === 1 ? '' : 's') + (vs.length ? ' &middot; ' + esc(hm(vs[0].at)) + ' to ' + esc(hm(vs[vs.length - 1].at)) : '') +
+        ' &middot; ' + qs.length + ' quote' + (qs.length === 1 ? '' : 's') + (qs.length ? ' &middot; ' + esc(money(qs.reduce(function (a, x) { return a + x.amt; }, 0))) : '') + '</div>';
+      var log = de.length ? '<div style="margin-top:6px;border-left:3px solid #cbd5e1;padding-left:8px">' + de.map(function (e) {
+        var col = e.t === "visit" ? "#1F3A5F" : e.t === "quote" ? "#0f766e" : e.t === "att" ? "#92400e" : "#475569";
+        return '<div style="padding:3px 0;font-size:13px"><span style="font-variant-numeric:tabular-nums;color:#64748b">' + esc(hm(e.at) || "--:--") + '</span> &nbsp;<b style="color:' + col + '">' + esc(e.k) + '</b> &middot; ' + esc(e.what) +
+          (e.more ? ' <span class="meta">&middot; ' + esc(e.more) + '</span>' : '') + (e.unchk ? ' <span style="color:#b45309;font-size:12px;font-weight:700">time not checked</span>' : '') + '</div>';
+      }).join("") + '</div>' : '';
+      return '<div class="card" style="padding:9px 11px">' + head + log + '</div>';
+    }).join("");
+    var tile = function (n, l, c) { return '<div class="card" style="flex:1 1 90px;padding:8px 10px;margin:0"><div style="font-size:20px;font-weight:800;color:' + (c || '#0f172a') + '">' + n + '</div><div class="meta">' + l + '</div></div>'; };
+    return '<h2>' + esc(name) + ' &mdash; day by day</h2>' +
+      '<div class="meta">' + esc(fd(R.from)) + ' to ' + esc(fd(R.to)) + '. Attendance as the salary report counts it: a day with a visit is present.</div>' +
+      '<div class="chips" style="margin:8px 0">' + EXL_PER.map(function (p) { return '<button type="button" class="chip' + (p[0] === per ? ' on' : '') + '" data-act="exl-per" data-k="' + p[0] + '" data-n="' + esc(name) + '">' + p[1] + '</button>'; }).join("") + '</div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 10px">' + tile(cnt.P + cnt.W, "present", "#166534") + tile(cnt.A, "absent", cnt.A ? "#b91c1c" : "") + tile(cnt.L, "leave") + tile(cnt.O + cnt.H, "off") +
+        tile(nv, "visits") + tile(nq, "quotes &middot; " + money(qa)) + '</div>' + rows +
+      '<div class="acts"><button class="btn gry" data-act="exl-copy" data-n="' + esc(name) + '">Copy as text</button><button class="btn gry" data-act="close">Close</button></div>';
+  }
+  function exLogText(name, per) {
+    var R = exlRange(per || S.exlPer || "7"), ev = exlEvents(name, R.from, R.to), vd = attVisitDays(name), marks = attMarks(), L = [];
+    L.push("Energy World - " + name + " - day by day - " + fd(R.from) + " to " + fd(R.to)); L.push("");
+    var d = new Date(R.to + "T12:00:00"), stop = new Date(R.from + "T12:00:00");
+    while (d >= stop) {
+      var day = ymdLocal(d), st = attDay(name, day, vd, marks), de = ev.filter(function (e) { return e.d === day; });
+      L.push(fd(day) + " - " + (ATT_SAY[st] || "not counted"));
+      de.forEach(function (e) { L.push("  " + (hm(e.at) || "--:--") + "  " + e.k + " - " + e.what + (e.more ? " - " + e.more : "")); });
+      if (!de.length) L.push("  nothing entered");
+      L.push(""); d.setDate(d.getDate() - 1);
+    }
+    return L.join("\n");
   }
   function dailyReportText(day) {
     var names = execNames(), L = [], tv = 0, tq = 0, ta = 0;
@@ -2158,7 +2251,7 @@ table.att td.ok,table.att td.no{font-size:16px}
     names.forEach(function (n) {
       var vd = attVisitDays(n), k = dkey(n), qd = {};
       (S.data.quotes || []).forEach(function (q) { if (q && !isCancelled("quotes", q.id) && dkey(q.createdBy) === k) { var dd = dstr(q.createdAt); if (dd) qd[dd] = (qd[dd] || 0) + 1; } });
-      h += '<tr><td>' + esc(String(n).split(" ")[0]) + '</td>' + days.map(function (dy) {
+      h += '<tr><td data-act="exl-open" data-n="' + esc(n) + '" style="cursor:pointer;color:#1d4ed8;text-decoration:underline">' + esc(String(n).split(" ")[0]) + '</td>' + days.map(function (dy) {   /* 1.7.0 */
         var on = !!((vd[dy] && vd[dy].n > 0) || qd[dy]);
         return on ? '<td class="ok" title="' + esc(fd(dy)) + '">&#10003;</td>' : '<td class="no" title="' + esc(fd(dy)) + '">&ndash;</td>';
       }).join("") + '</tr>';
@@ -3192,6 +3285,14 @@ table.att td.ok,table.att td.no{font-size:16px}
     /* 1.6.0 - admin: which executive, the attendance grid, the daily report and its day */
     if (act === "ex") { S.ex = k || ""; render(); return; }
     if (act === "att-grid") { S.sheet = attGridSheet(); render(); return; }
+    /* 1.7.0 - one executive, day by day */
+    if (act === "exl-open") { if (!roleIs("admin")) return; S.exlN = t.getAttribute("data-n") || ""; S.sheet = exLogSheet(S.exlN, S.exlPer); render(); return; }
+    if (act === "exl-per") { S.exlPer = t.getAttribute("data-k") || "7"; S.exlN = t.getAttribute("data-n") || S.exlN; S.sheet = exLogSheet(S.exlN, S.exlPer); render(); return; }
+    if (act === "exl-copy") {
+      var _xt = exLogText(t.getAttribute("data-n") || S.exlN, S.exlPer);
+      try { navigator.clipboard.writeText(_xt).then(function () { toast("Copied - paste it anywhere."); }, function () { toast("Could not copy on this device."); }); } catch (e) { toast("Could not copy on this device."); }
+      return;
+    }
     if (act === "dr-open") { S.drDay = S.drDay || today(); S.sheet = dailyReportSheet(S.drDay); render(); return; }
     if (act === "dr-day") { S.drDay = addDays(Number(k) || 0); S.sheet = dailyReportSheet(S.drDay); render(); return; }
     if (act === "dr-copy") { var _dt = el("dr_txt"); var _tx = _dt ? _dt.textContent : ""; try { navigator.clipboard.writeText(_tx).then(function () { toast("Copied."); }, function () { toast("Could not copy - select the text and copy it."); }); } catch (eC) { toast("Could not copy - select the text and copy it."); } return; }
@@ -4493,7 +4594,7 @@ table.att td.ok,table.att td.no{font-size:16px}
      the app reloads itself onto it (a ?u= open goes past the shelf). Otherwise a bar says so; Update is one tap. */
   function vqLive() {
     return fetch("index.html?v=" + Date.now(), { cache: "no-store" }).then(function (r) { return r.ok ? r.text() : ""; })
-      .then(function (t) { var m = String(t).match(/var APP_VERSION = "([0-9.]+)"/); return m ? m[1] : ""; }).catch(function () { return ""; });
+      .then(function (t) { var m = String(t).match(/APP_VERSION\s*=\s*"([0-9.]+)"/); return m ? m[1] : ""; })   /* 1.7.0 - the built file has no spaces: the old pattern never matched, so nothing ever updated */.catch(function () { return ""; });
   }
   function vqNewer(a, b) { var x = String(a).split("."), y = String(b).split("."); for (var i = 0; i < 3; i++) { var d = (Number(x[i]) || 0) - (Number(y[i]) || 0); if (d) return d > 0; } return false; }
   function vqBusy() { return !!(S.sheet || S.qz || (S.pv && (S.pv.name || S.pv.note)) || S.sl || S.sn || S.cn); }
