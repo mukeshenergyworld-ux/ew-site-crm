@@ -252,7 +252,7 @@ body{background:#F4F6F9}
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.141.0";   /* 1.132.1 - driver/client/partner mobile dedupe, narrower sign-out, token refusal re-signs in, Drop in held list */
+  var APP_VERSION = "1.142.0";   /* 1.132.1 - driver/client/partner mobile dedupe, narrower sign-out, token refusal re-signs in, Drop in held list */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -4222,8 +4222,53 @@ function discRowOn(client, brand, onYmd) {
       '<button class="btn sm" data-act="cl-addr" data-n="' + esc(cl.name) + '">Save his address</button></div></div>';
   }
 
+  /* 1.142.0 / CRM 6.9.863 - A BUILDER'S SITES. A site is a client of its own whose bills the builder pays
+     (billedThrough, CRM 6.9.683). The godown's client rows may not carry that column, so the audit fact the CRM
+     writes with it (client:master {site, master}, latest wins) is read too. */
+  function msMap() {
+    var by = {}, at = {};
+    ((S.data && S.data.audit) || []).forEach(function (a) {
+      if (!a || a.action !== "client:master") return;
+      var d = {}; try { d = JSON.parse(a.detail || "{}"); } catch (e) { return; }
+      var k = lower(d.site); if (!k) return;
+      if (!at[k] || String(a.createdAt || "") > at[k]) { at[k] = String(a.createdAt || ""); by[k] = String(d.master || "").trim(); }
+    });
+    clients().forEach(function (c) { var k = lower(c.name), m = String(c.billedThrough || "").trim(); if (k && m && !(k in at)) by[k] = m; });
+    return by;
+  }
+  function msSites(master) {
+    var k = lower(master); if (!k) return [];
+    var by = msMap();
+    return clients().filter(function (c) { return lower(by[lower(c.name)]) === k && lower(c.name) !== k; })
+      .map(function (c) { return String(c.name || "").trim(); }).filter(Boolean).sort(alpha);
+  }
+  function msAsked(z, name) { return !!(z && z.siteAsk && lower(z.siteAskFor) === lower(name)); }
+  function msPickHtml(z, cl, p) {
+    var sites = msSites(cl.name);
+    var h = '<div class="card" style="border-color:#c7d2fe;background:#eef2ff">' +
+      '<div class="row"><div class="grow"><div class="muted" style="font-weight:700">Client</div>' +
+      '<div style="font-size:17px;font-weight:800;margin-top:1px">' + esc(cl.name) + '</div></div>' +
+      '<button class="btn sm gry" data-act="cp-change" data-p="' + p + '">Change</button></div>' +
+      '<div style="margin-top:8px;font-weight:800;color:#312e81">' + esc(cl.name) + ' is a builder with ' + sites.length + ' site' + (sites.length === 1 ? '' : 's') + '. Which site is this delivery for?</div>' +
+      '<div class="muted" style="font-size:12.5px;margin:2px 0 8px">Each site keeps its own hisab. Pick it, so the bill and the receipt go on the right one.</div>' +
+      sites.map(function (n) {
+        return '<button class="tile" data-act="cp-pick" data-p="' + p + '" data-n="' + esc(n) + '"><div class="grow">' + esc(n) + '</div><span class="pill">&#8250;</span></button>';
+      }).join("");
+    if (z.msNew) {
+      h += '<label style="margin-top:8px">The new site’s name</label>' +
+        '<input id="' + p + '_msnew" placeholder="e.g. Tower B, Sector 18" value="' + esc(z.msNewTxt || "") + '" autocomplete="off"/>' +
+        '<div class="row" style="margin-top:7px;gap:6px;flex-wrap:wrap">' +
+        '<button class="btn sm" data-act="ms-go" data-p="' + p + '">Carry on with this site</button>' +
+        '<button class="btn sm gry" data-act="ms-new" data-p="' + p + '" data-off="1">Back to the list</button></div>' +
+        '<div class="muted" style="font-size:12px;margin-top:5px">The challan goes on ' + esc(cl.name) + '’s account with this site name on it, and the office opens the site in the CRM.</div>';
+    } else {
+      h += '<div class="row" style="margin-top:8px"><button class="btn sm amb" data-act="ms-new" data-p="' + p + '">+ Not in the list — a new site</button></div>';
+    }
+    return h + '</div>';
+  }
   function clientPicker(z, cl, pfx) {
     var p = pfx || "m";
+    if (cl && cl.name && p === "m" && !msAsked(z, cl.name) && msSites(cl.name).length) return msPickHtml(z, cl, p);   /* 1.142.0 */
     if (cl && cl.name) {
       return '<div class="card">' +
         '<div class="row"><div class="grow">' +
@@ -4252,7 +4297,11 @@ function discRowOn(client, brand, onYmd) {
             'Add his ' + esc(chGaps(cl).map(function (f) { return f.label.toLowerCase(); }).join(", ")) +
             '</button></div>'
           : '') +
-        sitePicker(z, cl, p) +
+        (msAsked(z, cl.name)
+          ? '<label>Site</label><div class="pill" style="display:block;padding:9px;text-align:left;background:#eef2ff;color:#312e81">' +
+            'New site <b>' + esc(z.siteAsk) + '</b> &mdash; the office opens it in the CRM.</div>' +
+            '<div class="row" style="margin-top:7px"><button class="btn sm gry" data-act="ms-undo" data-p="' + p + '">Pick a site again</button></div>'
+          : sitePicker(z, cl, p)) +   /* 1.142.0 */
         '</div>';
     }
 
@@ -9632,10 +9681,24 @@ function discRowOn(client, brand, onYmd) {
     function pickHolder(el) { return el.getAttribute("data-p") === "r" ? S.rt : S.ch; }
     if (act === "cp-dist")   { var hD = pickHolder(t); if (hD) { hD.dist = t.getAttribute("data-d"); hD.area = ""; hD.cq = ""; } repaint(); return; }
     if (act === "cp-area")   { var hA = pickHolder(t); if (hA) { hA.area = t.getAttribute("data-a") || ""; hA.cq = ""; } repaint(); return; }
-    if (act === "cp-pick")   { var hP = pickHolder(t); if (hP) { hP.client = t.getAttribute("data-n"); hP.site = ""; hP.siteNew = false; hP.against = ""; } repaint(); return; }
+    if (act === "cp-pick")   { var hP = pickHolder(t); if (hP) { hP.client = t.getAttribute("data-n"); hP.site = ""; hP.siteNew = false; hP.against = ""; hP.siteAsk = ""; hP.siteAskFor = ""; hP.msNew = false; } repaint(); return; }
+    /* 1.142.0 - a builder's new site, typed at the counter */
+    if (act === "ms-new")    { var hM = pickHolder(t); if (hM) { hM.msNew = !t.getAttribute("data-off"); } repaint(); return; }
+    if (act === "ms-undo")   { var hU = pickHolder(t); if (hU) { hU.siteAsk = ""; hU.siteAskFor = ""; hU.site = ""; hU.msNew = false; } repaint(); return; }
+    if (act === "ms-go") {
+      var hG = pickHolder(t); if (!hG) return;
+      var _mi = document.getElementById((t.getAttribute("data-p") || "m") + "_msnew");
+      var _mt = String((_mi && _mi.value) || "").trim().replace(/\s+/g, " ");
+      if (_mt.length < 2) { toast("Type the new site’s name first."); return; }
+      var _ms = msSites(hG.client), _mk = lower(_mt), _hit = _ms.filter(function (n) { var l = lower(n); return l === _mk || l === lower(hG.client + " - " + _mt) || l.slice(-(_mk.length + 3)) === " - " + _mk; })[0];
+      if (_hit) { hG.client = _hit; hG.site = ""; hG.siteAsk = ""; hG.siteAskFor = ""; hG.msNew = false; repaint(); toast("That site is already on the book — picked " + _hit + "."); return; }
+      hG.siteAsk = _mt; hG.siteAskFor = hG.client; hG.site = _mt; hG.siteNew = false; hG.msNew = false;
+      repaint(); toast("Carry on. The office will open " + _mt + " under " + hG.client + ".");
+      return;
+    }
     if (act === "cp-site")   { var hS = pickHolder(t); if (hS) { hS.site = t.getAttribute("data-s"); hS.siteNew = false; } repaint(); return; }
     if (act === "cp-sitenew"){ var hN = pickHolder(t); if (hN) { hN.siteNew = !t.getAttribute("data-off"); hN.site = ""; } repaint(); return; }
-    if (act === "cp-change") { var hC = pickHolder(t); if (hC) { hC.client = ""; hC.site = ""; hC.siteNew = false; hC.cq = ""; hC.against = ""; } repaint(); return; }
+    if (act === "cp-change") { var hC = pickHolder(t); if (hC) { hC.client = ""; hC.site = ""; hC.siteNew = false; hC.cq = ""; hC.against = ""; hC.siteAsk = ""; hC.siteAskFor = ""; hC.msNew = false; } repaint(); return; }
     if (act === "rt-against"){ if (S.rt) S.rt.against = t.getAttribute("data-n") || ""; repaint(); return; }
     if (act === "rt-reason") {
       if (S.rt) {
@@ -10103,6 +10166,8 @@ function discRowOn(client, brand, onYmd) {
       var z = S.ch || {};
       var cObj = clientByName(z.client);
       if (!cObj) { toast("Pick the client first \u2014 district, then area, then his name."); return; }
+      /* 1.142.0 - a builder with sites: which site, before anything else */
+      if (!z.editId && msSites(cObj.name).length && !msAsked(z, cObj.name)) { toast(cObj.name + " is a builder with sites — pick which site this is for, or add a new one."); try { window.scrollTo(0, 0); } catch (e) { } return; }
       /* 1.121.0 - THE "NOT A CLIENT YET" DOOR IS GONE. HIS WORDS, 30 Sep 2026, over a godown screenshot refusing Tagra Sanitary Store: "when making first
      challan for a client, its assumed that he is client now, allow to make challan, after first challan a
      client automatically becomes client and challan brand auto marked won for that client".
@@ -10328,6 +10393,15 @@ function discRowOn(client, brand, onYmd) {
         return saveRow("challans", ch, { noFor: _editRow ? "" : _noFor }).then(function (r) {
           var saved = r.row || ch;
           if (z.siteNew) { try { siteFromChallan(cObj, z.site); } catch (eSf) {} }   /* 1.120.0 */
+          /* 1.142.0 - the new site, for the office to open */
+          if (!_editRow && msAsked(z, cObj.name) && saved.id) {
+            try {
+              var _saRow = { id: "SA-" + Date.now() + "-" + Math.floor(Math.random() * 1000000), createdAt: new Date().toISOString(), actor: S.user || "",
+                action: "site:ask", target: String(saved.id), detail: JSON.stringify({ master: cObj.name, site: String(z.siteAsk), challan: String(saved.challanNo || no || ""), from: "challan app" }) };
+              S.data.audit = ((S.data && S.data.audit) || []).concat([_saRow]);
+              saveRow("audit", _saRow);
+            } catch (eSa) { }
+          }
           var _list = (S.data.challans = S.data.challans || []);
           if (_editRow) {
             /* replace in place. Pushing would put two rows with the same challanNo in the
