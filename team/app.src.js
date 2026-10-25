@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.888";
+  var APP_VERSION = "6.9.889";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -49015,6 +49015,95 @@ function viewCatalogue() {
       alias: (S.stock || []).filter(function (r) { return String(r.type) === "alias"; }).length,
       months: Object.keys(months).sort().reverse(), mon: mon };
   }
+  /* ===== 6.9.889 - THE BILLS BOARD (ERP step C, 25 Oct 2026) =====
+     Before this the Tally screen told the story of a purchase bill in four cards (pending to upload, waiting to
+     match, read from mail, uploaded) and the Drive card - the same bill appeared in two or three of them under
+     slightly different spellings, and "where is bill X" meant reading all of them. Now ONE ROW PER BILL, from every
+     source there is, with the stages left to right: on 2B - PDF - read - matched - in stock - and what to do next.
+     Sources, matched loosely (supplier word + bill number, as stkBkFind does, because the portal, Tally, Zoho and
+     the assistant spell them differently): the GSTR-2B / register rows; the PDFs on Drive (bfPurchase); the night
+     reads (billread); the bills waiting for the owner (billwait); the bills in stock (bill, and *BILLPART parts);
+     and the rate rows off them. Nothing is written here; the buttons are the matcher and the reader that exist. */
+  function tlBoard() {
+    var ix = stkMatchIdx(), rows = {}, order = [], adm = roleIs("admin");
+    var norm = function (sup, no) { return stkSupNorm(sup) + "|" + stkNoNorm(no); };
+    var find = function (sup, no) {
+      var k = norm(sup, no); if (rows[k]) return rows[k];
+      var s2 = stkSupNorm(sup), q = { no: stkNoNorm(no), tail: stkNoTail(no) };
+      for (var i = 0; i < order.length; i++) { var r = rows[order[i]]; if (stkNoSame({ no: r.no, tail: r.tail }, q) && (!r.sup || !s2 || r.sup === s2)) return r; }
+      return null;
+    };
+    var get = function (sup, no, date) {
+      var r = find(sup, no);
+      if (!r) { var k = norm(sup, no); r = rows[k] = { k: k, sup: stkSupNorm(sup), no: stkNoNorm(no), tail: stkNoTail(no), supplier: String(sup || "").trim(), billNo: String(no || "").trim(), date: "", amount: 0,
+        reg: null, file: null, fileSt: "", read: null, wait: null, bill: null, parts: 0, partLines: 0, rates: 0, n: 0, m: 0, at: "" }; order.push(k); }
+      var d = String(date || "").slice(0, 10); if (d && (!r.date || /^\d{4}-\d{2}-\d{2}$/.test(d) && !/^\d{4}-\d{2}-\d{2}$/.test(r.date))) r.date = d;
+      if (!r.supplier && sup) r.supplier = String(sup).trim();
+      return r;
+    };
+    var match = function (lines) {   /* how many of a bill's lines the matcher would take as they are */
+      var n = 0, m = 0;
+      (lines || []).forEach(function (l0) {
+        var l = Object.assign({}, l0), cn = tallyCodeInName(l.desc), pn0 = String(l.partNo == null ? "" : l.partNo).trim();
+        if (cn && (!pn0 || pn0 === cn.code)) l.partNo = cn.code;
+        stkMatchLine(l, ix); n++; if (l.code) m++;
+      });
+      return { n: n, m: m };
+    };
+    stkRegister().forEach(function (b) { var r = get(b.supplier, b.billNo, b.date); r.reg = b; r.amount = r.amount || b.amount; });
+    var hasReg = order.length > 0;
+    (S.stock || []).forEach(function (x) {
+      var t = String(x.type), ref = String(x.ref || "").trim(); if (!ref) return;
+      if (t !== "bill" && t !== "billwait" && t !== "billread" && t !== "rate") return;
+      var p = ref.split(" / "), sup = x.notes || p[0], no = p.slice(1).join(" / ");
+      if (t === "rate") { var rr = find(sup, no); if (rr) rr.rates++; return; }
+      var o = null; try { o = JSON.parse(x.desc || "null"); } catch (e) { o = null; }
+      var r = get(sup, no, x.asOn), at = String(x.createdAt || "");
+      if (t === "bill") {
+        var ls = Array.isArray(o) ? o : [];
+        if (String(x.code) === "*BILLPART") { r.parts++; r.partLines += ls.length; return; }
+        if (r.bill && String(r.bill.at) > at) return;
+        r.bill = { lines: ls, value: Number(x.qty) || 0, by: String(x.createdBy || ""), at: at, file: "" }; r.amount = r.amount || r.bill.value;
+      } else if (t === "billwait") {
+        if (!o || !Array.isArray(o.lines)) return;
+        if (r.wait && String(r.wait.at) > at) return;
+        r.wait = { o: o, at: at }; if (o.file) r.file = r.file || o.file; r.amount = r.amount || Number(o.billTotal) || Number(o.total) || 0;
+      } else {
+        var b = o && o.bill; if (!b || !Array.isArray(b.lines)) return;
+        if (r.read && String(r.read.at) > at) return;
+        r.read = { o: o, b: b, at: at }; if (o.url) r.file = r.file || o.url; r.amount = r.amount || Number(b.total) || 0;
+      }
+    });
+    /* the PDFs on Drive, by 2B bill, and the files that are not one 2B bill */
+    var extra = [];
+    if (S.bf && S.bf.lists && S.bf.lists.purchase && (S.bf.lists.purchase.files || []).length) {
+      var BP = bfPurchase();
+      BP.rows.forEach(function (x) { if (!x.f) return; var r = get(x.reg.supplier, x.reg.billNo, x.reg.date); r.file = r.file || x.f.url; r.fileId = x.f.id; r.fileSt = x.st; });
+      extra = BP.extra;
+    }
+    /* stage, counts and the next step */
+    var out = order.map(function (k) {
+      var r = rows[k];
+      if (r.bill) { r.n = r.bill.lines.length + r.partLines; r.m = r.n; r.stage = "in"; r.next = hasReg && !r.reg ? "not on 2B" : ""; }
+      else if (r.wait) { var w = match(r.wait.o.lines); r.n = w.n + r.partLines; r.m = w.m + r.partLines; r.stage = r.parts ? "part" : "wait"; r.next = "match"; }
+      else if (r.read) { var q = match(r.read.b.lines); r.n = q.n; r.m = q.m; r.stage = "read"; r.next = "process"; }
+      else if (r.file && r.fileId) { r.stage = "pdf"; r.next = "read"; }
+      else { r.stage = "2b"; r.next = "pdf"; }
+      r.key = stkBillKey(r.supplier, r.billNo);
+      return r;
+    }).sort(function (a, b) { return String(b.date).localeCompare(String(a.date)) || String(a.supplier).localeCompare(String(b.supplier)); });
+    return { rows: out, extra: extra, hasReg: hasReg };
+  }
+  /* open ONE bill in the matcher: the waiting one, or the night read of it */
+  function tlOpenOne(key) {
+    var p = String(key || "").split(" / "), qs = stkSupNorm(p[0]), qn = stkNoNorm(p.slice(1).join(" / ")), qt = stkNoTail(p.slice(1).join(" / "));
+    var same = function (sup, no) { var s2 = stkSupNorm(sup); return stkNoSame({ no: stkNoNorm(no), tail: stkNoTail(no) }, { no: qn, tail: qt }) && (!s2 || !qs || s2 === qs); };   /* loosely, as the board matched them */
+    var w = stkWaiting().filter(function (o) { return same(o.supplier, o.billNo); })[0];
+    var list = w ? [{ billNo: w.billNo, date: w.date, supplier: w.supplier, total: Number(w.total) || 0, billTotal: Number(w.billTotal) || Number(w.total) || 0, partial: w.partial || 0, doneBefore: w.doneBefore || 0, file: w.file || "", src: w.src || "", lines: w.lines }]
+                  : stkReadBills().filter(function (b) { return same(b.supplier, b.billNo); });
+    if (!list.length) { toast("Nothing to match on this bill."); return false; }
+    S.grn = null; S.pc = null; S.imp = { step: "tally", bills: stkTallyOpen(list) }; S.tab = "stock"; render(); window.scrollTo(0, 0); return true;
+  }
   function tlMonLabel(m) { var p = String(m).split("-"); var N = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]; return (N[Number(p[1]) - 1] || p[1]) + " " + p[0]; }
 
   /* ===== 6.9.711 - SUPPLIER PRICE LIST, AGAINST THE CATALOGUE  (8 Oct 2026) =====
@@ -50605,75 +50694,69 @@ function viewCatalogue() {
         head.map(function (x) { return '<th style="padding:6px 8px;text-align:' + (x[1] || "left") + ';font-size:12px;white-space:nowrap">' + x[0] + '</th>'; }).join("") + '</tr></thead><tbody>' + rows.join("") + '</tbody>' + (foot || "") + '</table></div>';
     };
     var td = function (v, al, x) { return '<td style="padding:6px 8px;border-top:1px solid #e2e8f0;vertical-align:top;text-align:' + (al || "left") + (x || "") + '">' + v + '</td>'; };
-    /* 1 - pending to upload */
-    h += '<div class="card" style="border-color:' + (D.pend.length ? '#fdba74' : '#e2e8f0') + '"><h3 style="margin:0 0 6px">Pending to upload' + (D.hasReg ? ' &middot; ' + D.pend.length : '') + '</h3>';
-    if (!D.hasReg) h += '<div class="meta" style="font-size:13px;line-height:1.5">No GSTR-2B or Purchase Register has been uploaded, so the CRM cannot tell which bills are still to come.<br>' +
-      '<b>GSTR-2B (best):</b> GST portal &rarr; Services &rarr; Returns &rarr; Returns Dashboard &rarr; the month &rarr; GSTR-2B &rarr; View &rarr; Download Excel (or JSON), then <b>Upload</b> it here.<br>' +
-      '<b>Or from Tally:</b> Display &rarr; Account Books &rarr; Purchase Register &rarr; the month &rarr; export as Excel.</div>';
-    else if (!D.pend.length) h += '<div class="meta" style="font-size:13px;color:#0f766e">Every bill on the register' + (D.mon ? ' for ' + tlMonLabel(D.mon) : '') + ' is uploaded.</div>';
-    else {
-      h += tbl([["DATE"], ["SUPPLIER"], ["BILL NO"], ["AMOUNT", "right"], ["STATUS"]], D.pend.map(function (b) {
-      return '<tr>' + td(esc(dmy(b.date)), "", ";white-space:nowrap") + td(esc(b.supplier)) + td('<b>' + esc(b.billNo) + '</b>') + td(money(b.amount), "right", ";white-space:nowrap") +
-        td(stkRegHas(b) === "wait" ? '<span class="pill due" style="font-size:12px">uploaded, waiting to match</span>' : '<span class="pill Lost" style="font-size:12px">not uploaded</span>') + '</tr>';
-    }), '<tfoot><tr style="background:#fff7ed"><td colspan="3" style="padding:6px 8px;font-weight:800">Total</td><td style="padding:6px 8px;text-align:right;font-weight:800">' + money(sum(D.pend.map(function (b) { return { value: b.amount }; }))) + '</td><td></td></tr></tfoot>'); }
-    h += '</div>';
-    /* 2 - waiting for the owner */
-    if (D.wait.length) {
-      h += '<div class="card" style="border-color:#fecaca"><div class="acts" style="align-items:center;margin:0 0 6px"><h3 class="grow" style="margin:0">Waiting to match &middot; ' + D.wait.length + '</h3>' +
-        (adm ? '<button class="btn sm" data-act="tb-wait">Match them now</button>' : '') + '</div>' +
-        '<div class="meta" style="font-size:12.5px;margin-bottom:6px">A line on these bills is not yet matched to a catalogue product, so they are <b>not in stock</b>.' + (adm ? '' : ' The owner matches them.') + '</div>' +
-        (function () { var _wb = {}; stkWaitIn().bills.forEach(function (x) { _wb[x.supplier + "|" + x.billNo] = x; });   /* 6.9.709 */
-        return tbl([["DATE"], ["SUPPLIER"], ["BILL NO"], ["LINES", "right"], ["MATCH NOW", "right"], ["AMOUNT", "right"]], D.wait.map(function (b) {
-          var m = _wb[b.supplier + "|" + b.billNo] || { matched: 0, lines: b.lines };
-          return '<tr>' + td(esc(dmy(b.date)), "", ";white-space:nowrap") + td(esc(b.supplier)) + td('<b>' + esc(b.billNo) + '</b>') + td(String(b.lines), "right") +
-            td(m.matched === m.lines && m.lines ? '<b style="color:#0f766e">all ' + m.lines + ' &#10003;</b>' : m.matched + ' of ' + m.lines, "right", ";white-space:nowrap") + td(b.value ? money(b.value) : "&mdash;", "right", ";white-space:nowrap") + '</tr>';
-        })); })() + '</div>';
-    }
-    /* 2b - 6.9.888 - bills the server read from the mail overnight, not yet processed */
-    var RB = stkReadBills(), RS = stkReadSkips();
-    if (RB.length || RS.length) {
-      var rbSum = RB.reduce(function (a, b) { return a + (Number(b.total) || 0); }, 0), canDo = adm || roleIs("accounts");
-      h += '<div class="card" style="border-color:' + (RB.length ? '#93c5fd' : '#e2e8f0') + '"><div class="acts" style="align-items:center;margin:0 0 6px"><h3 class="grow" style="margin:0">' +
-        (RB.length ? plural(RB.length, "bill") + ' read from your mail &middot; ' + money(rbSum) : 'Bills from your mail') + '</h3>' +
-        (RB.length && canDo ? '<button class="btn sm" data-act="tb-read">Process ' + (RB.length === 1 ? 'it' : 'them') + '</button>' : '') + '</div>' +
-        '<div class="meta" style="font-size:12.5px;margin-bottom:6px">Every night at 02:10 the server saves the supplier bills that came by mail into <b>Purchase bills</b> on Drive and reads them. They are <b>not in stock yet</b> &mdash; ' +
-        (adm ? 'open them to match the codes; the matched lines go straight in.' : canDo ? 'open them to check the codes and propose the new ones; the owner approves.' : 'the owner processes them.') + '</div>';
-      if (RB.length) h += tbl([["DATE"], ["SUPPLIER"], ["BILL NO"], ["LINES", "right"], ["AMOUNT", "right"], ["FILE"]], RB.map(function (b) {
-        return '<tr>' + td(esc(dmy(b.date)), "", ";white-space:nowrap") + td(esc(b.supplier)) + td('<b>' + esc(b.billNo) + '</b>') + td(String(b.lines.length), "right") + td(money(b.total), "right", ";white-space:nowrap") +
-          td(b.file ? '<a href="' + esc(b.file) + '" target="_blank" rel="noopener" style="color:#0f766e">' + esc(b.name || "open") + '</a>' : esc(b.name || "")) + '</tr>';
-      }));
-      if (RS.length) h += '<div style="margin-top:8px;font-size:12.5px;color:#64748b"><b>Set aside</b> (not a tax invoice): ' + RS.map(function (x) {
-        return (x.url ? '<a href="' + esc(x.url) + '" target="_blank" rel="noopener" style="color:#475569">' + esc(x.name) + '</a>' : esc(x.name)) + (x.what ? ' &mdash; ' + esc(x.what) : ''); }).join('; ') + '</div>';
-      h += '</div>';
-    }
-    /* 3 - uploaded bills */
-    var pm = stkPMap();
-    h += '<div class="card"><h3 style="margin:0 0 6px">Uploaded bills &middot; ' + D.bills.length + (D.bills.length ? ' &middot; ' + money(sum(D.bills)) : '') + '</h3>';
-    if (!D.bills.length) h += '<div class="meta" style="font-size:13px">No bill uploaded' + (D.mon ? ' for ' + tlMonLabel(D.mon) : '') + '.</div>';
-    else h += tbl([["DATE"], ["SUPPLIER"], ["BILL NO"], ["LINES", "right"], ["AMOUNT", "right"], ["UPLOADED"], ["2B / REGISTER"]], D.bills.map(function (b) {
-      var open = S.tlOpen === b.key;
-      var row = '<tr style="cursor:pointer" data-act="tl-bill" data-k="' + esc(b.key) + '">' + td(esc(dmy(b.date)), "", ";white-space:nowrap") + td(esc(b.supplier)) +
-        td('<b style="color:#0f766e">' + esc(b.billNo || "—") + '</b> <span style="color:#64748b">' + (open ? '▾' : '▸') + '</span>') + td(String(b.lines.length), "right") +
-        td(money(b.value), "right", ";white-space:nowrap") + td(esc(b.by) + '<div style="font-size:12px;color:#64748b">' + esc(dmy(b.at)) + (b.n > 1 ? ' &middot; uploaded ' + b.n + ' times' : '') + '</div>') +
-        td(D.hasReg ? (b.onReg ? '<span class="pill teal" style="font-size:12px">on 2B / register</span>' : '<span class="pill due" style="font-size:12px" title="Not on GSTR-2B: the supplier may not have filed it - its GST credit cannot be taken yet">not on 2B / register</span>') : '<span style="color:#94a3b8">&mdash;</span>') + '</tr>';
+    /* 1-3 - 6.9.889 - THE BILLS BOARD: one row per bill, every stage, replaces Pending / Waiting / Read / Uploaded */
+    var BD = tlBoard(), inM = function (d) { return !D.mon || String(d || "").slice(0, 7) === D.mon; };
+    var rows = BD.rows.filter(function (r) { return inM(r.date); }), canDo = adm || roleIs("accounts");
+    var cnt = { "in": 0, part: 0, wait: 0, read: 0, pdf: 0, "2b": 0 }, tot = 0;
+    rows.forEach(function (r) { cnt[r.stage]++; tot += Number(r.amount) || 0; });
+    var ok = '<b style="color:#0f766e">&#10003;</b>', no = '<span style="color:#cbd5e1">&mdash;</span>';
+    var pill = function (txt, col, bg) { return '<span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:700;color:' + col + ';background:' + bg + ';white-space:nowrap">' + txt + '</span>'; };
+    var say = [];
+    if (cnt["in"]) say.push('<b style="color:#0f766e">' + cnt["in"] + ' in stock</b>');
+    if (cnt.part) say.push('<b style="color:#b45309">' + cnt.part + ' partly in</b>');
+    if (cnt.wait) say.push('<b style="color:#b91c1c">' + cnt.wait + ' to match</b>');
+    if (cnt.read) say.push('<b style="color:#1d4ed8">' + cnt.read + ' read, to process</b>');
+    if (cnt.pdf) say.push('<b style="color:#92400e">' + cnt.pdf + ' saved, to read</b>');
+    if (cnt["2b"]) say.push('<b style="color:#64748b">' + cnt["2b"] + ' only on 2B</b>');
+    h += '<div class="card" style="border-color:' + (cnt.wait || cnt.read ? '#fdba74' : '#e2e8f0') + '"><div class="acts" style="align-items:center;margin:0 0 4px;flex-wrap:wrap;gap:6px"><h3 class="grow" style="margin:0">Bills &middot; ' + rows.length + (tot ? ' &middot; ' + money(tot) : '') + '</h3>' +
+      (canDo && (cnt.wait || cnt.part) ? '<button class="btn sm" data-act="tb-wait">Match ' + (cnt.wait + cnt.part === 1 ? 'it' : 'all ' + (cnt.wait + cnt.part)) + '</button>' : '') +
+      (canDo && cnt.read ? '<button class="btn sm" data-act="tb-read">Process ' + (cnt.read === 1 ? 'the read one' : 'all ' + cnt.read + ' read') + '</button>' : '') + '</div>' +
+      '<div class="meta" style="font-size:12.5px;margin-bottom:6px">' + (say.length ? say.join(' &middot; ') : 'No purchase bill known' + (D.mon ? ' for ' + tlMonLabel(D.mon) : '') + '.') +
+      (!BD.hasReg ? '<br>No GSTR-2B uploaded yet, so the 2B column cannot say which bills the suppliers filed: GST portal &rarr; Returns Dashboard &rarr; the month &rarr; GSTR-2B &rarr; Download Excel, then <b>Upload</b> it here.' : '') + '</div>';
+    if (rows.length) h += tbl([["DATE"], ["SUPPLIER"], ["BILL NO"], ["AMOUNT", "right"], ["2B", "center"], ["PDF", "center"], ["READ", "center"], ["MATCHED", "right"], ["STOCK", "center"], ["NEXT"]], rows.map(function (r) {
+      var open = S.tlOpen === r.key, c = ";text-align:center";
+      var pdf = r.file ? '<a href="' + esc(r.file) + '" target="_blank" rel="noopener" style="color:#0f766e;font-weight:700">open</a>' : (r.stage === "2b" && BD.hasReg ? '<span style="color:#b91c1c;font-size:12px">not saved</span>' : no);
+      var read = (r.bill || r.wait || r.read) ? ok : (r.stage === "pdf" ? (canDo ? (S.bf && S.bf.reading && S.bf.reading[r.fileId] ? '<span class="meta" style="font-size:12px">reading&hellip;</span>' : '<button class="btn sm ghost" data-act="bf-read" data-id="' + esc(r.fileId) + '" style="min-height:32px;padding:3px 10px">Read</button>') : '<span style="color:#92400e;font-size:12px">to read</span>') : no);
+      var matched = r.n ? (r.m === r.n ? '<b style="color:#0f766e">all ' + r.n + '</b>' : '<b style="color:#b45309">' + r.m + ' of ' + r.n + '</b>') : no;
+      var stock = r.stage === "in" ? ok : r.stage === "part" ? '<span style="color:#b45309;font-weight:700" title="' + r.partLines + ' lines in, the rest waiting">part</span>' : no;
+      var next = r.next === "match" ? (canDo ? '<button class="btn sm" data-act="tl-one" data-k="' + esc(r.key) + '" style="min-height:32px;padding:3px 10px">Match</button>' : pill("with the owner", "#b91c1c", "#fee2e2"))
+               : r.next === "process" ? (canDo ? '<button class="btn sm" data-act="tl-one" data-k="' + esc(r.key) + '" style="min-height:32px;padding:3px 10px">Process</button>' : pill("read, to process", "#1d4ed8", "#dbeafe"))
+               : r.next === "read" ? pill("read the PDF", "#92400e", "#fef3c7")
+               : r.next === "pdf" ? pill("save the PDF", "#b91c1c", "#fee2e2")
+               : r.next === "not on 2B" ? pill("not on 2B yet", "#92400e", "#fef3c7")
+               : pill("done", "#0f766e", "#ccfbf1");
+      var row = '<tr style="cursor:pointer" data-act="tl-bill" data-k="' + esc(r.key) + '">' + td(esc(dmy(r.date)), "", ";white-space:nowrap") + td(esc(r.supplier)) +
+        td('<b style="color:#0f172a">' + esc(r.billNo || "—") + '</b> <span style="color:#64748b">' + (open ? '▾' : '▸') + '</span>') + td(r.amount ? money(r.amount) : no, "right", ";white-space:nowrap") +
+        td(r.reg ? ok : (BD.hasReg ? '<span style="color:#92400e;font-size:12px" title="Not on the GSTR-2B uploaded so far">no</span>' : no), "", c) + td(pdf, "", c) + td(read, "", c) + td(matched, "right", ";white-space:nowrap") + td(stock, "", c) + td(next, "", ";white-space:nowrap") + '</tr>';
       if (open) {
-        row += '<tr><td colspan="7" style="padding:0 8px 10px;background:#f8fafc">' + tbl([["CODE"], ["PRODUCT"], ["TALLY PART NO"], ["QTY", "right"], ["NET RATE", "right"], ["AMOUNT", "right"]], b.lines.map(function (l) {
-          var p = pm[String(l.c || "").trim()] || {}, q = Number(l.q) || 0, n = Number(l.n) || 0;
-          return '<tr>' + td(esc(l.c || "")) + td(esc(p.desc || "")) + td(esc(l.p || "")) + td(esc(String(q)) + (l.u ? ' ' + esc(l.u) : ''), "right", ";white-space:nowrap") + td(n ? money(n) : "", "right") + td(n && q ? money(Math.round(n * q)) : "", "right") + '</tr>';
-        })) + '</td></tr>';
+        var lines = [];
+        if (r.bill) { var pm0 = stkPMap(); lines = r.bill.lines.map(function (l) { var p = pm0[String(l.c || "").trim()] || {}; return [l.c || "", p.desc || "", l.p || "", l.q, l.n, l.u]; }); }
+        else { var src = r.wait ? r.wait.o.lines : r.read ? r.read.b.lines : []; lines = src.map(function (l) { return ["", l.desc || "", l.partNo || "", l.qty, l.rate, l.unit]; }); }
+        row += '<tr><td colspan="10" style="padding:0 8px 10px;background:#f8fafc">' +
+          (r.bill ? '<div class="meta" style="font-size:12px;margin:4px 0">In stock &middot; ' + esc(r.bill.by) + ' &middot; ' + esc(dmy(r.bill.at)) + (r.rates ? ' &middot; ' + plural(r.rates, "rate row") : '') + (r.parts ? ' &middot; came in ' + (r.parts + 1) + ' parts' : '') + '</div>' : '') +
+          (r.read && !r.bill && !r.wait ? '<div class="meta" style="font-size:12px;margin:4px 0">Read from the mail on ' + esc(dmy(r.read.at)) + (r.read.o.name ? ' &middot; ' + esc(r.read.o.name) : '') + '</div>' : '') +
+          (lines.length ? tbl([["CODE"], ["PRODUCT / AS ON THE BILL"], ["PART NO"], ["QTY", "right"], ["RATE", "right"]], lines.map(function (l) {
+            return '<tr>' + td(esc(l[0])) + td(esc(l[1])) + td(esc(l[2])) + td(esc(String(Number(l[3]) || 0)) + (l[5] ? ' ' + esc(l[5]) : ''), "right", ";white-space:nowrap") + td(Number(l[4]) ? money(Number(l[4])) : "", "right") + '</tr>';
+          })) : '<div class="meta" style="font-size:12.5px;padding:6px 0">' + (r.stage === "pdf" ? 'The PDF is saved on Drive and not read yet.' : 'Only the 2B line is known: supplier, number, date and amount. The PDF will be picked up from the mail at night, or save it in Purchase bills on Drive.') + '</div>') + '</td></tr>';
       }
       return row;
     }));
+    if (BD.extra.length) h += '<div style="margin-top:8px;font-size:12.5px;color:#92400e"><b>Files on Drive not matching a 2B bill</b> &middot; ' + BD.extra.length + ': ' + BD.extra.slice(0, 12).map(function (x) {
+      var st = BF_ST[x.st] || ["", "#64748b"]; return '<a href="' + esc(x.f.url) + '" target="_blank" rel="noopener" style="color:#475569">' + esc(x.f.name) + '</a> <span style="color:' + st[1] + '">(' + esc(st[0]) + ')</span>'; }).join('; ') + (BD.extra.length > 12 ? ' &hellip;' : '') + '</div>';
+    var RS = stkReadSkips();
+    if (RS.length) h += '<div style="margin-top:6px;font-size:12.5px;color:#64748b"><b>Set aside by the night read</b> (not a tax invoice): ' + RS.map(function (x) {
+      return (x.url ? '<a href="' + esc(x.url) + '" target="_blank" rel="noopener" style="color:#475569">' + esc(x.name) + '</a>' : esc(x.name)) + (x.what ? ' &mdash; ' + esc(x.what) : ''); }).join('; ') + '</div>';
     h += '</div>';
     /* 4 - by supplier */
     if (D.bills.length || D.pend.length) {
       var sup = {};
-      var add = function (s, k, v) { var x = sup[s] || (sup[s] = { up: 0, upv: 0, pe: 0, pev: 0 }); x[k] += 1; x[k + "v"] += v; };
+      /* 6.9.889 - one row per supplier WORD ("Huliot" on a bill, "HULIOT PIPES & FITTINGS PRIVATE LIMITED" on 2B): the longest name is shown */
+      var add = function (s, k, v) { var w = stkSupNorm(s) || String(s || "—"); var x = sup[w] || (sup[w] = { name: "", up: 0, upv: 0, pe: 0, pev: 0 }); if (String(s || "").length > x.name.length) x.name = String(s || ""); x[k] += 1; x[k + "v"] += v; };
       D.bills.forEach(function (b) { add(b.supplier || "—", "up", Number(b.value) || 0); });
       D.pend.forEach(function (b) { add(b.supplier || "—", "pe", Number(b.amount) || 0); });
-      h += '<div class="card"><h3 style="margin:0 0 6px">By supplier</h3>' + tbl([["SUPPLIER"], ["UPLOADED", "right"], ["VALUE", "right"], ["PENDING", "right"], ["VALUE", "right"]],
+      h += '<div class="card"><h3 style="margin:0 0 6px">By supplier</h3>' + tbl([["SUPPLIER"], ["IN STOCK", "right"], ["VALUE", "right"], ["PENDING", "right"], ["VALUE", "right"]],
         Object.keys(sup).sort(function (a, b) { return (sup[b].upv + sup[b].pev) - (sup[a].upv + sup[a].pev); }).map(function (k) {
-          var x = sup[k]; return '<tr>' + td(esc(k)) + td(String(x.up), "right") + td(money(x.upv), "right", ";white-space:nowrap") + td(x.pe ? '<b style="color:#b45309">' + x.pe + '</b>' : '0', "right") + td(x.pe ? money(x.pev) : "&mdash;", "right", ";white-space:nowrap") + '</tr>';
+          var x = sup[k]; return '<tr>' + td(esc(x.name || k)) + td(String(x.up), "right") + td(money(x.upv), "right", ";white-space:nowrap") + td(x.pe ? '<b style="color:#b45309">' + x.pe + '</b>' : '0', "right") + td(x.pe ? money(x.pev) : "&mdash;", "right", ";white-space:nowrap") + '</tr>';
         })) + '</div>';
     }
     /* 5 - registers, and codes */
@@ -60289,6 +60372,7 @@ function viewCatalogue() {
       if (!_w.length) { toast("Nothing is waiting."); return; }
       S.grn = null; S.pc = null; S.imp = { step: "tally", bills: stkTallyOpen(_w) }; S.tab = "stock"; render(); window.scrollTo(0, 0); return;
     }
+    if (act === "tl-one") { tlOpenOne(t.getAttribute("data-k") || ""); return; }   /* 6.9.889 - one bill off the board */
     if (act === "tb-read") {   /* 6.9.888 - the bills the server read from the mail */
       var _rb = stkReadBills();
       if (!_rb.length) { toast("Nothing read is pending."); return; }
