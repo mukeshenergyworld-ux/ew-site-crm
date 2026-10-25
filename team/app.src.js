@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.870";
+  var APP_VERSION = "6.9.871";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -64880,6 +64880,9 @@ function viewCatalogue() {
           var _rows = [];
           (S.data.clients || []).forEach(function (c) { ["plumber", "architect", "builder", "pmc"].forEach(function (f2) { if (dkey(c[f2]) === _k) _rows.push({ tab: "clients", rec: c, f: f2, lbl: c.name, sub: [f2, c.area || c.location, c.ownedBy || c.createdBy].filter(Boolean).join(" \u00b7 ") }); }); });
           (S.data.sites || []).forEach(function (c) { ["plumber", "architect", "builder"].forEach(function (f2) { if (dkey(c[f2]) === _k) _rows.push({ tab: "sites", rec: c, f: f2, lbl: c.name || c.client, sub: ["site", f2, c.city || c.location].filter(Boolean).join(" \u00b7 ") }); }); });
+          /* 6.9.871 - HIS WORDS, after renaming PL061 and PL197: "i have renamed them, then why they are showing old one, it must replace
+             to new name everywhere". An event guest list names the guest too; it is offered here like a client, and a ticked one moves. */
+          pevEvents().forEach(function (ev0) { pevInv(ev0.eid).forEach(function (iv) { if (!iv.other && dkey(iv.partner) === _k) _rows.push({ tab: "evt", rec: iv, f: "partner", lbl: "Guest at " + (ev0.name || "an event"), sub: ["event", iv.exec ? "with " + iv.exec : "", iv.st].filter(Boolean).join(" \u00b7 ") }); }); });
           S._rnPick = {};
           var _pl2 = { id: id, name: an, role: val("m_arole"), mobile: val("m_amobile"), mobile2: val("m_amobile2"), location: val("m_aloc"), area: val("m_aarea"), address: val("m_aaddr"),
             birthday: val("m_abday"), anniversary: val("m_aanniv"), rate: val("m_arate"), notes: val("m_anotes"), ownedBy: val("m_aowner") };
@@ -64892,7 +64895,13 @@ function viewCatalogue() {
             if (!yes) return;
             var picked = _rows.filter(function (r, ix) { return S._rnPick[ix]; });
             save("associates", Object.assign({}, _me, _pl2), true).then(function () {
-              picked.forEach(function (r) { var up = {}; up[r.f] = an; var row = Object.assign({}, r.rec, up); delete row._dups; save(r.tab, row, true); r.rec[r.f] = an; });
+              picked.forEach(function (r) {
+                if (r.tab === "evt") {   /* 6.9.871 - the guest under the new name; the old name's line is closed (a removed fact, nothing deleted) */
+                  var nx = Object.assign({}, r.rec); delete nx._at; delete nx._by; delete nx.at; nx.partner = an;
+                  pevSaveRow("evt:inv", r.rec.eid, nx); pevSaveRow("evt:inv", r.rec.eid, { eid: r.rec.eid, partner: _old, removed: 1, why: "renamed to " + an });
+                  return;
+                }
+                var up = {}; up[r.f] = an; var row = Object.assign({}, r.rec, up); delete row._dups; save(r.tab, row, true); r.rec[r.f] = an; });
               try { save("audit", { action: "partner:rename", actor: S.user, recId: id, detail: JSON.stringify({ id: id, code: _me.code || "", from: _old, to: an, twins: _tw.map(function (x) { return x.code || x.id; }), moved: picked.map(function (r) { return r.tab + ":" + r.lbl + ":" + r.f; }) }) }, true); } catch (e) { }
               _asLiveCache = null; bustCaches(); S.modal = null; render();
               toast("Renamed " + (_me.code || "") + " to " + an + (picked.length ? " \u2014 " + plural(picked.length, "client / site") + " moved with him." : "."));
