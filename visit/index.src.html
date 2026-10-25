@@ -208,7 +208,7 @@ table.att td.ok,table.att td.no{font-size:16px}
       button: function () { return '<button type="button" class="ewthm" onclick="ewTheme.next(this)">' + ewtLabel() + '</button>'; }
     };
   })();
-  var APP_VERSION = "1.8.1";   /* 1.6.1 - Huliot Group introduction on quotes; 1.6.0 (17 Oct 2026) - a dropped POST never loses a quote; admin sees every executive; daily report; attendance grid */
+  var APP_VERSION = "1.8.2";   /* 1.6.1 - Huliot Group introduction on quotes; 1.6.0 (17 Oct 2026) - a dropped POST never loses a quote; admin sees every executive; daily report; attendance grid */
   /* 1.6.0 - ONLY THE SERVER'S OWN "NO" SIGNS A MAN OUT. The old test was /pin|locked|not allowed|blocked|removed/:
      any data error that happened to contain "not allowed" or "removed" (a refused row, a removed brand) signed the
      executive out and wiped his snapshot. These are the sign-in answers the server gives (teamAuth: "Wrong name or
@@ -1686,7 +1686,7 @@ table.att td.ok,table.att td.no{font-size:16px}
       }
       return Promise.resolve(hit);
     }
-    return save("associates", Object.assign({ id: "", name: name, role: role, mobile: m, mobile2: "",
+    return save("associates", Object.assign({ id: "", name: nmTitle(name), role: role, mobile: m, mobile2: "",   /* 1.8.2 */
       location: loc || "", area: area || "", address: "", birthday: "", anniversary: "",
       rate: "", notes: "auto-added from a client" }, extra || {}));
   }
@@ -2915,8 +2915,16 @@ table.att td.ok,table.att td.no{font-size:16px}
       '<div class="acts"><button class="btn gry" data-act="close">Cancel</button><button class="btn" data-act="sn-save">Save the site</button></div>';
   }
   function snKeep() { var N = S.sn || (S.sn = {}); ["name", "client", "mobile", "dist", "city", "stage", "plumber", "architect", "notes"].forEach(function (k, i) { var id = ["sn_name", "sn_client", "sn_mob", "sn_dist", "sn_city", "sn_stage", "sn_pl", "sn_ar", "sn_notes"][i]; if (el(id)) N[k] = val(id); }); return N; }
+  /* 1.8.2 / CRM 6.9.873 - HIS RULE: "all names first letter will be capital". A word in small letters gets a capital first letter;
+     a word that already has a capital is left as typed (TDI, MT, PL056). */
+  function nmTitle(v) {
+    return String(v == null ? "" : v).replace(/\s+/g, " ").trim().replace(/[A-Za-z][A-Za-z']*/g, function (w) { return w === w.toLowerCase() ? w.charAt(0).toUpperCase() + w.slice(1) : w; });
+  }
   function snSave(btn) {
     var N = snKeep();
+    N.name = nmTitle(N.name);   /* 1.8.2 */
+    var _exC = (S.data.clients || []).filter(function (c) { return c && dkey(c.name) === dkey(N.client); })[0];
+    N.client = _exC ? String(_exC.name) : nmTitle(N.client);   /* an existing client keeps his name exactly as filed */
     var m = mob10(N.mobile);
     if (N.name.length < 3) { toast("The site address."); return; }
     if (N.client.length < 2) { toast("The client's name."); return; }
@@ -2969,6 +2977,7 @@ table.att td.ok,table.att td.no{font-size:16px}
   function cnKeep() { var N = S.cn || (S.cn = {}); if (el("cn_name")) { N.name = val("cn_name"); N.mobile = mob10(val("cn_mob")); N.addr = val("cn_addr"); N.dist = val("cn_dist"); N.area = val("cn_area"); N.plumber = val("cn_pl"); N.architect = val("cn_ar"); } return N; }
   function cnSave() {
     var N = cnKeep();
+    N.name = nmTitle(N.name);   /* 1.8.2 */
     if (N.name.length < 2) { toast("The client's name."); return; }
     if (N.mobile.length !== 10) { toast("His 10-digit mobile number."); return; }
     if (!N.dist) { toast("Pick the district, or type a new one."); return; }
