@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.885";
+  var APP_VERSION = "6.9.886";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -11150,21 +11150,30 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     return S.pfStk || null;
   }
   /* latest bill rate per code, and the bills of a month (type "bill": qty = amount, ref = supplier / no) */
+  /* 6.9.886 - HIS CHOICE: the cost of a sale is the latest purchase bill ON OR BEFORE the sale day; a sale made before
+     the first bill takes that first bill. Every rate row is kept, by code, in date order. */
   function pfRates() {
     var st = pfStock(), m = {}; if (!st) return m;
-    st.rows.forEach(function (r) { if (r.type !== "rate" || !(Number(r.qty) > 0)) return; var k = String(r.code), at = String(r.asOn || r.createdAt || ""); if (!m[k] || at >= m[k].at) m[k] = { rate: Number(r.qty), at: at, ref: r.ref || "" }; });
+    st.rows.forEach(function (r) { if (r.type !== "rate" || !(Number(r.qty) > 0)) return; var k = String(codeNow(r.code)); (m[k] = m[k] || []).push({ rate: Number(r.qty), at: localDay(r.asOn || r.createdAt || ""), ref: r.ref || "" }); });
+    Object.keys(m).forEach(function (k) { m[k].sort(function (a, b) { return a.at.localeCompare(b.at); }); });
     return m;
+  }
+  function pfRateOn(list, day) {
+    if (!list || !list.length) return null;
+    var best = null; for (var i = 0; i < list.length; i++) { if (list[i].at <= day) best = list[i]; else break; }
+    return best || list[0];
   }
   function pfBills(month) {
     var st = pfStock(); if (!st) return [];
     return st.rows.filter(function (r) { return r.type === "bill" && localDay(r.asOn || r.createdAt).slice(0, 7) === month; }).map(function (r) { return { date: localDay(r.asOn || r.createdAt), supplier: String(r.notes || r.ref || "").split("/")[0].trim(), ref: String(r.ref || ""), amount: Number(r.qty) || 0 }; });
   }
   /* cost of one priced line: hand-typed, else bill rate, else list rate less the brand discount, else unknown */
-  function pfLineCost(x, rates, costs, set) {
-    var code = String(x.code || ""), q = Number(x.qty) || 0;
+  function pfLineCost(x, rates, costs, set, day) {
+    var code = String(codeNow(x.code || "")), q = Number(x.qty) || 0;
     if (x.job || !q) return { cost: 0, src: x.job ? "job" : "none", known: true };
+    var br = pfRateOn(rates[code], day || today());
+    if (br) return { cost: br.rate * q, src: "bill", known: true };
     if (costs[code] > 0) return { cost: costs[code] * q, src: "typed", known: true };
-    if (rates[code]) return { cost: rates[code].rate * q, src: "bill", known: true };
     var bd = set.brandDisc[String(x.brand || "")];
     if (bd != null && bd !== "" && Number(x.rate) > 0) return { cost: Math.round(Number(x.rate) * (1 - Number(bd) / 100)) * q, src: "brand", known: true };
     return { cost: 0, src: "unknown", known: false };
@@ -11193,7 +11202,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       var row = { c: c, client: cl, site: st ? (st.name || st.client) : (sid ? "" : (c.siteName || c.site || "")), siteId: sid, exec: c.createdBy || "", sell: net, freightIn: chFreight(c), off: off,
         inc: Number(c.commissionAmt) || 0, partner: c.associate || "", cost: 0, unknownSell: 0, lines: [] };
       lines.forEach(function (x) {
-        var k = pfLineCost(x, rates, costs, set), share = gross > 0 ? x.amt / gross : 0;
+        var k = pfLineCost(x, rates, costs, set, localDay(c.createdAt)), share = gross > 0 ? x.amt / gross : 0;
         if (!k.known) row.unknownSell += x.amt;
         row.cost += k.cost; row.lines.push({ code: x.code, desc: x.desc, brand: x.brand, qty: x.qty, sell: x.amt, cost: k.cost, src: k.src, rate: x.rate });
       });
@@ -11331,7 +11340,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     var bl = Object.keys(brands).sort(function (a, b) { return brands[b] - brands[a]; }), ml = Object.keys(miss).map(function (k) { return miss[k]; }).sort(function (a, b) { return b.sell - a.sell; }).slice(0, 40);
     var h = '<div class="card"><h3 style="margin:0 0 4px">Brand purchase discount</h3><div class="meta" style="font-size:12.5px">For a product with no purchase bill yet: cost = list rate less this %. Type what the brand gives you off its list. Leave blank to keep that brand’s cost unknown.</div>' +
       (bl.length ? pevTable([["Brand"], ["Sold in the period", "right"], ["Our discount off list %"], ["Products with a bill rate", "right"]], bl.map(function (b) {
-        var n = 0, tot = 0; G.all.forEach(function (r) { r.lines.forEach(function (l) { if (String(l.brand || "") === b) { tot++; if (rates[String(l.code)] || costs[String(l.code)]) n++; } }); });
+        var n = 0, tot = 0; G.all.forEach(function (r) { r.lines.forEach(function (l) { if (String(l.brand || "") === b) { tot++; if (rates[String(codeNow(l.code))] || costs[String(l.code)]) n++; } }); });
         return ['<b>' + esc(b) + '</b>', money(Math.round(brands[b])), '<input class="pf-bd" data-b="' + esc(b) + '" inputmode="decimal" value="' + esc(set.brandDisc[b] != null ? String(set.brandDisc[b]) : "") + '" placeholder="e.g. 35" style="width:90px;min-height:40px;text-align:right"/>', n + ' of ' + tot + ' lines'];
       })) : '<div class="empty">No sale this month.</div>') + '</div>';
     h += '<div class="card"><h3 style="margin:0 0 4px">Products with no cost — ' + plural(ml.length, "item") + (ml.length === 40 ? ' (top 40 by value)' : '') + '</h3><div class="meta" style="font-size:12.5px">Type the purchase price per unit here (it is kept until a bill rate arrives, which then wins), or set the brand discount above. Every bill Gautam enters under Stock adds rates by itself.</div>' +
@@ -56940,6 +56949,8 @@ function viewCatalogue() {
         if (cn && (!pn0 || pn0 === cn.code)) { l.partNo = cn.code; l.fromName = true; }
         stkMatchLine(l, ix);
         l.net = Math.round((Number(l.rate) || 0) * (1 - (Number(l.disc) || 0) / 100) * 100) / 100;
+        /* 6.9.886 - what accounts proposed for an open line comes up filled in for the owner */
+        if (l.prop && l.state !== "ok" && l.state !== "close") { if (l.prop.mode === "new") { l.mode = "new"; l.nb = l.prop.nb || null; } else if (l.prop.pick) { l.mode = ""; l.pick = l.prop.pick; } }
       });
       return b;
     });
@@ -57070,7 +57081,7 @@ function viewCatalogue() {
   }
   function stkBilledRefs() {
     var m = {};
-    (S.stock || []).forEach(function (r) { if (String(r.type) === "bill" && r.ref) m[String(r.ref).trim().toLowerCase()] = r; });
+    (S.stock || []).forEach(function (r) { if (String(r.type) === "bill" && r.ref && String(r.code) !== "*BILLPART") m[String(r.ref).trim().toLowerCase()] = r; });   /* 6.9.886 - a part leaves the rest waiting */
     return m;
   }
 
@@ -57332,7 +57343,7 @@ function viewCatalogue() {
         '<span>' + esc(dmy(b.date)) + '</span><b>' + money(b.total) + '</b>' + (b.src === "pdf" ? '<span style="font-size:12px;opacity:.8">from PDF</span>' : '') + '</div>' +
         '<div style="padding:6px 10px;font-size:13px;background:#f8fafc;border-bottom:1px solid #e2e8f0">' +
         (b.done ? '<b style="color:#b45309">Already uploaded &mdash; this bill will be skipped.</b>'
-                : plural(b.lines.length, "line") + ' &middot; ' + (open ? '<b style="color:#b45309">' + open + ' to match' + (adm ? '' : ' by the owner') + '</b>' : '<b style="color:#0f766e">all matched</b>')) +
+                : plural(b.lines.length, "line") + (b.partial ? ' still open (' + b.doneBefore + ' already in stock)' : '') + ' &middot; ' + (open ? '<b style="color:#b45309">' + open + ' to match' + (adm ? '' : ' - propose, the owner approves') + '</b>' : '<b style="color:#0f766e">all matched</b>')) +
         (anyRcv ? ' &middot; <span style="color:#64748b">an old lorry entry exists for it &mdash; the bill replaces it</span>' : '') +
         (rg ? ' &middot; ' + (totOk ? '<span style="color:#0f766e">total agrees with the Purchase Register</span>' : '<b style="color:#b91c1c">register says ' + money(rg.amount) + '</b>')
             : ' &middot; <span style="color:#64748b">not on an uploaded Purchase Register</span>') + '</div>' +
@@ -57348,8 +57359,7 @@ function viewCatalogue() {
             cell = prodTxt(p) + '<div style="font-size:12px;margin-top:2px;color:#b45309">' + (adm ? 'CRM code <b>' + esc(p.code) + '</b> becomes Tally&rsquo;s <b>' + esc(pn) + '</b>' : 'CRM code ' + esc(p.code) + ' &mdash; the owner brings it in line with Tally&rsquo;s ' + esc(pn)) + '</div>' +
               (adm ? '<button class="btn sm ghost" style="margin-top:4px" data-act="tb-not" data-b="' + bi + '" data-l="' + li + '">Not this product</button>' : '');
             if (adm) nRen++;
-          } else if (!adm) cell = '<span style="color:#b45309">' + (l.state === "pick" ? 'Two products answer to this code &mdash; ' : 'Not in the CRM &mdash; ') + 'the owner matches it</span>';
-          else if (l.mode === "new" && !(l.nb || {}).edit && (pn || (l.nb || {}).code)) {   /* 6.9.677 - filled from the bill */
+          } else if (l.mode === "new" && !(l.nb || {}).edit && (pn || (l.nb || {}).code)) {   /* 6.9.677 - filled from the bill; 6.9.886 - accounts too, as a proposal */
             var lab = function (x) { return '<div style="font-size:12px;color:#475569;margin:4px 0 1px">' + x + '</div>'; };
             var nq = l.nb, newBr = !bset[nq.brand] && !Object.keys(bset).some(function (x) { return x.toLowerCase() === String(nq.brand).toLowerCase(); });
             nNew++;
@@ -57383,6 +57393,8 @@ function viewCatalogue() {
               (pn ? '<div style="font-size:12px;color:#64748b;margin-top:2px">its CRM code becomes Tally&rsquo;s <b>' + esc(pn) + '</b></div>' : '') +
               '<button class="btn sm ghost" style="margin-top:4px" data-act="tb-new" data-b="' + bi + '" data-l="' + li + '">+ New product</button>';
           }
+          if (!adm && l.state !== "ok" && l.state !== "close" && !b.done) cell = '<div style="font-size:12px;color:#b45309;margin-bottom:3px">Not in the CRM &mdash; propose the product; the owner approves</div>' + cell;   /* 6.9.886 */
+          if (adm && l.prop && l.state !== "ok" && l.state !== "close") cell = '<div style="font-size:12px;color:#1d4ed8;margin-bottom:3px">Proposed by ' + esc(l.prop.by || "accounts") + (l.prop.mode === "new" ? ' as a new product' : l.prop.pick ? ': ' + esc(l.prop.pick) : '') + '</div>' + cell;
           return '<tr style="border-top:1px solid #e2e8f0;vertical-align:top">' +
             '<td style="padding:5px 7px;color:#64748b">' + l.sl + '</td>' +
             '<td style="padding:5px 7px">' + esc(l.desc) + '<div style="font-size:12px;color:#64748b">' + (pn ? (l.fromName ? 'code <b>' + esc(pn) + '</b> (from the name)' : 'Part No. <b>' + esc(pn) + '</b>') : 'no part no') + (l.hsn ? ' &middot; HSN ' + esc(l.hsn) : '') + '</div></td>' +
@@ -60106,7 +60118,7 @@ function viewCatalogue() {
       render(); return;
     }
     if (act === "tb-wait") {   /* 6.9.671 - the bills accounts sent up */
-      var _w = stkWaiting().map(function (o) { return { billNo: o.billNo, date: o.date, supplier: o.supplier, total: Number(o.total) || 0, file: o.file || "", src: o.src || "", lines: o.lines }; });
+      var _w = stkWaiting().map(function (o) { return { billNo: o.billNo, date: o.date, supplier: o.supplier, total: Number(o.total) || 0, billTotal: Number(o.billTotal) || Number(o.total) || 0, partial: o.partial || 0, doneBefore: o.doneBefore || 0, file: o.file || "", src: o.src || "", lines: o.lines }; });
       if (!_w.length) { toast("Nothing is waiting."); return; }
       S.grn = null; S.pc = null; S.imp = { step: "tally", bills: stkTallyOpen(_w) }; S.tab = "stock"; render(); window.scrollTo(0, 0); return;
     }
@@ -60159,7 +60171,7 @@ function viewCatalogue() {
           var pn = String(l.partNo || "").trim();
           if (l.state === "ok") { l.fin = l.code; return; }
           if (l.state === "close") { l.fin = l.code; if (_adm && pn) l.op = { op: "rename", from: l.code, to: pn }; return; }
-          if (!_adm) return;
+          if (!_adm) return;   /* accounts' choice rides on the wait row as a proposal (see the wait below) */
           if (l.mode === "new") {
             var nb = l.nb || {}, code = (l.fromName ? String(nb.code || "").trim() : "") || pn || String(nb.code || "").trim();
             if (!code || !nb.desc || !nb.brand || !nb.family) { _err = _err || ("Bill " + b.billNo + ", line " + l.sl + ": a new product needs its code, name, brand and family."); return; }
@@ -60227,33 +60239,45 @@ function viewCatalogue() {
         _als.forEach(function (x) { c2 = c2.then(function () { return _sv({ id: _sid("alias"), type: "alias", code: x.code, desc: x.desc, qty: 0, ref: x.ref, asOn: today(), notes: "Tally part no" }); }); });
         return c2;
       });
+      /* 6.9.886 - LINE BY LINE, NOT BILL BY BILL. MEASURED 25 Oct: 22 bills "waiting to match", 11 of them Huliot bills whose
+         part numbers ARE catalogue codes - one odd line (a battery, a charger) held every matched line back, so none of
+         their rates reached stock or the Profit screen. Now the matched lines go in at once as a bill PART (code *BILLPART,
+         amount = those lines) with their rates; only the open lines wait, as a smaller bill, with what accounts proposed
+         for them (prop) so the owner sees a suggestion, not a blank. When the owner finishes the rest, that part goes in
+         as the closing *BILL row, and the wait is done. Stock and rates read every part; nothing is counted twice. */
+      var _amt = function (l) { var a = Number(l.amount); return a > 0 ? a : Math.round((Number(l.qty) || 0) * (Number(l.net) || 0) * 100) / 100; };
       _todo.forEach(function (b) {
         _chain = _chain.then(function () {
-          var ready = b.lines.every(function (l) { return !!l.fin; });
+          var done = b.lines.filter(function (l) { return !!l.fin; }), open = b.lines.filter(function (l) { return !l.fin; }), ready = !open.length;
+          var pr = Promise.resolve();
           if (!ready) {
             _waitN++;
-            return _sv({ id: _sid("wait"), type: "billwait", code: "*WAIT", qty: 0, ref: b.key, asOn: b.date || today(), notes: b.supplier,
-              desc: JSON.stringify({ billNo: b.billNo, date: b.date, supplier: b.supplier, total: b.total, file: b.file || "", src: b.src || "",
-                lines: b.lines.map(function (l) { return { sl: l.sl, desc: l.desc, partNo: l.partNo, hsn: l.hsn || "", qty: l.qty, rate: l.rate, unit: l.unit, disc: l.disc, amount: l.amount }; }) }) })
+            var openTot = Math.round(open.reduce(function (a, l) { return a + _amt(l); }, 0) * 100) / 100;
+            pr = _sv({ id: _sid("wait"), type: "billwait", code: "*WAIT", qty: 0, ref: b.key, asOn: b.date || today(), notes: b.supplier,
+              desc: JSON.stringify({ billNo: b.billNo, date: b.date, supplier: b.supplier, total: done.length ? openTot : b.total, billTotal: b.billTotal || b.total, file: b.file || "", src: b.src || "", partial: (done.length || b.partial) ? 1 : 0, doneBefore: (b.doneBefore || 0) + done.length,
+                lines: open.map(function (l) { var o = { sl: l.sl, desc: l.desc, partNo: l.partNo, hsn: l.hsn || "", qty: l.qty, rate: l.rate, unit: l.unit, disc: l.disc, amount: l.amount };
+                  if (!_adm && (l.mode === "new" || l.pick)) o.prop = { mode: l.mode || "", pick: l.pick || "", nb: l.nb || null, by: S.user || "" }; else if (l.prop) o.prop = l.prop; return o; }) }) })
               .then(function (r) { if (!(r && r.ok)) _fail.push(b.billNo + ": " + ((r && r.error) || "not kept")); }, function () { _fail.push(b.billNo + ": no answer"); });
           }
-          var _brow = { id: _sid("bill"), type: "bill", code: "*BILL", qty: b.total, ref: b.key, asOn: b.date || today(),
-            notes: b.supplier, desc: JSON.stringify(b.lines.map(function (l) { return { c: l.fin, q: l.qty, n: l.net, u: l.unit, p: l.partNo }; })) };
-          return _sv(_brow)
+          if (!done.length) return pr;
+          var partAmt = ready ? b.total : Math.round(done.reduce(function (a, l) { return a + _amt(l); }, 0) * 100) / 100;
+          var _brow = { id: _sid("bill"), type: "bill", code: ready ? "*BILL" : "*BILLPART", qty: partAmt, ref: b.key, asOn: b.date || today(),
+            notes: b.supplier, desc: JSON.stringify(done.map(function (l) { return { c: l.fin, q: l.qty, n: l.net, u: l.unit, p: l.partNo }; })) };
+          return pr.then(function () { return _sv(_brow); })
             .then(function (r) {
               if (!(r && r.ok)) { _fail.push(b.billNo + ": " + ((r && r.error) || "refused")); return; }
               _okN++;
-              /* the latest purchase rate per product, off this bill, for stock value and quote margin */
+              /* the latest purchase rate per product, off this bill, for stock value, quote margin and the Profit screen */
               var rch = Promise.resolve();
-              b.lines.forEach(function (l) { if (l.net > 0) rch = rch.then(function () { return _sv({ id: _sid("rate"), type: "rate", code: l.fin, desc: "", qty: l.net, ref: b.key, asOn: b.date || today(), notes: "" }); }); });
+              done.forEach(function (l) { if (l.net > 0) rch = rch.then(function () { return _sv({ id: _sid("rate"), type: "rate", code: l.fin, desc: "", qty: l.net, ref: b.key, asOn: b.date || today(), notes: "" }); }); });
               return rch;
             }, function () { _fail.push(b.billNo + ": no answer - it MAY have been saved; refresh before trying again"); });
         });
       });
       _chain.then(function () {
         S.imp = null; STOCK_LOADED = false; S.stock = []; ensureStock(); S.tab = "stock"; render();
-        var say = [plural(_okN, "bill") + " saved into stock"];
-        if (_waitN) say.push(plural(_waitN, "bill") + (_adm ? " kept for you to finish" : " sent to the owner to match codes"));
+        var say = [plural(_okN, "bill") + (_waitN ? " (or the matched part of them)" : "") + " saved into stock"];
+        if (_waitN) say.push(plural(_waitN, "bill") + (_adm ? " kept for you to finish the open lines" : " - the open lines went to the owner with your suggestions"));
         if (_renN) say.push(plural(_renN, "code") + " changed to Tally's");
         if (_addN) say.push(plural(_addN, "new product") + " added");
         toast(say.join(" · ") + "." + (_msg.length ? " Not changed: " + _msg.join("; ") + "." : "") + (_fail.length ? " Not saved: " + _fail.join("; ") : ""));
