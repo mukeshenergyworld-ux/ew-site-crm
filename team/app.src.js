@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.881";
+  var APP_VERSION = "6.9.882";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -44282,6 +44282,38 @@ function viewCatalogue() {
   }
   function rsMoneySheet() { var t = rsSetMoney().team.xlsx; return { rows: t.rows, cols: t.cols, opts: t.opts, file: t.file, text: "", caption: "" }; }
 
+  /* ===== 6.9.882 - SERVER & AI AT A GLANCE (25 Oct 2026, last item of the AI audit) =====
+     Admin only. One call to the server's "health" action (V167+): its version, the size of each tab it reads, whether
+     the AI key is there, when the AI last answered and last failed. Beside it, from the audit rows this phone already
+     has: today's AI questions and the last weekly eval score. Green = all fine; amber = something to look at; red = the
+     server did not answer or there is no key. Nothing is written. */
+  function srvHealthCard() {
+    if (!roleIs("admin")) return '';
+    var H = S.srvH || {};
+    if (!H.busy && !H.at) { S.srvH = H = { busy: 1 }; api("health", {}, 30000).then(function (r) { S.srvH = { at: Date.now(), r: r || {} }; keepScroll = true; renderBg(); }).catch(function (e) { S.srvH = { at: Date.now(), err: apiWhy(e) }; keepScroll = true; renderBg(); }); }
+    var r = H.r || {}, ok = r.ok && !H.err, notes = [];
+    var ev = (S.data.audit || []).filter(function (a) { return a.action === "ai:eval"; }).sort(function (a, b) { return String(b.createdAt).localeCompare(String(a.createdAt)); })[0];
+    var evd = {}; try { evd = ev ? JSON.parse(ev.detail || "{}") : {}; } catch (e) { }
+    var t0 = today(), useT = (S.data.audit || []).filter(function (a) { return a.action === "ai:use" && String(a.createdAt || "").slice(0, 10) === t0; }).length;
+    var lastOk = String(r.aiLastOk || ""), lastErr = String(r.aiLastErr || "").split(" ");
+    var level = 0;
+    if (H.busy) level = -1;
+    else if (!ok) { level = 2; notes.push("The server did not answer (" + esc(H.err || r.error || "no reply") + ")."); }
+    else {
+      if (!r.key) { level = 2; notes.push("No AI key on the server - paste it under Clients \u203a Messages & posts."); }
+      if (lastErr[0] && (!lastOk || lastErr[0] > lastOk)) { level = Math.max(level, 1); notes.push("The AI's last call failed (" + esc(lastErr.slice(1).join(" ")) + ") at " + esc(lastErr[0].slice(11, 16)) + " UTC."); }
+      if (evd.n && evd.pass < evd.n) { level = Math.max(level, 1); notes.push("Weekly AI check: " + evd.pass + " of " + evd.n + " passed - see the AI Evals sheet."); }
+      if (r.counts && r.counts.error) { level = 2; notes.push("The server could not read the book: " + esc(r.counts.error)); }
+    }
+    var col = level === 2 ? ['#fef2f2', '#fecaca', '#b91c1c', 'Needs attention'] : level === 1 ? ['#fffbeb', '#fde68a', '#b45309', 'Look at this'] : level === 0 ? ['#f0fdf4', '#bbf7d0', '#166534', 'All fine'] : ['#f8fafc', '#e2e8f0', '#64748b', 'Checking\u2026'];
+    var c = r.counts || {}, ago = function (iso) { if (!iso) return "never"; var m = Math.round((Date.now() - Date.parse(iso)) / 60000); return m < 60 ? m + " min ago" : m < 1440 ? Math.round(m / 60) + " h ago" : Math.round(m / 1440) + " days ago"; };
+    return '<div class="card" style="background:' + col[0] + ';border-color:' + col[1] + '"><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><h2 style="margin:0;font-size:16px">Server &amp; AI</h2>' +
+      '<b style="color:' + col[2] + ';font-size:14px">&#9679; ' + col[3] + '</b><div class="grow"></div><button class="btn sm ghost" style="min-height:44px" data-act="srvh-refresh">Check again</button></div>' +
+      (notes.length ? '<div style="margin-top:6px;font-size:13px;color:' + col[2] + '">' + notes.join("<br>") + '</div>' : '') +
+      (ok ? '<div class="meta" style="font-size:13px;margin-top:6px;line-height:1.6">Server <b>' + esc(r.srv || "?") + '</b> \u00b7 AI key ' + (r.key ? 'saved' : '<b>missing</b>') + ' \u00b7 AI last answered <b>' + ago(lastOk) + '</b>' +
+        ' \u00b7 AI questions today <b>' + useT + '</b>' + (evd.n ? ' \u00b7 weekly check <b>' + evd.pass + '/' + evd.n + '</b> (' + esc(dmy(String(ev.createdAt).slice(0, 10))) + ')' : ' \u00b7 weekly check: not run yet') + '<br>' +
+        'The server reads: ' + ["clients", "challans", "payments", "quotes", "associates", "sites", "audit"].map(function (k) { return k + ' ' + (c[k] != null ? c[k] : '?'); }).join(" \u00b7 ") + '</div>' : '') + '</div>';
+  }
   function viewHealth() {
     var s = healthScan();
     var h = '<div class="card" style="' + (s.total ? 'border-color:#fed7aa;background:#fff7ed' : 'border-color:#99f6e4;background:#f0fdfa') + '">' +
@@ -44291,6 +44323,7 @@ function viewCatalogue() {
                : '<div style="margin-top:8px;font-weight:700;color:#0f766e">✓ All clear — nothing unusual found.</div>') +
       '<div class="acts" style="margin-top:8px"><button class="btn sm ghost" data-act="health-refresh">Re-scan</button></div></div>';
 
+    h += srvHealthCard();   /* 6.9.882 */
     h += mcCard();   /* 6.9.661 */
     h += mtCard();   /* 6.9.662 */
     h += lineTestCard();
@@ -66060,6 +66093,7 @@ function viewCatalogue() {
       }).catch(function (e) { S.aiAsk = { q: _aq, busy: false, a: "", err: "No answer from the server (" + apiWhy(e) + ")." }; logCrash("ai:fail", e); keepScroll = true; render(); });
       return;
     }
+    if (act === "srvh-refresh") { S.srvH = null; keepScroll = true; render(); return; }   /* 6.9.882 */
     if (act === "ai-do" || act === "ai-skip") {   /* 6.9.880 - a proposed action: his tap, the CRM's own save */
       var _pi = Number(t.getAttribute("data-i")), _pp = ((S.aiAsk || {}).props || [])[_pi]; if (!_pp) return;
       if (act === "ai-skip") { S.aiAsk.props.splice(_pi, 1); keepScroll = true; render(); return; }
