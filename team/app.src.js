@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.886";
+  var APP_VERSION = "6.9.887";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -722,8 +722,8 @@
   }
 
   var ROLE_TABS = {
-    admin:    ["profit","salary","dash","wareminder","msgs","clientlist","myday","statements","review","agent","report","scorecard","returns","tools","rates","clients","crlog","partners","pevents","quotes","leads","brandfollow","winloss","visits","followups","challans","register","paylog","freight","payments","paidout","billing","discounts","commission","complaints","service","spares","dues","payroll","products","catalogs","brandstory","pricelist","catalogue","rules","teampins","tally","plcheck","health","trouble","changelog","booksweep","dups","stock","brief","attendance"],
-    accounts: ["salary","dash","wareminder","clientlist","statements","review","agent","returns","tools","clients","crlog","partners","followups","challans","register","paylog","freight","payments","billing","complaints","service","spares","dues","products","catalogs","rates","pricelist","dups","stock","tally","trouble","attendance"],
+    admin:    ["codes","profit","salary","dash","wareminder","msgs","clientlist","myday","statements","review","agent","report","scorecard","returns","tools","rates","clients","crlog","partners","pevents","quotes","leads","brandfollow","winloss","visits","followups","challans","register","paylog","freight","payments","paidout","billing","discounts","commission","complaints","service","spares","dues","payroll","products","catalogs","brandstory","pricelist","catalogue","rules","teampins","tally","plcheck","health","trouble","changelog","booksweep","dups","stock","brief","attendance"],
+    accounts: ["codes","salary","dash","wareminder","clientlist","statements","review","agent","returns","tools","clients","crlog","partners","followups","challans","register","paylog","freight","payments","billing","complaints","service","spares","dues","products","catalogs","rates","pricelist","dups","stock","tally","trouble","attendance"],
     godown:   ["dash","agent","returns","tools","challans","freight","products","stock","trouble"],
     sales:    ["myday","msgs","clientlist","dash","review","agent","report","returns","tools","clients","crlog","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","register","paylog","freight","billing","payments","complaints","products","catalogs","dups","brief","trouble"],
     service:  ["dash","agent","clientlist","tools","complaints","service","spares","dues","followups","products","catalogs","trouble"]
@@ -11145,6 +11145,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
   function pfSet() { var r = hrLatest("pf:set", function () { return "set"; })[0] || {}; return { brandDisc: r.brandDisc || {} }; }
   function pfCosts() { var m = {}; hrLatest("pf:cost", function (d) { return String(d.code); }).forEach(function (d) { m[String(d.code)] = Number(d.cost) || 0; }); return m; }
   function pfStock() {
+    if (STOCK_LOADED && S.stock) return { at: Date.now(), rows: S.stock };   /* 6.9.887 - the Stock screen's copy, when it is here */
     if (S.pfStk && Date.now() - S.pfStk.at < 600000) return S.pfStk;
     if (!S.pfStkBusy) { S.pfStkBusy = 1; api("stockList", {}, 60000).then(function (r) { S.pfStkBusy = 0; S.pfStk = { at: Date.now(), rows: (r && r.rows) || [] }; keepScroll = true; renderBg(); }).catch(function () { S.pfStkBusy = 0; S.pfStk = { at: Date.now(), rows: [], err: 1 }; keepScroll = true; renderBg(); }); }
     return S.pfStk || null;
@@ -11168,14 +11169,34 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     return st.rows.filter(function (r) { return r.type === "bill" && localDay(r.asOn || r.createdAt).slice(0, 7) === month; }).map(function (r) { return { date: localDay(r.asOn || r.createdAt), supplier: String(r.notes || r.ref || "").split("/")[0].trim(), ref: String(r.ref || ""), amount: Number(r.qty) || 0 }; });
   }
   /* cost of one priced line: hand-typed, else bill rate, else list rate less the brand discount, else unknown */
+  /* 6.9.887 - ERP step A. HIS WORDS: "match every purchase sale codes, if any sold items code not found then ask to set BOM for
+     that item". A sold code is costed down this ladder: a purchase bill of that code (or of the code it is BOUGHT UNDER,
+     audit pf:same) · a typed cost · a KIT: the sum of its parts' costs (stock bom rows, 3 deep) · the brand discount off the
+     list rate · LABOUR (pf:kind labour: no cost of goods) · unknown. The Codes screen asks the question for every sold code
+     that lands on "unknown". */
+  function pfSame() { var m = {}; hrLatest("pf:same", function (d) { return String(d.code); }).forEach(function (d) { if (d.as) m[String(d.code)] = String(d.as); }); return m; }
+  function pfKinds() { var m = {}; hrLatest("pf:kind", function (d) { return String(d.code); }).forEach(function (d) { m[String(d.code)] = String(d.kind || ""); }); return m; }
+  function pfUnitCost(code, rates, costs, set, day, listRate, brand, depth) {
+    code = String(codeNow(code || "")); depth = depth || 0;
+    var same = pfSame()[code]; if (same && same !== code && depth < 3) { var r0 = pfUnitCost(same, rates, costs, set, day, listRate, brand, depth + 1); if (r0.known) return { cost: r0.cost, src: "same:" + same, known: true }; }
+    var br = pfRateOn(rates[code], day || today()); if (br) return { cost: br.rate, src: "bill", known: true };
+    if (costs[code] > 0) return { cost: costs[code], src: "typed", known: true };
+    var kit = (typeof stkBom === "function" ? stkBom() : {})[code];
+    if (kit && depth < 3) {
+      var tot = 0, ok = true;
+      kit.parts.forEach(function (p) { var pc = pfUnitCost(p.code, rates, costs, set, day, 0, "", depth + 1); if (!pc.known) ok = false; tot += pc.cost * p.qty; });
+      if (ok) return { cost: tot, src: "kit", known: true };
+    }
+    var bd = set.brandDisc[String(brand || "")];
+    if (bd != null && bd !== "" && Number(listRate) > 0) return { cost: Math.round(Number(listRate) * (1 - Number(bd) / 100)), src: "brand", known: true };
+    if (pfKinds()[code] === "labour") return { cost: 0, src: "labour", known: true };
+    return { cost: 0, src: "unknown", known: false };
+  }
   function pfLineCost(x, rates, costs, set, day) {
     var code = String(codeNow(x.code || "")), q = Number(x.qty) || 0;
     if (x.job || !q) return { cost: 0, src: x.job ? "job" : "none", known: true };
-    var br = pfRateOn(rates[code], day || today());
-    if (br) return { cost: br.rate * q, src: "bill", known: true };
-    if (costs[code] > 0) return { cost: costs[code] * q, src: "typed", known: true };
-    var bd = set.brandDisc[String(x.brand || "")];
-    if (bd != null && bd !== "" && Number(x.rate) > 0) return { cost: Math.round(Number(x.rate) * (1 - Number(bd) / 100)) * q, src: "brand", known: true };
+    var u = pfUnitCost(code, rates, costs, set, day, x.rate, x.brand, 0);
+    if (u.known) return { cost: u.cost * q, src: u.src, known: true };
     return { cost: 0, src: "unknown", known: false };
   }
   /* 6.9.885 - a delivery linked to a site after the day (audit ch:site, newest wins) reads as if it had been */
@@ -11326,8 +11347,8 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     G.all.forEach(function (r) { r.lines.forEach(function (l) { if (!l.code && !l.desc) return; var k = String(l.code || l.desc); var o = it[k] || (it[k] = { code: l.code, desc: l.desc, brand: l.brand, qty: 0, sell: 0, cost: 0, src: l.src }); o.qty += Number(l.qty) || 0; o.sell += l.sell; o.cost += l.cost; }); });
     var items = Object.keys(it).map(function (k) { return it[k]; }).sort(function (a, b) { return b.sell - a.sell; });
     var cols = [{ k: "d", t: "ITEM" }, { k: "b", t: "BRAND" }, { k: "q", t: "QTY", r: 1, n: 1 }, { k: "s", t: "SOLD", r: 1, n: 1 }, { k: "c", t: "COST", r: 1, n: 1 }, { k: "m", t: "MARGIN", r: 1, n: 1 }, { k: "src", t: "COST FROM" }];
-    var SRC = { typed: "typed", bill: "purchase bill", brand: "brand discount", unknown: "— unknown", job: "labour", none: "" };
-    var rows = items.map(function (o) { var v = { d: (o.code ? o.code + " " : "") + (o.desc || ""), b: o.brand || "", q: Math.round(o.qty * 100) / 100, s: Math.round(o.sell), c: Math.round(o.cost), m: Math.round(o.sell - o.cost), src: SRC[o.src] || o.src };
+    var SRC = { typed: "typed", bill: "purchase bill", brand: "brand discount", unknown: "— unknown", job: "labour", labour: "labour", kit: "kit (parts)", none: "" };
+    var rows = items.map(function (o) { var v = { d: (o.code ? o.code + " " : "") + (o.desc || ""), b: o.brand || "", q: Math.round(o.qty * 100) / 100, s: Math.round(o.sell), c: Math.round(o.cost), m: Math.round(o.sell - o.cost), src: SRC[o.src] || (String(o.src).indexOf("same:") === 0 ? "bought as " + String(o.src).slice(5) : o.src) };
       return { v: v, cells: { d: esc(v.d), b: esc(v.b), q: String(v.q), s: money(v.s), c: o.src === "unknown" ? '<span style="color:#b45309">?</span>' : money(v.c), m: o.src === "unknown" ? '—' : money(v.m), src: esc(v.src) } }; });
     return h + '<div class="card"><h3 style="margin:0 0 4px">Items delivered in ' + esc(lbl) + ' — ' + plural(items.length, "item") + '</h3>' + xlTable("pf-items-" + months.join("_"), cols, rows, "cost and margin") + '</div>';
   }
@@ -11371,6 +11392,94 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       }
     });
   } catch (e) { }
+
+
+  /* ======================= 6.9.887 - CODES & COSTS  (ERP step A, 25 Oct 2026) =======================
+     Every code sold in the last 12 months, with how the CRM costs it today, and the question for the ones it cannot:
+       Bought under another code (pf:same) · It is a kit - set its parts (BOM; accounts' parts wait for the owner: pf:bomprop)
+       · Labour / service (pf:kind labour) · Local buy - type the cost (pf:cost). Owner and accounts. */
+  function cdOk() { return roleIs("admin") || roleIs("accounts"); }
+  function cdSold() {
+    var since = new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10), m = {};
+    (S.data.challans || []).forEach(function (c) {
+      if (!c || String(c.status || "") === "Cancelled" || isCancelled("challans", c.id) || localDay(c.createdAt) < since) return;
+      pricedLines(c, c.customerName).forEach(function (x) {
+        if (x.job || !x.code) return; var k = String(codeNow(x.code));
+        var o = m[k] || (m[k] = { code: k, desc: x.desc, brand: x.brand || "", qty: 0, sell: 0, n: 0, last: "", rate: x.rate });
+        o.qty += Number(x.qty) || 0; o.sell += x.amt; o.n++; var d = localDay(c.createdAt); if (d > o.last) o.last = d;
+      });
+    });
+    return Object.keys(m).map(function (k) { return m[k]; }).sort(function (a, b) { return b.sell - a.sell; });
+  }
+  function viewCodes() {
+    if (!cdOk()) return '<div class="empty">Codes & costs is for the owner and accounts.</div>';
+    ensureStock();
+    if (!STOCK_LOADED) return '<div class="card"><h2 style="margin:0">Codes &amp; costs</h2><div class="meta">Reading the stock sheet (purchase rates, kits)…</div></div>';
+    var rates = pfRates(), costs = pfCosts(), set = pfSet(), same = pfSame(), kinds = pfKinds(), bom = stkBom(), sold = cdSold();
+    var f = S.cdFilter || "open", q = String(S.cdQ || "").toLowerCase();
+    var rows = sold.map(function (o) { var u = pfUnitCost(o.code, rates, costs, set, today(), o.rate, o.brand, 0); o.u = u; return o; });
+    var open = rows.filter(function (o) { return !o.u.known; }), sellAll = rows.reduce(function (a, o) { return a + Math.max(0, o.sell); }, 0), sellOpen = open.reduce(function (a, o) { return a + Math.max(0, o.sell); }, 0);
+    var props = hrLatest("pf:bomprop", function (d) { return String(d.code); });
+    var list = rows.filter(function (o) { return f === "all" || (f === "open" ? !o.u.known : o.u.src.indexOf(f) === 0); }).filter(function (o) { return !q || (o.code + " " + o.desc + " " + o.brand).toLowerCase().indexOf(q) >= 0; });
+    var chip = function (k, l, n) { return '<button class="chip' + (f === k ? ' on' : '') + '" style="min-height:44px" data-act="cd-f" data-k="' + k + '">' + l + (n != null ? ' <b>' + n + '</b>' : '') + '</button>'; };
+    var cnt = function (p) { return rows.filter(function (o) { return o.u.src.indexOf(p) === 0; }).length; };
+    var h = '<div class="card"><h2 style="margin:0 0 4px">Codes &amp; costs</h2>' +
+      '<div class="meta" style="font-size:13px">Every code sold in the last 12 months and how its cost is known. <b>' + (rows.length - open.length) + ' of ' + rows.length + '</b> have a cost — <b>' + (sellAll > 0 ? Math.round((sellAll - sellOpen) / sellAll * 100) : 0) + '%</b> of sales value. Answer the open ones below; each answer is kept and used by Profit.</div>' +
+      '<div class="acts" style="gap:6px;flex-wrap:wrap;margin-top:6px">' + chip("open", "No cost yet", open.length) + chip("bill", "From a bill", cnt("bill")) + chip("same", "Bought under another code", cnt("same")) + chip("kit", "Kits", cnt("kit")) + chip("typed", "Typed", cnt("typed")) + chip("brand", "Brand discount", cnt("brand")) + chip("labour", "Labour", cnt("labour")) + chip("all", "All", rows.length) + '</div>' +
+      '<input id="cd_q" type="search" value="' + esc(S.cdQ || "") + '" placeholder="Find a code or name" autocomplete="off" style="min-height:44px;font-size:15px;margin-top:8px"/></div>';
+    if (roleIs("admin") && props.length) {
+      h += '<div class="card" style="border-color:#fde68a;background:#fffbeb"><h3 style="margin:0 0 4px">Kits proposed by accounts — ' + props.length + '</h3>' +
+        props.map(function (p) { return '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:6px 0;border-top:1px solid #fde68a"><div style="flex:1 1 240px;font-size:13px"><b>' + esc(p.code) + '</b> ' + esc(p.desc || "") + '<div style="color:#64748b;font-size:12px">' + (p.parts || []).map(function (x) { return x.q + ' × ' + esc(x.d || x.c); }).join(", ") + ' · by ' + esc(p.by || "") + '</div></div>' +
+          '<button class="btn sm" style="min-height:44px" data-act="cd-bom-ok" data-code="' + esc(p.code) + '">Approve</button><button class="btn sm ghost" style="min-height:44px" data-act="cd-bom-no" data-code="' + esc(p.code) + '">Not a kit</button></div>'; }).join("") + '</div>';
+    }
+    var SRC = { bill: "purchase bill", typed: "typed cost", kit: "kit — parts", brand: "brand discount", labour: "labour / service", unknown: "" };
+    var srcTxt = function (o) { var u = o.u; if (u.src.indexOf("same:") === 0) return 'bought as <b>' + esc(u.src.slice(5)) + '</b>'; if (u.src === "bill") { var r = pfRateOn(rates[o.code], today()); return 'bill ' + esc(dmy(r.at)) + (r.ref ? ' · ' + esc(String(r.ref).split(" / ").slice(-1)[0]) : ''); } return SRC[u.src] || u.src; };
+    h += '<div class="card"><h3 style="margin:0 0 4px">' + (f === "open" ? "Sold, but no cost yet" : "Codes") + ' — ' + list.length + '</h3>' +
+      (list.length ? pevTable([["Code / product"], ["Brand"], ["Sold 12 m", "right"], ["Cost per unit", "right"], ["Known from"], [""]], list.slice(0, 120).map(function (o) {
+        var pend = props.filter(function (p) { return p.code === o.code; })[0];
+        var ask = o.u.known ? '' : '<div style="display:flex;gap:4px;flex-wrap:wrap">' +
+          '<button class="btn sm ghost" style="min-height:40px;padding:2px 8px;font-size:12.5px" data-act="cd-same" data-code="' + esc(o.code) + '">Bought under another code</button>' +
+          (pend ? '<span style="font-size:12px;color:#b45309;align-self:center">kit proposed by ' + esc(pend.by || "") + ' — waits for the owner</span>' : '<button class="btn sm ghost" style="min-height:40px;padding:2px 8px;font-size:12.5px" data-act="bom-open" data-code="' + esc(o.code) + '">It is a kit → set BOM</button>') +
+          '<button class="btn sm ghost" style="min-height:40px;padding:2px 8px;font-size:12.5px" data-act="cd-labour" data-code="' + esc(o.code) + '">Labour / service</button>' +
+          '<input class="pf-cost" data-code="' + esc(o.code) + '" inputmode="numeric" placeholder="local buy: cost/unit" style="width:140px;min-height:40px;font-size:12.5px"/></div>';
+        var undo = o.u.known && /^(same:|labour|typed|kit)/.test(o.u.src) ? ' <button class="btn sm ghost" style="min-height:36px;padding:0 6px;font-size:12px" data-act="cd-clear" data-code="' + esc(o.code) + '" data-src="' + esc(o.u.src.split(":")[0]) + '" title="Forget this answer">×</button>' : '';
+        return ['<b>' + esc(o.code) + '</b><div style="font-size:12px;color:#64748b">' + esc(o.desc || "") + '</div>', esc(o.brand), money(Math.round(o.sell)) + '<div style="font-size:12px;color:#64748b">' + Math.round(o.qty * 100) / 100 + ' pcs · last ' + esc(dmy(o.last)) + '</div>',
+          o.u.known ? (o.u.src === "labour" ? '—' : money(Math.round(o.u.cost))) : '<span style="color:#b45309">?</span>', srcTxt(o) + undo, ask];
+      })) + (list.length > 120 ? '<div class="meta" style="font-size:12px">Showing 120 of ' + list.length + ' — use the search box.</div>' : '') : '<div class="empty" style="color:#166534">Nothing here.</div>') + '</div>';
+    return h;
+  }
+  function cdAct(act, t) {
+    if (!cdOk()) return;
+    var code = t.getAttribute("data-code") || "";
+    if (act === "cd-f") { S.cdFilter = t.getAttribute("data-k"); keepScroll = true; render(); return; }
+    if (act === "cd-same") {
+      var hold = S.modal;
+      promptSheet({ title: "Bought under which code?", placeholder: "Catalogue code it is bought as (e.g. 40744860-I)", ok: "Save" }).then(function (v) {
+        v = String(v || "").trim(); if (!v) return;
+        var p = PRODUCTS.filter(function (x) { return String(x.code) === v; })[0] || findProduct(v);
+        if (!p) { toast(v + " is not in the catalogue."); return; }
+        if (String(p.code) === code) { toast("That is the same code."); return; }
+        auditFact("pf:same", code, { code: code, as: String(p.code), by: S.user }).then(function () { keepScroll = true; render(); toast(code + " is costed as " + p.code + "."); });
+      });
+      return;
+    }
+    if (act === "cd-labour") { auditFact("pf:kind", code, { code: code, kind: "labour", by: S.user }).then(function () { keepScroll = true; render(); toast(code + ": labour / service, no cost of goods."); }); return; }
+    if (act === "cd-clear") {
+      var src = t.getAttribute("data-src"), a = src === "same" ? "pf:same" : src === "labour" ? "pf:kind" : src === "typed" ? "pf:cost" : "";
+      if (!a) { toast("A kit is undone from its BOM (Not a kit)."); return; }
+      auditFact(a, code, { code: code, removed: 1, by: S.user }).then(function () { keepScroll = true; render(); toast(code + ": answer forgotten."); });
+      return;
+    }
+    if (act === "cd-bom-ok" || act === "cd-bom-no") {
+      if (!roleIs("admin")) return;
+      var p = hrLatest("pf:bomprop", function (d) { return String(d.code); }).filter(function (d) { return d.code === code; })[0]; if (!p) return;
+      var done = function () { auditFact("pf:bomprop", code, Object.assign({}, p, { removed: 1, decided: act === "cd-bom-ok" ? "approved" : "refused", decidedBy: S.user })).then(function () { keepScroll = true; render(); }); };
+      if (act === "cd-bom-no") { done(); toast(code + ": not a kit."); return; }
+      bomWrite(code, (p.parts || []).map(function (x) { return { code: x.c, qty: x.q, desc: x.d }; }), !!p.show).then(function () { done(); toast("Kit approved: " + code + "."); }, function (e) { toast("Kit NOT saved: " + ((e && e.message) || "no answer")); });
+      return;
+    }
+  }
+  try { document.addEventListener("input", function (e) { var t = e.target; if (!t || t.id !== "cd_q") return; S.cdQ = t.value; var b = document.querySelector('[data-xl]'); keepScroll = true; render(); var q2 = el("cd_q"); if (q2) { q2.focus(); q2.setSelectionRange(q2.value.length, q2.value.length); } }); } catch (e) { }
 
   function viewPayroll() {
     var month = S.q || ymLocal(new Date());
@@ -43549,7 +43658,7 @@ function viewCatalogue() {
      nothing else could reach it - so the usage counter would have had to keep a second copy
      of the same forty-two names, and a second copy is how the two quietly stop agreeing.
      Hoisted, not duplicated. render() still reads exactly this. */
-  var TAB_TABS = [["search", "Search"], ["myday", "My day"], ["dash", "Today"], ["statements", "Statements"], ["review", "Twice-weekly review"], ["wareminder", "WhatsApp reminders"], ["msgs", "Messages & posts"], ["clientlist", "Client list"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits & quotes"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["register", "Challan log"], ["paylog", "Payment log"], ["freight", "Drivers & freight"], ["deliveries", "Deliveries"], ["collections", "Payments"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["crlog", "Client & lead log"], ["partners", "Partners"], ["pevents", "Partner events"], ["quotes", "Quotes"], ["commission", "Incentives"], ["complaints", "Complaints"], ["service", "Service"], ["spares", "Spares"], ["dues", "Service dues"], ["payroll", "Payroll"], ["salary", "Salary & staff"], ["profit", "Profit"], ["attendance", "Attendance"], ["products", "Products"], ["payments", "Payments"], ["paidout", "Paid out"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["catalogs", "Brand catalogues"], ["brandstory", "Brand stories"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["trouble", "Troubleshoot"], ["changelog", "Change log"], ["booksweep", "Book numbers"], ["dups", "Duplicate check"], ["stock", "Stock"], ["tally", "Tally"], ["plcheck", "Supplier price list"], ["brief", "The brief"]];
+  var TAB_TABS = [["search", "Search"], ["myday", "My day"], ["dash", "Today"], ["statements", "Statements"], ["review", "Twice-weekly review"], ["wareminder", "WhatsApp reminders"], ["msgs", "Messages & posts"], ["clientlist", "Client list"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits & quotes"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["register", "Challan log"], ["paylog", "Payment log"], ["freight", "Drivers & freight"], ["deliveries", "Deliveries"], ["collections", "Payments"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["crlog", "Client & lead log"], ["partners", "Partners"], ["pevents", "Partner events"], ["quotes", "Quotes"], ["commission", "Incentives"], ["complaints", "Complaints"], ["service", "Service"], ["spares", "Spares"], ["dues", "Service dues"], ["payroll", "Payroll"], ["salary", "Salary & staff"], ["profit", "Profit"], ["codes", "Codes & costs"], ["attendance", "Attendance"], ["products", "Products"], ["payments", "Payments"], ["paidout", "Paid out"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["catalogs", "Brand catalogues"], ["brandstory", "Brand stories"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["trouble", "Troubleshoot"], ["changelog", "Change log"], ["booksweep", "Book numbers"], ["dups", "Duplicate check"], ["stock", "Stock"], ["tally", "Tally"], ["plcheck", "Supplier price list"], ["brief", "The brief"]];
   var TAB_LABEL = (function () {
     var m = {}; TAB_TABS.forEach(function (t) { m[t[0]] = t[1]; }); return m;
   })();
@@ -57852,7 +57961,7 @@ function viewCatalogue() {
     ["HISAB",      ["billing", "profit", "payments", "paylog", "paidout", "statements", "wareminder", "dues", "review", "discounts"]],
     ["Partners",   ["partners", "pevents", "commission"]],
     ["Service",    ["complaints", "service"]],
-    ["Products",   ["products", "catalogs", "pricelist", "catalogue", "brandstory", "tally", "plcheck"]],
+    ["Products",   ["products", "codes", "catalogs", "pricelist", "catalogue", "brandstory", "tally", "plcheck"]],
     ["Admin",      ["payroll", "salary", "scorecard", "report", "teampins", "health", "trouble", "changelog", "dups"]]
   ];
   /* The four hub tabs (v6.9.330 and before) still render if something lands on them - the two
@@ -58230,7 +58339,7 @@ function viewCatalogue() {
       if (!_noBookT) _noBookT = setTimeout(function () { _noBookT = null; if (!S.data && (S.pin || S.tok)) { try { refresh(); } catch (e) { } } }, 6000);
       return;
     }
-    var views = { attendance: viewAttendance, statements: viewStatements, agent: viewAgent, search: viewSearch, dossier: viewDossier, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, complaints: viewComplaints, payments: viewPayments, paidout: viewPaidOut, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, catalogs: viewCatalogues, brandstory: viewBrandStories, clients: viewClients, crlog: viewCrLog, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, salary: viewSalary, profit: viewProfit, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, register: viewRegister, paylog: viewPayLog, freight: viewFreight, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, trouble: viewTrouble, changelog: viewChangeLog, booksweep: viewBookSweep, dups: viewDups, stock: viewStock, tally: viewTally, plcheck: viewPlCheck, pevents: viewPev, brief: viewBrief, review: viewReview, myday: viewMyDay, wareminder: viewWaRem, msgs: viewMsgs, clientlist: viewClientList };   /* 6.9.739 - myday */
+    var views = { attendance: viewAttendance, statements: viewStatements, agent: viewAgent, search: viewSearch, dossier: viewDossier, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, complaints: viewComplaints, payments: viewPayments, paidout: viewPaidOut, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, catalogs: viewCatalogues, brandstory: viewBrandStories, clients: viewClients, crlog: viewCrLog, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, salary: viewSalary, profit: viewProfit, codes: viewCodes, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, register: viewRegister, paylog: viewPayLog, freight: viewFreight, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, trouble: viewTrouble, changelog: viewChangeLog, booksweep: viewBookSweep, dups: viewDups, stock: viewStock, tally: viewTally, plcheck: viewPlCheck, pevents: viewPev, brief: viewBrief, review: viewReview, myday: viewMyDay, wareminder: viewWaRem, msgs: viewMsgs, clientlist: viewClientList };   /* 6.9.739 - myday */
     var tabs = TAB_TABS;
 
     var h = '<div class="top">' +
@@ -59598,6 +59707,13 @@ function viewCatalogue() {
         if (!_bparts.length) { toast("Add at least one part, or press Not a kit."); return; }
       }
       var _lb = t.textContent; t.disabled = true; t.textContent = "Saving\u2026";
+      if (!roleIs("admin") && act === "bom-save") {   /* 6.9.887 - HIS CHOICE: a kit set by accounts or the godown waits for the owner */
+        var _pd = PRODUCTS.filter(function (x) { return x.code === _bc; })[0] || {};
+        auditFact("pf:bomprop", _bc, { code: _bc, desc: _pd.desc || "", parts: _bparts.map(function (p) { return { c: p.code, q: p.qty, d: p.desc }; }), show: !!(S.bomEd && S.bomEd.show), by: S.user }).then(function () {
+          S.bomEd = null; S.modal = null; render(); toast("Kit proposed: " + plural(_bparts.length, "part") + ". The owner approves it under Products \u203a Codes & costs.");
+        }, function () { t.disabled = false; t.textContent = _lb; toast("Not sent - try again."); });
+        return;
+      }
       bomWrite(_bc, _bparts, act === "bom-save" && S.bomEd && S.bomEd.show).then(function () {
         S.bomEd = null; S.modal = null; render();
         toast(_bparts.length ? "Kit saved: " + plural(_bparts.length, "part") + ". Challans now take stock out of the parts." : "It is not a kit any more.");
@@ -66663,6 +66779,7 @@ function viewCatalogue() {
       return;
     }
     if (/^hr-/.test(act || "")) { hrDoAct(act, t); return; }   /* 6.9.883 */
+    if (/^cd-/.test(act || "")) { cdAct(act, t); return; }   /* 6.9.887 */
     if (act === "pf-tab") { S.pfTab = t.getAttribute("data-k"); keepScroll = true; render(); return; }   /* 6.9.884 */
     if (act === "pf-period") { S.pfPeriod = { kind: t.getAttribute("data-k"), m: S.pfMonth || ymLocal(new Date()) }; keepScroll = true; render(); return; }   /* 6.9.885 */
     if (act === "pf-pdf") { pfPdf(t.getAttribute("data-k") || "client"); return; }
