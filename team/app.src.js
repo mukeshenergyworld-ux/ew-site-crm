@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.887";
+  var APP_VERSION = "6.9.888";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -50629,6 +50629,23 @@ function viewCatalogue() {
             td(m.matched === m.lines && m.lines ? '<b style="color:#0f766e">all ' + m.lines + ' &#10003;</b>' : m.matched + ' of ' + m.lines, "right", ";white-space:nowrap") + td(b.value ? money(b.value) : "&mdash;", "right", ";white-space:nowrap") + '</tr>';
         })); })() + '</div>';
     }
+    /* 2b - 6.9.888 - bills the server read from the mail overnight, not yet processed */
+    var RB = stkReadBills(), RS = stkReadSkips();
+    if (RB.length || RS.length) {
+      var rbSum = RB.reduce(function (a, b) { return a + (Number(b.total) || 0); }, 0), canDo = adm || roleIs("accounts");
+      h += '<div class="card" style="border-color:' + (RB.length ? '#93c5fd' : '#e2e8f0') + '"><div class="acts" style="align-items:center;margin:0 0 6px"><h3 class="grow" style="margin:0">' +
+        (RB.length ? plural(RB.length, "bill") + ' read from your mail &middot; ' + money(rbSum) : 'Bills from your mail') + '</h3>' +
+        (RB.length && canDo ? '<button class="btn sm" data-act="tb-read">Process ' + (RB.length === 1 ? 'it' : 'them') + '</button>' : '') + '</div>' +
+        '<div class="meta" style="font-size:12.5px;margin-bottom:6px">Every night at 02:10 the server saves the supplier bills that came by mail into <b>Purchase bills</b> on Drive and reads them. They are <b>not in stock yet</b> &mdash; ' +
+        (adm ? 'open them to match the codes; the matched lines go straight in.' : canDo ? 'open them to check the codes and propose the new ones; the owner approves.' : 'the owner processes them.') + '</div>';
+      if (RB.length) h += tbl([["DATE"], ["SUPPLIER"], ["BILL NO"], ["LINES", "right"], ["AMOUNT", "right"], ["FILE"]], RB.map(function (b) {
+        return '<tr>' + td(esc(dmy(b.date)), "", ";white-space:nowrap") + td(esc(b.supplier)) + td('<b>' + esc(b.billNo) + '</b>') + td(String(b.lines.length), "right") + td(money(b.total), "right", ";white-space:nowrap") +
+          td(b.file ? '<a href="' + esc(b.file) + '" target="_blank" rel="noopener" style="color:#0f766e">' + esc(b.name || "open") + '</a>' : esc(b.name || "")) + '</tr>';
+      }));
+      if (RS.length) h += '<div style="margin-top:8px;font-size:12.5px;color:#64748b"><b>Set aside</b> (not a tax invoice): ' + RS.map(function (x) {
+        return (x.url ? '<a href="' + esc(x.url) + '" target="_blank" rel="noopener" style="color:#475569">' + esc(x.name) + '</a>' : esc(x.name)) + (x.what ? ' &mdash; ' + esc(x.what) : ''); }).join('; ') + '</div>';
+      h += '</div>';
+    }
     /* 3 - uploaded bills */
     var pm = stkPMap();
     h += '<div class="card"><h3 style="margin:0 0 6px">Uploaded bills &middot; ' + D.bills.length + (D.bills.length ? ' &middot; ' + money(sum(D.bills)) : '') + '</h3>';
@@ -56966,11 +56983,12 @@ function viewCatalogue() {
               adds it as a new product, under a brand already on the book or a new one.
      A line with no part number is matched by its Tally name, once the owner has matched it. */
   function stkMatchIdx() {
-    var ix = { exact: {}, norm: {}, alias: {} };
+    var ix = { exact: {}, norm: {}, alias: {}, name: {} };
     PRODUCTS.forEach(function (p) {
       var c = String(p.code == null ? "" : p.code).trim(); if (!c) return;
       ix.exact[c] = 1;
       var k = tallyNorm(c); ix.norm[k] = ix.norm[k] || []; if (ix.norm[k].indexOf(c) < 0) ix.norm[k].push(c);
+      var nk = tallyNorm(p.desc); if (nk) { ix.name[nk] = ix.name[nk] || []; if (ix.name[nk].indexOf(c) < 0) ix.name[nk].push(c); }   /* 6.9.888 */
     });
     (S.stock || []).forEach(function (r) {
       if (String(r.type) !== "alias" || !r.ref || !r.code) return;
@@ -56991,7 +57009,11 @@ function viewCatalogue() {
       return l;
     }
     var a = ix.alias["N:" + tallyNorm(l.desc)];
-    if (a) { l.code = a; l.state = "ok"; }
+    if (a) { l.code = a; l.state = "ok"; return l; }
+    /* 6.9.888 - the night read of a mailed PDF often has no part no column (Huliot via Zoho): a line whose name is
+       exactly one product's name is offered as "close" for a tick, not left blank; two products with that name = pick */
+    var nm = ix.name[tallyNorm(l.desc)] || [];
+    if (nm.length === 1) { l.code = nm[0]; l.state = "close"; } else if (nm.length > 1) { l.cands = nm.slice(); l.state = "pick"; }
     return l;
   }
   /* ===== 6.9.677 - A NEW PRODUCT OFF A TALLY BILL IN ONE STEP =====
@@ -57062,6 +57084,35 @@ function viewCatalogue() {
         if (l.prop && l.state !== "ok" && l.state !== "close") { if (l.prop.mode === "new") { l.mode = "new"; l.nb = l.prop.nb || null; } else if (l.prop.pick) { l.mode = ""; l.pick = l.prop.pick; } }
       });
       return b;
+    });
+  }
+  /* 6.9.888 - BILLS THAT CAME IN BY THEMSELVES. Since V173 the server reads the supplier mails every night at 02:10
+     (Huliot via Zoho, Fima, Mehar, Devik), saves the PDF under Purchase bills / month and reads it with the same
+     assistant prompt the Upload button uses; the answer sits in stock as a `billread` row (code *READ, ref
+     "Supplier / Bill no", desc {fileId,url,name,bill}). Measured 25 Oct, first run: 3 mails, 2 Huliot invoices
+     read (41 lines, Rs 24,12,368), 1 Fima proforma set aside. Nothing enters stock from here - the owner (or
+     accounts, proposing) opens them in the same matcher as an upload. A bill already uploaded or waiting is not
+     offered again; the newest read of a bill wins. */
+  function stkReadBills() {
+    var bil = stkBilledRefs(), wait = {}, by = {};
+    (S.stock || []).forEach(function (r) { if (String(r.type) === "billwait" && r.ref) wait[String(r.ref).trim().toLowerCase()] = 1; });
+    (S.stock || []).forEach(function (r) {
+      if (String(r.type) !== "billread" || !r.ref) return;
+      var k = String(r.ref).trim().toLowerCase(); if (bil[k] || wait[k]) return;
+      var o = null; try { o = JSON.parse(r.desc || "null"); } catch (e) { o = null; }
+      var b = o && o.bill; if (!b || !Array.isArray(b.lines) || !b.lines.length) return;
+      if (by[k] && String(by[k].at || "") > String(r.createdAt || "")) return;
+      by[k] = { billNo: b.billNo || "", date: b.date || r.asOn || "", supplier: b.supplier || r.notes || "", total: Number(b.total) || Number(r.qty) || 0, file: o.url || "", fileId: o.fileId || "", name: o.name || "", src: "mail", at: r.createdAt || "",
+        lines: b.lines.map(function (l, i) { return { sl: l.sl || i + 1, desc: l.desc || "", partNo: l.partNo || "", hsn: l.hsn || "", qty: Number(l.qty) || 0, rate: Number(l.rate) || 0, unit: l.unit || "", disc: Number(l.disc) || 0, amount: Number(l.amount) || 0 }; }) };
+    });
+    return Object.keys(by).map(function (k) { return by[k]; }).sort(function (a, b) { return String(b.date).localeCompare(String(a.date)); });
+  }
+  /* files the night read set aside as not a tax invoice (a proforma, a reminder, a statement) - last 30 days */
+  function stkReadSkips() {
+    var cut = new Date(Date.now() - 30 * 86400000).toISOString();
+    return (S.stock || []).filter(function (r) { return String(r.type) === "billskip" && String(r.createdAt || "") >= cut; }).map(function (r) {
+      var o = null; try { o = JSON.parse(r.desc || "null"); } catch (e) { o = null; }
+      return { name: (o && o.name) || r.ref || "", what: (o && o.what) || r.notes || "", url: (o && o.fileId) ? "https://drive.google.com/file/d/" + o.fileId + "/view" : "" };
     });
   }
   /* bills accounts sent to the owner, not yet in stock (the last one sent for a bill wins) */
@@ -60237,6 +60288,11 @@ function viewCatalogue() {
       var _w = stkWaiting().map(function (o) { return { billNo: o.billNo, date: o.date, supplier: o.supplier, total: Number(o.total) || 0, billTotal: Number(o.billTotal) || Number(o.total) || 0, partial: o.partial || 0, doneBefore: o.doneBefore || 0, file: o.file || "", src: o.src || "", lines: o.lines }; });
       if (!_w.length) { toast("Nothing is waiting."); return; }
       S.grn = null; S.pc = null; S.imp = { step: "tally", bills: stkTallyOpen(_w) }; S.tab = "stock"; render(); window.scrollTo(0, 0); return;
+    }
+    if (act === "tb-read") {   /* 6.9.888 - the bills the server read from the mail */
+      var _rb = stkReadBills();
+      if (!_rb.length) { toast("Nothing read is pending."); return; }
+      S.grn = null; S.pc = null; S.imp = { step: "tally", bills: stkTallyOpen(_rb) }; S.tab = "stock"; render(); window.scrollTo(0, 0); return;
     }
     if (act === "tb-drift") {
       if (!roleIs("admin")) { toast("The owner changes catalogue codes."); return; }
