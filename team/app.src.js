@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.873";
+  var APP_VERSION = "6.9.874";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -59058,7 +59058,7 @@ function viewCatalogue() {
           if (pevInv(_ee).some(function (d) { return dkey(d.partner) === dkey(nv); })) { toast(nv + " is already on this list."); return; }
           var nd = {}; Object.keys(cur).forEach(function (k) { if (k.charAt(0) !== "_" && k !== "at" && k !== "removed") nd[k] = cur[k]; });
           nd.partner = nv; nd.renamedFrom = _en;
-          pevSaveRow("evt:inv", _ee, nd).then(function () { return pevSaveRow("evt:inv", _ee, { eid: _ee, partner: _en, removed: 1, renamedTo: nv }); })
+          pevSaveRow("evt:inv", _ee, nd).then(function () { if (dkey(_en) === dkey(nv)) return null; return pevSaveRow("evt:inv", _ee, { eid: _ee, partner: _en, removed: 1, renamedTo: nv }); })   /* 6.9.874 - a guest line is keyed by the name WITHOUT capitals: closing the old spelling would close the new one too */
             .then(function () { keepScroll = true; render(); toast("Now " + nv + "."); });
         });
         return;
@@ -65037,7 +65037,7 @@ function viewCatalogue() {
               picked.forEach(function (r) {
                 if (r.tab === "evt") {   /* 6.9.871 - the guest under the new name; the old name's line is closed (a removed fact, nothing deleted) */
                   var nx = Object.assign({}, r.rec); delete nx._at; delete nx._by; delete nx.at; nx.partner = an;
-                  pevSaveRow("evt:inv", r.rec.eid, nx); pevSaveRow("evt:inv", r.rec.eid, { eid: r.rec.eid, partner: _old, removed: 1, why: "renamed to " + an });
+                  pevSaveRow("evt:inv", r.rec.eid, nx); if (dkey(_old) !== dkey(an)) pevSaveRow("evt:inv", r.rec.eid, { eid: r.rec.eid, partner: _old, removed: 1, why: "renamed to " + an });   /* 6.9.874 */
                   return;
                 }
                 var up = {}; up[r.f] = an; var row = Object.assign({}, r.rec, up); delete row._dups; save(r.tab, row, true); r.rec[r.f] = an; });
