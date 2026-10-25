@@ -208,7 +208,7 @@ table.att td.ok,table.att td.no{font-size:16px}
       button: function () { return '<button type="button" class="ewthm" onclick="ewTheme.next(this)">' + ewtLabel() + '</button>'; }
     };
   })();
-  var APP_VERSION = "1.8.2";   /* 1.6.1 - Huliot Group introduction on quotes; 1.6.0 (17 Oct 2026) - a dropped POST never loses a quote; admin sees every executive; daily report; attendance grid */
+  var APP_VERSION = "1.8.3";   /* 1.6.1 - Huliot Group introduction on quotes; 1.6.0 (17 Oct 2026) - a dropped POST never loses a quote; admin sees every executive; daily report; attendance grid */
   /* 1.6.0 - ONLY THE SERVER'S OWN "NO" SIGNS A MAN OUT. The old test was /pin|locked|not allowed|blocked|removed/:
      any data error that happened to contain "not allowed" or "removed" (a refused row, a removed brand) signed the
      executive out and wiped his snapshot. These are the sign-in answers the server gives (teamAuth: "Wrong name or
@@ -2641,6 +2641,10 @@ table.att td.ok,table.att td.no{font-size:16px}
       '<datalist id="pv_list">' + list.slice(0, 600).map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join("") + '</datalist></div></div>' +
       (P.mobNote ? '<div class="note' + (P.mobWarn ? ' warn' : '') + '">' + P.mobNote + '</div>' : '') +
       '<div id="pv_info">' + pvInfoHtml(k, who, P.name || "") + '</div>' +   /* 1.1.0 */
+      /* 1.8.3 - HIS WORDS (CRM 6.9.877): "adding a partner make it mandatory to select city". A plumber / architect not on the
+         book becomes a partner when this is saved, so his city is asked here; for a known partner it is not needed. */
+      (k !== "showroom" ? '<label for="pv_city">His city <span class="meta">(needed if he is new)</span></label><select id="pv_city">' +
+        [""].concat(districts()).map(function (d) { return '<option value="' + esc(d) + '"' + (d === (P.city || "") ? ' selected' : '') + '>' + esc(d || "— pick his city —") + '</option>'; }).join("") + '</select>' : '') +
       (k === "showroom" && who === "Client" ? '<label>Came for which brand <span class="req">*</span></label>' + brandTiles(P.came || (P.came = []), "pv-came", "came") +
         '<label>Interested in <span class="req">*</span> <span class="meta">(tap all he liked)</span></label>' + brandTiles(P.int || (P.int = []), "pv-int", "int") +
         nextHtml("pv_next", P.next) : '') +   /* 1.2.0 */
@@ -2667,6 +2671,8 @@ table.att td.ok,table.att td.no{font-size:16px}
     var who = k === "showroom" ? (P.whoKind || "Client") : (k === "plumber" ? "Plumber" : "Architect");
     var known = k === "showroom" && who === "Client" ? !!clientByName(name) : !!partnerByName(name);
     if (!known && mob && mob.length !== 10) { toast("The mobile number needs 10 digits."); return; }
+    var city = val("pv_city");   /* 1.8.3 */
+    if (!known && k !== "showroom" && mob.length === 10 && !city) { toast("He is new - pick his city."); var _pc = el("pv_city"); if (_pc) _pc.focus(); return; }
     /* 1.5.0 - a new name on a mobile that is already someone's is a duplicate */
     if (!known && mob.length === 10) { var _mw = mobWho(mob, k === "showroom" && who === "Client" ? "client" : (k === "showroom" ? "" : k)); if (_mw && dkey(_mw.name) !== dkey(name)) { toast("This mobile is already " + _mw.name + "'s. Pick him, or check the number."); return; } }
     /* 1.2.0 - a client in the showroom: which brand he came for, what he liked, when we meet him next */
@@ -2692,7 +2698,7 @@ table.att td.ok,table.att td.no{font-size:16px}
       saveRow("audit", row);
       /* a plumber or architect not on the list becomes a partner, as the CRM does from a client form */
       /* 1.6.0 - through ensurePartner, so the mobile is looked up first and a spelling variant does not make a second row */
-      if (!known && k !== "showroom" && mob.length === 10) ensurePartner(name, who, "", "", mob, { notes: "added from a visit (Visit & Quote app)", ownedBy: S.user });
+      if (!known && k !== "showroom" && mob.length === 10) ensurePartner(name, who, city || "", "", mob, { notes: "added from a visit (Visit & Quote app)", ownedBy: S.user });
       if (isCl) nextFollow(name, nx, "Next meeting (showroom visit) - " + brandLine(came, intr, "") + (note ? ": " + note : ""));
       if (k === "plumber") vpSend("pv_selfie", { kind: "selfie", visitKey: "PV-" + Date.now(), who: name });   /* 1.5.0 */
       S.pv = {}; render(); toast("Visit saved — " + name + (isCl ? ". Next meeting " + fd(nx) + "." : "."));
@@ -3517,7 +3523,7 @@ table.att td.ok,table.att td.no{font-size:16px}
     if (t.id === "qz_cq") { S.qz.cq = t.value; var q3 = lower(t.value), cl = myClients(); var hits = q3.length >= 2 ? cl.filter(function (c) { return lower([c.code, c.oldCode, c.name, c.area, c.location, c.mobile].join(" ")).indexOf(q3) >= 0; }) : []; el("qz_hits").innerHTML = qzHits(hits, q3); return; }
     if (t.id === "qz_pq") { S.qz.pq = t.value; el("qz_pres").innerHTML = qzProdHits(); return; }
     if (t.classList && (t.classList.contains("qz-qty") || t.classList.contains("qz-bd"))) { qzKeep(); return; }
-    if (t.id === "pv_name" || t.id === "pv_note" || t.id === "pv_mob") { S.pv = S.pv || {}; S.pv.name = val("pv_name"); S.pv.note = val("pv_note"); S.pv.mob = val("pv_mob"); }
+    if (t.id === "pv_name" || t.id === "pv_note" || t.id === "pv_mob" || t.id === "pv_city") { S.pv = S.pv || {}; S.pv.name = val("pv_name"); S.pv.note = val("pv_note"); S.pv.mob = val("pv_mob"); S.pv.city = val("pv_city"); }
     if (t.id === "pv_next") { S.pv = S.pv || {}; S.pv.next = t.value; }
     if (t.id === "sl_next" && S.sl) S.sl.next = t.value;
   });
