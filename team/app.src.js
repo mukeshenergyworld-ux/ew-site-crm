@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.893";
+  var APP_VERSION = "6.9.894";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -30506,8 +30506,8 @@ function viewCatalogue() {
          leads nowhere, which is exactly what he reported. */
       '<div class="stat' + (_appr ? ' alert' : '') + '"' + (_appr ? ' data-act="ch-appr" style="cursor:pointer" title="Passed but not dispatched. Tap to see them."' : '') +
         '><div class="n">' + _appr + '</div><div class="l">Approved, to dispatch</div></div>' +
-      '<div class="stat"><div class="n">' + by("Dispatched") + '</div><div class="l">Awaiting receipt</div></div>' +
-      '<div class="stat"><div class="n">' + by("Received") + '</div><div class="l">Receipt in</div></div>' +
+      '<div class="stat"><div class="n">' + (by("Dispatched") + list.filter(function (c) { return (c.status || "") === "Received" && !chProofAny(c).has; }).length) + '</div><div class="l">Awaiting receipt</div></div>' +   /* 6.9.894 - marked received with no paper is still awaiting the receipt */
+      '<div class="stat"><div class="n">' + list.filter(function (c) { return (c.status || "") === "Received" && chProofAny(c).has; }).length + '</div><div class="l">Receipt in</div></div>' +
       /* ---- A PLACE OF ITS OWN FOR THE HISAB QUEUE  (v6.9.388, 1 September 2026) ----
          HIS WORDS: "make a dedicated space for pending for add to hisab, as i have to search
          time and again for each entry and find".
@@ -30628,7 +30628,11 @@ function viewCatalogue() {
     var book = list.filter(function (c) { return !(qSkip && qSkip[c.id]); })
       .sort(function (a, b) { return String(b.createdAt || "").localeCompare(String(a.createdAt || "")); });   /* newest first, by the clock not the row */
     var fl = String(S.chBook || "all");
-    var isRecPend = function (c) { return chStatus(c) === "Dispatched"; };
+    /* 6.9.894 - HIS SCREENSHOT, the same day 6.9.891 shipped: this book still said "finalised" on challans finalised
+       with no signed receipt. 6.9.891 fixed the card, the stamp, the dossier and the timeline - and missed this sheet,
+       which reads its STATUS off the status column alone. The paper decides here too. */
+    var noPaper = function (c) { return ["Received", "Billed"].indexOf(chStatus(c)) >= 0 && !chProofAny(c).has; };
+    var isRecPend = function (c) { return chStatus(c) === "Dispatched" || noPaper(c); };
     var isFinPend = function (c) { return chStatus(c) === "Received" && !inHisab(c); };
     var isPass = function (c) { return chStatus(c) === "Draft"; };
     var nRec = book.filter(isRecPend).length, nFin = book.filter(isFinPend).length, nPass = book.filter(isPass).length;
@@ -30652,6 +30656,8 @@ function viewCatalogue() {
       var st = chStatus(c);
       var cls = st === "Received" ? (inHisab(c) ? "Won" : "soon") : st === "Dispatched" ? "due" : st === "Draft" ? "due" : st === "Cancelled" ? "Lost" : "";
       var word = st === "Received" ? (inHisab(c) ? "finalised" : "receipt in, to finalise") : st === "Dispatched" ? "receipt pending" : st === "Draft" ? "to pass" : st === "Approved" ? "passed, to dispatch" : st.toLowerCase();
+      if (noPaper(c)) return (inHisab(c) ? '<span class="pill Won" style="font-size:12px">finalised</span> ' : '') +
+        '<span class="pill due" style="font-size:12px" title="Marked received' + (inHisab(c) ? ' and finalised' : '') + ' without the signed receipt attached">receipt pending</span>';   /* 6.9.894 */
       return '<span class="pill ' + cls + '" style="font-size:12px">' + esc(word) + '</span>';
     };
     h += xlTable("chbook", [
