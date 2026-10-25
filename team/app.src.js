@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.868";
+  var APP_VERSION = "6.9.869";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -49129,8 +49129,23 @@ function viewCatalogue() {
         '<div><label style="margin-top:0">Mobile</label><input id="pe_omob" inputmode="numeric" placeholder="optional" style="width:130px;min-height:44px"/></div>' +
         '<button class="btn sm ghost" style="min-height:44px" data-act="pev-addother" data-id="' + esc(e.eid) + '">+ Add invitee</button></div>') +
       (inv.length ? pevFuStrip(e, inv) : '') +
-      (inv.length ? pevTable([["#", "right"], ["Guest"], ["Tier"], ["Business 12 m", "right"], ["Status"], ["Executive"], ["Follow-up"], [isG ? "Gift ₹" : "Cost ₹", "right"], [""]],
-        inv.map(function (p, k) {
+      (inv.length ? (function () {
+        /* 6.9.869 - HIS WORDS: "arrange them executive wise, changing executive will transfer partner under that executive".
+           One table per executive (as the list stands: the event's executive, else the partner's own), best supporter first inside
+           each; nobody's last, then the other invitees. Changing the executive on a row moves the guest to that man's table and
+           sets him as the partner's standing executive (pevSetPartnerOwner, unchanged since 6.9.731). Numbering runs on. */
+        var _grp = {}, _ord = [];
+        inv.forEach(function (p) { var g = p.x.other ? "\u0002Other invitees" : (p.i.exec ? p.i.exec : "\u0001No executive yet"); if (!_grp[g]) { _grp[g] = []; _ord.push(g); } _grp[g].push(p); });
+        _ord.sort(function (a, b) { var ra = a.charAt(0) === "\u0002" ? 3 : a.charAt(0) === "\u0001" ? 2 : 1, rb = b.charAt(0) === "\u0002" ? 3 : b.charAt(0) === "\u0001" ? 2 : 1; return ra - rb || a.localeCompare(b); });
+        var _k0 = 0;
+        return _ord.map(function (g) {
+          var L = _grp[g], nm = g.replace(/^[\u0001\u0002]/, ""), biz = L.reduce(function (a, p) { return a + (p.x.b12 || 0); }, 0);
+          var cameN = L.filter(function (p) { return /Confirmed|Attended|Travelled/.test(p.i.st || ""); }).length;
+          var head = '<div style="margin-top:14px;padding:8px 11px;border-radius:10px;background:' + (g.charAt(0) === "\u0001" ? '#fef2f2;color:#b91c1c' : g.charAt(0) === "\u0002" ? '#eef2ff;color:#3730a3' : '#ecfdf5;color:#065f46') + ';display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center">' +
+            '<b style="font-size:15px">' + esc(nm) + '</b><span style="font-size:13px">' + plural(L.length, "guest") + (cameN ? ' &middot; ' + cameN + ' confirmed' : '') + (biz ? ' &middot; business 12 m ' + money(biz) : '') + '</span></div>';
+          var start = _k0; _k0 += L.length;
+          return head + pevTable([["#", "right"], ["Guest"], ["Tier"], ["Business 12 m", "right"], ["Status"], ["Executive"], ["Follow-up"], [isG ? "Gift ₹" : "Cost ₹", "right"], [""]],
+        L.map(function (p, kk) { var k = start + kk;
           var i = p.i, x = p.x, mob = x.mob || "";
           return ['<span style="color:#64748b">' + (k + 1) + '</span>', '<span style="display:inline-block;max-width:230px;white-space:normal;line-height:1.25;vertical-align:middle" title="' + esc(i.partner) + (mob ? ' \u00b7 ' + esc(mob) : '') + '"><b data-act="pev-ed" data-id="' + esc(e.eid) + '" data-n="' + esc(i.partner) + '" data-o="' + (x.other ? 1 : 0) + '" style="cursor:pointer;color:#0d766c;text-decoration:underline dotted" title="Tap to change the name">' + (function () { if (x.other) return ''; var _a = (S.data.associates || []).filter(function (a) { return dkey(a.name) === dkey(i.partner); }); var _c = _a.length === 1 ? String(_a[0].code || "") : "";   /* two partners by one name: no guess */ return _c ? '<span class="ewc">' + esc(_c) + '</span>' : ''; })() + esc(i.partner) + '</b>' + ' <span style="font-size:12px;color:#64748b">' + (x.other ? '· ' + esc(x.role || "") + ' ' : '') + (mob ? '· ' + esc(mob) : '· <span style="color:#b45309">no mobile</span>') + '</span>' + (x.other ? '' : '<div>' + partnerSitesChip(i.partner) + '</div>') + '</span>',   /* 6.9.849 sites chip; p754 - his code (PL / AR / BL) already says the role */
             x.other ? '<span style="display:inline-block;font-size:12px;font-weight:800;color:#3730a3;background:#e0e7ff;border-radius:6px;padding:1px 7px;white-space:nowrap">Guest</span>' : pevTierPill(x.tier), x.b12 ? money(x.b12) : '—',
@@ -49147,7 +49162,9 @@ function viewCatalogue() {
                 : '<button class="btn sm ghost" data-act="pev-given" data-id="' + esc(e.eid) + '" data-p="' + esc(i.partner) + '" style="min-height:36px;padding:2px 8px;font-size:12px;margin-top:3px">Given &#10003;</button>'),
             '<div style="display:flex;gap:6px;justify-content:flex-end">' + (mob ? '<a class="btn sm ghost" title="WhatsApp him the invitation" style="min-height:44px;min-width:44px;padding:0 8px;display:inline-flex;align-items:center;justify-content:center;text-decoration:none;color:#15803d;font-weight:800" target="_blank" rel="noopener" href="https://wa.me/91' + esc(mob) + '?text=' + encodeURIComponent(pevMsg(e, i.partner)) + '">WA</a>' : '') +
             '<button class="btn sm ghost" title="Take off the list (kept in the record)" style="min-height:44px;min-width:44px;padding:0 8px;white-space:nowrap" data-act="pev-rm" data-id="' + esc(e.eid) + '" data-p="' + esc(i.partner) + '">Off</button></div>'];
-        }), true) + (isG ? '' : '<div class="meta" style="font-size:13px;margin-top:8px"><b>Head count for food &amp; drink: ' + came + '</b> (confirmed' + (e.type === "trip" ? ', travelling' : ' or attended') + ') &middot; ' +
+        }), true);
+        }).join("");
+      })() + (isG ? '' : '<div class="meta" style="font-size:13px;margin-top:8px"><b>Head count for food &amp; drink: ' + came + '</b> (confirmed' + (e.type === "trip" ? ', travelling' : ' or attended') + ') &middot; ' +
           m.inv.length + ' on the list' + (nOther ? ' incl. ' + nOther + ' other' + (nOther === 1 ? '' : 's') : '') + (declined ? ' &middot; ' + declined + ' declined' : '') + '</div>') : '<div class="empty">No guest yet.</div>') + '</div>';
     /* brands */
     var brs = pevBrands(e.eid), bOpts = (S.data.brands || []).map(function (b) { return String(b.brand || "").trim(); }).filter(isMainBrand).sort();
@@ -55115,7 +55132,7 @@ function viewCatalogue() {
       var _en = Object.assign({}, _ec); delete _en._at; delete _en._by; delete _en.at; _en.exec = tg.value;
       pevSaveRow("evt:inv", _ee, _en).then(function () { keepScroll = true; renderBg(); });
       var _ew = !_ec.other ? pevSetPartnerOwner(_ep, tg.value) : null;
-      toast(_ep + ": " + (tg.value ? tg.value + " looks after him" + (_ew ? " \u2014 on this event and on his partner record" : " on this event") : "no executive") + ".");
+      toast(_ep + ": " + (tg.value ? "moved to " + tg.value + (_ew ? " \u2014 on this event and as his partner executive" : " on this event") : "no executive") + ".");   /* 6.9.869 - and he moves to that executive's table */
       return;
     }
     if (!tg.classList.contains("pev-st") && !tg.classList.contains("pev-cost") && !tg.classList.contains("pev-gift")) return;
