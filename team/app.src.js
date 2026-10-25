@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.878";
+  var APP_VERSION = "6.9.879";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -48563,6 +48563,90 @@ function viewCatalogue() {
   function pevInv(eid) { return pevLatest("evt:inv", function (d) { return d.eid + "|" + dkey(d.partner); }).filter(function (d) { return d.eid === eid; }); }
   function pevBrands(eid) { return pevLatest("evt:br", function (d) { return d.bid; }).filter(function (d) { return d.eid === eid; }); }
   function pevExp(eid) { return pevLatest("evt:ex", function (d) { return d.xid; }).filter(function (d) { return d.eid === eid; }); }
+  /* ===== 6.9.879 - GIFT STOCK FOR AN EVENT, AND WAYS TO HAND IT OUT  (25 Oct 2026) =====
+     HIS WORDS: "in partner event add option to add gifts { Gift name and qty in hand } and ways to allocate to partners".
+     evt:gf rows {eid, gid, name, qty, rate}: what is in hand for this event; newest row per gid wins, "removed" takes it off.
+     A guest's gift stays where it always was - the gift name on his evt:inv row (one piece each) - so Allocated, Given and
+     Left are COUNTED from the guest rows, never typed: a number that is typed twice drifts. Ways to allocate: one guest at a
+     time from his row, or many at once - everyone without a gift, a tier, the confirmed, one executive's guests - best
+     supporter first, only to guests with no gift yet, and never past the stock in hand. Take back un-given pieces of a gift. */
+  function pevGifts(eid) { return pevLatest("evt:gf", function (d) { return d.gid; }).filter(function (d) { return d.eid === eid; }).sort(function (a, b) { return String(a.name).localeCompare(String(b.name)); }); }
+  function pevGiftUse(eid) {
+    var u = {};
+    pevInv(eid).forEach(function (i) { var g = dkey(i.gift || ""); if (!g) return; var o = u[g] || (u[g] = { alloc: 0, given: 0 }); o.alloc++; if (i.givenAt) o.given++; });
+    return u;
+  }
+  function pevGiftLeft(g, use) { var o = use[dkey(g.name)] || { alloc: 0 }; return (Number(g.qty) || 0) - o.alloc; }
+  function pevClean(d) { var o = Object.assign({}, d); delete o._at; delete o._by; delete o.at; return o; }
+  function pevGiftPick(eid, i, gfs, use) {
+    var cur = String(i.gift || "").trim();
+    var style = 'width:120px;font-size:12px;min-height:40px;padding:2px 4px';
+    if (!gfs.length) return '<input class="pev-gift" data-id="' + esc(eid) + '" data-p="' + esc(i.partner) + '" value="' + esc(cur) + '" placeholder="gift item" style="width:96px;font-size:12px;min-height:40px;padding:2px 6px"/>';
+    var known = gfs.some(function (g) { return dkey(g.name) === dkey(cur); });
+    return '<select class="pev-gift" data-id="' + esc(eid) + '" data-p="' + esc(i.partner) + '" style="' + style + (cur ? '' : ';border-color:#fcd34d;background:#fffbeb') + '">' +
+      '<option value="">— gift —</option>' +
+      (cur && !known ? '<option selected>' + esc(cur) + '</option>' : '') +
+      gfs.map(function (g) { var sel = dkey(g.name) === dkey(cur), left = pevGiftLeft(g, use);
+        return '<option value="' + esc(g.name) + '"' + (sel ? ' selected' : '') + '>' + esc(g.name) + (sel ? '' : ' (' + left + ' left)') + '</option>'; }).join("") + '</select>';
+  }
+  function pevGiftCard(e, inv) {
+    var gfs = pevGifts(e.eid), use = pevGiftUse(e.eid), noGift = inv.filter(function (p) { return !String(p.i.gift || "").trim() && !/Declined/.test(p.i.st || ""); }).length;
+    var h = '<div class="card"><h3 style="margin:0">Gifts — stock &amp; who gets what</h3>' +
+      '<div class="meta" style="font-size:12.5px">What is in hand for this event. Allocated, given and left are counted from the guest list below.' + (inv.length ? ' ' + plural(noGift, "guest") + ' without a gift yet.' : '') + '</div>';
+    if (gfs.length) {
+      var tq = 0, ta = 0, tg = 0;
+      h += pevTable([["Gift"], ["In hand", "right"], ["Allocated", "right"], ["Given", "right"], ["Left", "right"], ["₹ each", "right"], [""]], gfs.map(function (g) {
+        var o = use[dkey(g.name)] || { alloc: 0, given: 0 }, left = (Number(g.qty) || 0) - o.alloc; tq += Number(g.qty) || 0; ta += o.alloc; tg += o.given;
+        return ['<b>' + esc(g.name) + '</b>',
+          '<input class="pev-gfq" data-id="' + esc(g.gid) + '" inputmode="numeric" value="' + esc(String(g.qty || 0)) + '" style="width:64px;text-align:right;min-height:40px;font-size:13px;padding:2px 6px"/>',
+          String(o.alloc), String(o.given),
+          '<b style="color:' + (left < 0 ? '#b91c1c' : left === 0 ? '#64748b' : '#0f766e') + '">' + left + '</b>' + (left < 0 ? ' <span style="font-size:12px;color:#b91c1c">short</span>' : ''),
+          '<input class="pev-gfr" data-id="' + esc(g.gid) + '" inputmode="numeric" value="' + esc(g.rate ? String(g.rate) : "") + '" placeholder="—" style="width:70px;text-align:right;min-height:40px;font-size:13px;padding:2px 6px"/>',
+          '<div style="display:flex;gap:6px;justify-content:flex-end">' +
+            (o.alloc > o.given ? '<button class="btn sm ghost" style="min-height:44px;white-space:nowrap" data-act="pev-gfback" data-id="' + esc(g.gid) + '" title="Take it back from the guests who have not been handed it yet">Take back ' + (o.alloc - o.given) + '</button>' : '') +
+            '<button class="btn sm ghost" style="min-height:44px" data-act="pev-gfrm" data-id="' + esc(g.gid) + '">Off</button></div>'];
+      }).concat([['<b>Total</b>', '<b>' + tq + '</b>', '<b>' + ta + '</b>', '<b>' + tg + '</b>', '<b>' + (tq - ta) + '</b>', '', '']]));
+    }
+    h += '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end;margin-top:8px">' +
+      '<div style="flex:1 1 160px"><label style="margin-top:0">Gift name</label><input id="pe_gfname" list="pe_gflist" placeholder="e.g. Dinner set, Diwali box" autocomplete="off"/>' +
+        '<datalist id="pe_gflist">' + pevAllGiftNames().map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join("") + '</datalist></div>' +
+      '<div><label style="margin-top:0">Qty in hand</label><input id="pe_gfqty" inputmode="numeric" style="width:90px"/></div>' +
+      '<div><label style="margin-top:0">₹ each <span style="font-weight:400;color:#64748b">(optional)</span></label><input id="pe_gfrate" inputmode="numeric" style="width:100px"/></div>' +
+      '<button class="btn sm" style="min-height:44px" data-act="pev-gfadd" data-id="' + esc(e.eid) + '">+ Gift</button></div>';
+    if (gfs.length && inv.length) {
+      var ex = pevExecNames().filter(function (n) { return inv.some(function (p) { return p.i.exec === n; }); });
+      var to = [["nogift", "Everyone without a gift"], ["t:Platinum", "Platinum guests"], ["t:Gold", "Gold guests"], ["t:Silver", "Silver guests"], ["t:Base", "Base guests"],
+        ["came", "Confirmed / attended"], ["other", "Other invitees"]].concat(ex.map(function (n) { return ["x:" + n, n + "’s guests"]; }));
+      h += '<div style="border-top:1px dashed #cbd5e1;margin-top:10px;padding-top:8px"><b style="font-size:14px">Allocate many at once</b>' +
+        '<div class="meta" style="font-size:12.5px">Only guests who have no gift yet get one, best supporters first, and never more than is left.</div>' +
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end;margin-top:4px">' +
+        '<div><label style="margin-top:0">Give</label><select id="pe_gfwhich" style="min-height:44px">' + gfs.map(function (g) { return '<option value="' + esc(g.gid) + '">' + esc(g.name) + ' (' + pevGiftLeft(g, use) + ' left)</option>'; }).join("") + '</select></div>' +
+        '<div><label style="margin-top:0">To</label><select id="pe_gfto" style="min-height:44px">' + to.map(function (o) { return '<option value="' + esc(o[0]) + '">' + esc(o[1]) + '</option>'; }).join("") + '</select></div>' +
+        '<button class="btn sm" style="min-height:44px" data-act="pev-gfalloc" data-id="' + esc(e.eid) + '">Allocate</button></div></div>';
+    }
+    return h + '</div>';
+  }
+  /* gift names used on any event before - offered when a new one is typed, so "Dinner Set" is not also "dinner sets" */
+  function pevAllGiftNames() {
+    var m = {};
+    pevRows("evt:gf").forEach(function (d) { if (d.name && !d.removed) m[String(d.name).trim()] = 1; });
+    return Object.keys(m).sort();
+  }
+  /* the guests a bulk allocation would reach, in the order they get it */
+  function pevGiftTargets(eid, to) {
+    var sup = {}; try { pevSupport().forEach(function (x) { sup[dkey(x.name)] = x; }); } catch (e) { }
+    return pevInv(eid).filter(function (i) {
+      if (String(i.gift || "").trim()) return false;
+      if (/Declined/.test(i.st || "")) return false;
+      var x = sup[dkey(i.partner)] || {};
+      if (to === "nogift") return true;
+      if (to === "other") return !!i.other;
+      if (to === "came") return /Confirmed|Attended|Travelled|Delivered|Greeted|Gift packed/.test(i.st || "");
+      if (to.indexOf("t:") === 0) return !i.other && (x.tier || "Base") === to.slice(2);
+      if (to.indexOf("x:") === 0) return i.exec === to.slice(2);
+      return false;
+    }).sort(function (a, b) { var xa = sup[dkey(a.partner)] || {}, xb = sup[dkey(b.partner)] || {}; return (xb.b12 || 0) - (xa.b12 || 0) || String(a.partner).localeCompare(String(b.partner)); });
+  }
   /* ===== 6.9.731 - EVERY GUEST HAS AN EXECUTIVE, AND A CALL BEFORE AND AFTER  (11 Oct 2026) =====
      HIS WORDS: "also make arrangement for post event followup for all and here also give option to assign
      partner to executives here only, to manage every partner after and before event".
@@ -49260,6 +49344,7 @@ function viewCatalogue() {
       .sort(function (p, q) { return p.x.rank - q.x.rank || q.x.b12 - p.x.b12 || String(p.i.partner).localeCompare(String(q.i.partner)); });
     var nOther = inv.filter(function (p) { return p.x.other; }).length;
     var _exN = pevExecNames();   /* 6.9.731 */
+    var _gfs = pevGifts(e.eid), _gfu = pevGiftUse(e.eid);   /* 6.9.879 */
     /* 6.9.731 - a guest with no executive on the event takes his partner's standing executive, as drawn */
     var _own = {}; assocLive().forEach(function (a) { if (a.ownedBy) _own[dkey(a.name)] = a.ownedBy; });
     inv.forEach(function (p) { if (!p.i.exec && !p.x.other && _own[dkey(p.i.partner)]) p.i = Object.assign({}, p.i, { exec: _own[dkey(p.i.partner)], _execFromPartner: 1 }); });
@@ -49327,7 +49412,7 @@ function viewCatalogue() {
             '<span style="display:inline-flex;align-items:center;gap:4px;white-space:nowrap">' +   /* 6.9.875 - cost, gift and Given on one line */
             '<input class="pev-cost" data-id="' + esc(e.eid) + '" data-p="' + esc(i.partner) + '" inputmode="numeric" value="' + esc(i.cost || "") + '" placeholder="0" style="width:60px;font-size:13px;text-align:right;min-height:40px;padding:4px 6px"/>' +
               /* 6.9.837 - what the gift is, and whether it reached him */
-              '<input class="pev-gift" data-id="' + esc(e.eid) + '" data-p="' + esc(i.partner) + '" value="' + esc(i.gift || "") + '" placeholder="gift item" style="width:96px;font-size:12px;min-height:40px;padding:2px 6px"/>' +
+              pevGiftPick(e.eid, i, _gfs, _gfu) +   /* 6.9.879 - from the event's gift stock */
               (i.givenAt ? '<span style="font-size:12px;color:#166534;white-space:nowrap">&#10003; given ' + esc(dmy(String(i.givenAt).slice(0, 10)).slice(0, 5)) + (i.givenBy ? ' · ' + esc(i.givenBy) : '') + '</span>'
                 : '<button class="btn sm ghost" data-act="pev-given" data-id="' + esc(e.eid) + '" data-p="' + esc(i.partner) + '" style="min-height:40px;padding:2px 8px;font-size:12px">Given &#10003;</button>') + '</span>',
             '<div style="display:flex;gap:6px;justify-content:flex-end">' + (mob ? '<a class="btn sm ghost" title="WhatsApp him the invitation" style="min-height:44px;min-width:44px;padding:0 8px;display:inline-flex;align-items:center;justify-content:center;text-decoration:none;color:#15803d;font-weight:800" target="_blank" rel="noopener" href="https://wa.me/91' + esc(mob) + '?text=' + encodeURIComponent(pevMsg(e, i.partner)) + '">WA</a>' : '') +
@@ -49336,6 +49421,7 @@ function viewCatalogue() {
         }).join("");
       })() + (isG ? '' : '<div class="meta" style="font-size:13px;margin-top:8px"><b>Head count for food &amp; drink: ' + came + '</b> (confirmed' + (e.type === "trip" ? ', travelling' : ' or attended') + ') &middot; ' +
           m.inv.length + ' on the list' + (nOther ? ' incl. ' + nOther + ' other' + (nOther === 1 ? '' : 's') : '') + (declined ? ' &middot; ' + declined + ' declined' : '') + '</div>') : '<div class="empty">No guest yet.</div>') + '</div>';
+    h += pevGiftCard(e, inv);   /* 6.9.879 */
     /* brands */
     var brs = pevBrands(e.eid), bOpts = (S.data.brands || []).map(function (b) { return String(b.brand || "").trim(); }).filter(isMainBrand).sort();
     var gnames = m.inv.map(function (i) { return i.partner; });
@@ -55309,8 +55395,25 @@ function viewCatalogue() {
     var eid = tg.getAttribute("data-id"), pn = tg.getAttribute("data-p");
     var cur = pevInv(eid).filter(function (i) { return dkey(i.partner) === dkey(pn); })[0] || { eid: eid, partner: pn };
     var nx = Object.assign({}, cur); delete nx._at; delete nx._by; delete nx.at;
+    if (tg.classList.contains("pev-gift") && tg.tagName === "SELECT") {   /* 6.9.879 - from the stock: not past what is in hand; his cost follows the gift's rate */
+      var _gfs2 = pevGifts(eid), _gu2 = pevGiftUse(eid), _ng = String(tg.value || "").trim(), _og = String(cur.gift || "").trim();
+      var _gN = _gfs2.filter(function (g) { return dkey(g.name) === dkey(_ng); })[0], _gO = _gfs2.filter(function (g) { return dkey(g.name) === dkey(_og); })[0];
+      if (_gN && dkey(_ng) !== dkey(_og) && pevGiftLeft(_gN, _gu2) <= 0) { toast("No " + _gN.name + " left — raise the qty in hand first."); tg.value = _og; return; }
+      if (cur.givenAt && dkey(_ng) !== dkey(_og)) { toast(pn + " has already been handed " + (_og || "his gift") + "."); tg.value = _og; return; }
+      var _oc = Number(cur.cost) || 0;
+      if (!_oc || (_gO && Number(_gO.rate) === _oc)) nx.cost = _gN && Number(_gN.rate) ? Number(_gN.rate) : (_gO && Number(_gO.rate) === _oc ? 0 : _oc);
+    }
     if (tg.classList.contains("pev-st")) nx.st = tg.value; else if (tg.classList.contains("pev-gift")) nx.gift = String(tg.value || "").trim(); else nx.cost = nAmt(tg.value) || 0;   /* 6.9.837 - gift item */
     pevSaveRow("evt:inv", eid, nx).then(function () { keepScroll = true; renderBg(); toast(pn + ": " + (tg.classList.contains("pev-st") ? tg.value : tg.classList.contains("pev-gift") ? (nx.gift || "no gift") : money(nx.cost)) + " saved."); });
+  });
+  /* 6.9.879 - gift stock: qty in hand and ₹ each, edited in place (a new row each time; the newest wins) */
+  document.addEventListener("change", function (ev) {
+    var tg = ev && ev.target; if (!tg || !tg.classList || !(tg.classList.contains("pev-gfq") || tg.classList.contains("pev-gfr"))) return;
+    var g = pevLatest("evt:gf", function (d) { return d.gid; }).filter(function (d) { return d.gid === tg.getAttribute("data-id"); })[0]; if (!g) return;
+    var n = Math.max(0, Math.round(nAmt(tg.value) || 0)), isQ = tg.classList.contains("pev-gfq");
+    if (n === (Number(isQ ? g.qty : g.rate) || 0)) return;
+    var row = pevClean(g); if (isQ) row.qty = n; else row.rate = n;
+    pevSaveRow("evt:gf", g.eid, row).then(function () { keepScroll = true; render(); toast(g.name + ": " + (isQ ? n + " in hand" : (n ? money(n) + " each" : "no rate")) + "."); });
   });
   /* 6.9.756 - move a product to another category: column C only, through catalogCode (server V156) */
   document.addEventListener("change", function (ev) {
@@ -59125,6 +59228,55 @@ function viewCatalogue() {
     if (act === "pev-rm") {
       var _re = t.getAttribute("data-id"), _rp = t.getAttribute("data-p");
       pevSaveRow("evt:inv", _re, { eid: _re, partner: _rp, removed: 1 }).then(function () { keepScroll = true; render(); toast(_rp + " taken off the list (kept in the record)."); });
+      return;
+    }
+    /* 6.9.879 - gift stock and allocation */
+    if (act === "pev-gfadd") {
+      var _ge9 = t.getAttribute("data-id"), _gn9 = nmTitle(String(val("pe_gfname") || "").trim()), _gq9 = Math.round(nAmt(val("pe_gfqty")) || 0), _gr9 = Math.round(nAmt(val("pe_gfrate")) || 0);
+      if (!_gn9) { toast("Type the gift name."); return; }
+      if (!(_gq9 > 0)) { toast("How many are in hand?"); return; }
+      if (pevGifts(_ge9).some(function (g) { return dkey(g.name) === dkey(_gn9); })) { toast(_gn9 + " is already on the list — change its qty in hand there."); return; }
+      t.disabled = true;
+      pevSaveRow("evt:gf", _ge9, { eid: _ge9, gid: mintId("GF"), name: _gn9, qty: _gq9, rate: _gr9 }).then(function () { keepScroll = true; render(); toast(_gn9 + ": " + _gq9 + " in hand."); });
+      return;
+    }
+    if (act === "pev-gfrm" || act === "pev-gfback") {
+      var _g9 = pevLatest("evt:gf", function (d) { return d.gid; }).filter(function (d) { return d.gid === t.getAttribute("data-id"); })[0]; if (!_g9) return;
+      var _held = pevInv(_g9.eid).filter(function (i) { return dkey(i.gift || "") === dkey(_g9.name); });
+      if (act === "pev-gfrm") {
+        if (_held.length) { toast(plural(_held.length, "guest") + " still have " + _g9.name + " — take it back first."); return; }
+        pevSaveRow("evt:gf", _g9.eid, Object.assign(pevClean(_g9), { removed: 1 })).then(function () { keepScroll = true; render(); toast(_g9.name + " taken off (kept in the record)."); });
+        return;
+      }
+      var _bk = _held.filter(function (i) { return !i.givenAt; });
+      if (!_bk.length) return;
+      askSheet({ title: "Take back " + _g9.name + "?", sub: "From " + plural(_bk.length, "guest") + " who have not been handed it yet",
+        body: '<div class="meta" style="font-size:13px">' + _bk.map(function (i) { return esc(i.partner); }).join(", ") + '</div>', yes: "Take back" }).then(function (yes) {
+        if (!yes) return;
+        var ch = Promise.resolve();
+        _bk.forEach(function (i) { ch = ch.then(function () { var r = pevClean(i); r.gift = ""; if (Number(_g9.rate) && Number(r.cost) === Number(_g9.rate)) r.cost = 0; return pevSaveRow("evt:inv", _g9.eid, r); }); });
+        ch.then(function () { keepScroll = true; render(); toast(_g9.name + " taken back from " + plural(_bk.length, "guest") + "."); });
+      });
+      return;
+    }
+    if (act === "pev-gfalloc") {
+      var _ae = t.getAttribute("data-id"), _ag = pevGifts(_ae).filter(function (g) { return g.gid === val("pe_gfwhich"); })[0], _ato = val("pe_gfto");
+      if (!_ag) { toast("Pick the gift."); return; }
+      var _left = pevGiftLeft(_ag, pevGiftUse(_ae)), _tg = pevGiftTargets(_ae, _ato);
+      if (!_tg.length) { toast("Nobody there is without a gift."); return; }
+      if (_left <= 0) { toast("No " + _ag.name + " left — raise the qty in hand first."); return; }
+      var _go = _tg.slice(0, _left), _short = _tg.length - _go.length;
+      var _toLbl = (el("pe_gfto") && el("pe_gfto").selectedOptions[0]) ? el("pe_gfto").selectedOptions[0].textContent : "";
+      askSheet({ title: "Give " + _ag.name + " to " + plural(_go.length, "guest") + "?", sub: esc(_toLbl) + (_ato === "nogift" ? "" : " who have no gift yet") + (_short ? " · " + _short + " more would need it but the stock runs out" : ""),
+        body: '<div class="meta" style="font-size:13px">' + _go.map(function (i) { return esc(i.partner); }).join(", ") + '</div>' +
+          (Number(_ag.rate) ? '<div class="meta" style="font-size:13px;margin-top:6px">Each guest’s cost becomes ' + money(Number(_ag.rate)) + ' where none is typed.</div>' : ''),
+        yes: "Allocate" }).then(function (yes) {
+        if (!yes) return;
+        toast("Allocating " + _ag.name + "…");
+        var ch = Promise.resolve();
+        _go.forEach(function (i) { ch = ch.then(function () { var r = pevClean(i); r.gift = _ag.name; if (!Number(r.cost) && Number(_ag.rate)) r.cost = Number(_ag.rate); return pevSaveRow("evt:inv", _ae, r); }); });
+        ch.then(function () { keepScroll = true; render(); toast(_ag.name + " allocated to " + plural(_go.length, "guest") + (_short ? " — " + _short + " short" : "") + "."); });
+      });
       return;
     }
     if (act === "pev-bradd" || act === "pev-bredit") {
