@@ -252,7 +252,7 @@ body{background:#F4F6F9}
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.143.0";   /* 1.132.1 - driver/client/partner mobile dedupe, narrower sign-out, token refusal re-signs in, Drop in held list */
+  var APP_VERSION = "1.144.0";   /* 1.144.0 - lorry check off the supplier bill (ERP step F); bill parts count into stock */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -4641,8 +4641,8 @@ function discRowOn(client, brand, onYmd) {
     (S.stock || []).forEach(function (r) {
       if (String(r.type) !== "bill") return;
       var ref = String(r.ref || "").trim().toLowerCase();
-      if (!ref || seen[ref]) return;
-      seen[ref] = 1;
+      if (!ref) return;
+      if (String(r.code) !== "*BILLPART") { if (seen[ref]) return; seen[ref] = 1; }   /* 1.144.0 - a whole bill once; each PART of a bill is its own lines */
       var ls = []; try { ls = JSON.parse(r.desc || "[]") || []; } catch (e) { ls = []; }
       ls.forEach(function (l) {
         var k = String((l && l.c) || "").trim(), q = Number(l && l.q) || 0;
@@ -4703,6 +4703,7 @@ function discRowOn(client, brand, onYmd) {
     (S.stock || []).forEach(function (row) {
       var ty = String(row.type || "");
       if (ty === "bill") return;   /* 6.9.607 - counted below, line by line, from stkBillLines */
+      if (ty === "billread" || ty === "billskip" || ty === "lorry") return;   /* 1.144.0 - the night read, set-aside files and lorry checks are not stock */
       if (ty === "in" && _bref[String(row.ref || "").trim().toLowerCase()]) return;   /* that bill is already counted from Tally */
       var _k0 = String(row.code || "").trim();
       if (ty === "opening" && _olast[_k0] !== row) return;   /* only the latest count - 6.9.608: and only its last save */
@@ -4792,6 +4793,138 @@ function discRowOn(client, brand, onYmd) {
       ". Press save again to make the challan anyway.";
   }
 
+  /* ===== THE LORRY CHECK (CRM 6.9.893 / Challan 1.144.0, 25 Oct 2026 - ERP step F) =====
+     MEASURED: "Lorry received" had never been used - 0 entries - because it asked the godown to type every product,
+     and since 1.100.0 it had no button on this phone at all. Stock goes in from the Tally bill (7 in, 22 waiting).
+     His answers: the bill stays what adds stock; the lorry only CHECKS it. So every supplier bill the office knows -
+     read from the mail at night, waiting to be matched, or in stock - comes up on the godown phone as a checklist
+     with the bill's own lines and quantities: "Everything came as billed" is one tap, a short or extra line is one
+     number. Saved as a stock row type "lorry" (code *LORRY, qty 0 - not a movement, never counted as stock). A short
+     or extra line goes to the owner and accounts on Today until it is settled (debit note raised, or accepted). */
+  function lcSup(s) {
+    var w = String(s || "").toLowerCase().replace(/m\/s\.?/g, " ").replace(/[^a-z0-9 ]+/g, " ").split(/\s+/).filter(function (x) {
+      return x.length >= 3 && !/^(the|and|pvt|private|ltd|limited|llp|company|india|new|shri|sri)$/.test(x); });
+    return w[0] || "";
+  }
+  function lcNo(n) { return String(n == null ? "" : n).toUpperCase().replace(/[^A-Z0-9]/g, "").replace(/^0+/, ""); }
+  function lcTail(n) { var p = String(n == null ? "" : n).toUpperCase().split(/[^A-Z0-9]+/).filter(Boolean); return p.length ? p[p.length - 1].replace(/^0+/, "") : ""; }
+  function lcSame(sa, na, sb, nb) {
+    var a = { no: lcNo(na), tail: lcTail(na) }, b = { no: lcNo(nb), tail: lcTail(nb) }, s1 = lcSup(sa), s2 = lcSup(sb), same = false;
+    if (!a.no || !b.no) return false;
+    if (a.no === b.no) same = true;
+    else if (a.tail && a.tail.length >= 3 && (a.tail === b.no || a.tail === b.tail) && a.tail.length >= Math.min(4, b.no.length)) same = true;
+    else if (b.tail && b.tail.length >= 3 && b.tail === a.no) same = true;
+    return same && (!s1 || !s2 || s1 === s2);
+  }
+  function lcPname(code) {
+    var k = String(code || "").trim(), p = (PRODUCTS || []).filter(function (x) { return String((x && x.code) || "").trim() === k; })[0];
+    return p ? (p.desc || k) : k;
+  }
+  function lcRows() {
+    return ((S && S.stock) || []).filter(function (r) { return String(r.type) === "lorry"; }).map(function (r) {
+      var d = {}; try { d = JSON.parse(r.desc || "{}") || {}; } catch (e) { d = {}; }
+      d.id = r.id; d.at = String(r.createdAt || r.asOn || ""); d.by = d.by || String(r.createdBy || ""); d.lines = d.lines || []; d.extra = d.extra || [];
+      return d;
+    });
+  }
+  function lcIsDone(sup, no, rows) { return (rows || lcRows()).some(function (x) { return lcSame(x.supplier, x.billNo, sup, no); }); }
+  /* the supplier bills still to be checked off a lorry, newest first */
+  function lcBills(days) {
+    var cut = new Date(Date.now() - (days || 45) * 86400000).toISOString().slice(0, 10), B = [], done = lcRows();
+    var get = function (sup, no) {
+      for (var i = 0; i < B.length; i++) if (lcSame(B[i].supplier, B[i].billNo, sup, no)) return B[i];
+      var x = { supplier: String(sup || "").trim(), billNo: String(no || "").trim(), date: "", read: null, wait: null, full: null, parts: [] }; B.push(x); return x;
+    };
+    ((S && S.stock) || []).forEach(function (r) {
+      var t = String(r.type || ""); if (t !== "bill" && t !== "billwait" && t !== "billread") return;
+      var ref = String(r.ref || ""), p = ref.split(" / "), sup = r.notes || p[0], no = p.slice(1).join(" / "); if (!no) return;
+      var o = null; try { o = JSON.parse(r.desc || "null"); } catch (e) { o = null; }
+      var x = get(sup, no), at = String(r.createdAt || "");
+      if (t === "billread") { if (o && o.bill && (!x.read || x.read.at <= at)) { x.read = { at: at, b: o.bill }; x.date = x.date || String(o.bill.date || r.asOn || "").slice(0, 10); if (o.bill.supplier) x.supplier = String(o.bill.supplier); } }
+      else if (t === "billwait") { if (o && Array.isArray(o.lines) && (!x.wait || x.wait.at <= at)) { x.wait = { at: at, o: o }; x.date = x.date || String(o.date || r.asOn || "").slice(0, 10); } }
+      else { var ls = Array.isArray(o) ? o : []; if (String(r.code) === "*BILLPART") x.parts.push(ls); else if (!x.full) x.full = ls; x.date = x.date || String(r.asOn || "").slice(0, 10); }
+    });
+    var out = [];
+    B.forEach(function (x) {
+      if (!x.date || x.date < cut || lcIsDone(x.supplier, x.billNo, done)) return;
+      var lines = [], src = "";
+      var fromBill = function (ls) { ls.forEach(function (l) { var q = Number(l && l.q) || 0; if (q) lines.push({ name: lcPname(l.c), code: String(l.c || ""), q: q, u: String(l.u || ""), r: Number(l.n) || 0 }); }); };
+      if (x.read) { src = "read"; (x.read.b.lines || []).forEach(function (l) { var q = Number(l.qty) || 0; if (q) lines.push({ name: String(l.desc || l.partNo || ""), code: String(l.partNo || ""), q: q, u: String(l.unit || ""), r: Math.round((Number(l.rate) || 0) * (1 - (Number(l.disc) || 0) / 100) * 100) / 100 }); }); }
+      else if (x.full) { src = "bill"; x.parts.forEach(fromBill); fromBill(x.full); }   /* a bill matched in parts: every part's lines */
+      else { src = "wait"; x.parts.forEach(fromBill); if (x.wait) (x.wait.o.lines || []).forEach(function (l) { var q = Number(l.qty) || 0; if (q) lines.push({ name: String(l.desc || l.partNo || ""), code: String(l.partNo || ""), q: q, u: String(l.unit || ""), r: Math.round((Number(l.rate) || 0) * (1 - (Number(l.disc) || 0) / 100) * 100) / 100 }); }); }
+      if (lines.length) out.push({ supplier: x.supplier, billNo: x.billNo, date: x.date, src: src, lines: lines });
+    });
+    return out.sort(function (a, b) { return String(b.date).localeCompare(String(a.date)); });
+  }
+  function lcDiff(x) {
+    var short = [], over = [];
+    (x.lines || []).forEach(function (l) { var g = Number(l.got) || 0, q = Number(l.q) || 0; if (g < q) short.push({ name: l.name, q: q, got: g, u: l.u, val: Math.round((q - g) * (Number(l.r) || 0)) }); else if (g > q) over.push({ name: l.name, q: q, got: g, u: l.u, val: Math.round((g - q) * (Number(l.r) || 0)) }); });
+    (x.extra || []).forEach(function (e) { if (Number(e.got) > 0) over.push({ name: e.name, q: 0, got: Number(e.got) || 0, u: "", val: 0, extra: 1 }); });
+    return { short: short, over: over };
+  }
+  /* the godown's screen */
+  function viewLc() {
+    var L = S.lc;
+    if (!L.bill) {
+      var list = lcBills(20);
+      var h = '<div class="card" style="background:#0f766e;color:#fff;border-color:#0f766e"><div style="font-size:17px;font-weight:800">Lorry check</div>' +
+        '<div style="font-size:12.5px;opacity:.9;margin-top:3px">Pick the supplier bill that came with the lorry. Its lines come up &mdash; tick off what came.</div></div>';
+      if (!STOCK_LOADED) return h + '<div class="muted" style="margin:8px 0">Fetching the bills&hellip;</div><button class="btn gry full" data-act="lc-back">Back</button>';
+      if (!list.length) h += '<div class="empty">No supplier bill is waiting to be checked.</div>';
+      list.forEach(function (b, i) {
+        h += '<div class="card" data-act="lc-pick" data-i="' + i + '" style="cursor:pointer"><div style="font-weight:800">' + esc(b.supplier) + '</div>' +
+          '<div class="muted">Bill <b>' + esc(b.billNo) + '</b> &middot; ' + esc(dstr(b.date)) + ' &middot; ' + b.lines.length + ' line' + (b.lines.length === 1 ? '' : 's') + '</div></div>';
+      });
+      return h + '<button class="btn gry full" data-act="lc-back" style="margin-top:8px">Back</button>';
+    }
+    var b = L.bill;
+    var h2 = '<div class="card" style="background:#0f766e;color:#fff;border-color:#0f766e"><div style="font-size:17px;font-weight:800">' + esc(b.supplier) + '</div>' +
+      '<div style="font-size:13px;opacity:.95;margin-top:3px">Bill ' + esc(b.billNo) + ' &middot; ' + esc(dstr(b.date)) + '</div></div>' +
+      '<button class="btn full" data-act="lc-save" data-all="1" style="margin:8px 0">&#10003; Everything came as billed</button>' +
+      '<div class="muted" style="margin:4px 2px 6px">Or change the number that came, line by line:</div><div class="card">';
+    b.lines.forEach(function (l, i) {
+      h2 += '<div style="border-top:' + (i ? '1px solid #e2e8f0' : '0') + ';padding:8px 0"><div style="font-weight:700">' + esc(l.name || l.code) + '</div>' +
+        '<div style="display:flex;gap:8px;align-items:center;margin-top:4px"><span class="muted" style="flex:1">Billed <b>' + esc(String(l.q)) + '</b> ' + esc(l.u || "") + '</span>' +
+        '<span class="muted">Came</span><input id="lc_g' + i + '" inputmode="decimal" value="' + esc(String(L.got[i] != null ? L.got[i] : l.q)) + '" style="width:90px;min-height:44px;text-align:right"/></div></div>';
+    });
+    h2 += '</div>';
+    if (L.extra.length) {
+      h2 += '<div class="card"><div style="font-weight:700;margin-bottom:4px">Came, but not on the bill</div>';
+      L.extra.forEach(function (e, i) {
+        h2 += '<div style="display:flex;gap:6px;margin-top:6px"><input id="lc_xn' + i + '" placeholder="What" value="' + esc(e.name || "") + '" style="flex:3;min-height:44px"/>' +
+          '<input id="lc_xq' + i + '" inputmode="decimal" placeholder="Qty" value="' + esc(e.got || "") + '" style="flex:1;min-height:44px;text-align:right"/></div>';
+      });
+      h2 += '</div>';
+    }
+    return h2 + '<button class="btn gry full" data-act="lc-extra" style="margin-top:6px">+ Something came that is not on the bill</button>' +
+      '<button class="btn full" data-act="lc-save" style="margin-top:8px">Save what came</button>' +
+      '<button class="btn gry full" data-act="lc-back" style="margin-top:8px">Back</button>';
+  }
+  function lcKeep() {
+    var L = S.lc; if (!L || !L.bill) return;
+    L.bill.lines.forEach(function (l, i) { var e = el("lc_g" + i); if (e) L.got[i] = e.value; });
+    L.extra.forEach(function (x, i) { var n = el("lc_xn" + i), q = el("lc_xq" + i); if (n) x.name = n.value; if (q) x.got = q.value; });
+  }
+  function lcSave(all, btn) {
+    lcKeep();
+    var L = S.lc, b = L.bill, bad = "";
+    var lines = b.lines.map(function (l, i) {
+      var raw = all ? l.q : String(L.got[i] == null ? l.q : L.got[i]).trim(), g = Number(String(raw).replace(/[^0-9.\-]/g, ""));
+      if (raw === "" || !isFinite(g) || g < 0) bad = bad || ("How many of " + (l.name || l.code) + " came? Type 0 if none.");
+      return { name: l.name, code: l.code, q: l.q, u: l.u, r: l.r, got: isFinite(g) ? g : 0 };
+    });
+    if (bad) { toast(bad); return; }
+    var extra = all ? [] : L.extra.filter(function (x) { return String(x.name || "").trim() && Number(x.got) > 0; }).map(function (x) { return { name: String(x.name).trim(), got: Number(x.got) || 0 }; });
+    var row = { id: "S-" + Date.now() + "-" + Math.floor(Math.random() * 1000000) + "-lorry", type: "lorry", code: "*LORRY", qty: 0, ref: b.supplier + " / " + b.billNo, asOn: today(), notes: b.supplier,
+      desc: JSON.stringify({ supplier: b.supplier, billNo: b.billNo, billDate: b.date, src: b.src, lines: lines, extra: extra, by: S.user || "" }) };
+    var d = lcDiff({ lines: lines, extra: extra });
+    if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
+    api("stockSave", { row: row }).then(function (r) {
+      if (!(r && r.ok)) { if (btn) { btn.disabled = false; btn.textContent = all ? "✓ Everything came as billed" : "Save what came"; } toast((r && r.error) || "Not saved - try again."); return; }
+      row.createdAt = new Date().toISOString(); row.createdBy = S.user || ""; S.stock = (S.stock || []).concat([row]); S.lc = null; render();
+      toast(!d.short.length && !d.over.length ? "Checked - everything on " + b.billNo + " came." : (d.short.length ? d.short.length + " line" + (d.short.length === 1 ? "" : "s") + " short" : "") + (d.short.length && d.over.length ? ", " : "") + (d.over.length ? d.over.length + " extra" : "") + " - the office is told.");
+    }, function () { if (btn) { btn.disabled = false; btn.textContent = "Save what came"; } toast("No answer from the server - it MAY have been saved. Pull to refresh before checking this bill again."); });
+  }
   /* ---- a lorry arrives: the godown counts what came off it, and that is what adds stock ---- */
   function viewGrn() {
     var g = S.grn, reg = stkRegister(), got = stkImportedRefs();
@@ -4829,6 +4962,7 @@ function discRowOn(client, brand, onYmd) {
   }
   function viewMake() {
     if (S.grn) return viewGrn();
+    if (S.lc) return viewLc();   /* 1.144.0 */
     var z = S.ch;
     if (!z) {
       var f = S.chFilter || "all";
@@ -4839,6 +4973,13 @@ function discRowOn(client, brand, onYmd) {
         '<div style="font-size:12.5px;opacity:.9;margin-top:3px">Pick the client, add the material, write the book number. It saves as a <b>draft</b> — the accounts desk passes it before it counts against his account.</div></div>' +
         chDraftBanner() +   /* 1.78.0 */
         '<button class="btn full" data-act="ch-new" style="margin:12px 0">+ New challan</button>' +
+        (function () {   /* 1.144.0 - the lorry check: bills the office knows, waiting to be ticked off a lorry */
+          if (!canMake()) return "";
+          if (!STOCK_LOADED) { try { ensureStock(); } catch (e) { } return ""; }
+          var n = lcBills(20).length; if (!n) return "";
+          return '<div class="card" data-act="lc-list" style="cursor:pointer;border-color:#f59e0b;background:#fffbeb"><div style="font-weight:800;color:#92400e">&#128666; Lorry check &middot; ' + n + ' supplier bill' + (n === 1 ? '' : 's') + ' to tick off</div>' +
+            '<div class="muted" style="margin-top:2px">When a lorry is unloaded, open its bill and tick what came. One tap if everything came.</div></div>';
+        })() +
         /* 1.100.0 - his process, 25 Sep: stock comes in from the Tally bill accounts uploads to the
            CRM, so the lorry button is off this phone. The screen and its handler stay, unused. */
         /* v1.18.0 - if the server sent no clients for this sign-in, SAY SO here, where the
@@ -9652,6 +9793,11 @@ function discRowOn(client, brand, onYmd) {
     /* 1.99.0 - the lorry, and the stock the challan is checked against */
     if (act === "grn-new") { if (!canMake()) { toast("Goods in is entered by the godown or the office."); return; } S.ch = null; S.grn = { lines: [{}, {}, {}], date: today() }; S.tab = "make"; ensureStock(); render(); return; }
     if (act === "grn-cancel") { S.grn = null; render(); return; }
+    if (act === "lc-list") { if (!canMake()) { toast("The lorry check is the godown's or the office's."); return; } S.ch = null; S.grn = null; S.lc = { bill: null, got: [], extra: [] }; S.tab = "make"; ensureStock(); render(); window.scrollTo(0, 0); return; }   /* 1.144.0 */
+    if (act === "lc-pick") { var _lb = lcBills(20)[Number(t.getAttribute("data-i")) || 0]; if (_lb) { S.lc = { bill: _lb, got: [], extra: [] }; render(); window.scrollTo(0, 0); } return; }
+    if (act === "lc-back") { if (S.lc && S.lc.bill) { S.lc = { bill: null, got: [], extra: [] }; } else S.lc = null; render(); return; }
+    if (act === "lc-extra") { lcKeep(); S.lc.extra.push({ name: "", got: "" }); render(); return; }
+    if (act === "lc-save") { lcSave(t.getAttribute("data-all") === "1", t); return; }
     if (act === "grn-line") { grnKeep(); S.grn.lines.push({}); render(); return; }
     if (act === "grn-save") {
       grnKeep();
