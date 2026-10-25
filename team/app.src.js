@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.891";
+  var APP_VERSION = "6.9.892";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -25903,6 +25903,273 @@ function viewCatalogue() {
     }).sort(function (a, b) { return String(b.createdAt || "").localeCompare(String(a.createdAt || "")); });
   }
   var BILL_TARGET = 20;   /* 6.9.820 */
+  /* ===== 6.9.892 - SALES BILLS FROM TALLY, MATCHED TO THEIR CHALLANS (ERP step E, 25 Oct 2026) =====
+     MEASURED the day this was written: 401 challans received, 42 carry a bill number in the CRM. The rest were
+     either billed in Tally and never written back here, or not billed at all - and nothing could tell which.
+     Accounts uploads the month's Tally SALES REGISTER (Excel) or the GSTR-1 (JSON or the offline-tool Excel). Every
+     sale bill is matched to the challan(s) it billed: the party is found by GSTIN, then by name (the client's own
+     name, the billing names registered on him, the names his challans were billed to); the challans are his
+     unbilled ones from 60 days before the bill to 3 days after; the amount must agree with the billing sheet's own
+     total (goods incl. GST + freight with its GST) within 0.5% - one challan, or two to four together. A clean,
+     single answer is ticked; anything else is shown with the candidates to tick. "Record" writes the same bill:set
+     fact the billing sheet writes (src "sales-register"), so HISAB, the Billed list and the timeline see it at once.
+     Then what is left is the truth: bills with no client in the CRM (counter sales, another name), and challans
+     delivered in the month that are on NO sales bill. The register itself is kept as audit rows "sales:reg" which
+     the server (V175) gives to admin and accounts only. Nothing is deleted; a later upload of the same bill wins. */
+  function srLow(x) { return String(x == null ? "" : x).trim().toLowerCase(); }
+  function srParseRows(rows) {
+    var hdr = -1, C = {};
+    var pick = function (R, tests) { for (var t = 0; t < tests.length; t++) for (var j = 0; j < R.length; j++) if (tests[t].test(R[j])) return j; return -1; };
+    for (var r = 0; r < Math.min(rows.length, 30); r++) {
+      var R = (rows[r] || []).map(srLow);
+      var n = pick(R, [/^(vch|voucher)\s*no\.?$/, /invoice\s*(no|number)/, /^(bill|inv)\s*no\.?$/]);
+      if (n < 0) continue;
+      hdr = r;
+      C.n = n;
+      C.d = pick(R, [/^date$/, /(invoice|vch|voucher|bill)\s*date/]);
+      C.g = pick(R, [/gstin|\buin\b/]);
+      C.p = -1; for (var j = 0; j < R.length; j++) if (j !== C.g && /^particulars$|party|receiver|buyer|customer|recipient|trade.?name|legal.?name/.test(R[j]) && !/gstin|\buin\b/.test(R[j])) { C.p = j; break; }
+      C.t = pick(R, [/(vch|voucher)\s*type/]);
+      C.a = pick(R, [/gross\s*total/, /invoice\s*value/, /total\s*value|bill\s*amount|invoice\s*amount/, /^debit$/, /^(value|amount|total)$/, /^credit$/]);
+      break;
+    }
+    if (hdr < 0 || C.a < 0 || (C.p < 0 && C.g < 0)) return null;
+    var out = [], purch = 0, seen = {};
+    for (var r2 = hdr + 1; r2 < rows.length; r2++) {
+      var row = rows[r2] || [], no = String(row[C.n] == null ? "" : row[C.n]).trim();
+      if (!no || /total/i.test(String(row[0] || "")) || /total/i.test(no)) continue;
+      var typ = C.t >= 0 ? String(row[C.t] || "") : "";
+      if (typ && /purch/i.test(typ)) { purch++; continue; }
+      if (typ && !/sale|tax\s*inv|invoice/i.test(typ)) continue;   /* credit notes, receipts, journals */
+      var party = C.p >= 0 ? String(row[C.p] || "").trim() : "", g = C.g >= 0 ? String(row[C.g] || "").trim().toUpperCase() : "";
+      if (!party && !g) continue;
+      var k = stkNoNorm(no); if (!k || seen[k]) continue; seen[k] = 1;   /* GSTR-1 repeats an invoice once per tax rate, with the same value */
+      out.push({ d: C.d >= 0 ? tallyDate(row[C.d]) : "", p: party, g: /^[0-9A-Z]{15}$/.test(g) ? g : "", n: no, a: Math.round(tallyNum(row[C.a]) * 100) / 100 });
+    }
+    if (!out.length && purch) return { purchase: true };
+    return { bills: out };
+  }
+  function srParseBook(wb, X) {
+    var all = [], purch = false, seen = {};
+    (wb.SheetNames || []).forEach(function (nm) {
+      var o = srParseRows(X.utils.sheet_to_json(wb.Sheets[nm], { header: 1, defval: "", raw: true }));
+      if (!o) return; if (o.purchase) { purch = true; return; }
+      o.bills.forEach(function (b) { var k = stkNoNorm(b.n); if (!seen[k]) { seen[k] = 1; all.push(b); } });
+    });
+    return { bills: all, purchase: purch && !all.length };
+  }
+  function srParseJson(o) {
+    o = (o && o.data) || o || {};
+    var out = [], seen = {};
+    var add = function (ctin, inv) { (inv || []).forEach(function (v) { var k = stkNoNorm(v.inum); if (!k || seen[k]) return; seen[k] = 1; out.push({ d: tallyDate(v.idt), p: "", g: String(ctin || "").toUpperCase(), n: String(v.inum || ""), a: Number(v.val) || 0 }); }); };
+    (o.b2b || []).forEach(function (x) { add(x.ctin, x.inv); });
+    (o.b2cl || []).forEach(function (x) { add("", x.inv); });
+    return { bills: out };
+  }
+  function srPeriod(bills) {
+    var cnt = {}; bills.forEach(function (b) { var m = String(b.d || "").slice(0, 7); if (m) cnt[m] = (cnt[m] || 0) + 1; });
+    var best = Object.keys(cnt).sort(function (a, b) { return cnt[b] - cnt[a]; })[0];
+    return best ? tlMonLabel(best) : "";
+  }
+  function srReadFiles(files) {
+    var list = [].slice.call(files || []); if (!list.length) return;
+    toast("Reading " + plural(list.length, "file") + "…");
+    var xl = list.filter(function (f) { return /\.xlsx?$/i.test(f.name); });
+    (xl.length ? xlsxReady() : Promise.resolve(true)).then(function (X) {
+      if (xl.length && !X) { toast("The Excel reader did not load — check the connection and pick the file again."); return; }
+      return Promise.all(list.map(function (f) {
+        return new Promise(function (res) {
+          var rd = new FileReader();
+          rd.onerror = function () { res({ file: f.name, bad: 1 }); };
+          if (/\.json$/i.test(f.name)) { rd.onload = function () { try { var o = srParseJson(JSON.parse(String(rd.result || ""))); o.file = f.name; o.src = "gstr1"; res(o); } catch (e) { res({ file: f.name, bad: 1 }); } }; rd.readAsText(f); return; }
+          rd.onload = function () { try { var wb = X.read(new Uint8Array(rd.result), { type: "array", cellDates: true }); var o = srParseBook(wb, X); o.file = f.name; o.src = "tally"; res(o); } catch (e) { res({ file: f.name, bad: 1 }); } };
+          rd.readAsArrayBuffer(f);
+        });
+      })).then(function (parsed) {
+        var chain = Promise.resolve(), n = 0, msgs = [];
+        parsed.forEach(function (o) {
+          if (o.purchase) { msgs.push(o.file + ": this is a PURCHASE register — upload it on Products › Tally"); return; }
+          if (o.bad || !o.bills || !o.bills.length) { msgs.push(o.file + ": no sales bills found in it"); return; }
+          var per = srPeriod(o.bills), parts = [];
+          for (var i = 0; i < o.bills.length; i += 150) parts.push(o.bills.slice(i, i + 150));
+          parts.forEach(function (pb, pi) {
+            chain = chain.then(function () { return auditFact("sales:reg", per || o.file, { file: o.file, src: o.src, part: pi + 1, of: parts.length, bills: pb }); });
+          });
+          n += o.bills.length; msgs.push(o.file + ": " + plural(o.bills.length, "sales bill") + (per ? " (" + per + ")" : ""));
+        });
+        chain.then(function () { _srMemo = null; S.srPick = {}; toast(msgs.join(" · ")); render(); });
+      });
+    });
+  }
+  /* the stored register: newest upload of each bill wins */
+  function srBills() {
+    var by = {};
+    ((S.data && S.data.audit) || []).forEach(function (a) {
+      if (!a || String(a.action || "") !== "sales:reg") return;
+      var d = null; try { d = JSON.parse(a.detail || "null"); } catch (e) { d = null; }
+      (d && d.bills || []).forEach(function (b) { var k = stkNoNorm(b.n); if (!k) return; var at = String(a.createdAt || ""); if (!by[k] || by[k]._at <= at) by[k] = Object.assign({ _at: at, _file: d.file || "", k: k }, b); });
+    });
+    return Object.keys(by).map(function (k) { return by[k]; }).sort(function (a, b) { return String(a.d).localeCompare(String(b.d)) || String(a.n).localeCompare(String(b.n)); });
+  }
+  var SR_STOP = { m: 1, s: 1, ms: 1, pvt: 1, private: 1, ltd: 1, limited: 1, llp: 1, co: 1, company: 1, and: 1, the: 1, mr: 1, mrs: 1, dr: 1, shri: 1, sri: 1, smt: 1, india: 1, enterprises: 0 };
+  function srToks(s) { return srLow(s).replace(/m\/s\.?/g, " ").replace(/\(.*?\)/g, " ").replace(/[^a-z0-9 ]+/g, " ").split(/\s+/).filter(function (w) { return w && w.length >= 2 && !SR_STOP[w]; }); }
+  function srClientIdx() {
+    var byG = {}, names = [];
+    var addN = function (nm, client) { var t = srToks(nm); if (t.length) names.push({ t: t, key: t.join(" "), c: client }); };
+    var addG = function (g, client) { g = String(g || "").toUpperCase().trim(); if (/^[0-9A-Z]{15}$/.test(g)) { byG[g] = byG[g] || {}; byG[g][client] = 1; } };
+    (S.data.clients || []).forEach(function (c) {
+      if (!c || !c.name) return; addN(c.name, c.name);
+      var pr = []; try { pr = JSON.parse(c.billingJson || "[]") || []; } catch (e) { pr = []; }
+      pr.forEach(function (p) { if (p && p.name) addN(p.name, c.name); if (p && p.gstin) addG(p.gstin, c.name); });
+    });
+    (S.data.audit || []).forEach(function (a) {
+      if (!a || String(a.action || "") !== "bill:name" || !a.target) return;
+      var d = {}; try { d = JSON.parse(a.detail || "{}") || {}; } catch (e) { d = {}; }
+      if (d.name) addN(d.name, String(a.target)); if (d.gstin) addG(d.gstin, String(a.target));
+    });
+    (S.data.challans || []).forEach(function (c) {
+      var bt = String((c && c.billTo) || "").trim(); if (!bt || !c.customerName) return;
+      var m = bt.match(/^(.*?)\s*-\s*([0-9A-Z]{15})$/); if (m) { addN(m[1], c.customerName); addG(m[2], c.customerName); } else addN(bt, c.customerName);
+    });
+    return { byG: byG, names: names };
+  }
+  function srWho(b, ix) {
+    var out = {};
+    if (b.g && ix.byG[b.g]) Object.keys(ix.byG[b.g]).forEach(function (c) { out[c] = 1; });
+    if (!Object.keys(out).length && b.p) {
+      var t = srToks(b.p), key = t.join(" ");
+      ix.names.forEach(function (x) { if (x.key === key) out[x.c] = 1; });
+      if (!Object.keys(out).length && t.length) {
+        ix.names.forEach(function (x) {
+          var a = t.length <= x.t.length ? t : x.t, z = a === t ? x.t : t;
+          if (a.length < 2 && !(a.length === 1 && a[0].length >= 5)) return;
+          if (a.every(function (w) { return z.indexOf(w) >= 0; })) out[x.c] = 1;
+        });
+      }
+    }
+    return Object.keys(out);
+  }
+  var _srMemo = null;
+  function srMatch() {
+    var bills = srBills(), key = bills.length + "|" + (S.data.challans || []).length + "|" + (S.data.audit || []).length;
+    if (_srMemo && _srMemo.key === key) return _srMemo;
+    var ix = srClientIdx(), tot = {}, used = {}, byNo = {};
+    var total = function (c) { if (tot[c.id] == null) { try { tot[c.id] = billSheetData(c).tot; } catch (e) { tot[c.id] = dgNum(c.amount); } } return tot[c.id]; };
+    (S.data.challans || []).forEach(function (c) { var k = stkNoNorm(c && c.billNo); if (k && !isCancelled("challans", c.id)) (byNo[k] = byNo[k] || []).push(c); });
+    var open = (S.data.challans || []).filter(function (c) {
+      return c && ["Approved", "Dispatched", "Received"].indexOf(String(c.status || "")) >= 0 && !String(c.billNo || "").trim() && !isCancelled("challans", c.id) && !c._isReturn;
+    });
+    var dayN = function (d) { var t = Date.parse(String(d || "").slice(0, 10)); return isFinite(t) ? Math.round(t / 86400000) : null; };
+    var rows = bills.map(function (b) {
+      var r = { b: b, st: "", on: byNo[b.k] || [], who: [], cands: [], prop: [], why: "" };
+      if (r.on.length) { r.st = "on"; return r; }
+      r.who = srWho(b, ix);
+      if (!r.who.length) { r.st = "noclient"; return r; }
+      var bd = dayN(b.d), wk = {}; r.who.forEach(function (w) { wk[dkey(w)] = 1; });
+      r.cands = open.filter(function (c) {
+        if (!wk[dkey(c.customerName)] || used[c.id]) return false;
+        var cd = dayN(localDay(c.createdAt)); if (bd == null || cd == null) return true;
+        return cd <= bd + 3 && cd >= bd - 60;
+      }).sort(function (x, y) { return Math.abs(dayN(localDay(x.createdAt)) - bd) - Math.abs(dayN(localDay(y.createdAt)) - bd); }).slice(0, 10);
+      if (!r.cands.length) { r.st = "nochallan"; return r; }
+      var tol = Math.max(10, b.a * 0.005), hits = [], C = r.cands;
+      var walk = function (start, pickd, sum) {
+        if (pickd.length && Math.abs(sum - b.a) <= tol) hits.push(pickd.slice());
+        if (pickd.length >= 4 || hits.length > 6) return;
+        for (var i = start; i < C.length; i++) { pickd.push(C[i]); walk(i + 1, pickd, sum + total(C[i])); pickd.pop(); }
+      };
+      walk(0, [], 0);
+      hits.sort(function (x, y) { return x.length - y.length; });
+      if (hits.length === 1 || (hits.length > 1 && hits[0].length === 1 && hits[1].length > 1)) { r.st = "sure"; r.prop = hits[0]; }
+      else if (hits.length) { r.st = "check"; r.prop = hits[0]; r.why = plural(hits.length, "way") + " to make this amount — check which"; }
+      else { r.st = "check"; r.why = "no challan, or set of challans, adds up to this bill"; }
+      if (r.st === "sure") r.prop.forEach(function (c) { used[c.id] = 1; });
+      return r;
+    });
+    _srMemo = { key: key, rows: rows, tot: tot, used: used };
+    return _srMemo;
+  }
+  function srPicked(r) {
+    var m = (S.srPick || {})[r.b.k];
+    if (m) return Object.keys(m).filter(function (id) { return m[id]; });
+    return r.prop.map(function (c) { return c.id; });
+  }
+  function srCard() {
+    if (!canBill()) return "";
+    var M = srMatch(), all = M.rows;
+    var months = {}; all.forEach(function (r) { var m = String(r.b.d || "").slice(0, 7); if (m) months[m] = 1; });
+    var ms = Object.keys(months).sort().reverse(), mon = S.srMon && months[S.srMon] ? S.srMon : (ms[0] || "");
+    var rows = all.filter(function (r) { return !mon || String(r.b.d || "").slice(0, 7) === mon; });
+    var h = '<div class="card" style="padding:10px 12px;border-color:#93c5fd"><div class="acts" style="align-items:center;margin:0;flex-wrap:wrap;gap:6px"><h3 class="grow" style="margin:0">Sales bills from Tally</h3>' +
+      '<label class="btn sm" style="min-height:44px;display:inline-flex;align-items:center;cursor:pointer">&#8593; Upload Sales Register / GSTR-1<input type="file" id="sr_file" accept=".xlsx,.xls,.json" multiple style="display:none"/></label></div>' +
+      '<div class="meta" style="font-size:12.5px;margin-top:4px">Each month: in Tally, <b>Display More Reports &rarr; Account Books &rarr; Sales Register &rarr; the month &rarr; Export (Excel)</b>; or the month&rsquo;s <b>GSTR-1</b> from the GST portal (JSON). Every sale bill is matched to the challan it billed, and the bill number is written on the challan when you press Record.</div>';
+    if (!all.length) return h + '</div>';
+    if (ms.length > 1) h += '<div class="chips" style="margin-top:6px">' + ms.map(function (m) { return '<button class="chip ' + (m === mon ? 'on' : '') + '" data-act="sr-mon" data-m="' + m + '">' + tlMonLabel(m) + '</button>'; }).join("") + '</div>';
+    var cnt = { on: 0, sure: 0, check: 0, noclient: 0, nochallan: 0 }, amt = 0, nRec = 0;
+    rows.forEach(function (r) { cnt[r.st]++; amt += Number(r.b.a) || 0; if ((r.st === "sure" || r.st === "check") && srPicked(r).length) nRec++; });
+    h += '<div class="meta" style="font-size:13px;margin:6px 0"><b>' + plural(rows.length, "sales bill") + '</b> &middot; ' + money(amt) + (mon ? ' &middot; ' + tlMonLabel(mon) : '') + '<br>' +
+      [cnt.on ? '<span style="color:#0f766e">' + cnt.on + ' already on their challan</span>' : '', cnt.sure ? '<b style="color:#0f766e">' + cnt.sure + ' matched</b>' : '', cnt.check ? '<b style="color:#b45309">' + cnt.check + ' to check</b>' : '',
+       cnt.nochallan ? '<span style="color:#b91c1c">' + cnt.nochallan + ' client known, no open challan</span>' : '', cnt.noclient ? '<span style="color:#b91c1c">' + cnt.noclient + ' party not in the CRM</span>' : ''].filter(Boolean).join(' &middot; ') + '</div>';
+    if (nRec) h += '<div class="acts" style="margin:4px 0 8px"><button class="btn" data-act="sr-apply" style="min-height:44px">Record ' + plural(nRec, "bill number") + ' on ' + (nRec === 1 ? 'its challan' : 'their challans') + '</button></div>';
+    var td = function (v, x) { return '<td style="padding:6px 8px;border-top:1px solid #e2e8f0;vertical-align:top' + (x || "") + '">' + v + '</td>'; };
+    var order = { check: 0, sure: 1, nochallan: 2, noclient: 3, on: 4 };
+    var shown = rows.slice().sort(function (a, b) { return (order[a.st] - order[b.st]) || String(a.b.d).localeCompare(String(b.b.d)); });
+    var lim = S.srAll ? shown.length : 40;
+    h += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="background:#e2e8f0">' +
+      ['DATE', 'PARTY', 'BILL NO', 'AMOUNT', 'CHALLAN(S)'].map(function (x, i) { return '<th style="padding:6px 8px;text-align:' + (i === 3 ? 'right' : 'left') + ';font-size:12px;white-space:nowrap">' + x + '</th>'; }).join("") + '</tr></thead><tbody>' +
+      shown.slice(0, lim).map(function (r) {
+        var b = r.b, cell;
+        if (r.st === "on") cell = '<span style="color:#0f766e">&#10003; on ' + r.on.map(function (c) { return esc(c.challanNo || ""); }).join(", ") + '</span>';
+        else if (r.st === "noclient") cell = '<span style="color:#b91c1c">Party not found in the CRM</span><div class="meta" style="font-size:12px">A counter sale, or a client filed under another name &mdash; register the billing name on the client and it matches next time.</div>';
+        else if (r.st === "nochallan") cell = '<span style="color:#b91c1c">' + esc(r.who.join(", ")) + ' &mdash; no unbilled challan near this date</span>';
+        else {
+          var on = {}; srPicked(r).forEach(function (id) { on[id] = 1; });
+          cell = (r.why ? '<div style="font-size:12px;color:#b45309;margin-bottom:3px">' + esc(r.why) + '</div>' : '') + r.cands.map(function (c) {
+            return '<label style="display:flex;gap:8px;align-items:center;min-height:36px;cursor:pointer"><input type="checkbox" data-act="sr-tick" data-b="' + esc(b.k) + '" data-id="' + esc(c.id) + '"' + (on[c.id] ? ' checked' : '') + ' style="width:20px;height:20px"/>' +
+              '<span><b>' + esc(c.challanNo || "") + '</b> &middot; ' + esc(dmy(localDay(c.createdAt))) + ' &middot; ' + money(M.tot[c.id] != null ? M.tot[c.id] : dgNum(c.amount)) + ' <span class="meta" style="font-size:12px">' + esc(c.customerName || "") + '</span></span></label>';
+          }).join("");
+        }
+        return '<tr' + (r.st === "check" ? ' style="background:#fffbeb"' : '') + '>' + td(esc(dmy(b.d)), ';white-space:nowrap') + td(esc(b.p || b.g || "—") + (b.p && b.g ? '<div class="meta" style="font-size:12px">' + esc(b.g) + '</div>' : '')) +
+          td('<b>' + esc(b.n) + '</b>') + td(money(b.a), ';text-align:right;white-space:nowrap') + td(cell) + '</tr>';
+      }).join("") + '</tbody></table></div>';
+    if (shown.length > lim) h += '<div class="acts"><button class="btn sm ghost" data-act="sr-all" style="min-height:44px">Show all ' + shown.length + '</button></div>';
+    /* delivered in this month and on no sales bill - the truth the register leaves behind */
+    if (mon) {
+      var picked = {}; rows.forEach(function (r) { if (r.st === "sure" || r.st === "check") srPicked(r).forEach(function (id) { picked[id] = 1; }); });
+      var left = (S.data.challans || []).filter(function (c) {
+        return c && ["Dispatched", "Received"].indexOf(String(c.status || "")) >= 0 && !String(c.billNo || "").trim() && !isCancelled("challans", c.id) && !c._isReturn && !picked[c.id] && localDay(c.createdAt).slice(0, 7) === mon;
+      }).sort(function (a, b) { return String(a.createdAt || "").localeCompare(String(b.createdAt || "")); });
+      if (left.length) {
+        var lv = left.reduce(function (a, c) { return a + dgNum(c.amount); }, 0);
+        h += '<div style="margin-top:10px;font-weight:700;font-size:13.5px;color:#b91c1c">Delivered in ' + tlMonLabel(mon) + ' and on no sales bill &middot; ' + plural(left.length, "challan") + ' &middot; ' + money(lv) + '</div>' +
+          '<div class="meta" style="font-size:12px;margin-bottom:4px">Not billed in Tally either, or billed under a number the register above does not have. Open each for billing.</div>' +
+          left.slice(0, S.srAll ? left.length : 25).map(function (c) {
+            return '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;padding:5px 0;border-top:1px solid #e2e8f0;font-size:13px"><span><b>' + esc(c.challanNo || "") + '</b> &middot; ' + esc(dmy(localDay(c.createdAt))) + ' &middot; ' + esc(c.customerName || "") + ' &middot; ' + money(dgNum(c.amount)) + '</span>' +
+              '<button class="btn sm ghost" data-act="bill-sheet" data-id="' + esc(c.id) + '" style="min-height:44px;flex:0 0 auto">Open for billing</button></div>';
+          }).join("") + (left.length > 25 && !S.srAll ? '<div class="meta" style="font-size:12px">&hellip; and ' + (left.length - 25) + ' more (Show all above)</div>' : '');
+      }
+    }
+    return h + '</div>';
+  }
+  function srApply() {
+    var M = srMatch(), todo = [];
+    var mon = S.srMon || "";
+    M.rows.forEach(function (r) {
+      if (r.st !== "sure" && r.st !== "check") return;
+      if (mon && String(r.b.d || "").slice(0, 7) !== mon && S.srMon) return;
+      srPicked(r).forEach(function (id) { var c = (S.data.challans || []).filter(function (x) { return x.id === id; })[0]; if (c && !String(c.billNo || "").trim()) todo.push({ c: c, b: r.b }); });
+    });
+    if (!todo.length) { toast("Nothing ticked to record."); return; }
+    var chain = Promise.resolve(), n = 0;
+    todo.forEach(function (x) {
+      var c = x.c, b = x.b;
+      c.billNo = b.n; c.billStatus = "Billed"; c.billedAt = b.d || today(); c.billedBy = S.user || "";
+      if (!String(c.billTo || "").trim()) c.billTo = (b.p || b.g) + (b.p && b.g ? " - " + b.g : "");
+      chain = chain.then(function () { return billFactSave(c, { src: "sales-register", file: b._file || "" }).then(function () { n++; }); });
+    });
+    _srMemo = null; S.srPick = {}; render();
+    chain.then(function () { toast(plural(n, "challan") + " now carry their Tally bill number."); _srMemo = null; render(); });
+  }
   function viewBillDesk() {
     if (!canBill()) return '<div class="empty">Billing is for accounts and the owner.</div>';
     /* 6.9.820 - THE DAILY TARGET. His yes to: "give accounts a daily target, the oldest 20 first". Bills dated today
@@ -25912,7 +26179,7 @@ function viewCatalogue() {
       '<b style="font-size:15px">Today: ' + _bt + ' of ' + BILL_TARGET + ' bills</b>' +
       '<div style="height:10px;border-radius:6px;background:#e2e8f0;margin:6px 0;overflow:hidden"><div style="height:100%;width:' + Math.min(100, Math.round(_bt * 100 / BILL_TARGET)) + '%;background:' + (_bt >= BILL_TARGET ? '#16a34a' : '#d97706') + '"></div></div>' +
       '<div class="meta" style="font-size:12.5px">' + (_bt >= BILL_TARGET ? 'Target done. Anything more clears the backlog faster.' : 'The oldest challans first - money that has waited longest for its bill.') + '</div></div>';
-    return billPendCard() + _tgt +
+    return billPendCard() + _tgt + srCard() +   /* 6.9.892 */
       '<div class="card" style="padding:10px 12px"><h2 style="margin:0 0 4px;font-size:17px">Billing &mdash; challans to bill</h2>' +
       '<div class="acts" style="margin:4px 0;gap:6px;flex-wrap:wrap"><button class="btn sm ' + (_old ? '' : 'ghost') + '" data-act="bd-sort" data-k="old" style="min-height:44px">Oldest first</button>' +
       '<button class="btn sm ' + (_old ? 'ghost' : '') + '" data-act="bd-sort" data-k="new" style="min-height:44px">Newest first</button></div>' +
@@ -57633,6 +57900,9 @@ function viewCatalogue() {
         });
       }))).then(function (parsed) {
         var regs = parsed.filter(function (o) { return o.kind === "register" && o.bills.length; });
+        /* 6.9.892 - Tally's Sales Register has the same columns as its Purchase Register; a sales one is not a list of purchases */
+        var _sreg = regs.filter(function (o) { var t = o.bills.filter(function (b) { return /sale/i.test(String(b.type || "")); }).length; return t && t >= o.bills.length / 2; });
+        if (_sreg.length) { toast(_sreg.map(function (o) { return o.file; }).join(", ") + ": this is a SALES register — upload it on Deliveries › Billing (accounts), under Sales bills from Tally."); regs = regs.filter(function (o) { return _sreg.indexOf(o) < 0; }); }
         var bills = parsed.filter(function (o) { return o.kind === "bill" && o.lines.length; });
         var pics = parsed.filter(function (o) { return o.kind === "picture"; });
         if (pics.length) toast(pics.map(function (o) { return o.file; }).join(", ") + ": a scanned picture, not text — print the bill from Tally as PDF, or download it as Excel.");
@@ -59277,6 +59547,8 @@ function viewCatalogue() {
     /* Stock import: read an uploaded Tally CSV export and jump straight to the review step. */
     var mtf = el("mt_file");   /* 6.9.662 - Tally's Sundry Debtors */
     if (mtf) mtf.addEventListener("change", function (e) { mtReadFile(e.target.files && e.target.files[0]); });
+    var srf = el("sr_file");   /* 6.9.892 - the sales register */
+    if (srf) srf.addEventListener("change", function (e) { srReadFiles(e.target.files); });
     var impf = el("imp_file");
     if (impf) {
       impf.addEventListener("change", function (e) { stkReadFiles(e.target.files); });   /* v6.9.605 - Tally bills and registers */
@@ -60481,6 +60753,14 @@ function viewCatalogue() {
       if (!_w.length) { toast("Nothing is waiting."); return; }
       S.grn = null; S.pc = null; S.imp = { step: "tally", bills: stkTallyOpen(_w) }; S.tab = "stock"; render(); window.scrollTo(0, 0); return;
     }
+    if (act === "sr-mon") { S.srMon = t.getAttribute("data-m") || ""; keepScroll = true; render(); return; }   /* 6.9.892 */
+    if (act === "sr-all") { S.srAll = true; keepScroll = true; render(); return; }
+    if (act === "sr-tick") {
+      var _bk = t.getAttribute("data-b") || "", _cid = t.getAttribute("data-id") || "", _r = srMatch().rows.filter(function (x) { return x.b.k === _bk; })[0];
+      if (_r) { S.srPick = S.srPick || {}; if (!S.srPick[_bk]) { var _dflt = srPicked(_r); S.srPick[_bk] = {}; _dflt.forEach(function (id) { S.srPick[_bk][id] = true; }); } S.srPick[_bk][_cid] = !!t.checked; }
+      keepScroll = true; render(); return;
+    }
+    if (act === "sr-apply") { srApply(); return; }
     if (act === "tl-one") { tlOpenOne(t.getAttribute("data-k") || ""); return; }   /* 6.9.889 - one bill off the board */
     if (act === "tb-read") {   /* 6.9.888 - the bills the server read from the mail */
       var _rb = stkReadBills();
