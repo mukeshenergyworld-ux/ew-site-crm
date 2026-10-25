@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.880";
+  var APP_VERSION = "6.9.881";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -51412,7 +51412,7 @@ function viewCatalogue() {
       aiProposalsHtml(r) +   /* 6.9.880 - actions it proposes; each waits for a tap */
       (r.use ? '<div class="meta" style="font-size:12px;margin-top:4px;color:#64748b">' + esc(r.use.model || "") + ' \u00b7 ' + (r.use.ms ? (r.use.ms / 1000).toFixed(1) + ' s' : '') + ' \u00b7 ' + (Number(r.use.in) || 0) + ' in' + (Number(r.use.cached) ? ' (' + r.use.cached + ' cached)' : '') + ' / ' + (Number(r.use.out) || 0) + ' out \u00b7 ' + aiCostStr(r.use) + (r.use.fallback ? ' \u00b7 answered by the smaller model (the main one was busy)' : '') + '</div>' : '') +
       (r.err ? '<div style="margin-top:8px;color:#b91c1c;font-size:13px">' + esc(r.err) + '</div>' : '') +
-      '<div class="meta" style="font-size:12px;margin-top:6px">Suggestions it gives are its own; you decide. Each question costs about a paisa of API credit.</div></div>';
+      '<div class="meta" style="font-size:12px;margin-top:6px">Suggestions it gives are its own; you decide. A short question costs about 40 paise; a comparison or analysis \u20b91\u20132 (the exact cost shows under each answer).</div></div>';   /* 6.9.881 - measured 25 Oct */
   }
   /* ===== 6.9.880 - AI: COST PER QUESTION, PER USER, AND ACTIONS THAT WAIT FOR A TAP  (25 Oct 2026) =====
      From the system audit of 25 Oct. The server (V167) answers aiAsk with {text, use:{model,in,out,cached,ms,fallback},
