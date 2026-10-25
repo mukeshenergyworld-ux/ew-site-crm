@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.876";
+  var APP_VERSION = "6.9.877";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -45921,7 +45921,11 @@ function viewCatalogue() {
   }
   function modalAssociate(a) {
     a = a || {};
-    var loc = a.location || locations()[0];
+    /* 6.9.877 - HIS WORDS: "area mean to say city, and adding a partner make it mandatory to select city else add new". The box
+       used to fall back to locations()[0] - alphabetically KARNAL - so a partner with no city quietly became a Karnal man the
+       moment his form was saved. Now it starts empty, is called City, and Save refuses until one is picked or added. */
+    var loc = String(a.location || "").trim();
+    var _locL = [""].concat(loc && locations().indexOf(loc) < 0 ? [loc] : [], locations(), ["+ Add new location"]);
     return '<h2>' + (a.id ? "Edit partner" : "New partner") + '</h2>' +
       '<p class="sub">Plumbers, architects, builders and PMCs. Incentive % is set per client &amp; brand on the Discounts screen — a partner earns only where you set a rate there.</p>' +
       /* v6.9.586 - who looks after him, asked first, as on the client form */
@@ -45934,7 +45938,7 @@ function viewCatalogue() {
       '</div>' +
       '<div class="grid2">' +
       '<div><label>Alternate mobile</label><input id="m_amobile2" inputmode="numeric" value="' + esc(a.mobile2) + '"/></div>' +
-      '<div><label>Location</label><select id="m_aloc" class="loc-sel2">' + opts(locations().concat(["+ Add new location"]), loc) + '</select></div>' +
+      '<div><label>City *</label><select id="m_aloc" class="loc-sel2"' + (loc ? '' : ' style="border-color:#f59e0b;background:#fffbeb"') + '>' + opts(_locL, loc) + '</select></div>' +
       '</div>' +
       '<div class="grid2">' +
       '<div><label>Area</label>' + areaSelectHtml("m_aarea", loc, a.area) + '<div id="m_aarea_new"></div></div>' +
@@ -49203,20 +49207,36 @@ function viewCatalogue() {
     (S.data.clients || []).forEach(function (c) { if (c && c.area) m[String(c.area).trim()] = 1; });
     return Object.keys(m).filter(Boolean).sort(alpha);
   }
+  /* 6.9.877 - HIS WORDS: "area mean to say city". The box on the guest row is his CITY (Associates.location) - a pick from the
+     cities on the book, or "+ Add new city" (registered as a location, as the partner form does). Saved on his record at once. */
   function pevAreaBox(eid, name) {
     var a = assocLive().filter(function (x) { return dkey(x.name) === dkey(name); });
     if (a.length !== 1) return '';   /* two partners by one name: no guess */
-    var ar = String(a[0].area || "").trim();
-    return '<input class="pev-area" list="pev_areas" data-id="' + esc(a[0].id) + '" value="' + esc(ar) + '" placeholder="area" title="His area - change it here" ' +
-      'style="width:118px;min-height:32px;font-size:12px;padding:2px 6px;' + (ar ? '' : 'border-color:#fcd34d;background:#fffbeb') + '"/>';
+    var c = String(a[0].location || "").trim(), ls = locations();
+    var L = [""].concat(c && ls.indexOf(c) < 0 ? [c] : [], ls, ["+ Add new city"]);
+    return '<select class="pev-city" data-id="' + esc(a[0].id) + '" title="His city - change it here" ' +
+      'style="width:118px;min-height:32px;font-size:12px;padding:2px 4px;' + (c ? '' : 'border-color:#fcd34d;background:#fffbeb') + '">' +
+      L.map(function (v) { return '<option value="' + esc(v) + '"' + (v === c ? ' selected' : '') + '>' + esc(v || "city") + '</option>'; }).join("") + '</select>';
+  }
+  function pevSetCity(id, v, t) {
+    var a = (S.data.associates || []).filter(function (x) { return x.id === id; })[0]; if (!a) return;
+    v = nmTitle(String(v || "").trim()); if (!v || v === String(a.location || "")) { if (t) t.value = String(a.location || ""); return; }
+    var row = Object.assign({}, a, { location: v }); delete row._dups;
+    save("associates", row, true).then(function (r) { if (r) { a.location = v; _asLiveCache = null; toast(a.name + ": city " + v + "."); render(); } });
   }
   try {
     document.addEventListener("change", function (e) {
-      var t = e.target; if (!t || !t.classList || !t.classList.contains("pev-area")) return;
-      var id = t.getAttribute("data-id"), a = (S.data.associates || []).filter(function (x) { return x.id === id; })[0]; if (!a) return;
-      var v = nmTitle(t.value); if (v === String(a.area || "")) return;
-      var row = Object.assign({}, a, { area: v }); delete row._dups;
-      save("associates", row, true).then(function (r) { if (r) { a.area = v; _asLiveCache = null; t.value = v; toast(a.name + ": area " + (v || "cleared") + "."); } });
+      var t = e.target; if (!t || !t.classList || !t.classList.contains("pev-city")) return;
+      var id = t.getAttribute("data-id");
+      if (t.value === "+ Add new city") {
+        promptSheet({ title: "New city", placeholder: "City name", ok: "Add the city" }).then(function (nl) {
+          nl = nmTitle(String(nl || "").trim()); if (!nl) { render(); return; }
+          var go = function () { pevSetCity(id, nl, null); };
+          if (locations().indexOf(nl) < 0) save("areas", { id: "", location: nl, area: "" }, true).then(go); else go();
+        });
+        return;
+      }
+      pevSetCity(id, t.value, t);
     });
   } catch (e) { }
   function viewPevEvent(e) {
@@ -49270,7 +49290,7 @@ function viewCatalogue() {
         '<div><label style="margin-top:0">Who</label><select id="pe_owho" style="min-height:44px"><option>Company</option><option>Brand</option><option>Guest of honour</option><option>Family</option><option>Staff</option><option>Other</option></select></div>' +
         '<div><label style="margin-top:0">Mobile</label><input id="pe_omob" inputmode="numeric" placeholder="optional" style="width:130px;min-height:44px"/></div>' +
         '<button class="btn sm ghost" style="min-height:44px" data-act="pev-addother" data-id="' + esc(e.eid) + '">+ Add invitee</button></div>') +
-      (inv.length ? pevFuStrip(e, inv) : '') + '<datalist id="pev_areas">' + pevAreaList().map(function (a) { return '<option value="' + esc(a) + '"></option>'; }).join("") + '</datalist>' +   /* 6.9.875 */
+      (inv.length ? pevFuStrip(e, inv) : '') +   /* 6.9.875 */
       (inv.length ? (function () {
         /* 6.9.869 - HIS WORDS: "arrange them executive wise, changing executive will transfer partner under that executive".
            One table per executive (as the list stands: the event's executive, else the partner's own), best supporter first inside
@@ -65013,6 +65033,9 @@ function viewCatalogue() {
          not a partner. 10 digits minimum, always. */
       var am = String(val("m_amobile") || "").replace(/\D/g, "");
       if (am.length < 10) { toast("Partner mobile number is required (10 digits) — no partner without a phone."); return; }
+      /* 6.9.877 - no partner without a city */
+      var _acity = String(val("m_aloc") || "").trim();
+      if (!_acity || _acity === "+ Add new location") { toast("Pick his city — or “+ Add new location” for a new one."); var _cs = el("m_aloc"); if (_cs) { _cs.focus(); _cs.style.borderColor = "#dc2626"; } return; }
       /* 6.9.821 - ONE MAN, ONE PARTNER RECORD. Measured on his book (15 Oct): 10 partners entered more than once
          with the same mobile - "Sumit - Mahavir" 10 times (PL199-PL208), "Rohit Garg" 5 times (AR019, AR104-107),
          "vicky kataria" 3 times - several within the same second, i.e. one Save pressed twice. A NEW partner whose
