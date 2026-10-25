@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.892";
+  var APP_VERSION = "6.9.893";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -45467,6 +45467,7 @@ function viewCatalogue() {
        render() sends him here. Measured on his own Mac: Today opened once since 27 August. */
     try { h += rateGapDashCard(); } catch (e) { console.warn("[rategap] card:", e); }
     try { h += unsentDashCard(); } catch (e) { console.warn("[unsent] card:", e); }
+    try { h += stkTruthCard(); } catch (e) { console.warn("[stock truth]", e); }   /* 6.9.893 - the owner's Today */
     if (one) {
       h += '<div class="card" style="border-color:#99f6e4;background:#f0fdfa">' +
         '<div class="meta" style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#0f766e"><b>Today</b></div>' +
@@ -51089,7 +51090,10 @@ function viewCatalogue() {
       (canDo && cnt.read ? '<button class="btn sm" data-act="tb-read">Process ' + (cnt.read === 1 ? 'the read one' : 'all ' + cnt.read + ' read') + '</button>' : '') + '</div>' +
       '<div class="meta" style="font-size:12.5px;margin-bottom:6px">' + (say.length ? say.join(' &middot; ') : 'No purchase bill known' + (D.mon ? ' for ' + tlMonLabel(D.mon) : '') + '.') +
       (!BD.hasReg ? '<br>No GSTR-2B uploaded yet, so the 2B column cannot say which bills the suppliers filed: GST portal &rarr; Returns Dashboard &rarr; the month &rarr; GSTR-2B &rarr; Download Excel, then <b>Upload</b> it here.' : '') + '</div>';
-    if (rows.length) h += tbl([["DATE"], ["SUPPLIER"], ["BILL NO"], ["AMOUNT", "right"], ["2B", "center"], ["PDF", "center"], ["READ", "center"], ["MATCHED", "right"], ["STOCK", "center"], ["NEXT"]], rows.map(function (r) {
+    var _lcR = lcRows();   /* 6.9.893 - did the lorry bring what the bill says */
+    if (rows.length) h += tbl([["DATE"], ["SUPPLIER"], ["BILL NO"], ["AMOUNT", "right"], ["2B", "center"], ["PDF", "center"], ["READ", "center"], ["MATCHED", "right"], ["STOCK", "center"], ["LORRY", "center"], ["NEXT"]], rows.map(function (r) {
+      var _lx = _lcR.filter(function (x) { return lcSame(x.supplier, x.billNo, r.supplier, r.billNo); }).slice(-1)[0], _ld = _lx ? lcDiff(_lx) : null;
+      var lorry = !_lx ? no : (!_ld.short.length && !_ld.over.length ? ok : '<b style="color:#b91c1c;font-size:12px" title="Checked by ' + esc(_lx.by || "") + '">' + (_ld.short.length ? _ld.short.length + ' short' : '') + (_ld.short.length && _ld.over.length ? ', ' : '') + (_ld.over.length ? _ld.over.length + ' extra' : '') + '</b>');
       var open = S.tlOpen === r.key, c = ";text-align:center";
       var pdf = r.file ? '<a href="' + esc(r.file) + '" target="_blank" rel="noopener" style="color:#0f766e;font-weight:700">open</a>' : (r.stage === "2b" && BD.hasReg ? '<span style="color:#b91c1c;font-size:12px">not saved</span>' : no);
       var read = (r.bill || r.wait || r.read) ? ok : (r.stage === "pdf" ? (canDo ? (S.bf && S.bf.reading && S.bf.reading[r.fileId] ? '<span class="meta" style="font-size:12px">reading&hellip;</span>' : '<button class="btn sm ghost" data-act="bf-read" data-id="' + esc(r.fileId) + '" style="min-height:32px;padding:3px 10px">Read</button>') : '<span style="color:#92400e;font-size:12px">to read</span>') : no);
@@ -51103,12 +51107,12 @@ function viewCatalogue() {
                : pill("done", "#0f766e", "#ccfbf1");
       var row = '<tr style="cursor:pointer" data-act="tl-bill" data-k="' + esc(r.key) + '">' + td(esc(dmy(r.date)), "", ";white-space:nowrap") + td(esc(r.supplier)) +
         td('<b style="color:#0f172a">' + esc(r.billNo || "—") + '</b> <span style="color:#64748b">' + (open ? '▾' : '▸') + '</span>') + td(r.amount ? money(r.amount) : no, "right", ";white-space:nowrap") +
-        td(r.reg ? ok : (BD.hasReg ? '<span style="color:#92400e;font-size:12px" title="Not on the GSTR-2B uploaded so far">no</span>' : no), "", c) + td(pdf, "", c) + td(read, "", c) + td(matched, "right", ";white-space:nowrap") + td(stock, "", c) + td(next, "", ";white-space:nowrap") + '</tr>';
+        td(r.reg ? ok : (BD.hasReg ? '<span style="color:#92400e;font-size:12px" title="Not on the GSTR-2B uploaded so far">no</span>' : no), "", c) + td(pdf, "", c) + td(read, "", c) + td(matched, "right", ";white-space:nowrap") + td(stock, "", c) + td(lorry, "", c) + td(next, "", ";white-space:nowrap") + '</tr>';
       if (open) {
         var lines = [];
         if (r.bill) { var pm0 = stkPMap(); lines = r.bill.lines.map(function (l) { var p = pm0[String(l.c || "").trim()] || {}; return [l.c || "", p.desc || "", l.p || "", l.q, l.n, l.u]; }); }
         else { var src = r.wait ? r.wait.o.lines : r.read ? r.read.b.lines : []; lines = src.map(function (l) { return ["", l.desc || "", l.partNo || "", l.qty, l.rate, l.unit]; }); }
-        row += '<tr><td colspan="10" style="padding:0 8px 10px;background:#f8fafc">' +
+        row += '<tr><td colspan="11" style="padding:0 8px 10px;background:#f8fafc">' +
           (r.bill ? '<div class="meta" style="font-size:12px;margin:4px 0">In stock &middot; ' + esc(r.bill.by) + ' &middot; ' + esc(dmy(r.bill.at)) + (r.rates ? ' &middot; ' + plural(r.rates, "rate row") : '') + (r.parts ? ' &middot; came in ' + (r.parts + 1) + ' parts' : '') + '</div>' : '') +
           (r.read && !r.bill && !r.wait ? '<div class="meta" style="font-size:12px;margin:4px 0">Read from the mail on ' + esc(dmy(r.read.at)) + (r.read.o.name ? ' &middot; ' + esc(r.read.o.name) : '') + '</div>' : '') +
           (lines.length ? tbl([["CODE"], ["PRODUCT / AS ON THE BILL"], ["PART NO"], ["QTY", "right"], ["RATE", "right"]], lines.map(function (l) {
@@ -51547,6 +51551,7 @@ function viewCatalogue() {
       '</div>';
 
     try { h += billPendCard(); } catch (e) { }   /* 6.9.810 - opened for billing, not billed */
+    try { h += stkTruthCard(); } catch (e) { console.warn("[stock truth]", e); }   /* 6.9.893 */
     try { h += rvDashCard(); } catch (e) { }   /* 6.9.635 - Monday and Thursday */
     try { h += chDraftBanner(); } catch (e) { }   /* v6.9.554 */
     try { h += draftDashCard(); } catch (e) { console.warn("[draft] card:", e); }
@@ -55257,8 +55262,8 @@ function viewCatalogue() {
     (S.stock || []).forEach(function (r) {
       if (String(r.type) !== "bill") return;
       var ref = String(r.ref || "").trim().toLowerCase();
-      if (!ref || seen[ref]) return;
-      seen[ref] = 1;
+      if (!ref) return;
+      if (String(r.code) !== "*BILLPART") { if (seen[ref]) return; seen[ref] = 1; }   /* 6.9.893 - FOUND building the lorry check: a bill matched in parts (6.9.886) is a *BILLPART row and a closing *BILL under ONE ref, and only the first row was read - the rest of the bill never reached stock. A whole bill still counts once. */
       var ls = []; try { ls = JSON.parse(r.desc || "[]") || []; } catch (e) { ls = []; }
       ls.forEach(function (l) {
         var k = String((l && l.c) || "").trim(), q = Number(l && l.q) || 0;
@@ -55319,6 +55324,7 @@ function viewCatalogue() {
     (S.stock || []).forEach(function (row) {
       var ty = String(row.type || "");
       if (ty === "bill") return;   /* 6.9.607 - counted below, line by line, from stkBillLines */
+      if (ty === "billread" || ty === "billskip" || ty === "lorry") return;   /* 6.9.893 - the night read (code *READ, qty = the bill's rupees), set-aside files and lorry checks are not stock */
       if (ty === "in" && _bref[String(row.ref || "").trim().toLowerCase()]) return;   /* that bill is already counted from Tally */
       var _k0 = String(row.code || "").trim();
       if (ty === "opening" && _olast[_k0] !== row) return;   /* only the latest count - 6.9.608: and only its last save */
@@ -55340,6 +55346,180 @@ function viewCatalogue() {
     var m = {}; (S.stock || []).forEach(function (r) { if (String(r.type) !== "rate") return; var k = String(r.code || "").trim(); if (k) m[k] = Number(r.qty) || 0; }); return m;
   }
 
+  /* ===== THE LORRY CHECK (CRM 6.9.893 / Challan 1.144.0, 25 Oct 2026 - ERP step F) =====
+     MEASURED: "Lorry received" had never been used - 0 entries - because it asked the godown to type every product,
+     and since 1.100.0 it had no button on this phone at all. Stock goes in from the Tally bill (7 in, 22 waiting).
+     His answers: the bill stays what adds stock; the lorry only CHECKS it. So every supplier bill the office knows -
+     read from the mail at night, waiting to be matched, or in stock - comes up on the godown phone as a checklist
+     with the bill's own lines and quantities: "Everything came as billed" is one tap, a short or extra line is one
+     number. Saved as a stock row type "lorry" (code *LORRY, qty 0 - not a movement, never counted as stock). A short
+     or extra line goes to the owner and accounts on Today until it is settled (debit note raised, or accepted). */
+  function lcSup(s) {
+    var w = String(s || "").toLowerCase().replace(/m\/s\.?/g, " ").replace(/[^a-z0-9 ]+/g, " ").split(/\s+/).filter(function (x) {
+      return x.length >= 3 && !/^(the|and|pvt|private|ltd|limited|llp|company|india|new|shri|sri)$/.test(x); });
+    return w[0] || "";
+  }
+  function lcNo(n) { return String(n == null ? "" : n).toUpperCase().replace(/[^A-Z0-9]/g, "").replace(/^0+/, ""); }
+  function lcTail(n) { var p = String(n == null ? "" : n).toUpperCase().split(/[^A-Z0-9]+/).filter(Boolean); return p.length ? p[p.length - 1].replace(/^0+/, "") : ""; }
+  function lcSame(sa, na, sb, nb) {
+    var a = { no: lcNo(na), tail: lcTail(na) }, b = { no: lcNo(nb), tail: lcTail(nb) }, s1 = lcSup(sa), s2 = lcSup(sb), same = false;
+    if (!a.no || !b.no) return false;
+    if (a.no === b.no) same = true;
+    else if (a.tail && a.tail.length >= 3 && (a.tail === b.no || a.tail === b.tail) && a.tail.length >= Math.min(4, b.no.length)) same = true;
+    else if (b.tail && b.tail.length >= 3 && b.tail === a.no) same = true;
+    return same && (!s1 || !s2 || s1 === s2);
+  }
+  function lcPname(code) {
+    var k = String(code || "").trim(), p = (PRODUCTS || []).filter(function (x) { return String((x && x.code) || "").trim() === k; })[0];
+    return p ? (p.desc || k) : k;
+  }
+  function lcRows() {
+    return ((S && S.stock) || []).filter(function (r) { return String(r.type) === "lorry"; }).map(function (r) {
+      var d = {}; try { d = JSON.parse(r.desc || "{}") || {}; } catch (e) { d = {}; }
+      d.id = r.id; d.at = String(r.createdAt || r.asOn || ""); d.by = d.by || String(r.createdBy || ""); d.lines = d.lines || []; d.extra = d.extra || [];
+      return d;
+    });
+  }
+  function lcIsDone(sup, no, rows) { return (rows || lcRows()).some(function (x) { return lcSame(x.supplier, x.billNo, sup, no); }); }
+  /* the supplier bills still to be checked off a lorry, newest first */
+  function lcBills(days) {
+    var cut = new Date(Date.now() - (days || 45) * 86400000).toISOString().slice(0, 10), B = [], done = lcRows();
+    var get = function (sup, no) {
+      for (var i = 0; i < B.length; i++) if (lcSame(B[i].supplier, B[i].billNo, sup, no)) return B[i];
+      var x = { supplier: String(sup || "").trim(), billNo: String(no || "").trim(), date: "", read: null, wait: null, full: null, parts: [] }; B.push(x); return x;
+    };
+    ((S && S.stock) || []).forEach(function (r) {
+      var t = String(r.type || ""); if (t !== "bill" && t !== "billwait" && t !== "billread") return;
+      var ref = String(r.ref || ""), p = ref.split(" / "), sup = r.notes || p[0], no = p.slice(1).join(" / "); if (!no) return;
+      var o = null; try { o = JSON.parse(r.desc || "null"); } catch (e) { o = null; }
+      var x = get(sup, no), at = String(r.createdAt || "");
+      if (t === "billread") { if (o && o.bill && (!x.read || x.read.at <= at)) { x.read = { at: at, b: o.bill }; x.date = x.date || String(o.bill.date || r.asOn || "").slice(0, 10); if (o.bill.supplier) x.supplier = String(o.bill.supplier); } }
+      else if (t === "billwait") { if (o && Array.isArray(o.lines) && (!x.wait || x.wait.at <= at)) { x.wait = { at: at, o: o }; x.date = x.date || String(o.date || r.asOn || "").slice(0, 10); } }
+      else { var ls = Array.isArray(o) ? o : []; if (String(r.code) === "*BILLPART") x.parts.push(ls); else if (!x.full) x.full = ls; x.date = x.date || String(r.asOn || "").slice(0, 10); }
+    });
+    var out = [];
+    B.forEach(function (x) {
+      if (!x.date || x.date < cut || lcIsDone(x.supplier, x.billNo, done)) return;
+      var lines = [], src = "";
+      var fromBill = function (ls) { ls.forEach(function (l) { var q = Number(l && l.q) || 0; if (q) lines.push({ name: lcPname(l.c), code: String(l.c || ""), q: q, u: String(l.u || ""), r: Number(l.n) || 0 }); }); };
+      if (x.read) { src = "read"; (x.read.b.lines || []).forEach(function (l) { var q = Number(l.qty) || 0; if (q) lines.push({ name: String(l.desc || l.partNo || ""), code: String(l.partNo || ""), q: q, u: String(l.unit || ""), r: Math.round((Number(l.rate) || 0) * (1 - (Number(l.disc) || 0) / 100) * 100) / 100 }); }); }
+      else if (x.full) { src = "bill"; x.parts.forEach(fromBill); fromBill(x.full); }   /* a bill matched in parts: every part's lines */
+      else { src = "wait"; x.parts.forEach(fromBill); if (x.wait) (x.wait.o.lines || []).forEach(function (l) { var q = Number(l.qty) || 0; if (q) lines.push({ name: String(l.desc || l.partNo || ""), code: String(l.partNo || ""), q: q, u: String(l.unit || ""), r: Math.round((Number(l.rate) || 0) * (1 - (Number(l.disc) || 0) / 100) * 100) / 100 }); }); }
+      if (lines.length) out.push({ supplier: x.supplier, billNo: x.billNo, date: x.date, src: src, lines: lines });
+    });
+    return out.sort(function (a, b) { return String(b.date).localeCompare(String(a.date)); });
+  }
+  function lcDiff(x) {
+    var short = [], over = [];
+    (x.lines || []).forEach(function (l) { var g = Number(l.got) || 0, q = Number(l.q) || 0; if (g < q) short.push({ name: l.name, q: q, got: g, u: l.u, val: Math.round((q - g) * (Number(l.r) || 0)) }); else if (g > q) over.push({ name: l.name, q: q, got: g, u: l.u, val: Math.round((g - q) * (Number(l.r) || 0)) }); });
+    (x.extra || []).forEach(function (e) { if (Number(e.got) > 0) over.push({ name: e.name, q: 0, got: Number(e.got) || 0, u: "", val: 0, extra: 1 }); });
+    return { short: short, over: over };
+  }
+  function lcSettled() {
+    var m = {};
+    ((S.data && S.data.audit) || []).forEach(function (a) { if (a && String(a.action || "") === "lorry:settle" && a.target) { var d = {}; try { d = JSON.parse(a.detail || "{}") || {}; } catch (e) { d = {}; } m[String(a.target)] = { how: d.how || "", by: a.actor || "", at: a.createdAt || "" }; } });
+    return m;
+  }
+  function lcIssues() {
+    var st = lcSettled();
+    return lcRows().map(function (x) { x.d = lcDiff(x); return x; }).filter(function (x) { return (x.d.short.length || x.d.over.length) && !st[x.id]; })
+      .sort(function (a, b) { return String(b.at).localeCompare(String(a.at)); });
+  }
+  /* ===== 6.9.893 - THE COUNT AGAINST THE BOOK =====
+     Products are counted a few a day (6.9.62x, A/B/C) and once in full (25 Sep, 632 products). For every count of a
+     product that has an EARLIER count, the book is: the earlier count + bills in + goods in + adjustments + returns
+     booked in - challans out, between the two counts (same-day movements belong after a count, as stkCounts has it).
+     The difference, valued at the latest purchase rate, is the variance. The first count of a product has nothing
+     to compare with, so it is not listed. */
+  function stkVariance(days) {
+    var cnt = {}, ev = {}, rate = rateByCode(), bom = stkBom(), bref = {};
+    var add = function (k, d, q) { k = String(k || "").trim(); if (!k || !q) return; (ev[k] = ev[k] || []).push({ d: String(d || "").slice(0, 10), q: q }); };
+    (S.stock || []).forEach(function (r) {
+      var t = String(r.type || ""), k = String(r.code || "").trim();
+      if (t === "bill" && r.ref) bref[String(r.ref).trim().toLowerCase()] = 1;
+      if (t === "opening" && k) { var d = String(r.asOn || "").slice(0, 10); if (d) { cnt[k] = cnt[k] || {}; cnt[k][d] = r; } }
+    });
+    (S.stock || []).forEach(function (r) {
+      var t = String(r.type || "");
+      if (t === "adjust") add(r.code, r.asOn, Number(r.qty) || 0);
+      else if (t === "in" && !bref[String(r.ref || "").trim().toLowerCase()]) add(r.code, r.asOn, Number(r.qty) || 0);
+    });
+    stkBillLines().forEach(function (l) { add(l.code, l.asOn, l.qty); });
+    (S.data.challans || []).forEach(function (c) { if (!stkChOut(c)) return; stkExpand(chItems(c), bom).forEach(function (i) { add(i.code, c.createdAt, -(Number(i.qty) || 0)); }); });
+    (S.data.returns || []).forEach(function (r) {
+      if (String(r.status || "").trim().toLowerCase() !== "received") return;
+      var items = []; try { items = JSON.parse(r.itemsJson || "[]"); } catch (e) { items = []; }
+      stkExpand(items, bom).forEach(function (i) { add(i.code, r.createdAt, Number(i.qty) || 0); });
+    });
+    var since = new Date(Date.now() - (days || 400) * 86400000).toISOString().slice(0, 10), out = [];
+    Object.keys(cnt).forEach(function (k) {
+      var ds = Object.keys(cnt[k]).sort();
+      for (var i = 1; i < ds.length; i++) {
+        var D = ds[i], Pd = ds[i - 1]; if (D < since) continue;
+        var book = Number(cnt[k][Pd].qty) || 0;
+        (ev[k] || []).forEach(function (e) { if (e.d >= Pd && e.d < D) book += e.q; });
+        book = Math.round(book * 100) / 100;
+        var got = Number(cnt[k][D].qty) || 0, diff = Math.round((got - book) * 100) / 100;
+        if (Math.abs(diff) < 1e-9) continue;
+        out.push({ code: k, desc: lcPname(k), on: D, prev: Pd, book: book, got: got, diff: diff, rate: Number(rate[k]) || 0, val: Math.round(diff * (Number(rate[k]) || 0)) });
+      }
+    });
+    return out.sort(function (a, b) { return Math.abs(b.val) - Math.abs(a.val) || Math.abs(b.diff) - Math.abs(a.diff); });
+  }
+  function stkCountStats() {
+    var last = "", mon = today().slice(0, 7), thisMon = 0, counted = {};
+    (S.stock || []).forEach(function (r) { if (String(r.type) !== "opening") return; var d = String(r.asOn || "").slice(0, 10); if (d > last) last = d; if (d.slice(0, 7) === mon) { thisMon++; counted[String(r.code || "").trim()] = 1; } });
+    return { last: last, thisMon: Object.keys(counted).length };
+  }
+  function stkVarianceCard() {
+    var V = stkVariance(120), sh = 0, ex = 0;
+    V.forEach(function (x) { if (x.val < 0) sh += -x.val; else ex += x.val; });
+    var h = '<div class="card" style="border-color:' + (V.length ? '#fca5a5' : '#e2e8f0') + '"><div class="acts" style="align-items:center;margin:0;gap:6px;flex-wrap:wrap"><h3 class="grow" style="margin:0">Count against the book' + (V.length ? ' &middot; ' + plural(V.length, "product") + (V.length === 1 ? ' differs' : ' differ') : '') + '</h3>' +
+      (V.length ? '<button class="btn sm ghost" data-act="stk-var-xl" style="min-height:44px">&#8681; Excel</button>' : '') + '</div>' +
+      '<div class="meta" style="font-size:12.5px;margin-top:3px">Each count of a product against what the book said it should be since its last count (bills in, adjustments, returns in, challans out). Valued at the latest purchase rate.</div>';
+    if (!V.length) return h + '<div class="meta" style="font-size:13px;margin-top:6px">No product counted twice in the last 120 days differs from its book' + (stkCountStats().last ? ' &mdash; a product counted for the first time has nothing to compare with yet' : '') + '.</div></div>';
+    h += '<div class="meta" style="font-size:13px;margin:6px 0"><b style="color:#b91c1c">' + money(sh) + ' short</b> &middot; <b style="color:#b45309">' + money(ex) + ' extra</b> (last 120 days)</div>' +
+      '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="background:#e2e8f0">' +
+      ['COUNTED ON', 'PRODUCT', 'BOOK', 'COUNTED', 'DIFFERENCE', 'VALUE'].map(function (x, i) { return '<th style="padding:6px 8px;text-align:' + (i >= 2 ? 'right' : 'left') + ';font-size:12px;white-space:nowrap">' + x + '</th>'; }).join("") + '</tr></thead><tbody>' +
+      V.slice(0, S.stkVarAll ? V.length : 30).map(function (x) {
+        var td = function (v, r) { return '<td style="padding:6px 8px;border-top:1px solid #e2e8f0;' + (r ? 'text-align:right;white-space:nowrap' : '') + '">' + v + '</td>'; };
+        return '<tr>' + td(esc(dmy(x.on)) + '<div class="meta" style="font-size:12px">since ' + esc(dmy(x.prev)) + '</div>') + td(esc(x.desc) + '<div class="meta" style="font-size:12px">' + esc(x.code) + '</div>') +
+          td(esc(stkQ(x.book, x.code)), 1) + td(esc(stkQ(x.got, x.code)), 1) + td('<b style="color:' + (x.diff < 0 ? '#b91c1c' : '#b45309') + '">' + (x.diff > 0 ? '+' : '') + esc(String(x.diff)) + '</b>', 1) +
+          td(x.rate ? '<b style="color:' + (x.val < 0 ? '#b91c1c' : '#b45309') + '">' + (x.val < 0 ? '&minus;' : '+') + money(Math.abs(x.val)) + '</b>' : '<span class="meta">no rate</span>', 1) + '</tr>';
+      }).join("") + '</tbody></table></div>' + (V.length > 30 && !S.stkVarAll ? '<div class="acts"><button class="btn sm ghost" data-act="stk-var-all" style="min-height:44px">Show all ' + V.length + '</button></div>' : '') + '</div>';
+    return h;
+  }
+  function stkVarianceXlsx() {
+    var V = stkVariance(400), X = function (v) { return { v: v, s: XL.HEAD }; }, out = [];
+    out.push([{ v: "Energy World · count against the book · " + fullDate(today()), s: XL.BOLD }], []);
+    out.push(["Counted on", "Previous count", "Code", "Product", "Book", "Counted", "Difference", "Rate", "Value"].map(X));
+    V.forEach(function (x) { out.push([dmy(x.on), dmy(x.prev), x.code, x.desc, x.book, x.got, x.diff, x.rate || "", x.rate ? x.val : ""]); });
+    dlXlsx("Count_vs_book_" + today() + ".xlsx", "Count vs book", out, [12, 12, 16, 40, 10, 10, 11, 10, 12]);
+  }
+  /* Today, for the owner and accounts: lorry short/extra to settle, the count variance, the monthly count */
+  function stkTruthCard() {
+    if (!roleAny(["admin", "accounts"])) return "";
+    if (!STOCK_LOADED) { try { ensureStock(); } catch (e) { } return ""; }
+    var I = lcIssues(), todo = lcBills(20), V = stkVariance(35), CS = stkCountStats(), parts = [];
+    var stale = todo.filter(function (b) { return daysTo(b.date) <= -3; });
+    I.forEach(function (x) {
+      var lines = x.d.short.map(function (l) { return '<li><b style="color:#b91c1c">' + esc(String(l.q - l.got)) + ' short</b> &middot; ' + esc(l.name) + ' (billed ' + esc(String(l.q)) + ', came ' + esc(String(l.got)) + ')' + (l.val ? ' &middot; ' + money(l.val) : '') + '</li>'; })
+        .concat(x.d.over.map(function (l) { return '<li><b style="color:#b45309">' + (l.extra ? 'not on the bill' : esc(String(l.got - l.q)) + ' extra') + '</b> &middot; ' + esc(l.name) + (l.extra ? ' (' + esc(String(l.got)) + ' came)' : ' (billed ' + esc(String(l.q)) + ', came ' + esc(String(l.got)) + ')') + '</li>'; }));
+      var val = x.d.short.reduce(function (a, l) { return a + (l.val || 0); }, 0);
+      parts.push('<div style="border-top:1px solid #fecaca;padding:8px 0"><b>' + esc(x.supplier) + '</b> &middot; bill ' + esc(x.billNo) + ' <span class="meta" style="font-size:12px">checked by ' + esc(x.by || "the godown") + ' on ' + esc(dmy(String(x.at).slice(0, 10))) + '</span>' +
+        '<ul style="margin:4px 0 6px 18px;padding:0;font-size:13px">' + lines.join("") + '</ul>' + (val ? '<div class="meta" style="font-size:12.5px">Short by ' + money(val) + ' at the bill&rsquo;s rate.</div>' : '') +
+        '<div class="acts" style="margin-top:4px;gap:6px;flex-wrap:wrap"><button class="btn sm" data-act="lorry-settle" data-id="' + esc(x.id) + '" data-how="debit note" style="min-height:44px">Debit note raised</button>' +
+        '<button class="btn sm ghost" data-act="lorry-settle" data-id="' + esc(x.id) + '" data-how="accepted" style="min-height:44px">Accept as it is</button></div></div>');
+    });
+    var h = "";
+    if (parts.length) h += '<div class="card" style="border-color:#fca5a5;background:#fef2f2"><h3 style="margin:0">&#128666; Lorry short / extra &middot; ' + plural(parts.length, "bill") + '</h3>' + parts.join("") + '</div>';
+    var notes = [];
+    if (stale.length) notes.push('<b>' + plural(stale.length, "supplier bill") + '</b> not yet checked off a lorry by the godown (3+ days) &mdash; ' + stale.slice(0, 4).map(function (b) { return esc(lcSup(b.supplier) || b.supplier) + ' ' + esc(b.billNo); }).join(", ") + (stale.length > 4 ? '&hellip;' : ''));
+    if (V.length) { var sh = V.reduce(function (a, x) { return a + (x.val < 0 ? -x.val : 0); }, 0); notes.push('<b>' + plural(V.length, "product") + '</b> counted in the last 35 days ' + (V.length === 1 ? 'differs' : 'differ') + ' from the book' + (sh ? ' &mdash; <b style="color:#b91c1c">' + money(sh) + ' short</b>' : '') + ' <button class="btn sm ghost" data-act="stk-var-open" style="min-height:44px;margin-left:4px">See it</button>'); }
+    if (!CS.thisMon && Number(today().slice(8, 10)) >= 1) notes.push('<b>Monthly stock count:</b> nothing counted yet in ' + esc(tlMonLabel(today().slice(0, 7))) + (CS.last ? ' (last count ' + esc(dmy(CS.last)) + ')' : '') + ' <button class="btn sm ghost" data-act="stk-count-open" style="min-height:44px;margin-left:4px">Open the count</button>');
+    if (notes.length) h += '<div class="card" style="border-color:#fde68a;background:#fffbeb"><h3 style="margin:0 0 4px">Stock truth</h3>' + notes.map(function (n) { return '<div style="font-size:13px;padding:5px 0;border-top:1px solid #fde68a">' + n + '</div>'; }).join("") + '</div>';
+    return h;
+  }
   /* ---------- v6.9.204 PART D1: LANDED COST AND MARGIN ----------
      The purchase rate above is what the goods cost on the bill. Landing is what it cost to
      get them here - freight, loading, unloading, breakage. Stored as its own stock row,
@@ -55515,6 +55695,7 @@ function viewCatalogue() {
           }).join("") + '</tbody></table></div>' : '') + '</div>';
     }
     h += stkTallyCard();   /* 6.9.671 - bills waiting for the owner, codes still not Tally's */
+    if (roleAny(["admin", "accounts"])) { try { h += stkVarianceCard(); } catch (e) { console.warn("[variance]", e); } }   /* 6.9.893 */
     var mv = stockMovementByCode(), del = stockDeliveredByCode(), ret = stockReturnedByCode();
     var reo = reorderByCode(), rate = rateByCode();
     var codes = {};
@@ -60753,6 +60934,15 @@ function viewCatalogue() {
       if (!_w.length) { toast("Nothing is waiting."); return; }
       S.grn = null; S.pc = null; S.imp = { step: "tally", bills: stkTallyOpen(_w) }; S.tab = "stock"; render(); window.scrollTo(0, 0); return;
     }
+    if (act === "lorry-settle") {   /* 6.9.893 */
+      var _lid = t.getAttribute("data-id") || "", _how = t.getAttribute("data-how") || "";
+      t.disabled = true; auditFact("lorry:settle", _lid, { how: _how }).then(function () { toast(_how === "accepted" ? "Accepted as it is." : "Marked: debit note raised."); keepScroll = true; render(); });
+      keepScroll = true; render(); return;
+    }
+    if (act === "stk-var-xl") { stkVarianceXlsx(); return; }
+    if (act === "stk-var-all") { S.stkVarAll = true; keepScroll = true; render(); return; }
+    if (act === "stk-var-open") { S.tab = "stock"; S.stkView = ""; S.imp = null; S.grn = null; S.pc = null; render(); window.scrollTo(0, 0); return; }
+    if (act === "stk-count-open") { S.tab = "stock"; S.stkView = "count"; S.imp = null; S.grn = null; S.pc = null; render(); window.scrollTo(0, 0); return; }
     if (act === "sr-mon") { S.srMon = t.getAttribute("data-m") || ""; keepScroll = true; render(); return; }   /* 6.9.892 */
     if (act === "sr-all") { S.srAll = true; keepScroll = true; render(); return; }
     if (act === "sr-tick") {
