@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.874";
+  var APP_VERSION = "6.9.875";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -49193,6 +49193,32 @@ function viewCatalogue() {
     return '<div style="border:1px solid #e2e8f0;border-radius:10px;padding:4px 10px;margin-top:6px;background:#fff">' + h + '</div>';
   }
   try { document.addEventListener("input", function (e) { var t = e.target; if (!t || t.id !== "pe_q") return; S.pevQ = t.value; var b = el("pe_qres"); if (b) b.innerHTML = pevFindRes(t.getAttribute("data-eid"), t.value); }); } catch (e) { }
+  /* 6.9.875 - HIS WORDS: "show area also and option to change if require, try to arrange in single line if possible". The partner's
+     own area (Associates.area), in a small box on his row; a new area typed or picked is saved on his partner record at once (the whole
+     row, as every partner save) and every list that shows his area reads it from there. */
+  function pevAreaList() {
+    var m = {};
+    (S.data.areas || []).forEach(function (a) { if (a && a.area) m[String(a.area).trim()] = 1; });
+    assocLive().forEach(function (a) { if (a && a.area) m[String(a.area).trim()] = 1; });
+    (S.data.clients || []).forEach(function (c) { if (c && c.area) m[String(c.area).trim()] = 1; });
+    return Object.keys(m).filter(Boolean).sort(alpha);
+  }
+  function pevAreaBox(eid, name) {
+    var a = assocLive().filter(function (x) { return dkey(x.name) === dkey(name); });
+    if (a.length !== 1) return '';   /* two partners by one name: no guess */
+    var ar = String(a[0].area || "").trim();
+    return '<input class="pev-area" list="pev_areas" data-id="' + esc(a[0].id) + '" value="' + esc(ar) + '" placeholder="area" title="His area - change it here" ' +
+      'style="width:118px;min-height:32px;font-size:12px;padding:2px 6px;' + (ar ? '' : 'border-color:#fcd34d;background:#fffbeb') + '"/>';
+  }
+  try {
+    document.addEventListener("change", function (e) {
+      var t = e.target; if (!t || !t.classList || !t.classList.contains("pev-area")) return;
+      var id = t.getAttribute("data-id"), a = (S.data.associates || []).filter(function (x) { return x.id === id; })[0]; if (!a) return;
+      var v = nmTitle(t.value); if (v === String(a.area || "")) return;
+      var row = Object.assign({}, a, { area: v }); delete row._dups;
+      save("associates", row, true).then(function (r) { if (r) { a.area = v; _asLiveCache = null; t.value = v; toast(a.name + ": area " + (v || "cleared") + "."); } });
+    });
+  } catch (e) { }
   function viewPevEvent(e) {
     var m = pevMoney(e.eid), sup = pevSupport(), byN = {}; sup.forEach(function (x) { byN[dkey(x.name)] = x; });
     var sts = PEV_ST[e.type] || PEV_ST.meet, isG = e.type === "greet";
@@ -49244,7 +49270,7 @@ function viewCatalogue() {
         '<div><label style="margin-top:0">Who</label><select id="pe_owho" style="min-height:44px"><option>Company</option><option>Brand</option><option>Guest of honour</option><option>Family</option><option>Staff</option><option>Other</option></select></div>' +
         '<div><label style="margin-top:0">Mobile</label><input id="pe_omob" inputmode="numeric" placeholder="optional" style="width:130px;min-height:44px"/></div>' +
         '<button class="btn sm ghost" style="min-height:44px" data-act="pev-addother" data-id="' + esc(e.eid) + '">+ Add invitee</button></div>') +
-      (inv.length ? pevFuStrip(e, inv) : '') +
+      (inv.length ? pevFuStrip(e, inv) : '') + '<datalist id="pev_areas">' + pevAreaList().map(function (a) { return '<option value="' + esc(a) + '"></option>'; }).join("") + '</datalist>' +   /* 6.9.875 */
       (inv.length ? (function () {
         /* 6.9.869 - HIS WORDS: "arrange them executive wise, changing executive will transfer partner under that executive".
            One table per executive (as the list stands: the event's executive, else the partner's own), best supporter first inside
@@ -49263,7 +49289,7 @@ function viewCatalogue() {
           return head + pevTable([["#", "right"], ["Guest"], ["Tier"], ["Business 12 m", "right"], ["Status"], ["Executive"], ["Follow-up"], [isG ? "Gift ₹" : "Cost ₹", "right"], [""]],
         L.map(function (p, kk) { var k = start + kk;
           var i = p.i, x = p.x, mob = x.mob || "";
-          return ['<span style="color:#64748b">' + (k + 1) + '</span>', '<span style="display:inline-block;max-width:230px;white-space:normal;line-height:1.25;vertical-align:middle" title="' + esc(i.partner) + (mob ? ' \u00b7 ' + esc(mob) : '') + '"><b data-act="pev-ed" data-id="' + esc(e.eid) + '" data-n="' + esc(i.partner) + '" data-o="' + (x.other ? 1 : 0) + '" style="cursor:pointer;color:#0d766c;text-decoration:underline dotted" title="Tap to change the name">' + (function () { if (x.other) return ''; var _a = (S.data.associates || []).filter(function (a) { return dkey(a.name) === dkey(i.partner); }); var _c = _a.length === 1 ? String(_a[0].code || "") : "";   /* two partners by one name: no guess */ return _c ? '<span class="ewc">' + esc(_c) + '</span>' : ''; })() + esc(i.partner) + '</b>' + ' <span style="font-size:12px;color:#64748b">' + (x.other ? '· ' + esc(x.role || "") + ' ' : '') + (mob ? '· ' + esc(mob) : '· <span style="color:#b45309">no mobile</span>') + '</span>' + (x.other ? '' : '<div>' + partnerSitesChip(i.partner) + '</div>') + '</span>',   /* 6.9.849 sites chip; p754 - his code (PL / AR / BL) already says the role */
+          return ['<span style="color:#64748b">' + (k + 1) + '</span>', '<span style="display:inline-flex;align-items:center;gap:6px;white-space:nowrap;line-height:1.25;vertical-align:middle" title="' + esc(i.partner) + (mob ? ' \u00b7 ' + esc(mob) : '') + '"><b data-act="pev-ed" data-id="' + esc(e.eid) + '" data-n="' + esc(i.partner) + '" data-o="' + (x.other ? 1 : 0) + '" style="cursor:pointer;color:#0d766c;text-decoration:underline dotted" title="Tap to change the name">' + (function () { if (x.other) return ''; var _a = (S.data.associates || []).filter(function (a) { return dkey(a.name) === dkey(i.partner); }); var _c = _a.length === 1 ? String(_a[0].code || "") : "";   /* two partners by one name: no guess */ return _c ? '<span class="ewc">' + esc(_c) + '</span>' : ''; })() + esc(i.partner) + '</b>' + ' <span style="font-size:12px;color:#64748b">' + (x.other ? '· ' + esc(x.role || "") + ' ' : '') + (mob ? '· ' + esc(mob) : '· <span style="color:#b45309">no mobile</span>') + '</span>' + (x.other ? '' : pevAreaBox(e.eid, i.partner) + partnerSitesChip(i.partner).replace('margin-top:3px', 'margin-top:0').replace('min-height:36px', 'min-height:32px').replace('no site on the book', 'no site')) + '</span>',   /* 6.9.875 - area, and the sites chip, on the same line */   /* 6.9.849 sites chip; p754 - his code (PL / AR / BL) already says the role */
             x.other ? '<span style="display:inline-block;font-size:12px;font-weight:800;color:#3730a3;background:#e0e7ff;border-radius:6px;padding:1px 7px;white-space:nowrap">Guest</span>' : pevTierPill(x.tier), x.b12 ? money(x.b12) : '—',
             '<select class="pev-st" data-id="' + esc(e.eid) + '" data-p="' + esc(i.partner) + '" style="min-height:44px;font-size:13px;padding:4px 2px;width:96px">' + sts.map(function (s2) { return '<option' + (s2 === i.st ? ' selected' : '') + '>' + esc(s2) + '</option>'; }).join("") + '</select>',
             '<select class="pev-exec" data-id="' + esc(e.eid) + '" data-p="' + esc(i.partner) + '" style="min-height:44px;font-size:13px;padding:4px 2px;width:112px' + (i.exec ? '' : ';border-color:#fca5a5;color:#b91c1c') + '"><option value="">— nobody —</option>' +
@@ -49271,11 +49297,12 @@ function viewCatalogue() {
             (function () { var sg = pevStage(e, i); return pevStagePill(sg) +
               (i.preNote ? '<div style="font-size:12px;color:#475569;max-width:220px">Before: ' + esc(i.preNote) + ' <span style="color:#94a3b8">(' + esc(i.preBy || "") + ')</span></div>' : '') +
               (i.postNote ? '<div style="font-size:12px;color:#475569;max-width:220px">After: ' + esc(i.postNote) + ' <span style="color:#94a3b8">(' + esc(i.postBy || "") + ')</span></div>' : ''); })(),
-            '<input class="pev-cost" data-id="' + esc(e.eid) + '" data-p="' + esc(i.partner) + '" inputmode="numeric" value="' + esc(i.cost || "") + '" placeholder="0" style="width:60px;font-size:13px;text-align:right;min-height:44px;padding:4px 6px"/>' +
+            '<span style="display:inline-flex;align-items:center;gap:4px;white-space:nowrap">' +   /* 6.9.875 - cost, gift and Given on one line */
+            '<input class="pev-cost" data-id="' + esc(e.eid) + '" data-p="' + esc(i.partner) + '" inputmode="numeric" value="' + esc(i.cost || "") + '" placeholder="0" style="width:60px;font-size:13px;text-align:right;min-height:40px;padding:4px 6px"/>' +
               /* 6.9.837 - what the gift is, and whether it reached him */
-              '<input class="pev-gift" data-id="' + esc(e.eid) + '" data-p="' + esc(i.partner) + '" value="' + esc(i.gift || "") + '" placeholder="gift item" style="width:96px;font-size:12px;min-height:36px;padding:2px 6px;margin-top:3px;display:block"/>' +
-              (i.givenAt ? '<div style="font-size:12px;color:#166534;white-space:nowrap">&#10003; given ' + esc(dmy(String(i.givenAt).slice(0, 10)).slice(0, 5)) + (i.givenBy ? ' · ' + esc(i.givenBy) : '') + '</div>'
-                : '<button class="btn sm ghost" data-act="pev-given" data-id="' + esc(e.eid) + '" data-p="' + esc(i.partner) + '" style="min-height:36px;padding:2px 8px;font-size:12px;margin-top:3px">Given &#10003;</button>'),
+              '<input class="pev-gift" data-id="' + esc(e.eid) + '" data-p="' + esc(i.partner) + '" value="' + esc(i.gift || "") + '" placeholder="gift item" style="width:96px;font-size:12px;min-height:40px;padding:2px 6px"/>' +
+              (i.givenAt ? '<span style="font-size:12px;color:#166534;white-space:nowrap">&#10003; given ' + esc(dmy(String(i.givenAt).slice(0, 10)).slice(0, 5)) + (i.givenBy ? ' · ' + esc(i.givenBy) : '') + '</span>'
+                : '<button class="btn sm ghost" data-act="pev-given" data-id="' + esc(e.eid) + '" data-p="' + esc(i.partner) + '" style="min-height:40px;padding:2px 8px;font-size:12px">Given &#10003;</button>') + '</span>',
             '<div style="display:flex;gap:6px;justify-content:flex-end">' + (mob ? '<a class="btn sm ghost" title="WhatsApp him the invitation" style="min-height:44px;min-width:44px;padding:0 8px;display:inline-flex;align-items:center;justify-content:center;text-decoration:none;color:#15803d;font-weight:800" target="_blank" rel="noopener" href="https://wa.me/91' + esc(mob) + '?text=' + encodeURIComponent(pevMsg(e, i.partner)) + '">WA</a>' : '') +
             '<button class="btn sm ghost" title="Take off the list (kept in the record)" style="min-height:44px;min-width:44px;padding:0 8px;white-space:nowrap" data-act="pev-rm" data-id="' + esc(e.eid) + '" data-p="' + esc(i.partner) + '">Off</button></div>'];
         }), true);
