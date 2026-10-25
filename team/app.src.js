@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.884";
+  var APP_VERSION = "6.9.885";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -11169,14 +11169,28 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     if (bd != null && bd !== "" && Number(x.rate) > 0) return { cost: Math.round(Number(x.rate) * (1 - Number(bd) / 100)) * q, src: "brand", known: true };
     return { cost: 0, src: "unknown", known: false };
   }
+  /* 6.9.885 - a delivery linked to a site after the day (audit ch:site, newest wins) reads as if it had been */
+  function pfSiteLinks() { var m = {}; hrLatest("ch:site", function (d) { return d.chId; }).forEach(function (d) { m[d.chId] = d.siteId; }); return m; }
+  function pfMonths(period) {
+    period = period || S.pfPeriod || { kind: "month", m: S.pfMonth || ymLocal(new Date()) };
+    var m = period.m || ymLocal(new Date()), y = Number(m.slice(0, 4)), mo = Number(m.slice(5, 7)), out = [], add = function (yy, mm) { out.push(yy + "-" + (mm < 10 ? "0" : "") + mm); };
+    if (period.kind === "quarter") { var q0 = Math.floor((mo - 1) / 3) * 3 + 1; for (var i = q0; i < q0 + 3; i++) add(y, i); }
+    else if (period.kind === "fy") { var fy = mo >= 4 ? y : y - 1; for (var k = 0; k < 12; k++) { var mm = 4 + k, yy = fy; if (mm > 12) { mm -= 12; yy++; } if (yy + "-" + (mm < 10 ? "0" : "") + mm > m) break; add(yy, mm); } }
+    else if (period.kind === "12") { for (var j = 11; j >= 0; j--) { var d = new Date(y, mo - 1 - j, 1); add(d.getFullYear(), d.getMonth() + 1); } }
+    else add(y, mo);
+    var nowM = ymLocal(new Date());
+    return out.filter(function (x) { return x <= nowM; });   /* never a month that has not happened */
+  }
+  function pfPeriodLabel(period) { var ms = pfMonths(period); return ms.length === 1 ? fullMonth(ms[0]) : fullMonth(ms[0]) + " – " + fullMonth(ms[ms.length - 1]); }
   function pfMonthLines(month) {
-    var rates = pfRates(), costs = pfCosts(), set = pfSet(), out = [];
+    var months = Array.isArray(month) ? month : [month], rates = pfRates(), costs = pfCosts(), set = pfSet(), links = pfSiteLinks(), out = [];
     (S.data.challans || []).forEach(function (c) {
       if (!c || String(c.status || "") === "Cancelled" || isCancelled("challans", c.id)) return;
-      if (localDay(c.createdAt).slice(0, 7) !== month) return;
-      var cl = dupMainName(c.customerName), lines = pricedLines(c, c.customerName), st = c.siteId ? siteById(c.siteId) : null;
+      if (months.indexOf(localDay(c.createdAt).slice(0, 7)) < 0) return;
+      var sid = links[c.id] || c.siteId || "";
+      var cl = dupMainName(c.customerName), lines = pricedLines(c, c.customerName), st = sid ? siteById(sid) : null;
       var gross = lines.reduce(function (a, x) { return a + x.amt; }, 0), off = hisabExtra(c), net = challanNet(c);
-      var row = { c: c, client: cl, site: st ? (st.name || st.client) : (c.siteName || c.site || ""), siteId: c.siteId || "", exec: c.createdBy || "", sell: net, freightIn: chFreight(c), off: off,
+      var row = { c: c, client: cl, site: st ? (st.name || st.client) : (sid ? "" : (c.siteName || c.site || "")), siteId: sid, exec: c.createdBy || "", sell: net, freightIn: chFreight(c), off: off,
         inc: Number(c.commissionAmt) || 0, partner: c.associate || "", cost: 0, unknownSell: 0, lines: [] };
       lines.forEach(function (x) {
         var k = pfLineCost(x, rates, costs, set), share = gross > 0 ? x.amt / gross : 0;
@@ -11187,25 +11201,30 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     });
     return out;
   }
-  function pfTransport(month) {
-    /* driver payments of the month, spread over that driver's challans of the month (equal share per challan) */
-    var pays = payouts().filter(function (p) { return localDay(p.createdAt).slice(0, 7) === month; }), byD = {};
-    pays.forEach(function (p) { var k = String(p.driver || "").trim().toLowerCase(); byD[k] = (byD[k] || 0) + dpAmt(p); });
-    var chByD = {}; (S.data.challans || []).forEach(function (c) { if (String(c.status || "") === "Cancelled" || localDay(c.createdAt).slice(0, 7) !== month) return; var k = String(c.driver || "").trim().toLowerCase(); if (!k) return; (chByD[k] = chByD[k] || []).push(c.id); });
-    var per = {}; Object.keys(byD).forEach(function (k) { var n = (chByD[k] || []).length; (chByD[k] || []).forEach(function (id) { per[id] = byD[k] / n; }); });
-    var total = pays.reduce(function (a, p) { return a + dpAmt(p); }, 0), spread = Object.keys(per).reduce(function (a, k) { return a + per[k]; }, 0);
-    return { per: per, total: total, unspread: total - spread };
+  /* 6.9.885 - TRANSPORT IS THE FARE ON THE CHALLAN. Each delivery carries the driver's fare (freight, the figure the
+     Freight screen proves and pays); whether the client was charged it is freightTo. So the cost of carrying a delivery
+     is known exactly per challan on the day it goes - no spreading of payouts. Payouts of the period are shown beside
+     it for information (what has actually been handed to drivers). */
+  function pfTransport(months) {
+    var per = {}, pays = payouts().filter(function (p) { return months.indexOf(localDay(p.createdAt).slice(0, 7)) >= 0; });
+    (S.data.challans || []).forEach(function (c) { if (!c || String(c.status || "") === "Cancelled" || months.indexOf(localDay(c.createdAt).slice(0, 7)) < 0) return; if (frAmt(c) > 0 && (c.driverId || c.driver)) per[c.id] = frAmt(c); });
+    return { per: per, paid: pays.reduce(function (a, p) { return a + dpAmt(p); }, 0), unspread: 0 };
   }
-  function pfOverhead(month) {
-    var es = hrEmps(true).filter(function (e) { return hrActive(e, month); }), ctc = es.reduce(function (a, e) { return a + hrCalc(e, month).ctc; }, 0);
-    var exp = hrExps(month).reduce(function (a, x) { return a + (Number(x.amount) || 0); }, 0);
-    return { salary: ctc, office: exp, total: ctc + exp };
+  function pfOverhead(months) {
+    var o = { salary: 0, office: 0, total: 0 };
+    (Array.isArray(months) ? months : [months]).forEach(function (month) {
+      var es = hrEmps(true).filter(function (e) { return hrActive(e, month); });
+      o.salary += es.reduce(function (a, e) { return a + hrCalc(e, month).ctc; }, 0);
+      o.office += hrExps(month).reduce(function (a, x) { return a + (Number(x.amount) || 0); }, 0);
+    });
+    o.total = o.salary + o.office; return o;
   }
-  function pfCollected(client, month) {
-    return (S.data.payments || []).filter(function (p) { return !isCancelled("payments", p.id) && dupMainName(p.client) === client && localDay(p.date || p.createdAt).slice(0, 7) === month; }).reduce(function (a, p) { return a + (Number(p.amount) || 0); }, 0);
+  function pfCollected(client, months) {
+    return (S.data.payments || []).filter(function (p) { return !isCancelled("payments", p.id) && dupMainName(p.client) === client && months.indexOf(localDay(p.date || p.createdAt).slice(0, 7)) >= 0; }).reduce(function (a, p) { return a + (Number(p.amount) || 0); }, 0);
   }
   function pfGroup(month, by) {
-    var rows = pfMonthLines(month), tr = pfTransport(month), oh = pfOverhead(month), g = {}, totSell = rows.reduce(function (a, r) { return a + Math.max(0, r.sell); }, 0);
+    var months = Array.isArray(month) ? month : [month];
+    var rows = pfMonthLines(months), tr = pfTransport(months), oh = pfOverhead(months), g = {}, totSell = rows.reduce(function (a, r) { return a + Math.max(0, r.sell); }, 0);
     rows.forEach(function (r) {
       var k = by === "site" ? (r.site ? r.site + " — " + r.client : "") : r.client; if (!k) return;
       var o = g[k] || (g[k] = { key: k, client: r.client, site: r.site, execs: {}, partners: {}, n: 0, sell: 0, cost: 0, unknown: 0, inc: 0, freightIn: 0, transport: 0, off: 0, lines: 0 });
@@ -11214,34 +11233,65 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     });
     var out = Object.keys(g).map(function (k) {
       var o = g[k]; o.goodsMargin = o.sell - o.freightIn - o.cost; o.share = totSell > 0 ? Math.max(0, o.sell) / totSell : 0; o.overhead = Math.round(oh.total * o.share);
-      o.net = o.goodsMargin + o.freightIn - o.transport - o.inc - o.overhead; o.collected = by === "site" ? null : pfCollected(o.client, month);
+      o.net = o.goodsMargin + o.freightIn - o.transport - o.inc - o.overhead; o.collected = by === "site" ? null : pfCollected(o.client, months);
       o.pct = o.sell > 0 ? (o.sell - o.freightIn - o.cost) / (o.sell - o.freightIn) * 100 : 0; return o;
     }).sort(function (a, b) { return b.sell - a.sell; });
     return { rows: out, tr: tr, oh: oh, totSell: totSell, all: rows };
   }
   function viewProfit() {
     if (!pfOk()) return '<div class="empty">Profit is the owner’s screen.</div>';
-    var t = S.pfTab || "clients", month = S.pfMonth || ymLocal(new Date()), st = pfStock();
+    var t = S.pfTab || "clients", month = S.pfMonth || ymLocal(new Date()), st = pfStock(), per = S.pfPeriod || { kind: "month", m: month }, months = pfMonths(per);
     if (S.dp == null && !S.dpBusy) { S.dpBusy = 1; dpPull().then(function () { S.dpBusy = 0; keepScroll = true; renderBg(); }); }
     var tb = function (k, l) { return '<button class="btn sm ' + (t === k ? '' : 'ghost') + '" style="min-height:44px" data-act="pf-tab" data-k="' + k + '">' + l + '</button>'; };
     var h = '<div class="card"><h2 style="margin:0 0 4px">Profit</h2><div class="meta" style="font-size:13px">Owner only. Counted on delivery; collection shown beside it. Cost = latest purchase bill rate, else list rate less the brand’s purchase discount, else marked unknown — never guessed.</div>' +
       '<div class="acts" style="gap:6px;flex-wrap:wrap;margin-top:6px">' + tb("clients", "Client wise") + tb("sites", "Site wise") + tb("items", "Items & purchases") + tb("costs", "Costs to enter") + '</div>' +
       '<div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap"><label style="margin:0">Month</label><input type="month" id="pf_month" value="' + esc(month) + '" style="min-height:44px;font-size:15px;width:170px"/>' +
+      [["month", "This month"], ["quarter", "Quarter"], ["fy", "FY to date"], ["12", "Last 12 months"]].map(function (o) { return '<button class="chip' + (per.kind === o[0] ? ' on' : '') + '" style="min-height:44px" data-act="pf-period" data-k="' + o[0] + '">' + o[1] + '</button>'; }).join("") +   /* 6.9.885 */
+      (t === "clients" || t === "sites" ? '<button class="btn sm ghost" style="min-height:44px" data-act="pf-pdf" data-k="' + (t === "sites" ? "site" : "client") + '">&#8681; PDF for the CA</button>' : '') +
       (!st ? '<span class="meta" style="font-size:12.5px">reading purchase rates…</span>' : st.err ? '<span style="color:#b91c1c;font-size:12.5px">purchase rates could not be read — costs from bills are missing</span>' : '') + '</div></div>';
-    if (t === "costs") return h + pfCostsHtml(month);
-    if (t === "items") return h + pfItemsHtml(month);
-    return h + pfSheetHtml(month, t === "sites" ? "site" : "client");
+    if (t === "costs") return h + pfCostsHtml(months);
+    if (t === "items") return h + pfItemsHtml(months);
+    return h + pfSheetHtml(months, t === "sites" ? "site" : "client") + (t === "sites" ? pfUnlinkedHtml(months) : '');
+  }
+  /* 6.9.885 - deliveries of the period with no site: pick one (the client's sites first), filed as audit ch:site */
+  function pfUnlinkedHtml(months) {
+    var links = pfSiteLinks(), rows = (S.data.challans || []).filter(function (c) { return c && String(c.status || "") !== "Cancelled" && !isCancelled("challans", c.id) && months.indexOf(localDay(c.createdAt).slice(0, 7)) >= 0 && !(links[c.id] || c.siteId); })
+      .sort(function (a, b) { return String(b.createdAt).localeCompare(String(a.createdAt)); });
+    if (!rows.length) return '<div class="card"><div class="empty" style="color:#166534">Every delivery of this period is linked to a site.</div></div>';
+    var sites = (S.data.sites || []).filter(function (x) { return x && (x.name || x.client); });
+    return '<div class="card"><h3 style="margin:0 0 4px">Deliveries not yet linked to a site — ' + rows.length + '</h3><div class="meta" style="font-size:12.5px">Pick the site and it moves into the sheet above. The challan itself is not changed; the link is a new line in the record.</div>' +
+      pevTable([["Delivery"], ["Client"], ["Value", "right"], ["Site"]], rows.slice(0, 60).map(function (c) {
+        var cl = dupMainName(c.customerName), mine = sites.filter(function (x) { return dupMainName(x.client) === cl; }), others = sites.filter(function (x) { return dupMainName(x.client) !== cl; });
+        var opt = function (x) { return '<option value="' + esc(x.id) + '">' + esc(x.name || x.client) + (x.client && x.name ? ' — ' + esc(x.client) : '') + '</option>'; };
+        return [esc(c.challanNo || "") + '<div style="font-size:12px;color:#64748b">' + esc(dmy(localDay(c.createdAt))) + ' · ' + esc(c.createdBy || "") + '</div>', esc(cl), money(Math.round(chValue(c))),
+          '<select class="pf-site" data-ch="' + esc(c.id) + '" style="min-height:40px;font-size:13px;max-width:260px"><option value="">— pick —</option>' + (mine.length ? '<optgroup label="His sites">' + mine.map(opt).join("") + '</optgroup>' : '') + '<optgroup label="Other sites">' + others.slice(0, 300).map(opt).join("") + '</optgroup></select>'];
+      })) + (rows.length > 60 ? '<div class="meta" style="font-size:12px">Showing 60 of ' + rows.length + '.</div>' : '') + '</div>';
+  }
+  function pfPdf(by) {
+    var months = pfMonths(), G = pfGroup(months, by), lbl = pfPeriodLabel();
+    if (!G.rows.length) { toast("Nothing to print for " + lbl + "."); return; }
+    var T = { sell: 0, cost: 0, gm: 0, inc: 0, tr: 0, oh: 0, net: 0, col: 0 };
+    var rows = [rsHead([by === "site" ? "Site" : "Client", "Sold", "Cost of goods", "Goods margin", "Margin %", "Incentive", "Transport", "Overhead share", "Net", by === "site" ? "Deliveries" : "Collected"])];
+    G.rows.forEach(function (o) { T.sell += o.sell; T.cost += o.cost; T.gm += o.goodsMargin; T.inc += o.inc; T.tr += o.transport; T.oh += o.overhead; T.net += o.net; T.col += o.collected || 0;
+      rows.push([o.key, { v: Math.round(o.sell), s: XL.MONEY }, { v: Math.round(o.cost), s: XL.MONEY }, { v: Math.round(o.goodsMargin), s: XL.MONEY }, (o.unknown >= o.sell - o.freightIn ? "-" : Math.round(o.pct) + "%"), { v: Math.round(o.inc), s: XL.MONEY }, { v: Math.round(o.transport), s: XL.MONEY }, { v: o.overhead, s: XL.MONEY }, { v: Math.round(o.net), s: XL.MONEY }, by === "site" ? String(o.n) : { v: Math.round(o.collected || 0), s: XL.MONEY }]); });
+    rows.push([{ v: "Total", s: XL.BOLD }, { v: Math.round(T.sell), s: XL.MONEY }, { v: Math.round(T.cost), s: XL.MONEY }, { v: Math.round(T.gm), s: XL.MONEY }, (T.sell > 0 ? Math.round(T.gm / Math.max(1, T.sell) * 100) + "%" : "-"), { v: Math.round(T.inc), s: XL.MONEY }, { v: Math.round(T.tr), s: XL.MONEY }, { v: Math.round(T.oh), s: XL.MONEY }, { v: Math.round(T.net), s: XL.MONEY }, by === "site" ? "" : { v: Math.round(T.col), s: XL.MONEY }]);
+    rows.push([], [{ v: "Cost of goods = latest purchase bill rate, else list rate less the brand's purchase discount; items with no cost count as 0 (margin shown as -).", s: XL.PLAIN }],
+      [{ v: "Overhead = salaries + office expenses of the period, spread by share of sales. Transport = the driver's fare on each delivery.", s: XL.PLAIN }]);
+    var name = "Energy World profit " + (by === "site" ? "site" : "client") + " wise " + lbl.replace(/[^A-Za-z0-9]+/g, "_") + ".pdf";
+    try { pdfOut(rsRowsPdf("Profit, " + (by === "site" ? "site" : "client") + " wise – " + lbl, rows, [30, 12, 12, 12, 8, 10, 10, 12, 12, 12]), name); toast("Downloaded " + name + "."); }
+    catch (e) { toast("Could not make the PDF: " + ((e && e.message) || "error")); }
   }
   function pfSheetHtml(month, by) {
-    var G = pfGroup(month, by), T = { sell: 0, cost: 0, unknown: 0, inc: 0, fr: 0, tr: 0, off: 0, oh: 0, net: 0, col: 0 };
+    var months = Array.isArray(month) ? month : [month], lbl = pfPeriodLabel();
+    var G = pfGroup(months, by), T = { sell: 0, cost: 0, unknown: 0, inc: 0, fr: 0, tr: 0, off: 0, oh: 0, net: 0, col: 0 };
     G.rows.forEach(function (o) { T.sell += o.sell; T.cost += o.cost; T.unknown += o.unknown; T.inc += o.inc; T.fr += o.freightIn; T.tr += o.transport; T.off += o.off; T.oh += o.overhead; T.net += o.net; T.col += o.collected || 0; });
-    if (!G.all.length) return '<div class="card"><div class="empty">No delivery in ' + esc(fullMonth(month)) + '.</div></div>';
-    if (by === "site" && !G.rows.length) return '<div class="card"><div class="empty">No delivery of ' + esc(fullMonth(month)) + ' is linked to a site yet. New challans on a builder ask which site; older ones can be linked from the challan.</div></div>';
+    if (!G.all.length) return '<div class="card"><div class="empty">No delivery in ' + esc(lbl) + '.</div></div>';
+    if (by === "site" && !G.rows.length) return '<div class="card"><div class="empty">No delivery of ' + esc(lbl) + ' is linked to a site yet — link them below.</div></div>';
     var goods = T.sell - T.fr - T.cost, unk = T.sell > 0 ? Math.round(T.unknown / T.sell * 100) : 0;
-    var h = '<div class="card"><h3 style="margin:0">' + esc(fullMonth(month)) + ' — ' + (by === "site" ? plural(G.rows.length, "site") : plural(G.rows.length, "client")) + '</h3>' +
+    var h = '<div class="card"><h3 style="margin:0">' + esc(lbl) + ' — ' + (by === "site" ? plural(G.rows.length, "site") : plural(G.rows.length, "client")) + '</h3>' +
       '<div class="meta" style="font-size:13px;margin:4px 0;line-height:1.7">Sold <b>' + money(T.sell) + '</b> (incl. freight charged ' + money(T.fr) + ') · cost of goods <b>' + money(T.cost) + '</b> → goods margin <b style="color:' + (goods >= 0 ? '#166534' : '#b91c1c') + '">' + money(goods) + '</b>' + (T.sell - T.fr > 0 ? ' (' + Math.round(goods / (T.sell - T.fr) * 100) + '%)' : '') +
       (unk ? ' · <span style="color:#b45309"><b>' + unk + '% of sales has no cost yet</b> — see Costs to enter</span>' : '') + '<br>' +
-      'Less partner incentive ' + money(T.inc) + ' · transport ' + money(T.tr) + (G.tr.unspread > 0 ? ' (+ ' + money(G.tr.unspread) + ' driver payments not tied to a delivery)' : '') + ' · salaries & office ' + money(G.oh.total) + ' (spread by sales) → <b style="font-size:15px;color:' + (T.net >= 0 ? '#166534' : '#b91c1c') + '">net ' + money(T.net) + '</b>' +
+      'Less partner incentive ' + money(T.inc) + ' · transport ' + money(T.tr) + ' (drivers’ fares; actually paid to drivers in the period ' + money(G.tr.paid) + ')' + ' · salaries & office ' + money(G.oh.total) + ' (spread by sales) → <b style="font-size:15px;color:' + (T.net >= 0 ? '#166534' : '#b91c1c') + '">net ' + money(T.net) + '</b>' +
       (by === "client" ? ' · collected this month ' + money(T.col) : '') + '</div>';
     var cols = [{ k: "n", t: by === "site" ? "SITE" : "CLIENT" }, { k: "sell", t: "SOLD", r: 1, n: 1 }, { k: "cost", t: "COST OF GOODS", r: 1, n: 1 }, { k: "gm", t: "GOODS MARGIN", r: 1, n: 1 }, { k: "pct", t: "MARGIN %", r: 1, n: 1 },
       { k: "inc", t: "INCENTIVE", r: 1, n: 1 }, { k: "tr", t: "TRANSPORT", r: 1, n: 1 }, { k: "off", t: "CONCESSION", r: 1, n: 1 }, { k: "oh", t: "OVERHEAD SHARE", r: 1, n: 1 }, { k: "net", t: "NET", r: 1, n: 1 }].concat(by === "client" ? [{ k: "col", t: "COLLECTED", r: 1, n: 1 }] : []).concat([{ k: "who", t: "EXECUTIVE / PARTNER" }]);
@@ -11252,46 +11302,54 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         gm: '<b style="color:' + (v.gm >= 0 ? '#166534' : '#b91c1c') + '">' + money(v.gm) + '</b>', pct: (o.unknown >= o.sell - o.freightIn ? '—' : v.pct + '%'), inc: v.inc ? money(v.inc) : '—', tr: v.tr ? money(v.tr) : '—', off: v.off ? money(v.off) : '—', oh: money(v.oh),
         net: '<b style="color:' + (v.net >= 0 ? '#166534' : '#b91c1c') + '">' + money(v.net) + '</b>', col: money(v.col), who: esc(v.who) } };
     });
-    return h + xlTable("pf-" + by + "-" + month, cols, rows, "costs, overhead and net") +
-      '<div class="meta" style="font-size:12px;margin-top:6px">Goods margin = sold (ex freight) − cost of goods. Overhead share = (salaries + office expenses of the month) × this ' + by + '’s share of sales. Transport = driver payments of the month spread over each driver’s deliveries. Concession = extra discount written on the challan (already off the sold figure).</div></div>';
+    return h + xlTable("pf-" + by + "-" + months.join("_"), cols, rows, "costs, overhead and net") +
+      '<div class="meta" style="font-size:12px;margin-top:6px">Goods margin = sold (ex freight) − cost of goods. Overhead share = (salaries + office expenses of the period) × this ' + by + '’s share of sales. Transport = the driver’s fare on each delivery. Concession = extra discount written on the challan (already off the sold figure).</div></div>';
   }
   function pfItemsHtml(month) {
-    var bills = pfBills(month), bt = bills.reduce(function (a, b) { return a + b.amount; }, 0), byS = {};
+    var months = Array.isArray(month) ? month : [month], lbl = pfPeriodLabel();
+    var bills = [].concat.apply([], months.map(pfBills)), bt = bills.reduce(function (a, b) { return a + b.amount; }, 0), byS = {};
     bills.forEach(function (b) { byS[b.supplier] = (byS[b.supplier] || 0) + b.amount; });
-    var h = '<div class="card"><h3 style="margin:0">Purchases in ' + esc(fullMonth(month)) + ' — ' + money(bt) + '</h3>' +
+    var h = '<div class="card"><h3 style="margin:0">Purchases in ' + esc(lbl) + ' — ' + money(bt) + '</h3>' +
       (bills.length ? '<div class="meta" style="font-size:13px;margin:4px 0">' + Object.keys(byS).sort(function (a, b) { return byS[b] - byS[a]; }).map(function (k) { return esc(k) + ' ' + money(byS[k]); }).join(" · ") + '</div>' +
         pevTable([["Date"], ["Supplier"], ["Bill"], ["Amount", "right"]], bills.sort(function (a, b) { return a.date.localeCompare(b.date); }).map(function (b) { return [esc(dmy(b.date)), esc(b.supplier), esc(b.ref.split("/").slice(1).join("/").trim() || "—"), money(b.amount)]; })) : '<div class="empty">No purchase bill entered for this month (Stock › bills).</div>') + '</div>';
     /* what went out: by item, with cost where known */
-    var G = pfGroup(month, "client"), it = {};
+    var G = pfGroup(months, "client"), it = {};
     G.all.forEach(function (r) { r.lines.forEach(function (l) { if (!l.code && !l.desc) return; var k = String(l.code || l.desc); var o = it[k] || (it[k] = { code: l.code, desc: l.desc, brand: l.brand, qty: 0, sell: 0, cost: 0, src: l.src }); o.qty += Number(l.qty) || 0; o.sell += l.sell; o.cost += l.cost; }); });
     var items = Object.keys(it).map(function (k) { return it[k]; }).sort(function (a, b) { return b.sell - a.sell; });
     var cols = [{ k: "d", t: "ITEM" }, { k: "b", t: "BRAND" }, { k: "q", t: "QTY", r: 1, n: 1 }, { k: "s", t: "SOLD", r: 1, n: 1 }, { k: "c", t: "COST", r: 1, n: 1 }, { k: "m", t: "MARGIN", r: 1, n: 1 }, { k: "src", t: "COST FROM" }];
     var SRC = { typed: "typed", bill: "purchase bill", brand: "brand discount", unknown: "— unknown", job: "labour", none: "" };
     var rows = items.map(function (o) { var v = { d: (o.code ? o.code + " " : "") + (o.desc || ""), b: o.brand || "", q: Math.round(o.qty * 100) / 100, s: Math.round(o.sell), c: Math.round(o.cost), m: Math.round(o.sell - o.cost), src: SRC[o.src] || o.src };
       return { v: v, cells: { d: esc(v.d), b: esc(v.b), q: String(v.q), s: money(v.s), c: o.src === "unknown" ? '<span style="color:#b45309">?</span>' : money(v.c), m: o.src === "unknown" ? '—' : money(v.m), src: esc(v.src) } }; });
-    return h + '<div class="card"><h3 style="margin:0 0 4px">Items delivered in ' + esc(fullMonth(month)) + ' — ' + plural(items.length, "item") + '</h3>' + xlTable("pf-items-" + month, cols, rows, "cost and margin") + '</div>';
+    return h + '<div class="card"><h3 style="margin:0 0 4px">Items delivered in ' + esc(lbl) + ' — ' + plural(items.length, "item") + '</h3>' + xlTable("pf-items-" + months.join("_"), cols, rows, "cost and margin") + '</div>';
   }
   function pfCostsHtml(month) {
-    var set = pfSet(), costs = pfCosts(), rates = pfRates(), G = pfGroup(month, "client");
+    var months = Array.isArray(month) ? month : [month];
+    var set = pfSet(), costs = pfCosts(), rates = pfRates(), G = pfGroup(months, "client");
     /* brands sold this month: discount box each; products with no cost: top by value, a cost box each */
     var brands = {}, miss = {};
     G.all.forEach(function (r) { r.lines.forEach(function (l) { if (l.job) return; var b = String(l.brand || "").trim(); if (b) brands[b] = (brands[b] || 0) + l.sell; if (l.src === "unknown") { var k = String(l.code || l.desc); var o = miss[k] || (miss[k] = { code: l.code, desc: l.desc, brand: b, sell: 0, qty: 0, rate: l.rate }); o.sell += l.sell; o.qty += Number(l.qty) || 0; } }); });
     var bl = Object.keys(brands).sort(function (a, b) { return brands[b] - brands[a]; }), ml = Object.keys(miss).map(function (k) { return miss[k]; }).sort(function (a, b) { return b.sell - a.sell; }).slice(0, 40);
     var h = '<div class="card"><h3 style="margin:0 0 4px">Brand purchase discount</h3><div class="meta" style="font-size:12.5px">For a product with no purchase bill yet: cost = list rate less this %. Type what the brand gives you off its list. Leave blank to keep that brand’s cost unknown.</div>' +
-      (bl.length ? pevTable([["Brand"], ["Sold this month", "right"], ["Our discount off list %"], ["Products with a bill rate", "right"]], bl.map(function (b) {
+      (bl.length ? pevTable([["Brand"], ["Sold in the period", "right"], ["Our discount off list %"], ["Products with a bill rate", "right"]], bl.map(function (b) {
         var n = 0, tot = 0; G.all.forEach(function (r) { r.lines.forEach(function (l) { if (String(l.brand || "") === b) { tot++; if (rates[String(l.code)] || costs[String(l.code)]) n++; } }); });
         return ['<b>' + esc(b) + '</b>', money(Math.round(brands[b])), '<input class="pf-bd" data-b="' + esc(b) + '" inputmode="decimal" value="' + esc(set.brandDisc[b] != null ? String(set.brandDisc[b]) : "") + '" placeholder="e.g. 35" style="width:90px;min-height:40px;text-align:right"/>', n + ' of ' + tot + ' lines'];
       })) : '<div class="empty">No sale this month.</div>') + '</div>';
     h += '<div class="card"><h3 style="margin:0 0 4px">Products with no cost — ' + plural(ml.length, "item") + (ml.length === 40 ? ' (top 40 by value)' : '') + '</h3><div class="meta" style="font-size:12.5px">Type the purchase price per unit here (it is kept until a bill rate arrives, which then wins), or set the brand discount above. Every bill Gautam enters under Stock adds rates by itself.</div>' +
       (ml.length ? pevTable([["Item"], ["Brand"], ["Sold", "right"], ["List rate", "right"], ["Cost per unit Rs"]], ml.map(function (o) {
         return [esc((o.code ? o.code + " " : "") + (o.desc || "")), esc(o.brand), money(Math.round(o.sell)), money(Number(o.rate) || 0), '<input class="pf-cost" data-code="' + esc(String(o.code || o.desc)) + '" inputmode="numeric" placeholder="per unit" style="width:100px;min-height:40px;text-align:right"/>'];
-      })) : '<div class="empty" style="color:#166534">Every item sold this month has a cost. Nothing to enter.</div>') + '</div>';
+      })) : '<div class="empty" style="color:#166534">Every item sold in the period has a cost. Nothing to enter.</div>') + '</div>';
     return h;
   }
   try {
     document.addEventListener("change", function (ev) {
       var t = ev.target; if (!t || !t.classList || !pfOk()) return;
-      if (t.id === "pf_month") { S.pfMonth = t.value || ymLocal(new Date()); keepScroll = true; render(); return; }
+      if (t.id === "pf_month") { S.pfMonth = t.value || ymLocal(new Date()); S.pfPeriod = Object.assign({}, S.pfPeriod || { kind: "month" }, { m: S.pfMonth }); keepScroll = true; render(); return; }
+      if (t.classList.contains("pf-site")) {   /* 6.9.885 - link a delivery to a site */
+        var chId = t.getAttribute("data-ch"), sid = t.value; if (!sid) return;
+        var ch = (S.data.challans || []).filter(function (c) { return c.id === chId; })[0], stx = siteById(sid); if (!ch || !stx) return;
+        auditFact("ch:site", String(ch.challanNo || chId), { chId: chId, siteId: sid, siteName: stx.name || stx.client, client: ch.customerName }).then(function () { keepScroll = true; render(); toast((ch.challanNo || "Delivery") + " → " + (stx.name || stx.client) + "."); });
+        return;
+      }
       if (t.classList.contains("pf-bd")) {
         var set = pfSet(), b = t.getAttribute("data-b"), v = String(t.value || "").trim();
         if (v === "") delete set.brandDisc[b]; else { var n = Number(v.replace(/[^\d.]/g, "")); if (!(n >= 0 && n < 100)) { toast("A discount is 0 to 99."); return; } set.brandDisc[b] = n; }
@@ -66582,6 +66640,8 @@ function viewCatalogue() {
     }
     if (/^hr-/.test(act || "")) { hrDoAct(act, t); return; }   /* 6.9.883 */
     if (act === "pf-tab") { S.pfTab = t.getAttribute("data-k"); keepScroll = true; render(); return; }   /* 6.9.884 */
+    if (act === "pf-period") { S.pfPeriod = { kind: t.getAttribute("data-k"), m: S.pfMonth || ymLocal(new Date()) }; keepScroll = true; render(); return; }   /* 6.9.885 */
+    if (act === "pf-pdf") { pfPdf(t.getAttribute("data-k") || "client"); return; }
     if (act === "srvh-refresh") { S.srvH = null; keepScroll = true; render(); return; }   /* 6.9.882 */
     if (act === "ai-do" || act === "ai-skip") {   /* 6.9.880 - a proposed action: his tap, the CRM's own save */
       var _pi = Number(t.getAttribute("data-i")), _pp = ((S.aiAsk || {}).props || [])[_pi]; if (!_pp) return;
