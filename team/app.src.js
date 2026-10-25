@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.877";
+  var APP_VERSION = "6.9.878";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -48730,11 +48730,18 @@ function viewCatalogue() {
     var c = { Platinum: ["#1e293b", "#e2e8f0"], Gold: ["#92400e", "#fde68a"], Silver: ["#334155", "#e5e7eb"], Base: ["#64748b", "#f1f5f9"] }[t] || ["#64748b", "#f1f5f9"];
     return '<span style="display:inline-block;font-size:12px;font-weight:800;color:' + c[0] + ';background:' + c[1] + ';border-radius:6px;padding:1px 7px;white-space:nowrap">' + esc(t) + '</span>';
   }
-  function pevTable(cols, rows, one) {   /* p754 - one: every cell on one line, 12.5px */
-    if (one) return pevTable(cols, rows).replace('font-size:13px">', 'font-size:12.5px">').replace(/vertical-align:middle">/g, 'vertical-align:middle;white-space:nowrap">').replace(/padding:5px 8px;/g, 'padding:3px 4px;').replace(/padding:6px 8px;/g, 'padding:6px 4px;');
+  /* 6.9.878 - HIS WORDS: "scrolling right should freeze arch name, rest all scroll". freeze = how many leading columns stay put
+     while the table scrolls sideways inside its own box; the first is the narrow serial column (34px), the next starts after it. */
+  function pevFz(j, freeze, th) {
+    if (!freeze || j >= freeze) return '';
+    return 'position:sticky;left:' + (j ? 34 : 0) + 'px;z-index:' + (th ? 3 : 2) + ';background:' + (th ? '#0b3b36' : 'inherit') + ';' +
+      (j === 0 ? 'min-width:34px;width:34px;max-width:34px;box-sizing:border-box;' : '') + (j === freeze - 1 ? 'box-shadow:2px 0 0 #cbd5e1;' : '');
+  }
+  function pevTable(cols, rows, one, freeze) {   /* p754 - one: every cell on one line, 12.5px */
+    if (one) return pevTable(cols, rows, false, freeze).replace('font-size:13px">', 'font-size:12.5px">').replace(/vertical-align:middle">/g, 'vertical-align:middle;white-space:nowrap">').replace(/padding:5px 8px;/g, 'padding:3px 4px;').replace(/padding:6px 8px;/g, 'padding:6px 4px;');
     return '<div style="overflow-x:auto;border:1px solid #e2e8f0;border-radius:10px;margin-top:8px"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="background:#0b3b36;color:#fff">' +
-      cols.map(function (c) { return '<th style="padding:6px 8px;text-align:' + (c[1] || "left") + ';white-space:nowrap">' + c[0] + '</th>'; }).join("") + '</tr></thead><tbody>' +
-      rows.map(function (r, i) { return '<tr style="border-top:1px solid #eef2f7;background:' + (i % 2 ? '#f8fafc' : '#fff') + '">' + r.map(function (v, j) { return '<td style="padding:5px 8px;text-align:' + (cols[j][1] || "left") + ';vertical-align:middle">' + v + '</td>'; }).join("") + '</tr>'; }).join("") +
+      cols.map(function (c, j) { return '<th style="' + pevFz(j, freeze, 1) + 'padding:6px 8px;text-align:' + (c[1] || "left") + ';white-space:nowrap">' + c[0] + '</th>'; }).join("") + '</tr></thead><tbody>' +
+      rows.map(function (r, i) { return '<tr style="border-top:1px solid #eef2f7;background:' + (i % 2 ? '#f8fafc' : '#fff') + '">' + r.map(function (v, j) { return '<td style="' + pevFz(j, freeze, 0) + 'padding:5px 8px;text-align:' + (cols[j][1] || "left") + ';vertical-align:middle">' + v + '</td>'; }).join("") + '</tr>'; }).join("") +
       '</tbody></table></div>';
   }
   /* ===================== STATEMENTS  (6.9.733, 11 Oct 2026) =====================
@@ -49306,10 +49313,10 @@ function viewCatalogue() {
           var head = '<div style="margin-top:14px;padding:8px 11px;border-radius:10px;background:' + (g.charAt(0) === "\u0001" ? '#fef2f2;color:#b91c1c' : g.charAt(0) === "\u0002" ? '#eef2ff;color:#3730a3' : '#ecfdf5;color:#065f46') + ';display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center">' +
             '<b style="font-size:15px">' + esc(nm) + '</b><span style="font-size:13px">' + plural(L.length, "guest") + (cameN ? ' &middot; ' + cameN + ' confirmed' : '') + (biz ? ' &middot; business 12 m ' + money(biz) : '') + '</span></div>';
           var start = _k0; _k0 += L.length;
-          return head + pevTable([["#", "right"], ["Guest"], ["Tier"], ["Business 12 m", "right"], ["Status"], ["Executive"], ["Follow-up"], [isG ? "Gift ₹" : "Cost ₹", "right"], [""]],
+          return head + pevTable([["#", "right"], ["Guest"], ["Mobile · city · sites"], ["Tier"], ["Business 12 m", "right"], ["Status"], ["Executive"], ["Follow-up"], [isG ? "Gift ₹" : "Cost ₹", "right"], [""]],
         L.map(function (p, kk) { var k = start + kk;
           var i = p.i, x = p.x, mob = x.mob || "";
-          return ['<span style="color:#64748b">' + (k + 1) + '</span>', '<span style="display:inline-flex;align-items:center;gap:6px;white-space:nowrap;line-height:1.25;vertical-align:middle" title="' + esc(i.partner) + (mob ? ' \u00b7 ' + esc(mob) : '') + '"><b data-act="pev-ed" data-id="' + esc(e.eid) + '" data-n="' + esc(i.partner) + '" data-o="' + (x.other ? 1 : 0) + '" style="cursor:pointer;color:#0d766c;text-decoration:underline dotted" title="Tap to change the name">' + (function () { if (x.other) return ''; var _a = (S.data.associates || []).filter(function (a) { return dkey(a.name) === dkey(i.partner); }); var _c = _a.length === 1 ? String(_a[0].code || "") : "";   /* two partners by one name: no guess */ return _c ? '<span class="ewc">' + esc(_c) + '</span>' : ''; })() + esc(i.partner) + '</b>' + ' <span style="font-size:12px;color:#64748b">' + (x.other ? '· ' + esc(x.role || "") + ' ' : '') + (mob ? '· ' + esc(mob) : '· <span style="color:#b45309">no mobile</span>') + '</span>' + (x.other ? '' : pevAreaBox(e.eid, i.partner) + partnerSitesChip(i.partner).replace('margin-top:3px', 'margin-top:0').replace('min-height:36px', 'min-height:32px').replace('no site on the book', 'no site')) + '</span>',   /* 6.9.875 - area, and the sites chip, on the same line */   /* 6.9.849 sites chip; p754 - his code (PL / AR / BL) already says the role */
+          return ['<span style="color:#64748b">' + (k + 1) + '</span>', '<span style="display:inline-flex;align-items:center;gap:6px;white-space:nowrap;line-height:1.25;vertical-align:middle" title="' + esc(i.partner) + (mob ? ' \u00b7 ' + esc(mob) : '') + '"><b data-act="pev-ed" data-id="' + esc(e.eid) + '" data-n="' + esc(i.partner) + '" data-o="' + (x.other ? 1 : 0) + '" style="cursor:pointer;color:#0d766c;text-decoration:underline dotted" title="Tap to change the name">' + (function () { if (x.other) return ''; var _a = (S.data.associates || []).filter(function (a) { return dkey(a.name) === dkey(i.partner); }); var _c = _a.length === 1 ? String(_a[0].code || "") : "";   /* two partners by one name: no guess */ return _c ? '<span class="ewc">' + esc(_c) + '</span>' : ''; })() + esc(i.partner) + '</b></span>', '<span style="display:inline-flex;align-items:center;gap:6px;white-space:nowrap;line-height:1.25;vertical-align:middle">' + '<span style="font-size:12px;color:#64748b">' + (x.other ? esc(x.role || "") + ' · ' : '') + (mob ? esc(mob) : '<span style="color:#b45309">no mobile</span>') + '</span>' + (x.other ? '' : pevAreaBox(e.eid, i.partner) + partnerSitesChip(i.partner).replace('margin-top:3px', 'margin-top:0').replace('min-height:36px', 'min-height:32px').replace('no site on the book', 'no site')) + '</span>',   /* 6.9.875 - area, and the sites chip, on the same line */   /* 6.9.849 sites chip; p754 - his code (PL / AR / BL) already says the role */
             x.other ? '<span style="display:inline-block;font-size:12px;font-weight:800;color:#3730a3;background:#e0e7ff;border-radius:6px;padding:1px 7px;white-space:nowrap">Guest</span>' : pevTierPill(x.tier), x.b12 ? money(x.b12) : '—',
             '<select class="pev-st" data-id="' + esc(e.eid) + '" data-p="' + esc(i.partner) + '" style="min-height:44px;font-size:13px;padding:4px 2px;width:96px">' + sts.map(function (s2) { return '<option' + (s2 === i.st ? ' selected' : '') + '>' + esc(s2) + '</option>'; }).join("") + '</select>',
             '<select class="pev-exec" data-id="' + esc(e.eid) + '" data-p="' + esc(i.partner) + '" style="min-height:44px;font-size:13px;padding:4px 2px;width:112px' + (i.exec ? '' : ';border-color:#fca5a5;color:#b91c1c') + '"><option value="">— nobody —</option>' +
@@ -49325,7 +49332,7 @@ function viewCatalogue() {
                 : '<button class="btn sm ghost" data-act="pev-given" data-id="' + esc(e.eid) + '" data-p="' + esc(i.partner) + '" style="min-height:40px;padding:2px 8px;font-size:12px">Given &#10003;</button>') + '</span>',
             '<div style="display:flex;gap:6px;justify-content:flex-end">' + (mob ? '<a class="btn sm ghost" title="WhatsApp him the invitation" style="min-height:44px;min-width:44px;padding:0 8px;display:inline-flex;align-items:center;justify-content:center;text-decoration:none;color:#15803d;font-weight:800" target="_blank" rel="noopener" href="https://wa.me/91' + esc(mob) + '?text=' + encodeURIComponent(pevMsg(e, i.partner)) + '">WA</a>' : '') +
             '<button class="btn sm ghost" title="Take off the list (kept in the record)" style="min-height:44px;min-width:44px;padding:0 8px;white-space:nowrap" data-act="pev-rm" data-id="' + esc(e.eid) + '" data-p="' + esc(i.partner) + '">Off</button></div>'];
-        }), true);
+        }), true, 2);   /* 6.9.878 - # and the name stay put */
         }).join("");
       })() + (isG ? '' : '<div class="meta" style="font-size:13px;margin-top:8px"><b>Head count for food &amp; drink: ' + came + '</b> (confirmed' + (e.type === "trip" ? ', travelling' : ' or attended') + ') &middot; ' +
           m.inv.length + ' on the list' + (nOther ? ' incl. ' + nOther + ' other' + (nOther === 1 ? '' : 's') : '') + (declined ? ' &middot; ' + declined + ' declined' : '') + '</div>') : '<div class="empty">No guest yet.</div>') + '</div>';
