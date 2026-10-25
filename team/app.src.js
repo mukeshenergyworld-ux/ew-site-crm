@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.871";
+  var APP_VERSION = "6.9.872";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -49079,6 +49079,40 @@ function viewCatalogue() {
           '<button class="btn sm" style="min-height:44px" data-act="pev-execall" data-id="' + esc(e.eid) + '">Assign</button>' : '') +
       '</div></div>';
   }
+  /* ===== 6.9.872 - FIND HIM, ADD HIM  (25 Oct 2026) =====
+     HIS WORDS, over the event guest list: "show a search box, so to search by name or phone no, add to event if exist or add new
+     if not and update that to master data". One box over the guest list: two letters of a name, a code (PL056) or four digits of a
+     mobile search the whole partner register. A hit already on the list says so; any other has "Add" - he goes on the list with
+     the event's first status and his own executive. Nothing found: "+ New partner" opens the partner form with the typed name or
+     number filled in; Save puts him in the partner register (the master data) and on this list in one go (S.pevBackTo, 6.9.730). */
+  function pevFindHtml(eid) {
+    return '<div style="margin-top:8px"><label style="margin-top:0">Find a partner &mdash; name, code or mobile</label>' +
+      '<input id="pe_q" data-eid="' + esc(eid) + '" autocomplete="off" placeholder="e.g. Ramesh, PL056 or 98964" value="' + esc(S.pevQ || "") + '" style="min-height:44px"/>' +
+      '<div id="pe_qres">' + pevFindRes(eid, S.pevQ || "") + '</div></div>';
+  }
+  function pevFindRes(eid, q) {
+    q = String(q || "").trim(); if (q.length < 2) return '';
+    var lq = q.toLowerCase(), dq = q.replace(/\D/g, ""), have = {};
+    pevInv(eid).forEach(function (i) { have[dkey(i.partner)] = i; });
+    var sup = {}; try { pevSupport().forEach(function (x) { sup[dkey(x.name)] = x; }); } catch (e) { }
+    var hits = assocLive().filter(function (a) {
+      if (!a || !a.name) return false;
+      if (String(a.name).toLowerCase().indexOf(lq) >= 0 || String(a.code || "").toLowerCase().indexOf(lq) === 0) return true;
+      return dq.length >= 4 && [a.mobile, a.mobile2].some(function (m) { return String(m || "").replace(/\D/g, "").indexOf(dq) >= 0; });
+    }).slice(0, 10);
+    var h = hits.map(function (a) {
+      var on = have[dkey(a.name)], x = sup[dkey(a.name)] || {};
+      return '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;min-height:44px;border-top:1px solid #eef2f7;padding:5px 0">' +
+        '<div style="flex:1 1 220px;min-width:0" ewcdata-nocode="1">' + (a.code ? '<span class="ewc">' + esc(a.code) + '</span>' : '') + '<b ewcdata-nocode="1">' + esc(a.name) + '</b> <span class="meta" style="font-size:12.5px">' +
+          esc([a.role, String(a.mobile || "").replace(/\D/g, "").slice(-10), a.location, a.ownedBy ? "with " + a.ownedBy : ""].filter(Boolean).join(" · ")) + (x.tier ? ' · ' + esc(x.tier) : '') + '</span></div>' +
+        (on ? '<span class="pill" style="background:#dcfce7;color:#166534">on the list &middot; ' + esc(on.st || "") + '</span>'
+            : '<button class="btn sm" style="min-height:44px" data-act="pev-qadd" data-id="' + esc(eid) + '" data-n="' + esc(a.name) + '">Add to event</button>') + '</div>';
+    }).join("");
+    if (!hits.length) h += '<div class="meta" style="padding:6px 0">No partner by &ldquo;' + esc(q) + '&rdquo; on the book.</div>';
+    h += '<div style="padding-top:6px"><button class="btn sm ghost" style="min-height:44px" data-act="pev-qnew" data-id="' + esc(eid) + '">+ New partner' + (hits.length ? ' (not in these)' : ' &ldquo;' + esc(q) + '&rdquo;') + ' &mdash; saved to the partner list and added here</button></div>';
+    return '<div style="border:1px solid #e2e8f0;border-radius:10px;padding:4px 10px;margin-top:6px;background:#fff">' + h + '</div>';
+  }
+  try { document.addEventListener("input", function (e) { var t = e.target; if (!t || t.id !== "pe_q") return; S.pevQ = t.value; var b = el("pe_qres"); if (b) b.innerHTML = pevFindRes(t.getAttribute("data-eid"), t.value); }); } catch (e) { }
   function viewPevEvent(e) {
     var m = pevMoney(e.eid), sup = pevSupport(), byN = {}; sup.forEach(function (x) { byN[dkey(x.name)] = x; });
     var sts = PEV_ST[e.type] || PEV_ST.meet, isG = e.type === "greet";
@@ -49112,7 +49146,7 @@ function viewCatalogue() {
     /* guests */
     var invited = {}; m.inv.forEach(function (i) { invited[dkey(i.partner)] = 1; });
     var pool = sup.filter(function (x) { return !invited[dkey(x.name)]; });
-    h += '<div class="card"><h3 style="margin:0">Guests — best supporters first</h3>' +
+    h += '<div class="card"><h3 style="margin:0">Guests — best supporters first</h3>' + pevFindHtml(e.eid) +   /* 6.9.872 */
       '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end;margin-top:8px">' +
         /* 6.9.832 - the trade chosen here also narrows the "or one partner" list, and the list shows his code */
         '<div><label style="margin-top:0">Add everyone who is</label><select id="pe_addrole" style="min-height:44px">' +
@@ -58852,6 +58886,24 @@ function viewCatalogue() {
     if (act === "pev-back") { S.pevOpen = ""; render(); return; }
     if (act === "pev-role") { S.pevRole = t.getAttribute("data-v") || ""; keepScroll = true; render(); return; }
     if (act === "pev-tier") { S.pevTier = t.getAttribute("data-v") || ""; keepScroll = true; render(); return; }
+    /* 6.9.872 - from the search box */
+    if (act === "pev-qadd") {
+      var _qe = t.getAttribute("data-id"), _qn = t.getAttribute("data-n") || "", _qev = pevEvent(_qe); if (!_qev || !_qn) return;
+      if (pevInv(_qe).some(function (i) { return dkey(i.partner) === dkey(_qn); })) { toast(_qn + " is already on the list."); return; }
+      var _qa = assocLive().filter(function (a) { return dkey(a.name) === dkey(_qn); })[0] || {};
+      t.disabled = true;
+      pevSaveRow("evt:inv", _qe, { eid: _qe, partner: _qn, st: (PEV_ST[_qev.type] || PEV_ST.meet)[0], cost: 0, exec: String(_qa.ownedBy || "") }).then(function () {
+        keepScroll = true; render(); toast(_qn + " added to " + (_qev.name || "the event") + (_qa.ownedBy ? " — with " + _qa.ownedBy : "") + ".");
+      });
+      return;
+    }
+    if (act === "pev-qnew") {
+      var _ne = t.getAttribute("data-id"); if (!pevEvent(_ne)) return;
+      var _nq = String(S.pevQ || "").trim(), _nd = _nq.replace(/\D/g, "");
+      S.pevBackTo = _ne; S.modal = modalAssociate(_nd.length >= 10 ? { mobile: _nd.slice(-10) } : { name: _nq, role: "Plumber" }); render();
+      toast("Fill him in and Save \u2014 he goes into the partner list and onto this event.");
+      return;
+    }
     if (act === "pev-addrule" || act === "pev-addone") {
       var _eid = t.getAttribute("data-id"), _ev = pevEvent(_eid); if (!_ev) return;
       var _st0 = (PEV_ST[_ev.type] || PEV_ST.meet)[0], _have = {}; pevInv(_eid).forEach(function (i) { _have[dkey(i.partner)] = 1; });
@@ -64957,7 +65009,7 @@ function viewCatalogue() {
         else if (S.pevBackTo && pevEvent(S.pevBackTo)) {   /* 6.9.730 - came from an event's guest list: he goes straight on it */
           var _pe = S.pevBackTo, _pev = pevEvent(_pe); S.pevBackTo = null; _asLiveCache = null;
           var _pst = (PEV_ST[_pev.type] || PEV_ST.meet)[0];
-          pevSaveRow("evt:inv", _pe, { eid: _pe, partner: an, st: _pst, cost: 0 }).then(function () { S.modal = null; render(); toast("Partner saved and added to the guest list."); });
+          pevSaveRow("evt:inv", _pe, { eid: _pe, partner: an, st: _pst, cost: 0, exec: String((r && r.ownedBy) || "") }).then(function () { S.modal = null; S.pevQ = ""; render(); toast("Partner saved to the partner list and added to the guest list."); });   /* 6.9.872 - with his executive */
         }
         else { S.modal = null; S.pevEdit = null; toast("Partner saved."); render(); }
       });
