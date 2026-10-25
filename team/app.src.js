@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.879";
+  var APP_VERSION = "6.9.880";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -38665,7 +38665,7 @@ function viewCatalogue() {
     var tb = function (k, l) { return '<button class="btn sm ' + (t === k ? '' : 'ghost') + '" data-act="msg-tab" data-k="' + k + '" style="min-height:44px">' + l + '</button>'; };
     return '<div class="card"><h2 style="margin:0 0 4px">Messages &amp; posts</h2><div class="meta" style="font-size:13px">Drafted from your own book; edit any text before it goes. &#10024; Improve with AI rewrites one draft at a time.</div>' +
       '<div class="acts" style="gap:6px;flex-wrap:wrap;margin-top:6px">' + tb("stage", "Stage messages") + (roleIs("admin") ? tb("greet", "Festival greetings") + tb("posts", "Posts for the month") : '') + '</div></div>' +
-      '<div class="card">' + (t === "greet" ? msgGreetHtml() : t === "posts" ? msgPostsHtml() : msgStageHtml()) + '</div>' + msgKeyHtml();
+      '<div class="card">' + (t === "greet" ? msgGreetHtml() : t === "posts" ? msgPostsHtml() : msgStageHtml()) + '</div>' + msgKeyHtml() + aiUsageHtml();   /* 6.9.880 */
   }
   /* 6.9.823 - HIS WORDS: "not seeing how to add script property".
      He could not: the script holds more than 50 properties, and above 50 Google makes the
@@ -51404,12 +51404,98 @@ function viewCatalogue() {
       return out.join("");
     };
     return '<div class="card" style="border-color:#99f6e4;background:#f0fdfa"><h3 style="margin:0 0 4px">Ask the assistant</h3>' +
-      '<div class="meta" style="font-size:12.5px">Reads your book and answers: <i>whose receipt is pending</i>, <i>how is this month by executive</i>, <i>which quotes are stuck</i>, <i>what should we add to the CRM</i>. Same brain as the Telegram bot. It never changes anything.</div>' +
+      '<div class="meta" style="font-size:12.5px">Reads your book and answers: <i>whose receipt is pending</i>, <i>how is this month by executive</i>, <i>which quotes are stuck</i>, <i>what should we add to the CRM</i>. Same brain as the Telegram bot. It never changes anything by itself: an action it proposes waits for your Confirm.</div>' +
       '<div style="display:flex;gap:6px;margin-top:6px"><input id="ai_q" value="' + esc(r.q || "") + '" placeholder="Ask in plain words\u2026" style="flex:1;min-height:44px;font-size:16px" onkeydown="if(event.key===\'Enter\'){var b=document.querySelector(\'[data-act=ai-ask]\');if(b)b.click();}"/>' +
-      '<button class="btn" data-act="ai-ask" style="min-height:44px"' + (r.busy ? ' disabled' : '') + '>' + (r.busy ? 'Thinking\u2026' : 'Ask') + '</button></div>' +
+      '<button class="btn" data-act="ai-ask" style="min-height:44px"' + (r.busy ? ' disabled' : '') + '>' + (r.busy ? 'Thinking\u2026 <span id="ai_secs">' + Math.max(0, Math.round((Date.now() - (r.t0 || Date.now())) / 1000)) + '</span>s' : 'Ask') + '</button></div>' +
+      (r.busy ? '<div class="meta" style="font-size:12px;margin-top:4px">Usually 5\u201315 s; a question that needs several lookups can take 30.</div>' : '') +   /* 6.9.880 */
       (r.a ? '<div style="margin-top:8px;padding:10px 12px;background:#fff;border-radius:10px;border:1px solid #ccfbf1;font-size:14px;line-height:1.45">' + safe(r.a) + '</div>' : '') +
+      aiProposalsHtml(r) +   /* 6.9.880 - actions it proposes; each waits for a tap */
+      (r.use ? '<div class="meta" style="font-size:12px;margin-top:4px;color:#64748b">' + esc(r.use.model || "") + ' \u00b7 ' + (r.use.ms ? (r.use.ms / 1000).toFixed(1) + ' s' : '') + ' \u00b7 ' + (Number(r.use.in) || 0) + ' in' + (Number(r.use.cached) ? ' (' + r.use.cached + ' cached)' : '') + ' / ' + (Number(r.use.out) || 0) + ' out \u00b7 ' + aiCostStr(r.use) + (r.use.fallback ? ' \u00b7 answered by the smaller model (the main one was busy)' : '') + '</div>' : '') +
       (r.err ? '<div style="margin-top:8px;color:#b91c1c;font-size:13px">' + esc(r.err) + '</div>' : '') +
       '<div class="meta" style="font-size:12px;margin-top:6px">Suggestions it gives are its own; you decide. Each question costs about a paisa of API credit.</div></div>';
+  }
+  /* ===== 6.9.880 - AI: COST PER QUESTION, PER USER, AND ACTIONS THAT WAIT FOR A TAP  (25 Oct 2026) =====
+     From the system audit of 25 Oct. The server (V167) answers aiAsk with {text, use:{model,in,out,cached,ms,fallback},
+     proposals:[{pid,tool,args,say}]} and writes an ai:use audit row per call, so cost is visible per user here and in
+     the statements. A proposal is NOT done by the server: it is drawn here with the exact row it would make, and only a
+     tap on Confirm saves it - through the same save() every other screen uses, with the pid in the note so a second tap
+     or a retried request cannot make it twice. */
+  var AI_PRICE = { /* USD per million tokens, Anthropic list, Oct 2026 - edit here when the list changes */
+    sonnet: { in: 3, out: 15, cached: 0.3 }, haiku: { in: 1, out: 5, cached: 0.1 }, opus: { in: 15, out: 75, cached: 1.5 } };
+  var AI_USD_INR = 84;
+  function aiCostInr(u) {
+    var m = String((u && u.model) || "").toLowerCase(), p = /haiku/.test(m) ? AI_PRICE.haiku : /opus/.test(m) ? AI_PRICE.opus : AI_PRICE.sonnet;
+    var inn = Math.max(0, (Number(u.in) || 0) - (Number(u.cached) || 0));
+    return (inn * p.in + (Number(u.cached) || 0) * p.cached + (Number(u.out) || 0) * p.out) / 1e6 * AI_USD_INR;
+  }
+  function aiCostStr(u) { var c = aiCostInr(u); return c < 0.5 ? "\u2248 " + Math.round(c * 100) + " paise" : "\u2248 \u20b9" + c.toFixed(2); }
+  function aiUseRows(days) {
+    var since = new Date(Date.now() - (days || 30) * 86400000).toISOString();
+    return (S.data.audit || []).filter(function (a) { return a.action === "ai:use" && String(a.createdAt || "") >= since; }).map(function (a) {
+      var d = {}; try { d = JSON.parse(a.detail || "{}") || {}; } catch (e) { }
+      d._by = a.actor || d.user || ""; d._at = a.createdAt || ""; return d;
+    });
+  }
+  function aiUsageHtml() {
+    if (!roleIs("admin")) return '';
+    var rows = aiUseRows(30), today0 = today();
+    if (!rows.length) return '<div class="card"><h3 style="margin:0">AI usage (admin)</h3><div class="meta" style="font-size:13px">No AI calls recorded in 30 days. Each question costs a paisa or two; the figures appear here once the server is on V167.</div></div>';
+    var by = {}, tot = { n: 0, cost: 0, tn: 0, tc: 0 }, fails = 0, slow = 0;
+    rows.forEach(function (d) {
+      var k = d._by || "?"; if (!by[k]) by[k] = { n: 0, cost: 0, tn: 0, tc: 0, inn: 0, out: 0, ms: 0 };
+      var c = aiCostInr(d), isT = String(d._at).slice(0, 10) === today0;
+      by[k].n++; by[k].cost += c; by[k].inn += Number(d.in) || 0; by[k].out += Number(d.out) || 0; by[k].ms += Number(d.ms) || 0;
+      tot.n++; tot.cost += c; if (isT) { by[k].tn++; by[k].tc += c; tot.tn++; tot.tc += c; }
+      if (d.err) fails++; if ((Number(d.ms) || 0) > 30000) slow++;
+    });
+    var names = Object.keys(by).sort(function (a, b) { return by[b].cost - by[a].cost; });
+    return '<div class="card"><h3 style="margin:0">AI usage (admin)</h3>' +
+      '<div class="meta" style="font-size:13px">Last 30 days: <b>' + tot.n + '</b> questions, <b>' + money(Math.round(tot.cost)) + '</b> (today ' + tot.tn + ', ' + money(Math.round(tot.tc)) + ')' + (fails ? ' \u00b7 <span style="color:#b91c1c">' + fails + ' failed</span>' : '') + (slow ? ' \u00b7 ' + slow + ' over 30 s' : '') + '. Prices: Anthropic list at \u20b9' + AI_USD_INR + '/$; the server caps each user at 60 an hour and the firm at 2,000 a day.</div>' +
+      pevTable([["User"], ["Questions", "right"], ["Today", "right"], ["Tokens in / out", "right"], ["Avg wait", "right"], ["Cost 30 d", "right"]], names.map(function (n) { var b = by[n];
+        return ['<b>' + esc(n) + '</b>', String(b.n), b.tn ? b.tn + ' \u00b7 ' + money(Math.round(b.tc)) : '\u2014', (b.inn / 1000).toFixed(1) + 'k / ' + (b.out / 1000).toFixed(1) + 'k', (b.ms / b.n / 1000).toFixed(1) + ' s', '<b>' + money(Math.round(b.cost)) + '</b>']; })) + '</div>';
+  }
+  function aiProposalsHtml(r) {
+    var ps = (r && r.props) || []; if (!ps.length) return '';
+    return '<div style="margin-top:8px;padding:10px 12px;background:#fffbeb;border:1px solid #fde68a;border-radius:10px">' +
+      '<b style="font-size:14px">It proposes ' + plural(ps.length, "action") + ' \u2014 nothing is saved until you confirm</b>' +
+      ps.map(function (p, i) {
+        var done = p.done, bad = p.bad;
+        return '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px;padding-top:6px;border-top:1px solid #fde68a"><div style="flex:1 1 220px;font-size:13px">' + esc(p.say || p.tool) + (bad ? '<div style="color:#b91c1c;font-size:12px">' + esc(bad) + '</div>' : '') + '</div>' +
+          (done ? '<span style="color:#166534;font-size:13px;white-space:nowrap">&#10003; done</span>' : bad ? '' : '<button class="btn sm" style="min-height:44px" data-act="ai-do" data-i="' + i + '">Confirm</button><button class="btn sm ghost" style="min-height:44px" data-act="ai-skip" data-i="' + i + '">Skip</button>') + '</div>';
+      }).join("") + '</div>';
+  }
+  /* what a proposal would write, checked against the book before it is shown; the same rules the screen itself applies */
+  function aiProposalCheck(p) {
+    var a = p.args || {};
+    if (p.tool === "add_followup") {
+      var nm = String(a.client || "").trim(), cl = (S.data.clients || []).filter(function (c) { return dkey(c.name) === dkey(nm); })[0];
+      if (!cl) return "No client named " + nm + " on the book.";
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(String(a.date || ""))) return "The date is not a real date.";
+      if (!String(a.note || "").trim()) return "No note.";
+      p.say = "Follow-up for " + cl.name + " on " + dmy(a.date) + ": " + String(a.note).slice(0, 120);
+      return "";
+    }
+    if (p.tool === "note_on_client") {
+      var nm2 = String(a.client || "").trim(), cl2 = (S.data.clients || []).filter(function (c) { return dkey(c.name) === dkey(nm2); })[0];
+      if (!cl2) return "No client named " + nm2 + " on the book.";
+      if (!String(a.note || "").trim()) return "No note.";
+      p.say = "Note on " + cl2.name + ": " + String(a.note).slice(0, 120);
+      return "";
+    }
+    return "This kind of action (" + p.tool + ") is not one the CRM does from here.";
+  }
+  function aiProposalDo(p) {
+    var a = p.args || {}, tag = " [ai:" + p.pid + "]";
+    var dup = (S.data.followups || []).concat(S.data.audit || []).some(function (r) { return String(r.note || r.detail || "").indexOf(tag) >= 0; });
+    if (dup) return Promise.resolve("already");
+    if (p.tool === "add_followup") {
+      var cl = (S.data.clients || []).filter(function (c) { return dkey(c.name) === dkey(a.client); })[0];
+      return save("followups", { id: "", createdBy: S.user, customerId: cl.id || "", customerName: cl.name, dueDate: a.date, note: String(a.note).trim() + tag, status: "Open" });
+    }
+    if (p.tool === "note_on_client") {
+      return auditFact("client:note", String(a.client), { client: String(a.client), note: String(a.note).trim() + tag, by: S.user });
+    }
+    return Promise.resolve(null);
   }
   function viewAgent() {
     var all = agScan();
@@ -65963,11 +66049,23 @@ function viewCatalogue() {
     if (act === "clp-prod") { S.clpProd = t.getAttribute("data-k") || ""; keepScroll = true; render(); return; }   /* 6.9.838 */
     if (act === "ai-ask") {   /* 6.9.839 */
       var _aq = String(val("ai_q") || "").trim(); if (!_aq) { toast("Type the question first."); return; }
-      S.aiAsk = { q: _aq, busy: true, a: (S.aiAsk || {}).a || "" }; keepScroll = true; render();
+      S.aiAsk = { q: _aq, busy: true, a: (S.aiAsk || {}).a || "", t0: Date.now() }; keepScroll = true; render();
+      var _tick = setInterval(function () { var sp = el("ai_secs"); if (!sp || !S.aiAsk || !S.aiAsk.busy) { clearInterval(_tick); return; } sp.textContent = Math.round((Date.now() - S.aiAsk.t0) / 1000); }, 1000);   /* 6.9.880 */
       api("aiAsk", { text: _aq }, 90000).then(function (r) {
-        S.aiAsk = { q: _aq, busy: false, a: r && r.ok ? String(r.text || "") : "", err: r && r.ok ? "" : ((r && r.error) || "AI is not set up on the server yet (V163 + the key under Messages & posts).") };
+        var ok = r && r.ok;
+        S.aiAsk = { q: _aq, busy: false, a: ok ? String(r.text || "") : "", err: ok ? "" : ((r && r.error) || "AI is not set up on the server yet (V163 + the key under Messages & posts)."),
+          use: ok && r.use ? r.use : null, props: ok && r.proposals ? r.proposals.slice(0, 5).map(function (p) { p = Object.assign({}, p); p.bad = aiProposalCheck(p); return p; }) : [] };   /* 6.9.880 */
+        if (!ok) logCrash("ai:fail", { message: S.aiAsk.err });
         keepScroll = true; render();
-      }).catch(function (e) { S.aiAsk = { q: _aq, busy: false, a: "", err: "No answer from the server (" + apiWhy(e) + ")." }; keepScroll = true; render(); });
+      }).catch(function (e) { S.aiAsk = { q: _aq, busy: false, a: "", err: "No answer from the server (" + apiWhy(e) + ")." }; logCrash("ai:fail", e); keepScroll = true; render(); });
+      return;
+    }
+    if (act === "ai-do" || act === "ai-skip") {   /* 6.9.880 - a proposed action: his tap, the CRM's own save */
+      var _pi = Number(t.getAttribute("data-i")), _pp = ((S.aiAsk || {}).props || [])[_pi]; if (!_pp) return;
+      if (act === "ai-skip") { S.aiAsk.props.splice(_pi, 1); keepScroll = true; render(); return; }
+      if (_pp.bad) { toast(_pp.bad); return; }
+      t.disabled = true;
+      aiProposalDo(_pp).then(function (r) { if (r === "already") { _pp.done = 1; toast("That was already done."); } else if (r) { _pp.done = 1; toast("Done: " + _pp.say); } else { toast("Not saved - try again."); } keepScroll = true; render(); });
       return;
     }
     if (act === "pev-given") {   /* 6.9.837 - the gift reached him: who handed it over, and when */
