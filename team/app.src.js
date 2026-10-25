@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.890";
+  var APP_VERSION = "6.9.891";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -15791,9 +15791,9 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
          his reason. A quiet exception is one nobody can audit; a loud one is a decision. */
       /* v6.9.552 - his item 6: only while the receipt is STILL missing. Once the signed paper is
          attached the pill goes; the reason stays on the stamp for the audit. */
-      ((st.noProof && !chProofAny(c).has) ? ' <span class="pill" style="background:#fef3c7;color:#92400e" ' +
-        'title="Finalised with no signed receipt. Reason given: ' + esc(st.noProof) + '">' +
-        'no paper</span>' : "");
+      (!chProofAny(c).has ? ' <span class="pill" style="background:#fee2e2;color:#b91c1c" ' +
+        'title="Finalised with no signed receipt attached' + (st.noProof ? '. Reason given: ' + esc(st.noProof) : '') + '">' +
+        'receipt pending</span>' : "");   /* 6.9.891 - was "no paper", and only when a reason was typed */
   }
   /* ================= WHO EARNS ON THIS ONE DELIVERY (v6.9.324) =================
      HIS WORDS: "more checkboxs incase of partner and executive incentive applied for that
@@ -30141,7 +30141,8 @@ function viewCatalogue() {
            because the two facts have come apart, and hiding the receipt beside it would hide
            half of what makes it worth reading. */
         ((String(c.receiptReceived).toUpperCase() === "Y" && !(inHisab(c) && hisabCounts(c)))
-          ? ' <span class="pill Won">receipt in</span>' : "") +
+          ? (chProofAny(c).has ? ' <span class="pill Won">receipt in</span>'
+             : ' <span class="pill due" title="Marked received, but no signed receipt is attached">receipt pending</span>') : "") +   /* 6.9.891 */
         hisabStampPill(c) +
         '</div>' +
         '<div class="lc-right">' + actions +
@@ -46960,8 +46961,9 @@ function viewCatalogue() {
       if (c.approvedAt || c.approvedBy) push(c.approvedAt || c.createdAt, "challan", "Challan " + no + " passed", c.approvedBy ? "by " + c.approvedBy : "name not recorded", 0, tap);
       if (c.dispatchedAt || ["Dispatched", "Received", "Billed"].indexOf(String(c.status || "")) >= 0)
         push(c.dispatchedAt || c.approvedAt || c.createdAt, "lorry", "Challan " + no + " gone out", (c.driver ? "driver " + c.driver : "") + (c.vehicle ? " · " + c.vehicle : "") + (frAmt(c) ? " · freight " + money(frAmt(c)) : ""), 0, tap);
-      var pf = challanProof(c.id);
-      if (pf || c.receiptAt) push((pf && pf.at) || c.receiptAt, "receipt", "Receipt in for " + no, pf && (pf.actor || pf.by) ? "attached by " + (pf.actor || pf.by) : "", 0, tap, "good");
+      var pf = challanProof(c.id), hasPaper = chProofAny(c).has;   /* 6.9.891 - the paper is the receipt */
+      if (hasPaper) push((pf && pf.at) || c.receiptAt || c.updatedAt, "receipt", "Receipt in for " + no, pf && (pf.actor || pf.by) ? "attached by " + (pf.actor || pf.by) : "", 0, tap, "good");
+      else if (String(c.receiptReceived || "").toUpperCase() === "Y") push(c.receiptAt || c.updatedAt || c.createdAt, "receipt", "Marked received for " + no + " — receipt pending", "no signed receipt attached", 0, tap, "bad");
       if (c.billedAt || c.billNo) push(c.billedAt || c.updatedAt || c.createdAt, "bill", "Billed " + no + (c.billNo ? " as " + c.billNo : ""), (c.billedBy ? "by " + c.billedBy : "") + (c.billTo ? " · to " + c.billTo : ""), 0, tap);
       if (c.billSentAt) push(c.billSentAt, "bill", "Bill of " + no + " sent", c.billSentBy ? "by " + c.billSentBy : "", 0, tap);
       if (cancelled) push(c.updatedAt || c.createdAt, "challan", "Challan " + no + " cancelled", "", 0, tap, "bad");
@@ -47015,13 +47017,14 @@ function viewCatalogue() {
       '<div class="meta" style="font-size:12px;margin:-2px 0 6px">Made &rarr; passed &rarr; gone out &rarr; receipt in &rarr; billed. A red cross is a step that is due and has not happened.</div>' +
       rows.map(function (c) {
         var st = String(c.status || "Draft"), gone = ["Dispatched", "Received", "Billed"].indexOf(st) >= 0 || !!c.dispatchedAt, pf = challanProof(c.id), cancelled = st === "Cancelled";
-        var passed = !!(c.approvedAt || c.approvedBy), rcpt = !!(pf || c.receiptAt || c.receiptReceived === "Y"), billed = !!(c.billedAt || c.billNo);
+        var passed = !!(c.approvedAt || c.approvedBy), rcpt = chProofAny(c).has, billed = !!(c.billedAt || c.billNo);   /* 6.9.891 - paper only */
+        var flagOnly = !rcpt && String(c.receiptReceived || "").toUpperCase() === "Y";
         return dgTap("challan", 'data-id="' + esc(c.id) + '"',
           '<div class="meta" style="padding:6px 0;border-top:1px solid #eef2f7"><div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap"><b>' + esc(c.challanNo || "(no number yet)") + '</b>' +
           (cancelled ? ' <span class="pill Lost" style="font-size:12px">cancelled</span>' : '') + ' <span style="color:#475569">' + money(dgNum(c.amount)) + '</span>' + (c.brand ? ' <span style="color:#64748b">' + esc(c.brand) + '</span>' : '') + '</div>' +
           (cancelled ? '' : '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:3px">' +
             step(true, "made", c.createdAt) + step(passed, "passed", c.approvedAt, !passed && st !== "Draft") + step(gone, "gone out", c.dispatchedAt, false) +
-            step(rcpt, "receipt", (pf && pf.at) || c.receiptAt, gone && !rcpt) + step(billed, "billed" + (c.billNo ? " " + esc(c.billNo) : ""), c.billedAt, rcpt && !billed) + '</div>') + '</div>');
+            step(rcpt, flagOnly ? "receipt pending" : "receipt", (pf && pf.at) || c.receiptAt, (gone || flagOnly) && !rcpt) + step(billed, "billed" + (c.billNo ? " " + esc(c.billNo) : ""), c.billedAt, (rcpt || flagOnly) && !billed) + '</div>') + '</div>');
       }).join("") + '</div>';
   }
   function dgTimelineHtml(d) {
@@ -47102,7 +47105,7 @@ function viewCatalogue() {
       return '<h2>' + esc(c.challanNo || "Delivery") + '</h2>' +
         '<p class="sub">' + esc(c.customerName || "") + (c.site ? ' \u00b7 ' + esc(c.site) : '') + '</p>' +
         dgKV([
-          ["Status", esc(c.status || "Draft") + (String(c.receiptReceived).toUpperCase() === "Y" ? ' \u00b7 <span style="color:#0f766e">receipt in</span>' : '')],
+          ["Status", esc(c.status || "Draft") + (String(c.receiptReceived).toUpperCase() === "Y" ? (chProofAny(c).has ? ' \u00b7 <span style="color:#0f766e">receipt in</span>' : ' \u00b7 <span style="color:#b91c1c">receipt pending</span>') : '')],   /* 6.9.891 */
           ["Raised", esc(d10(c.createdAt)) + (c.createdBy ? " by " + esc(c.createdBy) : "")],
           ["Value", money(dgNum(c.amount))],
           ["Freight", dgNum(c.freight) ? money(dgNum(c.freight)) + " \u00b7 " + esc(c.freightTo || "Client") : ""],
