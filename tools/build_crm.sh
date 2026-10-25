@@ -5,6 +5,8 @@
 # (his line: 129 s -> about 80 s for a fresh download).
 # Usage, from the repo root:  sh tools/build_crm.sh
 set -e
+# 25 Oct 2026 (system audit): a key must never land in the apps. The build fails if anything that looks like one is in the source.
+if grep -rqE 'sk-ant-[A-Za-z0-9_-]{8,}' team/app.src.js challan/index.src.html collect/index.src.html service/index.src.html visit/index.src.html 2>/dev/null; then echo 'BUILD STOPPED: an Anthropic key is in the app source' >&2; exit 1; fi
 npx --yes terser@5.31.0 team/app.src.js --format comments=false -o team/app.js
 node --check team/app.js
 grep -oE 'APP_VERSION ?= ?"[^"]*"' team/app.js | head -1
