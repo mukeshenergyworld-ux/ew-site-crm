@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.872";
+  var APP_VERSION = "6.9.873";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -47459,6 +47459,86 @@ function viewCatalogue() {
   }
   /* 6.9.870 - the ticks on the twin-rename sheet, kept as he taps (the sheet is gone by the time the answer comes) */
   try { document.addEventListener("change", function (e) { var t = e.target; if (t && t.classList && t.classList.contains("rn-pick")) { S._rnPick = S._rnPick || {}; S._rnPick[t.getAttribute("data-ix")] = !!t.checked; } }); } catch (e) { }
+  /* ===== 6.9.873 - NAMES START WITH A CAPITAL  (25 Oct 2026) =====
+     HIS WORDS: "in all apps all names first letter will be capital, by default" - capital first letters, not ALL CAPS. A word typed
+     all in small letters gets its first letter capital ("rohit khanna" -> "Rohit Khanna", "ar. gurjinder" -> "Ar. Gurjinder", "prem m/t"
+     -> "Prem M/T"); a word that already has a capital anywhere is left exactly as typed, so TDI, MT, SSIEL, PL056, McDonald and
+     "DEV AHUJA" are never touched. Digits and punctuation pass through. */
+  function nmTitle(v) {
+    return String(v == null ? "" : v).replace(/\s+/g, " ").trim().replace(/[A-Za-z][A-Za-z']*/g, function (w) { return w === w.toLowerCase() ? w.charAt(0).toUpperCase() + w.slice(1) : w; });
+  }
+  /* A client's name changed only in its capitals ("rohit khanna" -> "Rohit Khanna"). The 6.9.866 join cannot carry it (the join is
+     keyed without capitals), and his deliveries, payments and dues are matched by the exact name - so every row that names him is
+     saved again, whole, with the new spelling: deliveries, payments, returns, discounts, quotes, sites, follow-ups, and any site
+     billed through him. Amounts are not touched. One client:rename fact records how many rows moved. Resolves { n, rows }. */
+  function nmClientCascade(id, from, to) {
+    from = String(from || ""); to = String(to || "");
+    if (!from || !to || from === to) return Promise.resolve({ n: 0 });
+    var jobs = [], cnt = {};
+    var put = function (tab, rows, f) {
+      (rows || []).forEach(function (r) {
+        if (!r || String(r[f] || "") !== from) return;
+        var up = {}; up[f] = to; var row = Object.assign({}, r, up); delete row._dups;
+        r[f] = to; cnt[tab] = (cnt[tab] || 0) + 1;
+        jobs.push(function () { return save(tab, row, true); });
+      });
+    };
+    put("challans", S.data.challans, "customerName"); put("payments", S.data.payments, "client"); put("returns", S.data.returns, "customerName");
+    put("discounts", S.data.discounts, "client"); put("quotes", S.data.quotes, "client"); put("sites", S.data.sites, "client");
+    put("followups", S.data.followups, "customerName"); put("clients", S.data.clients, "billedThrough");
+    var chain = Promise.resolve(), n = jobs.length;
+    jobs.forEach(function (j) { chain = chain.then(j, j); });   /* one after another, so the server is never flooded */
+    return chain.then(function () {
+      try { save("audit", { action: "client:rename", actor: S.user, recId: id || "", detail: JSON.stringify({ id: id || "", from: from, to: to, why: "capitals", rows: cnt }) }, true); } catch (e) { }
+      bustCaches(); return { n: n, rows: cnt };
+    });
+  }
+  /* the one-time tidy of the book (step 3, his "go for step 3 at your own"): every client, partner and site whose name has a word in
+     small letters. Clients: case-only -> nmClientCascade. Partners: the server's partnerRename (it matches names ignoring case and
+     changes every row that names him); two partners with one name (a duplicate) are saved row by row. Sites: the site row. */
+  function nmTidyPlan() {
+    var cl = (S.data.clients || []).filter(function (c) { return c && c.name && nmTitle(c.name) !== c.name; });
+    var taken = {}; (S.data.clients || []).forEach(function (c) { if (c && c.name) taken[String(c.name)] = (taken[String(c.name)] || 0) + 1; });
+    cl = cl.filter(function (c) { return !taken[nmTitle(c.name)]; });   /* the new spelling is already another client's: left alone */
+    var as = (S.data.associates || []).filter(function (a) { return a && a.name && !isCancelled("associates", a.id) && nmTitle(a.name) !== a.name; });
+    var st = (S.data.sites || []).filter(function (x) { return x && x.name && nmTitle(x.name) !== x.name; });
+    return { clients: cl, partners: as, sites: st };
+  }
+  function nmTidyRun(onStep) {
+    if (!roleIs("admin")) return Promise.reject(new Error("owner only"));
+    var P = nmTidyPlan(), log = { clients: 0, clientRows: 0, partners: 0, partnerRows: 0, sites: 0, failed: [] };
+    var chain = Promise.resolve();
+    P.clients.forEach(function (c) {
+      chain = chain.then(function () {
+        var was = String(c.name), now = nmTitle(was), row = Object.assign({}, c, { name: now }); delete row._dups;
+        return save("clients", row, true).then(function (r) {
+          if (!r) { log.failed.push(was); return; }
+          c.name = now; log.clients++;
+          return nmClientCascade(c.id, was, now).then(function (x) { log.clientRows += x.n; if (onStep) onStep(log); });
+        });
+      });
+    });
+    P.partners.forEach(function (a) {
+      chain = chain.then(function () {
+        var was = String(a.name), now = nmTitle(was);
+        var twin = (S.data.associates || []).some(function (b) { return b !== a && b.id !== a.id && dkey(b.name) === dkey(was); });
+        var plain = function () { var row = Object.assign({}, a, { name: now }); delete row._dups; return save("associates", row, true).then(function (r) { if (r) { a.name = now; log.partners++; } else log.failed.push(was); }); };
+        if (twin) return plain();
+        return api("partnerRename", { id: a.id, from: was, to: now }).then(function (r) {
+          if (!r || !r.ok) return plain();
+          a.name = now; log.partners++; Object.keys(r.counts || {}).forEach(function (k) { log.partnerRows += Number(r.counts[k]) || 0; });
+          if (onStep) onStep(log);
+        }, plain);
+      });
+    });
+    P.sites.forEach(function (x) {
+      chain = chain.then(function () { var was = String(x.name), row = Object.assign({}, x, { name: nmTitle(was) }); delete row._dups; return save("sites", row, true).then(function (r) { if (r) { x.name = row.name; log.sites++; } else log.failed.push(was); }); });
+    });
+    return chain.then(function () {
+      try { save("audit", { action: "names:tidy", actor: S.user, recId: "", detail: JSON.stringify(log) }, true); } catch (e) { }
+      _asLiveCache = null; bustCaches(); return log;
+    });
+  }
   function askSheet(o) {
     return new Promise(function (resolve) {
       if (_ask) { var prev = _ask; _ask = null; try { prev(false); } catch (e) {} }
@@ -60171,6 +60251,7 @@ function viewCatalogue() {
     if (act === "cl-save") {
       var cn = val("c_name");
       if (!cn) { toast("Client name is required."); return; }
+      cn = nmTitle(cn);   /* 6.9.873 - his rule: first letters capital */
       /* v6.9.288 - READ THE REASON BOX HERE, with every other field. This form closes the
          instant the button is pressed and creating a partner re-renders it, so anything read
          afterwards comes back empty - the same trap that once ate mobile2. */
@@ -60253,6 +60334,8 @@ function viewCatalogue() {
         }).then(function (r) {
           if (!r) return;
           toast("Client saved as " + r.shortName + ".");
+          /* 6.9.873 - only the capitals changed: every row that names him moves with him */
+          try { var _cw = String((keep && keep.name) || ""); if (id && _cw && _cw !== String(r.name || cn) && dgKey(_cw) === dgKey(r.name || cn)) nmClientCascade(id, _cw, String(r.name || cn)).then(function (x) { if (x.n) toast("Spelling changed on " + plural(x.n, "row") + " that name him."); }); } catch (eCc) { }
           /* 6.9.866 - A NEW NAME IS THE SAME MAN. HIS WORDS, after correcting "Viajy Gupta - A 51-52, TDI Toll Plaza"
              to "Vijay Gupta - ...": "its still showing hisab under wrong name". Every challan, payment, return,
              discount and stage is filed under the NAME it was written with, so the corrected record started with
@@ -63256,7 +63339,7 @@ function viewCatalogue() {
       return;
     }
     if (act === "site-save") {
-      var sn = val("s_name");
+      var sn = nmTitle(val("s_name"));   /* 6.9.873 */
       if (!S._slotOk) { var _smis = partnerSlotMismatch({ Architect: val("s_arch"), Plumber: val("s_plumb"), Builder: val("s_build") }); if (_smis.length) { slotWarnThen(_smis, "site-save"); return; } }   /* 6.9.833 */
       if (!sn) { toast("Site name is required."); return; }
       var existS = id ? (siteById(id) || {}) : {};
@@ -64897,7 +64980,7 @@ function viewCatalogue() {
       S.modal = modalAssociate(S.data.associates.filter(function (x) { return x.id === id; })[0]); render(); return;
     }
     if (act === "as-save") {
-      var an = val("m_aname");
+      var an = nmTitle(val("m_aname"));   /* 6.9.873 */
       if (!an) { toast("Name is required."); return; }
       /* Owner's rule: NO partner without a phone number. A partner you cannot call is a name,
          not a partner. 10 digits minimum, always. */
@@ -64915,6 +64998,10 @@ function viewCatalogue() {
          through the server's partnerRename (V154): clients, deliveries, incentive rates and payouts, sites, visits, tools
          and the audit facts that name him - all in one request, the amounts untouched. Then this form saves as usual. */
       var _was = id ? (S.data.associates || []).filter(function (x) { return x.id === id; })[0] : null, _old = _was ? String(_was.name || "") : "";
+      /* 6.9.873 - only his capitals changed: the server's rename carries the new spelling to every row that names him (it matches ignoring case) */
+      if (_was && _old !== an && dkey(_old) === dkey(an) && roleIs("admin") && !(S.data.associates || []).some(function (x) { return x.id !== id && dkey(x.name) === dkey(_old); })) {
+        try { api("partnerRename", { id: id, from: _old, to: an }).catch(function () { }); } catch (eR) { }
+      }
       if (_was && dkey(_old) !== dkey(an)) {
         if (!roleIs("admin")) { toast("Only the owner can change a partner's name."); return; }
         var _k = dkey(_old), _cnt = function (rows, fs) { return (rows || []).filter(function (r) { return fs.some(function (f2) { return dkey(r[f2]) === _k; }); }).length; };
