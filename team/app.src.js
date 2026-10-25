@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.869";
+  var APP_VERSION = "6.9.870";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -47457,6 +47457,8 @@ function viewCatalogue() {
       '<div class="foot"><button class="btn ghost" data-act="close">' + (o.no || 'Cancel') + '</button>' +
       '<button class="btn' + (o.danger ? ' danger' : '') + '" data-act="ask-yes">' + (o.yes || 'Yes') + '</button></div>';
   }
+  /* 6.9.870 - the ticks on the twin-rename sheet, kept as he taps (the sheet is gone by the time the answer comes) */
+  try { document.addEventListener("change", function (e) { var t = e.target; if (t && t.classList && t.classList.contains("rn-pick")) { S._rnPick = S._rnPick || {}; S._rnPick[t.getAttribute("data-ix")] = !!t.checked; } }); } catch (e) { }
   function askSheet(o) {
     return new Promise(function (resolve) {
       if (_ask) { var prev = _ask; _ask = null; try { prev(false); } catch (e) {} }
@@ -64869,7 +64871,35 @@ function viewCatalogue() {
             _na = (S.data.audit || []).filter(function (a) { if (dkey(a.target) === _k) return true; var d2 = {}; try { d2 = JSON.parse(a.detail || "{}"); } catch (e) { return false; } return ["partner", "name", "was", "now", "associate", "whom", "person"].some(function (f2) { return typeof d2[f2] === "string" && dkey(d2[f2]) === _k; }); }).length;
         if ((S.data.associates || []).some(function (x) { return x.id !== id && dkey(x.name) === dkey(an); })) { toast(an + " is another partner already — that would be a merge, not a rename."); return; }
         var _tw = (S.data.associates || []).filter(function (x) { return x.id !== id && dkey(x.name) === _k; });   /* 6.9.754 - two men, one name */
-        if (_tw.length) { toast("Another partner is also named " + _old + " (" + _tw.map(function (x) { return x.code || x.mobile || "?"; }).join(", ") + "). Their clients and deliveries cannot be told apart by name, so nothing was renamed \u2014 tell me which clients are whose."); return; }
+        if (_tw.length) {
+          /* 6.9.870 - TWO MEN, ONE NAME: HE TICKS WHICH ROWS ARE THIS ONE. The server's rename would change every row that says
+             the name, so it is not used. This partner's own record takes the new name; of the clients and sites that say the old
+             name, only the ones he ticks move to the new name (each saved as a whole row); the rest stay with the other partner(s)
+             of that name. Nothing is deleted; a partner:rename fact records what moved. */
+          var _me = (S.data.associates || []).filter(function (x) { return x.id === id; })[0] || {};
+          var _rows = [];
+          (S.data.clients || []).forEach(function (c) { ["plumber", "architect", "builder", "pmc"].forEach(function (f2) { if (dkey(c[f2]) === _k) _rows.push({ tab: "clients", rec: c, f: f2, lbl: c.name, sub: [f2, c.area || c.location, c.ownedBy || c.createdBy].filter(Boolean).join(" \u00b7 ") }); }); });
+          (S.data.sites || []).forEach(function (c) { ["plumber", "architect", "builder"].forEach(function (f2) { if (dkey(c[f2]) === _k) _rows.push({ tab: "sites", rec: c, f: f2, lbl: c.name || c.client, sub: ["site", f2, c.city || c.location].filter(Boolean).join(" \u00b7 ") }); }); });
+          S._rnPick = {};
+          var _pl2 = { id: id, name: an, role: val("m_arole"), mobile: val("m_amobile"), mobile2: val("m_amobile2"), location: val("m_aloc"), area: val("m_aarea"), address: val("m_aaddr"),
+            birthday: val("m_abday"), anniversary: val("m_aanniv"), rate: val("m_arate"), notes: val("m_anotes"), ownedBy: val("m_aowner") };
+          askSheet({ title: "Rename " + (_me.code ? _me.code + " " : "") + _old + "?", sub: "&rarr; <b>" + esc(an) + "</b>",
+            body: '<div class="meta" style="font-size:13px;margin-bottom:6px">' + (_tw.length + 1) + ' partners are named <b>' + esc(_old) + '</b>: ' +
+              [_me].concat(_tw).map(function (x) { return '<b>' + esc(x.code || "?") + '</b> ' + esc(String(x.mobile || "").slice(-10)) + (x.id === id ? ' (this one)' : ''); }).join(" &middot; ") + '. ' +
+              'Only this one is renamed. ' + (_rows.length ? 'Tick the clients / sites that are <b>this</b> ' + esc(_old) + ' (' + esc(String(_me.mobile || "").slice(-10)) + ') &mdash; the rest stay with the other ' + esc(_old) + '.' : 'No client or site names ' + esc(_old) + '.') + '</div>' +
+              _rows.map(function (r, ix) { return '<label style="display:flex;gap:8px;align-items:center;min-height:44px;border-top:1px solid #eef2f7;margin:0;font-weight:500"><input type="checkbox" class="rn-pick" data-ix="' + ix + '" style="width:22px;height:22px"/><span><b>' + esc(r.lbl) + '</b> <span class="meta">' + esc(r.sub) + '</span></span></label>'; }).join(""),
+            yes: "Rename" }).then(function (yes) {
+            if (!yes) return;
+            var picked = _rows.filter(function (r, ix) { return S._rnPick[ix]; });
+            save("associates", Object.assign({}, _me, _pl2), true).then(function () {
+              picked.forEach(function (r) { var up = {}; up[r.f] = an; var row = Object.assign({}, r.rec, up); delete row._dups; save(r.tab, row, true); r.rec[r.f] = an; });
+              try { save("audit", { action: "partner:rename", actor: S.user, recId: id, detail: JSON.stringify({ id: id, code: _me.code || "", from: _old, to: an, twins: _tw.map(function (x) { return x.code || x.id; }), moved: picked.map(function (r) { return r.tab + ":" + r.lbl + ":" + r.f; }) }) }, true); } catch (e) { }
+              _asLiveCache = null; bustCaches(); S.modal = null; render();
+              toast("Renamed " + (_me.code || "") + " to " + an + (picked.length ? " \u2014 " + plural(picked.length, "client / site") + " moved with him." : "."));
+            });
+          });
+          return;
+        }
         var _li = function (n, w) { return n ? '<li><b>' + n + '</b> ' + w + '</li>' : ''; };
         /* the rest of the form, read now - the question replaces the form on screen */
         var _pl = { id: id, name: an, role: val("m_arole"), mobile: val("m_amobile"), mobile2: val("m_amobile2"), location: val("m_aloc"), area: val("m_aarea"), address: val("m_aaddr"),
