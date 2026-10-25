@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.889";
+  var APP_VERSION = "6.9.890";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -46941,6 +46941,109 @@ function viewCatalogue() {
     return out;
   }
 
+  /* ===== 6.9.890 - THE ORDER TIMELINE (ERP step D, 25 Oct 2026) =====
+     HIS WORDS: "must get every information that what is happening at what point of work". Everything below was
+     already written somewhere - the quote, the challan's made/passed/gone/receipt/billed stamps, the lorry, the
+     return, the payment, the incentive paid, the machine, the service visit, the site visit, the follow-up, the
+     stage change - but in ten lists. This reads them once, in time order, and says where every delivery stands
+     now. READ-ONLY: not one new row, the tap on an event opens the same record the lists open. */
+  function dgEvents(d) {
+    var ev = [], D = S.data || {}, mine = d.id.isMine;
+    var at = function (v) { var x = String(v || ""); if (!x) return ""; if (x.length <= 10) return x + "T12:00:00"; return x; };
+    var push = function (when, kind, title, sub, amt, tap, tone) { var w = at(when); if (!w) return; ev.push({ at: w, kind: kind, title: title, sub: sub || "", amt: amt || 0, tap: tap || null, tone: tone || "" }); };
+    var byNo = {};
+    d.challans.forEach(function (c) {
+      var no = c.challanNo || "(no number yet)", tap = { k: "challan", id: c.id }, amt = dgNum(c.amount);
+      byNo[String(c.challanNo || "")] = c;
+      var cancelled = String(c.status || "") === "Cancelled";
+      push(c.createdAt, "challan", "Challan " + no + " made", (c.createdBy ? "by " + c.createdBy : "") + (c.brand ? " · " + c.brand : "") + (c.site ? " · " + c.site : ""), amt, tap, cancelled ? "bad" : "");
+      if (c.approvedAt || c.approvedBy) push(c.approvedAt || c.createdAt, "challan", "Challan " + no + " passed", c.approvedBy ? "by " + c.approvedBy : "name not recorded", 0, tap);
+      if (c.dispatchedAt || ["Dispatched", "Received", "Billed"].indexOf(String(c.status || "")) >= 0)
+        push(c.dispatchedAt || c.approvedAt || c.createdAt, "lorry", "Challan " + no + " gone out", (c.driver ? "driver " + c.driver : "") + (c.vehicle ? " · " + c.vehicle : "") + (frAmt(c) ? " · freight " + money(frAmt(c)) : ""), 0, tap);
+      var pf = challanProof(c.id);
+      if (pf || c.receiptAt) push((pf && pf.at) || c.receiptAt, "receipt", "Receipt in for " + no, pf && (pf.actor || pf.by) ? "attached by " + (pf.actor || pf.by) : "", 0, tap, "good");
+      if (c.billedAt || c.billNo) push(c.billedAt || c.updatedAt || c.createdAt, "bill", "Billed " + no + (c.billNo ? " as " + c.billNo : ""), (c.billedBy ? "by " + c.billedBy : "") + (c.billTo ? " · to " + c.billTo : ""), 0, tap);
+      if (c.billSentAt) push(c.billSentAt, "bill", "Bill of " + no + " sent", c.billSentBy ? "by " + c.billSentBy : "", 0, tap);
+      if (cancelled) push(c.updatedAt || c.createdAt, "challan", "Challan " + no + " cancelled", "", 0, tap, "bad");
+    });
+    (D.returns || []).filter(function (r) { return mine(r.customerName); }).forEach(function (r) {
+      push(r.receivedAt || r.createdAt, "return", "Material back" + (r.returnNo ? " · " + r.returnNo : "") + (r.challanNo ? " against " + r.challanNo : ""), r.createdBy ? "by " + r.createdBy : "", -returnNet(r), byNo[String(r.challanNo || "")] ? { k: "challan", id: byNo[String(r.challanNo || "")].id } : null, "bad");
+    });
+    d.quotes.forEach(function (q) {
+      var st = String(q.status || ""), tap = { k: "quote", id: q.id, n: q.quoteNo || "" };
+      push(q.createdAt, "quote", "Quote " + (qNo(q) || "-") + (q.brand ? " · " + q.brand : ""), (q.createdBy ? "by " + q.createdBy : "") + (st && st !== "Draft" ? " · now " + st : ""), dgNum(q.total), tap, st === "Won" ? "good" : st === "Lost" ? "bad" : "");
+    });
+    d.payments.forEach(function (p) { push(p.date || p.createdAt, "pay", "Payment received", (p.mode || "") + (p.ref ? " · " + p.ref : "") + (p.createdBy ? " · entered by " + p.createdBy : ""), dgNum(p.amount), { k: "payment", id: p.id }, "good"); });
+    (D.commpay || []).filter(function (x) { return mine(x.siteName) || mine(x.client); }).forEach(function (x) {
+      push(x.date || x.createdAt, "inc", "Incentive paid to " + (x.associate || "-"), (x.mode || "") + (x.notes ? " · " + x.notes : ""), dgNum(x.amount), null);
+    });
+    d.installs.forEach(function (i) { push(i.installedOn || i.date || i.createdAt, "service", "Machine installed · " + (i.product || "-") + (i.model ? " " + i.model : ""), (i.amcType ? i.amcType : "") + (i.nextService ? " · next service " + d10(i.nextService) : ""), 0, { k: "install", id: i.id }); });
+    d.visits.forEach(function (v) { push(v.date || v.createdAt, "service", "Service visit" + (v.type ? " · " + v.type : ""), (v.engineer ? v.engineer : "") + (dgNum(v.total) ? " · " + money(dgNum(v.total)) : ""), 0, { k: "install", id: v.installId || "" }); });
+    d.svisits.forEach(function (v) { push(v.date || v.createdAt, "visit", "Site visit" + (v.purpose ? " · " + v.purpose : ""), (v.createdBy ? "by " + v.createdBy : "") + (v.met ? " · met " + v.met : ""), 0, { k: "svisit", id: v.id }); });
+    d.followups.forEach(function (f) { push(f.createdAt, "note", "Follow-up noted" + (f.dueDate ? " for " + d10(f.dueDate) : ""), String(f.note || f.purpose || "").slice(0, 140) + (f.createdBy ? " · " + f.createdBy : ""), 0, { k: "followup", id: f.id }); });
+    /* the audit rows that are a fact about this client: stage changes, notes, re-prices, credit let-throughs, cancelled receipts */
+    var chIds = {}; d.challans.forEach(function (c) { chIds[String(c.id)] = c; if (c.challanNo) chIds[String(c.challanNo)] = c; });
+    (D.audit || []).forEach(function (a) {
+      var act = String(a.action || ""), tg = String(a.target || ""), det = null;
+      if (["client:stage", "client:note", "challan:reprice", "credit:override", "rec:cancel", "quote:lost", "client:wa", "client:opening"].indexOf(act) < 0) return;
+      try { det = JSON.parse(a.detail || "null"); } catch (e) { det = null; }
+      var ch = chIds[tg] || (det && (chIds[String(det.challanId || "")] || chIds[String(det.challanNo || "")])) || null;
+      var isMine = mine(tg) || (det && (mine(det.client) || mine(det.name) || mine(det.customerName))) || !!ch;
+      if (!isMine) return;
+      var who = a.actor || a.by || a.createdBy || "", when = a.createdAt || a.at;
+      if (act === "client:stage") push(when, "stage", "Stage set to " + ((det && (det.stage || det.to)) || "?"), who ? "by " + who : "", 0, null);
+      else if (act === "client:note") push(when, "note", "Note", String((det && (det.note || det.text)) || a.detail || "").slice(0, 160) + (who ? " · " + who : ""), 0, null);
+      else if (act === "challan:reprice") push(when, "challan", "Challan " + ((ch && ch.challanNo) || tg) + " re-priced", who ? "by " + who : "", 0, ch ? { k: "challan", id: ch.id } : null, "bad");
+      else if (act === "credit:override") push(when, "challan", "Let through past the credit limit" + (ch ? " · " + ch.challanNo : ""), who ? "by " + who : "", 0, ch ? { k: "challan", id: ch.id } : null, "bad");
+      else if (act === "rec:cancel") push(when, "pay", "A receipt was cancelled", String((det && (det.why || det.reason)) || "").slice(0, 120) + (who ? " · " + who : ""), 0, null, "bad");
+      else if (act === "quote:lost") push(when, "quote", "Quote lost" + (det && det.to ? " to " + det.to : ""), String((det && (det.why || det.reason)) || "").slice(0, 120), 0, null, "bad");
+      else if (act === "client:wa") push(when, "note", "WhatsApp consent " + ((det && det.yes === false) ? "withdrawn" : "given"), who ? "by " + who : "", 0, null);
+      else if (act === "client:opening") push(when, "pay", "Opening balance set", String((det && det.amount) ? money(dgNum(det.amount)) : ""), 0, null);
+    });
+    ev.sort(function (a, b) { return b.at.localeCompare(a.at); });
+    return ev;
+  }
+  /* where every delivery stands now - one line per challan, the five stamps in order */
+  function dgOrderLines(d) {
+    var rows = d.challans.slice().sort(function (a, b) { return String(b.createdAt || "").localeCompare(String(a.createdAt || "")); });
+    if (!rows.length) return "";
+    var step = function (ok, lab, when, bad) {
+      var col = ok ? "#0f766e" : bad ? "#b91c1c" : "#94a3b8";
+      return '<span style="display:inline-flex;align-items:center;gap:3px;white-space:nowrap;font-size:12px;color:' + col + '">' + (ok ? '&#10003;' : bad ? '&#10007;' : '&middot;') + ' ' + lab + (ok && when ? ' <span style="color:#64748b">' + esc(d10(when)) + '</span>' : '') + '</span>';
+    };
+    return '<div class="card" style="margin-top:12px"><h3>Where every delivery stands <span class="pill">' + rows.length + '</span></h3>' +
+      '<div class="meta" style="font-size:12px;margin:-2px 0 6px">Made &rarr; passed &rarr; gone out &rarr; receipt in &rarr; billed. A red cross is a step that is due and has not happened.</div>' +
+      rows.map(function (c) {
+        var st = String(c.status || "Draft"), gone = ["Dispatched", "Received", "Billed"].indexOf(st) >= 0 || !!c.dispatchedAt, pf = challanProof(c.id), cancelled = st === "Cancelled";
+        var passed = !!(c.approvedAt || c.approvedBy), rcpt = !!(pf || c.receiptAt || c.receiptReceived === "Y"), billed = !!(c.billedAt || c.billNo);
+        return dgTap("challan", 'data-id="' + esc(c.id) + '"',
+          '<div class="meta" style="padding:6px 0;border-top:1px solid #eef2f7"><div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap"><b>' + esc(c.challanNo || "(no number yet)") + '</b>' +
+          (cancelled ? ' <span class="pill Lost" style="font-size:12px">cancelled</span>' : '') + ' <span style="color:#475569">' + money(dgNum(c.amount)) + '</span>' + (c.brand ? ' <span style="color:#64748b">' + esc(c.brand) + '</span>' : '') + '</div>' +
+          (cancelled ? '' : '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:3px">' +
+            step(true, "made", c.createdAt) + step(passed, "passed", c.approvedAt, !passed && st !== "Draft") + step(gone, "gone out", c.dispatchedAt, false) +
+            step(rcpt, "receipt", (pf && pf.at) || c.receiptAt, gone && !rcpt) + step(billed, "billed" + (c.billNo ? " " + esc(c.billNo) : ""), c.billedAt, rcpt && !billed) + '</div>') + '</div>');
+      }).join("") + '</div>';
+  }
+  function dgTimelineHtml(d) {
+    var ev = dgEvents(d); if (!ev.length) return "";
+    var ICON = { challan: ["&#128230;", "#1d4ed8"], lorry: ["&#128666;", "#7c3aed"], receipt: ["&#9997;", "#0f766e"], bill: ["&#129534;", "#0f766e"], "return": ["&#8617;", "#b91c1c"], quote: ["&#128196;", "#64748b"], pay: ["&#8377;", "#0f766e"], inc: ["&#127873;", "#b45309"], service: ["&#128295;", "#334155"], visit: ["&#128205;", "#334155"], note: ["&#9998;", "#64748b"], stage: ["&#127959;", "#64748b"] };
+    var all = !!S.dgAll, lim = 60, show = all ? ev : ev.slice(0, lim), lastDay = "";
+    var h = '<div class="card" style="margin-top:12px"><h3>Timeline <span class="pill">' + ev.length + '</span></h3>' +
+      '<div class="meta" style="font-size:12px;margin:-2px 0 4px">Everything that happened on his account, newest first: quotes, challans at every step, lorries, receipts, bills, returns, payments, incentive paid, machines and service, site visits, notes.</div>';
+    show.forEach(function (e) {
+      var day = localDay(e.at), hm = ""; if (e.at.length > 16 && e.at.slice(11, 16) !== "12:00") { var dt = new Date(e.at); if (!isNaN(dt.getTime())) hm = String(dt.getHours()).padStart(2, "0") + ":" + String(dt.getMinutes()).padStart(2, "0"); }   /* phone's own clock, i.e. IST */
+      if (day !== lastDay) { lastDay = day; h += '<div style="font-size:12px;font-weight:700;color:#475569;margin:8px 0 2px;text-transform:uppercase;letter-spacing:.04em">' + esc(fullDate(day)) + '</div>'; }
+      var ic = ICON[e.kind] || ["&middot;", "#64748b"], col = e.tone === "bad" ? "#b91c1c" : e.tone === "good" ? "#0f766e" : "#0f172a";
+      var inner = '<div class="meta" style="display:flex;gap:8px;align-items:baseline;padding:4px 0;border-top:1px solid #eef2f7">' +
+        '<span style="flex:0 0 22px;text-align:center;color:' + ic[1] + '">' + ic[0] + '</span>' +
+        '<span style="flex:1 1 auto;min-width:0"><b style="color:' + col + '">' + e.title + '</b>' + (e.sub ? ' <span style="color:#64748b">' + esc(e.sub) + '</span>' : '') + '</span>' +
+        (e.amt ? '<span style="flex:0 0 auto;white-space:nowrap;color:' + (e.amt < 0 ? '#b91c1c' : '#334155') + '">' + (e.amt < 0 ? '&minus; ' : '') + money(Math.abs(e.amt)) + '</span>' : '') +
+        '<span style="flex:0 0 auto;font-size:12px;color:#94a3b8">' + esc(hm) + '</span></div>';
+      h += e.tap ? dgTap(e.tap.k, 'data-id="' + esc(e.tap.id || "") + '"' + (e.tap.n ? ' data-n="' + esc(e.tap.n) + '"' : ''), inner) : inner;
+    });
+    if (!all && ev.length > lim) h += '<div class="acts" style="margin-top:8px"><button class="btn sm ghost" data-act="dg-all">Show all ' + ev.length + '</button></div>';
+    return h + '</div>';
+  }
   function dgChip(n, label, tone) {
     return '<div class="stat' + (tone ? ' ' + tone : '') + '"><div class="n">' + n +
       '</div><div class="l">' + esc(label) + '</div></div>';
@@ -47190,6 +47293,9 @@ function viewCatalogue() {
         (d.incpaid.length === 1 ? '' : 's') + '.</div>';
     }
 
+    /* ---- 6.9.890 - where every delivery stands, and the timeline ---- */
+    h += dgOrderLines(d);
+    h += dgTimelineHtml(d);
     /* ---- month by month ---- */
     if (d.months.length) {
       h += '<div class="card" style="margin-top:12px"><h3>Month by month</h3>' +
@@ -61339,6 +61445,7 @@ function viewCatalogue() {
        built, and this if-chain would have shadowed it - pressing "everything about X" would
        have drawn a record detail for a record with no id. t_dead_taps' rule that no act may be
        handled twice caught it before it shipped, which is the whole reason that rule exists. */
+    if (act === "dg-all") { S.dgAll = true; keepScroll = true; render(); return; }   /* 6.9.890 */
     if (act === "dg-rec") {
       var dgK = t.getAttribute("data-k") || "";
       var dgI = t.getAttribute("data-id") || "";
