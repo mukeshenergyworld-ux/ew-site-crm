@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.875";
+  var APP_VERSION = "6.9.876";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -18643,7 +18643,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
      A registered partner with a DIFFERENT role - a Plumber, a Dealer, a Contractor - is now
      excluded outright. He is not deleted and not changed; he simply is not offered in a field he
      does not belong in. He is still in Partners, and still in his own field's list. */
-  var PARTNER_ROLES = { architect: 1, plumber: 1, builder: 1, pmc: 1, contractor: 1, dealer: 1 };
+  var PARTNER_ROLES = { architect: 1, plumber: 1, builder: 1, pmc: 1, contractor: 1, dealer: 1, "site engineer": 1 };   /* 6.9.876 */
   function partnerNames(role) {
     var want = String(role || "").toLowerCase();
     var seen = {}, primary = [], named = [], unknown = [];
@@ -18774,7 +18774,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
      run of 296 names, which is the same confusion in a different field. */
   function partnerAnyOptions(cur) {
     cur = String(cur || "").trim();
-    var by = {}, order = ["Architect", "Plumber", "Builder", "PMC", "Contractor", "Dealer"], seen = {};
+    var by = {}, order = ["Architect", "Plumber", "Builder", "PMC", "Contractor", "Site Engineer", "Dealer"], seen = {};   /* 6.9.876 */
     (S.data.associates || []).forEach(function (a) {
       var n = String(a.name || "").trim(); if (!n || seen[n]) return; seen[n] = 1;
       var r = String(a.role || "").trim();
@@ -31292,7 +31292,7 @@ function viewCatalogue() {
        "excel, compact". Executives and partners on one sheet, sortable by any heading, so the
        "Rank by" chips are the headings now. The role chips still narrow it. */
     h += '<h3 style="margin:16px 0 6px;font-size:15px">Everybody who earns</h3>';
-    var roles = ["Plumber", "Architect", "Builder", "PMC", "Contractor", "Dealer", "Other"];
+    var roles = ["Plumber", "Architect", "Builder", "PMC", "Contractor", "Site Engineer", "Dealer", "Other"];   /* 6.9.876 */
     h += '<div class="row">' + roles.map(function (r) {
       return '<button class="btn sm ' + (S.pRole === r ? "" : "ghost") + '" data-act="p-role" data-r="' + esc(r) + '">' + esc(r) + '</button>';
     }).join("") + '<button class="btn sm ' + (S.pRole === "Executive" ? "" : "ghost") + '" data-act="p-role" data-r="Executive">Executive</button>' +
@@ -45929,7 +45929,7 @@ function viewCatalogue() {
       (S.pevEdit && a.id ? '<div style="margin:-4px 0 6px"><button class="btn sm ghost" style="min-height:44px" data-act="pev-page">His page &rarr;</button></div>' : '') +   /* p754 */
       '<label>Name</label><input id="m_aname" data-ta="partner"' + (a.id ? '' : ' data-ta-new="1"') + ' autocomplete="off" value="' + esc(a.name) + '"/>' +   /* 6.9.685 */
       '<div class="grid2">' +
-      '<div><label>Role</label><select id="m_arole">' + opts(["Architect", "Plumber", "Builder", "PMC", "Contractor", "Dealer", "Other"], a.role || "Plumber") + '</select></div>' +
+      '<div><label>Role</label><select id="m_arole">' + opts(["Architect", "Plumber", "Builder", "PMC", "Contractor", "Site Engineer", "Dealer", "Other"], a.role || "Plumber")   /* 6.9.876 Site Engineer */ + '</select></div>' +
       '<div><label>Mobile</label><input id="m_amobile" inputmode="numeric" value="' + esc(a.mobile) + '"/></div>' +
       '</div>' +
       '<div class="grid2">' +
@@ -49126,11 +49126,11 @@ function viewCatalogue() {
     var g = {}, order = [];
     pool.forEach(function (x) {
       var r = String(x.role || "").trim() || "Other";
-      var k = /plumb/i.test(r) ? "Plumbers" : /archit/i.test(r) ? "Architects" : /contract/i.test(r) ? "Contractors" : /builder/i.test(r) ? "Builders" : /interior|design/i.test(r) ? "Interior designers" : /dealer/i.test(r) ? "Dealers" : (r.charAt(0).toUpperCase() + r.slice(1) + "s");
+      var k = /plumb/i.test(r) ? "Plumbers" : /archit/i.test(r) ? "Architects" : /contract/i.test(r) ? "Contractors" : /builder/i.test(r) ? "Builders" : /site ?eng/i.test(r) ? "Site engineers" : /interior|design/i.test(r) ? "Interior designers" : /dealer/i.test(r) ? "Dealers" : (r.charAt(0).toUpperCase() + r.slice(1) + "s");
       if (!g[k]) { g[k] = []; order.push(k); }
       g[k].push(x);
     });
-    var rank = { Plumbers: 0, Architects: 1, Contractors: 2, Builders: 3, "Interior designers": 4, Dealers: 5 };
+    var rank = { Plumbers: 0, Architects: 1, Contractors: 2, Builders: 3, "Site engineers": 4, "Interior designers": 5, Dealers: 6 };   /* 6.9.876 */
     order.sort(function (a, b) { return (rank[a] == null ? 9 : rank[a]) - (rank[b] == null ? 9 : rank[b]) || a.localeCompare(b); });
     return order.map(function (k) {
       return '<optgroup label="' + esc(k) + ' (' + g[k].length + ')">' + g[k].slice(0, 400).map(function (x) {
@@ -49256,7 +49256,7 @@ function viewCatalogue() {
       '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end;margin-top:8px">' +
         /* 6.9.832 - the trade chosen here also narrows the "or one partner" list, and the list shows his code */
         '<div><label style="margin-top:0">Add everyone who is</label><select id="pe_addrole" style="min-height:44px">' +
-          [["plumb", "Plumber"], ["archit", "Architect"], ["builder", "Builder"], ["contract", "Contractor"], ["interior|design", "Interior designer"], ["dealer", "Dealer"], ["", "Any role"]].map(function (o) {
+          [["plumb", "Plumber"], ["archit", "Architect"], ["builder", "Builder"], ["contract", "Contractor"], ["site ?eng", "Site engineer"], ["interior|design", "Interior designer"], ["dealer", "Dealer"], ["", "Any role"]].map(function (o) {
             return '<option value="' + o[0] + '"' + ((S.pevRole == null ? "plumb" : S.pevRole) === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join("") + '</select></div>' +
         '<div><label style="margin-top:0">tier at least</label><select id="pe_addtier" style="min-height:44px"><option>Platinum</option><option selected>Gold</option><option>Silver</option><option>Base</option></select></div>' +
         '<button class="btn sm" style="min-height:44px" data-act="pev-addrule" data-id="' + esc(e.eid) + '">Add them</button>' +
