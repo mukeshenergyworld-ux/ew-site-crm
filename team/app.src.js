@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.895";
+  var APP_VERSION = "6.9.896";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -34536,6 +34536,59 @@ function viewCatalogue() {
     var tot = out.reduce(function (a, r) { a.billed += r.billed; a.paid += r.paid; a.returned += r.returned; a.due += r.due; a.oldest = Math.max(a.oldest, r.oldest); return a; }, { billed: 0, paid: 0, returned: 0, due: 0, oldest: 0 });
     return { rows: out, tot: tot };
   }
+  /* ===== 6.9.896 - THE BUILDER'S ADVANCE CLEARS HIS SITES =====
+     HIS WORDS, 26 Oct: "clients under builder like national hardware, payment entered in national hardware, adjust to
+     client under it, not its showing fully to executive". MEASURED: National Hardware holds Rs 3,69,215 on its own
+     account (old book -2,49,005, and the Rs 1,20,210 of 2 Oct, which mstAlloc left on the builder because his sites'
+     challans were not finalised that day - the split is capped at what each site's HISAB owes). His sites still owed
+     Sachin Bansal 9,02,997 and Vipin Mittal 22,920, so Imran saw 9.26 lakh to collect instead of 5.57.
+     His answers: adjust now with one tap, and from now on automatically when a site's challan is finalised; the
+     executive sees the whole family. THE MOVE is two payment rows per site, mode "Adjustment", same date and the same
+     ADJ number: +X on the site ("from <builder>'s advance") and -X on the builder ("moved to <site>") - so every
+     ledger, statement and HISAB reads it the way it already reads payments, the pair nets to nothing in any total,
+     and nothing is deleted. Oldest dues first, as mstAlloc settles a cheque. The audit row mst:adj names every part. */
+  function mstAdv(master) { var d = Number((clientLedger(master) || {}).due) || 0; return d < -0.5 ? Math.round(-d) : 0; }
+  function mstAdjPlan(master, only) {
+    var left = mstAdv(master); if (!left) return [];
+    var names = mstSites(master).filter(function (n) { return !only || mstKey(n) === mstKey(only); }), all = [], cap = {}, by = {};
+    names.forEach(function (n, gi) { cap[n] = Math.max(0, Math.round((clientLedger(n) || {}).due || 0)); agingItems(n).forEach(function (it) { if (it.amt > 0.5) all.push({ name: n, age: it.age, amt: it.amt, gi: gi }); }); });
+    all.sort(function (a, b) { return (b.age - a.age) || (a.gi - b.gi); });
+    var give = function (n, want) { var u = Math.min(left, Math.round(want), cap[n]); if (u <= 0) return; left -= u; cap[n] -= u; by[n] = (by[n] || 0) + u; };
+    all.forEach(function (it) { if (left > 0) give(it.name, it.amt); });
+    names.forEach(function (n) { if (left > 0 && cap[n] > 0) give(n, cap[n]); });
+    return names.filter(function (n) { return by[n]; }).map(function (n) { return { name: n, amt: by[n] }; });
+  }
+  function mstAdjust(master, parts, why, auto) {
+    if (!parts || !parts.length) return Promise.resolve(0);
+    var day = today(), grp = "ADJ-" + day.replace(/-/g, "").slice(2) + "-" + String(Date.now()).slice(-4), total = parts.reduce(function (a, p) { return a + p.amt; }, 0), rows = [];
+    parts.forEach(function (p) {
+      rows.push({ id: mintId("P"), createdBy: S.user, siteId: "", siteName: "", client: p.name, date: day, amount: p.amt, mode: "Adjustment", ref: grp,
+        notes: ("From " + master + "'s advance (" + grp + ")" + (why ? " - " + why : "")).slice(0, 300) });
+      rows.push({ id: mintId("P"), createdBy: S.user, siteId: "", siteName: "", client: master, date: day, amount: -p.amt, mode: "Adjustment", ref: grp,
+        notes: ("Advance moved to " + p.name + " (" + grp + ")" + (why ? " - " + why : "")).slice(0, 300) });
+    });
+    save("audit", { action: "mst:adj", actor: S.user, recId: grp, createdAt: new Date().toISOString(),
+      detail: JSON.stringify({ master: master, total: total, date: day, auto: auto ? 1 : 0, why: why || "", parts: parts }) }, true);
+    var chain = Promise.resolve(), ok = 0;
+    rows.forEach(function (r) { chain = chain.then(function () { return save("payments", r).then(function (x) { if (x) ok++; }, function () { }); }); });
+    return chain.then(function () { _ledCache = null; return total; });
+  }
+  /* the family, for anyone who opens a site or the builder: the advance, every site's due, the net */
+  function mstFamilyHtml(master, here) {
+    var M = mstRows(master), adv = mstAdv(master), plan = roleIs("admin") ? mstAdjPlan(master) : [], pt = plan.reduce(function (a, p) { return a + p.amt; }, 0);
+    var h = '<div class="card" style="border-color:#c7d2fe;background:#f8faff;padding:9px 12px"><div style="font-size:13.5px;font-weight:700;color:#312e81">' + esc(master) + ' &mdash; the whole account</div>' +
+      '<div style="overflow-x:auto;margin-top:6px"><table style="width:100%;border-collapse:collapse;font-size:13px">' +
+      M.rows.map(function (r) {
+        return '<tr style="border-top:1px solid #e0e7ff' + (here && mstKey(r.name) === mstKey(here) ? ';background:#eef2ff' : '') + '"><td style="padding:4px 6px">' + esc(r.name) + (r.own ? ' <span style="color:#64748b;font-size:12px">(builder)</span>' : '') + '</td>' +
+          '<td style="padding:4px 6px;text-align:right;white-space:nowrap;font-weight:700;color:' + (r.due > 0.5 ? '#b91c1c' : '#0f766e') + '">' + (r.due < -0.5 ? money(-r.due) + ' advance' : money(r.due)) + '</td></tr>';
+      }).join("") +
+      '<tr style="border-top:2px solid #312e81"><td style="padding:5px 6px;font-weight:800">Net to collect from ' + esc(master) + '</td><td style="padding:5px 6px;text-align:right;font-weight:800;white-space:nowrap">' + money(Math.max(0, M.tot.due)) + (M.tot.due < -0.5 ? ' (' + money(-M.tot.due) + ' advance)' : '') + '</td></tr></table></div>';
+    if (adv && pt) h += '<div class="meta" style="font-size:12.5px;margin-top:6px;color:#92400e">' + esc(master) + ' holds <b>' + money(adv) + '</b> as advance while his sites owe. ' +
+      (roleIs("admin") ? '' : 'The owner moves it onto the sites.') + '</div>' +
+      (roleIs("admin") ? '<div class="acts" style="margin-top:6px"><button class="btn sm" data-act="mst-adj" data-n="' + esc(master) + '" style="min-height:44px">Move ' + money(pt) + ' of his advance onto the sites</button></div>' : '');
+    else if (adv && !pt) h += '<div class="meta" style="font-size:12.5px;margin-top:6px">' + esc(master) + ' holds <b>' + money(adv) + '</b> as advance; none of his sites owes anything finalised yet &mdash; it moves onto a site by itself when that site&rsquo;s challan is finalised.</div>';
+    return h + '</div>';
+  }
   /* does the server keep billedThrough (V142)? asked once a session */
   var _mstSrv = null;
   function mstSrvOk() {
@@ -34766,13 +34819,14 @@ function viewCatalogue() {
         '<td style="padding:6px 7px;text-align:right;white-space:nowrap">' + money(M.tot.billed) + '</td><td style="padding:6px 7px;text-align:right;white-space:nowrap">' + money(M.tot.paid + M.tot.returned) + '</td>' +
         '<td style="padding:6px 7px;text-align:right;white-space:nowrap">' + money(M.tot.due) + '</td><td style="padding:6px 7px;text-align:right">' + (M.tot.oldest ? M.tot.oldest + 'd' : '') + '</td><td></td></tr>' +
         '</tbody></table></div></div>';
+      try { var _adv0 = mstAdv(cl), _pl0 = roleIs("admin") ? mstAdjPlan(cl) : []; if (_adv0 && _pl0.length) h += '<div class="card" style="border-color:#fcd34d;background:#fffbeb;padding:9px 12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center"><span style="flex:1 1 240px;font-size:13px"><b>' + money(_adv0) + '</b> is on ' + esc(cl) + '&rsquo;s own account as advance while his sites owe.</span><button class="btn sm" data-act="mst-adj" data-n="' + esc(cl) + '" style="min-height:44px">Move ' + money(_pl0.reduce(function (a, p) { return a + p.amt; }, 0)) + ' onto the sites</button></div>'; } catch (eA) { }   /* 6.9.896 */
       return h + mstStmtHtml(cl) + mstPPHtml(cl) + mstIncHtml(cl);   /* 6.9.688; 6.9.689 the preset */
     }
     if (up) {
       return mstSwitch(cl) + '<div class="card" style="border-color:#c7d2fe;background:#f8faff;padding:9px 12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">' +
         '<span style="flex:1 1 240px;font-size:13px">Billed through <b>' + esc(up) + '</b> &mdash; ' + esc(up) + ' owes for this site, and it is on ' + esc(up) + '&rsquo;s combined statement. This site&rsquo;s own statement is below as always.</span>' +
         '<button class="btn sm" data-act="bill-open" data-n="' + esc(up) + '">Open ' + esc(up) + '</button>' +
-        (own ? link("mst-under", cl, "Change") : '') + '</div>';
+        (own ? link("mst-under", cl, "Change") : '') + '</div>' + (function () { try { return mstFamilyHtml(up, cl); } catch (eF) { return ""; } })();   /* 6.9.896 - the executive sees the whole family */
     }
     if (!own) return '';
     return '<div class="meta" style="font-size:12.5px;margin:2px 0 8px;display:flex;flex-wrap:wrap;gap:6px;align-items:center">Builder or dealer paying for several sites? ' +
@@ -66631,6 +66685,15 @@ function viewCatalogue() {
       S.modal = null;
       _hsbCache = null;
       render();
+      /* 6.9.896 - his answer: a site's finalised challan takes its builder's advance by itself */
+      (function (cl0) {
+        var m0 = mstOf(cl0); if (!m0 || mstKey(m0) === mstKey(cl0)) return;
+        setTimeout(function () {
+          _ledCache = null;
+          var pl0 = mstAdjPlan(m0, cl0); if (!pl0.length) return;
+          mstAdjust(m0, pl0, "on finalising " + (hc.challanNo || "a challan"), true).then(function (n) { if (n) toast(money(n) + " of " + m0 + "'s advance moved onto " + cl0 + "."); keepScroll = true; render(); });
+        }, 600);
+      })(hc.customerName);
       toast("Challan " + (hc.challanNo || "") + " finalised." + hAuto +
         (hxAmt > 0 ? " " + money(hxAmt) + " further discount taken off." : "") +
         (hOff.length ? " No incentive on it for " + hOff.map(function (x) { return x.name; }).join(", ") + "." : "") +
@@ -67090,6 +67153,19 @@ function viewCatalogue() {
         render();
         toast(_mas ? _site + " is now billed through " + _mas + "." + (_ppr ? " It took his brand preset (" + Object.keys(_ppm.rates).length + " brands)" + (_ppr.lines ? ", " + _ppr.lines + " lines re-priced, " + money(_ppr.diff) + " off" : "") + "." : "") : _site + " is no longer under a builder or dealer.");
       });
+      return;
+    }
+    if (act === "mst-adj") {   /* 6.9.896 */
+      var _mm = t.getAttribute("data-n") || "", _pl = mstAdjPlan(_mm);
+      if (!_pl.length) { toast("Nothing to move - no advance, or no site owes."); return; }
+      var _tt = _pl.reduce(function (a, p) { return a + p.amt; }, 0);
+      askSheet({ title: "Move " + money(_tt) + " of " + esc(_mm) + "'s advance onto his sites?",
+        body: '<div class="meta">Oldest dues first:</div><ul style="margin:6px 0 6px 18px">' + _pl.map(function (p) { return '<li>' + esc(p.name) + ' &mdash; <b>' + money(p.amt) + '</b></li>'; }).join("") + '</ul>' +
+          '<div class="meta">Written as "Adjustment" payments: plus on each site, the same minus on ' + esc(_mm) + ', one ADJ number. Nothing is deleted; his total does not change.</div>',
+        yes: "Move it", no: "Not now" }).then(function (yes) {
+          if (!yes) return;
+          mstAdjust(_mm, _pl, "builder advance onto his sites", false).then(function (n) { toast(money(n) + " moved onto " + plural(_pl.length, "site") + "."); keepScroll = true; render(); });
+        });
       return;
     }
     if (act === "mst-off") {
