@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.897";
+  var APP_VERSION = "6.9.898";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -7309,7 +7309,7 @@ window.addEventListener("beforeunload", function (ev) {
      billed Rs 1,045 for one visit worth Rs 545, because the form was saved twice eight seconds
      apart and the second save lost the salt bag. Nothing is deleted - the second row is set
      aside with a reason, exactly as a duplicate challan is, and can be brought back. */
-  var CANCEL_TABS = { challans: "Challan", clients: "Client / lead", sites: "Site (lead)", returns: "Material return", payments: "Payment received", quotes: "Quote", pitch: "Brand record", visits: "Service visit", installs: "Installation" };
+  var CANCEL_TABS = { challans: "Challan", clients: "Client / lead", sites: "Site (lead)", returns: "Material return", payments: "Payment received", quotes: "Quote", pitch: "Brand record", visits: "Service visit", installs: "Installation", associates: "Partner" };   /* 6.9.898 - his ask: "option to delete any partner" - set aside, never deleted */
   /* Fixed list, same reasoning as the loss reasons: free text cannot be counted, and "mistake",
      "Mistake" and "wrong entry" are three rows and one reason. */
   var CANCEL_REASONS = [
@@ -7543,6 +7543,7 @@ window.addEventListener("beforeunload", function (ev) {
     if (tab === "visits") return String(r.client || "") + " · " + String(r.engineer || "") +
       " · " + String(r.type || "") + " · " + money(cxValue("visits", r));
     if (tab === "installs") return String(r.client || "") + (r.area ? " · " + r.area : "");
+    if (tab === "associates") return [r.role, r.mobile, r.location].filter(Boolean).join(" · ");   /* 6.9.898 */
     return String(r.mobile || "") + (r.location ? " · " + r.location : "");
   }
 
@@ -47015,6 +47016,7 @@ function viewCatalogue() {
       '</div>' +
       '<label>Notes</label><textarea id="m_anotes">' + esc(a.notes) + '</textarea>' +
       '<div class="foot"><button class="btn ghost" data-act="' + (S.asReturn ? 'as-back' : 'close') + '">' + (S.asReturn ? 'Back' : 'Cancel') + '</button>' +
+      (a.id && roleIs("admin") ? '<button class="btn ghost" data-act="as-remove" data-id="' + esc(a.id) + '" style="color:#b91c1c;border-color:#fecaca">Remove partner</button>' : '') +   /* 6.9.898 */
       '<button class="btn" data-act="as-save" data-id="' + esc(a.id || "") + '">Save partner</button></div>';
   }
 
@@ -66919,6 +66921,32 @@ function viewCatalogue() {
     }
 
     if (act === "as-new") { S.modal = modalAssociate(null); render(); return; }
+    if (act === "as-remove") {   /* 6.9.898 */
+      if (!roleIs("admin")) { toast("Only the owner removes a partner."); return; }
+      var _ar = (S.data.associates || []).filter(function (x) { return x.id === id; })[0]; if (!_ar) return;
+      var _k = dkey(_ar.name), _lv = assocLive().filter(function (x) { return dkey(x.name) === _k; })[0], _nm = String((_lv || _ar).name || "").trim();
+      var _rows = (S.data.associates || []).filter(function (x) { return x && dkey(x.name) === _k; });
+      var _cls = (S.data.clients || []).filter(function (c) { return [c.plumber, c.architect, c.builder, c.pmc].some(function (v) { return dkey(v) === _k; }); });
+      var _bk = null; try { _bk = partnerBook(_nm); } catch (e0) { _bk = null; }
+      var _owe = _bk ? Math.round(Number(_bk.pending) || 0) : 0;
+      var _warn = [];
+      if (_cls.length) _warn.push(plural(_cls.length, "client") + (_cls.length === 1 ? " names" : " name") + " him as partner (" + _cls.slice(0, 4).map(function (c) { return c.name; }).join(", ") + (_cls.length > 4 ? "…" : "") + ") — they keep his name; his incentive on them stays in the books.");
+      if (_owe > 0) _warn.push("He still has " + money(_owe) + " incentive payable.");
+      if (_rows.length > 1) _warn.push("He is on the partner sheet " + _rows.length + " times — all " + _rows.length + " rows are set aside together.");
+      chooseSheet({ title: "Remove " + esc(_nm) + " from partners?",
+        sub: "Set aside, not deleted: he leaves every partner list, picker and event. The owner can bring him back from Health › Cancelled records.",
+        body: _warn.length ? '<ul style="margin:6px 0 0 18px">' + _warn.map(function (w) { return '<li>' + esc(w) + '</li>'; }).join("") + '</ul>' : '',
+        choices: [{ v: "Not a partner any more", label: "Not a partner any more" }, { v: "Duplicate of another partner", label: "Duplicate of another partner", note: "If it is the same man under two names, Merge keeps his history together - this only hides it" },
+                  { v: "Added by mistake", label: "Added by mistake" }], cancel: "Keep him" })
+        .then(function (why) {
+          if (!why) return;
+          _rows.forEach(function (r) { cxWriteQuiet("associates", r.id, r, why, ""); });
+          try { splitCancelled(); snapSave(); } catch (e1) { }
+          _asLiveCache = null; S.modal = null; render();
+          toast(_nm + " removed from partners (" + why.toLowerCase() + "). Bring him back from Health › Cancelled records.");
+        });
+      return;
+    }
     if (act === "as-open") {
       S.modal = modalAssociate(S.data.associates.filter(function (x) { return x.id === id; })[0]); render(); return;
     }
