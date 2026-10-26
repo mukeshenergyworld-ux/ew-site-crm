@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.896";
+  var APP_VERSION = "6.9.897";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -38928,7 +38928,47 @@ function viewCatalogue() {
       { name: "xl/worksheets/sheet1.xml", data: xlSheet(rows, cols, !opts.freeze, sheetOpts) }
     ].concat(extra));
   }
+  /* ===== 6.9.897 - A PDF WHEREVER THERE IS AN EXCEL =====
+     HIS WORDS: "show pdf option also where excel is there". Every Excel in the CRM is built by dlXlsx from rows of cells
+     (21 buttons, 28 callers). So the PDF is the SAME rows: a "PDF" button is set beside every Excel button after each
+     paint (pdfTwins); pressing it raises _dlAsPdf and presses the Excel button, and dlXlsx, seeing the flag, lays the
+     rows out with the report PDF writer (rsRowsPdf, landscape A4, page numbers) instead of writing a workbook. One
+     source for both files, so the PDF can never show different figures from the Excel. */
+  var _dlAsPdf = 0;
+  function dlRowsPdf(name, sheetName, rows, cols) {
+    var n = 0; (rows || []).forEach(function (r) { if (r && r.length > n) n = r.length; });
+    var w = (cols && cols.length ? cols.slice(0, n) : []);
+    while (w.length < n) w.push(14);
+    w = w.map(function (x) { return Math.max(6, Math.min(48, Number(x && x.wch != null ? x.wch : x) || 14)); });
+    var title = String(name || sheetName || "Report").replace(/\.xlsx?$/i, "").replace(/[_ -]?\d{4}-\d{2}-\d{2}$/, "").replace(/_/g, " ");
+    var pdfName = String(name || "report.xlsx").replace(/\.xlsx?$/i, "") + ".pdf";
+    if (!window.jspdf) { toast("The PDF maker did not load - check the connection and try again."); return; }
+    loadLogo().then(function () {
+      var f0 = (rows && rows[0] && rows[0][0]) || null, hasT = f0 && typeof f0 === "object" && (f0.s === XL.TITLE || f0.s === XL.BOLD) && rows[0].length === 1;
+      var body = hasT ? rows : [[{ v: "Energy World \u00b7 " + title.charAt(0).toUpperCase() + title.slice(1) + " \u00b7 " + fullDate(today()), s: XL.TITLE }]].concat(rows);   /* a heading when the sheet has none */
+      try { pdfOut(rsRowsPdf(title, body, w), pdfName); toast("Downloaded " + pdfName); }
+      catch (e) { toast("Could not make the PDF: " + ((e && e.message) || "error")); }
+    });
+  }
+  function pdfTwins() {
+    var bs = document.querySelectorAll("button[data-act]");
+    for (var i = 0; i < bs.length; i++) {
+      var b = bs[i], act = b.getAttribute("data-act") || "";
+      if (act === "as-pdf" || !/^(?:[⇩↓]\s*)?(?:download\s+|my order\s+)?excel$/i.test(String(b.textContent || "").trim()) || b.getAttribute("data-pdfid")) continue;   /* a download button, not "Upload levels (Excel)" */
+      var sib = b.parentNode ? [].slice.call(b.parentNode.children) : [];
+      if (sib.some(function (x) { return x !== b && /\bpdf\b/i.test(x.textContent || ""); })) { b.setAttribute("data-pdfid", "-"); continue; }   /* this screen has its own PDF already */
+      var id = "px" + Date.now().toString(36) + i;
+      b.setAttribute("data-pdfid", id);
+      var p = document.createElement("button");
+      p.className = b.className.indexOf("ghost") >= 0 ? b.className : b.className + " ghost";
+      p.setAttribute("data-act", "as-pdf"); p.setAttribute("data-for", id);
+      p.setAttribute("style", (b.getAttribute("style") || "") + ";margin-left:6px");
+      p.innerHTML = "&#8681; PDF";
+      b.parentNode.insertBefore(p, b.nextSibling);
+    }
+  }
   function dlXlsx(name, sheetName, rows, cols, opts) {
+    if (_dlAsPdf) { _dlAsPdf = 0; dlRowsPdf(name, sheetName, rows, cols); return; }   /* 6.9.897 */
     try {
       var blob = new Blob([xlBook(sheetName, rows, cols, opts)],
         { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
@@ -59881,6 +59921,7 @@ function viewCatalogue() {
     /* Stock import: read an uploaded Tally CSV export and jump straight to the review step. */
     var mtf = el("mt_file");   /* 6.9.662 - Tally's Sundry Debtors */
     if (mtf) mtf.addEventListener("change", function (e) { mtReadFile(e.target.files && e.target.files[0]); });
+    try { pdfTwins(); } catch (ePt) { }   /* 6.9.897 - a PDF beside every Excel */
     var srf = el("sr_file");   /* 6.9.892 - the sales register */
     if (srf) srf.addEventListener("change", function (e) { srReadFiles(e.target.files); });
     var impf = el("imp_file");
@@ -67668,6 +67709,12 @@ function viewCatalogue() {
     if (act === "msg-all") { S.msgAll = true; keepScroll = true; render(); return; }
     if (act === "msg-copy") { var _mb = el(t.getAttribute("data-box")); try { navigator.clipboard.writeText(_mb ? _mb.value : ""); toast("Copied."); } catch (e) { toast("Select the text and copy it."); } return; }
     if (act === "msg-ai") { msgAi(t); return; }
+    if (act === "as-pdf") {   /* 6.9.897 */
+      var _xb = document.querySelector('[data-pdfid="' + (t.getAttribute("data-for") || "") + '"]');
+      if (!_xb) { toast("Open the screen again and press PDF."); return; }
+      _dlAsPdf = 1; setTimeout(function () { _dlAsPdf = 0; }, 15000);   /* an Excel built after an await still finds the flag */
+      _xb.click(); return;
+    }
     if (act === "xl-xlsx") { xlSheetXlsx(t.getAttribute("data-s") || ""); return; }   /* 6.9.831 */
     if (act === "clp-prod") { S.clpProd = t.getAttribute("data-k") || ""; keepScroll = true; render(); return; }   /* 6.9.838 */
     if (act === "ai-ask") {   /* 6.9.839 */
