@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.899";
+  var APP_VERSION = "6.9.900";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -14783,7 +14783,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
        made them, and the brands he took and the ones still open. Every heading still sorts. */
     h += xlTable("clients", [
       { k: "name", t: "CLIENT", nw: 1 }, { k: "due", t: "DUE / FOLLOW-UP", n: 1, r: 1 }, { k: "exec", t: "EXECUTIVE", nw: 1 },
-      { k: "pl", t: "PLUMBER · ARCHITECT · BUILDER · PMC", fill: 1 }, { k: "quotes", t: "QUOTED", n: 1, r: 1 },
+      { k: "pl", t: "PLUMBER · ARCHITECT · BUILDER · PMC", wrap: "260px" }, { k: "quotes", t: "QUOTED", n: 1, r: 1 },
       { k: "has", t: "HAS / CHASE", nw: 1 }
     ], rows.slice().sort(function (a, b) { return clNewestFirst(a.c, b.c); }).map(function (r) {
       var c = r.c, nm = String(c.name || "");
@@ -29436,7 +29436,7 @@ function viewCatalogue() {
       if (g.open) notes.push('<span style="color:#b45309">' + g.open + ' not finalised</span>');
       if (g.rcpt) notes.push('<span style="color:#b91c1c">' + g.rcpt + ' receipt pending</span>');
       h += '<tr style="background:' + bg + '">' +
-        '<td style="' + regCell(";max-width:220px;overflow:hidden;text-overflow:ellipsis;line-height:1.35") + '">' +
+        '<td style="' + regCell(";min-width:150px;max-width:260px;white-space:normal;overflow-wrap:anywhere;word-break:normal;line-height:1.35") + '">' +
           '<a href="#" data-act="regx-cl" data-cl="' + esc(g.name) + '" style="font-weight:700;color:#0b3b36;text-decoration:none">' + esc(g.name) + '</a>' +
           (notes.length ? '<div style="font-size:12px">' + notes.join(' · ') + '</div>' : '') + '</td>' +
         '<td style="' + regCell(";text-align:right;font-weight:700") + '">' + g.chs.length + '</td>' +
@@ -33471,7 +33471,7 @@ function viewCatalogue() {
     var show = '<table style="width:100%;border-collapse:collapse;font-size:13px">' + hits.slice(0, 8).map(function (h) {
       var l = h.g.lines[0];
       return '<tr><td style="padding:2px 6px 2px 0;font-weight:700;white-space:nowrap">' + esc(h.c.challanNo || "?") +
-        (_rpNames > 1 ? '<div style="font-weight:400;font-size:12px;color:#64748b;max-width:150px;overflow:hidden;text-overflow:ellipsis">' +
+        (_rpNames > 1 ? '<div style="font-weight:400;font-size:12px;color:#64748b;min-width:120px;max-width:200px;white-space:normal;overflow-wrap:anywhere;word-break:normal;">' +
           esc(h.c.customerName || "") + '</div>' : '') + '</td>' +
         '<td style="padding:2px 6px;color:#64748b;white-space:nowrap">' + esc(fullDate(h.ymd)) + '</td>' +
         '<td style="padding:2px 6px;white-space:nowrap">' + l.frozen + '% \u2192 ' + l.preset + '%</td>' +
@@ -34646,9 +34646,9 @@ function viewCatalogue() {
       var r = e.r, site = e.site === master ? 'his own' : e.site;
       h += '<tr style="background:' + (i % 2 ? '#f8faff' : '#fff') + '">' +
         '<td style="' + td + 'white-space:nowrap">' + esc(r.date || '') + '</td>' +
-        '<td style="' + td + 'max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(e.site) + '">' + esc(site) + '</td>' +
+        '<td style="' + td + 'min-width:170px;max-width:260px;white-space:normal;overflow-wrap:anywhere;word-break:normal;line-height:1.35" title="' + esc(e.site) + '">' + esc(site) + '</td>' +   /* 6.9.900 - "site name is hiding, do not hide any name" */
         '<td style="' + td + 'white-space:nowrap">' + esc(r.no || '') + '</td>' +
-        '<td style="' + td + 'color:#475569;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(r.ptrs || '') + '">' + esc(r.ptrs || '') + '</td>' +
+        '<td style="' + td + 'color:#475569;min-width:160px;max-width:300px;white-space:normal;overflow-wrap:anywhere;word-break:normal;line-height:1.35">' + esc(r.ptrs || '') + '</td>' +
         '<td style="' + td + 'white-space:nowrap">' + esc(r.type || '') + '</td>' +
         '<td style="' + num + '">' + (r.debit != null ? money(r.debit) : '') + '</td>' +
         '<td style="' + num + 'color:#0f766e">' + (r.credit != null ? money(r.credit) : '') + '</td>' +
@@ -34888,17 +34888,22 @@ function viewCatalogue() {
     ["Billed", "Received", "Owes", "Oldest"].forEach(function (t, i) { doc.text(t, X[i + 2], y, { align: "right" }); });
     y += 9;
     M.rows.forEach(function (r, i) {
-      if (i % 2) { doc.setFillColor(245, 247, 255); doc.rect(L, y - 6, Rt - L, 9, "F"); }
+      F(true); doc.setFontSize(10.5);
+      var nmL = doc.splitTextToSize(r.name + (r.own ? " (own account)" : ""), 90);   /* 6.9.900 - the whole name, on two lines if it needs them */
+      F(false); doc.setFontSize(10);
+      var arL = doc.splitTextToSize(r.area || "-", 66), extra = (Math.max(nmL.length, arL.length) - 1) * 4.6;
+      if (y + extra > H - 16) { doc.addPage(); y = 20; }
+      if (i % 2) { doc.setFillColor(245, 247, 255); doc.rect(L, y - 6, Rt - L, 9 + extra, "F"); }
       F(true); doc.setFontSize(10.5); doc.setTextColor(17, 34, 45);
-      doc.text(doc.splitTextToSize(r.name + (r.own ? " (own account)" : ""), 90)[0], X[0], y);
+      doc.text(nmL, X[0], y, { lineHeightFactor: 1.25 });
       F(false); doc.setFontSize(10); doc.setTextColor(55, 65, 81);
-      doc.text(doc.splitTextToSize(r.area || "-", 66)[0], X[1], y);
+      doc.text(arL, X[1], y, { lineHeightFactor: 1.3 });
       doc.text(RS(r.billed), X[2], y, { align: "right" });
       doc.text(RS(r.paid + r.returned), X[3], y, { align: "right" });
       F(true); r.due > 0.5 ? doc.setTextColor(185, 28, 28) : doc.setTextColor(13, 118, 108);
       doc.text(RS(r.due), X[4], y, { align: "right" });
       F(false); doc.setTextColor(55, 65, 81); doc.text(r.due > 0.5 && r.oldest ? r.oldest + " days" : "-", X[5], y, { align: "right" });
-      y += 9;
+      y += 9 + extra;
     });
     doc.setFillColor(49, 46, 129); doc.rect(L, y - 6, Rt - L, 10, "F");
     F(true); doc.setFontSize(11); doc.setTextColor(255, 255, 255);
@@ -40181,7 +40186,7 @@ function viewCatalogue() {
     rows.forEach(function (r, i) {
       var d = r.oldest, tone = d > 90 ? "#b91c1c" : d > 60 ? "#c2410c" : d > CREDIT_DAYS ? "#92400e" : "#166534";
       h += '<tr style="background:' + (i % 2 ? '#fff7f7' : '#fff') + '">' +
-        '<td style="' + cell + ';font-weight:700;max-width:210px;overflow:hidden;text-overflow:ellipsis" title="' + esc(r.name) + '">' +
+        '<td style="' + cell + ';font-weight:700;min-width:150px;max-width:260px;white-space:normal;overflow-wrap:anywhere;word-break:normal;" title="' + esc(r.name) + '">' +
           esc(r.name) + (r.sites ? ' <span style="font-weight:500;color:#312e81;font-size:12px">(builder)</span>' + mstSiteLines(r) : '') + '</td>' +
         '<td style="' + num + ';font-weight:800;color:#b91c1c">' + money(r.due) + '</td>' +
         '<td style="' + num + ';color:' + tone + ';font-weight:700">' + (d ? d + 'd' : '—') + '</td>' +
@@ -40283,7 +40288,7 @@ function viewCatalogue() {
     return '<tr style="background:' + (dead ? '#fef2f2' : (i % 2 ? '#f8fafc' : '#fff')) + '">' +
       '<td style="' + cell + '">' + esc(regDMY(String(p.date || "").slice(0, 10)).replace(/\/(\d\d)(\d\d)$/, "/$2")) + '</td>' +
       '<td style="' + cell + '"><button class="btn sm ghost" data-act="pay-row" data-p="' + esc(p.id || "") + '" style="min-height:44px;padding:2px 8px;font-weight:700">' + esc(receiptNo(p)) + '</button></td>' +
-      (withClient ? '<td style="' + cell + ';max-width:170px;overflow:hidden;text-overflow:ellipsis"><a href="#" data-act="ch-hisab" data-cl="' + esc(p.client || "") + '" style="font-weight:700;color:#0b3b36;text-decoration:none">' + esc(p.client || "\u2014") + '</a>' +
+      (withClient ? '<td style="' + cell + ';min-width:140px;max-width:230px;white-space:normal;overflow-wrap:anywhere;word-break:normal;"><a href="#" data-act="ch-hisab" data-cl="' + esc(p.client || "") + '" style="font-weight:700;color:#0b3b36;text-decoration:none">' + esc(p.client || "\u2014") + '</a>' +
         (cl.ownedBy ? '<div style="font-size:12px;color:#64748b">' + esc(regFirst(cl.ownedBy)) + '</div>' : '') + '</td>' : '') +
       '<td style="' + cell + '">' + plModeBtn(p, dead) + '</td>' +
       '<td style="' + cell + ';text-align:right;font-weight:700;color:' + (payAmt(p) < 0 ? '#b91c1c' : '#0f766e') + '">' + moneySgn(payAmt(p)) + (payKindOf(p) === "advance" ? '<div style="font-size:12px;color:#0f766e;font-weight:600">advance</div>' : payKindOf(p) === "refund" ? '<div style="font-size:12px;color:#b91c1c;font-weight:600">refund</div>' : '') + '</td>' +
@@ -40353,7 +40358,7 @@ function viewCatalogue() {
     G.forEach(function (g, i) {
       var isOpen = !!open[g.name], due = 0; try { due = (clientLedger(g.name) || {}).due || 0; } catch (e) { due = 0; }
       hb += '<tr style="background:' + (isOpen ? '#f0fdfa' : (i % 2 ? '#f8fafc' : '#fff')) + '">' +
-        '<td style="' + regCell(";max-width:220px;overflow:hidden;text-overflow:ellipsis") + '"><a href="#" data-act="plg-cl" data-cl="' + esc(g.name) + '" style="font-weight:700;color:#0b3b36;text-decoration:none">' + esc(g.name) + '</a></td>' +
+        '<td style="' + regCell(";min-width:150px;max-width:260px;white-space:normal;overflow-wrap:anywhere;word-break:normal;") + '"><a href="#" data-act="plg-cl" data-cl="' + esc(g.name) + '" style="font-weight:700;color:#0b3b36;text-decoration:none">' + esc(g.name) + '</a></td>' +
         '<td style="' + regCell(";text-align:right;font-weight:700") + '">' + g.rows.length + '</td>' +
         '<td style="' + regCell() + '">' + esc(regDMY(g.last).replace(/\/(\d\d)(\d\d)$/, "/$2")) + '</td>' +
         '<td style="' + regCell(";text-align:right;font-weight:700;color:#0f766e") + '">' + moneySgn(g.amt) + '</td>' +
@@ -44299,9 +44304,9 @@ function viewCatalogue() {
       h += '<tr style="background:' + bg + '">' +
         '<td style="' + cell + '"><input type="checkbox" class="bkchk" data-act="bks-tick" data-id="' +
           esc(r.id) + '"' + (S.bkTick[r.id] ? ' checked' : '') + '/></td>' +
-        '<td style="' + cell + ';font-weight:700;max-width:190px;overflow:hidden;text-overflow:ellipsis">' + esc(r.cl) + '</td>' +
+        '<td style="' + cell + ';font-weight:700;min-width:140px;max-width:240px;white-space:normal;overflow-wrap:anywhere;word-break:normal;">' + esc(r.cl) + '</td>' +
         '<td style="' + cell + ';font-size:12px;color:#475569">' + esc(r.no) + '</td>' +
-        '<td style="' + cell + ';max-width:230px;overflow:hidden;text-overflow:ellipsis" title="' + esc(r.site) + '">' +
+        '<td style="' + cell + ';min-width:150px;max-width:260px;white-space:normal;overflow-wrap:anywhere;word-break:normal;" title="' + esc(r.site) + '">' +
           esc(r.site) + (r.rest ? ' <span class="pill" style="background:#fef3c7;color:#92400e">keeps "' + esc(r.rest) + '"</span>' : '') + '</td>' +
         '<td style="' + cell + ';font-weight:700;color:#0f766e">' + esc(r.code) + '</td>' +
         '<td style="' + cell + ';font-size:12px;color:' + (r.state === "clash" ? "#b91c1c" : "#94a3b8") + '">' +
@@ -44400,7 +44405,7 @@ function viewCatalogue() {
            has one - RC-..., a challan number, a quote number - and the whole label for a man.
            It goes to SEARCH rather than to a per-tab opener, because this app has none and
            inventing four would be four things to keep right. */
-        '<td style="' + cell + ';max-width:230px;overflow:hidden;text-overflow:ellipsis" title="' + esc(r.label || r.recId || "") + '">' +
+        '<td style="' + cell + ';min-width:150px;max-width:260px;white-space:normal;overflow-wrap:anywhere;word-break:normal;" title="' + esc(r.label || r.recId || "") + '">' +
           (clgLookup(r)
             ? '<button class="btn sm ghost" style="padding:2px 7px;font-size:12.5px;max-width:100%;overflow:hidden;text-overflow:ellipsis" data-act="clg-open" data-q="' + esc(clgLookup(r)) +
               '" title="Open this record">' + esc(r.label || r.recId || "") + '</button>'
@@ -46245,7 +46250,7 @@ function viewCatalogue() {
       ".cv-seg button{border:0;background:#fff;color:#475569;font-size:12.5px;font-weight:700;padding:8px 16px;cursor:pointer;min-height:44px;line-height:1}" +
       ".cv-seg button.on{background:#0f766e;color:#fff}" +
       ".cv-exec{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;color:#fff;border-radius:12px;padding:9px 13px;margin:14px 0 8px;font-weight:700;font-size:13.5px}" +
-      ".cv-en{flex:1 1 120px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}" +
+      ".cv-en{flex:1 1 120px;min-width:0;white-space:normal;overflow-wrap:anywhere;word-break:normal;}" +
       ".cv-tags{display:inline-flex;gap:5px;align-items:center;flex-wrap:wrap;flex:0 0 auto}" +
       ".cv-tag{border-radius:999px;padding:3px 9px;font-size:12px;font-weight:700;white-space:nowrap}" +
       ".cv-dist{display:flex;align-items:center;gap:9px;width:100%;text-align:left;border:1px solid #e2e8f0;border-left-width:5px;border-radius:11px;padding:10px 12px;margin-bottom:6px;cursor:pointer;font-weight:700;font-size:13.5px;min-height:46px}" +
@@ -54072,7 +54077,7 @@ function viewCatalogue() {
          all. Exactly backwards. The pills now WRAP onto a second line and the name
          keeps a floor it can never be pushed below. */
       ".lc-id{display:flex;align-items:center;gap:5px;min-width:0;flex:1 1 320px;flex-wrap:wrap;overflow:visible}" +
-      ".lc-id b{font-size:13.5px;flex:0 1 auto;min-width:170px;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}" +
+      ".lc-id b{font-size:13.5px;flex:0 1 auto;min-width:170px;max-width:100%;white-space:normal;overflow-wrap:anywhere;word-break:normal;}" +
       /* a shade smaller than free-standing pills, so more of them fit before wrapping */
       ".lc-id .pill,.lc-id .bs{font-size:12px;padding:2px 7px;white-space:nowrap;line-height:1.5}" +
       /* v6.9.401 - flex:0 0 auto never shrank, so the Deliveries card's action column ran 558px
