@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.898";
+  var APP_VERSION = "6.9.899";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -50265,11 +50265,34 @@ function viewCatalogue() {
         var cl = clientByName(r.name) || {};
         return { cl: r.name, ex: String(r.owner || "").trim() || "(no executive)", mob: cl.mobile || "", net: r.net, paid: r.paid, ret: r.returned || 0, due: r.due,
           cur: b.cur || 0, d30: b.d30 || 0, d60: b.d60 || 0, d90: b.d90 || 0, old: ag.oldest || 0, last: pl.length ? pl[pl.length - 1].date : "" };
-      }).filter(function (r) { return stExOk(r.ex); });
+      });
+      /* 6.9.899 - HIS WORDS (26 Oct, Imran's pending statement): "its still showing individual client payment even its under
+         builder like sachin bansal is under national const". MEASURED: Sachin Bansal 9,02,997 pending while National Hardware
+         holds 3,69,215 as advance on its own account; a credit never shows on this list (due > 0 only), so the statement
+         over-counted Imran's collection by the whole advance. Now every site under a builder carries "under <builder>", and the
+         builder's advance is counted against his sites exactly as the Move button would book it (mstAdjPlan: oldest dues
+         first, capped at each site's due) - received goes up, pending comes down, the oldest age bucket clears first. View
+         only: nothing is written; the owner's Move (or a site's finalise) books it for real. */
+      var _advTot = 0, _advBy = {};
+      try {
+        var _ms = {};
+        out.forEach(function (r) { var m = mstOf(r.cl); if (m && mstKey(m) !== mstKey(r.cl)) { _ms[mstKey(m)] = m; r.via = m; } });
+        Object.keys(_ms).forEach(function (k) {
+          var m = _ms[k]; if (!mstAdv(m)) return;
+          mstAdjPlan(m).forEach(function (p) {
+            var r = out.filter(function (x) { return mstKey(x.cl) === mstKey(p.name); })[0]; if (!r) return;
+            var a = Math.round(Math.min(p.amt, r.due)); if (a <= 0) return;
+            r.paid += a; r.due -= a; r.adv = a; _advTot += a; _advBy[m] = (_advBy[m] || 0) + a;
+            var left = a; ["d90", "d60", "d30", "cur"].forEach(function (bk) { var u = Math.min(left, r[bk] || 0); r[bk] = (r[bk] || 0) - u; left -= u; });
+          });
+        });
+      } catch (eAdv) { }
+      out = out.filter(function (r) { return r.due > 0.5 && stExOk(r.ex); });
+      out.forEach(function (r) { if (r.via) r.cl = r.cl + " (under " + r.via + ")"; });
       if (detail) {
         rows = out.sort(function (a, b) { return a.ex.localeCompare(b.ex) || b.due - a.due; });
-        cols = [{ k: "ex", t: "EXECUTIVE", w: 16 }, { k: "cl", t: "CLIENT", w: 28 }, { k: "mob", t: "MOBILE", w: 13 }, { k: "net", t: "BILLED", m: 1, w: 13 }, { k: "paid", t: "RECEIVED", m: 1, w: 13 }, { k: "ret", t: "RETURNS", m: 1, w: 11 },
-                { k: "due", t: "PENDING", m: 1, w: 14 }, { k: "d90", t: "OF IT 90+ DAYS", m: 1, w: 13 }, { k: "old", t: "OLDEST (DAYS)", n: 1, w: 11 }, { k: "last", t: "LAST PAYMENT", w: 12, dt: 1 }];
+        cols = [{ k: "ex", t: "EXECUTIVE", w: 16 }, { k: "cl", t: "CLIENT", w: 34 }, { k: "mob", t: "MOBILE", w: 13 }, { k: "net", t: "BILLED", m: 1, w: 13 }, { k: "paid", t: "RECEIVED", m: 1, w: 13 }, { k: "ret", t: "RETURNS", m: 1, w: 11 },
+                { k: "due", t: "PENDING", m: 1, w: 14 }].concat(_advTot ? [{ k: "adv", t: "OF RECEIVED, BUILDER ADVANCE", m: 1, w: 14 }] : []).concat([ { k: "d90", t: "OF IT 90+ DAYS", m: 1, w: 13 }, { k: "old", t: "OLDEST (DAYS)", n: 1, w: 11 }, { k: "last", t: "LAST PAYMENT", w: 12, dt: 1 }]);
       } else {
         var g = {};
         out.forEach(function (r) { var x = g[r.ex] = g[r.ex] || { ex: r.ex, n: 0, due: 0, cur: 0, d30: 0, d60: 0, d90: 0, old: 0 }; x.n++; x.due += r.due; x.cur += r.cur; x.d30 += r.d30; x.d60 += r.d60; x.d90 += r.d90; if (r.old > x.old) x.old = r.old; });
@@ -50278,6 +50301,7 @@ function viewCatalogue() {
                 { k: "d60", t: "61–90", m: 1, w: 12 }, { k: "d90", t: "90+ DAYS", m: 1, w: 13 }, { k: "old", t: "OLDEST (DAYS)", n: 1, w: 12 }];
       }
       note = "As of today - the HISAB figure: finalised deliveries less received less returns, opening balances included. The age columns split that same figure: payments and returns clear the oldest bill first, and an opening balance counts as 90+ days. The period does not change this statement.";
+      if (_advTot) note += " Sites under a builder: the builder's advance is counted against them, oldest dues first - " + Object.keys(_advBy).map(function (m) { return money(_advBy[m]) + " of " + m + "'s"; }).join(", ") + ". The owner books it with Move on the builder's card.";   /* 6.9.899 */
     } else if (kind === "quote" || kind === "wl") {
       var isW = kind === "wl";
       var qs = (S.data.quotes || []).filter(function (q) {
