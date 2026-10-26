@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.894";
+  var APP_VERSION = "6.9.895";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -49978,6 +49978,98 @@ function viewCatalogue() {
     _pevKey = key; _pevCache = list;
     return list;
   }
+  /* ===== 6.9.895 - THE GUEST LIST AS A PDF =====
+     HIS WORDS: "make provision to download pdf of partner list selected for event". Three sheets off the same list the
+     screen draws (pevMoney + pevSupport, executive from the event row else the partner's own):
+       office  - everyone on the list, one band per executive: name, trade, mobile, city, tier, status, gift;
+       sign    - the attendance sheet for the door: everyone not declined, A to Z, with a box to sign; no money on it;
+       confirm - only those confirmed / attended / travelled, for the caterer's head count.
+     Portrait A4, 9 pt text, the trade and city off the partner's record, page numbers and the count at the end. */
+  function pevPdfRows(e, mode) {
+    var m = pevMoney(e.eid), byN = {}; pevSupport().forEach(function (x) { byN[dkey(x.name)] = x; });
+    var own = {}; assocLive().forEach(function (a) { if (a.ownedBy) own[dkey(a.name)] = a.ownedBy; });
+    var rows = m.inv.map(function (i) {
+      var x = byN[dkey(i.partner)] || {}, other = !!i.other;
+      return { name: String(i.partner || ""), role: other ? String(i.who || "Guest") : String(x.role || ""), mob: other ? String(i.mobile || "").replace(/\D/g, "").slice(-10) : String(x.mob || ""),
+        city: other ? "" : String(x.loc || ""), tier: other ? "Guest" : String(x.tier || "Base"), rank: other ? 4 : (x.rank == null ? 3 : x.rank), b12: other ? 0 : (x.b12 || 0),
+        st: String(i.st || ""), gift: String(i.gift || ""), exec: String(i.exec || (other ? "" : own[dkey(i.partner)] || "")), other: other };
+    });
+    if (mode === "sign") rows = rows.filter(function (r) { return !/Declined/.test(r.st); });
+    if (mode === "confirm") rows = rows.filter(function (r) { return /Confirmed|Attended|Travelled/.test(r.st); });
+    return rows;
+  }
+  function pevPdf(e, mode) {
+    var rows = pevPdfRows(e, mode);
+    if (!rows.length) { toast(mode === "confirm" ? "Nobody is confirmed yet." : "No guest on the list yet."); return; }
+    if (!window.jspdf) { toast("The PDF maker did not load - check the connection and try again."); return; }
+    return loadLogo().then(function (logo) {
+      var doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
+      var FN = ppEmbed(doc), F = function (b) { doc.setFont(FN, b ? "bold" : "normal"); };
+      var L = 9, R = 201, TW = R - L, y = 12, BOTTOM = 282;
+      var cols = mode === "sign"
+        ? [["#", 9, "r"], ["Name", 58], ["Trade", 28], ["Mobile", 27], ["City", 28], ["Sign", 42]]
+        : [["#", 9, "r"], ["Name", 52], ["Trade", 24], ["Mobile", 22], ["City", 22], ["Tier", 19], ["Status", 22], ["Gift", 22]];
+      var rh = mode === "sign" ? 10 : 7.2;
+      var fit = function (t, w) { t = String(t == null ? "" : t); while (t.length > 1 && doc.getTextWidth(t) > w) t = t.slice(0, -1); return t; };
+      var head = function () {
+        doc.setFillColor(11, 59, 54); doc.rect(L, y, TW, 7.5, "F"); F(true); doc.setFontSize(9); doc.setTextColor(255, 255, 255);
+        var x = L; cols.forEach(function (c) { doc.text(c[0], c[2] === "r" ? x + c[1] - 1.5 : x + 1.5, y + 5.1, { align: c[2] === "r" ? "right" : "left" }); x += c[1]; });
+        y += 7.5;
+      };
+      var title = function (first) {
+        y = 12;
+        if (first) {
+          if (logo) { try { doc.addImage(logo, "JPEG", L, y - 2, 16, 16); } catch (er) { } }
+          F(true); doc.setFontSize(15); doc.setTextColor(11, 59, 54); doc.text(fit(e.name || "Event", TW - 22), L + (logo ? 20 : 0), y + 4);
+          F(false); doc.setFontSize(10); doc.setTextColor(71, 85, 105);
+          doc.text(fit([mode === "sign" ? "Attendance sheet" : mode === "confirm" ? "Confirmed guests" : "Guest list", e.date ? fullDate(e.date) : "", e.venue || "", "Energy World, Panipat"].filter(Boolean).join("  ·  "), TW - 22), L + (logo ? 20 : 0), y + 10);
+          y += 18;
+        }
+        head();
+      };
+      var band = function (txt, sub) {
+        if (y > BOTTOM - 18) { doc.addPage(); title(false); }
+        doc.setFillColor(236, 253, 245); doc.rect(L, y + 1, TW, 7, "F"); F(true); doc.setFontSize(10); doc.setTextColor(6, 95, 70);
+        doc.text(fit(txt, 120), L + 1.5, y + 6); F(false); doc.setFontSize(9); doc.text(sub, R - 1.5, y + 6, { align: "right" }); y += 8.5;
+      };
+      var line = function (r, n) {
+        if (y > BOTTOM - rh) { doc.addPage(); title(false); }
+        var vals = mode === "sign" ? [String(n), r.name, r.role, r.mob, r.city, ""] : [String(n), r.name, r.role, r.mob, r.city, r.tier, r.st, r.gift];
+        var x = L; F(false); doc.setFontSize(9); doc.setTextColor(15, 23, 42);
+        cols.forEach(function (c, j) {
+          if (j === 1) F(true);
+          var t = fit(vals[j], c[1] - 3);
+          if (t) doc.text(t, c[2] === "r" ? x + c[1] - 1.5 : x + 1.5, y + rh * 0.66, { align: c[2] === "r" ? "right" : "left" });
+          if (j === 1) F(false);
+          x += c[1];
+        });
+        if (mode === "sign") { doc.setDrawColor(203, 213, 225); doc.rect(R - cols[cols.length - 1][1] + 1, y + 1.2, cols[cols.length - 1][1] - 2, rh - 2.4); }
+        doc.setDrawColor(226, 232, 240); doc.line(L, y + rh, R, y + rh); y += rh;
+      };
+      title(true);
+      var n = 0;
+      if (mode === "sign") {
+        rows.sort(function (a, b) { return a.name.localeCompare(b.name); }).forEach(function (r) { line(r, ++n); });
+      } else {
+        var grp = {}, ord = [];
+        rows.forEach(function (r) { var g = r.other ? "\u0002Other invitees" : (r.exec || "\u0001No executive yet"); if (!grp[g]) { grp[g] = []; ord.push(g); } grp[g].push(r); });
+        ord.sort(function (a, b) { var ra = a.charAt(0) === "\u0002" ? 3 : a.charAt(0) === "\u0001" ? 2 : 1, rb = b.charAt(0) === "\u0002" ? 3 : b.charAt(0) === "\u0001" ? 2 : 1; return ra - rb || a.localeCompare(b); });
+        ord.forEach(function (g) {
+          var L2 = grp[g].sort(function (p, q) { return p.rank - q.rank || q.b12 - p.b12 || p.name.localeCompare(q.name); });
+          band(g.replace(/^[\u0001\u0002]/, ""), plural(L2.length, "guest"));
+          L2.forEach(function (r) { line(r, ++n); });
+        });
+      }
+      if (y > BOTTOM - 10) { doc.addPage(); y = 14; }
+      F(true); doc.setFontSize(10); doc.setTextColor(15, 23, 42);
+      var cameN = rows.filter(function (r) { return /Confirmed|Attended|Travelled/.test(r.st); }).length;
+      doc.text(plural(rows.length, "guest") + (mode !== "confirm" && cameN ? "  ·  " + cameN + " confirmed" : ""), L, y + 7);
+      var pages = doc.getNumberOfPages();
+      for (var pg = 1; pg <= pages; pg++) { doc.setPage(pg); F(false); doc.setFontSize(8); doc.setTextColor(120, 130, 145); doc.text(String(e.name || "") + "  ·  " + fullDate(today()) + "  ·  page " + pg + " of " + pages, L, 291); }
+      var name = String(e.name || "Event").replace(/[^A-Za-z0-9]+/g, "_") + "_" + (mode === "sign" ? "attendance" : mode === "confirm" ? "confirmed" : "guest_list") + ".pdf";
+      return pdfOut(doc, name).then(function () { toast("Downloaded " + name + "."); });
+    }).catch(function (er) { toast("Could not make the PDF: " + ((er && er.message) || "error")); });
+  }
   function pevTierPill(t) {
     var c = { Platinum: ["#1e293b", "#e2e8f0"], Gold: ["#92400e", "#fde68a"], Silver: ["#334155", "#e5e7eb"], Base: ["#64748b", "#f1f5f9"] }[t] || ["#64748b", "#f1f5f9"];
     return '<span style="display:inline-block;font-size:12px;font-weight:800;color:' + c[0] + ';background:' + c[1] + ';border-radius:6px;padding:1px 7px;white-space:nowrap">' + esc(t) + '</span>';
@@ -50532,7 +50624,8 @@ function viewCatalogue() {
     /* guests */
     var invited = {}; m.inv.forEach(function (i) { invited[dkey(i.partner)] = 1; });
     var pool = sup.filter(function (x) { return !invited[dkey(x.name)]; });
-    h += '<div class="card"><h3 style="margin:0">Guests — best supporters first</h3>' + pevFindHtml(e.eid) +   /* 6.9.872 */
+    h += '<div class="card"><div class="acts" style="align-items:center;margin:0;gap:6px;flex-wrap:wrap"><h3 class="grow" style="margin:0">Guests — best supporters first</h3>' +
+      (m.inv.length ? '<button class="btn sm ghost" style="min-height:44px" data-act="pev-pdf" data-id="' + esc(e.eid) + '">&#8681; PDF</button>' : '') + '</div>' + pevFindHtml(e.eid) +   /* 6.9.872; 6.9.895 - the list as a PDF */
       '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end;margin-top:8px">' +
         /* 6.9.832 - the trade chosen here also narrows the "or one partner" list, and the list shows his code */
         '<div><label style="margin-top:0">Add everyone who is</label><select id="pe_addrole" style="min-height:44px">' +
@@ -60615,6 +60708,16 @@ function viewCatalogue() {
     }
     if (act === "pev-open") { S.pevOpen = t.getAttribute("data-id"); if (S.tab !== "pevents" && canSee("pevents")) S.tab = "pevents"; render(); window.scrollTo(0, 0); return; }   /* 6.9.734 - also from a partner's page */
     if (act === "pev-back") { S.pevOpen = ""; render(); return; }
+    if (act === "pev-pdf") {   /* 6.9.895 */
+      var _pe = pevEvent(t.getAttribute("data-id"));
+      if (!_pe) return;
+      chooseSheet({ title: "Download the guest list", sub: esc(_pe.name || ""),
+        choices: [{ v: "office", label: "Guest list", note: "Everyone on the list, executive wise: trade, mobile, city, tier, status, gift" },
+                  { v: "sign", label: "Attendance sheet", note: "A to Z with a box to sign, for the door. Declined left out, no money on it" },
+                  { v: "confirm", label: "Confirmed only", note: "Those confirmed or attended - the head count for food and drink" }], cancel: "Not now" })
+        .then(function (v) { if (v) pevPdf(_pe, v); });
+      return;
+    }
     if (act === "pev-role") { S.pevRole = t.getAttribute("data-v") || ""; keepScroll = true; render(); return; }
     if (act === "pev-tier") { S.pevTier = t.getAttribute("data-v") || ""; keepScroll = true; render(); return; }
     /* 6.9.872 - from the search box */
