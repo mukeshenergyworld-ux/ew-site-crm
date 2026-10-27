@@ -70,6 +70,23 @@ h2.sec:first-child{margin-top:4px}
 .rupeeline{font-family:var(--data);font-size:12px;color:var(--muted);margin-top:6px}
 
 /* split stat */
+.tbw{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -2px}
+.tb{width:100%;border-collapse:collapse;font-size:13px;background:var(--card)}
+.tb th{font-family:var(--data);font-size:12px;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);text-align:right;padding:8px 6px;border-bottom:2px solid var(--line);white-space:nowrap;background:var(--paper)}
+.tb th:first-child,.tb td:first-child{text-align:left}
+.tb td{padding:9px 6px;border-bottom:1px solid var(--line);text-align:right;vertical-align:top;font-family:var(--data);font-variant-numeric:tabular-nums}
+.tb td:first-child{font-family:inherit}
+.tb td.nm{font-family:inherit;white-space:normal;overflow-wrap:anywhere;min-width:110px}
+.tb td.nm b{font-size:14px;color:var(--ink)}
+.tb td.nm .xs{display:block;margin-top:2px;color:var(--muted)}
+.tb tr.gh td{background:var(--ink);color:#fff;font-family:inherit;text-align:left;cursor:pointer;padding:10px 8px}
+.tb tr.gh td b{font-size:14px}
+.tb tr.tot td{font-weight:700;background:var(--paper)}
+.tb tr.pr{cursor:pointer}
+.tb tr.pr.on td{background:#EEF3F8}
+.tb tr.act td{background:#EEF3F8;text-align:left}
+.lv{display:inline-block;min-width:22px;padding:2px 7px;border-radius:999px;font-family:var(--data);font-size:12px;font-weight:700;color:#fff;text-align:center}
+.lv-Platinum{background:#4A5866}.lv-Gold{background:#B8860B}.lv-Silver{background:#8A949C}.lv-Base{background:#1F3A5F}
 .split{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);
        border:1px solid var(--line);border-radius:var(--r);overflow:hidden;margin-top:12px}
 .split>div{background:var(--card);padding:11px 12px}
@@ -509,6 +526,7 @@ function gauge(clear, target){
 
 /* ================================ HOME ================================ */
 function viewHome(){
+  if (D.book) return bookHome();
   var m = D.me || {}, cfg = D.cfg || {};
   var unread = D.feed.filter(function(f){ return !f.seen; });
   var need = Math.max(0, (m.nextThresholdPts||0) - (m.clearPts||0));
@@ -558,6 +576,43 @@ function viewHome(){
   if (D.ledger.length > 6)
     h += '<button class="wide ghost" onclick="go(\'account\')">See the full account</button>';
 
+  return h;
+}
+
+/* 27 Oct 2026 - HIS WORDS: "partner incentive site wise, do not show challan wise, convert amount in points, show points".
+   The book is sent by the CRM (saathiSync): his level, and per site the incentive earned and the part released
+   because the client has paid. Everything here is points = rupees x ppr. */
+function bP(n){ return pts((Number(n) || 0) * (D.ppr || 2)); }
+function bookSites(){
+  var S = (D.book && D.book.sites) || [];
+  if (!S.length) return '<div class="empty">No site yet.<br>Your first site shows here as soon as material goes.</div>';
+  var te = 0, tr = 0;
+  var h = '<div class="card" style="padding:0;overflow:hidden"><div class="tbw"><table class="tb"><thead><tr><th>Site</th><th>Points</th><th>Client paid</th></tr></thead><tbody>';
+  S.forEach(function(x){
+    var e = Number(x.e) || 0, r = Math.min(e, Number(x.r) || 0); te += e; tr += r;
+    var pc = e > 0 ? Math.round(r / e * 100) : 0;
+    h += '<tr><td class="nm"><b>' + esc(x.n) + '</b>' + (x.last ? '<span class="xs">last ' + esc(String(x.last).slice(0, 10)) + '</span>' : '') + '</td>' +
+      '<td><b>' + bP(e) + '</b></td><td>' + (pc >= 100 ? '<span class="pill p-clear">Full</span>' : pc > 0 ? pc + '%' : '<span class="pill p-hold">Not yet</span>') + '</td></tr>';
+  });
+  h += '<tr class="tot"><td>Total</td><td>' + bP(te) + '</td><td>' + (te > 0 ? Math.round(tr / te * 100) + '%' : '') + '</td></tr></tbody></table></div></div>' +
+    '<div class="xs mut" style="margin-top:6px">Points become <b>Ready</b> as the client pays for that site.</div>';
+  return h;
+}
+function bookHome(){
+  var b = D.book, cfg = D.cfg || {}, t = LEVELS.indexOf(b.tier) >= 0 ? b.tier : 'Base';
+  var unread = (D.feed || []).filter(function(f){ return !f.seen; });
+  var h = '';
+  if (unread.length) h += '<div class="card" style="border-color:var(--brass);padding:12px 14px"><div style="display:flex;gap:9px;align-items:center"><span class="dot"></span><div class="sm" style="flex:1"><b>' + unread.length + ' new from Energy World</b></div><button class="brass" onclick="go(\'feed\')">See them</button></div></div>';
+  h += '<div class="card" style="display:flex;gap:12px;align-items:center"><span class="lv lv-' + t + '" style="font-size:15px;padding:8px 14px">' + esc(t) + '</span>' +
+    '<div class="sm" style="flex:1">Your level' + (t === 'Base' ? ' - grow your business with us to reach Silver, Gold and Platinum.' : ' - among our top partners this year.') + '</div></div>';
+  h += '<div class="card"><p class="eyebrow">Ready to be paid now</p><div class="big">' + bP(b.pending) + '<small>Points</small></div>' +
+    (cfg.showRupees ? '<div class="rupeeline">= ' + inr(b.pending) + '</div>' : '') + '</div>';
+  h += '<div class="card" style="padding:0;overflow:hidden"><table class="tb"><tbody>' +
+    '<tr><td>Ready now</td><td><b>' + bP(b.pending) + '</b></td></tr>' +
+    '<tr><td>Waiting - client has not paid yet</td><td>' + bP(b.wait) + '</td></tr>' +
+    '<tr><td>Mil chuka (paid)</td><td>' + bP(b.paid) + '</td></tr>' +
+    '<tr class="tot"><td>Total earned</td><td>' + bP(b.earned) + '</td></tr></tbody></table></div>';
+  h += '<h2 class="sec">Site-wise points</h2>' + bookSites();
   return h;
 }
 
@@ -731,9 +786,10 @@ function viewAccount(){
     }
   }
 
-  h += '<h2 class="sec">Full account</h2>';
+  if (D.book){ h += '<h2 class="sec">Site-wise points</h2>' + bookSites(); }
+  else { h += '<h2 class="sec">Full account</h2>';
   h += D.ledger.length ? '<div class="card">' + D.ledger.map(ledRow).join('') + '</div>'
-     : '<div class="empty">No entries yet.</div>';
+     : '<div class="empty">No entries yet.</div>'; }
   h += '<div style="margin:14px 0 4px"><button class="wide ghost" onclick="wa(\'I want to talk about my account\')">' +
        'Tell us if something looks wrong</button></div>';
 
@@ -1060,7 +1116,7 @@ function ewRefresh(){
    Nothing you have typed or queued is touched. The sign-in and the
    offline queue live in localStorage and this never goes near them.
 --------------------------------------------------------------------- */
-var BUILD  = '2026.10.27-3';        /* which build of this file is running */
+var BUILD  = '2026.10.27-4';        /* which build of this file is running */
 var APPKEY = 'SAATHI';
 var VKEY   = 'ew_saathi_ver_v1';
 var VNEW   = '', VBUSY = false;
@@ -1165,7 +1221,16 @@ function landed(r){
   render();
   if (!r.pinSet && D.cfg.forcePin){ renderPinChange(true); return; }
   profCheck();
+  bookLoad();
   setTimeout(offerInstall, 900);
+}
+function bookLoad(){
+  call('myBook', null, 30000).then(function(r){
+    if (!r || !r.ok || !r.book) return;
+    D.book = r.book; D.ppr = Number(r.ppr) || 2;
+    if (D.book.tier) document.getElementById('hTier').textContent = D.book.tier;
+    if (TAB === 'home' || TAB === 'account') render();
+  }).catch(function(){});
 }
 
 
@@ -1179,7 +1244,7 @@ function landed(r){
    is kept. Server: Companion API staffPeople / staffView / staffPin. */
 var ST = null;
 function staffStart(r){
-  ST = { kind: r.kind, name: r.name || '', people: null, q: '', f: 'all', view: null, pin: null, err: '' };
+  ST = { kind: r.kind, name: r.name || '', people: null, q: '', f: 'all', view: null, pin: null, err: '', g: 'level', shut: {}, row: '', execs: [], ppr: 2 };
   document.getElementById('hTitle').textContent = 'EW Saathi · Staff';
   document.getElementById('hWho').textContent = (r.name || '') + (r.kind === 'OWNER' ? ' · all partners' : ' · your partners');
   document.getElementById('hTier').textContent = '';
@@ -1189,7 +1254,7 @@ function staffLoad(){
   ST.err = '';
   call('staffPeople', null, 40000).then(function(r){
     if (!r || !r.ok){ ST.err = (r && r.err) || 'The server did not answer.'; if (/unknown|not.*(route|action)/i.test(ST.err)) ST.err = 'The server is not updated yet - the owner presses Deploy on the Companion API once.'; ST.people = []; render(); return; }
-    ST.people = r.people || []; render();
+    ST.people = r.people || []; ST.execs = (r.execs || []).map(function(x){ return typeof x === 'string' ? x : (x && x.name) || ''; }).filter(Boolean); ST.ppr = Number(r.ppr) || ST.ppr || 2; render();
   }).catch(function(){ ST.err = 'No signal. Pull down or tap Refresh.'; ST.people = ST.people || []; render(); });
 }
 function staffRow(p){
@@ -1213,10 +1278,15 @@ function viewStaff(){
   if (L === null) return h + '<div class="load">Fetching your partners...</div>';
   var nopin = L.filter(function(p){ return !p.pinSet; }).length, signed = L.filter(function(p){ return p.logins; }).length;
   h += '<div class="split" style="margin-bottom:10px"><div><b>' + L.length + '</b><span>PARTNERS</span></div><div><b>' + signed + '</b><span>SIGNED IN</span></div></div>';
-  h += '<input id="stq" type="search" placeholder="Search name, city or last 4 digits" value="' + esc(ST.q) + '" style="width:100%;min-height:44px;font-size:16px;padding:8px 12px;border:1px solid var(--line);border-radius:var(--r);margin-bottom:8px" oninput="ST.q=this.value;staffList()">' +
-    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">' + [['all', 'All ' + L.length], ['nopin', 'No PIN yet ' + nopin], ['pin', 'PIN set ' + (L.length - nopin)], ['in', 'Signed in ' + signed]].map(function(f){
-      return '<button style="min-height:40px;padding:0 12px" class="' + (ST.f === f[0] ? 'pri' : '') + '" onclick="ST.f=\'' + f[0] + '\';render()">' + f[1] + '</button>'; }).join('') + '</div>' +
-    '<div class="card" id="stlist" style="padding:2px 12px">' + staffListHtml() + '</div>';
+  var un = L.filter(function(p){ return !p.ownedBy; }).length;
+  h += '<input id="stq" type="search" placeholder="Search name, city, executive or last 4 digits" value="' + esc(ST.q) + '" style="width:100%;min-height:44px;font-size:16px;padding:8px 12px;border:1px solid var(--line);border-radius:var(--r);margin-bottom:8px" oninput="ST.q=this.value;staffList()">' +
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">' +
+      '<button style="min-height:44px;padding:0 14px" class="' + (ST.g === 'level' ? 'pri' : '') + '" onclick="ST.g=\'level\';ST.shut={};render()">By level</button>' +
+      '<button style="min-height:44px;padding:0 14px" class="' + (ST.g === 'exec' ? 'pri' : '') + '" onclick="ST.g=\'exec\';ST.shut={};render()">By executive</button></div>' +
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">' + [['all', 'All ' + L.length]].concat(ST.kind === 'OWNER' ? [['un', 'Unassigned ' + un]] : []).concat([['nopin', 'No PIN ' + nopin], ['in', 'Signed in ' + signed]]).map(function(f){
+      return '<button style="min-height:44px;padding:0 12px" class="' + (ST.f === f[0] ? 'pri' : '') + '" onclick="ST.f=\'' + f[0] + '\';render()">' + f[1] + '</button>'; }).join('') + '</div>' +
+    '<div class="xs mut" style="margin-bottom:6px">Points: ' + pts(ST.ppr) + ' points = ' + inr(1) + '. Tap a partner for his Saathi, PIN' + (ST.kind === 'OWNER' ? ' and executive' : '') + '. Tap a heading to fold it.</div>' +
+    '<div class="card" id="stlist" style="padding:0;overflow:hidden">' + staffListHtml() + '</div>';
   return h;
 }
 function staffFiltered(){
@@ -1224,12 +1294,77 @@ function staffFiltered(){
   return (ST.people || []).filter(function(p){
     if (ST.f === 'nopin' && p.pinSet) return false;
     if (ST.f === 'pin' && !p.pinSet) return false;
+    if (ST.f === 'un' && p.ownedBy) return false;
     if (ST.f === 'in' && !p.logins) return false;
     if (!q) return true;
     return (p.name + ' ' + p.city + ' ' + p.role + ' ' + p.mobile + ' ' + p.ownedBy).toLowerCase().indexOf(q) >= 0;
   });
 }
-function staffListHtml(){ var L = staffFiltered(); return L.length ? L.slice(0, 150).map(staffRow).join('') + (L.length > 150 ? '<div class="sm mut" style="padding:10px 0">Type to find the rest (' + L.length + ').</div>' : '') : '<div class="sm mut" style="padding:14px 0">Nobody here.</div>'; }
+/* 27 Oct 2026 - HIS WORDS: "show parters to level wise, Platinum, Gold ... executive wise .. admin can assign
+   unassigned partner to executives ... convert amount in points, show points" and then "show all in table like format".
+   One table, grouped by level or by executive, each group with its own total row. Amounts are points
+   (rupees x POINTS_PER_RUPEE from the Companion). Ready = cleared and not yet paid; Waiting = earned but the client
+   has not paid yet; Paid = already given. Names wrap - nothing is cut. */
+var LEVELS = ['Platinum', 'Gold', 'Silver', 'Base'];
+function lvOf(p){ var t = String(p.tier || 'Base'); return LEVELS.indexOf(t) >= 0 ? t : 'Base'; }
+function lvPill(t){ return '<span class="lv lv-' + esc(t) + '" title="' + esc(t) + '">' + esc(t.charAt(0)) + '</span>'; }
+function stP(n){ return pts((Number(n) || 0) * (ST.ppr || 2)); }
+function staffGroups(L){
+  var G = {}, order = [];
+  L.forEach(function(p){
+    var k = ST.g === 'exec' ? (p.ownedBy || 'Unassigned') : lvOf(p);
+    if (!G[k]){ G[k] = []; order.push(k); } G[k].push(p);
+  });
+  if (ST.g === 'level') order = LEVELS.filter(function(k){ return G[k]; });
+  else order.sort(function(a, b){ return a === 'Unassigned' ? -1 : b === 'Unassigned' ? 1 : a.localeCompare(b); });
+  return order.map(function(k){
+    var m = G[k].slice().sort(function(a, b){ return (b.b12 || 0) - (a.b12 || 0) || String(a.name).localeCompare(String(b.name)); });
+    return { k: k, m: m };
+  });
+}
+function staffTr(p){
+  var on = ST.row === p.refId;
+  var sub = [ST.g === 'level' ? (p.ownedBy || 'Unassigned') : '', p.city, p.mobile ? '..' + String(p.mobile).slice(-4) : ''].filter(Boolean).join(' · ');
+  var pin = p.pinSet ? (p.logins ? 'signed in ' + p.logins + 'x' : 'PIN set') : 'no PIN';
+  var h = '<tr class="pr' + (on ? ' on' : '') + '" data-st="row" data-r="' + esc(p.refId) + '">' +
+    '<td class="nm">' + (ST.g === 'exec' ? lvPill(lvOf(p)) + ' ' : '') + '<b>' + esc(p.name) + '</b><span class="xs">' + esc(sub) + (sub ? ' · ' : '') + esc(pin) + '</span></td>' +
+    '<td>' + (Number(p.sites) || 0) + '</td><td><b>' + stP(p.ready) + '</b></td><td>' + stP(p.wait) + '</td><td>' + stP(p.paid) + '</td></tr>';
+  if (on){
+    h += '<tr class="act"><td colspan="5"><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
+      '<button class="pri" style="min-height:44px;padding:0 14px" data-st="view" data-r="' + esc(p.refId) + '">Open his Saathi</button>' +
+      (p.hasMobile ? '<button style="min-height:44px;padding:0 14px" data-st="pin" data-r="' + esc(p.refId) + '">' + (p.pinSet ? 'New PIN' : 'Set his PIN') + '</button>' : '<span class="xs mut">no mobile on his record - the office adds it</span>') +
+      (ST.kind === 'OWNER' ? '<label class="sm" style="display:flex;gap:6px;align-items:center">Executive <select data-st="asg" data-r="' + esc(p.refId) + '" style="min-height:44px;font-size:15px;max-width:180px">' +
+        ['<option value="">Unassigned</option>'].concat(ST.execs.concat(p.ownedBy && ST.execs.indexOf(p.ownedBy) < 0 ? [p.ownedBy] : []).map(function(e){
+          return '<option value="' + esc(e) + '"' + (e === p.ownedBy ? ' selected' : '') + '>' + esc(e) + '</option>'; })).join('') + '</select></label>' : '') +
+      '</div><div class="xs mut" style="margin-top:6px">Level ' + esc(lvOf(p)) + ' · business in 12 months ' + inr(p.b12) + ' · earned ' + stP(p.earned) + ' points</div></td></tr>';
+  }
+  return h;
+}
+function staffListHtml(){
+  var L = staffFiltered(); if (!L.length) return '<div class="sm mut" style="padding:14px">Nobody here.</div>';
+  var q = String(ST.q || '').trim(), shown = 0;
+  var h = '<div class="tbw"><table class="tb"><thead><tr><th>Partner</th><th>Sites</th><th>Ready</th><th>Waiting</th><th>Paid</th></tr></thead><tbody>';
+  staffGroups(L).forEach(function(g){
+    var shut = !q && ST.shut[g.k];
+    var sum = function(f){ return g.m.reduce(function(a, p){ return a + (Number(p[f]) || 0); }, 0); };
+    h += '<tr class="gh" data-st="grp" data-r="' + esc(g.k) + '"><td colspan="5">' + (shut ? '&#9656; ' : '&#9662; ') + (ST.g === 'level' ? lvPill(g.k) + ' ' : '') + '<b>' + esc(g.k) + '</b> · ' + g.m.length + ' partner' + (g.m.length === 1 ? '' : 's') + ' · ' + stP(sum('ready')) + ' points ready</td></tr>';
+    if (shut) return;
+    g.m.forEach(function(p){ if (shown < 400){ h += staffTr(p); shown++; } });
+    h += '<tr class="tot"><td>Total ' + esc(g.k) + '</td><td>' + sum('sites') + '</td><td>' + stP(sum('ready')) + '</td><td>' + stP(sum('wait')) + '</td><td>' + stP(sum('paid')) + '</td></tr>';
+  });
+  h += '</tbody></table></div>';
+  if (shown >= 400) h += '<div class="sm mut" style="padding:10px">Type to find the rest.</div>';
+  return h;
+}
+function staffAssign(ref, ex){
+  var p = (ST.people || []).filter(function(x){ return x.refId === ref; })[0]; if (!p) return;
+  var was = p.ownedBy || '';
+  p.ownedBy = ex; staffList(); toast('Saving...');
+  call('staffAssign', { refId: ref, exec: ex }, 40000).then(function(r){
+    if (!r || !r.ok){ p.ownedBy = was; staffList(); toast((r && r.err) || 'Not saved.'); return; }
+    toast(p.name + (ex ? ' now with ' + ex : ' is unassigned') + '.'); render();
+  }).catch(function(){ p.ownedBy = was; staffList(); toast('No signal - not saved.'); });
+}
 function staffList(){ var el = document.getElementById('stlist'); if (el) el.innerHTML = staffListHtml(); }
 function staffQr(){ ST.qr = !ST.qr; render(); }
 function staffBar(){
@@ -1242,10 +1377,11 @@ function staffOpen(ref){
   call('staffView', { refId: ref }, 40000).then(function(r){
     if (!r || r.ok === false){ toast((r && r.err) || 'Could not open.'); return; }
     D.me = r.me || null; D.ledger = r.ledger || []; D.catalog = r.catalog || []; D.feed = r.feed || []; D.stages = r.stages || []; D.cfg = r.cfg || D.cfg || {};
+    D.book = r.book || null; D.ppr = Number(r.ppr) || ST.ppr || 2;
     ST.view = { refId: ref, name: p.name }; TAB = 'home'; FILTER = 'all'; render();
   }).catch(function(){ toast('No signal. Try again.'); });
 }
-function staffBack(){ ST.view = null; D.me = null; D.ledger = []; D.feed = []; render(); }
+function staffBack(){ ST.view = null; D.me = null; D.ledger = []; D.feed = []; D.book = null; render(); }
 function staffPinView(){
   var p = (ST.people || []).filter(function(x){ return x.refId === ST.pin; })[0] || { name: '' };
   return '<div class="card"><div class="eyebrow">Set the PIN</div><h2 class="sec" style="margin:4px 0 6px">' + esc(p.name) + '</h2>' +
@@ -1267,9 +1403,16 @@ function staffPinSave(){
     ST.pin = null; render(); toast(r.msg || 'PIN saved.');
   }).catch(function(){ go.disabled = false; go.textContent = 'Save his PIN'; er.textContent = 'No signal - nothing was saved. Try again.'; });
 }
+document.addEventListener('change', function(ev){
+  var t = ev.target; if (!ST || !t || t.getAttribute('data-st') !== 'asg') return;
+  staffAssign(t.getAttribute('data-r'), t.value);
+});
 document.addEventListener('click', function(ev){
   var t = ev.target && ev.target.closest ? ev.target.closest('[data-st]') : null; if (!t || !ST) return;
   var ref = t.getAttribute('data-r');
+  if (t.getAttribute('data-st') === 'asg') return;
+  if (t.getAttribute('data-st') === 'row'){ ST.row = ST.row === ref ? '' : ref; staffList(); return; }
+  if (t.getAttribute('data-st') === 'grp'){ ST.shut[ref] = !ST.shut[ref]; staffList(); return; }
   if (t.getAttribute('data-st') === 'view') staffOpen(ref);
   if (t.getAttribute('data-st') === 'pin'){ ST.pin = ref; render(); setTimeout(function(){ var i = document.getElementById('sp1'); if (i) i.focus(); }, 50); }
 });
