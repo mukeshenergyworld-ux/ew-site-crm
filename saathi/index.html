@@ -273,6 +273,7 @@ a{color:var(--verdigris)}
     <div style="min-width:0">
       <h1 id="hTitle">EW Saathi</h1>
       <div class="who" id="hWho">...</div>
+      <div class="who" id="hVer" style="opacity:.7;font-size:12px;margin-top:3px"></div>
     </div>
     <div class="tier" id="hTier"></div>
     <a id="hHelp" href="../help/saathi.html" target="_blank" rel="noopener" title="How to use this screen" aria-label="How to use this screen" onclick="this.href='../help/saathi.html#t-'+(TAB||'home')"
@@ -405,9 +406,14 @@ function authClear(keepMobile){
    A phone in a basement, or on a wifi that has associated but passes no traffic, is the
    ordinary case for the men this app is for. Twenty seconds, then it is a failure the app can
    see and act on. */
+var SKEY = 'ew_saathi_staff_v1', SA = { u: '', p: '' };
+try { var _s = JSON.parse(localStorage.getItem(SKEY) || '{}'); SA.u = _s.u || ''; SA.p = _s.p || ''; } catch(e){}
+function staffSave(){ try { localStorage.setItem(SKEY, JSON.stringify(SA)); } catch(e){} }
+function staffClear(){ SA = { u: '', p: '' }; try { localStorage.removeItem(SKEY); } catch(e){} }
 function call(action, payload, ms){
   var body = { action: action, mobile: A.mobile, pin: A.pin,
                build: BUILD, app: APPKEY };
+  if (SA.u && SA.p){ body.crmUser = SA.u; body.crmPin = SA.p; }
   if (payload) for (var k in payload) if (payload.hasOwnProperty(k)) body[k] = payload[k];
   var live = fetch(GAS, {
     method: 'POST',
@@ -849,6 +855,7 @@ function renderGate(){
   g.innerHTML = '<div class="gwrap">' +
     '<div class="gmark">EW</div>' +
     '<h2>EW Saathi</h2>' +
+    '<p class="lede" style="margin-top:-4px"><b>For plumbers, contractors &amp; architects</b> - your points, offers and hisaab from Energy World.</p>' +
     '<p class="lede">Enter your mobile number and PIN.<br>' +
     'First time here? The Energy World staff set your PIN with you - you choose it yourself.</p>' +
     (GERR ? '<div class="gerr" role="alert">' + esc(GERR) + '</div>' : '') +
@@ -860,7 +867,8 @@ function renderGate(){
       'maxlength="6" placeholder="4 to 6 digits">' +
     '<button class="go" id="gbtn" onclick="doLogin()">Sign in</button>' +
     '<button class="lnk" onclick="gateHelp()">Forgotten your PIN?</button>' +
-    '<div class="gfoot">Energy World &middot; Sonipat &middot; Panipat &middot; Karnal &middot; Rohtak<br>' +
+    '<button class="lnk" onclick="renderStaffGate()">Energy World staff? Sign in with your CRM login</button>' +
+    '<div class="gfoot">Version ' + esc(BUILD) + '<br>Energy World &middot; Sonipat &middot; Panipat &middot; Karnal &middot; Rohtak<br>' +
     'If your number has changed, have the office update it first - ' +
     'the new number will work by itself.</div></div>';
   gate(true);
@@ -903,7 +911,7 @@ function doLogin(){
 }
 
 function signOut(){
-  ST = null;
+  ST = null; staffClear();
   authClear(true); D.me = null; D.ledger = []; D.feed = [];
   document.getElementById('main').innerHTML = '<div class="load">...</div>';
   GERR = ''; renderGate();
@@ -1052,7 +1060,7 @@ function ewRefresh(){
    Nothing you have typed or queued is touched. The sign-in and the
    offline queue live in localStorage and this never goes near them.
 --------------------------------------------------------------------- */
-var BUILD  = '2026.10.27-1';        /* which build of this file is running */
+var BUILD  = '2026.10.27-2';        /* which build of this file is running */
 var APPKEY = 'SAATHI';
 var VKEY   = 'ew_saathi_ver_v1';
 var VNEW   = '', VBUSY = false;
@@ -1264,8 +1272,49 @@ document.addEventListener('click', function(ev){
   if (t.getAttribute('data-st') === 'view') staffOpen(ref);
   if (t.getAttribute('data-st') === 'pin'){ ST.pin = ref; render(); setTimeout(function(){ var i = document.getElementById('sp1'); if (i) i.focus(); }, 50); }
 });
+
+/* 27 Oct 2026 - staff sign in with the name + PIN they use in the CRM; the CRM server checks it */
+function renderStaffGate(){
+  var g = document.getElementById('gate');
+  g.innerHTML = '<div class="gwrap">' +
+    '<div class="gmark">EW</div><h2>Staff sign-in</h2>' +
+    '<p class="lede">Your <b>CRM</b> name and PIN.<br>The owner sees every partner; an executive sees his own.</p>' +
+    (GERR ? '<div class="gerr" role="alert">' + esc(GERR) + '</div>' : '') +
+    '<label for="sgu">CRM name</label><input id="sgu" type="text" autocomplete="username" placeholder="e.g. Imran" value="' + esc(SA.u) + '">' +
+    '<label for="sgp">CRM PIN</label><input id="sgp" type="password" inputmode="numeric" autocomplete="current-password" maxlength="8">' +
+    '<button class="go" id="sgbtn" onclick="doStaffLogin()">Sign in</button>' +
+    '<button class="lnk" onclick="GERR=\'\';renderGate()">I am a partner</button>' +
+    '<div class="gfoot">Version ' + esc(BUILD) + '</div></div>';
+  gate(true);
+  var pi = document.getElementById('sgp'); if (pi) pi.addEventListener('keydown', function(e){ if (e.key === 'Enter') doStaffLogin(); });
+}
+function doStaffLogin(){
+  var u = String(document.getElementById('sgu').value || '').trim(), p = String(document.getElementById('sgp').value || '').trim();
+  if (!u || !p){ GERR = 'Type your CRM name and PIN.'; renderStaffGate(); return; }
+  var b = document.getElementById('sgbtn'); b.disabled = true; b.textContent = 'Checking...';
+  SA = { u: u, p: p };
+  call('login', null, 40000).then(function(r){
+    if (r && r.ok && (r.kind === 'OWNER' || r.kind === 'EXEC')){ staffSave(); GERR = ''; gate(false); staffStart(r); return; }
+    staffClear(); GERR = (r && r.err) || 'Could not sign in.'; renderStaffGate();
+  }).catch(function(){ staffClear(); GERR = 'No signal. Please try again.'; renderStaffGate(); });
+}
+/* 27 Oct 2026 - "show saathi app version at top, popup to install if any update is there" */
+function verLabel(){ var el = document.getElementById('hVer'); if (el) el.textContent = 'Version ' + BUILD; }
+function verAuto(){
+  liveBuild().then(function(v){ if (v && v !== BUILD) verBar(v, 'A new version of EW Saathi is ready. Tap Update - your points and sign-in stay.'); });
+}
+try { if (navigator.serviceWorker && navigator.serviceWorker.addEventListener) navigator.serviceWorker.addEventListener('message', function(e){ if (e && e.data && e.data.ew === 'new-build') verAuto(); }); } catch(e){}
 (function boot(){
+  verLabel(); setTimeout(verAuto, 1500);
+  document.addEventListener('visibilitychange', function(){ if (!document.hidden) verAuto(); });
   if (!GAS){ gasAsk(); return; }
+  if (SA.u && SA.p){
+    call('login', null, 40000).then(function(r){
+      if (r && r.ok && (r.kind === 'OWNER' || r.kind === 'EXEC')){ staffStart(r); return; }
+      staffClear(); GERR = (r && r.err) || ''; renderStaffGate();
+    }).catch(function(){ document.getElementById('main').innerHTML = '<div class="empty">No signal.<br><br><button class="pri" onclick="location.reload()">Try again</button></div>'; });
+    return;
+  }
   if ('serviceWorker' in navigator){
     window.addEventListener('load', function(){
       navigator.serviceWorker.register('sw.js').catch(function(){});
