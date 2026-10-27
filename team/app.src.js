@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.903";
+  var APP_VERSION = "6.9.904";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -47108,7 +47108,13 @@ function viewCatalogue() {
         esc(r) + ' <b>' + roleCount[r] + '</b></button>';
     }).join("") + '</div>';
     if (!roles.length && !q) return h + '<div class="empty">No partners registered yet. A plumber, architect, builder or PMC appears here the moment he is added, and his incentive follows the clients he brings.</div>';
-    if (!S.pRole && !q) return h + '<div class="empty">Pick a trade above.</div>';
+    /* 6.9.904 - HIS WORDS: "executive wise partner, option to assign unassigned". By executive and Not assigned show
+       every trade and town at once (a trade or town chip still narrows it) - assigning is done across the whole list. */
+    var _wide = S.pBy === "exec" || S.pOwn === "none";
+    h += '<div class="chips" style="margin-top:6px">' + [["", "By tier"], ["exec", "By executive"]].map(function (o2) {
+      return '<button class="chip ' + ((S.pBy || "") === o2[0] ? "on" : "") + '" data-act="p-by" data-o="' + o2[0] + '" style="min-height:44px">' + esc(o2[1]) + '</button>'; }).join("") +
+      (roleIs("admin") ? '<button class="chip ' + (S.pOwn === "none" ? "on" : "") + '" data-act="p-own" data-o="' + (S.pOwn === "none" ? "" : "none") + '" style="min-height:44px">Assign the unassigned</button>' : '') + '</div>';
+    if (!S.pRole && !q && !_wide) return h + '<div class="empty">Pick a trade above.</div>';
 
     /* step 2 - the town */
     var inRole = all.filter(function (a2) { return !S.pRole || a2.role === S.pRole; });
@@ -47120,7 +47126,7 @@ function viewCatalogue() {
         return '<button class="chip ' + (S.pLoc === l ? "on" : "") + '" data-act="p-loc" data-l="' + esc(l) + '">' +
           esc(l) + ' <b>' + locCount[l] + '</b></button>';
       }).join("") + '</div>';
-      if (!S.pLoc && !q) return h + '<div class="empty">Pick a town.</div>';
+      if (!S.pLoc && !q && !_wide) return h + '<div class="empty">Pick a town.</div>';
     }
 
     /* step 3 - the men */
@@ -47188,7 +47194,7 @@ function viewCatalogue() {
                owner: _ownOf(p) },
           cells: {
             tier: pTierPill(row.tier),
-            owner: _ownOf(p) ? whoChip(_ownOf(p)) : '<span style="color:#b45309;font-size:12px">not assigned</span>',
+            owner: _adm ? pAsgSelect(p) : (_ownOf(p) ? whoChip(_ownOf(p)) : '<span style="color:#b45309;font-size:12px">not assigned</span>'),
             /* the act is on the NAME, not the row - see the component's header for why.
                v6.9.524 - and it opens his BOOK (sites and incentives), not the edit form: his
                item 15, "clicking sites open all sites with related incentives". */
@@ -47216,6 +47222,20 @@ function viewCatalogue() {
       });
       /* 6.9.736 - one sheet per tier, each with its count; a tapped heading sorts inside each tier */
       var _first = true;
+      if (S.pBy === "exec") {
+        var _ex = {}; _rows.forEach(function (r) { var o = r.v.owner || ""; (_ex[o] = _ex[o] || []).push(r); });
+        Object.keys(_ex).sort(function (a, b) { return !a ? -1 : !b ? 1 : alpha(a, b); }).forEach(function (o) {
+          var gr = _ex[o];
+          h += '<h3 class="p-group" style="margin:14px 0 4px;font-size:14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
+            (o ? '<b style="font-size:15px;color:#0f766e">' + esc(o) + '</b>' : '<span class="pill" style="background:#fef3c7;color:#92400e;border-color:#fde68a">Not assigned</span>') +
+            ' <span>' + gr.length + ' ' + (gr.length === 1 ? 'partner' : 'partners') + '</span>' +
+            P_GROUPS.map(function (g) { var c = gr.filter(function (r) { return r.tier === g; }).length; return c ? ' <span style="font-size:12px;color:#64748b">' + esc(g) + ' ' + c + '</span>' : ''; }).join("") + '</h3>' +
+            xlTable("partners", _cols, gr, _first ? "what he has quoted" + (_adm ? " and his incentive" : "") : "");
+          _first = false;
+        });
+        _xlReg["partners"] = { cols: _cols, rows: _rows };
+        return h;
+      }
       P_GROUPS.forEach(function (g) {
         var gr = _rows.filter(function (r) { return r.tier === g; });
         if (!gr.length) return;
@@ -47255,6 +47275,22 @@ function viewCatalogue() {
     });
     return h;
   }
+
+  /* 6.9.904 - the executive, picked in the sheet (admin). pevSetPartnerOwner writes a new Associates row, nothing deleted. */
+  function pAsgSelect(p) {
+    var cur = String(p.ownedBy || "").trim(), ex = pevExecNames();
+    if (cur && ex.indexOf(cur) < 0) ex.push(cur);
+    return '<select class="p-asg" data-n="' + esc(p.name) + '" style="min-height:40px;font-size:13px;min-width:170px;width:auto' + (cur ? '' : ';border-color:#f59e0b;background:#fffbeb') + '">' +
+      '<option value="">Not assigned</option>' + ex.map(function (e) { return '<option value="' + esc(e) + '"' + (e === cur ? ' selected' : '') + '>' + esc(e) + '</option>'; }).join("") + '</select>';
+  }
+  document.addEventListener("change", function (ev) {
+    var t = ev.target; if (!t || !t.classList || !t.classList.contains("p-asg") || !roleIs("admin")) return;
+    var n = t.getAttribute("data-n"), ex = t.value, pr = pevSetPartnerOwner(n, ex);
+    if (!pr) return;
+    t.disabled = true;
+    pr.then(function () { toast(n + (ex ? " is now with " + ex : " is not assigned now") + "."); render(); })
+      .catch(function () { t.disabled = false; toast("Not saved - try again."); });
+  });
 
   /* 6.9.736 - the partner groups, best first */
   var P_GROUPS = ["Platinum", "Gold", "Silver", "Base", "Never quoted"];
@@ -64144,7 +64180,8 @@ function viewCatalogue() {
       return;
     }
     if (act === "lim-fold") { S.limOpen = !S.limOpen; keepScroll = true; render(); return; }   /* v6.9.572 */
-    if (act === "p-own") { S.pOwn = t.getAttribute("data-o") || ""; render(); return; }   /* v6.9.586 */
+    if (act === "p-own") { S.pOwn = t.getAttribute("data-o") || ""; render(); return; }
+    if (act === "p-by") { S.pBy = t.getAttribute("data-o") || ""; render(); return; }   /* 6.9.904 */   /* v6.9.586 */
     /* v6.9.586 - send the filed receipt again; the document on file is not touched */
     if (act === "rcpt-again") {
       var _rc = (S.data.challans || []).concat(S.data.returns || []).filter(function (x) { return x.id === id; })[0];
