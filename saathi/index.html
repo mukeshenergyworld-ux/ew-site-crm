@@ -86,7 +86,26 @@ h2.sec:first-child{margin-top:4px}
 .tb tr.pr.on td{background:#EEF3F8}
 .tb tr.act td{background:#EEF3F8;text-align:left}
 .lv{display:inline-block;min-width:22px;padding:2px 7px;border-radius:999px;font-family:var(--data);font-size:12px;font-weight:700;color:#fff;text-align:center}
-.lv-Platinum{background:#4A5866}.lv-Gold{background:#B8860B}.lv-Silver{background:#8A949C}.lv-Base{background:#1F3A5F}
+.lv-Platinum{background:#4A5866}.lv-Gold{background:#B8860B}.lv-Silver{background:#7D878F}.lv-Base{background:#1F3A5F}
+/* 27 Oct 2026 - HIS WORDS: "color coding in saathi app, for partner standard wise". One colour per level, everywhere:
+   Platinum slate, Gold gold, Silver silver-grey, Base Energy World blue. The partner's own app takes his colour. */
+body[data-lv="Platinum"]{--lvc:#4A5866;--lvg:linear-gradient(135deg,#2F3A45,#7E8C99);--lvt:#EEF1F4}
+body[data-lv="Gold"]{--lvc:#B8860B;--lvg:linear-gradient(135deg,#7A5806,#D9A92E);--lvt:#FBF3DC}
+body[data-lv="Silver"]{--lvc:#7D878F;--lvg:linear-gradient(135deg,#5F6870,#AEB7BE);--lvt:#F1F3F5}
+body[data-lv="Base"]{--lvc:#1F3A5F;--lvg:linear-gradient(135deg,#0D2340,#3B6EA5);--lvt:#EEF3F8}
+body[data-lv] header{border-bottom:4px solid var(--lvc)}
+header .tier:empty{display:none}
+body[data-lv] header .tier{background:var(--lvc);border-color:var(--lvc);color:#fff;font-weight:700}
+.lvcard{background:var(--lvg,#1F3A5F);color:#fff;border:0}
+.lvcard .xs,.lvcard .sm{color:#fff}
+body[data-lv] .lvedge{border-left:5px solid var(--lvc)}
+body[data-lv] .tb tr.tot td{background:var(--lvt)}
+.tb tr.pr td:first-child{border-left:5px solid transparent}
+.tb tr.rl-Platinum td{background:#F3F5F7}.tb tr.rl-Platinum td:first-child{border-left-color:#4A5866}
+.tb tr.rl-Gold td{background:#FDF8EA}.tb tr.rl-Gold td:first-child{border-left-color:#B8860B}
+.tb tr.rl-Silver td{background:#F7F8F9}.tb tr.rl-Silver td:first-child{border-left-color:#7D878F}
+.tb tr.rl-Base td:first-child{border-left-color:#1F3A5F}
+.tb tr.gh.gl-Platinum td{background:#4A5866}.tb tr.gh.gl-Gold td{background:#B8860B}.tb tr.gh.gl-Silver td{background:#7D878F}.tb tr.gh.gl-Base td{background:#1F3A5F}
 .split{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);
        border:1px solid var(--line);border-radius:var(--r);overflow:hidden;margin-top:12px}
 .split>div{background:var(--card);padding:11px 12px}
@@ -603,9 +622,9 @@ function bookHome(){
   var unread = (D.feed || []).filter(function(f){ return !f.seen; });
   var h = '';
   if (unread.length) h += '<div class="card" style="border-color:var(--brass);padding:12px 14px"><div style="display:flex;gap:9px;align-items:center"><span class="dot"></span><div class="sm" style="flex:1"><b>' + unread.length + ' new from Energy World</b></div><button class="brass" onclick="go(\'feed\')">See them</button></div></div>';
-  h += '<div class="card" style="display:flex;gap:12px;align-items:center"><span class="lv lv-' + t + '" style="font-size:15px;padding:8px 14px">' + esc(t) + '</span>' +
+  h += '<div class="card lvcard" style="display:flex;gap:12px;align-items:center"><span style="font-size:22px;font-weight:800;letter-spacing:1px;text-transform:uppercase">' + esc(t) + '</span>' +
     '<div class="sm" style="flex:1">Your level' + (t === 'Base' ? ' - grow your business with us to reach Silver, Gold and Platinum.' : ' - among our top partners this year.') + '</div></div>';
-  h += '<div class="card"><p class="eyebrow">Ready to be paid now</p><div class="big">' + bP(b.pending) + '<small>Points</small></div>' +
+  h += '<div class="card lvedge"><p class="eyebrow">Ready to be paid now</p><div class="big">' + bP(b.pending) + '<small>Points</small></div>' +
     (cfg.showRupees ? '<div class="rupeeline">= ' + inr(b.pending) + '</div>' : '') + '</div>';
   h += '<div class="card" style="padding:0;overflow:hidden"><table class="tb"><tbody>' +
     '<tr><td>Ready now</td><td><b>' + bP(b.pending) + '</b></td></tr>' +
@@ -1116,7 +1135,7 @@ function ewRefresh(){
    Nothing you have typed or queued is touched. The sign-in and the
    offline queue live in localStorage and this never goes near them.
 --------------------------------------------------------------------- */
-var BUILD  = '2026.10.27-6';        /* which build of this file is running */
+var BUILD  = '2026.10.27-7';        /* which build of this file is running */
 var APPKEY = 'SAATHI';
 var VKEY   = 'ew_saathi_ver_v1';
 var VNEW   = '', VBUSY = false;
@@ -1224,11 +1243,16 @@ function landed(r){
   bookLoad();
   setTimeout(offerInstall, 900);
 }
+function setLv(t){
+  t = LEVELS.indexOf(t) >= 0 ? t : '';
+  if (t) document.body.setAttribute('data-lv', t); else document.body.removeAttribute('data-lv');
+  document.getElementById('hTier').textContent = t;
+}
 function bookLoad(){
   call('myBook', null, 30000).then(function(r){
     if (!r || !r.ok || !r.book) return;
     D.book = r.book; D.ppr = Number(r.ppr) || 2;
-    if (D.book.tier) document.getElementById('hTier').textContent = D.book.tier;
+    setLv(D.book.tier || 'Base');
     if (TAB === 'home' || TAB === 'account') render();
   }).catch(function(){});
 }
@@ -1285,6 +1309,7 @@ function viewStaff(){
       '<button style="min-height:44px;padding:0 14px" class="' + (ST.g === 'exec' ? 'pri' : '') + '" onclick="ST.g=\'exec\';ST.shut={};render()">By executive</button></div>' +
     '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">' + [['all', 'All ' + L.length]].concat(ST.kind === 'OWNER' ? [['un', 'Unassigned ' + un]] : []).concat([['nopin', 'No PIN ' + nopin], ['in', 'Signed in ' + signed]]).map(function(f){
       return '<button style="min-height:44px;padding:0 12px" class="' + (ST.f === f[0] ? 'pri' : '') + '" onclick="ST.f=\'' + f[0] + '\';render()">' + f[1] + '</button>'; }).join('') + '</div>' +
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">' + LEVELS.map(function(t){ return '<span class="lv lv-' + t + '" style="padding:4px 10px">' + t + '</span>'; }).join('') + '</div>' +
     '<div class="xs mut" style="margin-bottom:6px">Points: ' + pts(ST.ppr) + ' points = ' + inr(1) + '. Tap a partner for his Saathi, PIN' + (ST.kind === 'OWNER' ? ' and executive' : '') + '. Tap a heading to fold it.</div>' +
     '<div class="card" id="stlist" style="padding:0;overflow:hidden">' + staffListHtml() + '</div>';
   return h;
@@ -1326,7 +1351,7 @@ function staffTr(p){
   var on = ST.row === p.refId;
   var sub = [ST.g === 'level' ? (p.ownedBy || 'Unassigned') : '', p.city, p.mobile ? '..' + String(p.mobile).slice(-4) : ''].filter(Boolean).join(' · ');
   var pin = p.pinSet ? (p.logins ? 'signed in ' + p.logins + 'x' : 'PIN set') : 'no PIN';
-  var h = '<tr class="pr' + (on ? ' on' : '') + '" data-st="row" data-r="' + esc(p.refId) + '">' +
+  var h = '<tr class="pr rl-' + lvOf(p) + (on ? ' on' : '') + '" data-st="row" data-r="' + esc(p.refId) + '">' +
     '<td class="nm">' + (ST.g === 'exec' ? lvPill(lvOf(p)) + ' ' : '') + '<b>' + esc(p.name) + '</b><span class="xs">' + esc(sub) + (sub ? ' · ' : '') + esc(pin) + '</span></td>' +
     '<td>' + (Number(p.sites) || 0) + '</td><td><b>' + stP(p.ready) + '</b></td><td>' + stP(p.wait) + '</td><td>' + stP(p.paid) + '</td></tr>';
   if (on){
@@ -1347,7 +1372,7 @@ function staffListHtml(){
   staffGroups(L).forEach(function(g){
     var shut = !q && ST.shut[g.k];
     var sum = function(f){ return g.m.reduce(function(a, p){ return a + (Number(p[f]) || 0); }, 0); };
-    h += '<tr class="gh" data-st="grp" data-r="' + esc(g.k) + '"><td colspan="5">' + (shut ? '&#9656; ' : '&#9662; ') + (ST.g === 'level' ? lvPill(g.k) + ' ' : '') + '<b>' + esc(g.k) + '</b> · ' + g.m.length + ' partner' + (g.m.length === 1 ? '' : 's') + ' · ' + stP(sum('ready')) + ' points ready</td></tr>';
+    h += '<tr class="gh' + (ST.g === 'level' ? ' gl-' + esc(g.k) : '') + '" data-st="grp" data-r="' + esc(g.k) + '"><td colspan="5">' + (shut ? '&#9656; ' : '&#9662; ') + (ST.g === 'level' ? lvPill(g.k) + ' ' : '') + '<b>' + esc(g.k) + '</b> · ' + g.m.length + ' partner' + (g.m.length === 1 ? '' : 's') + ' · ' + stP(sum('ready')) + ' points ready</td></tr>';
     if (shut) return;
     g.m.forEach(function(p){ if (shown < 400){ h += staffTr(p); shown++; } });
     h += '<tr class="tot"><td>Total ' + esc(g.k) + '</td><td>' + sum('sites') + '</td><td>' + stP(sum('ready')) + '</td><td>' + stP(sum('wait')) + '</td><td>' + stP(sum('paid')) + '</td></tr>';
@@ -1377,11 +1402,11 @@ function staffOpen(ref){
   call('staffView', { refId: ref }, 40000).then(function(r){
     if (!r || r.ok === false){ toast((r && r.err) || 'Could not open.'); return; }
     D.me = r.me || null; D.ledger = r.ledger || []; D.catalog = r.catalog || []; D.feed = r.feed || []; D.stages = r.stages || []; D.cfg = r.cfg || D.cfg || {};
-    D.book = r.book || null; D.ppr = Number(r.ppr) || ST.ppr || 2;
+    D.book = r.book || null; D.ppr = Number(r.ppr) || ST.ppr || 2; setLv(D.book ? (D.book.tier || 'Base') : '');
     ST.view = { refId: ref, name: p.name }; TAB = 'home'; FILTER = 'all'; render();
   }).catch(function(){ toast('No signal. Try again.'); });
 }
-function staffBack(){ ST.view = null; D.me = null; D.ledger = []; D.feed = []; D.book = null; render(); }
+function staffBack(){ setLv(''); ST.view = null; D.me = null; D.ledger = []; D.feed = []; D.book = null; render(); }
 function staffPinView(){
   var p = (ST.people || []).filter(function(x){ return x.refId === ST.pin; })[0] || { name: '' };
   return '<div class="card"><div class="eyebrow">Set the PIN</div><h2 class="sec" style="margin:4px 0 6px">' + esc(p.name) + '</h2>' +
