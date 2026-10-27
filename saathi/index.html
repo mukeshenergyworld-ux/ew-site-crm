@@ -1142,7 +1142,7 @@ function ewRefresh(){
    Nothing you have typed or queued is touched. The sign-in and the
    offline queue live in localStorage and this never goes near them.
 --------------------------------------------------------------------- */
-var BUILD  = '2026.10.27-9';        /* which build of this file is running */
+var BUILD  = '2026.10.27-10';        /* which build of this file is running */
 var APPKEY = 'SAATHI';
 var VKEY   = 'ew_saathi_ver_v1';
 var VNEW   = '', VBUSY = false;
@@ -1357,7 +1357,9 @@ function staffGroups(L){
 function staffTr(p){
   var on = ST.row === p.refId;
   var sub = [ST.g === 'level' ? (p.ownedBy || 'Unassigned') : '', p.city, p.mobile ? String(p.mobile).replace(/\D/g, '').slice(-10) : ''].filter(Boolean).join(' · ');   /* 27 Oct 2026 - "show partner phone no here" */
-  var pin = p.pinSet ? (p.logins ? 'signed in ' + p.logins + 'x' : 'PIN set') : 'no PIN yet';
+  /* 27 Oct 2026 - "show pin here ... for whose set by admin": the PIN is never kept, so WHO set it and WHEN */
+  var pb = p.pinBy && p.pinBy.by ? ' by ' + p.pinBy.by + (p.pinBy.at ? ' on ' + stDay(p.pinBy.at) : '') : '';
+  var pin = p.pinSet ? 'PIN set' + pb + (p.logins ? ' · signed in ' + p.logins + 'x' + (p.last ? ', last ' + stDay(p.last) : '') : ' · not signed in yet') : 'no PIN yet';
   var h = '<tr class="pr rl-' + lvOf(p) + (on ? ' on' : '') + '" data-st="row" data-r="' + esc(p.refId) + '">' +
     '<td class="nm">' + (ST.g === 'exec' ? lvPill(lvOf(p)) + ' ' : '') + '<b>' + esc(p.name) + '</b><span class="xs">' + esc(sub) + (sub ? ' · ' : '') + esc(pin) + '</span></td>' +
     '<td>' + (Number(p.sites) || 0) + '</td><td><b>' + stP(p.ready) + '</b></td><td>' + stP(p.wait) + '</td><td>' + stP(p.paid) + '</td></tr>';
@@ -1389,6 +1391,7 @@ function staffListHtml(){
   if (shown >= 400) h += '<div class="sm mut" style="padding:10px">Type to find the rest.</div>';
   return h;
 }
+function stDay(v){ var d = new Date(v); if (isNaN(d)) return String(v || '').slice(0, 10); return d.getDate() + ' ' + ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()] + ' ' + d.getFullYear(); }
 function staffAssign(ref, ex){
   var p = (ST.people || []).filter(function(x){ return x.refId === ref; })[0]; if (!p) return;
   var was = p.ownedBy || '';
@@ -1432,7 +1435,7 @@ function staffPinSave(){
   var ref = ST.pin; go.disabled = true; go.textContent = 'Saving...';
   call('staffPin', { refId: ref, newPin: a }, 40000).then(function(r){
     if (!r || !r.ok){ go.disabled = false; go.textContent = 'Save his PIN'; er.textContent = (r && r.err) || 'Not saved.'; return; }
-    (ST.people || []).forEach(function(x){ if (x.refId === ref) x.pinSet = true; });
+    (ST.people || []).forEach(function(x){ if (x.refId === ref){ x.pinSet = true; x.pinBy = { by: r.by || ST.name, at: r.at || new Date().toISOString() }; } });
     ST.pin = null; render(); toast(r.msg || 'PIN saved.');
   }).catch(function(){ go.disabled = false; go.textContent = 'Save his PIN'; er.textContent = 'No signal - nothing was saved. Try again.'; });
 }
