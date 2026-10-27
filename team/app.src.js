@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.902";
+  var APP_VERSION = "6.9.903";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -45899,6 +45899,7 @@ function viewCatalogue() {
     try { h += rateGapDashCard(); } catch (e) { console.warn("[rategap] card:", e); }
     try { h += unsentDashCard(); } catch (e) { console.warn("[unsent] card:", e); }
     try { h += stkTruthCard(); } catch (e) { console.warn("[stock truth]", e); }   /* 6.9.893 - the owner's Today */
+    try { saathiSyncDaily(); } catch (e) { }   /* 6.9.903 */
     if (one) {
       h += '<div class="card" style="border-color:#99f6e4;background:#f0fdfa">' +
         '<div class="meta" style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#0f766e"><b>Today</b></div>' +
@@ -49160,6 +49161,61 @@ function viewCatalogue() {
      A password box is never held. */
   /* ---- SEND THESE FIGURES TO SAATHI (the body of the saathi-push handler since v6.9.2xx, lifted
      unchanged in v6.9.453 so the sheet below can call it after the PIN is typed) ---- */
+  /* ===== 6.9.903 - THE SAATHI BOOK: TIER, EXECUTIVE, SITE-WISE INCENTIVE (27 Oct 2026) =====
+     HIS WORDS: "show partners level wise, Platinum, Gold ... executive wise .. admin can assign unassigned partner to
+     executives; partner incentive site wise, do not show challan wise, convert amount in points".
+     MEASURED: Saathi's points came only from the old "Send to Saathi", which needs a Companion owner login he does not
+     have - so every partner's Saathi was empty (0 of 368 had a PIN, none had points). Now the CRM sends, per partner:
+     his tier (pevSupport, the events screen's), his executive, earned / released (client paid) / paid / due in rupees,
+     and ONE LINE PER SITE (client - site) - never challans. Signed with the owner's own CRM login (the Companion asks the
+     CRM to check it). Runs by itself once a day when the owner opens Today, and from the Partners button. */
+  function saathiBooks() {
+    var sup = {}; try { pevSupport().forEach(function (x) { sup[dkey(x.name)] = x; }); } catch (e) { }
+    return assocLive().map(function (a) {
+      var b = {}; try { b = partnerBook(a.name) || {}; } catch (e) { b = {}; }
+      var g = {}, x = sup[dkey(a.name)] || {};
+      (b.rows || []).forEach(function (r) {
+        var k = String(r.client || "") + (r.site ? " — " + r.site : ""); if (!k.trim()) return;
+        var o = g[k] || (g[k] = { n: k, e: 0, r: 0, last: "" });
+        o.e += Number(r.inc) || 0; o.r += Number(r.rel) || 0; if (String(r.ymd || "") > o.last) o.last = String(r.ymd || "");
+      });
+      var sites = Object.keys(g).map(function (k) { var o = g[k]; return { n: o.n, e: Math.round(o.e), r: Math.round(o.r), last: o.last }; })
+        .filter(function (o) { return Math.abs(o.e) >= 1; }).sort(function (p, q) { return q.e - p.e; }).slice(0, 40);
+      var earned = Math.round(Number(b.earned) || 0), payable = Math.round(Number(b.payable) || 0), paid = Math.round(Number(b.paid) || 0);
+      return { id: String(a.id || ""), name: String(a.name || ""), role: String(a.role || ""), exec: String(a.ownedBy || ""), city: String(a.location || a.area || ""),
+        tier: x.tier || "Base", rank: x.rank == null ? 3 : x.rank, b12: Math.round(Number(x.b12) || 0),
+        earned: earned, payable: payable, paid: paid, pending: Math.max(0, Math.round(Number(b.pending) || 0)), wait: Math.max(0, earned - payable), sites: sites, sentAt: new Date().toISOString() };
+    }).filter(function (b) { return b.id; });
+  }
+  var _ssBusy = false;
+  function saathiSyncRun(quiet) {
+    if (!roleIs("admin") || _ssBusy) return Promise.resolve(0);
+    var all = saathiBooks(); if (!all.length) return Promise.resolve(0);
+    _ssBusy = true; if (!quiet) toast("Sending " + plural(all.length, "partner") + " to Saathi…");
+    var i = 0, sent = 0, fail = "";
+    var step = function () {
+      if (i >= all.length) return Promise.resolve();
+      var part = all.slice(i, i + 40); i += 40;
+      return fetch(CO_GAS, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ action: "saathiSync", crmUser: S.user, crmPin: S.pin || "", crmTok: S.tok || "", books: part }) })
+        .then(function (r) { return r.json(); }).then(function (r) {
+          if (r && r.ok) { sent += part.length; return step(); }
+          fail = (r && r.err) || "refused";
+        }).catch(function () { fail = "no answer"; });
+    };
+    return step().then(function () {
+      _ssBusy = false;
+      if (!fail) { try { localStorage.setItem("ew_saathi_sync_day", today()); } catch (e) { } }
+      if (!quiet || fail) toast(fail ? "Saathi: " + sent + " sent, then stopped (" + fail + ")." : "Saathi updated: " + plural(sent, "partner") + " — tiers, executives and site-wise points.");
+      return sent;
+    });
+  }
+  function saathiSyncDaily() {
+    if (!roleIs("admin")) return;
+    var d = ""; try { d = localStorage.getItem("ew_saathi_sync_day") || ""; } catch (e) { }
+    if (d === today()) return;
+    setTimeout(function () { saathiSyncRun(true); }, 8000);
+  }
   function saathiPushRun() {
     var list = assocLive().slice();   /* 6.9.730 - a man is sent once */
     if (!list.length) { toast("No partner found."); return; }
@@ -67255,7 +67311,8 @@ function viewCatalogue() {
        Everything goes over as "on hold". A point turns into money when YOU pay it
        out, not when a challan is raised, and an app should never promise a man
        more than that. */
-    if (act === "saathi-push") {
+    if (act === "saathi-push") { saathiSyncRun(false); return; }   /* 6.9.903 - the CRM login, site-wise */
+    if (act === "saathi-push-old") {
       /* v6.9.453 - the Console's mobile and PIN in one sheet (he types the PIN into a password
          box; both are held in S for this session exactly as before, never stored), not two
          window.prompts. The push itself is saathiPushRun(), untouched. */
