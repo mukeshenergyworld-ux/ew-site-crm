@@ -821,8 +821,7 @@ function viewAccount(){
        'so the rupee figure is always shown underneath as well.</span></div></div>';
 
   h += '<div class="split" style="margin-top:12px">' +
-       '<div style="padding:0"><button class="wide ghost" onclick="renderPinChange(false)" ' +
-       'style="min-height:44px">Change PIN</button></div>' +
+       '<div style="padding:12px" class="sm mut">PIN change? Call the Energy World office - the admin sets it with you.</div>' +   /* 27 Oct 2026 - admin sets PINs only */
        (window.ewTheme ? '<div style="margin:10px 0">' + window.ewTheme.button() + '</div>' : '') + '<div style="padding:0"><button class="wide ghost" onclick="signOut()" ' +
        'style="min-height:44px">Sign out</button></div></div>';
   h += '<div class="note" style="text-align:center;margin-top:14px">' +
@@ -1142,7 +1141,7 @@ function ewRefresh(){
    Nothing you have typed or queued is touched. The sign-in and the
    offline queue live in localStorage and this never goes near them.
 --------------------------------------------------------------------- */
-var BUILD  = '2026.10.27-10';        /* which build of this file is running */
+var BUILD  = '2026.10.27-11';        /* which build of this file is running */
 var APPKEY = 'SAATHI';
 var VKEY   = 'ew_saathi_ver_v1';
 var VNEW   = '', VBUSY = false;
@@ -1359,6 +1358,9 @@ function staffTr(p){
   var sub = [ST.g === 'level' ? (p.ownedBy || 'Unassigned') : '', p.city, p.mobile ? String(p.mobile).replace(/\D/g, '').slice(-10) : ''].filter(Boolean).join(' · ');   /* 27 Oct 2026 - "show partner phone no here" */
   /* 27 Oct 2026 - "show pin here ... for whose set by admin": the PIN is never kept, so WHO set it and WHEN */
   var pb = p.pinBy && p.pinBy.by ? ' by ' + p.pinBy.by + (p.pinBy.at ? ' on ' + stDay(p.pinBy.at) : '') : '';
+  /* 27 Oct 2026 - HIS DECISION ("show pin here", "pin still not showing"): the admin sees the PIN he set. The server
+     sends it to an OWNER sign-in only; a PIN set before this was never recorded - New PIN records it. */
+  if (p.pinSet && ST.kind === 'OWNER') pb += p.pinBy && p.pinBy.pin ? ' · PIN ' + String(p.pinBy.pin).replace(/\D/g, '') : ' · PIN not recorded - tap New PIN';
   var pin = p.pinSet ? 'PIN set' + pb + (p.logins ? ' · signed in ' + p.logins + 'x' + (p.last ? ', last ' + stDay(p.last) : '') : ' · not signed in yet') : 'no PIN yet';
   var h = '<tr class="pr rl-' + lvOf(p) + (on ? ' on' : '') + '" data-st="row" data-r="' + esc(p.refId) + '">' +
     '<td class="nm">' + (ST.g === 'exec' ? lvPill(lvOf(p)) + ' ' : '') + '<b>' + esc(p.name) + '</b><span class="xs">' + esc(sub) + (sub ? ' · ' : '') + esc(pin) + '</span></td>' +
@@ -1435,7 +1437,7 @@ function staffPinSave(){
   var ref = ST.pin; go.disabled = true; go.textContent = 'Saving...';
   call('staffPin', { refId: ref, newPin: a }, 40000).then(function(r){
     if (!r || !r.ok){ go.disabled = false; go.textContent = 'Save his PIN'; er.textContent = (r && r.err) || 'Not saved.'; return; }
-    (ST.people || []).forEach(function(x){ if (x.refId === ref){ x.pinSet = true; x.pinBy = { by: r.by || ST.name, at: r.at || new Date().toISOString() }; } });
+    (ST.people || []).forEach(function(x){ if (x.refId === ref){ x.pinSet = true; x.pinBy = { by: r.by || ST.name, at: r.at || new Date().toISOString(), pin: a }; } });
     ST.pin = null; render(); toast(r.msg || 'PIN saved.');
   }).catch(function(){ go.disabled = false; go.textContent = 'Save his PIN'; er.textContent = 'No signal - nothing was saved. Try again.'; });
 }
