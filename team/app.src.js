@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.901";
+  var APP_VERSION = "6.9.902";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -10836,9 +10836,34 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
      RATES: defaults are the statutory ones as read on 25 Oct 2026 (EPF 12% on a wage capped at Rs 25,000; employer
      12% + about 1% admin/EDLI; ESI 0.75% + 3.25% where gross is up to Rs 21,000). Every rate is editable under
      Settings - his CA has the last word. */
-  var HR_DEF = { pfCeil: 25000, pfEmp: 12, pfEr: 13, esiLimit: 21000, esiEmp: 0.75, esiEr: 3.25 };
-  var HR_KINDS = ["Executive", "Engineer", "Office", "Driver", "Helper", "Other"];
-  var HR_EXP_HEADS = ["Rent", "Electricity", "Phone & internet", "Fuel", "Vehicle", "Tea & refreshments", "Stationery & printing", "Repairs", "Transport & freight", "Bank charges", "Other"];
+  /* ===== 6.9.902 - THE SALARY SHEET THE WAY ACCOUNTS MAKES IT, AND THE YEAR AROUND IT  (27 Oct 2026) =====
+     HIS WORDS, with Gautam's September sheet (SALARY.pdf): "this is how accounts making salary now, make a column for
+     monthly salary; 1. provision to add employee 2. provision to add expense 3. provision for admin only to calculate
+     diwali bonus, once calculated and finalize will shown to accounts, same for yearly salary increment, in %age and
+     fixed amt both option 4. like a proper salary managment, cost to company calculation, monthly expense like vechile
+     kilometer vs visit made, service complaint earning vs salary".
+     MEASURED on his sheet: PF/ESI/LWF are not on the full salary - Manoj 24,800 pays PF 1,400 / ESI 88 / LWF 24, which is
+     12% / 0.75% / 0.2% of a declared wage near 11,667; TA/DA is the bike, 1,985 km @ 3.5 = 6,948; Ashish's salary is
+     for 22 days; below the staff come Kaka Rickshaw and Surinder Auto (with an advance cut), the staff-room rent, the
+     EPF/ESI consultant's charges and the shop rent. No hr: row is in the book yet (the 6.9.883 module was never used).
+     HIS CHOICES (option cards, 27 Oct): PF/ESI on a "PF/ESI wage" set per person; TA = km x a rate per person, km typed
+     each month; Diwali bonus suggested as a % of monthly salary and the legal 8.33%; contractors, rent and the file
+     charges on the same sheet, below the staff, as accounts does.
+     NEW ROWS (all hr:, so the server keeps them to admin and accounts):
+       hr:emp gains post, pfWage, lwfOn, kmRate; three non-staff kinds (contractor, rent, charges) - paid an amount,
+                no days, no PF/ESI.
+       hr:pay gains km, ta (TA/DA rupees added to km x rate), amt (non-staff: this month's amount), remark.
+       hr:bdraft {bid = year|eid, year, eid, pct, amount}   the owner's working figures - never shown to accounts
+       hr:bfin   {year, on}                                 finalised: accounts sees the list and pays it
+       hr:bonus  {bid, year, eid, amount, paidOn, mode}     paid
+       hr:idraft {iid = from|eid, from, eid, how: pct|amt, val}   the owner's working figures
+       hr:inc    {iid, from, eid, how, val, oldMonthly, newMonthly}   finalised: the salary from that month
+     A month's salary is the newest finalised increment from on or before that month, else the employee's own figure. */
+  var HR_DEF = { pfCeil: 25000, pfEmp: 12, pfEr: 13, esiLimit: 21000, esiEmp: 0.75, esiEr: 3.25, lwfPct: 0.2, lwfCap: 34, lwfEr: 2, bonusLimit: 21000, bonusCeil: 7000, bonusPct: 8.33 };
+  var HR_KINDS = ["Executive", "Engineer", "Office", "Driver", "Helper", "Other", "Transport contractor", "Rent", "Charges"];
+  var HR_NONSTAFF = { "Transport contractor": 1, "Rent": 1, "Charges": 1 };
+  function hrStaff(e) { return !HR_NONSTAFF[e && e.kind]; }
+  var HR_EXP_HEADS = ["Rent", "Electricity", "Phone & internet", "Fuel", "Vehicle fuel", "Vehicle repair", "Tea & refreshments", "Staff welfare", "Festival / Diwali", "Stationery & printing", "Repairs", "Transport & freight", "Bank charges", "Other"];
   function hrOk() { return roleIs("admin") || roleIs("accounts"); }
   function hrRows(action) {
     return (S.data.audit || []).filter(function (a) { return a.action === action; }).map(function (a) {
@@ -10863,6 +10888,14 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
   function hrAdvs(eid) { return hrLatest("hr:adv", function (d) { return d.aid; }).filter(function (a) { return !eid || a.eid === eid; }); }
   function hrDim(month) { var p = String(month).split("-"); return new Date(Number(p[0]), Number(p[1]), 0).getDate(); }
   function hrActive(e, month) { var j = String(e.joined || "").slice(0, 7), l = String(e.left || "").slice(0, 7); return (!j || j <= month) && (!l || l >= month); }
+  function hrAddMonths(m, n) { var p = String(m).split("-"), d = new Date(Number(p[0]), Number(p[1]) - 1 + n, 1); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0"); }
+  /* the salary for a month: the newest finalised increment from on or before it, else his own figure */
+  function hrIncs(eid) { return hrLatest("hr:inc", function (d) { return d.iid; }).filter(function (i) { return !eid || i.eid === eid; }).sort(function (a, b) { return String(a.from).localeCompare(String(b.from)) || String(a._at).localeCompare(String(b._at)); }); }
+  function hrMonthlyAt(e, month) {
+    var v = Number(e.monthly) || 0;
+    hrIncs(e.eid).forEach(function (i) { if (String(i.from) <= month && Number(i.newMonthly) > 0) v = Number(i.newMonthly); });
+    return v;
+  }
   /* what is still owed on advances before this month's cut, and the planned cut this month */
   function hrAdvState(eid, month) {
     var given = 0, plan = 0;
@@ -10872,20 +10905,41 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     var owed = Math.max(0, given - cut);
     return { given: given, recovered: cut, owed: owed, plan: Math.min(owed, plan) };
   }
+  var hrNum = function (v) { return v != null && v !== "" ? Number(v) || 0 : null; };
   function hrCalc(e, month) {
-    var st = hrSet(), p = hrPay(e.eid, month) || {}, dim = hrDim(month);
-    var days = p.days != null && p.days !== "" ? Math.max(0, Math.min(dim, Number(p.days) || 0)) : dim;
-    var monthly = Number(e.monthly) || 0, earned = Math.round(monthly * days / dim), extra = Number(p.extra) || 0, gross = earned + extra;
-    var pfWage = e.pfOn ? Math.min(Math.round(earned * (Number(e.pfPct) || 100) / 100), st.pfCeil) : 0;
+    var st = hrSet(), p = hrPay(e.eid, month) || {}, dim = hrDim(month), staff = hrStaff(e);
+    var monthly = hrMonthlyAt(e, month);
+    var adv = hrAdvState(e.eid, month), advCut = hrNum(p.advCut) != null ? Math.min(adv.owed, hrNum(p.advCut)) : adv.plan;
+    var other = Number(p.other) || 0;
+    if (!staff) {
+      var amt = hrNum(p.amt) != null ? hrNum(p.amt) : monthly;
+      return { e: e, p: p, month: month, staff: false, dim: dim, days: dim, monthly: monthly, earned: amt, km: 0, ta: 0, extra: 0, sub: amt, gross: amt, pfWage: 0, pfE: 0, pfR: 0,
+        esiOn: false, esiE: 0, esiR: 0, lwf: 0, lwfR: 0, adv: adv, advCut: advCut, other: other, ded: advCut + other, net: amt - advCut - other, ctc: amt, saved: !!p.pid, paid: !!p.paidOn };
+    }
+    var days = hrNum(p.days) != null ? Math.max(0, Math.min(dim, hrNum(p.days))) : dim;
+    var earned = Math.round(monthly * days / dim), extra = Number(p.extra) || 0;
+    var km = Math.max(0, Number(p.km) || 0), rate = Number(e.kmRate) || 0, ta = Math.round(km * rate) + (Number(p.ta) || 0);
+    var sub = earned + ta + extra;
+    var wage = Number(e.pfWage) || 0;
+    var pfWage = e.pfOn ? (wage > 0 ? Math.min(wage, st.pfCeil) : Math.min(Math.round(earned * (Number(e.pfPct) || 100) / 100), st.pfCeil)) : 0;
     var pfE = Math.round(pfWage * st.pfEmp / 100), pfR = Math.round(pfWage * st.pfEr / 100);
-    var esiOn = e.esi === "yes" || (e.esi !== "no" && monthly > 0 && monthly <= st.esiLimit);
-    var esiE = esiOn ? Math.ceil(gross * st.esiEmp / 100) : 0, esiR = esiOn ? Math.ceil(gross * st.esiEr / 100) : 0;
-    var adv = hrAdvState(e.eid, month), advCut = p.advCut != null && p.advCut !== "" ? Math.min(adv.owed, Number(p.advCut) || 0) : adv.plan;
-    var other = Number(p.other) || 0, net = gross - pfE - esiE - advCut - other, ctc = gross + pfR + esiR;
-    return { e: e, p: p, month: month, dim: dim, days: days, monthly: monthly, earned: earned, extra: extra, gross: gross, pfWage: pfWage, pfE: pfE, pfR: pfR,
-      esiOn: esiOn, esiE: esiE, esiR: esiR, adv: adv, advCut: advCut, other: other, net: net, ctc: ctc, saved: !!p.pid, paid: !!p.paidOn };
+    var esiW = Number(e.esiWage) || wage, esiBase = esiW > 0 ? esiW : sub;
+    var esiOn = e.esi === "yes" || (e.esi !== "no" && (esiW > 0 ? esiW : monthly) > 0 && (esiW > 0 ? esiW : monthly) <= st.esiLimit);
+    var esiE = esiOn ? Math.round(esiBase * st.esiEmp / 100) : 0, esiR = esiOn ? Math.round(esiBase * st.esiEr / 100) : 0;   /* rounded as Gautam's sheet does: 12,267 x 0.75% = 92 */
+    var lwf = e.lwfOn ? (Number(e.lwfFix) > 0 ? Number(e.lwfFix) : Math.min(st.lwfCap, Math.ceil((wage > 0 ? wage : sub) * st.lwfPct / 100))) : 0, lwfR = lwf * (st.lwfEr || 0);
+    var net = sub - pfE - esiE - lwf - advCut - other, ctc = sub + pfR + esiR + lwfR;
+    return { e: e, p: p, month: month, staff: true, dim: dim, days: days, monthly: monthly, earned: earned, km: km, rate: rate, ta: ta, extra: extra, sub: sub, gross: sub, pfWage: pfWage, pfE: pfE, pfR: pfR,
+      esiOn: esiOn, esiE: esiE, esiR: esiR, lwf: lwf, lwfR: lwfR, adv: adv, advCut: advCut, other: other, ded: pfE + esiE + lwf + advCut + other, net: net, ctc: ctc, saved: !!p.pid, paid: !!p.paidOn };
   }
   function hrExps(month) { return hrLatest("hr:exp", function (d) { return d.xid; }).filter(function (x) { return x.month === month; }); }
+  /* visits he made in a month: Visit app days (sales) and service visits (engineers) */
+  function hrVisits(e, month) {
+    var who = String(e.team || e.name || "").trim(), n = 0;
+    try { var vd = attVisitDays(who); Object.keys(vd).forEach(function (d) { if (String(d).slice(0, 7) === month) n += vd[d].n; }); } catch (er) { }
+    var k = who.toLowerCase();
+    (S.data.visits || []).forEach(function (v) { if (String(v.engineer || "").trim().toLowerCase() === k && String(v.date || "").slice(0, 7) === month) n++; });
+    return n;
+  }
   /* ---------- performance, by kind, for one month, from the book this phone holds ---------- */
   function hrPerf(e, month) {
     var who = String(e.team || e.name || "").trim(), k = who.toLowerCase(), ym = function (s) { return ymLocal(new Date(s)); };
@@ -10904,7 +10958,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     if (e.kind === "Engineer") {
       var vs = (S.data.visits || []).filter(function (v) { return String(v.engineer || "").trim().toLowerCase() === k && String(v.date || "").slice(0, 7) === month; });
       var b = vs.reduce(function (t, v) { return t + (Number(v.total) || 0); }, 0), c2 = vs.reduce(function (t, v) { return t + (Number(v.collected) || 0); }, 0);
-      return { main: c2, mainLbl: "Service collected", line: vs.length + " visits · billed " + money(b) + " · collected " + money(c2), col: c2 };
+      return { main: b, mainLbl: "Service earned", line: vs.length + " service visits · billed " + money(b) + " · collected " + money(c2), col: c2, billed: b };
     }
     var nch = (S.data.challans || []).filter(function (c) { return by(c) && inM(c.createdAt); }).length;
     var npy = (S.data.payments || []).filter(function (p) { return by(p) && inM(p.createdAt || p.date); }).length;
@@ -10914,168 +10968,352 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
 
   function viewSalary() {
     if (!hrOk()) return '<div class="empty">Salary is for the owner and accounts.</div>';
+    var adm = roleIs("admin");
     var t = S.hrTab || "month", month = S.hrMonth || ymLocal(new Date());
     var tb = function (k, l) { return '<button class="btn sm ' + (t === k ? '' : 'ghost') + '" style="min-height:44px" data-act="hr-tab" data-k="' + k + '">' + l + '</button>'; };
     var h = '<div class="card"><h2 style="margin:0 0 4px">Salary &amp; staff</h2><div class="meta" style="font-size:13px">Owner and accounts only. Nothing is ever deleted: a change is a new line, the newest counts.</div>' +
-      '<div class="acts" style="gap:6px;flex-wrap:wrap;margin-top:6px">' + tb("month", "Month sheet") + tb("emps", "Employees") + tb("adv", "Advances") + tb("exp", "Office expenses") + tb("perf", "Performance vs cost") + tb("set", "PF / ESI rates") + '</div>' +
-      (t === "emps" || t === "set" ? '' : '<div style="display:flex;gap:8px;align-items:center;margin-top:8px"><label style="margin:0">Month</label><input type="month" id="hr_month" value="' + esc(month) + '" style="min-height:44px;font-size:15px;width:170px"/></div>') + '</div>';
+      '<div class="acts" style="gap:6px;flex-wrap:wrap;margin-top:6px">' + tb("month", "Salary sheet") + tb("emps", "Employees") + tb("adv", "Advances") + tb("exp", "Expenses") +
+        tb("bonus", "Diwali bonus") + tb("inc", "Increments") + tb("ctc", "Cost to company") + tb("perf", "Performance vs cost") + tb("set", "PF / ESI rates") + '</div>' +
+      (t === "month" || t === "adv" || t === "exp" || t === "perf" ? '<div style="display:flex;gap:8px;align-items:center;margin-top:8px"><label style="margin:0">Month</label><input type="month" id="hr_month" value="' + esc(month) + '" style="min-height:44px;font-size:15px;width:170px"/></div>' : '') + '</div>';
     if (t === "emps") return h + hrEmpsHtml();
     if (t === "adv") return h + hrAdvHtml(month);
     if (t === "exp") return h + hrExpHtml(month);
     if (t === "perf") return h + hrPerfHtml(month);
     if (t === "set") return h + hrSetHtml();
+    if (t === "bonus") return h + hrBonusHtml();
+    if (t === "inc") return h + hrIncHtml();
+    if (t === "ctc") return h + hrCtcHtml();
     return h + hrMonthHtml(month);
+  }
+  /* the name never squeezed: the pinned first column keeps room for the whole name, the post under it */
+  function hrWho(e) { return '<div style="min-width:150px;white-space:normal"><b>' + esc(e.name) + '</b><div style="font-size:12px;color:#64748b">' + esc(e.post || e.kind || "") + '</div></div>'; }
+  function hrInp(cls, c, v, w, ph, txt) {
+    return '<input class="' + cls + '" data-e="' + esc(c.e.eid) + '" data-m="' + esc(c.month) + '"' + (txt ? '' : ' inputmode="numeric"') + ' value="' + esc(v == null ? "" : String(v)) + '" placeholder="' + esc(ph || "") + '"' +
+      (c.paid ? ' disabled' : '') + ' style="width:' + w + 'px;min-height:44px;font-size:13px;' + (txt ? '' : 'text-align:right;') + 'padding:2px 6px"/>';
   }
   function hrMonthHtml(month) {
     var es = hrEmps(true).filter(function (e) { return hrActive(e, month); });
     if (!es.length) return '<div class="card"><div class="empty">No employee yet. Add them under <b>Employees</b>.</div><button class="btn" style="min-height:44px" data-act="hr-tab" data-k="emps">Add employees</button></div>';
-    var cs = es.map(function (e) { return hrCalc(e, month); }), T = {}, dim = hrDim(month);
-    ["earned", "extra", "gross", "pfE", "pfR", "esiE", "esiR", "advCut", "other", "net", "ctc"].forEach(function (k) { T[k] = cs.reduce(function (a, c) { return a + c[k]; }, 0); });
+    var cs = es.map(function (e) { return hrCalc(e, month); }), dim = hrDim(month);
+    var st = cs.filter(function (c) { return c.staff; }), ot = cs.filter(function (c) { return !c.staff; });
+    var sum = function (L) { var T = {}; ["monthly", "earned", "ta", "extra", "sub", "pfE", "pfR", "esiE", "esiR", "lwf", "lwfR", "advCut", "other", "ded", "net", "ctc"].forEach(function (k) { T[k] = L.reduce(function (a, c) { return a + (c[k] || 0); }, 0); }); return T; };
+    var TS = sum(st), TO = sum(ot), TA = sum(cs);
     var exp = hrExps(month).reduce(function (a, x) { return a + (Number(x.amount) || 0); }, 0), paidN = cs.filter(function (c) { return c.paid; }).length;
-    var inp = function (cls, c, v, w, ph) { return '<input class="' + cls + '" data-e="' + esc(c.e.eid) + '" data-m="' + esc(month) + '" inputmode="numeric" value="' + esc(v == null ? "" : String(v)) + '" placeholder="' + esc(ph || "") + '" style="width:' + w + 'px;min-height:40px;font-size:13px;text-align:right;padding:2px 6px"' + (c.paid ? ' disabled' : '') + '/>'; };
-    var h = '<div class="card"><h3 style="margin:0">' + esc(fullMonth(month)) + ' — ' + plural(es.length, "employee") + ' · ' + paidN + ' paid</h3>' +
-      '<div class="meta" style="font-size:13px;margin:4px 0 6px;line-height:1.6">Salary to pay <b>' + money(T.net) + '</b> · PF to deposit <b>' + money(T.pfE + T.pfR) + '</b> (staff ' + money(T.pfE) + ' + firm ' + money(T.pfR) + ') · ESI to deposit <b>' + money(T.esiE + T.esiR) + '</b> (staff ' + money(T.esiE) + ' + firm ' + money(T.esiR) + ')' +
-      ' · advances recovered ' + money(T.advCut) + '<br>Staff cost to company <b>' + money(T.ctc) + '</b> + office expenses <b>' + money(exp) + '</b> = <b style="font-size:15px">' + money(T.ctc + exp) + '</b> for the month.</div>' +
-      '<div class="meta" style="font-size:12.5px">Type the <b>paid days</b> (out of ' + dim + '), any <b>extra</b> (bonus, overtime, incentive) and <b>other cut</b>; the advance cut fills from the plan and can be changed. Each box saves as you leave it. <b>Paid</b> locks the month for that person.</div>' +
-      pevTable([["Employee"], ["Monthly", "right"], ["Paid days", "right"], ["Earned", "right"], ["Extra", "right"], ["PF", "right"], ["ESI", "right"], ["Advance cut", "right"], ["Other cut", "right"], ["Net pay", "right"], ["CTC", "right"], [""]],
-        cs.map(function (c) {
-          return ['<b>' + esc(c.e.name) + '</b><div style="font-size:12px;color:#64748b">' + esc(c.e.kind || "") + '</div>', money(c.monthly),
-            inp("hr-days", c, c.p.days != null && c.p.days !== "" ? c.p.days : "", 56, String(c.dim)), money(c.earned), inp("hr-extra", c, c.p.extra || "", 72, "0"),
-            c.pfE ? money(c.pfE) + '<div style="font-size:12px;color:#64748b">+ ' + money(c.pfR) + ' firm</div>' : '—',
-            c.esiE ? money(c.esiE) + '<div style="font-size:12px;color:#64748b">+ ' + money(c.esiR) + ' firm</div>' : '—',
-            (c.adv.owed ? inp("hr-adv", c, c.p.advCut != null && c.p.advCut !== "" ? c.p.advCut : "", 72, String(c.adv.plan)) + '<div style="font-size:12px;color:#b45309">owes ' + money(c.adv.owed) + '</div>' : '—'),
-            inp("hr-other", c, c.p.other || "", 64, "0"), '<b>' + money(c.net) + '</b>', money(c.ctc),
-            c.paid ? '<span style="color:#166534;font-size:12.5px;white-space:nowrap">&#10003; paid ' + esc(dmy(c.p.paidOn).slice(0, 5)) + (c.p.mode ? ' · ' + esc(c.p.mode) : '') + '</span>' +
-              (roleIs("admin") ? ' <button class="btn sm ghost" style="min-height:40px;padding:2px 8px" data-act="hr-unpay" data-e="' + esc(c.e.eid) + '" data-m="' + esc(month) + '">Undo</button>' : '')
-              : '<button class="btn sm" style="min-height:44px;white-space:nowrap" data-act="hr-paid" data-e="' + esc(c.e.eid) + '" data-m="' + esc(month) + '">Paid &#10003;</button>'];
-        }).concat([['<b>Total</b>', '', '', money(T.earned), money(T.extra), money(T.pfE), money(T.esiE), money(T.advCut), money(T.other), '<b>' + money(T.net) + '</b>', '<b>' + money(T.ctc) + '</b>', '']]), false, 1) + '</div>';
-    /* the register, for Excel and the CA */
-    var cols = [{ k: "n", t: "EMPLOYEE" }, { k: "kind", t: "KIND" }, { k: "days", t: "DAYS", r: 1, n: 1 }, { k: "monthly", t: "MONTHLY", r: 1, n: 1 }, { k: "earned", t: "EARNED", r: 1, n: 1 }, { k: "extra", t: "EXTRA", r: 1, n: 1 },
-      { k: "gross", t: "GROSS", r: 1, n: 1 }, { k: "pfWage", t: "PF WAGE", r: 1, n: 1 }, { k: "pfE", t: "PF STAFF", r: 1, n: 1 }, { k: "pfR", t: "PF FIRM", r: 1, n: 1 }, { k: "esiE", t: "ESI STAFF", r: 1, n: 1 }, { k: "esiR", t: "ESI FIRM", r: 1, n: 1 },
-      { k: "advCut", t: "ADVANCE", r: 1, n: 1 }, { k: "other", t: "OTHER CUT", r: 1, n: 1 }, { k: "net", t: "NET PAY", r: 1, n: 1 }, { k: "ctc", t: "CTC", r: 1, n: 1 }, { k: "paid", t: "PAID" }];
-    var rows = cs.map(function (c) { var v = { n: c.e.name, kind: c.e.kind || "", days: c.days, monthly: c.monthly, earned: c.earned, extra: c.extra, gross: c.gross, pfWage: c.pfWage, pfE: c.pfE, pfR: c.pfR, esiE: c.esiE, esiR: c.esiR, advCut: c.advCut, other: c.other, net: c.net, ctc: c.ctc, paid: c.paid ? dmy(c.p.paidOn) + (c.p.mode ? " " + c.p.mode : "") : "" };
-      var cells = {}; Object.keys(v).forEach(function (k) { cells[k] = typeof v[k] === "number" && k !== "days" ? money(v[k]) : esc(String(v[k])); }); return { v: v, cells: cells }; });
-    return h + '<div class="card"><h3 style="margin:0 0 4px">Salary register — ' + esc(fullMonth(month)) + '</h3>' + xlTable("hr-reg-" + month, cols, rows, "PF, ESI and CTC") + '</div>';
+    var pay = function (c) {
+      return c.paid ? '<span style="color:#166534;font-size:12.5px;white-space:nowrap">&#10003; paid ' + esc(dmy(c.p.paidOn).slice(0, 5)) + (c.p.mode ? ' · ' + esc(c.p.mode) : '') + '</span>' +
+          (roleIs("admin") ? ' <button class="btn sm ghost" style="min-height:44px;padding:2px 8px" data-act="hr-unpay" data-e="' + esc(c.e.eid) + '" data-m="' + esc(month) + '">Undo</button>' : '')
+        : '<button class="btn sm" style="min-height:44px;white-space:nowrap" data-act="hr-paid" data-e="' + esc(c.e.eid) + '" data-m="' + esc(month) + '">Paid &#10003;</button>';
+    };
+    var advCell = function (c) {
+      return (c.adv.owed ? hrInp("hr-adv", c, hrNum(c.p.advCut) != null ? c.p.advCut : "", 72, String(c.adv.plan)) + '<div style="font-size:12px;color:#b45309">owes ' + money(c.adv.owed) + '</div>' : '') +
+        hrInp("hr-other", c, c.p.other || "", 64, "other") ;
+    };
+    var h = '<div class="card"><h3 style="margin:0">Salary &amp; wages sheet — ' + esc(fullMonth(month)) + ' · ' + plural(cs.length, "line") + ' · ' + paidN + ' paid</h3>' +
+      '<div class="meta" style="font-size:13px;margin:4px 0 6px;line-height:1.6">Net to pay <b>' + money(TA.net) + '</b> (staff ' + money(TS.net) + ' + others ' + money(TO.net) + ') · PF to deposit <b>' + money(TS.pfE + TS.pfR) + '</b> · ESI to deposit <b>' + money(TS.esiE + TS.esiR) + '</b> · LWF <b>' + money(TS.lwf + TS.lwfR) + '</b> · advances recovered ' + money(TA.advCut) +
+        '<br>Cost to company <b>' + money(TA.ctc) + '</b> + office expenses <b>' + money(exp) + '</b> = <b style="font-size:15px">' + money(TA.ctc + exp) + '</b> for the month.</div>' +
+      '<div class="meta" style="font-size:12.5px">Type the <b>days</b> paid (out of ' + dim + '), the <b>km</b> for a bike (TA = km &times; his rate), any other TA/DA in &#8377;, <b>Other/Arrear</b> and the cuts. Each box saves as you leave it; <b>Paid</b> locks the line.</div>' +
+      '<div class="acts" style="margin:6px 0"><button class="btn sm" style="min-height:44px" data-act="hr-sheet-xl" data-m="' + esc(month) + '">&#8681; Excel</button></div>';
+    if (st.length) h += '<div style="font-weight:800;margin:8px 0 4px">Staff</div>' +
+      pevTable([["Staff name"], ["Monthly salary", "right"], ["Days", "right"], ["Basic", "right"], ["TA/DA", "right"], ["Other / Arrear", "right"], ["Sub total", "right"], ["P.F.", "right"], ["E.S.I.", "right"], ["LWF", "right"], ["Adv. / Oth.", "right"], ["Net payable", "right"], ["Remark"], [""]],
+        st.map(function (c) {
+          return [hrWho(c.e), money(c.monthly),
+            hrInp("hr-days", c, hrNum(c.p.days) != null ? c.p.days : "", 52, String(c.dim)), money(c.earned),
+            (c.rate ? hrInp("hr-km", c, c.p.km || "", 64, "km") + '<div style="font-size:12px;color:#64748b">@ ' + c.rate + '/km</div>' : '') + hrInp("hr-ta", c, c.p.ta || "", 64, "Rs") + '<div style="font-size:12px;font-weight:700">' + money(c.ta) + '</div>',
+            hrInp("hr-extra", c, c.p.extra || "", 68, "0"), '<b>' + money(c.sub) + '</b>',
+            c.pfE ? money(c.pfE) : '—', c.esiE ? money(c.esiE) : '—', c.lwf ? money(c.lwf) : '—', advCell(c) + '<div style="font-size:12px;font-weight:700">' + money(c.advCut + c.other) + '</div>',
+            '<b>' + money(c.net) + '</b>', hrInp("hr-remark", c, c.p.remark || "", 170, "remark", true), pay(c)];
+        }).concat([['<b>Sub total</b>', money(TS.monthly), '', money(TS.earned), money(TS.ta), money(TS.extra), '<b>' + money(TS.sub) + '</b>', money(TS.pfE), money(TS.esiE), money(TS.lwf), money(TS.advCut + TS.other), '<b>' + money(TS.net) + '</b>', '', '']]), false);
+    if (ot.length) h += '<div style="font-weight:800;margin:12px 0 4px">Contractors, rent &amp; charges</div>' +
+      pevTable([["Name"], ["Monthly", "right"], ["This month", "right"], ["Adv. / Oth.", "right"], ["Net payable", "right"], ["Remark"], [""]],
+        ot.map(function (c) {
+          return [hrWho(c.e), money(c.monthly), hrInp("hr-amt", c, hrNum(c.p.amt) != null ? c.p.amt : "", 80, String(c.monthly)),
+            advCell(c) + '<div style="font-size:12px;font-weight:700">' + money(c.advCut + c.other) + '</div>', '<b>' + money(c.net) + '</b>', hrInp("hr-remark", c, c.p.remark || "", 170, "remark", true), pay(c)];
+        }).concat([['<b>Sub total</b>', money(TO.monthly), money(TO.sub), money(TO.advCut + TO.other), '<b>' + money(TO.net) + '</b>', '', '']]), false);
+    h += '<div style="display:flex;justify-content:space-between;gap:8px;margin-top:10px;padding:8px 10px;background:#0b3b36;color:#fff;border-radius:10px;font-weight:800"><span>TOTAL</span><span>' + money(TA.sub) + ' &minus; ' + money(TA.ded) + ' = ' + money(TA.net) + ' net payable</span></div></div>';
+    return h;
+  }
+  /* the sheet as accounts makes it, for Excel (and the PDF beside it) */
+  function hrSheetRows(month) {
+    var es = hrEmps(true).filter(function (e) { return hrActive(e, month); }), cs = es.map(function (e) { return hrCalc(e, month); });
+    var st = cs.filter(function (c) { return c.staff; }), ot = cs.filter(function (c) { return !c.staff; });
+    var H = function (t) { return { v: t, s: XL.HEAD }; }, B = function (v) { return { v: v, s: typeof v === "number" ? XL.MONEYB : XL.BOLD }; };
+    var rows = [[{ v: "ENERGY WORLD · SALARY & WAGES SHEET FOR THE MONTH OF " + fullMonth(month).toUpperCase(), s: XL.TITLE }], [],
+      ["STAFF NAME", "POST", "MONTHLY SALARY", "DAYS", "BASIC", "TA/DA", "OTHER/ARREAR", "SUB TOTAL", "P.F.", "E.S.I.", "LWF", "ADV./OTH.", "NET PAYABLE", "REMARK"].map(H)];
+    var line = function (c) {
+      var rm = [c.p.remark || "", c.km && !/km/i.test(c.p.remark || "") ? (c.km + " km @ " + c.rate) : "", c.adv.owed ? "advance owed " + money(c.adv.owed - c.advCut) + " after this cut" : ""].filter(Boolean).join(" · ");
+      var M = function (v) { return { v: v, s: XL.MONEY }; };
+      return [c.e.name, c.e.post || c.e.kind || "", M(c.monthly), c.staff ? c.days + "/" + c.dim : "", M(c.earned), M(c.ta), M(c.extra), M(c.sub), M(c.pfE), M(c.esiE), M(c.lwf), M(c.advCut + c.other), M(c.net), rm];
+    };
+    var tot = function (lbl, L) { var g = function (k) { return L.reduce(function (a, c) { return a + (c[k] || 0); }, 0); };
+      return [B(lbl), "", B(g("monthly")), "", B(g("earned")), B(g("ta")), B(g("extra")), B(g("sub")), B(g("pfE")), B(g("esiE")), B(g("lwf")), B(g("advCut") + g("other")), B(g("net")), ""]; };
+    st.forEach(function (c) { rows.push(line(c)); });
+    if (st.length) rows.push(tot("SUB TOTAL", st));
+    ot.forEach(function (c) { rows.push(line(c)); });
+    if (ot.length) rows.push(tot("TOTAL", cs));
+    return rows;
   }
   function fullMonth(m) { var p = String(m).split("-"); return ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"][Number(p[1]) - 1] + " " + p[0]; }
   function hrEmpsHtml() {
     var all = hrEmps(true), month = ymLocal(new Date());
-    var h = '<div class="card"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><h3 style="margin:0">' + plural(all.filter(function (e) { return !e.left; }).length, "employee") + '</h3><div class="grow"></div>' +
-      '<button class="btn" style="min-height:44px" data-act="hr-emp" data-e="">+ Add employee</button></div>';
+    var h = '<div class="card"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><h3 style="margin:0">' + plural(all.filter(function (e) { return !e.left && hrStaff(e); }).length, "employee") + ' · ' + plural(all.filter(function (e) { return !e.left && !hrStaff(e); }).length, "other payee") + '</h3><div class="grow"></div>' +
+      '<button class="btn" style="min-height:44px" data-act="hr-emp" data-e="">+ Add employee</button><button class="btn ghost" style="min-height:44px" data-act="hr-emp" data-e="" data-ns="1">+ Contractor / rent / charges</button></div>';
     if (!all.length) return h + '<div class="empty">No employee yet.</div></div>';
-    h += pevTable([["Name"], ["Kind"], ["Monthly", "right"], ["PF"], ["ESI"], ["CTC this month", "right"], ["Joined"], [""]], all.map(function (e) {
-      var c = hrCalc(e, month);
-      return ['<b>' + esc(e.name) + '</b>' + (e.team && e.team !== e.name ? '<div style="font-size:12px;color:#64748b">CRM login: ' + esc(e.team) + '</div>' : '') + (e.left ? '<div style="font-size:12px;color:#b91c1c">left ' + esc(dmy(e.left)) + '</div>' : ''),
-        esc(e.kind || ""), money(Number(e.monthly) || 0), e.pfOn ? 'Yes (' + (Number(e.pfPct) || 100) + '%)' : 'No', c.esiOn ? 'Yes' : 'No', e.left ? '—' : money(c.ctc), esc(e.joined ? dmy(e.joined) : ""),
+    h += pevTable([["Name"], ["Post"], ["Monthly", "right"], ["PF / ESI wage", "right"], ["TA rate"], ["CTC this month", "right"], ["Joined"], [""]], all.map(function (e) {
+      var c = hrCalc(e, month), stf = hrStaff(e);
+      return ['<div style="min-width:150px"><b>' + esc(e.name) + '</b></div>' + (e.team && e.team !== e.name ? '<div style="font-size:12px;color:#64748b">CRM login: ' + esc(e.team) + '</div>' : '') + (e.left ? '<div style="font-size:12px;color:#b91c1c">left ' + esc(dmy(e.left)) + '</div>' : ''),
+        esc(e.post || e.kind || "") + (e.post && e.kind ? '<div style="font-size:12px;color:#64748b">' + esc(e.kind) + '</div>' : ''),
+        money(hrMonthlyAt(e, month)) + (hrMonthlyAt(e, month) !== (Number(e.monthly) || 0) ? '<div style="font-size:12px;color:#166534">after increment</div>' : ''),
+        stf ? (e.pfOn ? (Number(e.pfWage) ? money(Number(e.pfWage)) : (Number(e.pfPct) || 100) + '% of salary') : 'No PF') + (c.esiOn ? ' · ESI' : '') + (e.lwfOn ? ' · LWF' : '') : '—',
+        stf && Number(e.kmRate) ? 'Rs ' + Number(e.kmRate) + '/km' : '—', e.left ? '—' : money(c.ctc), esc(e.joined ? dmy(e.joined) : ""),
         '<button class="btn sm ghost" style="min-height:44px" data-act="hr-emp" data-e="' + esc(e.eid) + '">Edit</button>'];
     })) + '</div>';
     return h;
   }
-  function modalHrEmp(e) {
+  function modalHrEmp(e, ns) {
     e = e || {};
+    var non = e.eid ? !hrStaff(e) : !!ns;
     var team = (S.data.team || []).map(function (x) { return String(x.name || "").trim(); }).filter(Boolean).sort();
     var sel = function (id, list, cur) { return '<select id="' + id + '" style="min-height:44px">' + list.map(function (o) { var v = Array.isArray(o) ? o[0] : o, l = Array.isArray(o) ? o[1] : o; return '<option value="' + esc(v) + '"' + (String(cur) === String(v) ? ' selected' : '') + '>' + esc(l) + '</option>'; }).join("") + '</select>'; };
-    return '<h2>' + (e.eid ? "Edit employee" : "New employee") + '</h2>' +
+    var kinds = HR_KINDS.filter(function (k) { return non ? HR_NONSTAFF[k] : !HR_NONSTAFF[k]; });
+    var head = '<h2>' + (e.eid ? "Edit " : "New ") + (non ? "contractor / rent / charges" : "employee") + '</h2>' +
       '<label>Name *</label><input id="hr_name" value="' + esc(e.name || "") + '" autocomplete="off"/>' +
-      '<div class="grid2"><div><label>Kind</label>' + sel("hr_kind", HR_KINDS, e.kind || "Office") + '</div>' +
-      '<div><label>CRM login (for performance)</label>' + sel("hr_team", [["", "— none —"]].concat(team), e.team || "") + '</div></div>' +
-      '<div class="grid2"><div><label>Monthly salary (Rs) *</label><input id="hr_monthly" inputmode="numeric" value="' + esc(e.monthly || "") + '"/></div>' +
+      '<div class="grid2"><div><label>Kind</label>' + sel("hr_kind", kinds, e.kind || (non ? "Transport contractor" : "Office")) + '</div>' +
+      '<div><label>' + (non ? 'For (shown on the sheet)' : 'Post (as on the sheet)') + '</label><input id="hr_post" value="' + esc(e.post || "") + '" placeholder="' + (non ? 'Rickshaw / Staff room rent / EPF-ESI file' : 'Technician / Accountant / Helper') + '"/></div></div>';
+    if (non) return head +
+      '<div class="grid2"><div><label>Monthly amount (Rs) *</label><input id="hr_monthly" inputmode="numeric" value="' + esc(e.monthly || "") + '"/></div>' +
       '<div><label>Mobile</label><input id="hr_mob" inputmode="numeric" value="' + esc(e.mobile || "") + '"/></div></div>' +
-      '<div class="grid2"><div><label>PF</label>' + sel("hr_pf", [["1", "Yes, PF is cut"], ["0", "No PF"]], e.pfOn ? "1" : (e.eid ? "0" : "1")) + '</div>' +
-      '<div><label>PF on what % of salary</label><input id="hr_pfpct" inputmode="numeric" value="' + esc(e.pfPct || "100") + '"/></div></div>' +
-      '<div class="grid2"><div><label>ESI</label>' + sel("hr_esi", [["auto", "Auto (salary up to the ESI limit)"], ["yes", "Yes"], ["no", "No"]], e.esi || "auto") + '</div>' +
-      '<div><label>Joined on</label><input id="hr_joined" type="date" value="' + esc(e.joined || "") + '"/></div></div>' +
-      '<div class="grid2"><div><label>Left on (stops salary)</label><input id="hr_left" type="date" value="' + esc(e.left || "") + '"/></div><div></div></div>' +
+      '<div class="grid2"><div><label>From</label><input id="hr_joined" type="date" value="' + esc(e.joined || "") + '"/></div><div><label>Stopped on</label><input id="hr_left" type="date" value="' + esc(e.left || "") + '"/></div></div>' +
       '<label>Notes</label><textarea id="hr_notes">' + esc(e.notes || "") + '</textarea>' +
-      '<div class="meta" style="font-size:12.5px">A raise is just a new monthly figure: months already marked Paid keep what was paid.</div>' +
+      '<div class="meta" style="font-size:12.5px">Paid an amount each month (change it on the sheet for a month), no days, no PF or ESI. An advance is given and cut under Advances.</div>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button><button class="btn" data-act="hr-emp-save" data-e="' + esc(e.eid || "") + '" data-ns="1">Save</button></div>';
+    var now = e.eid ? hrMonthlyAt(e, ymLocal(new Date())) : 0;
+    return head +
+      '<div class="grid2"><div><label>CRM login (for performance)</label>' + sel("hr_team", [["", "— none —"]].concat(team), e.team || "") + '</div>' +
+      '<div><label>Mobile</label><input id="hr_mob" inputmode="numeric" value="' + esc(e.mobile || "") + '"/></div></div>' +
+      '<div class="grid2"><div><label>Monthly salary (Rs) *</label><input id="hr_monthly" inputmode="numeric" value="' + esc(e.monthly || "") + '"/>' +
+        (now && now !== (Number(e.monthly) || 0) ? '<div class="meta" style="font-size:12px;color:#166534">Now ' + money(now) + ' after increments &mdash; change it under Increments.</div>' : '') + '</div>' +
+      '<div><label>TA: Rs per km (bike)</label><input id="hr_km" inputmode="decimal" value="' + esc(e.kmRate || "") + '" placeholder="e.g. 3.5 - blank if none"/></div></div>' +
+      '<div class="grid2"><div><label>PF</label>' + sel("hr_pf", [["1", "Yes, PF is cut"], ["0", "No PF"]], e.pfOn ? "1" : (e.eid ? "0" : "1")) + '</div>' +
+      '<div><label>PF / ESI wage (Rs)</label><input id="hr_pfwage" inputmode="numeric" value="' + esc(e.pfWage || "") + '" placeholder="e.g. 11667 - PF 12%, ESI 0.75% on it"/></div></div>' +
+      '<div class="grid2"><div><label>ESI</label>' + sel("hr_esi", [["auto", "Auto (wage up to the ESI limit)"], ["yes", "Yes"], ["no", "No"]], e.esi || "auto") + '</div>' +
+      '<div><label>ESI wage, if not the PF wage (Rs)</label><input id="hr_esiwage" inputmode="numeric" value="' + esc(e.esiWage || "") + '" placeholder="blank = same as PF"/></div></div>' +
+      '<div class="grid2"><div><label>LWF (Haryana)</label>' + sel("hr_lwf", [["1", "Yes"], ["0", "No"]], e.lwfOn || !e.eid ? "1" : "0") + '</div>' +
+      '<div><label>LWF fixed a month (Rs)</label><input id="hr_lwffix" inputmode="numeric" value="' + esc(e.lwfFix || "") + '" placeholder="blank = 0.2% of the wage"/></div></div>' +
+      '<div class="grid2"><div><label>Joined on</label><input id="hr_joined" type="date" value="' + esc(e.joined || "") + '"/></div>' +
+      '<div><label>Left on (stops salary)</label><input id="hr_left" type="date" value="' + esc(e.left || "") + '"/></div></div>' +
+      '<input type="hidden" id="hr_pfpct" value="' + esc(e.pfPct || "100") + '"/>' +
+      '<label>Notes</label><textarea id="hr_notes">' + esc(e.notes || "") + '</textarea>' +
+      '<div class="meta" style="font-size:12.5px">PF / ESI wage blank = PF on the salary earned. A raise goes in under <b>Increments</b>, from a month; months already paid keep what was paid.</div>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button><button class="btn" data-act="hr-emp-save" data-e="' + esc(e.eid || "") + '">Save employee</button></div>';
   }
   function hrAdvHtml(month) {
     var es = hrEmps(true);
     var h = '<div class="card"><h3 style="margin:0 0 4px">Give an advance</h3>' + (es.length ?
       '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end">' +
-      '<div><label style="margin-top:0">Employee</label><select id="hr_aemp" style="min-height:44px">' + es.filter(function (e) { return !e.left; }).map(function (e) { return '<option value="' + esc(e.eid) + '">' + esc(e.name) + '</option>'; }).join("") + '</select></div>' +
+      '<div><label style="margin-top:0">Employee / contractor</label><select id="hr_aemp" style="min-height:44px">' + es.filter(function (e) { return !e.left; }).map(function (e) { return '<option value="' + esc(e.eid) + '">' + esc(e.name) + '</option>'; }).join("") + '</select></div>' +
       '<div><label style="margin-top:0">Date</label><input id="hr_adate" type="date" value="' + esc(today()) + '" style="min-height:44px"/></div>' +
-      '<div><label style="margin-top:0">Amount Rs</label><input id="hr_aamt" inputmode="numeric" style="width:110px"/></div>' +
-      '<div><label style="margin-top:0">Cut per month Rs</label><input id="hr_aper" inputmode="numeric" style="width:110px"/></div>' +
-      '<div style="flex:1 1 140px"><label style="margin-top:0">Note</label><input id="hr_anote"/></div>' +
+      '<div><label style="margin-top:0">Amount Rs</label><input id="hr_aamt" inputmode="numeric" style="width:110px;min-height:44px"/></div>' +
+      '<div><label style="margin-top:0">Cut per month Rs</label><input id="hr_aper" inputmode="numeric" style="width:110px;min-height:44px"/></div>' +
+      '<div style="flex:1 1 140px"><label style="margin-top:0">Note</label><input id="hr_anote" style="min-height:44px"/></div>' +
       '<button class="btn" style="min-height:44px" data-act="hr-adv-add">+ Advance</button></div>' : '<div class="empty">Add employees first.</div>') + '</div>';
     var rows = es.map(function (e) { var a = hrAdvState(e.eid, "9999-12"), list = hrAdvs(e.eid); return { e: e, a: a, list: list }; }).filter(function (x) { return x.list.length; });
-    if (rows.length) h += '<div class="card"><h3 style="margin:0 0 4px">Advances</h3>' + pevTable([["Employee"], ["Given", "right"], ["Recovered", "right"], ["Still owed", "right"], ["Each advance"]], rows.map(function (x) {
+    if (rows.length) h += '<div class="card"><h3 style="margin:0 0 4px">Advances</h3>' + pevTable([["Name"], ["Given", "right"], ["Recovered", "right"], ["Still owed", "right"], ["Each advance"]], rows.map(function (x) {
       return ['<b>' + esc(x.e.name) + '</b>', money(x.a.given), money(x.a.recovered), '<b style="color:' + (x.a.owed ? '#b45309' : '#166534') + '">' + money(x.a.owed) + '</b>',
         x.list.map(function (a) { return esc(dmy(a.date)) + ' ' + money(Number(a.amount) || 0) + (Number(a.perMonth) ? ' (' + money(Number(a.perMonth)) + '/month)' : '') + (a.note ? ' · ' + esc(a.note) : '') +
-          (roleIs("admin") ? ' <button class="btn sm ghost" style="min-height:36px;padding:0 8px" data-act="hr-adv-rm" data-a="' + esc(a.aid) + '">Off</button>' : ''); }).join("<br>")];
-    })) + '<div class="meta" style="font-size:12.5px;margin-top:4px">Recovered = the advance cut on every saved month. The month sheet takes the planned cut until the advance is cleared.</div></div>';
+          (roleIs("admin") ? ' <button class="btn sm ghost" style="min-height:44px;padding:0 8px" data-act="hr-adv-rm" data-a="' + esc(a.aid) + '">Off</button>' : ''); }).join("<br>")];
+    })) + '<div class="meta" style="font-size:12.5px;margin-top:4px">Recovered = the advance cut on every saved month. The sheet takes the planned cut until the advance is cleared; change it on the sheet for a month (type 0 to skip).</div></div>';
     return h;
   }
   function hrExpHtml(month) {
     var xs = hrExps(month), tot = xs.reduce(function (a, x) { return a + (Number(x.amount) || 0); }, 0);
     var byH = {}; xs.forEach(function (x) { byH[x.head] = (byH[x.head] || 0) + (Number(x.amount) || 0); });
-    return '<div class="card"><h3 style="margin:0">Office expenses — ' + esc(fullMonth(month)) + ' · ' + money(tot) + '</h3>' +
-      (Object.keys(byH).length ? '<div class="meta" style="font-size:13px;margin:4px 0">' + Object.keys(byH).sort(function (a, b) { return byH[b] - byH[a]; }).map(function (k) { return esc(k) + ' ' + money(byH[k]); }).join(" · ") + '</div>' : '') +
-      (xs.length ? pevTable([["Date"], ["Head"], ["Amount", "right"], ["Note"], ["By"], [""]], xs.sort(function (a, b) { return String(a.date).localeCompare(String(b.date)); }).map(function (x) {
-        return [esc(dmy(x.date || "")), esc(x.head), money(Number(x.amount) || 0), esc(x.note || ""), esc(x._by || ""), '<button class="btn sm ghost" style="min-height:44px" data-act="hr-exp-rm" data-x="' + esc(x.xid) + '">Off</button>']; })) : '<div class="empty">No expense for this month yet.</div>') +
-      '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end;margin-top:8px">' +
+    return '<div class="card"><h3 style="margin:0">Expenses — ' + esc(fullMonth(month)) + ' · ' + money(tot) + '</h3>' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end;margin:8px 0">' +
       '<div><label style="margin-top:0">Date</label><input id="hr_xdate" type="date" value="' + esc(month === ymLocal(new Date()) ? today() : month + "-01") + '" style="min-height:44px"/></div>' +
       '<div><label style="margin-top:0">Head</label><select id="hr_xhead" style="min-height:44px">' + HR_EXP_HEADS.map(function (o) { return '<option>' + esc(o) + '</option>'; }).join("") + '</select></div>' +
-      '<div><label style="margin-top:0">Amount Rs</label><input id="hr_xamt" inputmode="numeric" style="width:110px"/></div>' +
-      '<div style="flex:1 1 140px"><label style="margin-top:0">Note</label><input id="hr_xnote"/></div>' +
-      '<button class="btn" style="min-height:44px" data-act="hr-exp-add" data-m="' + esc(month) + '">+ Expense</button></div></div>';
+      '<div><label style="margin-top:0">Amount Rs</label><input id="hr_xamt" inputmode="numeric" style="width:110px;min-height:44px"/></div>' +
+      '<div style="flex:1 1 140px"><label style="margin-top:0">Note</label><input id="hr_xnote" style="min-height:44px" placeholder="bill no, vehicle, who"/></div>' +
+      '<button class="btn" style="min-height:44px" data-act="hr-exp-add" data-m="' + esc(month) + '">+ Expense</button></div>' +
+      (Object.keys(byH).length ? '<div class="meta" style="font-size:13px;margin:4px 0">' + Object.keys(byH).sort(function (a, b) { return byH[b] - byH[a]; }).map(function (k) { return esc(k) + ' ' + money(byH[k]); }).join(" · ") + '</div>' : '') +
+      (xs.length ? pevTable([["Date"], ["Head"], ["Amount", "right"], ["Note"], ["By"], [""]], xs.sort(function (a, b) { return String(a.date).localeCompare(String(b.date)); }).map(function (x) {
+        return [esc(dmy(x.date || "")), esc(x.head), money(Number(x.amount) || 0), esc(x.note || ""), esc(x._by || ""), '<button class="btn sm ghost" style="min-height:44px" data-act="hr-exp-rm" data-x="' + esc(x.xid) + '">Off</button>']; })) : '<div class="empty">No expense for this month yet.</div>') + '</div>';
   }
   function hrPerfHtml(month) {
-    var es = hrEmps(true).filter(function (e) { return hrActive(e, month); });
+    var es = hrEmps(true).filter(function (e) { return hrActive(e, month) && hrStaff(e); });
     if (!es.length) return '<div class="card"><div class="empty">No employee yet.</div></div>';
     var rows = es.map(function (e) {
-      var c = hrCalc(e, month), p = hrPerf(e, month), per = c.ctc ? p.main / c.ctc : 0;
-      var v = { n: e.name, kind: e.kind || "", ctc: c.ctc, main: Math.round(p.main), per: p.entries ? (c.ctc ? Math.round(p.main / (c.ctc / 1000) * 10) / 10 : 0) : Math.round(per * 10) / 10, line: p.line };
+      var c = hrCalc(e, month), p = hrPerf(e, month), per = c.ctc ? p.main / c.ctc : 0, nv = hrVisits(e, month);
+      var v = { n: e.name, kind: e.kind || "", ctc: c.ctc, main: Math.round(p.main), per: p.entries ? (c.ctc ? Math.round(p.main / (c.ctc / 1000) * 10) / 10 : 0) : Math.round(per * 10) / 10,
+        km: c.km, vis: nv, kpv: c.km && nv ? Math.round(c.km / nv * 10) / 10 : 0, tpv: c.ta && nv ? Math.round(c.ta / nv) : 0, line: p.line };
       return { v: v, cells: { n: '<b>' + esc(e.name) + '</b>' + (e.team ? '' : '<div style="font-size:12px;color:#b45309">no CRM login linked</div>'), kind: esc(v.kind), ctc: money(c.ctc),
         main: (p.entries ? String(v.main) : money(v.main)) + '<div style="font-size:12px;color:#64748b">' + esc(p.mainLbl) + '</div>',
-        per: p.entries ? '<b>' + v.per + '</b><div style="font-size:12px;color:#64748b">entries per Rs 1,000</div>' : '<b style="color:' + (per >= 10 ? '#166534' : per >= 3 ? '#b45309' : '#b91c1c') + '">Rs ' + v.per + '</b><div style="font-size:12px;color:#64748b">per Rs 1 of cost</div>',
-        line: esc(p.line) } };
+        per: p.entries ? '<b>' + v.per + '</b><div style="font-size:12px;color:#64748b">entries per Rs 1,000</div>' : '<b style="color:' + (per >= (e.kind === "Engineer" ? 1 : 10) ? '#166534' : per >= (e.kind === "Engineer" ? 0.5 : 3) ? '#b45309' : '#b91c1c') + '">Rs ' + v.per + '</b><div style="font-size:12px;color:#64748b">per Rs 1 of cost</div>',
+        km: c.km ? String(c.km) + ' km' : '—', vis: String(nv), kpv: v.kpv ? v.kpv + ' km' : '—', tpv: v.tpv ? money(v.tpv) : '—', line: esc(p.line) } };
     });
-    var cols = [{ k: "n", t: "EMPLOYEE" }, { k: "kind", t: "KIND" }, { k: "ctc", t: "CTC", r: 1, n: 1 }, { k: "main", t: "OUTPUT", r: 1, n: 1 }, { k: "per", t: "PER COST", r: 1, n: 1 }, { k: "line", t: "DETAIL" }];
+    var cols = [{ k: "n", t: "EMPLOYEE" }, { k: "kind", t: "KIND" }, { k: "ctc", t: "CTC", r: 1, n: 1 }, { k: "main", t: "OUTPUT", r: 1, n: 1 }, { k: "per", t: "PER COST", r: 1, n: 1 },
+      { k: "km", t: "KM", r: 1, n: 1 }, { k: "vis", t: "VISITS", r: 1, n: 1 }, { k: "kpv", t: "KM / VISIT", r: 1, n: 1 }, { k: "tpv", t: "TA / VISIT", r: 1, n: 1 }, { k: "line", t: "DETAIL" }];
     return '<div class="card"><h3 style="margin:0 0 4px">Performance vs cost to company — ' + esc(fullMonth(month)) + '</h3>' +
-      '<div class="meta" style="font-size:12.5px;margin-bottom:4px">Executives: value delivered (and collected) per Rs 1 of what he costs. Engineers: service money collected per Rs 1. Office staff: entries they made per Rs 1,000. Figures come from the CRM login linked on the employee.</div>' +
+      '<div class="meta" style="font-size:12.5px;margin-bottom:4px">Executives: value delivered per Rs 1 of what he costs. Engineers: service complaints earned (billed) per Rs 1 of what he costs - below Rs 1 the service does not pay his salary. Office: entries per Rs 1,000. KM is the month&rsquo;s km typed on the salary sheet; visits are the Visit app days and the service visits of his CRM login.</div>' +
       xlTable("hr-perf-" + month, cols, rows, "the detail") + '</div>';
+  }
+  /* ---------- cost to company: the month and the year, each person ---------- */
+  function hrCtcHtml() {
+    var m = ymLocal(new Date()), es = hrEmps(false).filter(function (e) { return hrStaff(e); });
+    if (!es.length) return '<div class="card"><div class="empty">No employee yet.</div></div>';
+    var yr = Number(m.slice(0, 4)), bon = {}; hrLatest("hr:bonus", function (d) { return d.bid; }).forEach(function (b) { if (Number(b.year) === yr) bon[b.eid] = Number(b.amount) || 0; });
+    var T = { mo: 0, yr: 0 };
+    var rows = es.map(function (e) {
+      var c = hrCalc(e, m), y = c.ctc * 12 + (bon[e.eid] || 0); T.mo += c.ctc; T.yr += y;
+      return [hrWho(e), money(c.monthly), money(c.ta), money(c.pfR), money(c.esiR), money(c.lwfR),
+        '<b>' + money(c.ctc) + '</b>', bon[e.eid] ? money(bon[e.eid]) : '—', '<b>' + money(y) + '</b>'];
+    });
+    return '<div class="card"><h3 style="margin:0 0 4px">Cost to company — ' + esc(fullMonth(m)) + '</h3>' +
+      '<div class="meta" style="font-size:12.5px;margin-bottom:4px">A month = salary + TA/DA this month + the firm&rsquo;s PF, ESI and LWF. A year = the month &times; 12 + this year&rsquo;s Diwali bonus.</div>' +
+      pevTable([["Employee"], ["Monthly", "right"], ["TA/DA", "right"], ["PF firm", "right"], ["ESI firm", "right"], ["LWF firm", "right"], ["CTC month", "right"], ["Bonus", "right"], ["CTC year", "right"]],
+        rows.concat([['<b>Total</b>', '', '', '', '', '', '<b>' + money(T.mo) + '</b>', '', '<b>' + money(T.yr) + '</b>']]), false) + '</div>';
+  }
+  /* ---------- Diwali bonus: the owner works it out, finalises, accounts pays ---------- */
+  function hrBonusYear() { return Number(S.hrBYear || new Date().getFullYear()); }
+  function hrBonusFin(yr) { var f = hrLatest("hr:bfin", function (d) { return String(d.year); }).filter(function (d) { return Number(d.year) === yr; })[0]; return !!(f && Number(f.on) === 1); }
+  function hrBonusCalc(e, yr) {
+    var st = hrSet(), end = yr + "-" + String(new Date().getMonth() + 1).padStart(2, "0"), from = hrAddMonths(end, -11), months = 0, base = 0;
+    for (var i = 0; i < 12; i++) { var mm = hrAddMonths(from, i); if (hrActive(e, mm)) { months++; base += Math.min(hrMonthlyAt(e, mm), st.bonusCeil); } }
+    var mo = hrMonthlyAt(e, end), elig = mo <= st.bonusLimit;
+    var legal = elig ? Math.round(base * st.bonusPct / 100) : 0;
+    var d = hrLatest("hr:bdraft", function (x) { return x.bid; }).filter(function (x) { return x.bid === yr + "|" + e.eid; })[0] || {};
+    var pctAll = hrNum(S.hrBPct) != null ? hrNum(S.hrBPct) : 100, pct = hrNum(d.pct) != null ? hrNum(d.pct) : pctAll;
+    var byPct = Math.round(mo * pct / 100), sug = Math.max(byPct, legal), amount = hrNum(d.amount) != null ? hrNum(d.amount) : sug;
+    var paid = hrLatest("hr:bonus", function (x) { return x.bid; }).filter(function (x) { return x.bid === yr + "|" + e.eid; })[0] || null;
+    return { e: e, mo: mo, months: months, elig: elig, legal: legal, pct: pct, byPct: byPct, sug: sug, amount: amount, d: d, paid: paid && paid.paidOn ? paid : null };
+  }
+  function hrBonusHtml() {
+    var adm = roleIs("admin"), yr = hrBonusYear(), fin = hrBonusFin(yr), st = hrSet();
+    var es = hrEmps(false).filter(function (e) { return hrStaff(e); });
+    var h = '<div class="card"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><h3 style="margin:0">Diwali bonus ' + yr + '</h3>' +
+      (fin ? '<span class="pill Won">Finalised</span>' : (adm ? '<span class="pill">Draft &mdash; only you see it</span>' : '')) + '<div class="grow"></div>' +
+      '<label style="margin:0">Year</label><input id="hr_byear" inputmode="numeric" value="' + yr + '" style="width:90px;min-height:44px"/></div>';
+    if (!adm && !fin) return h + '<div class="empty">The owner has not finalised the Diwali bonus for ' + yr + ' yet.</div></div>';
+    if (!es.length) return h + '<div class="empty">No employee yet.</div></div>';
+    var cs = es.map(function (e) { return hrBonusCalc(e, yr); }), tot = cs.reduce(function (a, c) { return a + c.amount; }, 0), paidT = cs.reduce(function (a, c) { return a + (c.paid ? Number(c.paid.amount) || 0 : 0); }, 0);
+    if (adm && !fin) h += '<div class="meta" style="font-size:12.5px;margin:6px 0">Suggested = the higher of <b>% of monthly salary</b> and the <b>legal minimum</b> (' + st.bonusPct + '% of the last 12 months&rsquo; salary, each month counted up to Rs ' + money(st.bonusCeil).replace("₹", "") + ', for those on up to ' + money(st.bonusLimit) + ' &mdash; the Payment of Bonus Act; the ceiling is set under PF / ESI rates, check it with your CA). Change the % for all, or any one figure. Nothing reaches accounts until you press <b>Finalise</b>.</div>' +
+      '<div style="display:flex;gap:6px;align-items:flex-end;flex-wrap:wrap"><div><label style="margin-top:0">% of monthly salary, for all</label><input id="hr_bpct" inputmode="decimal" value="' + esc(S.hrBPct != null ? S.hrBPct : "100") + '" style="width:110px;min-height:44px"/></div>' +
+      '<button class="btn ghost" style="min-height:44px" data-act="hr-bpct">Apply to all</button></div>';
+    h += pevTable([["Employee"], ["Monthly", "right"], ["Months", "right"], ["% of salary", "right"], ["Legal min.", "right"], ["Bonus", "right"], [""]], cs.map(function (c) {
+      var edit = adm && !fin;
+      return [hrWho(c.e), money(c.mo), String(c.months),
+        edit ? '<input class="hr-bp" data-e="' + esc(c.e.eid) + '" inputmode="decimal" value="' + esc(String(c.pct)) + '" style="width:64px;min-height:44px;text-align:right"/>% <div style="font-size:12px">' + money(c.byPct) + '</div>' : c.pct + '%',
+        c.elig ? money(c.legal) : '<span style="font-size:12px;color:#64748b">above ' + money(st.bonusLimit) + '</span>',
+        edit ? '<input class="hr-ba" data-e="' + esc(c.e.eid) + '" inputmode="numeric" value="' + esc(String(c.amount)) + '" style="width:96px;min-height:44px;text-align:right;font-weight:700"/>' + (c.amount !== c.sug ? '<div style="font-size:12px;color:#64748b">suggested ' + money(c.sug) + '</div>' : '') : '<b>' + money(c.amount) + '</b>',
+        fin ? (c.paid ? '<span style="color:#166534;font-size:12.5px">&#10003; paid ' + esc(dmy(c.paid.paidOn).slice(0, 5)) + ' · ' + esc(c.paid.mode || "") + '</span>' : '<button class="btn sm" style="min-height:44px" data-act="hr-bpaid" data-e="' + esc(c.e.eid) + '">Paid &#10003;</button>') : ''];
+    }).concat([['<b>Total</b>', '', '', '', '', '<b>' + money(tot) + '</b>', fin ? money(paidT) + ' paid' : '']]), false);
+    if (adm) h += '<div class="foot">' + (fin ? (paidT ? '' : '<button class="btn ghost" data-act="hr-bfin" data-on="0">Back to draft</button>') : '<button class="btn" data-act="hr-bfin" data-on="1">Finalise ' + money(tot) + ' &mdash; show to accounts</button>') + '</div>';
+    return h + '</div>';
+  }
+  /* ---------- increments: % or a fixed amount, from a month; the owner finalises ---------- */
+  function hrIncFrom() { return S.hrIFrom || hrAddMonths(ymLocal(new Date()), 1); }
+  function hrIncCalc(e, from) {
+    var cur = hrMonthlyAt(e, hrAddMonths(from, -1)), d = hrLatest("hr:idraft", function (x) { return x.iid; }).filter(function (x) { return x.iid === from + "|" + e.eid; })[0] || {};
+    var how = d.how || "pct", v = hrNum(d.val) != null ? hrNum(d.val) : 0;
+    var nw = how === "pct" ? Math.round(cur * (1 + v / 100)) : cur + Math.round(v);
+    var fin = hrIncs(e.eid).filter(function (i) { return i.from === from; }).slice(-1)[0] || null;
+    return { e: e, cur: cur, how: how, val: v, nw: nw, rise: nw - cur, fin: fin };
+  }
+  function hrIncHtml() {
+    var adm = roleIs("admin"), from = hrIncFrom(), es = hrEmps(false).filter(function (e) { return hrStaff(e); });
+    var done = hrIncs().filter(function (i) { return i.from === from; }).length > 0;
+    var h = '<div class="card"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><h3 style="margin:0">Yearly increment</h3>' + (done ? '<span class="pill Won">Finalised from ' + esc(fullMonth(from)) + '</span>' : (adm ? '<span class="pill">Draft &mdash; only you see it</span>' : '')) +
+      '<div class="grow"></div><label style="margin:0">From month</label><input type="month" id="hr_ifrom" value="' + esc(from) + '" style="min-height:44px;width:170px"/></div>';
+    var past = hrIncs();
+    if (!adm) {
+      if (!past.length) return h + '<div class="empty">No increment finalised yet.</div></div>';
+      return h + pevTable([["Employee"], ["From"], ["Increment"], ["Old", "right"], ["New monthly", "right"]], past.slice().reverse().map(function (i) { var e = hrEmp(i.eid) || {};
+        return ['<b>' + esc(e.name || i.eid) + '</b>', esc(fullMonth(i.from)), i.how === "pct" ? i.val + '%' : money(Number(i.val) || 0), money(Number(i.oldMonthly) || 0), '<b>' + money(Number(i.newMonthly) || 0) + '</b>']; })) + '</div>';
+    }
+    if (!es.length) return h + '<div class="empty">No employee yet.</div></div>';
+    var cs = es.map(function (e) { return hrIncCalc(e, from); }), rise = cs.reduce(function (a, c) { return a + (c.fin ? 0 : c.rise); }, 0);
+    h += '<div class="meta" style="font-size:12.5px;margin:6px 0">For each person choose <b>%</b> or <b>Rs</b> and type the increment. The new salary counts from <b>' + esc(fullMonth(from)) + '</b> once you press Finalise; months before keep the old figure. Accounts sees it only after Finalise.</div>' +
+      '<div style="display:flex;gap:6px;align-items:flex-end;flex-wrap:wrap"><div><label style="margin-top:0">% for all</label><input id="hr_ipct" inputmode="decimal" style="width:90px;min-height:44px"/></div><button class="btn ghost" style="min-height:44px" data-act="hr-ipct">Apply to all</button></div>';
+    h += pevTable([["Employee"], ["Now", "right"], ["How"], ["Increment", "right"], ["New monthly", "right"], ["More a month", "right"], ["More a year", "right"]], cs.map(function (c) {
+      if (c.fin) return ['<b>' + esc(c.e.name) + '</b>', money(Number(c.fin.oldMonthly) || 0), esc(c.fin.how === "pct" ? "%" : "Rs"), c.fin.how === "pct" ? c.fin.val + '%' : money(Number(c.fin.val) || 0), '<b>' + money(Number(c.fin.newMonthly) || 0) + '</b>', '<span style="color:#166534">&#10003; finalised</span>', ''];
+      return [hrWho(c.e), money(c.cur),
+        '<select class="hr-ih" data-e="' + esc(c.e.eid) + '" style="min-height:44px"><option value="pct"' + (c.how === "pct" ? ' selected' : '') + '>%</option><option value="amt"' + (c.how === "amt" ? ' selected' : '') + '>Rs</option></select>',
+        '<input class="hr-iv" data-e="' + esc(c.e.eid) + '" inputmode="decimal" value="' + esc(c.val ? String(c.val) : "") + '" placeholder="0" style="width:80px;min-height:44px;text-align:right"/>',
+        '<b>' + money(c.nw) + '</b>', money(c.rise), money(c.rise * 12)];
+    }).concat([['<b>Total</b>', '', '', '', '', '<b>' + money(rise) + '</b>', '<b>' + money(rise * 12) + '</b>']]), false);
+    if (cs.some(function (c) { return !c.fin && c.rise; })) h += '<div class="foot"><button class="btn" data-act="hr-ifin">Finalise from ' + esc(fullMonth(from)) + ' &mdash; ' + money(rise) + ' a month more</button></div>';
+    if (past.length) h += '<div style="font-weight:800;margin:10px 0 4px">Every increment</div>' + pevTable([["Employee"], ["From"], ["Increment"], ["Old", "right"], ["New", "right"], [""]], past.slice().reverse().map(function (i) { var e = hrEmp(i.eid) || {};
+      return ['<b>' + esc(e.name || i.eid) + '</b>', esc(fullMonth(i.from)), i.how === "pct" ? i.val + '%' : money(Number(i.val) || 0), money(Number(i.oldMonthly) || 0), '<b>' + money(Number(i.newMonthly) || 0) + '</b>',
+        '<button class="btn sm ghost" style="min-height:44px" data-act="hr-inc-rm" data-i="' + esc(i.iid) + '">Off</button>']; }));
+    return h + '</div>';
   }
   function hrSetHtml() {
     var st = hrSet(), f = function (k, l) { return '<div><label>' + l + '</label><input id="hr_s_' + k + '" inputmode="decimal" value="' + esc(String(st[k])) + '"/></div>'; };
-    return '<div class="card"><h3 style="margin:0 0 4px">PF / ESI rates</h3><div class="meta" style="font-size:12.5px">Defaults are the statutory rates as read on 25 Oct 2026. Check them with your CA; a change applies to every month not yet marked Paid.</div>' +
-      '<div class="grid2">' + f("pfCeil", "PF wage ceiling (Rs)") + f("pfEmp", "PF staff %") + '</div><div class="grid2">' + f("pfEr", "PF firm % (incl. admin/EDLI)") + f("esiLimit", "ESI salary limit (Rs)") + '</div>' +
+    return '<div class="card"><h3 style="margin:0 0 4px">PF / ESI / LWF / bonus rates</h3><div class="meta" style="font-size:12.5px">Defaults are the statutory rates as read in Oct 2026. Check them with your CA; a change applies to every month not yet marked Paid.</div>' +
+      '<div class="grid2">' + f("pfCeil", "PF wage ceiling (Rs)") + f("pfEmp", "PF staff %") + '</div><div class="grid2">' + f("pfEr", "PF firm % (incl. admin/EDLI)") + f("esiLimit", "ESI wage limit (Rs)") + '</div>' +
       '<div class="grid2">' + f("esiEmp", "ESI staff %") + f("esiEr", "ESI firm %") + '</div>' +
+      '<div class="grid2">' + f("lwfPct", "LWF staff % (Haryana)") + f("lwfCap", "LWF staff cap a month (Rs)") + '</div><div class="grid2">' + f("lwfEr", "LWF firm = staff x") + f("bonusLimit", "Bonus: salary limit (Rs)") + '</div>' +
+      '<div class="grid2">' + f("bonusCeil", "Bonus: salary counted up to (Rs/month)") + f("bonusPct", "Bonus: legal minimum %") + '</div>' +
       (roleIs("admin") ? '<div class="foot"><button class="btn" data-act="hr-set-save">Save rates</button></div>' : '<div class="meta" style="font-size:12.5px">Only the owner changes the rates.</div>') + '</div>';
   }
-  /* boxes on the month sheet save as he leaves them */
+  /* boxes on the sheets save as he leaves them */
   try {
     document.addEventListener("change", function (ev) {
       var t = ev.target; if (!t || !t.classList) return;
       if (t.id === "hr_month") { S.hrMonth = t.value || ymLocal(new Date()); keepScroll = true; render(); return; }
-      var f = t.classList.contains("hr-days") ? "days" : t.classList.contains("hr-extra") ? "extra" : t.classList.contains("hr-adv") ? "advCut" : t.classList.contains("hr-other") ? "other" : "";
+      if (t.id === "hr_byear") { var yv = Number(t.value) || new Date().getFullYear(); S.hrBYear = yv; keepScroll = true; render(); return; }
+      if (t.id === "hr_ifrom") { S.hrIFrom = t.value || ""; keepScroll = true; render(); return; }
+      if ((t.classList.contains("hr-bp") || t.classList.contains("hr-ba")) && roleIs("admin")) {
+        var yr = hrBonusYear(); if (hrBonusFin(yr)) { toast("Finalised - go back to draft first."); return; }
+        var be = hrEmp(t.getAttribute("data-e")); if (!be) return;
+        var bc = hrBonusCalc(be, yr), brow = { bid: yr + "|" + be.eid, year: yr, eid: be.eid, pct: bc.pct, amount: hrNum(bc.d.amount) };
+        if (t.classList.contains("hr-bp")) { brow.pct = Math.max(0, nAmt(t.value) || 0); brow.amount = null; }
+        else brow.amount = String(t.value).trim() === "" ? null : Math.max(0, Math.round(nAmt(t.value) || 0));
+        hrSave("hr:bdraft", be.name, brow).then(function () { keepScroll = true; render(); });
+        return;
+      }
+      if ((t.classList.contains("hr-ih") || t.classList.contains("hr-iv")) && roleIs("admin")) {
+        var ie = hrEmp(t.getAttribute("data-e")), fr = hrIncFrom(); if (!ie) return;
+        var ic = hrIncCalc(ie, fr), irow = { iid: fr + "|" + ie.eid, from: fr, eid: ie.eid, how: ic.how, val: ic.val };
+        if (t.classList.contains("hr-ih")) irow.how = t.value === "amt" ? "amt" : "pct"; else irow.val = Math.max(0, nAmt(t.value) || 0);
+        hrSave("hr:idraft", ie.name, irow).then(function () { keepScroll = true; render(); });
+        return;
+      }
+      var f = t.classList.contains("hr-days") ? "days" : t.classList.contains("hr-extra") ? "extra" : t.classList.contains("hr-adv") ? "advCut" : t.classList.contains("hr-other") ? "other" :
+        t.classList.contains("hr-km") ? "km" : t.classList.contains("hr-ta") ? "ta" : t.classList.contains("hr-amt") ? "amt" : t.classList.contains("hr-remark") ? "remark" : "";
       if (!f || !hrOk()) return;
       var eid = t.getAttribute("data-e"), m = t.getAttribute("data-m"), e = hrEmp(eid); if (!e) return;
       var cur = hrPay(eid, m) || { pid: eid + "|" + m, eid: eid, month: m };
       if (cur.paidOn) { toast("Already paid - Undo first."); return; }
       var row = hrClean(cur); row.pid = eid + "|" + m; row.eid = eid; row.month = m;
-      var raw = String(t.value || "").trim(); row[f] = raw === "" ? "" : Math.max(0, Math.round(nAmt(raw) || 0));
+      var raw = String(t.value || "").trim();
+      if (f === "remark") row.remark = raw.slice(0, 200);
+      else row[f] = raw === "" ? "" : Math.max(0, f === "km" ? Math.round((nAmt(raw) || 0) * 10) / 10 : Math.round(nAmt(raw) || 0));
       if (f === "days" && raw !== "" && row.days > hrDim(m)) { toast(m + " has " + hrDim(m) + " days."); t.value = cur.days || ""; return; }
-      var c = hrCalc(Object.assign({}, e), m);
       hrSave("hr:pay", e.name, row).then(function () { keepScroll = true; render(); toast(e.name + ": saved."); });
     });
   } catch (e) { }
   function hrDoAct(act, t) {
     if (!hrOk()) { toast("Salary is for the owner and accounts."); return; }
     if (act === "hr-tab") { S.hrTab = t.getAttribute("data-k"); keepScroll = true; render(); return; }
-    if (act === "hr-emp") { S.modal = modalHrEmp(hrEmp(t.getAttribute("data-e") || "")); render(); return; }
+    if (act === "hr-emp") { S.modal = modalHrEmp(hrEmp(t.getAttribute("data-e") || ""), t.getAttribute("data-ns") === "1"); render(); return; }
     if (act === "hr-emp-save") {
-      var id = t.getAttribute("data-e") || "", nm = nmTitle(String(val("hr_name") || "").trim()), mo = Math.round(nAmt(val("hr_monthly")) || 0);
+      var id = t.getAttribute("data-e") || "", ns = t.getAttribute("data-ns") === "1", nm = nmTitle(String(val("hr_name") || "").trim()), mo = Math.round(nAmt(val("hr_monthly")) || 0);
       if (!nm) { toast("Name is required."); return; }
-      if (!(mo > 0)) { toast("Monthly salary is required."); return; }
+      if (!(mo > 0)) { toast(ns ? "Monthly amount is required." : "Monthly salary is required."); return; }
       if (!id && hrEmps(true).some(function (e) { return dkey(e.name) === dkey(nm); })) { toast(nm + " is already on the list - open him and edit."); return; }
       var was = id ? hrEmp(id) || {} : {};
-      var row = Object.assign(hrClean(was), { eid: id || mintId("HE"), name: nm, kind: val("hr_kind"), team: val("hr_team"), monthly: mo, mobile: String(val("hr_mob") || "").replace(/\D/g, "").slice(-10),
-        pfOn: val("hr_pf") === "1", pfPct: Math.min(100, Math.max(1, Math.round(nAmt(val("hr_pfpct")) || 100))), esi: val("hr_esi"), joined: val("hr_joined"), left: val("hr_left"), notes: String(val("hr_notes") || "").trim() });
+      var row = Object.assign(hrClean(was), { eid: id || mintId("HE"), name: nm, kind: val("hr_kind"), post: String(val("hr_post") || "").trim(), monthly: mo, mobile: String(val("hr_mob") || "").replace(/\D/g, "").slice(-10),
+        joined: val("hr_joined"), left: val("hr_left"), notes: String(val("hr_notes") || "").trim() });
+      if (ns) Object.assign(row, { pfOn: false, esi: "no", lwfOn: false, kmRate: 0, pfWage: 0, esiWage: 0, lwfFix: 0, team: "" });
+      else Object.assign(row, { team: val("hr_team"), pfOn: val("hr_pf") === "1", pfPct: Math.min(100, Math.max(1, Math.round(nAmt(val("hr_pfpct")) || 100))), pfWage: Math.max(0, Math.round(nAmt(val("hr_pfwage")) || 0)),
+        esi: val("hr_esi"), esiWage: Math.max(0, Math.round(nAmt(val("hr_esiwage")) || 0)), lwfOn: val("hr_lwf") === "1", lwfFix: Math.max(0, Math.round(nAmt(val("hr_lwffix")) || 0)), kmRate: Math.max(0, Math.round((nAmt(val("hr_km")) || 0) * 100) / 100) });
       t.disabled = true;
       hrSave("hr:emp", nm, row).then(function () { S.modal = null; S.hrTab = "emps"; keepScroll = true; render(); toast(nm + " saved."); });
+      return;
+    }
+    if (act === "hr-sheet-xl") {
+      var xm = t.getAttribute("data-m");
+      dlXlsx("Salary_sheet_" + xm + ".xlsx", "Salary " + xm, hrSheetRows(xm), [18, 14, 14, 7, 11, 9, 12, 11, 8, 8, 6, 10, 13, 42]);
       return;
     }
     if (act === "hr-paid" || act === "hr-unpay") {
@@ -11083,12 +11321,14 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       if (act === "hr-unpay" && !roleIs("admin")) { toast("Only the owner can undo a payment."); return; }
       var c = hrCalc(e, m), row = Object.assign(hrClean(c.p), { pid: eid + "|" + m, eid: eid, month: m });
       if (act === "hr-unpay") { row.paidOn = ""; row.mode = ""; hrSave("hr:pay", e.name, row).then(function () { keepScroll = true; render(); toast(e.name + ": payment undone (kept in the record)."); }); return; }
-      askSheet({ title: "Pay " + e.name + " " + money(c.net) + "?", sub: fullMonth(m) + " · " + c.days + " of " + c.dim + " days",
-        body: '<div class="meta" style="font-size:13px;line-height:1.6">Earned ' + money(c.earned) + (c.extra ? ' + extra ' + money(c.extra) : '') + ' − PF ' + money(c.pfE) + ' − ESI ' + money(c.esiE) + ' − advance ' + money(c.advCut) + (c.other ? ' − other ' + money(c.other) : '') + ' = <b>' + money(c.net) + '</b></div>' +
+      askSheet({ title: "Pay " + e.name + " " + money(c.net) + "?", sub: fullMonth(m) + (c.staff ? " · " + c.days + " of " + c.dim + " days" : ""),
+        body: '<div class="meta" style="font-size:13px;line-height:1.6">' + (c.staff ? 'Basic ' + money(c.earned) + (c.ta ? ' + TA/DA ' + money(c.ta) : '') + (c.extra ? ' + other ' + money(c.extra) : '') + ' − PF ' + money(c.pfE) + ' − ESI ' + money(c.esiE) + ' − LWF ' + money(c.lwf) : 'Amount ' + money(c.sub)) +
+          ' − advance ' + money(c.advCut) + (c.other ? ' − other ' + money(c.other) : '') + ' = <b>' + money(c.net) + '</b></div>' +
           '<label>Paid by</label><select id="hr_mode" style="min-height:44px"><option>Bank transfer</option><option>Cash</option><option>UPI</option><option>Cheque</option></select>', yes: "Mark paid" }).then(function (yes) {
         if (!yes) return;
         var md = val("hr_mode") || "Bank transfer";
-        Object.assign(row, { paidOn: today(), mode: md, days: c.p.days != null && c.p.days !== "" ? c.p.days : c.dim, advCut: c.advCut, earned: c.earned, gross: c.gross, pfE: c.pfE, pfR: c.pfR, esiE: c.esiE, esiR: c.esiR, net: c.net, ctc: c.ctc });
+        Object.assign(row, { paidOn: today(), mode: md, days: c.staff ? (hrNum(c.p.days) != null ? c.p.days : c.dim) : "", advCut: c.advCut, monthly: c.monthly, earned: c.earned, ta: c.p.ta || "", taTotal: c.ta, sub: c.sub, gross: c.sub,
+          pfE: c.pfE, pfR: c.pfR, esiE: c.esiE, esiR: c.esiR, lwf: c.lwf, lwfR: c.lwfR, net: c.net, ctc: c.ctc });
         hrSave("hr:pay", e.name, row).then(function () { keepScroll = true; render(); toast(e.name + ": " + money(c.net) + " paid."); });
       });
       return;
@@ -11109,10 +11349,10 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       return;
     }
     if (act === "hr-exp-add") {
-      var xm = t.getAttribute("data-m"), xa = Math.round(nAmt(val("hr_xamt")) || 0), xd = val("hr_xdate") || today();
+      var xm2 = t.getAttribute("data-m"), xa = Math.round(nAmt(val("hr_xamt")) || 0), xd = val("hr_xdate") || today();
       if (!(xa > 0)) { toast("Type the amount."); return; }
       t.disabled = true;
-      hrSave("hr:exp", val("hr_xhead"), { xid: mintId("HX"), month: String(xd).slice(0, 7) || xm, date: xd, head: val("hr_xhead"), amount: xa, note: String(val("hr_xnote") || "").trim() }).then(function () { keepScroll = true; render(); toast(val("hr_xhead") + " " + money(xa) + " added."); });
+      hrSave("hr:exp", val("hr_xhead"), { xid: mintId("HX"), month: String(xd).slice(0, 7) || xm2, date: xd, head: val("hr_xhead"), amount: xa, note: String(val("hr_xnote") || "").trim() }).then(function () { keepScroll = true; render(); toast(val("hr_xhead") + " " + money(xa) + " added."); });
       return;
     }
     if (act === "hr-exp-rm") {
@@ -11122,8 +11362,72 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     }
     if (act === "hr-set-save") {
       if (!roleIs("admin")) return;
-      var o = {}; Object.keys(HR_DEF).forEach(function (k) { var v = Number(String(val("hr_s_" + k) || "").replace(/[^\d.]/g, "")); o[k] = isFinite(v) && v >= 0 ? v : HR_DEF[k]; });
+      var o = {}; Object.keys(HR_DEF).forEach(function (k) { var v = Number(String(val("hr_s_" + k) || "").replace(/[^\d.]/g, "")); o[k] = isFinite(v) && v >= 0 && String(val("hr_s_" + k) || "").trim() !== "" ? v : HR_DEF[k]; });
       hrSave("hr:set", "rates", o).then(function () { keepScroll = true; render(); toast("Rates saved."); });
+      return;
+    }
+    /* ---- Diwali bonus ---- */
+    if (act === "hr-bpct") {
+      if (!roleIs("admin")) return;
+      var yr = hrBonusYear(); if (hrBonusFin(yr)) return;
+      var pv = Math.max(0, nAmt(val("hr_bpct")) || 0); S.hrBPct = pv;
+      var chain = Promise.resolve();
+      hrEmps(false).filter(hrStaff).forEach(function (be) { chain = chain.then(function () { return hrSave("hr:bdraft", be.name, { bid: yr + "|" + be.eid, year: yr, eid: be.eid, pct: pv, amount: null }); }); });
+      chain.then(function () { keepScroll = true; render(); toast(pv + "% of monthly salary for everyone (or the legal minimum where higher)."); });
+      return;
+    }
+    if (act === "hr-bfin") {
+      if (!roleIs("admin")) { toast("Only the owner finalises the bonus."); return; }
+      var yr2 = hrBonusYear(), on = t.getAttribute("data-on") === "1";
+      var cs2 = hrEmps(false).filter(hrStaff).map(function (be) { return hrBonusCalc(be, yr2); }), tot2 = cs2.reduce(function (a, c) { return a + c.amount; }, 0);
+      askSheet({ title: on ? "Finalise the Diwali bonus " + yr2 + " - " + money(tot2) + "?" : "Take the bonus back to draft?",
+        body: on ? '<div class="meta">' + cs2.map(function (c) { return esc(c.e.name) + ' ' + money(c.amount); }).join(" · ") + '</div><div class="meta" style="margin-top:6px">Accounts then sees this list and marks each one paid. The figures are fixed as they are now.</div>' : '<div class="meta">Accounts stops seeing it until you finalise again.</div>',
+        yes: on ? "Finalise" : "Back to draft", no: "Not now" }).then(function (yes) {
+        if (!yes) return;
+        var ch2 = Promise.resolve();
+        if (on) cs2.forEach(function (c) { ch2 = ch2.then(function () { return hrSave("hr:bdraft", c.e.name, { bid: yr2 + "|" + c.e.eid, year: yr2, eid: c.e.eid, pct: c.pct, amount: c.amount }); }); });
+        ch2.then(function () { return hrSave("hr:bfin", "bonus " + yr2, { year: yr2, on: on ? 1 : 0, total: tot2 }); }).then(function () { keepScroll = true; render(); toast(on ? "Bonus finalised - accounts can see it." : "Back to draft."); });
+      });
+      return;
+    }
+    if (act === "hr-bpaid") {
+      var yr3 = hrBonusYear(); if (!hrBonusFin(yr3)) { toast("The owner has not finalised it."); return; }
+      var pe = hrEmp(t.getAttribute("data-e")); if (!pe) return;
+      var pc = hrBonusCalc(pe, yr3);
+      askSheet({ title: "Pay " + pe.name + " Diwali bonus " + money(pc.amount) + "?", body: '<label>Paid by</label><select id="hr_mode" style="min-height:44px"><option>Bank transfer</option><option>Cash</option><option>UPI</option><option>Cheque</option></select>', yes: "Mark paid" }).then(function (yes) {
+        if (!yes) return;
+        hrSave("hr:bonus", pe.name, { bid: yr3 + "|" + pe.eid, year: yr3, eid: pe.eid, amount: pc.amount, paidOn: today(), mode: val("hr_mode") || "Bank transfer" }).then(function () { keepScroll = true; render(); toast(pe.name + ": bonus " + money(pc.amount) + " paid."); });
+      });
+      return;
+    }
+    /* ---- increments ---- */
+    if (act === "hr-ipct") {
+      if (!roleIs("admin")) return;
+      var ip = Math.max(0, nAmt(val("hr_ipct")) || 0), fr = hrIncFrom(), ch3 = Promise.resolve();
+      hrEmps(false).filter(hrStaff).forEach(function (ie) { if (hrIncCalc(ie, fr).fin) return; ch3 = ch3.then(function () { return hrSave("hr:idraft", ie.name, { iid: fr + "|" + ie.eid, from: fr, eid: ie.eid, how: "pct", val: ip }); }); });
+      ch3.then(function () { keepScroll = true; render(); toast(ip + "% for everyone - change any one."); });
+      return;
+    }
+    if (act === "hr-ifin") {
+      if (!roleIs("admin")) { toast("Only the owner finalises increments."); return; }
+      var fr2 = hrIncFrom(), L = hrEmps(false).filter(hrStaff).map(function (ie) { return hrIncCalc(ie, fr2); }).filter(function (c) { return !c.fin && c.rise; });
+      if (!L.length) { toast("No increment typed."); return; }
+      askSheet({ title: "Finalise increments from " + fullMonth(fr2) + "?", body: '<div class="meta" style="line-height:1.6">' + L.map(function (c) { return esc(c.e.name) + ': ' + money(c.cur) + ' &rarr; <b>' + money(c.nw) + '</b>'; }).join("<br>") + '</div><div class="meta" style="margin-top:6px">The salary sheet uses the new figure from ' + esc(fullMonth(fr2)) + '. Accounts sees it.</div>',
+        yes: "Finalise", no: "Not now" }).then(function (yes) {
+        if (!yes) return;
+        var ch4 = Promise.resolve();
+        L.forEach(function (c) { ch4 = ch4.then(function () { return hrSave("hr:inc", c.e.name, { iid: fr2 + "|" + c.e.eid, from: fr2, eid: c.e.eid, how: c.how, val: c.val, oldMonthly: c.cur, newMonthly: c.nw }); }); });
+        ch4.then(function () { keepScroll = true; render(); toast(plural(L.length, "increment") + " from " + fullMonth(fr2) + "."); });
+      });
+      return;
+    }
+    if (act === "hr-inc-rm") {
+      if (!roleIs("admin")) return;
+      var ir = hrIncs().filter(function (i) { return i.iid === t.getAttribute("data-i"); })[0]; if (!ir) return;
+      askSheet({ title: "Take this increment off?", body: '<div class="meta">The salary goes back to ' + money(Number(ir.oldMonthly) || 0) + ' from ' + esc(fullMonth(ir.from)) + '. Months already paid keep what was paid. Kept in the record.</div>', yes: "Take it off", no: "Keep" }).then(function (yes) {
+        if (!yes) return;
+        hrSave("hr:inc", ir.eid, Object.assign(hrClean(ir), { removed: 1 })).then(function () { keepScroll = true; render(); toast("Increment taken off (kept in the record)."); });
+      });
       return;
     }
   }
