@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.900";
+  var APP_VERSION = "6.9.901";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -25753,6 +25753,7 @@ function viewCatalogue() {
     S.data.challans.forEach(function (c) {
       var f = c && m[String(c.id)]; if (!f) return;
       if (f.billTo) c.billTo = f.billTo;
+      if (f.vehicle) c.vehicle = f.vehicle;   /* 6.9.901 */
       if (f.billNo) { c.billNo = f.billNo; c.billStatus = "Billed"; c.billedAt = c.billedAt || f.billedAt || f._at.slice(0, 10); c.billedBy = c.billedBy || f.billedBy || f._by; }
       else if (f.billStatus && !String(c.billNo || "").trim()) c.billStatus = f.billStatus;
     });
@@ -25796,6 +25797,19 @@ function viewCatalogue() {
       });
     });
   }
+  /* 6.9.901 - HIS WORDS (27 Oct, billing sheet of 27/10/2026/336, Infinite Constructions): "for opening challan for
+     billing making bill for accounts, ask for Vechile No". MEASURED: that challan went with Sarvan Singh, whose
+     register row has no vehicle, so the challan carries none - and the bill / e-way bill needs it. The bill form now
+     shows the vehicle (the challan's, else the driver's register) and will not save a bill without it, unless the
+     driver is Porter / Rapido (booked by app) or there is no driver (the client took it). It is kept on the challan
+     and, because the server does not keep an accounts login's challan edit, in the bill:set fact as well. */
+  function billNoVeh(name) { return /porter|rapido/i.test(String(name || "")); }
+  function billVehNeed(c) { return !!(c && String(c.driver || "").trim() && !billNoVeh(c.driver)); }
+  function billVehOf(c) {
+    var v = String((c && c.vehicle) || "").trim(); if (v) return v.toUpperCase();
+    var d = ((S.data && S.data.drivers) || []).filter(function (x) { return dkey(x.name) === dkey(c && c.driver); })[0];
+    return String((d && d.vehicle) || "").trim().toUpperCase();
+  }
   function billFormHtml(c, nameOnly) {
     var profs = billProfiles(c), cur = String(c.billTo || "");
     var opt = function (p) { var v = p.gstin ? p.name + " - " + p.gstin : p.name; return '<option value="' + esc(v) + '"' + (v === cur ? ' selected' : '') + '>' + esc(p.name) + (p.gstin ? ' · GSTIN ' + esc(p.gstin) : ' · no GSTIN') + '</option>'; };
@@ -25810,6 +25824,13 @@ function viewCatalogue() {
       '<div class="grid2"><div><label>New billing name</label><input id="b_newname" placeholder="Only for + New"/></div>' +
       '<div><label>GSTIN (if any)</label><input id="b_newgst" placeholder="Only for + New" style="text-transform:uppercase"/></div></div>' +
       (nameOnly ? '' : '<label>Bill number</label><input id="b_no" value="' + esc(c.billNo || "") + '" placeholder="Invoice / bill no." style="min-height:44px;font-size:15px"/>') +
+      (nameOnly ? '' : (function () {   /* 6.9.901 */
+        var need = billVehNeed(c), v = billVehOf(c), dr = String(c.driver || "").trim();
+        if (dr && !need) return '<div class="meta" style="font-size:12.5px;margin-top:6px">Went by ' + esc(dr) + ' &mdash; no vehicle number needed.</div>';
+        return '<label style="color:' + (need && !v ? '#b91c1c' : 'inherit') + '">Vehicle no' + (need ? (v ? '' : ' &mdash; required') : ' (if any)') + '</label>' +
+          '<input id="b_veh" value="' + esc(v) + '" placeholder="HR-67-D-1234" style="min-height:44px;font-size:15px;text-transform:uppercase' + (need && !v ? ';border-color:#f87171' : '') + '"/>' +
+          '<div class="meta" style="font-size:12px;margin-top:3px">' + (dr ? 'Driver: ' + esc(dr) + '. ' : 'No driver on the challan. ') + 'It goes on the bill and is kept on the challan.</div>';
+      })()) +
       '</div>';
   }
   function billOpenRows() {
@@ -67970,6 +67991,9 @@ function viewCatalogue() {
       }
       var billNo = String(val("b_no") || "").trim();
       if (!billNo) { toast("Enter the bill number."); return; }
+      var _bveh = String(val("b_veh") || "").trim().toUpperCase().replace(/\s+/g, "");   /* 6.9.901 */
+      if (billVehNeed(bch) && !_bveh) { toast("Enter the vehicle no (driver " + bch.driver + ")."); var _bvi = document.getElementById("b_veh"); if (_bvi) { try { _bvi.focus(); } catch (e) { } } return; }
+      if (!_bveh) _bveh = String(bch.vehicle || "");
       /* Warn (don't block) if this bill number is already on another challan - could be a legitimate
          consolidated bill, or a typo. */
       var dupes = (S.data.challans || []).filter(function (x) {
@@ -67979,14 +68003,14 @@ function viewCatalogue() {
         /* Optimistic + journaled full-row save, so the billing detail can't be lost. */
         S.modal = null;
         var _bnow = today();
-        var updated = Object.assign({}, bch, { billTo: billTo, billNo: billNo, billStatus: "Billed", billedAt: bch.billedAt || _bnow, billedBy: S.user });
-        Object.assign(bch, { billTo: billTo, billNo: billNo, billStatus: "Billed", billedAt: bch.billedAt || _bnow, billedBy: S.user });
+        var updated = Object.assign({}, bch, { billTo: billTo, billNo: billNo, billStatus: "Billed", billedAt: bch.billedAt || _bnow, billedBy: S.user, vehicle: _bveh });
+        Object.assign(bch, { billTo: billTo, billNo: billNo, billStatus: "Billed", billedAt: bch.billedAt || _bnow, billedBy: S.user, vehicle: _bveh });
         toast("Bill " + billNo + " recorded on " + bch.challanNo + ".");
         S.bsOpen = null;   /* 6.9.810 */
         S.modal = modalBillUpload(bch.id, billNo);   /* 6.9.858 - "ask gautam to upload back bill before closing window, he can avoid also" */
         render();
         if (roleIs("admin")) save("challans", updated).catch(function () { toast("Kept safe on this device - will sync on next refresh."); });   /* 6.9.825 - C3 */
-        billFactSave(updated).then(function (r) { if (r) toast("Bill " + billNo + " is on the server."); });   /* 6.9.814 - the copy the server keeps for an accounts login */
+        billFactSave(updated, _bveh ? { vehicle: _bveh } : null).then(function (r) { if (r) toast("Bill " + billNo + " is on the server."); });   /* 6.9.814 - the copy the server keeps for an accounts login; 6.9.901 the vehicle */
       };
       if (dupes.length) {
         /* v6.9.453 - the app's own sheet, the bill form held and put back on Go back */
