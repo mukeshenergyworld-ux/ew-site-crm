@@ -1116,7 +1116,7 @@ function ewRefresh(){
    Nothing you have typed or queued is touched. The sign-in and the
    offline queue live in localStorage and this never goes near them.
 --------------------------------------------------------------------- */
-var BUILD  = '2026.10.27-5';        /* which build of this file is running */
+var BUILD  = '2026.10.27-6';        /* which build of this file is running */
 var APPKEY = 'SAATHI';
 var VKEY   = 'ew_saathi_ver_v1';
 var VNEW   = '', VBUSY = false;
@@ -1316,9 +1316,9 @@ function staffGroups(L){
     if (!G[k]){ G[k] = []; order.push(k); } G[k].push(p);
   });
   if (ST.g === 'level') order = LEVELS.filter(function(k){ return G[k]; });
-  else order.sort(function(a, b){ return a === 'Unassigned' ? -1 : b === 'Unassigned' ? 1 : a.localeCompare(b); });
+  else order.sort(function(a, b){ return a === 'Unassigned' ? 1 : b === 'Unassigned' ? -1 : a.localeCompare(b); });   /* assigned first, unassigned last */
   return order.map(function(k){
-    var m = G[k].slice().sort(function(a, b){ return (b.b12 || 0) - (a.b12 || 0) || String(a.name).localeCompare(String(b.name)); });
+    var m = G[k].slice().sort(function(a, b){ return (LEVELS.indexOf(lvOf(a)) - LEVELS.indexOf(lvOf(b))) || (b.b12 || 0) - (a.b12 || 0) || String(a.name).localeCompare(String(b.name)); });   /* Platinum first, Base last */
     return { k: k, m: m };
   });
 }
