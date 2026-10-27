@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.904";
+  var APP_VERSION = "6.9.905";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -23718,9 +23718,12 @@ function viewCatalogue() {
      shorter). The algorithm is the standard one (ISO/IEC 18004), written after Nayuki's
      reference implementation; every code it makes is read back by a real decoder in the rig
      (t_qr.js) before it is trusted on paper. Returns {n, dark(x, y)} or null if too long. */
-  function qrMatrix(text) {
-    var ECC = [-1, 10, 16, 26, 18, 24, 16, 18, 22, 22, 26, 30, 22, 22, 24, 24, 28, 28, 26, 26, 26];
-    var NB  = [-1, 1, 1, 1, 2, 2, 4, 4, 4, 5, 5, 5, 8, 9, 9, 10, 10, 11, 13, 14, 16];
+  function qrMatrix(text, lvl) {
+    var H = lvl === "H";   /* 27 Oct 2026 - level H for codes that carry the GHp mark in the middle */
+    var ECC = H ? [-1, 17, 28, 22, 16, 22, 28, 26, 26, 24, 28, 24, 28, 22, 24, 24, 30, 28, 28, 26, 28]
+                : [-1, 10, 16, 26, 18, 24, 16, 18, 22, 22, 26, 30, 22, 22, 24, 24, 28, 28, 26, 26, 26];
+    var NB  = H ? [-1, 1, 1, 2, 4, 4, 4, 5, 6, 8, 8, 11, 11, 16, 16, 18, 16, 19, 21, 25, 25]
+                : [-1, 1, 1, 1, 2, 2, 4, 4, 4, 5, 5, 5, 8, 9, 9, 10, 10, 11, 13, 14, 16];
     var bytes = [], s = unescape(encodeURIComponent(String(text || ""))), i, j, k, x, y;
     for (i = 0; i < s.length; i++) bytes.push(s.charCodeAt(i) & 255);
     var rawMods = function (v) { var r = (16 * v + 128) * v + 64; if (v >= 2) { var na = Math.floor(v / 7) + 2; r -= (25 * na - 10) * na - 55; if (v >= 7) r -= 36; } return r; };
@@ -23774,7 +23777,7 @@ function viewCatalogue() {
       for (var ay = -2; ay <= 2; ay++) for (var ax = -2; ax <= 2; ax++) set(pos[i] + ax, pos[j] + ay, Math.max(Math.abs(ax), Math.abs(ay)) !== 1);
     }
     var fmt = function (mask) {
-      var d = mask, r = d;                      /* level M's format bits are 00 */
+      var d = (H ? 16 : 0) | mask, r = d;      /* level bits: M 00, H 10 */
       for (var q = 0; q < 10; q++) r = (r << 1) ^ ((r >>> 9) * 0x537);
       var bits = ((d << 10) | r) ^ 0x5412, b = function (t) { return ((bits >>> t) & 1) !== 0; };
       for (var t = 0; t <= 5; t++) set(8, t, b(t));
@@ -23832,9 +23835,16 @@ function viewCatalogue() {
   }
 
   /* a QR code on a jsPDF page: white square with a four-module quiet zone, dark modules drawn
-     as rectangles (no image, so it stays sharp at any zoom and costs a few KB) */
-  function pdfQr(doc, text, x, y, size) {
-    var m = qrMatrix(text);
+     as rectangles (no image, so it stays sharp at any zoom and costs a few KB).
+     27 Oct 2026 - HIS WORDS: "in every barcode everywhere show ghp logo in mid". The code is now made at error
+     correction H (30% of it can be lost and it still reads, against 15% at M), and the GHp mark sits in a white
+     box in the middle covering about 5% of it - well inside what H can rebuild. Every size we print was read
+     back by a real decoder (OpenCV) from the rendered PDF before this went live. plain=true draws it without. */
+  function pdfQr(doc, text, x, y, size, plain) {
+    var logo = !plain && typeof EW_GHP === "string" && EW_GHP;
+    var m = qrMatrix(text, logo ? "H" : "M");
+    /* a long link at H gets dense; past version 10 the modules are too fine for a phone at print size - plain M */
+    if (logo && (!m || m.ver > 10)) { logo = false; m = qrMatrix(text, "M"); }
     if (!m) return false;
     var cells = m.n + 8, s = size / cells;
     doc.setFillColor(255, 255, 255); doc.rect(x, y, size, size, "F");
@@ -23846,6 +23856,16 @@ function viewCatalogue() {
         if (d && run < 0) run = xx;
         if (!d && run >= 0) { doc.rect(x + (run + 4) * s, y + (yy + 4) * s, (xx - run) * s + 0.01, s + 0.01, "F"); run = -1; }
       }
+    }
+    if (logo) {
+      /* whole modules, centred: 30% of the width and 17% of the height of the code */
+      var bw = Math.round(m.n * 0.30), bh = Math.round(m.n * 0.17);
+      if ((m.n - bw) % 2) bw++; if ((m.n - bh) % 2) bh++;
+      var bx = x + (4 + (m.n - bw) / 2) * s, by = y + (4 + (m.n - bh) / 2) * s;
+      doc.setFillColor(255, 255, 255); doc.rect(bx, by, bw * s, bh * s, "F");
+      var iw = bw * s * 0.92, ih = iw * 402 / 900;
+      if (ih > bh * s * 0.92) { ih = bh * s * 0.92; iw = ih * 900 / 402; }
+      try { doc.addImage(logo, "JPEG", bx + (bw * s - iw) / 2, by + (bh * s - ih) / 2, iw, ih, "EW_GHP_QR"); } catch (e) { }
     }
     return true;
   }
