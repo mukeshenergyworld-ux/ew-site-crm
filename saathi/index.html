@@ -632,6 +632,7 @@ function bookHome(){
     '<tr><td>Mil chuka (paid)</td><td>' + bP(b.paid) + '</td></tr>' +
     '<tr class="tot"><td>Total earned</td><td>' + bP(b.earned) + '</td></tr></tbody></table></div>';
   h += '<h2 class="sec">Site-wise points</h2>' + bookSites();
+  if (!ST) h += '<button class="wide" style="min-height:48px;margin-top:14px;background:linear-gradient(90deg,#C13584,#1877F2,#25D366);color:#fff;border:0;font-weight:700" onclick="renderFollow(false)">Follow Energy World - Instagram, Facebook, WhatsApp</button>';   /* 27 Oct 2026 - follow links any time, not only after registration */
   return h;
 }
 
@@ -820,6 +821,7 @@ function viewAccount(){
        '<span class="mut">Whatever you earn shows in points. Payment is made in rupees, ' +
        'so the rupee figure is always shown underneath as well.</span></div></div>';
 
+  if (!ST) h += '<button class="wide" style="min-height:48px;margin-top:14px;background:linear-gradient(90deg,#C13584,#1877F2,#25D366);color:#fff;border:0;font-weight:700" onclick="renderFollow(false)">Follow Energy World - Instagram, Facebook, WhatsApp</button>';
   h += '<div class="split" style="margin-top:12px">' +
        '<div style="padding:12px" class="sm mut">PIN change? Call the Energy World office - the admin sets it with you.</div>' +   /* 27 Oct 2026 - admin sets PINs only */
        (window.ewTheme ? '<div style="margin:10px 0">' + window.ewTheme.button() + '</div>' : '') + '<div style="padding:0"><button class="wide ghost" onclick="signOut()" ' +
@@ -1141,7 +1143,7 @@ function ewRefresh(){
    Nothing you have typed or queued is touched. The sign-in and the
    offline queue live in localStorage and this never goes near them.
 --------------------------------------------------------------------- */
-var BUILD  = '2026.10.27-11';        /* which build of this file is running */
+var BUILD  = '2026.10.27-12';        /* which build of this file is running */
 var APPKEY = 'SAATHI';
 var VKEY   = 'ew_saathi_ver_v1';
 var VNEW   = '', VBUSY = false;
@@ -1495,11 +1497,12 @@ try { if (navigator.serviceWorker && navigator.serviceWorker.addEventListener) n
    profileSave). Then the Follow card: each button opens Energy World's page in the app on his phone. */
 var EW_SOCIAL = [
   /* [label, url, colour] - an empty url is not shown */
-  ['Instagram', '', '#C13584'],
-  ['Facebook', '', '#1877F2'],
-  ['YouTube', '', '#FF0000'],
-  ['WhatsApp channel', '', '#25D366'],
-  ['Telegram channel', '', '#229ED9']
+  ['Instagram', 'https://www.instagram.com/energyworld007/', '#C13584'],
+  ['Facebook', 'https://www.facebook.com/energywrld', '#1877F2'],
+  ['WhatsApp channel', 'https://whatsapp.com/channel/0029VaA3aMjE50UkbIwfd632', '#25D366'],
+  ['Telegram channel', 'https://t.me/+M3Eyvo5251o0NTFl', '#229ED9'],
+  ['LinkedIn', 'https://www.linkedin.com/company/1779966/', '#0A66C2'],   /* his link was the admin dashboard; this is the public page */
+  ['YouTube', '', '#FF0000']   /* 27 Oct 2026 - no channel yet */
 ];
 var PR = null;
 function profCheck(){
