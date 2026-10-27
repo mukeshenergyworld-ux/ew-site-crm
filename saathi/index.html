@@ -601,6 +601,7 @@ function viewFeed(){
 }
 
 function ack(id, act){
+  if (ST){ toast('Viewing only - this is his button, not yours.'); return; }
   var done = function(){
     var f = D.feed.filter(function(x){ return x.id===id; })[0];
     if (f) f.seen = true;
@@ -784,12 +785,15 @@ function paintNav(){
 }
 
 function render(){
+  if (ST && !ST.view){ document.getElementById('main').innerHTML = viewStaff(); document.getElementById('nav').style.display = 'none'; return; }
+  document.getElementById('nav').style.display = '';
   var v = TAB==='home' ? viewHome() : TAB==='feed' ? viewFeed()
         : TAB==='catalog' ? viewCatalog() : TAB==='stages' ? viewStages() : viewAccount();
+  if (ST && ST.view) v = staffBar() + v;
   document.getElementById('main').innerHTML = v;
   paintNav();
   window.scrollTo(0, 0);
-  if (TAB==='feed') setTimeout(markFeedSeen, 1200);
+  if (TAB==='feed' && !ST) setTimeout(markFeedSeen, 1200);
 }
 function go(t){ TAB = t; FILTER = 'all'; render(); }
 function setFilter(f){ FILTER = f; render(); }
@@ -846,7 +850,7 @@ function renderGate(){
     '<div class="gmark">EW</div>' +
     '<h2>EW Saathi</h2>' +
     '<p class="lede">Enter your mobile number and PIN.<br>' +
-    'First time here? Your PIN is the last 4 digits of your number.</p>' +
+    'First time here? The Energy World staff set your PIN with you - you choose it yourself.</p>' +
     (GERR ? '<div class="gerr" role="alert">' + esc(GERR) + '</div>' : '') +
     '<label for="gm">Mobile number</label>' +
     '<input id="gm" type="tel" inputmode="numeric" autocomplete="username" ' +
@@ -867,9 +871,9 @@ function renderGate(){
 }
 
 function gateHelp(){
-  GERR = 'A PIN is reset by the office. Call Energy World - once it is reset ' +
-         'your PIN is the last 4 digits of your number again, and your ' +
-         'points stay exactly as they are.';
+  GERR = 'Ask your Energy World executive, or call the office. They open the app, ' +
+         'and you type a new PIN of your own choice on their phone. ' +
+         'Your points stay exactly as they are.';
   renderGate();
 }
 
@@ -886,6 +890,7 @@ function doLogin(){
       GERR = (r && r.err) || 'Could not sign in.';
       authClear(true); renderGate(); return;
     }
+    if (r.kind === 'OWNER' || r.kind === 'EXEC'){ authSave(); GERR = ''; gate(false); staffStart(r); return; }
     if (r.kind !== 'PARTNER'){
       GERR = 'This app is for partners. Your account does not belong to this app.';
       authClear(true); renderGate(); return;
@@ -898,6 +903,7 @@ function doLogin(){
 }
 
 function signOut(){
+  ST = null;
   authClear(true); D.me = null; D.ledger = []; D.feed = [];
   document.getElementById('main').innerHTML = '<div class="load">...</div>';
   GERR = ''; renderGate();
@@ -905,6 +911,7 @@ function signOut(){
 
 /* ---- changing the PIN, in the app, by him ---- */
 function renderPinChange(forced){
+  if (ST){ toast('Viewing only - his PIN is set from the staff list.'); return; }
   PFORCE = !!forced;
   var g = document.getElementById('gate');
   g.innerHTML = '<div class="gwrap">' +
@@ -1045,7 +1052,7 @@ function ewRefresh(){
    Nothing you have typed or queued is touched. The sign-in and the
    offline queue live in localStorage and this never goes near them.
 --------------------------------------------------------------------- */
-var BUILD  = '2026.09.28-1';        /* which build of this file is running */
+var BUILD  = '2026.10.27-1';        /* which build of this file is running */
 var APPKEY = 'SAATHI';
 var VKEY   = 'ew_saathi_ver_v1';
 var VNEW   = '', VBUSY = false;
@@ -1152,6 +1159,111 @@ function landed(r){
   setTimeout(offerInstall, 900);
 }
 
+
+/* ===================== STAFF IN SAATHI (27 Oct 2026) =====================
+   HIS WORDS, the day before the plumbing contractor meet: "want to install saathi app in all contractor phone ...
+   make way for admin and executive login for saathi app, so admin can check all saathi and executive can view their
+   assigned saathi". The owner and executives sign in here with the same mobile + PIN as the Visit app. They get
+   their partners (the owner: all; an executive: the partners he looks after in the CRM), who has a PIN and who has
+   signed in, can open any one partner's Saathi exactly as he sees it (read-only), and can set a partner's first PIN:
+   the PARTNER types a PIN of his own choice on the staff phone - nobody else chooses it, and only its salted hash
+   is kept. Server: Companion API staffPeople / staffView / staffPin. */
+var ST = null;
+function staffStart(r){
+  ST = { kind: r.kind, name: r.name || '', people: null, q: '', f: 'all', view: null, pin: null, err: '' };
+  document.getElementById('hTitle').textContent = 'EW Saathi · Staff';
+  document.getElementById('hWho').textContent = (r.name || '') + (r.kind === 'OWNER' ? ' · all partners' : ' · your partners');
+  document.getElementById('hTier').textContent = '';
+  render(); staffLoad();
+}
+function staffLoad(){
+  ST.err = '';
+  call('staffPeople', null, 40000).then(function(r){
+    if (!r || !r.ok){ ST.err = (r && r.err) || 'The server did not answer.'; if (/unknown|not.*(route|action)/i.test(ST.err)) ST.err = 'The server is not updated yet - the owner presses Deploy on the Companion API once.'; ST.people = []; render(); return; }
+    ST.people = r.people || []; render();
+  }).catch(function(){ ST.err = 'No signal. Pull down or tap Refresh.'; ST.people = ST.people || []; render(); });
+}
+function staffRow(p){
+  var st = p.pinSet ? (p.logins ? '<span class="pill p-clear">signed in ' + p.logins + 'x</span>' : '<span class="pill p-back">PIN set - not signed in yet</span>') : '<span class="pill p-hold">no PIN yet</span>';
+  return '<div class="row"><div class="g"><div class="t">' + esc(p.name) + '</div>' +
+    '<div class="s">' + esc([p.role, p.city, p.mobile].filter(Boolean).join(' · ')) + (ST.kind === 'OWNER' && p.ownedBy ? ' · ' + esc(p.ownedBy) : '') + '</div>' +
+    '<div style="margin-top:6px">' + st + (p.last ? ' <span class="xs mut">last ' + esc(String(p.last).slice(0, 10)) + '</span>' : '') + '</div>' +
+    '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">' +
+      '<button class="pri" style="min-height:44px;padding:0 14px" data-st="view" data-r="' + esc(p.refId) + '">Open his Saathi</button>' +
+      (p.hasMobile ? '<button style="min-height:44px;padding:0 14px" data-st="pin" data-r="' + esc(p.refId) + '">' + (p.pinSet ? 'New PIN' : 'Set his PIN') + '</button>' : '<span class="xs mut" style="align-self:center">no mobile on his record - the office adds it</span>') +
+    '</div></div></div>';
+}
+function viewStaff(){
+  if (ST.pin) return staffPinView();
+  var L = ST.people;
+  var h = '<div class="card"><div class="eyebrow">Staff view</div><h2 class="sec" style="margin:4px 0 6px">' + (ST.kind === 'OWNER' ? 'All partners' : 'Your partners') + '</h2>' +
+    '<div class="sm mut" style="line-height:1.5">Open any partner to see his Saathi exactly as he sees it. At the meet: <b>Set his PIN</b>, hand him the phone, he types a PIN of his own choice twice. Then he signs in on his own phone with his mobile number and that PIN.</div>' +
+    '<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button style="min-height:44px;padding:0 14px" onclick="staffQr()">Show the install QR</button><button style="min-height:44px;padding:0 14px" onclick="staffLoad()">Refresh</button><button style="min-height:44px;padding:0 14px" onclick="signOut()">Sign out</button></div></div>';
+  if (ST.qr) h += '<div class="card" style="text-align:center"><div class="sm" style="margin-bottom:8px">Partners scan this to open EW Saathi, then <b>Add to Home screen</b>.</div><img src="install-qr.png" alt="QR code for EW Saathi" style="width:240px;max-width:80%;background:#fff;padding:8px;border-radius:8px"><div class="xs mut" style="margin-top:6px;word-break:break-all">' + esc(location.origin + location.pathname) + '</div></div>';
+  if (ST.err) h += '<div class="card" style="border-color:var(--rust);color:var(--rust)">' + esc(ST.err) + '</div>';
+  if (L === null) return h + '<div class="load">Fetching your partners...</div>';
+  var nopin = L.filter(function(p){ return !p.pinSet; }).length, signed = L.filter(function(p){ return p.logins; }).length;
+  h += '<div class="split" style="margin-bottom:10px"><div><b>' + L.length + '</b><span>PARTNERS</span></div><div><b>' + signed + '</b><span>SIGNED IN</span></div></div>';
+  h += '<input id="stq" type="search" placeholder="Search name, city or last 4 digits" value="' + esc(ST.q) + '" style="width:100%;min-height:44px;font-size:16px;padding:8px 12px;border:1px solid var(--line);border-radius:var(--r);margin-bottom:8px" oninput="ST.q=this.value;staffList()">' +
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">' + [['all', 'All ' + L.length], ['nopin', 'No PIN yet ' + nopin], ['pin', 'PIN set ' + (L.length - nopin)], ['in', 'Signed in ' + signed]].map(function(f){
+      return '<button style="min-height:40px;padding:0 12px" class="' + (ST.f === f[0] ? 'pri' : '') + '" onclick="ST.f=\'' + f[0] + '\';render()">' + f[1] + '</button>'; }).join('') + '</div>' +
+    '<div class="card" id="stlist" style="padding:2px 12px">' + staffListHtml() + '</div>';
+  return h;
+}
+function staffFiltered(){
+  var q = String(ST.q || '').trim().toLowerCase();
+  return (ST.people || []).filter(function(p){
+    if (ST.f === 'nopin' && p.pinSet) return false;
+    if (ST.f === 'pin' && !p.pinSet) return false;
+    if (ST.f === 'in' && !p.logins) return false;
+    if (!q) return true;
+    return (p.name + ' ' + p.city + ' ' + p.role + ' ' + p.mobile + ' ' + p.ownedBy).toLowerCase().indexOf(q) >= 0;
+  });
+}
+function staffListHtml(){ var L = staffFiltered(); return L.length ? L.slice(0, 150).map(staffRow).join('') + (L.length > 150 ? '<div class="sm mut" style="padding:10px 0">Type to find the rest (' + L.length + ').</div>' : '') : '<div class="sm mut" style="padding:14px 0">Nobody here.</div>'; }
+function staffList(){ var el = document.getElementById('stlist'); if (el) el.innerHTML = staffListHtml(); }
+function staffQr(){ ST.qr = !ST.qr; render(); }
+function staffBar(){
+  return '<div class="card" style="background:var(--ink);color:var(--paper);display:flex;gap:10px;align-items:center"><div style="flex:1;min-width:0"><div class="eyebrow" style="color:var(--brass)">Viewing as</div><b>' + esc(ST.view.name) + '</b><div class="xs" style="opacity:.8">Read only - exactly what he sees</div></div>' +
+    '<button style="min-height:44px;padding:0 14px" onclick="staffBack()">Back to list</button></div>';
+}
+function staffOpen(ref){
+  var p = (ST.people || []).filter(function(x){ return x.refId === ref; })[0]; if (!p) return;
+  toast('Opening ' + p.name + '...');
+  call('staffView', { refId: ref }, 40000).then(function(r){
+    if (!r || r.ok === false){ toast((r && r.err) || 'Could not open.'); return; }
+    D.me = r.me || null; D.ledger = r.ledger || []; D.catalog = r.catalog || []; D.feed = r.feed || []; D.stages = r.stages || []; D.cfg = r.cfg || D.cfg || {};
+    ST.view = { refId: ref, name: p.name }; TAB = 'home'; FILTER = 'all'; render();
+  }).catch(function(){ toast('No signal. Try again.'); });
+}
+function staffBack(){ ST.view = null; D.me = null; D.ledger = []; D.feed = []; render(); }
+function staffPinView(){
+  var p = (ST.people || []).filter(function(x){ return x.refId === ST.pin; })[0] || { name: '' };
+  return '<div class="card"><div class="eyebrow">Set the PIN</div><h2 class="sec" style="margin:4px 0 6px">' + esc(p.name) + '</h2>' +
+    '<div class="sm" style="line-height:1.6">Hand the phone to <b>' + esc(p.name) + '</b>. He types a PIN of his <b>own choice</b> - 4 to 6 digits, not the last 4 of his mobile - twice. Nobody else needs to know it.</div>' +
+    '<label class="sm" style="display:block;margin-top:10px">His new PIN</label><input id="sp1" type="password" inputmode="numeric" maxlength="6" autocomplete="new-password" style="width:100%;min-height:48px;font-size:22px;letter-spacing:6px;text-align:center;border:1px solid var(--line);border-radius:var(--r)">' +
+    '<label class="sm" style="display:block;margin-top:10px">Once more</label><input id="sp2" type="password" inputmode="numeric" maxlength="6" autocomplete="new-password" style="width:100%;min-height:48px;font-size:22px;letter-spacing:6px;text-align:center;border:1px solid var(--line);border-radius:var(--r)">' +
+    '<div id="sperr" class="sm" style="color:var(--rust);min-height:18px;margin-top:8px"></div>' +
+    '<div style="display:flex;gap:8px;margin-top:6px"><button id="spgo" class="pri" style="flex:1;min-height:48px" onclick="staffPinSave()">Save his PIN</button><button style="min-height:48px;padding:0 14px" onclick="ST.pin=null;render()">Cancel</button></div></div>';
+}
+function staffPinSave(){
+  var a = String((document.getElementById('sp1') || {}).value || '').replace(/\D/g, ''), b = String((document.getElementById('sp2') || {}).value || '').replace(/\D/g, '');
+  var er = document.getElementById('sperr'), go = document.getElementById('spgo');
+  if (a.length < 4 || a.length > 6){ er.textContent = 'The PIN is 4 to 6 digits.'; return; }
+  if (a !== b){ er.textContent = 'The two PINs are not the same - type them again.'; document.getElementById('sp1').value = ''; document.getElementById('sp2').value = ''; return; }
+  var ref = ST.pin; go.disabled = true; go.textContent = 'Saving...';
+  call('staffPin', { refId: ref, newPin: a }, 40000).then(function(r){
+    if (!r || !r.ok){ go.disabled = false; go.textContent = 'Save his PIN'; er.textContent = (r && r.err) || 'Not saved.'; return; }
+    (ST.people || []).forEach(function(x){ if (x.refId === ref) x.pinSet = true; });
+    ST.pin = null; render(); toast(r.msg || 'PIN saved.');
+  }).catch(function(){ go.disabled = false; go.textContent = 'Save his PIN'; er.textContent = 'No signal - nothing was saved. Try again.'; });
+}
+document.addEventListener('click', function(ev){
+  var t = ev.target && ev.target.closest ? ev.target.closest('[data-st]') : null; if (!t || !ST) return;
+  var ref = t.getAttribute('data-r');
+  if (t.getAttribute('data-st') === 'view') staffOpen(ref);
+  if (t.getAttribute('data-st') === 'pin'){ ST.pin = ref; render(); setTimeout(function(){ var i = document.getElementById('sp1'); if (i) i.focus(); }, 50); }
+});
 (function boot(){
   if (!GAS){ gasAsk(); return; }
   if ('serviceWorker' in navigator){
@@ -1161,6 +1273,7 @@ function landed(r){
   }
   if (!A.mobile || !A.pin){ renderGate(); verPoll(true); return; }
   call('login').then(function(r){
+    if (r && r.ok && (r.kind === 'OWNER' || r.kind === 'EXEC')){ staffStart(r); return; }
     if (!r || !r.ok || r.kind !== 'PARTNER'){
       GERR = (r && r.err) || ''; authClear(true); renderGate(); return;
     }
