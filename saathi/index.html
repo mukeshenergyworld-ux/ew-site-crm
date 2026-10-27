@@ -1060,7 +1060,7 @@ function ewRefresh(){
    Nothing you have typed or queued is touched. The sign-in and the
    offline queue live in localStorage and this never goes near them.
 --------------------------------------------------------------------- */
-var BUILD  = '2026.10.27-2';        /* which build of this file is running */
+var BUILD  = '2026.10.27-3';        /* which build of this file is running */
 var APPKEY = 'SAATHI';
 var VKEY   = 'ew_saathi_ver_v1';
 var VNEW   = '', VBUSY = false;
@@ -1164,6 +1164,7 @@ function landed(r){
   document.getElementById('hTier').textContent = (D.me && D.me.tier) || '';
   render();
   if (!r.pinSet && D.cfg.forcePin){ renderPinChange(true); return; }
+  profCheck();
   setTimeout(offerInstall, 900);
 }
 
@@ -1304,6 +1305,93 @@ function verAuto(){
   liveBuild().then(function(v){ if (v && v !== BUILD) verBar(v, 'A new version of EW Saathi is ready. Tap Update - your points and sign-in stay.'); });
 }
 try { if (navigator.serviceWorker && navigator.serviceWorker.addEventListener) navigator.serviceWorker.addEventListener('message', function(e){ if (e && e.data && e.data.ew === 'new-build') verAuto(); }); } catch(e){}
+
+/* ===================== REGISTRATION: NAME, CITY, MOBILE, DOB, SELFIE (27 Oct 2026) =====================
+   HIS WORDS: "on registering a saathi ask his DOB, and selfie pic ... its mandatory: Name, City, Mobile, DOB, Selfie" and
+   "show them to link app to their instagram and fb ... clicking them open social media app in their mobile and open energy
+   world page and option to like and follow it, same to whatsapp and telegram channel". After sign-in, a partner whose
+   record has no DOB or no selfie gets this form before anything else; it goes onto his own Associates row (Companion
+   profileSave). Then the Follow card: each button opens Energy World's page in the app on his phone. */
+var EW_SOCIAL = [
+  /* [label, url, colour] - an empty url is not shown */
+  ['Instagram', '', '#C13584'],
+  ['Facebook', '', '#1877F2'],
+  ['YouTube', '', '#FF0000'],
+  ['WhatsApp channel', '', '#25D366'],
+  ['Telegram channel', '', '#229ED9']
+];
+var PR = null;
+function profCheck(){
+  call('profileGet', null, 30000).then(function(r){
+    if (!r || !r.ok || r.done) return;
+    PR = { city: r.city || '', dob: r.dob || '', ig: r.instagram || '', fb: r.facebook || '', img: '', had: !!r.selfie, name: r.name || (D.me && D.me.name) || '' };
+    renderProfile();
+  }).catch(function(){});
+}
+function renderProfile(err){
+  var g = document.getElementById('gate'), today = new Date().toISOString().slice(0, 10);
+  var inp = 'width:100%;min-height:48px;font-size:17px;padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.25);background:#17221F;color:#F2F6F3;box-sizing:border-box';
+  g.innerHTML = '<div class="gwrap" style="padding-bottom:60px"><div class="gmark">EW</div><h2>Apni pehchaan</h2>' +
+    '<p class="lede">Ek baar bharein - aapke birthday par Energy World ki taraf se shubhkamnayein.</p>' +
+    (err ? '<div class="gerr" role="alert">' + esc(err) + '</div>' : '') +
+    '<label>Name</label><input value="' + esc(PR.name) + '" disabled style="' + inp + ';opacity:.7">' +
+    '<label>Mobile</label><input value="' + esc(A.mobile) + '" disabled style="' + inp + ';opacity:.7">' +
+    '<label for="pf_city">City / shehar *</label><input id="pf_city" value="' + esc(PR.city) + '" placeholder="Panipat" style="' + inp + '">' +
+    '<label for="pf_dob">Date of birth *</label><input id="pf_dob" type="date" max="' + today + '" value="' + esc(PR.dob) + '" style="' + inp + '">' +
+    '<label>Selfie *</label>' +
+    '<div style="display:flex;gap:12px;align-items:center;margin-top:4px">' +
+      '<div style="width:96px;height:96px;border-radius:50%;overflow:hidden;background:#17221F;border:2px solid var(--brass);flex:none">' + (PR.img ? '<img src="' + PR.img + '" alt="Your selfie" style="width:100%;height:100%;object-fit:cover">' : '') + '</div>' +
+      '<label style="flex:1;min-height:48px;display:flex;align-items:center;justify-content:center;border-radius:10px;background:var(--brass);color:#231705;font-weight:700;cursor:pointer;margin:0">' + (PR.img ? 'Take again' : (PR.had ? 'New selfie (optional)' : 'Take a selfie')) +
+      '<input id="pf_cam" type="file" accept="image/*" capture="user" style="display:none" onchange="profPhoto(this)"></label></div>' +
+    '<label for="pf_ig">Instagram id (optional)</label><input id="pf_ig" value="' + esc(PR.ig) + '" placeholder="@yourname" style="' + inp + '">' +
+    '<label for="pf_fb">Facebook name / link (optional)</label><input id="pf_fb" value="' + esc(PR.fb) + '" placeholder="facebook.com/yourname" style="' + inp + '">' +
+    '<button class="go" id="pf_go" onclick="profSave()">Save</button></div>';
+  gate(true);
+}
+function profKeep(){ ['city', 'dob', 'ig', 'fb'].forEach(function(k){ var e = document.getElementById('pf_' + k); if (e) PR[k] = e.value; }); }
+function profPhoto(input){
+  profKeep();
+  var f = input.files && input.files[0]; if (!f) return;
+  var rd = new FileReader();
+  rd.onload = function(){
+    var im = new Image();
+    im.onload = function(){
+      var W = 640, sc = Math.min(1, W / Math.max(im.width, im.height)), c = document.createElement('canvas');
+      c.width = Math.round(im.width * sc); c.height = Math.round(im.height * sc);
+      c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
+      PR.img = c.toDataURL('image/jpeg', 0.75); renderProfile();
+    };
+    im.onerror = function(){ renderProfile('That photo could not be read - take it again.'); };
+    im.src = rd.result;
+  };
+  rd.readAsDataURL(f);
+}
+function profSave(){
+  profKeep();
+  if (!String(PR.city).trim()) { renderProfile('Apna shehar likhein.'); return; }
+  if (!PR.dob) { renderProfile('Date of birth chunein.'); return; }
+  if (!PR.img && !PR.had) { renderProfile('Selfie zaroori hai - Take a selfie dabaiye.'); return; }
+  var b = document.getElementById('pf_go'); b.disabled = true; b.textContent = 'Saving...';
+  call('profileSave', { city: PR.city, dob: PR.dob, selfie: PR.img || '', instagram: PR.ig, facebook: PR.fb }, 60000).then(function(r){
+    if (!r || !r.ok){ renderProfile((r && r.err) || 'Not saved - try again.'); return; }
+    PR = null; renderFollow(true);
+  }).catch(function(){ renderProfile('No signal - nothing was saved. Try again.'); });
+}
+function followButtons(){
+  return EW_SOCIAL.filter(function(x){ return x[1]; }).map(function(x){
+    return '<a href="' + esc(x[1]) + '" target="_blank" rel="noopener" onclick="followTap(\'' + esc(x[0]) + '\')" style="display:flex;align-items:center;justify-content:center;min-height:52px;border-radius:12px;background:' + x[2] + ';color:#fff;font-weight:700;font-size:16px;text-decoration:none;margin-top:10px">Follow on ' + esc(x[0]) + '</a>';
+  }).join('');
+}
+function followTap(where){ try { call('ack', { id: 'follow-' + where.replace(/\W+/g, '-').toLowerCase(), act: 'FOLLOW' }).catch(function(){}); } catch(e){} }
+function renderFollow(first){
+  var btns = followButtons();
+  if (!btns){ gate(false); if (first) toast('Shukriya! Aapki pehchaan save ho gayi.'); return; }
+  var g = document.getElementById('gate');
+  g.innerHTML = '<div class="gwrap"><div class="gmark">EW</div><h2>' + (first ? 'Shukriya!' : 'Follow Energy World') + '</h2>' +
+    '<p class="lede">Energy World ko follow karein - nayi schemes, products aur events sabse pehle.</p>' + btns +
+    '<button class="lnk" onclick="gate(false)" style="margin-top:18px">' + (first ? 'Baad mein - app kholein' : 'Close') + '</button></div>';
+  gate(true);
+}
 (function boot(){
   verLabel(); setTimeout(verAuto, 1500);
   document.addEventListener('visibilitychange', function(){ if (!document.hidden) verAuto(); });
