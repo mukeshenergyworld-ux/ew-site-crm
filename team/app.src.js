@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.905";
+  var APP_VERSION = "6.9.906";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -46921,6 +46921,7 @@ function viewCatalogue() {
     return {
       clients: mine.length,
       live: Object.keys(live).length,
+      liveNames: Object.keys(live).sort(alpha),   /* 6.9.906 - the ongoing sites by name */
       open: Object.keys(quoted).length,
       owed: owed
     };
@@ -47200,8 +47201,15 @@ function viewCatalogue() {
         { k: "new30", t: "NEW 30D", r: 1, n: 1 }, { k: "newby", t: "ADDED BY" },
         { k: "owner", t: "OWNER" }   /* v6.9.586 */
       ];
-      if (_adm) _cols.push({ k: "inc", t: "INCENTIVE", r: 1, n: 1 });
+      /* 6.9.906 - HIS WORDS: "who earned what till date, ongoing sites, every data to show". The sites by name, and
+         for the admin the whole book in one line: business through him, incentive earned to date, paid, still due. */
+      _cols.splice(_cols.length - 4, 0, { k: "sites", t: "ONGOING SITES", wrap: 1 });
+      if (_adm) _cols.push({ k: "biz", t: "BUSINESS", r: 1, n: 1 }, { k: "earned", t: "EARNED TILL DATE", r: 1, n: 1 }, { k: "paid", t: "PAID", r: 1, n: 1 });
+      if (_adm) _cols.push({ k: "inc", t: "PENDING", r: 1, n: 1 });
       _cols.push({ k: "edit", t: "" });
+      /* money and sites first, where the eye lands without swiping; contact and history after */
+      var _ord = ["name", "tier", "biz", "earned", "paid", "inc", "live", "sites", "clients", "open", "owner", "mobile", "area", "new30", "newby", "edit"];
+      _cols.sort(function (x, y) { return _ord.indexOf(x.k) - _ord.indexOf(y.k); });
       var _since = (function () { var d = new Date(); d.setDate(d.getDate() - 30); return ymdLocal(d); })();
       var _rows = list.map(function (row) {
         var p = row.p, st = row.st, bk = _adm ? partnerBook(p.name) : null;
@@ -47210,7 +47218,9 @@ function viewCatalogue() {
         return {
           tier: row.tier,
           v: { name: p.name, tier: P_GROUPS.indexOf(row.tier) + " " + row.tier, mobile: p.mobile || "", area: p.area || "", clients: st.clients,
-               live: st.live, open: st.open, inc: bk ? bk.pending : 0, new30: _new.length, newby: _newest ? String(_newest.createdBy || "") : "",
+               live: st.live, open: st.open, inc: bk ? bk.pending : 0, new30: _new.length,
+               sites: (st.liveNames || []).join(", "), biz: bk ? Math.round(Number(bk.billed) || 0) : 0,
+               earned: bk ? Math.round(Number(bk.earned) || 0) : 0, paid: bk ? Math.round(Number(bk.paid) || 0) : 0, newby: _newest ? String(_newest.createdBy || "") : "",
                owner: _ownOf(p) },
           cells: {
             tier: pTierPill(row.tier),
@@ -47223,6 +47233,10 @@ function viewCatalogue() {
                     : '<b data-act="as-open" data-id="' + esc(p.id) + '" style="cursor:pointer;color:#0f766e">') +
                   esc(p.name) + '</b>' + (p.flag ? ' <span class="pill Lost">no number</span>' : "") + '<div>' + partnerSitesChip(p.name) + '</div>',   /* 6.9.849 */
             new30: _new.length ? '<b style="color:#0d9488">' + _new.length + '</b>' : '<span style="color:#94a3b8">\u2014</span>',
+            sites: (st.liveNames || []).length ? '<div style="min-width:170px;white-space:normal;overflow-wrap:anywhere;font-size:13px;line-height:1.35">' + st.liveNames.map(esc).join(", ") + '</div>' : '<span style="color:#94a3b8">\u2014</span>',
+            biz: bk && bk.billed > 0.5 ? money(bk.billed) : '<span style="color:#94a3b8">\u2014</span>',
+            earned: bk && bk.earned > 0.5 ? '<b>' + money(bk.earned) + '</b>' : '<span style="color:#94a3b8">\u2014</span>',
+            paid: bk && bk.paid > 0.5 ? money(bk.paid) : '<span style="color:#94a3b8">\u2014</span>',
             newby: _newest ? esc(String(_newest.createdBy || "")) + ' <span style="color:#94a3b8;font-size:12px">' + esc(dmy(_newest.createdAt)) + '</span>' : '<span style="color:#94a3b8">\u2014</span>',
             edit: '<button class="btn sm ghost" data-act="as-open" data-id="' + esc(p.id) + '" style="padding:2px 8px;font-size:12px">Edit</button>',
             mobile: p.mobile
@@ -47244,12 +47258,15 @@ function viewCatalogue() {
       var _first = true;
       if (S.pBy === "exec") {
         var _ex = {}; _rows.forEach(function (r) { var o = r.v.owner || ""; (_ex[o] = _ex[o] || []).push(r); });
-        Object.keys(_ex).sort(function (a, b) { return !a ? -1 : !b ? 1 : alpha(a, b); }).forEach(function (o) {
+        Object.keys(_ex).forEach(function (o) { _ex[o].sort(function (x, y) { return (P_GROUPS.indexOf(x.tier) - P_GROUPS.indexOf(y.tier)) || ((y.v.biz || 0) - (x.v.biz || 0)) || alpha(x.v.name, y.v.name); }); });
+        Object.keys(_ex).sort(function (a, b) { return !a ? 1 : !b ? -1 : alpha(a, b); })   /* 6.9.906 - assigned first, not assigned last */.forEach(function (o) {
           var gr = _ex[o];
           h += '<h3 class="p-group" style="margin:14px 0 4px;font-size:14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
             (o ? '<b style="font-size:15px;color:#0f766e">' + esc(o) + '</b>' : '<span class="pill" style="background:#fef3c7;color:#92400e;border-color:#fde68a">Not assigned</span>') +
             ' <span>' + gr.length + ' ' + (gr.length === 1 ? 'partner' : 'partners') + '</span>' +
-            P_GROUPS.map(function (g) { var c = gr.filter(function (r) { return r.tier === g; }).length; return c ? ' <span style="font-size:12px;color:#64748b">' + esc(g) + ' ' + c + '</span>' : ''; }).join("") + '</h3>' +
+            P_GROUPS.map(function (g) { var c = gr.filter(function (r) { return r.tier === g; }).length; return c ? ' <span style="font-size:12px;color:#64748b">' + esc(g) + ' ' + c + '</span>' : ''; }).join("") +
+            (_adm ? (function () { var t = function (k) { return gr.reduce(function (a, r) { return a + (Number(r.v[k]) || 0); }, 0); };
+              return ' <span style="font-size:13px;color:#334155">&middot; business <b>' + money(t("biz")) + '</b> &middot; earned <b>' + money(t("earned")) + '</b> &middot; paid ' + money(t("paid")) + ' &middot; pending <b style="color:#0d9488">' + money(t("inc")) + '</b></span>'; })() : '') + '</h3>' +
             xlTable("partners", _cols, gr, _first ? "what he has quoted" + (_adm ? " and his incentive" : "") : "");
           _first = false;
         });
