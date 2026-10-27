@@ -1116,7 +1116,7 @@ function ewRefresh(){
    Nothing you have typed or queued is touched. The sign-in and the
    offline queue live in localStorage and this never goes near them.
 --------------------------------------------------------------------- */
-var BUILD  = '2026.10.27-4';        /* which build of this file is running */
+var BUILD  = '2026.10.27-5';        /* which build of this file is running */
 var APPKEY = 'SAATHI';
 var VKEY   = 'ew_saathi_ver_v1';
 var VNEW   = '', VBUSY = false;
@@ -1273,7 +1273,7 @@ function viewStaff(){
   var h = '<div class="card"><div class="eyebrow">Staff view</div><h2 class="sec" style="margin:4px 0 6px">' + (ST.kind === 'OWNER' ? 'All partners' : 'Your partners') + '</h2>' +
     '<div class="sm mut" style="line-height:1.5">Open any partner to see his Saathi exactly as he sees it. At the meet: <b>Set his PIN</b>, hand him the phone, he types a PIN of his own choice twice. Then he signs in on his own phone with his mobile number and that PIN.</div>' +
     '<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button style="min-height:44px;padding:0 14px" onclick="staffQr()">Show the install QR</button><button style="min-height:44px;padding:0 14px" onclick="staffLoad()">Refresh</button><button style="min-height:44px;padding:0 14px" onclick="signOut()">Sign out</button></div></div>';
-  if (ST.qr) h += '<div class="card" style="text-align:center"><div class="sm" style="margin-bottom:8px">Partners scan this to open EW Saathi, then <b>Add to Home screen</b>.</div><img src="install-qr.png" alt="QR code for EW Saathi" style="width:240px;max-width:80%;background:#fff;padding:8px;border-radius:8px"><div class="xs mut" style="margin-top:6px;word-break:break-all">' + esc(location.origin + location.pathname) + '</div></div>';
+  if (ST.qr) h += '<div class="card" style="text-align:center"><div class="sm" style="margin-bottom:8px">Partners scan this to open EW Saathi, then <b>Add to Home screen</b>.</div><img src="install-qr.png?v=ghp" alt="QR code for EW Saathi" style="width:240px;max-width:80%;background:#fff;padding:8px;border-radius:8px"><div class="xs mut" style="margin-top:6px;word-break:break-all">' + esc(location.origin + location.pathname) + '</div></div>';
   if (ST.err) h += '<div class="card" style="border-color:var(--rust);color:var(--rust)">' + esc(ST.err) + '</div>';
   if (L === null) return h + '<div class="load">Fetching your partners...</div>';
   var nopin = L.filter(function(p){ return !p.pinSet; }).length, signed = L.filter(function(p){ return p.logins; }).length;
