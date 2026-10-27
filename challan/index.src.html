@@ -252,7 +252,7 @@ body{background:#F4F6F9}
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.144.0";   /* 1.144.0 - lorry check off the supplier bill (ERP step F); bill parts count into stock */
+  var APP_VERSION = "1.145.0";   /* 1.145.0 - vehicle no asked every time a driver is picked (not for Porter / Rapido); 1.144.0 lorry check */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -5167,6 +5167,11 @@ function discRowOn(client, brand, onYmd) {
      "Ramesh", "ramesh" and "Ramesh ji" become three men. Picking him fills in his vehicle and
      his mobile from his own record. The lorry can still be overridden for the day he is in a
      different one - that is a real thing that happens - but it starts from his own. */
+  /* 1.145.0 - HIS RULE, 27 Oct 2026: "whenever selecting driver name in challan, ask everytime vechile no unless it
+     is not filled, avoid after filling, avoid vechile no for porter". MEASURED: Sarvan Singh carried 9 of the last 40
+     challans and has no vehicle on his register row, so every one went out with no vehicle - and the bill (e-way) needs
+     it. Porter and Rapido are booked by app: no fixed vehicle, never asked. */
+  function drvNoVeh(name) { return /porter|rapido/i.test(String(name || "")); }
   function driverPicker(z, pfx) {
     var p = pfx || "m";
     /* 1.110.0 - a driver merged into another (CRM, "Review & merge") is not offered again */
@@ -5202,12 +5207,15 @@ function discRowOn(client, brand, onYmd) {
       var _dt = driverType(picked);
       h += '<div class="muted" style="margin-top:6px">' +
         (picked.mobile ? esc(picked.mobile) + ' · ' : '') +
-        '<b>' + esc(z.veh || picked.vehicle || "no vehicle on his record") + '</b>' +
+        (drvNoVeh(picked.name) ? '' : '<b>' + esc(z.veh || picked.vehicle || "no vehicle on his record") + '</b>') +
         (_dt ? ' · ' + esc(_dt) : ' · <b style="color:#b45309">vehicle type not set</b>') + '</div>';
-      if (p === "m") {
-        h += '<label>Vehicle today</label>' +
-          '<input id="m_veh" placeholder="' + esc(picked.vehicle || "vehicle number") + '" value="' + esc(z.veh || "") + '"/>' +
-          '<div class="muted" style="margin-top:3px">Leave it blank and his own lorry is used. Fill it only if he is in a different one today.</div>';
+      if (p === "m" && !drvNoVeh(picked.name)) {   /* 1.145.0 - asked every time; filled from his register, he only checks it */
+        var _vOk = !!String(z.veh || "").trim();
+        h += '<label style="color:' + (_vOk ? 'inherit' : '#b91c1c') + '">Vehicle no' + (_vOk ? '' : ' &mdash; required') + '</label>' +
+          '<input id="m_veh" placeholder="HR-67-D-1234" value="' + esc(z.veh || "") + '" style="text-transform:uppercase' + (_vOk ? '' : ';border-color:#f87171;background:#fef2f2') + '"/>' +
+          '<div class="muted" style="margin-top:3px">The vehicle he is driving today &mdash; it goes on the challan and the bill.</div>';
+      } else if (p === "m") {
+        h += '<div class="muted" style="margin-top:4px">' + esc(picked.name) + ' &mdash; no vehicle number needed.</div>';
       }
     }
     return h;
@@ -9567,7 +9575,11 @@ function discRowOn(client, brand, onYmd) {
         /* his lorry is cleared with him - "vehicle today" belonged to the man who was
            picked before, and carrying it over sends the wrong number out on the paper. */
         if (h) { h.driver = sv.value || ""; h.veh = ""; }
+        /* 1.145.0 - start from his register's vehicle and put the cursor in the box, so it is checked every time */
+        var _dr = ((S.data && S.data.drivers) || []).filter(function (d) { return lower(d.name) === lower(sv.value); })[0];
+        if (h && _dr && sv.getAttribute("data-p") !== "r" && !drvNoVeh(_dr.name)) h.veh = String(_dr.vehicle || "").toUpperCase();
         repaint();
+        if (_dr && sv.getAttribute("data-p") !== "r" && !drvNoVeh(_dr.name)) setTimeout(function () { var _vi = el("m_veh"); if (_vi) { try { _vi.focus(); _vi.select(); } catch (e) { } } }, 0);
       });
     });
 
@@ -10413,6 +10425,12 @@ function discRowOn(client, brand, onYmd) {
       var dRec = ((S.data && S.data.drivers) || []).filter(function (d) {
         return lower(d.name) === lower(z.driver);
       })[0] || {};
+      if (dRec.name && !drvNoVeh(dRec.name) && !String(z.veh || "").trim()) {   /* 1.145.0 */
+        toast("Vehicle no for " + dRec.name + " - type it in, then save.");
+        render();
+        setTimeout(function () { var _vi = el("m_veh"); if (_vi) { try { _vi.scrollIntoView({ block: "center" }); _vi.focus(); } catch (e) { } } }, 0);
+        return;
+      }
       /* 1.99.0 - more than is free in stock: said once, and a second press saves it */
       var _ovr = stkOverLines(lines, z.editId);
       var _ovNeed = !!(_ovr.length && !z.stkWarned);
@@ -10529,7 +10547,7 @@ function discRowOn(client, brand, onYmd) {
           discAmt: canSetPricing() ? discAmt : (_editRow ? (_editRow.discAmt || 0) : 0),
           discNote: canSetPricing() ? discNote : (_editRow ? (_editRow.discNote || "") : ""),
           driver: dRec.name || "", driverId: dRec.id || "", driverMobile: dRec.mobile || "",
-          vehicle: z.veh || dRec.vehicle || "",
+          vehicle: drvNoVeh(dRec.name) ? "" : String(z.veh || dRec.vehicle || "").trim().toUpperCase(),
           /* on a NEW challan these three are the starting state; on an edit the first two are
              already on the row and Object.assign above kept them, so only the status is set -
              and it is set DOWN, deliberately. Approval was given on the earlier contents. */
