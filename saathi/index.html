@@ -932,7 +932,7 @@ function renderGate(){
     '<h2>EW Saathi</h2>' +
     '<p class="lede" style="margin-top:-4px"><b>For plumbers, contractors &amp; architects</b> - your points, offers and hisaab from Energy World.</p>' +
     '<p class="lede">Enter your mobile number and PIN.<br>' +
-    'First time here? The Energy World staff set your PIN with you - you choose it yourself.</p>' +
+    '<b>First time? Your PIN is the last 4 digits of your mobile number.</b> Right after, you choose your own PIN.</p>' +
     (GERR ? '<div class="gerr" role="alert">' + esc(GERR) + '</div>' : '') +
     '<label for="gm">Mobile number</label>' +
     '<input id="gm" type="tel" inputmode="numeric" autocomplete="username" ' +
@@ -954,9 +954,9 @@ function renderGate(){
 }
 
 function gateHelp(){
-  GERR = 'Ask your Energy World executive, or call the office. They open the app, ' +
-         'and you type a new PIN of your own choice on their phone. ' +
-         'Your points stay exactly as they are.';
+  /* 27 Oct 2026 - "admin or executive can reset pin only": nobody resets his own PIN from this screen */
+  GERR = 'Ask your Energy World executive or the office to reset your PIN. Then sign in with the last 4 digits ' +
+         'of your mobile number and choose a new PIN. Your points stay exactly as they are.';
   renderGate();
 }
 
@@ -1001,7 +1001,7 @@ function renderPinChange(forced){
     '<div class="gmark">EW</div>' +
     '<h2>Change PIN</h2>' +
     '<p class="lede">' + (PFORCE
-      ? 'Your first time here. Choose your own PIN - after this only you know it.'
+      ? 'Welcome! Now choose your own PIN - 4 to 6 digits, not the last 4 of your mobile. After this only you know it.'
       : 'Choose a new PIN. 4 to 6 digits.') + '</p>' +
     (PERR ? '<div class="gerr" role="alert">' + esc(PERR) + '</div>' : '') +
     '<label for="p1">New PIN</label>' +
@@ -1023,12 +1023,19 @@ function doPinChange(){
   var b = String(document.getElementById('p2').value || '').replace(/\D/g, '');
   if (!/^\d{4,6}$/.test(a)){ PERR = 'The PIN must be 4 to 6 digits.'; renderPinChange(PFORCE); return; }
   if (/^(\d)\1+$/.test(a)){ PERR = 'Do not repeat one digit.'; renderPinChange(PFORCE); return; }
+  if (A.mobile && a === String(A.mobile).slice(-4)){ PERR = 'Choose a PIN that is not the last 4 digits of your mobile.'; renderPinChange(PFORCE); return; }
   if (a !== b){ PERR = 'The two PINs are different. Please check.'; renderPinChange(PFORCE); return; }
   var btn = document.getElementById('pbtn');
   btn.disabled = true; btn.textContent = 'Saving...';
   call('changePin', { newPin: a }).then(function(r){
     if (!r || !r.ok){ PERR = (r && r.err) || 'The PIN was not saved.'; renderPinChange(PFORCE); return; }
+    var wasForced = PFORCE;
     A.pin = a; authSave(); PERR = ''; PFORCE = false;
+    if (wasForced){   /* first sign-in was only for this - now sign in properly with his own PIN */
+      call('login', null, 40000).then(function(r2){ if (r2 && r2.ok){ gate(false); landed(r2); toast('PIN saved. Welcome to EW Saathi!'); } else { GERR = (r2 && r2.err) || 'Sign in again with your new PIN.'; renderGate(); } })
+        .catch(function(){ GERR = 'PIN saved. No signal - sign in again with your new PIN.'; renderGate(); });
+      return;
+    }
     gate(false); render(); toast('PIN changed.');
     setTimeout(offerInstall, 900);
   }).catch(function(){ PERR = 'No signal.'; renderPinChange(PFORCE); });
@@ -1135,7 +1142,7 @@ function ewRefresh(){
    Nothing you have typed or queued is touched. The sign-in and the
    offline queue live in localStorage and this never goes near them.
 --------------------------------------------------------------------- */
-var BUILD  = '2026.10.27-7';        /* which build of this file is running */
+var BUILD  = '2026.10.27-8';        /* which build of this file is running */
 var APPKEY = 'SAATHI';
 var VKEY   = 'ew_saathi_ver_v1';
 var VNEW   = '', VBUSY = false;
@@ -1295,7 +1302,7 @@ function viewStaff(){
   if (ST.pin) return staffPinView();
   var L = ST.people;
   var h = '<div class="card"><div class="eyebrow">Staff view</div><h2 class="sec" style="margin:4px 0 6px">' + (ST.kind === 'OWNER' ? 'All partners' : 'Your partners') + '</h2>' +
-    '<div class="sm mut" style="line-height:1.5">Open any partner to see his Saathi exactly as he sees it. At the meet: <b>Set his PIN</b>, hand him the phone, he types a PIN of his own choice twice. Then he signs in on his own phone with his mobile number and that PIN.</div>' +
+    '<div class="sm mut" style="line-height:1.5">A partner signs in the first time with his mobile number and the <b>last 4 digits</b> of it as the PIN, then chooses his own PIN at once. Forgot his PIN? Tap him &rarr; <b>Reset PIN</b> - he is back to the last 4 digits. Only you and the executives can reset.</div>' +
     '<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button style="min-height:44px;padding:0 14px" onclick="staffQr()">Show the install QR</button><button style="min-height:44px;padding:0 14px" onclick="staffLoad()">Refresh</button><button style="min-height:44px;padding:0 14px" onclick="signOut()">Sign out</button></div></div>';
   if (ST.qr) h += '<div class="card" style="text-align:center"><div class="sm" style="margin-bottom:8px">Partners scan this to open EW Saathi, then <b>Add to Home screen</b>.</div><img src="install-qr.png?v=ghp" alt="QR code for EW Saathi" style="width:240px;max-width:80%;background:#fff;padding:8px;border-radius:8px"><div class="xs mut" style="margin-top:6px;word-break:break-all">' + esc(location.origin + location.pathname) + '</div></div>';
   if (ST.err) h += '<div class="card" style="border-color:var(--rust);color:var(--rust)">' + esc(ST.err) + '</div>';
@@ -1350,14 +1357,14 @@ function staffGroups(L){
 function staffTr(p){
   var on = ST.row === p.refId;
   var sub = [ST.g === 'level' ? (p.ownedBy || 'Unassigned') : '', p.city, p.mobile ? '..' + String(p.mobile).slice(-4) : ''].filter(Boolean).join(' · ');
-  var pin = p.pinSet ? (p.logins ? 'signed in ' + p.logins + 'x' : 'PIN set') : 'no PIN';
+  var pin = p.reset ? 'PIN reset - last 4 digits' : p.pinSet ? (p.logins ? 'signed in ' + p.logins + 'x' : 'own PIN set') : 'first sign-in: last 4 digits';
   var h = '<tr class="pr rl-' + lvOf(p) + (on ? ' on' : '') + '" data-st="row" data-r="' + esc(p.refId) + '">' +
     '<td class="nm">' + (ST.g === 'exec' ? lvPill(lvOf(p)) + ' ' : '') + '<b>' + esc(p.name) + '</b><span class="xs">' + esc(sub) + (sub ? ' · ' : '') + esc(pin) + '</span></td>' +
     '<td>' + (Number(p.sites) || 0) + '</td><td><b>' + stP(p.ready) + '</b></td><td>' + stP(p.wait) + '</td><td>' + stP(p.paid) + '</td></tr>';
   if (on){
     h += '<tr class="act"><td colspan="5"><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
       '<button class="pri" style="min-height:44px;padding:0 14px" data-st="view" data-r="' + esc(p.refId) + '">Open his Saathi</button>' +
-      (p.hasMobile ? '<button style="min-height:44px;padding:0 14px" data-st="pin" data-r="' + esc(p.refId) + '">' + (p.pinSet ? 'New PIN' : 'Set his PIN') + '</button>' : '<span class="xs mut">no mobile on his record - the office adds it</span>') +
+      (p.hasMobile ? (p.pinSet && !p.reset ? '<button style="min-height:44px;padding:0 14px' + (ST.rs === p.refId ? ';background:var(--rust);color:#fff;border-color:var(--rust)' : '') + '" data-st="reset" data-r="' + esc(p.refId) + '">' + (ST.rs === p.refId ? 'Tap again to reset' : 'Reset PIN') + '</button>' : '<span class="xs mut" style="align-self:center">PIN = last 4 digits of his mobile</span>') : '<span class="xs mut">no mobile on his record - the office adds it</span>') +
       (ST.kind === 'OWNER' ? '<label class="sm" style="display:flex;gap:6px;align-items:center">Executive <select data-st="asg" data-r="' + esc(p.refId) + '" style="min-height:44px;font-size:15px;max-width:180px">' +
         ['<option value="">Unassigned</option>'].concat(ST.execs.concat(p.ownedBy && ST.execs.indexOf(p.ownedBy) < 0 ? [p.ownedBy] : []).map(function(e){
           return '<option value="' + esc(e) + '"' + (e === p.ownedBy ? ' selected' : '') + '>' + esc(e) + '</option>'; })).join('') + '</select></label>' : '') +
@@ -1380,6 +1387,15 @@ function staffListHtml(){
   h += '</tbody></table></div>';
   if (shown >= 400) h += '<div class="sm mut" style="padding:10px">Type to find the rest.</div>';
   return h;
+}
+/* 27 Oct 2026 - staff only: his PIN goes back to the last 4 digits of his mobile; he chooses a new one on sign-in */
+function staffReset(ref){
+  var p = (ST.people || []).filter(function(x){ return x.refId === ref; })[0]; if (!p) return;
+  toast('Resetting...');
+  call('staffPinReset', { refId: ref }, 40000).then(function(r){
+    if (!r || !r.ok){ toast((r && r.err) || 'Not reset.'); staffList(); return; }
+    p.reset = true; staffList(); toast(r.msg || 'PIN reset.');
+  }).catch(function(){ toast('No signal - not reset.'); staffList(); });
 }
 function staffAssign(ref, ex){
   var p = (ST.people || []).filter(function(x){ return x.refId === ref; })[0]; if (!p) return;
@@ -1439,6 +1455,7 @@ document.addEventListener('click', function(ev){
   if (t.getAttribute('data-st') === 'row'){ ST.row = ST.row === ref ? '' : ref; staffList(); return; }
   if (t.getAttribute('data-st') === 'grp'){ ST.shut[ref] = !ST.shut[ref]; staffList(); return; }
   if (t.getAttribute('data-st') === 'view') staffOpen(ref);
+  if (t.getAttribute('data-st') === 'reset'){ if (ST.rs !== ref){ ST.rs = ref; staffList(); return; } ST.rs = ''; staffReset(ref); return; }
   if (t.getAttribute('data-st') === 'pin'){ ST.pin = ref; render(); setTimeout(function(){ var i = document.getElementById('sp1'); if (i) i.focus(); }, 50); }
 });
 
