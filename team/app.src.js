@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.907";
+  var APP_VERSION = "6.9.908";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -55304,17 +55304,30 @@ function viewCatalogue() {
   }
   /* caption shapes seen (made-up values): "Site engineer - Ramesh 98XXXXXXXX plot 5 sector 1 Panipat" / "Suresh kumar 98XXXXXXXX H.No 12 Model Town Ar. Sharma sir" */
   function slParse(cap) {
+    /* 6.9.908 - measured on the group's first 34 sites: the words come as "IHB Name - X Contact no-<mobile>", "Con. Name - X <mobile>",
+       "Builder name - X <mobile>", "Name - X <mobile> Address - ...", "Ar.name - Y", and the messages of one run are joined with " | ".
+       The labels are taken off; the man's own message is always shown on the card as well, so nothing he wrote is lost. */
     var c = String(cap || "").replace(/\s+/g, " ").trim(), out = { name: "", role: "", phone: "", addr: "", arch: "" };
     var m = c.match(/(?:\+?91[\s-]*)?([6-9]\d{4})[\s-]?(\d{5})(?!\d)/);
     var before = c, after = "";
     if (m) { out.phone = m[1] + m[2]; before = c.slice(0, m.index); after = c.slice(m.index + m[0].length); }
-    var ar = after.match(/(?:^|[\s,|])(?:Ar|Arch|Architect)\b\.?\s*[-:]?\s*([A-Za-z][A-Za-z .]{0,40})$/i);
-    if (ar) { out.arch = nmTitle(ar[1].replace(/\s+(sir|ji|madam|mam)\.?\s*$/i, "").trim()); after = after.slice(0, ar.index); }
-    before = before.replace(/[|,;]+/g, " ").trim();
-    var rl = before.match(/^(site engineer|engineer|contractor|owner|builder|plumber|supervisor|pmc|architect)\s*[-:]?\s*/i);
-    if (rl) { out.role = nmTitle(rl[1].toLowerCase()); before = before.slice(rl[0].length); }
-    out.name = nmTitle(before.replace(/[\s|:-]+$/, "").trim()).slice(0, 60);
-    out.addr = after.replace(/\s*\|\s*/g, ", ").replace(/^[\s,;:-]+|[\s,;:-]+$/g, "").slice(0, 160);
+    else { var bar = c.indexOf(" | "); before = bar >= 0 ? c.slice(0, bar) : c; }
+    var ar = c.match(/(?:^|[\s,|])(?:Ar|Arch|Architect)\b\.?\s*(?:name)?\s*[-:.]?\s*([A-Za-z][A-Za-z .]{0,40}?)(?=\s*(?:\||$|\d|,))/i);
+    if (ar) {
+      out.arch = nmTitle(ar[1].replace(/\s+(sir|ji|madam|mam)\.?\s*$/i, "").trim());
+      var at0 = ar[0].replace(/^[\s,|]+/, ""), ai = after.indexOf(at0);
+      if (ai >= 0) after = after.slice(0, ai) + after.slice(ai + at0.length);
+    }
+    before = before.replace(/[|,;]+/g, " ").replace(/\b(contact|mob(ile)?|ph(one)?|cont)\.?\s*(no|number)?\.?\s*[-:.]?\s*$/i, "").trim();
+    var rl = before.match(/^(ihb|con\.?|contractor|builder|supervisor|owner|site engineer|engineer|plumber|pmc|client|customer|labour)\s*(name)?\s*[-:.]?\s*/i);
+    if (rl) {
+      var rw = rl[1].toLowerCase().replace(/\.$/, "");
+      out.role = rw === "con" ? "Contractor" : (rw === "ihb" ? "IHB" : nmTitle(rw));
+      before = before.slice(rl[0].length);
+    }
+    before = before.replace(/^name\s*[-:.]?\s*/i, "");
+    out.name = nmTitle(before.replace(/[\s|:.-]+$/, "").trim()).slice(0, 60);
+    out.addr = after.split(" | ")[0].replace(/^[\s,;:-]+/, "").replace(/^address\s*[-:.]?\s*/i, "").replace(/[\s,;:-]+$/, "").slice(0, 160);
     return out;
   }
   function slByAt(a, b) { return String(a._at || "").localeCompare(String(b._at || "")); }
@@ -55325,6 +55338,7 @@ function viewCatalogue() {
     pevRows("slead:add").sort(slByAt).forEach(function (d) {
       if (d._at > lastRead) lastRead = d._at;
       if (d.waId) seen[d.waId] = 1;
+      (d.ids || []).forEach(function (x) { seen[x] = 1; });   /* 6.9.908 - every message of the run */
       if (!d.key || by[d.key]) return;
       var L = { key: d.key, at: d.msgAt || d._at, poster: d.poster || "", caption: d.caption || "", name: d.name || "", role: d.role || "",
         phone: d.phone || "", addr: d.addr || "", arch: d.arch || "", lat: Number(d.lat) || 0, lng: Number(d.lng) || 0, photo: d.photo || "",
@@ -55334,6 +55348,7 @@ function viewCatalogue() {
     pevRows("slead:visit").sort(slByAt).forEach(function (d) {
       if (d._at > lastRead) lastRead = d._at;
       if (d.waId) seen[d.waId] = 1;
+      (d.ids || []).forEach(function (x) { seen[x] = 1; });
       var L = by[d.key]; if (!L) return;
       L.visits.push({ at: d.msgAt || d._at, poster: d.poster || "", caption: d.caption || "", photo: d.photo || "", lat: Number(d.lat) || 0, lng: Number(d.lng) || 0, why: d.why || "" });
     });
@@ -55385,7 +55400,9 @@ function viewCatalogue() {
   function slOne(it, sum) {
     var all = slAll();
     var waId = String((it && it.waId) || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 90);
-    if (!waId || all.seen[waId]) { sum.skipped++; return Promise.resolve(); }
+    var ids = (Array.isArray(it.ids) ? it.ids : []).map(function (x) { return String(x || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 90); }).filter(Boolean).slice(0, 30);
+    if (waId && ids.indexOf(waId) < 0) ids.unshift(waId);
+    if (!waId || ids.some(function (x) { return all.seen[x]; })) { sum.skipped++; return Promise.resolve(); }
     var cap = String(it.caption || "").slice(0, 600), p = slParse(cap);
     p.lat = Number(it.lat) || 0; p.lng = Number(it.lng) || 0;
     if (Math.abs(p.lat) > 90 || Math.abs(p.lng) > 180) { p.lat = 0; p.lng = 0; }
@@ -55397,17 +55414,17 @@ function viewCatalogue() {
           sum.photoFail++; sum.photoErr = (r && r.error) || "no answer"; return "";
         }, function (e) { sum.photoFail++; sum.photoErr = String((e && e.message) || e); return ""; })
       : Promise.resolve("");
-    all.seen[waId] = 1;
+    ids.forEach(function (x) { all.seen[x] = 1; });
     return photoP.then(function (photo) {
       var m = slMatch(p, slAll());
       if (m.best) {
         sum.visits++;
-        return auditFact("slead:visit", m.best.L.key, { key: m.best.L.key, waId: waId, msgAt: msgAt, poster: poster, caption: cap, photo: photo, lat: p.lat, lng: p.lng, why: m.best.why });
+        return auditFact("slead:visit", m.best.L.key, { key: m.best.L.key, waId: waId, ids: ids, msgAt: msgAt, poster: poster, caption: cap, photo: photo, lat: p.lat, lng: p.lng, why: m.best.why });
       }
       var crm = slCrmByPhone(p.phone);
       sum.added++; if (m.weak || crm) sum.flagged++;
       sum.names.push(p.name || cap.slice(0, 30) || "a pin");
-      return auditFact("slead:add", waId, { key: waId, waId: waId, msgAt: msgAt, poster: poster, caption: cap, name: p.name, role: p.role, phone: p.phone,
+      return auditFact("slead:add", waId, { key: waId, waId: waId, ids: ids, msgAt: msgAt, poster: poster, caption: cap, name: p.name, role: p.role, phone: p.phone,
         addr: p.addr, arch: p.arch, lat: p.lat, lng: p.lng, photo: photo, dupOf: m.weak ? m.weak.L.key : "", dupWhy: m.weak ? m.weak.why : "", inCrm: crm ? crm.name : "" });
     }).then(function () { _slCache = null; });
   }
@@ -55471,7 +55488,8 @@ function viewCatalogue() {
       (L.addr ? '<div style="font-size:13px;margin-top:2px">' + esc(L.addr) + '</div>' : '') +
       (L.arch ? '<div style="font-size:13px">Architect: ' + esc(L.arch) + '</div>' : '') +
       '<div class="meta" style="font-size:12.5px;margin-top:3px">Mapped by ' + esc(L.poster || "?") + ' · ' + esc(slWhen(L.at)) +
-        (map ? ' · <a href="' + esc(map) + '" target="_blank" rel="noopener">Open map</a>' : ' · no location pin') + '</div>';
+        (map ? ' · <a href="' + esc(map) + '" target="_blank" rel="noopener">Open map</a>' : ' · no location pin') + '</div>' +
+      (L.caption ? '<div style="font-size:12.5px;color:#475569;margin-top:4px;background:#f8fafc;border-radius:8px;padding:5px 8px">“' + esc(L.caption) + '”</div>' : '');
     if (L.visits.length) {
       h += '<div style="margin-top:6px;font-size:13px"><b>' + plural(L.visits.length, "update") + '</b> · last ' + esc(slWhen(L.last)) + '</div>' +
         '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">' + L.visits.map(function (v) {
