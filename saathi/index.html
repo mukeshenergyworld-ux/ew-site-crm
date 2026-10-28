@@ -1143,7 +1143,7 @@ function ewRefresh(){
    Nothing you have typed or queued is touched. The sign-in and the
    offline queue live in localStorage and this never goes near them.
 --------------------------------------------------------------------- */
-var BUILD  = '2026.10.27-12';        /* which build of this file is running */
+var BUILD  = '2026.10.28-1';        /* which build of this file is running */
 var APPKEY = 'SAATHI';
 var VKEY   = 'ew_saathi_ver_v1';
 var VNEW   = '', VBUSY = false;
@@ -1314,7 +1314,8 @@ function viewStaff(){
   h += '<input id="stq" type="search" placeholder="Search name, city, executive or last 4 digits" value="' + esc(ST.q) + '" style="width:100%;min-height:44px;font-size:16px;padding:8px 12px;border:1px solid var(--line);border-radius:var(--r);margin-bottom:8px" oninput="ST.q=this.value;staffList()">' +
     '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">' +
       '<button style="min-height:44px;padding:0 14px" class="' + (ST.g === 'level' ? 'pri' : '') + '" onclick="ST.g=\'level\';ST.shut={};render()">By level</button>' +
-      '<button style="min-height:44px;padding:0 14px" class="' + (ST.g === 'exec' ? 'pri' : '') + '" onclick="ST.g=\'exec\';ST.shut={};render()">By executive</button></div>' +
+      '<button style="min-height:44px;padding:0 14px" class="' + (ST.g === 'exec' ? 'pri' : '') + '" onclick="ST.g=\'exec\';ST.shut={};render()">By executive</button>' +
+      '<button style="min-height:44px;padding:0 14px" class="' + (ST.g === 'trade' ? 'pri' : '') + '" onclick="ST.g=\'trade\';ST.shut={};render()">By trade</button></div>' +
     '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">' + [['all', 'All ' + L.length]].concat(ST.kind === 'OWNER' ? [['un', 'Unassigned ' + un]] : []).concat([['nopin', 'No PIN ' + nopin], ['in', 'Signed in ' + signed]]).map(function(f){
       return '<button style="min-height:44px;padding:0 12px" class="' + (ST.f === f[0] ? 'pri' : '') + '" onclick="ST.f=\'' + f[0] + '\';render()">' + f[1] + '</button>'; }).join('') + '</div>' +
     '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">' + LEVELS.map(function(t){ return '<span class="lv lv-' + t + '" style="padding:4px 10px">' + t + '</span>'; }).join('') + '</div>' +
@@ -1342,13 +1343,25 @@ var LEVELS = ['Platinum', 'Gold', 'Silver', 'Base'];
 function lvOf(p){ var t = String(p.tier || 'Base'); return LEVELS.indexOf(t) >= 0 ? t : 'Base'; }
 function lvPill(t){ return '<span class="lv lv-' + esc(t) + '" title="' + esc(t) + '">' + esc(t.charAt(0)) + '</span>'; }
 function stP(n){ return pts((Number(n) || 0) * (ST.ppr || 2)); }
+/* 28 Oct 2026 - HIS WORDS: "show partners category wise, Plumbing, Arch, PMC, Builder". The partner's role on his
+   Associates row; anything else (contractor, dealer, blank) is grouped as Other, last. */
+var TRADES = ['Plumber', 'Architect', 'PMC', 'Builder', 'Other'];
+function tradeOf(p){
+  var r = String(p.role || '').toLowerCase();
+  if (/plumb/.test(r)) return 'Plumber';
+  if (/arch/.test(r)) return 'Architect';
+  if (/pmc|project manag/.test(r)) return 'PMC';
+  if (/build|developer/.test(r)) return 'Builder';
+  return 'Other';
+}
 function staffGroups(L){
   var G = {}, order = [];
   L.forEach(function(p){
-    var k = ST.g === 'exec' ? (p.ownedBy || 'Unassigned') : lvOf(p);
+    var k = ST.g === 'exec' ? (p.ownedBy || 'Unassigned') : ST.g === 'trade' ? tradeOf(p) : lvOf(p);
     if (!G[k]){ G[k] = []; order.push(k); } G[k].push(p);
   });
   if (ST.g === 'level') order = LEVELS.filter(function(k){ return G[k]; });
+  else if (ST.g === 'trade') order = TRADES.filter(function(k){ return G[k]; });
   else order.sort(function(a, b){ return a === 'Unassigned' ? 1 : b === 'Unassigned' ? -1 : a.localeCompare(b); });   /* assigned first, unassigned last */
   return order.map(function(k){
     var m = G[k].slice().sort(function(a, b){ return (LEVELS.indexOf(lvOf(a)) - LEVELS.indexOf(lvOf(b))) || (b.b12 || 0) - (a.b12 || 0) || String(a.name).localeCompare(String(b.name)); });   /* Platinum first, Base last */
@@ -1357,7 +1370,7 @@ function staffGroups(L){
 }
 function staffTr(p){
   var on = ST.row === p.refId;
-  var sub = [ST.g === 'level' ? (p.ownedBy || 'Unassigned') : '', p.city, p.mobile ? String(p.mobile).replace(/\D/g, '').slice(-10) : ''].filter(Boolean).join(' · ');   /* 27 Oct 2026 - "show partner phone no here" */
+  var sub = [ST.g !== 'exec' ? (p.ownedBy || 'Unassigned') : '', p.city, p.mobile ? String(p.mobile).replace(/\D/g, '').slice(-10) : ''].filter(Boolean).join(' · ');   /* 27 Oct 2026 - "show partner phone no here" */
   /* 27 Oct 2026 - "show pin here ... for whose set by admin": the PIN is never kept, so WHO set it and WHEN */
   var pb = p.pinBy && p.pinBy.by ? ' by ' + p.pinBy.by + (p.pinBy.at ? ' on ' + stDay(p.pinBy.at) : '') : '';
   /* 27 Oct 2026 - HIS DECISION ("show pin here", "pin still not showing"): the admin sees the PIN he set. The server
@@ -1365,7 +1378,7 @@ function staffTr(p){
   if (p.pinSet && ST.kind === 'OWNER') pb += p.pinBy && p.pinBy.pin ? ' · PIN ' + String(p.pinBy.pin).replace(/\D/g, '') : ' · PIN not recorded - tap New PIN';
   var pin = p.pinSet ? 'PIN set' + pb + (p.logins ? ' · signed in ' + p.logins + 'x' + (p.last ? ', last ' + stDay(p.last) : '') : ' · not signed in yet') : 'no PIN yet';
   var h = '<tr class="pr rl-' + lvOf(p) + (on ? ' on' : '') + '" data-st="row" data-r="' + esc(p.refId) + '">' +
-    '<td class="nm">' + (ST.g === 'exec' ? lvPill(lvOf(p)) + ' ' : '') + '<b>' + esc(p.name) + '</b><span class="xs">' + esc(sub) + (sub ? ' · ' : '') + esc(pin) + '</span></td>' +
+    '<td class="nm">' + (ST.g !== 'level' ? lvPill(lvOf(p)) + ' ' : '') + '<b>' + esc(p.name) + '</b><span class="xs">' + esc(sub) + (sub ? ' · ' : '') + esc(pin) + '</span></td>' +
     '<td>' + (Number(p.sites) || 0) + '</td><td><b>' + stP(p.ready) + '</b></td><td>' + stP(p.wait) + '</td><td>' + stP(p.paid) + '</td></tr>';
   if (on){
     h += '<tr class="act"><td colspan="5"><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
