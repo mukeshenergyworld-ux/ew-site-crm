@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.906";
+  var APP_VERSION = "6.9.907";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -874,7 +874,8 @@
        approve turns into a man typing his PIN again to release material that has already been
        released. Measured on the server side: a move reads the challan sheet, writes, and (on a
        receipt) called Telegram while holding the global lock. 30s was never enough. */
-    challanMove: 60000
+    challanMove: 60000,
+    leadPhotoSave: 90000   /* 6.9.907 - one site photo into Drive (server V176) */
   };
   /* ============ WHAT THE WIRE ACTUALLY COSTS (v6.9.310) ============
      He asked why a change made here takes so long to show up on the godown phone. The answer
@@ -55275,6 +55276,288 @@ function viewCatalogue() {
 
   /* Leads hub: prospect Sites + Site visits + the Brand desk in one tab. Sub-tabs are shown
      only for the pieces this role may see; the Brand desk (viewLeads) is the tab itself. */
+  /* ===================== 6.9.907 - SITE MAPPING (28 Oct 2026) =====================
+     HIS WORDS: "there is one group in my whatsapp PNP site Location i need that to be checked in chrome daily in evening,
+     and made a separate section in leads area, to enter all leads there along with site pic and location, if there is
+     any repeat visit by mapping person and updated site pics uploaded, add update only, i will check and assign leads to
+     executives if that of our work, rest will delete, avoid any duplicate entry, if there any tell me i will check".
+
+     HOW IT FILLS: every evening tools/wa_sitelead.js runs in his WhatsApp Web tab, pairs each site PHOTO (its caption is
+     the man, mobile, address, architect) with the LOCATION pin sent next to it, opens this CRM with ?sitelead=1 and
+     hands the messages over by postMessage. Only an owner session takes them, and only from web.whatsapp.com.
+
+     RECORDS, as facts like everything else (no new sheet, no new column):
+       slead:add    a new site              (target = the WhatsApp message id - the same message never enters twice)
+       slead:visit  the mapping man came back: same mobile, or within 40 m when one of them has no mobile -> an UPDATE
+       slead:set    his decision: assigned to an executive / not our work / back to new / "different site" (not a dup)
+       slead:merge  he says two entries are one site
+     A WEAK match (within 150 m, or the same mobile far away, or the mobile already a CRM client) is added but flagged
+     "possible duplicate" for him to decide. NOTHING IS DELETED: "Not our work" moves it to its own band, and it can be
+     brought back. Assigning makes a normal lead (client row, owner = the executive) so it lands in HIS Leads board. */
+  var SL_NEAR_M = 40, SL_WEAK_M = 150;
+  var _slCache = null, _slCacheN = -1;
+  function slDist(a, b) {
+    if (!a || !b || !a.lat || !b.lat || !a.lng || !b.lng) return Infinity;
+    var R = 6371000, toR = Math.PI / 180, dLat = (b.lat - a.lat) * toR, dLng = (b.lng - a.lng) * toR;
+    var q = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(a.lat * toR) * Math.cos(b.lat * toR) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+    return 2 * R * Math.asin(Math.min(1, Math.sqrt(q)));
+  }
+  /* caption shapes seen (made-up values): "Site engineer - Ramesh 98XXXXXXXX plot 5 sector 1 Panipat" / "Suresh kumar 98XXXXXXXX H.No 12 Model Town Ar. Sharma sir" */
+  function slParse(cap) {
+    var c = String(cap || "").replace(/\s+/g, " ").trim(), out = { name: "", role: "", phone: "", addr: "", arch: "" };
+    var m = c.match(/(?:\+?91[\s-]*)?([6-9]\d{4})[\s-]?(\d{5})(?!\d)/);
+    var before = c, after = "";
+    if (m) { out.phone = m[1] + m[2]; before = c.slice(0, m.index); after = c.slice(m.index + m[0].length); }
+    var ar = after.match(/(?:^|[\s,|])(?:Ar|Arch|Architect)\b\.?\s*[-:]?\s*([A-Za-z][A-Za-z .]{0,40})$/i);
+    if (ar) { out.arch = nmTitle(ar[1].replace(/\s+(sir|ji|madam|mam)\.?\s*$/i, "").trim()); after = after.slice(0, ar.index); }
+    before = before.replace(/[|,;]+/g, " ").trim();
+    var rl = before.match(/^(site engineer|engineer|contractor|owner|builder|plumber|supervisor|pmc|architect)\s*[-:]?\s*/i);
+    if (rl) { out.role = nmTitle(rl[1].toLowerCase()); before = before.slice(rl[0].length); }
+    out.name = nmTitle(before.replace(/[\s|:-]+$/, "").trim()).slice(0, 60);
+    out.addr = after.replace(/\s*\|\s*/g, ", ").replace(/^[\s,;:-]+|[\s,;:-]+$/g, "").slice(0, 160);
+    return out;
+  }
+  function slByAt(a, b) { return String(a._at || "").localeCompare(String(b._at || "")); }
+  function slAll() {
+    var aud = (S.data && S.data.audit) || [];
+    if (_slCache && _slCacheN === aud.length) return _slCache;
+    var by = {}, list = [], seen = {}, lastRead = "";
+    pevRows("slead:add").sort(slByAt).forEach(function (d) {
+      if (d._at > lastRead) lastRead = d._at;
+      if (d.waId) seen[d.waId] = 1;
+      if (!d.key || by[d.key]) return;
+      var L = { key: d.key, at: d.msgAt || d._at, poster: d.poster || "", caption: d.caption || "", name: d.name || "", role: d.role || "",
+        phone: d.phone || "", addr: d.addr || "", arch: d.arch || "", lat: Number(d.lat) || 0, lng: Number(d.lng) || 0, photo: d.photo || "",
+        visits: [], status: "new", exec: "", client: "", dupOf: d.dupOf || "", dupWhy: d.dupWhy || "", inCrm: d.inCrm || "", mergedInto: "", dupOk: false };
+      by[d.key] = L; list.push(L);
+    });
+    pevRows("slead:visit").sort(slByAt).forEach(function (d) {
+      if (d._at > lastRead) lastRead = d._at;
+      if (d.waId) seen[d.waId] = 1;
+      var L = by[d.key]; if (!L) return;
+      L.visits.push({ at: d.msgAt || d._at, poster: d.poster || "", caption: d.caption || "", photo: d.photo || "", lat: Number(d.lat) || 0, lng: Number(d.lng) || 0, why: d.why || "" });
+    });
+    pevRows("slead:set").sort(slByAt).forEach(function (d) {
+      var L = by[d.key]; if (!L) return;
+      if (d.status) { L.status = d.status; L.setBy = d._by; L.setAt = d._at; }
+      if (d.status === "assigned") { L.exec = d.exec || ""; L.client = d.client || L.client; }
+      if (d.dupOk) L.dupOk = true;
+    });
+    pevRows("slead:merge").sort(slByAt).forEach(function (d) {
+      var L = by[d.key], T = by[d.into]; if (!L || !T || L === T || L.mergedInto) return;
+      L.mergedInto = d.into;
+      T.visits.push({ at: L.at, poster: L.poster, caption: L.caption, photo: L.photo, lat: L.lat, lng: L.lng, why: "merged" });
+      L.visits.forEach(function (v) { T.visits.push(v); });
+    });
+    list.forEach(function (L) {
+      L.visits.sort(function (a, b) { return String(a.at).localeCompare(String(b.at)); });
+      L.last = L.visits.length ? L.visits[L.visits.length - 1].at : L.at;
+      if (String(L.last) < String(L.at)) L.last = L.at;
+    });
+    _slCache = { list: list, by: by, seen: seen, lastRead: lastRead }; _slCacheN = aud.length;
+    return _slCache;
+  }
+  function slCrmByPhone(ph) {
+    if (!ph) return null;
+    var d = function (x) { return String(x || "").replace(/\D/g, "").slice(-10); };
+    return ((S.data && S.data.clients) || []).filter(function (c) { return d(c.mobile) === ph || d(c.mobile2) === ph; })[0] || null;
+  }
+  function slMatch(p, all) {
+    var best = null, weak = null;
+    all.list.forEach(function (L) {
+      if (L.mergedInto) return;
+      var dv = slDist(p, L);
+      L.visits.forEach(function (v) { dv = Math.min(dv, slDist(p, v)); });
+      var near = dv <= SL_NEAR_M, close = dv <= SL_WEAK_M;
+      if (p.phone && L.phone === p.phone) {
+        /* the same man - the same site, unless the pins say he is somewhere else */
+        if (dv === Infinity || close) { if (!best) best = { L: L, why: "same mobile " + p.phone, d: dv }; }
+        else if (!weak) weak = { L: L, why: "same mobile " + p.phone + ", " + (dv / 1000).toFixed(1) + " km away", d: dv };
+        return;
+      }
+      /* two different mobiles are two different men - next-door plots stay two leads, flagged */
+      var twoMen = !!(p.phone && L.phone);
+      if (near && !twoMen) { if (!best || dv < best.d) best = { L: L, why: Math.round(dv) + " m away", d: dv }; return; }
+      if (close && (!weak || dv < weak.d)) weak = { L: L, why: Math.round(dv) + " m from " + (L.name || "another entry"), d: dv };
+    });
+    return { best: best, weak: weak };
+  }
+  function slOne(it, sum) {
+    var all = slAll();
+    var waId = String((it && it.waId) || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 90);
+    if (!waId || all.seen[waId]) { sum.skipped++; return Promise.resolve(); }
+    var cap = String(it.caption || "").slice(0, 600), p = slParse(cap);
+    p.lat = Number(it.lat) || 0; p.lng = Number(it.lng) || 0;
+    if (Math.abs(p.lat) > 90 || Math.abs(p.lng) > 180) { p.lat = 0; p.lng = 0; }
+    var msgAt = String(it.at || "").replace(/[^0-9T:-]/g, "").slice(0, 16), poster = nmTitle(String(it.poster || "").slice(0, 60));
+    var b64 = String(it.b64 || "");
+    var photoP = (b64 && b64.length < 4000000 && /^[A-Za-z0-9+/=]+$/.test(b64.slice(0, 200)))
+      ? api("leadPhotoSave", { key: waId, b64: b64, date: msgAt.slice(0, 10) }).then(function (r) {
+          if (r && r.ok && r.id) return String(r.id);
+          sum.photoFail++; sum.photoErr = (r && r.error) || "no answer"; return "";
+        }, function (e) { sum.photoFail++; sum.photoErr = String((e && e.message) || e); return ""; })
+      : Promise.resolve("");
+    all.seen[waId] = 1;
+    return photoP.then(function (photo) {
+      var m = slMatch(p, slAll());
+      if (m.best) {
+        sum.visits++;
+        return auditFact("slead:visit", m.best.L.key, { key: m.best.L.key, waId: waId, msgAt: msgAt, poster: poster, caption: cap, photo: photo, lat: p.lat, lng: p.lng, why: m.best.why });
+      }
+      var crm = slCrmByPhone(p.phone);
+      sum.added++; if (m.weak || crm) sum.flagged++;
+      sum.names.push(p.name || cap.slice(0, 30) || "a pin");
+      return auditFact("slead:add", waId, { key: waId, waId: waId, msgAt: msgAt, poster: poster, caption: cap, name: p.name, role: p.role, phone: p.phone,
+        addr: p.addr, arch: p.arch, lat: p.lat, lng: p.lng, photo: photo, dupOf: m.weak ? m.weak.L.key : "", dupWhy: m.weak ? m.weak.why : "", inCrm: crm ? crm.name : "" });
+    }).then(function () { _slCache = null; });
+  }
+  function slIngest(items) {
+    var sum = { added: 0, visits: 0, skipped: 0, flagged: 0, photoFail: 0, names: [] };
+    var chain = Promise.resolve();
+    (items || []).forEach(function (it) {
+      chain = chain.then(function () { return slOne(it, sum); }).catch(function (e) { sum.err = String((e && e.message) || e); });
+    });
+    return chain.then(function () { _slCache = null; try { renderBg(); } catch (e) { } return sum; });
+  }
+  function slMaps(L) { return (L && L.lat && L.lng) ? "https://www.google.com/maps?q=" + L.lat + "," + L.lng : ""; }
+  function slImg(id, w) { return id ? "https://lh3.googleusercontent.com/d/" + encodeURIComponent(id) + "=w" + (w || 300) : ""; }
+  function slWhen(v) {
+    var m = String(v || "").match(/^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/); if (!m) return String(v || "");
+    var mo = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][+m[2] - 1] || "";
+    var t = ""; if (m[4]) { var hh = +m[4]; t = ", " + ((hh % 12) || 12) + ":" + m[5] + " " + (hh >= 12 ? "PM" : "AM"); }
+    return (+m[3]) + " " + mo + " " + m[1] + t;
+  }
+  function slDistrict(addr) {
+    var a = String(addr || "").toLowerCase(), out = "";
+    ((S.data && S.data.clients) || []).forEach(function (c) { var l = String(c.location || "").trim(); if (!out && l && a.indexOf(l.toLowerCase()) >= 0) out = l; });
+    return out;
+  }
+  function slAssign(key, exec) {
+    var L = slAll().by[key]; if (!L || !exec) return Promise.resolve(null);
+    var have = (L.client && clientByName(L.client)) || slCrmByPhone(L.phone);
+    var p;
+    if (have) p = Promise.resolve(have.name);   /* already in the CRM: point at that record, do not make a second one */
+    else {
+      var base = nmTitle(L.name || ("Site " + (L.phone || slWhen(L.at)))), nm = base, n2 = 2;
+      var dist = slDistrict(L.addr);
+      if (clientByName(nm)) nm = base + (dist ? " - " + dist : " - Site");
+      while (clientByName(nm)) nm = base + " - Site " + (n2++);
+      var map = slMaps(L);
+      var notes = "From PNP site mapping (WhatsApp), " + slWhen(L.at) + ", mapped by " + (L.poster || "?") +
+        (L.role ? " | " + L.role : "") + (L.arch ? " | Architect: " + L.arch : "") + (map ? " | Map: " + map : "") +
+        (L.photo ? " | Photo: https://drive.google.com/file/d/" + L.photo + "/view" : "") + " | Assigned by " + S.user + " " + today();
+      p = save("clients", {
+        id: "", createdBy: S.user, ownedBy: exec, name: nm, shortName: shortNameOf(nm, L.phone || ""),
+        location: dist, area: "", mobile: L.phone || "", mobile2: "", address: L.addr || "", type: "", segment: "",
+        architect: "", plumber: "", builder: "", pmc: "", notes: notes, billingJson: "[]", openingAmt: "", openingAsOn: "",
+        leadType: "New", creditLimit: "", creditDays: "", stage: ""
+      }).then(function (r) { return r ? (r.name || nm) : null; });
+    }
+    return p.then(function (name) {
+      if (!name) return null;
+      return auditFact("slead:set", key, { key: key, status: "assigned", exec: exec, client: name, had: have ? 1 : 0 })
+        .then(function () { _slCache = null; try { bustCaches(); } catch (e) { } return { name: name, had: !!have }; });
+    });
+  }
+  function slCard(L, admin, execs) {
+    var k = L.key, map = slMaps(L), b = 'style="min-height:44px;font-size:13px;padding:6px 12px"';
+    var h = '<div class="card" style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start;margin-top:8px">';
+    h += L.photo
+      ? '<a href="' + esc(slImg(L.photo, 1600)) + '" target="_blank" rel="noopener"><img src="' + esc(slImg(L.photo, 300)) + '" alt="Site photo" loading="lazy" style="width:120px;height:120px;object-fit:cover;border-radius:10px;background:#f1f5f9"></a>'
+      : '<div style="width:120px;height:120px;border-radius:10px;background:#f1f5f9;display:flex;align-items:center;justify-content:center;font-size:12px;color:#475569">No photo</div>';
+    h += '<div style="flex:1;min-width:220px">' +
+      '<div style="font-size:15px"><b>' + esc(L.name || "No name in the message") + '</b>' + (L.role ? ' <span class="meta" style="font-size:12.5px">' + esc(L.role) + '</span>' : '') + '</div>' +
+      (L.phone ? '<div style="margin-top:2px"><a href="tel:' + esc(L.phone) + '" style="font-size:14px">' + esc(L.phone) + '</a></div>' : '<div class="meta" style="font-size:12.5px">No mobile in the message</div>') +
+      (L.addr ? '<div style="font-size:13px;margin-top:2px">' + esc(L.addr) + '</div>' : '') +
+      (L.arch ? '<div style="font-size:13px">Architect: ' + esc(L.arch) + '</div>' : '') +
+      '<div class="meta" style="font-size:12.5px;margin-top:3px">Mapped by ' + esc(L.poster || "?") + ' · ' + esc(slWhen(L.at)) +
+        (map ? ' · <a href="' + esc(map) + '" target="_blank" rel="noopener">Open map</a>' : ' · no location pin') + '</div>';
+    if (L.visits.length) {
+      h += '<div style="margin-top:6px;font-size:13px"><b>' + plural(L.visits.length, "update") + '</b> · last ' + esc(slWhen(L.last)) + '</div>' +
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">' + L.visits.map(function (v) {
+          var t = esc(slWhen(v.at) + (v.poster ? " · " + v.poster : "") + (v.caption ? " · " + v.caption : ""));
+          return v.photo ? '<a href="' + esc(slImg(v.photo, 1600)) + '" target="_blank" rel="noopener" title="' + t + '"><img src="' + esc(slImg(v.photo, 160)) + '" alt="Update photo" loading="lazy" style="width:56px;height:56px;object-fit:cover;border-radius:8px;background:#f1f5f9"></a>'
+            : '<span class="pill" title="' + t + '" style="font-size:12px">' + esc(slWhen(v.at)) + '</span>';
+        }).join("") + '</div>';
+    }
+    if (L.status === "new" && !L.dupOk && L.dupOf) {
+      var T = slAll().by[L.dupOf];
+      h += '<div style="margin-top:8px;background:#fffbeb;border:1px solid #f59e0b;border-radius:10px;padding:8px 10px;font-size:13px">' +
+        '<b style="color:#92400e">Possible duplicate</b> — ' + esc(L.dupWhy || "") + (T ? ' (' + esc(T.name || "entry of " + slWhen(T.at)) + ')' : '') +
+        (admin ? '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">' +
+          (T ? '<button class="btn sm" data-act="sl-merge" data-k="' + esc(k) + '" data-into="' + esc(L.dupOf) + '" ' + b + '>Same site — keep as an update</button>' : '') +
+          '<button class="btn sm ghost" data-act="sl-dupok" data-k="' + esc(k) + '" ' + b + '>Different site</button></div>' : '') + '</div>';
+    }
+    if (L.inCrm && L.status === "new") h += '<div style="margin-top:6px;font-size:13px;color:#0f766e">Already in the CRM as <b>' + esc(L.inCrm) + '</b></div>';
+    if (L.status === "assigned") h += '<div style="margin-top:6px;font-size:13px">Assigned to <b>' + esc(L.exec) + '</b>' + (L.client ? ' · in Leads as <b>' + esc(L.client) + '</b>' : '') + (L.setAt ? ' · ' + esc(slWhen(L.setAt)) : '') + '</div>';
+    if (L.status === "notours") h += '<div style="margin-top:6px;font-size:13px;color:#475569">Not our work' + (L.setBy ? ' · ' + esc(L.setBy) : '') + (L.setAt ? ', ' + esc(slWhen(L.setAt)) : '') + '</div>';
+    if (admin) {
+      h += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;align-items:center">';
+      if (L.status === "new") {
+        h += '<select id="sl_ex_' + esc(k) + '" style="min-height:44px;font-size:14px"><option value="">— executive —</option>' +
+          execs.map(function (x) { return '<option value="' + esc(x) + '">' + esc(x) + '</option>'; }).join("") + '</select>' +
+          '<button class="btn sm" data-act="sl-assign" data-k="' + esc(k) + '" ' + b + '>Assign</button>' +
+          '<button class="btn sm ghost" data-act="sl-set" data-s="notours" data-k="' + esc(k) + '" ' + b + '>Not our work</button>';
+      } else {
+        h += '<button class="btn sm ghost" data-act="sl-set" data-s="new" data-k="' + esc(k) + '" ' + b + '>Back to New</button>';
+      }
+      h += '</div>';
+    }
+    return h + '</div></div>';
+  }
+  function viewSiteMap() {
+    var all = slAll(), admin = roleIs("admin"), me = String(S.user || "").trim().toLowerCase();
+    var list = all.list.filter(function (L) { return !L.mergedInto; });
+    if (!admin) list = list.filter(function (L) { return L.status === "assigned" && String(L.exec || "").trim().toLowerCase() === me; });
+    list.sort(function (a, b) { return String(b.last).localeCompare(String(a.last)); });
+    var isDup = function (L) { return L.status === "new" && !L.dupOk && !!L.dupOf; };
+    var G = {
+      "new": list.filter(function (L) { return L.status === "new"; }),
+      dup: list.filter(isDup),
+      assigned: list.filter(function (L) { return L.status === "assigned"; }),
+      notours: list.filter(function (L) { return L.status === "notours"; }),
+      all: list
+    };
+    var f = admin ? (S.slF || "new") : "assigned"; if (!G[f]) f = "new";
+    var h = '<div class="meta" style="font-size:13px;margin:0 2px 8px">Read every evening from the WhatsApp group <b>PNP Site Location &amp; Measurements</b>. ' +
+      'A repeat visit becomes an update on the same site. Nothing is deleted.' + (all.lastRead ? ' Last read: ' + esc(slWhen(new Date(Date.parse(all.lastRead) + 19800000).toISOString())) + '.' : '') + '</div>';
+    if (admin) {
+      var chips = [["new", "New"], ["dup", "Possible duplicates"], ["assigned", "Assigned"], ["notours", "Not our work"], ["all", "All"]];
+      h += '<div class="row" style="margin-bottom:6px">' + chips.map(function (c) {
+        return '<button class="btn sm ' + (f === c[0] ? "" : "ghost") + '" data-act="sl-f" data-s="' + c[0] + '" style="min-height:44px">' + c[1] + ' (' + G[c[0]].length + ')</button>';
+      }).join("") + '</div>';
+    }
+    var rows = G[f], execs = pevExecNames();
+    if (!rows.length) return h + '<div class="empty">' + (admin ? (all.list.length ? "Nothing in this band." : "No site has been read from the group yet.") : "No site has been assigned to you yet.") + '</div>';
+    var shown = rows.slice(0, S.slMore ? 400 : 60);
+    h += shown.map(function (L) { return slCard(L, admin, execs); }).join("");
+    if (rows.length > shown.length) h += '<div class="acts" style="margin-top:8px"><button class="btn sm ghost" data-act="sl-more" style="min-height:44px">Show all ' + rows.length + '</button></div>';
+    return h;
+  }
+  /* the hand-over from WhatsApp Web: only an owner session, only from web.whatsapp.com, only when opened for it */
+  function slBoot() {
+    var WA = "https://web.whatsapp.com";
+    if (!/[?&]sitelead=1(?:&|$)/.test(location.search) || !window.opener) return;
+    window.addEventListener("message", function (e) {
+      if (e.origin !== WA || !e.data || e.data.ew !== "sitelead-items") return;
+      var src = e.source;
+      if (!S.data || !S.user || !roleIs("admin")) { try { src.postMessage({ ew: "sitelead-done", ok: false, error: "Sign in to the CRM as the owner first." }, WA); } catch (x) { } return; }
+      var items = Array.isArray(e.data.items) ? e.data.items.slice(0, 20) : [];
+      slIngest(items).then(function (sum) {
+        S.tab = "leads"; S.leadsSub = "sitemap";
+        try { src.postMessage({ ew: "sitelead-done", ok: true, batch: e.data.batch, sum: sum }, WA); } catch (x) { }
+      });
+    });
+    var iv = setInterval(function () {
+      if (!S.data || !S.user || !S.data.audit) return;
+      clearInterval(iv);
+      var ok = roleIs("admin");
+      try { window.opener.postMessage({ ew: "sitelead-ready", ok: ok, seen: ok ? Object.keys(slAll().seen) : [] }, WA); } catch (x) { }
+      if (ok) { S.tab = "leads"; S.leadsSub = "sitemap"; try { render(); } catch (x) { } }
+    }, 700);
+    setTimeout(function () { clearInterval(iv); }, 300000);
+  }
+  try { slBoot(); } catch (eSl) { }
   function viewLeadsHub() {
     var tabs = [["board", "Leads"]];
     if (canSee("sites")) tabs.push(["sites", "Sites"]);
@@ -55282,6 +55565,12 @@ function viewCatalogue() {
        v6.9.290 took Site off the menu, and this board is about clients, not sites. */
     tabs.push(["stage", "Stage board"]);
     if (canSee("visits")) tabs.push(["visits", "Site visits & quotes"]);
+    /* 6.9.907 - the owner sees every mapped site; an executive sees the tab once one is assigned to him */
+    try {
+      var _sl = slAll(), _me = String(S.user || "").trim().toLowerCase();
+      if (roleIs("admin")) { var _sn = _sl.list.filter(function (L) { return !L.mergedInto && L.status === "new"; }).length; tabs.push(["sitemap", "Site mapping" + (_sn ? " (" + _sn + ")" : "")]); }
+      else if (_sl.list.some(function (L) { return L.status === "assigned" && String(L.exec || "").trim().toLowerCase() === _me; })) tabs.push(["sitemap", "Site mapping"]);
+    } catch (eSl) { }
     var sub = S.leadsSub || tabs[0][0];
     if (!tabs.some(function (t) { return t[0] === sub; })) sub = tabs[0][0];
     var h = '<div class="row" style="margin-bottom:10px">' + tabs.map(function (t) {
@@ -55289,7 +55578,7 @@ function viewCatalogue() {
     }).join("") + '</div>';
     return h + (sub === "sites" ? viewSites()
               : (sub === "stage" ? viewStageBoard()
-              : (sub === "visits" ? viewVisits() : viewLeadBoard())));
+              : (sub === "visits" ? viewVisits() : (sub === "sitemap" ? viewSiteMap() : viewLeadBoard()))));
   }
 
   /* Quotes hub: quotations + Win/Loss (quote outcomes) as sub-tabs instead of two tabs. */
@@ -62040,6 +62329,27 @@ function viewCatalogue() {
       S.tab = "billing"; S.q = hcl; render(); return;
     }
     if (act === "leads-sub") { S.leadsSub = t.getAttribute("data-s"); render(); return; }
+    /* 6.9.907 - site mapping */
+    if (act === "sl-f") { S.slF = t.getAttribute("data-s"); S.slMore = false; render(); return; }
+    if (act === "sl-more") { S.slMore = true; render(); return; }
+    if (act === "sl-assign" || act === "sl-set" || act === "sl-dupok" || act === "sl-merge") {
+      if (!roleIs("admin")) { toast("Only the owner decides site-mapping leads."); return; }
+      var slK = t.getAttribute("data-k") || "";
+      if (act === "sl-assign") {
+        var slSel = el("sl_ex_" + slK), slEx = slSel ? slSel.value : "";
+        if (!slEx) { toast("Pick the executive first."); return; }
+        t.disabled = true;
+        slAssign(slK, slEx).then(function (r) {
+          toast(r ? (r.had ? "Assigned to " + slEx + " — already in the CRM as " + r.name + "." : "Assigned to " + slEx + " — in his Leads as " + r.name + ".") : "Could not assign — try again.");
+          render();
+        }, function (e) { toast("Could not assign: " + ((e && e.message) || e)); render(); });
+        return;
+      }
+      var slD = act === "sl-set" ? { key: slK, status: t.getAttribute("data-s") } : (act === "sl-dupok" ? { key: slK, dupOk: 1 } : { key: slK, into: t.getAttribute("data-into") || "" });
+      t.disabled = true;
+      auditFact(act === "sl-merge" ? "slead:merge" : "slead:set", slK, slD).then(function () { _slCache = null; render(); }, function () { toast("Not saved — try again."); render(); });
+      return;
+    }
     if (act === "quotes-sub") { S.quotesSub = t.getAttribute("data-s"); render(); return; }
     if (act === "coll-sub") { S.collSub = t.getAttribute("data-s"); render(); return; }
     if (act === "price-sub") { S.priceSub = t.getAttribute("data-s"); render(); return; }
