@@ -1,36 +1,41 @@
 /* =====================================================================================================
-   EW SITE LEADS - WhatsApp Web collector for the group "PNP Site Location & Measurements"  (28 Oct 2026)
+   EW SITE LEADS - WhatsApp Web collector for the group "PNP Site Location & Measurements"   v2, 28 Oct 2026
 
-   Runs INSIDE his WhatsApp Web tab (pasted by the evening task, never loaded from a server - WhatsApp's
-   own rules block that). It reads only the group that is open, only what is on screen after scrolling
-   back, and sends nothing anywhere except to the Energy World CRM tab it opens itself
-   (mukeshenergyworld-ux.github.io/ew-site-crm/team/?sitelead=1), by postMessage.
+   Runs INSIDE his WhatsApp Web tab (pasted by the evening task - WhatsApp's own rules block loading it
+   from a server). It reads only the group that is open and sends nothing anywhere except to the Energy
+   World CRM tab it opens itself (mukeshenergyworld-ux.github.io/ew-site-crm/team/?sitelead=1), by
+   postMessage. The CRM decides new / repeat visit / possible duplicate; this script only collects.
 
-   A site, in that group, is two messages from the same man: a PHOTO whose caption is
-       "<name> <mobile> <address> Ar. <architect>"
-   and, next to it, a LOCATION pin. They are paired here (same sender, within 20 minutes). A photo
-   with no pin still goes (no map); a pin with no photo still goes (map only).
+   WHAT THE GROUP LOOKS LIKE (measured 28 Oct): one mapping man posts a site as a short run of messages -
+   one or more PHOTOS (caption or none), a LOCATION pin, and often a TEXT with the name and mobile
+   (sometimes forwarded, sometimes a reply). So a SITE = one run from one sender: messages with no more
+   than 20 minutes between them, cut when a second mobile number appears, or when a new photo / mobile
+   arrives after the run already has its pin.
 
-   The CRM decides new / repeat visit / possible duplicate - this script only collects. Before any
-   photo is exported the CRM says which message ids it already has, so a site is never sent twice.
+   TWO THINGS WHATSAPP WEB DOES THAT SHAPE THIS:
+     - the chat is VIRTUALISED: only the rows on screen exist in the page. So the run is collected while
+       SCROLLING DOWN from the oldest wanted day, a screen at a time, and kept by message id.
+     - older photos are not downloaded until asked ("173 kB" button). For a photo the CRM does not have,
+       that button is pressed (it loads the picture into the chat - nothing is saved to the computer).
 
    Steps the evening task runs (each a separate javascript call):
      1. paste this file                       -> 'ready'
-     2. EWSL.open()                           -> opens the group if it is not open (search box)
-     3. await EWSL.loadBack(3)                -> scrolls up until 3 days are on screen
-     4. EWSL.preview()                        -> how many sites, no photos (safe to print)
-     5. EWSL.button()  then CLICK the button with the mouse (a new tab may only be opened by a click)
-     6. EWSL.state                            -> poll until phase is 'done' (or 'error')
+     2. await EWSL.open()                     -> 'open'  (opens the group from the chat list)
+     3. await EWSL.loadBack(3)                -> scrolls up until 3 days back is on screen
+     4. EWSL.button()  then CLICK it with the mouse (only a click may open the CRM tab)
+     5. EWSL.state                            -> poll until phase is 'done' or 'error' (no photos in it)
    ===================================================================================================== */
 (function () {
-  if (window.EWSL && window.EWSL.v >= 1) return "ready";
+  if (window.EWSL && window.EWSL.v >= 3) return "ready";
   var CRM = "https://mukeshenergyworld-ux.github.io/ew-site-crm/team/?sitelead=1";
   var CRM_ORIGIN = "https://mukeshenergyworld-ux.github.io";
   var GROUP = "PNP Site Location";
+  var GAP_MIN = 20;
   var wait = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
   function rows() { return Array.prototype.slice.call(document.querySelectorAll("#main [data-id]")); }
   function groupOk() { var h = document.querySelector("#main header"); return !!h && h.innerText.indexOf(GROUP) >= 0; }
-  var DM = null;   /* date order: "M/D" or "D/M" - read from the messages themselves */
+  function p2(n) { return (n < 10 ? "0" : "") + n; }
+  var DM = null;   /* date order of this WhatsApp: "M/D" or "D/M", learnt from the messages */
   function dateOrder() {
     if (DM) return DM;
     var md = 0, dm = 0;
@@ -38,25 +43,23 @@
       var m = String(e.getAttribute("data-pre-plain-text")).match(/,\s*(\d{1,2})\/(\d{1,2})\/\d{4}\]/);
       if (!m) return; if (+m[1] > 12) dm++; if (+m[2] > 12) md++;
     });
-    DM = dm > md ? "D/M" : "M/D";
-    return DM;
+    if (dm || md) DM = dm > md ? "D/M" : "M/D";
+    return DM || "M/D";
   }
-  function p2(n) { return (n < 10 ? "0" : "") + n; }
+  function hm(t) {   /* "3:35 PM" -> "15:35" */
+    var m = String(t || "").match(/(\d{1,2}):(\d{2})\s*([AaPp][Mm])?/); if (!m) return "";
+    var h = +m[1], ap = String(m[3] || "").toUpperCase(); if (ap === "PM" && h < 12) h += 12; if (ap === "AM" && h === 12) h = 0;
+    return p2(h) + ":" + m[2];
+  }
   function parsePre(s) {   /* "[2:39 PM, 10/28/2026] Sender Name: " */
-    var m = String(s || "").match(/^\[(\d{1,2}):(\d{2})\s*([AaPp][Mm])?,\s*(\d{1,2})\/(\d{1,2})\/(\d{4})\]\s*([\s\S]*?):\s*$/);
+    var m = String(s || "").match(/^\[([^,\]]+),\s*(\d{1,2})\/(\d{1,2})\/(\d{4})\]\s*([\s\S]*?):\s*$/);
     if (!m) return null;
-    var h = +m[1], mi = +m[2], ap = String(m[3] || "").toUpperCase();
-    if (ap === "PM" && h < 12) h += 12; if (ap === "AM" && h === 12) h = 0;
-    var a = +m[4], b = +m[5], mo = a, d = b;
+    var a = +m[2], b = +m[3], mo = a, d = b;
     if (dateOrder() === "D/M" || a > 12) { d = a; mo = b; }
-    return { at: m[6] + "-" + p2(mo) + "-" + p2(d) + "T" + p2(h) + ":" + p2(mi), who: m[7].trim() };
+    return { day: m[4] + "-" + p2(mo) + "-" + p2(d), time: hm(m[1]), who: m[5].trim() };
   }
   function mins(a, b) { return Math.abs(Date.parse(a + ":00") - Date.parse(b + ":00")) / 60000; }
-  function key(id) {
-    var parts = String(id || "").split("_");
-    var k = parts.length >= 3 ? parts[2] : String(id || "");
-    return k.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 90);
-  }
+  function key(id) { var p = String(id || "").split("_"); return (p.length >= 3 ? p[2] : String(id || "")).replace(/[^A-Za-z0-9_-]/g, "").slice(0, 90); }
   function locOf(r) {
     var a = r.querySelector('a[href*="maps.google"], a[href*="google.com/maps"], a[href*="maps?q"], a[href*="/maps/"]');
     if (!a) return null;
@@ -64,47 +67,39 @@
     var m = h.match(/(-?\d{1,2}\.\d{3,})\s*,\s*(-?\d{1,3}\.\d{3,})/);
     return m ? { lat: +m[1], lng: +m[2] } : null;
   }
-  function capOf(r) {
-    var c = r.querySelector('[data-testid="image-caption"] span, span.selectable-text');
-    return c ? String(c.innerText || "").trim() : "";
+  function textOf(r) {   /* the message's own words: the LAST selectable span (a reply shows the quoted words first) */
+    var s = r.querySelectorAll("span.selectable-text");
+    return s.length ? String(s[s.length - 1].innerText || "").replace(/\s+/g, " ").trim() : "";
   }
-  function photoOf(r) { return r.querySelector('img[src^="blob:"]') || null; }
-  function hasPhoto(r) { return !!(photoOf(r) || r.querySelector('img[src^="data:image"]') || r.querySelector('[data-icon="media-download"], [data-testid="image-thumb"]')); }
-  function scan() {
-    var msgs = rows().map(function (r) {
+  function isPhoto(r) { return !!(r.querySelector('img[src^="blob:"]') || r.querySelector('[role="button"][aria-label="Open picture"], [aria-label="Open picture"]')); }
+  function dlButton(r) {
+    return Array.prototype.slice.call(r.querySelectorAll('[role="button"], button')).filter(function (x) { return /^\s*[\d.]+\s*(kB|KB|MB)\s*$/.test(x.innerText || ""); })[0] || null;
+  }
+  function phoneIn(t) { var m = String(t || "").match(/(?:\+?91[\s-]*)?([6-9]\d{4})[\s-]?(\d{5})(?!\d)/); return m ? m[1] + m[2] : ""; }
+  /* ---------------- collect, a screen at a time ---------------- */
+  var MSG = {}, ORDER = [];
+  function grab(need) {
+    var R = rows(), jobs = [];
+    var lastPre = null;
+    R.forEach(function (r) {
+      var id = r.getAttribute("data-id"); if (!id) return;
       var pp = r.querySelector("[data-pre-plain-text]");
-      return { id: r.getAttribute("data-id"), el: r, pre: pp ? parsePre(pp.getAttribute("data-pre-plain-text")) : null,
-        ll: locOf(r), photo: hasPhoto(r), cap: capOf(r) };
+      var pre = pp ? parsePre(pp.getAttribute("data-pre-plain-text")) : null;
+      var m = MSG[id];
+      if (!m) { m = MSG[id] = { id: id, k: key(id), pre: pre, ll: locOf(r), photo: isPhoto(r), text: textOf(r), t: hm((String(r.innerText || "").match(/(\d{1,2}:\d{2}\s*[AaPp][Mm])\s*$/) || [])[1] || ""), b64: "" }; ORDER.push(id); }
+      else { if (!m.pre && pre) m.pre = pre; if (!m.ll) m.ll = locOf(r); if (!m.text) m.text = textOf(r); if (!m.photo) m.photo = isPhoto(r); }   /* a row is often drawn before its picture */
+      if (m.photo && !m.b64 && !m.tried && need(m)) { m.tried = 1; jobs.push(exportRow(r).then(function (b) { m.b64 = b; })); }
     });
-    for (var i = 0; i < msgs.length; i++) if (!msgs[i].pre) msgs[i].pre = (msgs[i + 1] && msgs[i + 1].pre) || (msgs[i - 1] && msgs[i - 1].pre) || null;
-    var items = [], used = {};
-    msgs.forEach(function (m, i) {
-      if (!m.photo || !m.pre) return;
-      var loc = null, j, q;
-      for (j = i + 1; j < Math.min(msgs.length, i + 6) && !loc; j++) {
-        q = msgs[j]; if (!q.pre || q.pre.who !== m.pre.who) continue;
-        if (q.ll && !used[j] && mins(q.pre.at, m.pre.at) <= 20) { loc = q; used[j] = 1; break; }
-        if (q.photo) break;
-      }
-      if (!loc) for (j = i - 1; j >= Math.max(0, i - 3) && !loc; j--) {
-        q = msgs[j]; if (!q.pre || q.pre.who !== m.pre.who) continue;
-        if (q.ll && !used[j] && !q.photo && mins(q.pre.at, m.pre.at) <= 20) { loc = q; used[j] = 1; }
-      }
-      items.push({ waId: key(m.id), at: m.pre.at, poster: m.pre.who, caption: m.cap, lat: loc ? loc.ll.lat : 0, lng: loc ? loc.ll.lng : 0, _el: m.el });
-    });
-    msgs.forEach(function (m, i) {
-      if (m.ll && !used[i] && !m.photo && m.pre) items.push({ waId: key(m.id), at: m.pre.at, poster: m.pre.who, caption: m.cap, lat: m.ll.lat, lng: m.ll.lng });
-    });
-    return items.filter(function (it) { return it.waId; });
+    return Promise.all(jobs);
   }
-  function exportRow(el) {
+  function exportRow(r) {
+    var b = r.querySelector('img[src^="blob:"]') ? null : dlButton(r);
+    if (b) { try { b.click(); } catch (e) { } }
     return new Promise(function (res) {
-      try { el.scrollIntoView({ block: "center" }); } catch (e) { }
       var tries = 0;
       (function look() {
-        var img = photoOf(el);
-        if (!img || !img.complete || !img.naturalWidth) { if (++tries < 10) return setTimeout(look, 500); }
-        if (!img) img = el.querySelector('img[src^="data:image"]');
+        var img = r.querySelector('img[src^="blob:"]');
+        if ((!img || !img.complete || !img.naturalWidth) && ++tries < 20) return setTimeout(look, 500);
         if (!img || !img.naturalWidth) return res("");
         try {
           var w = img.naturalWidth, h = img.naturalHeight, s = Math.min(1, 1280 / Math.max(w, h));
@@ -123,22 +118,73 @@
   function earliest() {
     var e = document.querySelector("#main [data-pre-plain-text]");
     var p = e ? parsePre(e.getAttribute("data-pre-plain-text")) : null;
-    return p ? p.at.slice(0, 10) : "";
+    return p ? p.day : "";
   }
   function loadBack(days) {
     var cut = new Date(Date.now() - (days || 2) * 86400000 + 19800000).toISOString().slice(0, 10);
     var sc = scroller(), k = 0;
     if (!sc) return Promise.resolve({ ok: false, why: "chat not open" });
     function step() {
-      var e = earliest(); if (e && e < cut) return Promise.resolve({ ok: true, earliest: e, rows: rows().length });
-      if (++k > 60) return Promise.resolve({ ok: true, earliest: e, rows: rows().length, capped: 1 });
-      var n = rows().length; sc.scrollTop = 0;
+      var e = earliest(); if (e && e < cut) return Promise.resolve({ ok: true, earliest: e });
+      if (++k > 80) return Promise.resolve({ ok: true, earliest: e, capped: 1 });
+      var before = sc.scrollHeight; sc.scrollTop = 0;
       return wait(1600).then(function () {
-        if (rows().length > n) return step();
-        return wait(2000).then(function () { return rows().length > n ? step() : { ok: true, earliest: earliest(), rows: rows().length, top: 1 }; });
+        if (sc.scrollHeight > before) return step();
+        return wait(2200).then(function () { return sc.scrollHeight > before ? step() : { ok: true, earliest: earliest(), top: 1 }; });
       });
     }
     return step();
+  }
+  function sweep(need, onStep) {   /* from where the view is now, down to the newest message */
+    var sc = scroller(); if (!sc) return Promise.resolve(0);
+    var n = 0;
+    function step() {
+      return grab(need).then(function () {
+        if (onStep) onStep();
+        var atEnd = sc.scrollTop + sc.clientHeight >= sc.scrollHeight - 8;
+        if (atEnd || ++n > 400) return n;
+        sc.scrollTop = sc.scrollTop + Math.round(sc.clientHeight * 0.7);
+        return wait(900).then(step);
+      });
+    }
+    return step();
+  }
+  /* ---------------- messages -> sites ---------------- */
+  function sites() {
+    var ms = ORDER.map(function (id) { return MSG[id]; });
+    /* a photo without a caption carries no sender/date: take them from its neighbours */
+    var lastPre = null;
+    ms.forEach(function (m) { if (m.pre) lastPre = m.pre; else if (lastPre) m.pre0 = lastPre; });
+    var nextPre = null;
+    for (var i = ms.length - 1; i >= 0; i--) { if (ms[i].pre) nextPre = ms[i].pre; else if (!ms[i].pre0 && nextPre) ms[i].pre0 = nextPre; }
+    ms.forEach(function (m) {
+      var p = m.pre || m.pre0; m.who = p ? p.who : "";
+      var t = (m.pre && m.pre.time) || m.t || (p && p.time) || "00:00";
+      m.at = p ? p.day + "T" + t : "";
+    });
+    var out = [], cur = null;
+    function close() { if (cur && (cur.phone || cur.ll || cur.photos.length)) out.push(cur); cur = null; }
+    ms.forEach(function (m) {
+      if (!m.at || !m.who) return;
+      var ph = phoneIn(m.text);
+      var cut = !cur || cur.who !== m.who || mins(cur.lastAt, m.at) > GAP_MIN ||
+        (ph && cur.phone && ph !== cur.phone) || (cur.ll && (m.photo || (ph && !cur.phone && cur.photos.length)));
+      if (cut) { close(); cur = { who: m.who, at: m.at, lastAt: m.at, ids: [], texts: [], phone: "", ll: null, photos: [] }; }
+      cur.ids.push(m.k); cur.lastAt = m.at;
+      if (m.text) { if (ph) cur.texts.unshift(m.text); else cur.texts.push(m.text); }
+      if (ph && !cur.phone) cur.phone = ph;
+      if (m.ll && !cur.ll) cur.ll = m.ll;
+      if (m.photo) cur.photos.push(m);
+    });
+    close();
+    return out.map(function (s) {
+      var ph = s.photos.filter(function (m) { return m.b64; })[0] || null;
+      return { waId: s.ids[0], ids: s.ids, at: s.at, poster: s.who, caption: s.texts.join(" | ").slice(0, 600),
+        lat: s.ll ? s.ll.lat : 0, lng: s.ll ? s.ll.lng : 0, b64: ph ? ph.b64 : "", photos: s.photos.length };
+    });
+  }
+  function preview() {   /* nothing private leaves: mobiles masked, no photos */
+    return sites().map(function (s) { return s.at + " " + s.poster + " | " + s.caption.replace(/\d{10}/g, "##########").slice(0, 70) + (s.lat ? " [pin]" : "") + " [" + s.photos + " photo]"; });
   }
   function open() {
     if (groupOk()) return Promise.resolve("open");
@@ -147,12 +193,6 @@
     var ev = function (type) { t.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view: window })); };
     ev("mousedown"); ev("mouseup"); ev("click");
     return wait(2500).then(function () { return groupOk() ? "open" : "not opened"; });
-  }
-  function preview() {
-    var it = scan();
-    return { group: groupOk(), earliest: earliest(), sites: it.length, withPin: it.filter(function (x) { return x.lat; }).length,
-      withPhoto: it.filter(function (x) { return x._el; }).length,
-      list: it.map(function (x) { return x.at + " " + x.poster + ": " + String(x.caption || "(no caption)").slice(0, 60) + (x.lat ? " [pin]" : ""); }) };
   }
   function waitMsg(type, ms) {
     return new Promise(function (res, rej) {
@@ -168,25 +208,26 @@
   function run() {
     var st = EWSL.state = { phase: "opening", found: 0, todo: 0, sent: 0, sum: { added: 0, visits: 0, skipped: 0, flagged: 0, photoFail: 0, names: [] }, err: "" };
     if (!groupOk()) { st.phase = "error"; st.err = "The PNP group is not open"; return Promise.resolve(st); }
-    var items = scan(); st.found = items.length;
     var win = window.open(CRM, "ewsitelead");   /* must stay the first thing after the click */
     if (!win) { st.phase = "error"; st.err = "The browser blocked the CRM tab"; return Promise.resolve(st); }
     label("EW: waiting for the CRM...");
+    var seen = {};
     return waitMsg("sitelead-ready", 180000).then(function (rd) {
       if (!rd.ok) throw new Error("The CRM is not signed in as the owner");
-      var seen = {}; (rd.seen || []).forEach(function (s) { seen[s] = 1; });
-      var todo = items.filter(function (x) { return !seen[x.waId]; });
-      st.todo = todo.length; st.sum.skipped = items.length - todo.length; st.phase = "sending";
+      (rd.seen || []).forEach(function (s) { seen[s] = 1; });
+      st.phase = "reading"; label("EW: reading the group...");
+      return sweep(function (m) { return !seen[m.k]; }, function () { st.read = ORDER.length; });
+    }).then(function () {
+      var all = sites(); st.found = all.length;
+      var todo = all.filter(function (s) { return !s.ids.some(function (k) { return seen[k]; }); });
+      st.todo = todo.length; st.sum.skipped = all.length - todo.length; st.phase = "sending";
       var i = 0;
       function next() {
         if (i >= todo.length) return null;
         var batch = todo.slice(i, i + 2); i += 2;
         label("EW: sending " + Math.min(i, todo.length) + " of " + todo.length + "...");
-        return Promise.all(batch.map(function (x) { return x._el ? exportRow(x._el) : Promise.resolve(""); })).then(function (b64s) {
-          var clean = batch.map(function (x, n) { return { waId: x.waId, at: x.at, poster: x.poster, caption: x.caption, lat: x.lat, lng: x.lng, b64: b64s[n] || "" }; });
-          win.postMessage({ ew: "sitelead-items", batch: i, items: clean }, CRM_ORIGIN);
-          return waitMsg("sitelead-done", 240000);
-        }).then(function (d) {
+        win.postMessage({ ew: "sitelead-items", batch: i, items: batch }, CRM_ORIGIN);
+        return waitMsg("sitelead-done", 240000).then(function (d) {
           if (!d.ok) throw new Error(d.error || "the CRM refused");
           var s = d.sum || {};
           ["added", "visits", "skipped", "flagged", "photoFail"].forEach(function (k) { st.sum[k] += s[k] || 0; });
@@ -217,6 +258,7 @@
     var r = b.getBoundingClientRect();
     return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
   }
-  window.EWSL = { v: 1, scan: scan, preview: preview, loadBack: loadBack, open: open, button: button, run: run, state: null, earliest: earliest };
+  window.EWSL = { v: 3, open: open, loadBack: loadBack, sweep: sweep, sites: sites, preview: preview, button: button, run: run, state: null, earliest: earliest,
+    reset: function () { MSG = {}; ORDER = []; } };
   return "ready";
 })();
