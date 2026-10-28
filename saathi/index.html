@@ -912,7 +912,7 @@ function viewAccount(){
 
   if (!ST) h += '<button class="wide" style="min-height:48px;margin-top:14px;background:linear-gradient(90deg,#C13584,#1877F2,#25D366);color:#fff;border:0;font-weight:700" onclick="renderFollow(false)">Follow Energy World - Instagram, Facebook, WhatsApp</button>';
   h += '<div class="split" style="margin-top:12px">' +
-       '<div style="padding:12px" class="sm mut">PIN change? Call the Energy World office - the admin sets it with you.</div>' +   /* 27 Oct 2026 - admin sets PINs only */
+       '<div style="padding:12px" class="sm mut">PIN change? Call the Energy World office.</div>' +   /* 27 Oct 2026 - admin sets PINs only */
        (window.ewTheme ? '<div style="margin:10px 0">' + window.ewTheme.button() + '</div>' : '') + '<div style="padding:0"><button class="wide ghost" onclick="signOut()" ' +
        'style="min-height:44px">Sign out</button></div></div>';
   h += '<div class="note" style="text-align:center;margin-top:14px">' +
@@ -1020,9 +1020,9 @@ function renderGate(){
   g.innerHTML = '<div class="gwrap">' +
     '<div class="gmark">'+DROPS+'</div>' +
     '<h2>Saathi</h2><div class="gtag">Plumbing ka Saathi</div><div style="text-align:center;font-size:12px;color:#6B7785;margin:-12px 0 18px">by Energy World</div>' +
-    '<p class="lede" style="margin-top:-4px"><b>For all Energy World partners</b> - your points, offers and hisaab from Energy World.</p>' +
-    '<p class="lede">Enter your mobile number and PIN.<br>' +
-    'First time here? The Energy World admin sets your PIN with you - you type a PIN of your own choice on the admin phone.</p>' +
+    /* 28 Oct 2026 - HIS WORDS: "to mention only - For all partners ... have to make simple" */
+    '<p class="lede" style="margin-top:-4px"><b>For all partners</b></p>' +
+    '<p class="lede">Enter your mobile number and PIN.</p>' +
     (GERR ? '<div class="gerr" role="alert">' + esc(GERR) + '</div>' : '') +
     '<label for="gm">Mobile number</label>' +
     '<input id="gm" type="tel" inputmode="numeric" autocomplete="username" ' +
@@ -1045,8 +1045,7 @@ function renderGate(){
 
 function gateHelp(){
   /* 27 Oct 2026 - "pin is set by admin only": nobody resets his own PIN from this screen */
-  GERR = 'Call the Energy World office. The admin sets a new PIN with you - you type a PIN of your own choice ' +
-         'on the admin phone. Your points stay exactly as they are.';
+  GERR = 'Call the Energy World office. Your points stay safe.';
   renderGate();
 }
 
@@ -1091,7 +1090,7 @@ function renderPinChange(forced){
     '<div class="gmark">'+DROPS+'</div>' +
     '<h2>Change PIN</h2>' +
     '<p class="lede">' + (PFORCE
-      ? 'Welcome! Now choose your own PIN - 4 to 6 digits, not the last 4 of your mobile. After this only you know it.'
+      ? 'Choose a new PIN. 4 to 6 digits.'
       : 'Choose a new PIN. 4 to 6 digits.') + '</p>' +
     (PERR ? '<div class="gerr" role="alert">' + esc(PERR) + '</div>' : '') +
     '<label for="p1">New PIN</label>' +
@@ -1232,7 +1231,7 @@ function ewRefresh(){
    Nothing you have typed or queued is touched. The sign-in and the
    offline queue live in localStorage and this never goes near them.
 --------------------------------------------------------------------- */
-var BUILD  = '2026.10.28-7';
+var BUILD  = '2026.10.28-8';
 var DROPS = '<svg viewBox="0 0 130 120" width="100%" height="100%" aria-hidden="true"><path d="M48 6C48 6 12 52 12 76a36 36 0 0 0 72 0C84 52 48 6 48 6Z" fill="#0A4F94"/><path d="M82 6C82 6 46 52 46 76a36 36 0 0 0 72 0C118 52 82 6 82 6Z" fill="#F28C28" fill-opacity=".88"/></svg>';   /* the Saathi mark */        /* which build of this file is running */
 var APPKEY = 'SAATHI';
 var VKEY   = 'ew_saathi_ver_v1';
@@ -1396,7 +1395,7 @@ function viewStaff(){
   if (ST.pin) return staffPinView();
   var L = ST.people;
   var h = '<div class="card"><div class="eyebrow">Staff view</div><h2 class="sec" style="margin:4px 0 6px">' + (ST.kind === 'OWNER' ? 'All partners' : 'Your partners') + '</h2>' +
-    '<div class="sm mut" style="line-height:1.5">' + (ST.kind === 'OWNER' ? 'Tap a partner &rarr; <b>Set his PIN</b>, hand him your phone, he types a PIN of his own choice twice. Then he signs in on his own phone with his mobile number and that PIN. Only the admin sets PINs.' : 'Tap a partner to open his Saathi, call him or see his points. PINs are set by the admin only.') + '</div>' +
+    '<div class="sm mut" style="line-height:1.5">' + (ST.kind === 'OWNER' ? 'Tap a partner &rarr; <b>Set his PIN</b>. He signs in with his mobile number and that PIN.' : 'Tap a partner to open his Saathi or call him.') + '</div>' +
     '<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button style="min-height:44px;padding:0 14px" onclick="staffQr()">Show the install QR</button><button style="min-height:44px;padding:0 14px" onclick="staffLoad()">Refresh</button><button style="min-height:44px;padding:0 14px" onclick="signOut()">Sign out</button></div></div>';
   if (ST.qr) h += '<div class="card" style="text-align:center"><div class="sm" style="margin-bottom:8px">Partners scan this to open Saathi, then <b>Add to Home screen</b>.</div><img src="install-qr.png?v=ghp" alt="QR code for EW Saathi" style="width:100%;max-width:400px;background:#fff;padding:8px;border-radius:8px"><div class="xs mut" style="margin-top:6px;word-break:break-all">' + esc(location.origin + location.pathname) + '</div></div>';
   if (ST.err) h += '<div class="card" style="border-color:var(--rust);color:var(--rust)">' + esc(ST.err) + '</div>';
@@ -1531,7 +1530,7 @@ function staffBack(){ setLv(''); ST.view = null; D.me = null; D.ledger = []; D.f
 function staffPinView(){
   var p = (ST.people || []).filter(function(x){ return x.refId === ST.pin; })[0] || { name: '' };
   return '<div class="card"><div class="eyebrow">Set the PIN</div><h2 class="sec" style="margin:4px 0 6px">' + esc(p.name) + '</h2>' +
-    '<div class="sm" style="line-height:1.6">Hand the phone to <b>' + esc(p.name) + '</b>. He types a PIN of his <b>own choice</b> - 4 to 6 digits, not the last 4 of his mobile - twice. Nobody else needs to know it.</div>' +
+    '<div class="sm" style="line-height:1.6">PIN: 4 to 6 digits, not the last 4 of his mobile.</div>' +
     '<label class="sm" style="display:block;margin-top:10px">His new PIN</label><input id="sp1" type="password" inputmode="numeric" maxlength="6" autocomplete="new-password" style="width:100%;min-height:48px;font-size:22px;letter-spacing:6px;text-align:center;border:1px solid var(--line);border-radius:var(--r)">' +
     '<label class="sm" style="display:block;margin-top:10px">Once more</label><input id="sp2" type="password" inputmode="numeric" maxlength="6" autocomplete="new-password" style="width:100%;min-height:48px;font-size:22px;letter-spacing:6px;text-align:center;border:1px solid var(--line);border-radius:var(--r)">' +
     '<div id="sperr" class="sm" style="color:var(--rust);min-height:18px;margin-top:8px"></div>' +
@@ -1568,7 +1567,7 @@ function renderStaffGate(){
   var g = document.getElementById('gate');
   g.innerHTML = '<div class="gwrap">' +
     '<div class="gmark">'+DROPS+'</div><h2>Staff sign-in</h2>' +
-    '<p class="lede">Your <b>CRM</b> name and PIN.<br>The owner sees every partner; an executive sees his own.</p>' +
+    '<p class="lede">Your <b>CRM</b> name and PIN.</p>' +
     (GERR ? '<div class="gerr" role="alert">' + esc(GERR) + '</div>' : '') +
     '<label for="sgu">CRM name</label><input id="sgu" type="text" autocomplete="username" placeholder="e.g. Imran" value="' + esc(SA.u) + '">' +
     '<label for="sgp">CRM PIN</label><input id="sgp" type="password" inputmode="numeric" autocomplete="current-password" maxlength="8">' +
@@ -1608,7 +1607,7 @@ var EW_SOCIAL = [
   ['WhatsApp channel', 'https://whatsapp.com/channel/0029VaA3aMjE50UkbIwfd632', '#25D366'],
   ['Telegram channel', 'https://t.me/+M3Eyvo5251o0NTFl', '#229ED9'],
   ['LinkedIn', 'https://www.linkedin.com/company/1779966/', '#0A66C2'],   /* his link was the admin dashboard; this is the public page */
-  ['YouTube', '', '#FF0000']   /* 27 Oct 2026 - no channel yet */
+  ['YouTube', 'https://www.youtube.com/@energyworldplumbing', '#FF0000']   /* 28 Oct 2026 - channel live */
 ];
 var PR = null;
 function profCheck(){
@@ -1622,7 +1621,6 @@ function renderProfile(err){
   var g = document.getElementById('gate'), today = new Date().toISOString().slice(0, 10);
   var inp = 'width:100%;min-height:48px;font-size:17px;padding:10px 12px;border-radius:10px;border:1px solid #C9D4DF;background:#FFFFFF;color:#0D2340;box-sizing:border-box';   /* 28 Oct 2026 - light */
   g.innerHTML = '<div class="gwrap" style="padding-bottom:60px"><div class="gmark">'+DROPS+'</div><h2>Apni pehchaan</h2>' +
-    '<p class="lede">Ek baar bharein - aapke birthday par Energy World ki taraf se shubhkamnayein.</p>' +
     (err ? '<div class="gerr" role="alert">' + esc(err) + '</div>' : '') +
     '<label>Name</label><input value="' + esc(PR.name) + '" disabled style="' + inp + ';opacity:.7">' +
     '<label>Mobile</label><input value="' + esc(A.mobile) + '" disabled style="' + inp + ';opacity:.7">' +
@@ -1635,7 +1633,7 @@ function renderProfile(err){
       '<input id="pf_cam" type="file" accept="image/*" capture="user" style="display:none" onchange="profPhoto(this)"></label></div>' +
     /* 28 Oct 2026 - HIS WORDS: "still asking for insta id, we want click to open insta app on device". No typing:
        the Energy World pages as buttons - each opens that app on the phone; the form stays as filled. */
-    '<label>Energy World ko follow karein (optional)</label><div class="xs mut" style="margin:2px 0 4px">Tap karein - app khulega, Follow dabaiye, phir yahan wapas aa kar Save.</div>' + followButtons() +
+    '<label>Energy World ko follow karein (optional)</label>' + followButtons() +
     '<button class="go" id="pf_go" style="margin-top:22px" onclick="profSave()">Save</button></div>';
   gate(true);
 }
@@ -1679,7 +1677,7 @@ function renderFollow(first){
   if (!btns){ gate(false); if (first) toast('Shukriya! Aapki pehchaan save ho gayi.'); return; }
   var g = document.getElementById('gate');
   g.innerHTML = '<div class="gwrap"><div class="gmark">'+DROPS+'</div><h2>' + (first ? 'Shukriya!' : 'Follow Energy World') + '</h2>' +
-    '<p class="lede">Energy World ko follow karein - nayi schemes, products aur events sabse pehle.</p>' + btns +
+    '<p class="lede">Energy World ko follow karein.</p>' + btns +
     '<button class="lnk" onclick="gate(false)" style="margin-top:18px">' + (first ? 'Baad mein - app kholein' : 'Close') + '</button></div>';
   gate(true);
 }
