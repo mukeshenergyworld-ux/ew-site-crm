@@ -546,6 +546,9 @@ function gauge(clear, target){
 /* ================================ HOME ================================ */
 function viewHome(){
   if (D.book) return bookHome();
+  /* 28 Oct 2026 - measured on Prem's account: the site-wise book lands ~8 s after opening; until then show that it is
+     coming, not a row of zeros that reads as "you have earned nothing" */
+  if (D.bookWait && !ST) return '<div class="load" style="padding:40px 0;text-align:center">Aapke points aa rahe hain...</div>';
   var m = D.me || {}, cfg = D.cfg || {};
   var unread = D.feed.filter(function(f){ return !f.seen; });
   var need = Math.max(0, (m.nextThresholdPts||0) - (m.clearPts||0));
@@ -1143,7 +1146,7 @@ function ewRefresh(){
    Nothing you have typed or queued is touched. The sign-in and the
    offline queue live in localStorage and this never goes near them.
 --------------------------------------------------------------------- */
-var BUILD  = '2026.10.28-2';        /* which build of this file is running */
+var BUILD  = '2026.10.28-3';        /* which build of this file is running */
 var APPKEY = 'SAATHI';
 var VKEY   = 'ew_saathi_ver_v1';
 var VNEW   = '', VBUSY = false;
@@ -1244,9 +1247,10 @@ function landed(r){
   document.getElementById('hWho').textContent =
     ((D.me && D.me.name) || r.name || '') +
     (D.me && D.me.firm ? ' · ' + D.me.firm : '');
-  document.getElementById('hTier').textContent = (D.me && D.me.tier) || '';
+  document.getElementById('hTier').textContent = '';   /* the level comes with the book (setLv) */
+  D.bookWait = !D.book;
   render();
-  if (!r.pinSet && D.cfg.forcePin){ renderPinChange(true); return; }
+  if (!r.pinSet && D.cfg.forcePin){ D.bookWait = false; renderPinChange(true); return; }
   profCheck();
   bookLoad();
   setTimeout(offerInstall, 900);
@@ -1257,12 +1261,14 @@ function setLv(t){
   document.getElementById('hTier').textContent = t;
 }
 function bookLoad(){
+  D.bookWait = true;
   call('myBook', null, 30000).then(function(r){
-    if (!r || !r.ok || !r.book) return;
+    D.bookWait = false;
+    if (!r || !r.ok || !r.book){ if (TAB === 'home') render(); return; }
     D.book = r.book; D.ppr = Number(r.ppr) || 2;
     setLv(D.book.tier || 'Base');
     if (TAB === 'home' || TAB === 'account') render();
-  }).catch(function(){});
+  }).catch(function(){ D.bookWait = false; if (TAB === 'home') render(); });
 }
 
 
