@@ -94,6 +94,33 @@ body[data-lv="Gold"]{--lvc:#B8860B;--lvg:linear-gradient(135deg,#7A5806,#D9A92E)
 body[data-lv="Silver"]{--lvc:#7D878F;--lvg:linear-gradient(135deg,#5F6870,#AEB7BE);--lvt:#F1F3F5}
 body[data-lv="Base"]{--lvc:#1F3A5F;--lvg:linear-gradient(135deg,#0D2340,#3B6EA5);--lvt:#EEF3F8}
 body[data-lv] header{border-bottom:4px solid var(--lvc)}
+/* 28 Oct 2026 - Home, redesigned: one hero in his level colour, four tiles, sites as cards */
+.hero{background:var(--lvg,linear-gradient(135deg,#0D2340,#3B6EA5));color:#fff;border-radius:16px;padding:18px 16px 16px;margin-bottom:12px}
+.hero .hi{display:flex;align-items:center;gap:8px;font-size:15px}
+.hero .chip{margin-left:auto;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);border-radius:999px;padding:4px 12px;font-size:12px;font-weight:800;letter-spacing:1px;text-transform:uppercase}
+.hero .lab{font-size:12px;letter-spacing:1.4px;text-transform:uppercase;opacity:.85;margin-top:14px}
+.hero .num{font-family:var(--display);font-size:46px;font-weight:700;line-height:1.05}
+.hero .num small{font-size:16px;font-weight:600;opacity:.85;margin-left:6px}
+.hero .rs{font-size:14px;opacity:.9}
+.stack{display:flex;height:10px;border-radius:999px;overflow:hidden;background:rgba(255,255,255,.18);margin-top:14px}
+.stack i{display:block;height:100%}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;margin-top:8px;opacity:.95}
+.legend b{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 12px 10px}
+.tile .v{font-family:var(--display);font-size:26px;font-weight:700;color:var(--ink);line-height:1.1}
+.tile .k{font-size:12px;color:var(--muted);margin-top:2px}
+.tile.hot{border-left:5px solid var(--lvc,#1F3A5F)}
+.seg{display:flex;gap:6px;margin:4px 0 10px}
+.seg button{flex:1;min-height:44px;border-radius:999px;font-weight:700}
+.site{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 12px 10px;margin-bottom:10px}
+.site .top{display:flex;gap:10px;align-items:flex-start}
+.site .nm{flex:1;min-width:0;font-weight:700;color:var(--ink);font-size:15px;overflow-wrap:anywhere}
+.site .pt{font-family:var(--data);font-weight:700;color:var(--ink);white-space:nowrap}
+.site .pt small{display:block;text-align:right;font-size:12px;color:var(--muted);font-weight:400}
+.site .bar{height:8px;border-radius:999px;background:#E6EBF0;overflow:hidden;margin:10px 0 6px}
+.site .bar i{display:block;height:100%;background:#1F8A5B}
+.site .meta{display:flex;justify-content:space-between;font-size:12px;color:var(--muted)}
 header .tier:empty{display:none}
 body[data-lv] header .tier{background:var(--lvc);border-color:var(--lvc);color:#fff;font-weight:700}
 .lvcard{background:var(--lvg,#1F3A5F);color:#fff;border:0}
@@ -605,36 +632,54 @@ function viewHome(){
    The book is sent by the CRM (saathiSync): his level, and per site the incentive earned and the part released
    because the client has paid. Everything here is points = rupees x ppr. */
 function bP(n){ return pts((Number(n) || 0) * (D.ppr || 2)); }
+/* 28 Oct 2026 - HIS WORDS: "design this page in a better way, show no of ongoing sites".
+   ONGOING = the client has not paid in full for it, or material went there in the last 60 days. The rest are
+   COMPLETED and sit behind their own tab, so the screen opens on the sites that are still moving. */
+var SITETAB = 'on';
+function siteOngoing(x){
+  var e = Number(x.e) || 0, r = Number(x.r) || 0;
+  if (e > 0 && r < e - 0.5) return true;
+  var t = Date.parse(String(x.last || '').slice(0, 10)); return isFinite(t) && (Date.now() - t) < 60 * 864e5;
+}
+function siteDay(v){ var d = new Date(String(v || '').slice(0, 10)); if (isNaN(d)) return ''; return d.getDate() + ' ' + ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()]; }
+function siteCard(x){
+  var e = Number(x.e) || 0, r = Math.min(e, Number(x.r) || 0), pc = e > 0 ? Math.round(r / e * 100) : 0;
+  var st = pc >= 100 ? '<span class="pill p-clear">Client paid in full</span>' : pc > 0 ? '<span class="pill p-back">Client paid ' + pc + '%</span>' : '<span class="pill p-hold">Client not paid yet</span>';
+  return '<div class="site"><div class="top"><div class="nm">' + esc(x.n) + '</div><div class="pt">' + bP(e) + '<small>points</small></div></div>' +
+    '<div class="bar"><i style="width:' + pc + '%"></i></div>' +
+    '<div class="meta"><span>' + st + '</span><span>' + (x.last ? 'Last material ' + esc(siteDay(x.last)) : '') + '</span></div></div>';
+}
 function bookSites(){
   var S = (D.book && D.book.sites) || [];
   if (!S.length) return '<div class="empty">No site yet.<br>Your first site shows here as soon as material goes.</div>';
-  var te = 0, tr = 0;
-  var h = '<div class="card" style="padding:0;overflow:hidden"><div class="tbw"><table class="tb"><thead><tr><th>Site</th><th>Points</th><th>Client paid</th></tr></thead><tbody>';
-  S.forEach(function(x){
-    var e = Number(x.e) || 0, r = Math.min(e, Number(x.r) || 0); te += e; tr += r;
-    var pc = e > 0 ? Math.round(r / e * 100) : 0;
-    h += '<tr><td class="nm"><b>' + esc(x.n) + '</b>' + (x.last ? '<span class="xs">last ' + esc(String(x.last).slice(0, 10)) + '</span>' : '') + '</td>' +
-      '<td><b>' + bP(e) + '</b></td><td>' + (pc >= 100 ? '<span class="pill p-clear">Full</span>' : pc > 0 ? pc + '%' : '<span class="pill p-hold">Not yet</span>') + '</td></tr>';
-  });
-  h += '<tr class="tot"><td>Total</td><td>' + bP(te) + '</td><td>' + (te > 0 ? Math.round(tr / te * 100) + '%' : '') + '</td></tr></tbody></table></div></div>' +
-    '<div class="xs mut" style="margin-top:6px">Points become <b>Ready</b> as the client pays for that site.</div>';
+  var on = S.filter(siteOngoing), done = S.filter(function(x){ return !siteOngoing(x); });
+  if (!on.length) SITETAB = 'done'; if (!done.length) SITETAB = 'on';
+  var L = SITETAB === 'on' ? on : done;
+  var h = '<div class="seg"><button class="' + (SITETAB === 'on' ? 'pri' : '') + '" onclick="SITETAB=\'on\';render()">Ongoing ' + on.length + '</button>' +
+    '<button class="' + (SITETAB === 'done' ? 'pri' : '') + '" onclick="SITETAB=\'done\';render()">Completed ' + done.length + '</button></div>';
+  h += L.map(siteCard).join('') || '<div class="empty">Nothing here.</div>';
+  h += '<div class="xs mut" style="margin:4px 0 6px">Points become <b>Ready</b> as the client pays for that site.</div>';
   return h;
 }
 function bookHome(){
   var b = D.book, cfg = D.cfg || {}, t = LEVELS.indexOf(b.tier) >= 0 ? b.tier : 'Base';
   var unread = (D.feed || []).filter(function(f){ return !f.seen; });
+  var S = b.sites || [], on = S.filter(siteOngoing).length;
+  var ready = Number(b.pending) || 0, wait = Number(b.wait) || 0, paid = Number(b.paid) || 0, tot = Math.max(1, ready + wait + paid);
+  var first = String((D.me && D.me.name) || b.name || '').split(' ')[0];
   var h = '';
   if (unread.length) h += '<div class="card" style="border-color:var(--brass);padding:12px 14px"><div style="display:flex;gap:9px;align-items:center"><span class="dot"></span><div class="sm" style="flex:1"><b>' + unread.length + ' new from Energy World</b></div><button class="brass" onclick="go(\'feed\')">See them</button></div></div>';
-  h += '<div class="card lvcard" style="display:flex;gap:12px;align-items:center"><span style="font-size:22px;font-weight:800;letter-spacing:1px;text-transform:uppercase">' + esc(t) + '</span>' +
-    '<div class="sm" style="flex:1">Your level' + (t === 'Base' ? ' - grow your business with us to reach Silver, Gold and Platinum.' : ' - among our top partners this year.') + '</div></div>';
-  h += '<div class="card lvedge"><p class="eyebrow">Ready to be paid now</p><div class="big">' + bP(b.pending) + '<small>Points</small></div>' +
-    (cfg.showRupees ? '<div class="rupeeline">= ' + inr(b.pending) + '</div>' : '') + '</div>';
-  h += '<div class="card" style="padding:0;overflow:hidden"><table class="tb"><tbody>' +
-    '<tr><td>Ready now</td><td><b>' + bP(b.pending) + '</b></td></tr>' +
-    '<tr><td>Waiting - client has not paid yet</td><td>' + bP(b.wait) + '</td></tr>' +
-    '<tr><td>Mil chuka (paid)</td><td>' + bP(b.paid) + '</td></tr>' +
-    '<tr class="tot"><td>Total earned</td><td>' + bP(b.earned) + '</td></tr></tbody></table></div>';
-  h += '<h2 class="sec">Site-wise points</h2>' + bookSites();
+  h += '<div class="hero"><div class="hi"><span>Namaste' + (first ? ', <b>' + esc(first) + '</b>' : '') + '</span><span class="chip">' + esc(t) + '</span></div>' +
+    '<div class="lab">Ready to be paid now</div><div class="num">' + bP(ready) + '<small>points</small></div>' +
+    (cfg.showRupees !== false ? '<div class="rs">= ' + inr(ready) + '</div>' : '') +
+    '<div class="stack"><i style="width:' + (paid / tot * 100) + '%;background:#7CE0A8"></i><i style="width:' + (ready / tot * 100) + '%;background:#fff"></i><i style="width:' + (wait / tot * 100) + '%;background:rgba(255,255,255,.35)"></i></div>' +
+    '<div class="legend"><span><b style="background:#7CE0A8"></b>Paid</span><span><b style="background:#fff"></b>Ready</span><span><b style="background:rgba(255,255,255,.35)"></b>Waiting for client</span></div></div>';
+  h += '<div class="tiles">' +
+    '<div class="tile hot"><div class="v">' + on + '</div><div class="k">Ongoing sites</div></div>' +
+    '<div class="tile"><div class="v">' + bP(b.earned) + '</div><div class="k">Total earned (points)</div></div>' +
+    '<div class="tile"><div class="v">' + bP(wait) + '</div><div class="k">Waiting - client to pay</div></div>' +
+    '<div class="tile"><div class="v">' + bP(paid) + '</div><div class="k">Mil chuka (paid)</div></div></div>';
+  h += '<h2 class="sec">Your sites</h2>' + bookSites();
   if (!ST) h += '<button class="wide" style="min-height:48px;margin-top:14px;background:linear-gradient(90deg,#C13584,#1877F2,#25D366);color:#fff;border:0;font-weight:700" onclick="renderFollow(false)">Follow Energy World - Instagram, Facebook, WhatsApp</button>';   /* 27 Oct 2026 - follow links any time, not only after registration */
   return h;
 }
@@ -1146,7 +1191,7 @@ function ewRefresh(){
    Nothing you have typed or queued is touched. The sign-in and the
    offline queue live in localStorage and this never goes near them.
 --------------------------------------------------------------------- */
-var BUILD  = '2026.10.28-3';        /* which build of this file is running */
+var BUILD  = '2026.10.28-4';        /* which build of this file is running */
 var APPKEY = 'SAATHI';
 var VKEY   = 'ew_saathi_ver_v1';
 var VNEW   = '', VBUSY = false;
