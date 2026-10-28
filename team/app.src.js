@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.908";
+  var APP_VERSION = "6.9.909";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -55555,7 +55555,9 @@ function viewCatalogue() {
   /* the hand-over from WhatsApp Web: only an owner session, only from web.whatsapp.com, only when opened for it */
   function slBoot() {
     var WA = "https://web.whatsapp.com";
-    if (!/[?&]sitelead=1(?:&|$)/.test(location.search) || !window.opener) return;
+    /* 6.9.909 - MEASURED on the first live run: the CRM's own version refresh replaces the address (?u=...), so the
+       ?sitelead=1 was gone by the time this ran. The tab's NAME survives a reload - the collector opens it as "ewsitelead". */
+    if (!(/[?&]sitelead=1(?:&|$)/.test(location.search) || window.name === "ewsitelead") || !window.opener) return;
     window.addEventListener("message", function (e) {
       if (e.origin !== WA || !e.data || e.data.ew !== "sitelead-items") return;
       var src = e.source;
