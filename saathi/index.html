@@ -285,6 +285,40 @@ a{color:var(--verdigris)}
   border:1px solid #F2F6F3;background:#F2F6F3;color:#123028;cursor:pointer;flex:none;
   font-family:inherit}
 #vbar button.x{background:none;color:#CFE0DA;border-color:#4E8B7C;padding:0 10px}
+
+/* ===== 28 Oct 2026 - LIGHT LOOK. HIS WORDS: "saathi app color combination is very dark, change it to light one".
+   White masthead and bottom bar, a light sign-in screen, Energy World blue (#0A4F94) as the one strong colour.
+   The level colours (Platinum / Gold / Silver / Base) stay as they are - they are the point of the hero card. */
+:root{--ew:#0A4F94;--ew-soft:#E8F0F9}
+body{background:#E9EEF4}
+header{background:#FFFFFF;color:var(--ink);border-bottom:1px solid var(--line);box-shadow:0 1px 6px rgba(13,35,64,.06)}
+header .mark{border-color:var(--ew);color:var(--ew)}
+header h1{color:var(--ew)}
+header .who{color:var(--muted)}
+header .tier{border-color:var(--ew);color:var(--ew)}
+#hHelp,#hRef{background:var(--ew-soft)!important;color:var(--ew)!important;border:1px solid #C9D9EC!important;width:44px!important;height:44px!important}
+#gate{background:linear-gradient(180deg,#EAF2FB 0%,#FFFFFF 45%);color:var(--ink)}
+.gmark{border-color:var(--ew);color:var(--ew)}
+#gate h2{color:var(--ew)}
+#gate .lede{color:#4A5868}
+#gate label{color:#4A5868}
+#gate input{background:#FFFFFF;border-color:#C9D4DF;color:var(--ink)}
+#gate input:focus{border-color:var(--ew);box-shadow:0 0 0 3px rgba(10,79,148,.12)}
+#gate input[disabled]{background:#F1F4F8;color:#5E6875}
+#gate button.go{background:var(--ew);color:#FFFFFF}
+#gate .lnk{color:var(--ew)}
+.gerr{background:#FDECEA;border-color:#E3A99F;color:#8A2A1D}
+.gfoot{color:#6B7785}
+nav{background:#FFFFFF;border-top:1px solid var(--line);box-shadow:0 -1px 6px rgba(13,35,64,.06)}
+nav button{color:#6B7785}
+nav button.on{color:var(--ew)}
+#inst{background:#FFFFFF;color:var(--ink);border-top:1px solid var(--line);box-shadow:0 -2px 10px rgba(13,35,64,.12)}
+#inst button{background:var(--ew);border-color:var(--ew);color:#FFFFFF}
+#inst button.x{background:none;color:var(--muted);border-color:var(--line)}
+button.pri{background:var(--ew);border-color:var(--ew);color:#FFFFFF}
+.filters button.on{background:var(--ew);border-color:var(--ew)}
+.bar i{background:var(--ew)}
+.dot{background:var(--ew)}
 </style>
 </head>
 <body>
@@ -1191,7 +1225,7 @@ function ewRefresh(){
    Nothing you have typed or queued is touched. The sign-in and the
    offline queue live in localStorage and this never goes near them.
 --------------------------------------------------------------------- */
-var BUILD  = '2026.10.28-5';        /* which build of this file is running */
+var BUILD  = '2026.10.28-6';        /* which build of this file is running */
 var APPKEY = 'SAATHI';
 var VKEY   = 'ew_saathi_ver_v1';
 var VNEW   = '', VBUSY = false;
@@ -1356,7 +1390,7 @@ function viewStaff(){
   var h = '<div class="card"><div class="eyebrow">Staff view</div><h2 class="sec" style="margin:4px 0 6px">' + (ST.kind === 'OWNER' ? 'All partners' : 'Your partners') + '</h2>' +
     '<div class="sm mut" style="line-height:1.5">' + (ST.kind === 'OWNER' ? 'Tap a partner &rarr; <b>Set his PIN</b>, hand him your phone, he types a PIN of his own choice twice. Then he signs in on his own phone with his mobile number and that PIN. Only the admin sets PINs.' : 'Tap a partner to open his Saathi, call him or see his points. PINs are set by the admin only.') + '</div>' +
     '<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button style="min-height:44px;padding:0 14px" onclick="staffQr()">Show the install QR</button><button style="min-height:44px;padding:0 14px" onclick="staffLoad()">Refresh</button><button style="min-height:44px;padding:0 14px" onclick="signOut()">Sign out</button></div></div>';
-  if (ST.qr) h += '<div class="card" style="text-align:center"><div class="sm" style="margin-bottom:8px">Partners scan this to open EW Saathi, then <b>Add to Home screen</b>.</div><img src="install-qr.png?v=ghp" alt="QR code for EW Saathi" style="width:240px;max-width:80%;background:#fff;padding:8px;border-radius:8px"><div class="xs mut" style="margin-top:6px;word-break:break-all">' + esc(location.origin + location.pathname) + '</div></div>';
+  if (ST.qr) h += '<div class="card" style="text-align:center"><div class="sm" style="margin-bottom:8px">Partners scan this to open EW Saathi, then <b>Add to Home screen</b>.</div><img src="install-qr.png?v=ghp" alt="QR code for EW Saathi" style="width:100%;max-width:400px;background:#fff;padding:8px;border-radius:8px"><div class="xs mut" style="margin-top:6px;word-break:break-all">' + esc(location.origin + location.pathname) + '</div></div>';
   if (ST.err) h += '<div class="card" style="border-color:var(--rust);color:var(--rust)">' + esc(ST.err) + '</div>';
   if (L === null) return h + '<div class="load">Fetching your partners...</div>';
   var nopin = L.filter(function(p){ return !p.pinSet; }).length, signed = L.filter(function(p){ return p.logins; }).length;
@@ -1578,7 +1612,7 @@ function profCheck(){
 }
 function renderProfile(err){
   var g = document.getElementById('gate'), today = new Date().toISOString().slice(0, 10);
-  var inp = 'width:100%;min-height:48px;font-size:17px;padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.25);background:#17221F;color:#F2F6F3;box-sizing:border-box';
+  var inp = 'width:100%;min-height:48px;font-size:17px;padding:10px 12px;border-radius:10px;border:1px solid #C9D4DF;background:#FFFFFF;color:#0D2340;box-sizing:border-box';   /* 28 Oct 2026 - light */
   g.innerHTML = '<div class="gwrap" style="padding-bottom:60px"><div class="gmark">EW</div><h2>Apni pehchaan</h2>' +
     '<p class="lede">Ek baar bharein - aapke birthday par Energy World ki taraf se shubhkamnayein.</p>' +
     (err ? '<div class="gerr" role="alert">' + esc(err) + '</div>' : '') +
@@ -1588,8 +1622,8 @@ function renderProfile(err){
     '<label for="pf_dob">Date of birth *</label><input id="pf_dob" type="date" max="' + today + '" value="' + esc(PR.dob) + '" style="' + inp + '">' +
     '<label>Selfie *</label>' +
     '<div style="display:flex;gap:12px;align-items:center;margin-top:4px">' +
-      '<div style="width:96px;height:96px;border-radius:50%;overflow:hidden;background:#17221F;border:2px solid var(--brass);flex:none">' + (PR.img ? '<img src="' + PR.img + '" alt="Your selfie" style="width:100%;height:100%;object-fit:cover">' : '') + '</div>' +
-      '<label style="flex:1;min-height:48px;display:flex;align-items:center;justify-content:center;border-radius:10px;background:var(--brass);color:#231705;font-weight:700;cursor:pointer;margin:0">' + (PR.img ? 'Take again' : (PR.had ? 'New selfie (optional)' : 'Take a selfie')) +
+      '<div style="width:96px;height:96px;border-radius:50%;overflow:hidden;background:#E8F0F9;border:2px solid #0A4F94;flex:none">' + (PR.img ? '<img src="' + PR.img + '" alt="Your selfie" style="width:100%;height:100%;object-fit:cover">' : '') + '</div>' +
+      '<label style="flex:1;min-height:48px;display:flex;align-items:center;justify-content:center;border-radius:10px;background:#0A4F94;color:#FFFFFF;font-weight:700;cursor:pointer;margin:0">' + (PR.img ? 'Take again' : (PR.had ? 'New selfie (optional)' : 'Take a selfie')) +
       '<input id="pf_cam" type="file" accept="image/*" capture="user" style="display:none" onchange="profPhoto(this)"></label></div>' +
     /* 28 Oct 2026 - HIS WORDS: "still asking for insta id, we want click to open insta app on device". No typing:
        the Energy World pages as buttons - each opens that app on the phone; the form stays as filled. */
