@@ -208,7 +208,7 @@ table.att td.ok,table.att td.no{font-size:16px}
       button: function () { return '<button type="button" class="ewthm" onclick="ewTheme.next(this)">' + ewtLabel() + '</button>'; }
     };
   })();
-  var APP_VERSION = "1.8.4";   /* 1.8.4 (27 Oct 2026) - GHp mark in the middle of every QR, level H */   /* 1.6.1 - Huliot Group introduction on quotes; 1.6.0 (17 Oct 2026) - a dropped POST never loses a quote; admin sees every executive; daily report; attendance grid */
+  var APP_VERSION = "1.9.0";   /* 1.9.0 (29 Oct 2026) - Menu -> Online enquiries (FB, IG, Google, Justdial, IndiaMART ... from the OnlineEnquiries tab) */   /* 1.8.4 (27 Oct 2026) - GHp mark in the middle of every QR, level H */   /* 1.6.1 - Huliot Group introduction on quotes; 1.6.0 (17 Oct 2026) - a dropped POST never loses a quote; admin sees every executive; daily report; attendance grid */
   /* 1.6.0 - ONLY THE SERVER'S OWN "NO" SIGNS A MAN OUT. The old test was /pin|locked|not allowed|blocked|removed/:
      any data error that happened to contain "not allowed" or "removed" (a refused row, a removed brand) signed the
      executive out and wiped his snapshot. These are the sign-in answers the server gives (teamAuth: "Wrong name or
@@ -216,14 +216,14 @@ table.att td.ok,table.att td.no{font-size:16px}
      the team" / "not on the team"; a blocked device: "device is not allowed"). Nothing else. */
   var AUTH_NO = /wrong name or pin|not signed in|sign in again|\btoken\b|locked for|removed from the team|not on the team|device is not allowed|device.*blocked/i;
   /* 1.6.0 - a read may be asked once more when Google dropped it; a write never is from here (the journal holds it) */
-  var API_READS = { teamAuth: 1, teamGet: 1, quoteDup: 1 };
+  var API_READS = { teamAuth: 1, teamGet: 1, quoteDup: 1, enqList: 1 };
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_vq_session", JRN = "ew_vq_journal_v1", CALLQ = "ew_vq_calls_v1", SNAPK = "ew_vq_snap_";
   var CAT_KEY = "ew_team_catalog", CAT_V = 2;   /* the CRM's own shelf copy of the price list - shared, same origin */
   var ALLOWED = ["admin", "sales", "accounts"];
   var FAST = ["clients", "sites", "sitevisits", "quotes", "associates", "discounts", "brands", "brandmap", "logos", "followups", "pitch", "team"];
   var REST = ["audit", "challans"];   /* 1.1.0 - his deliveries: "already our client for this brand" */
-  var API_MS = { teamSave: 60000, teamAuth: 45000, teamGet: 60000, siteVisit: 45000, pdfHost: 240000, tgSend: 60000, quoteDup: 8000 };
+  var API_MS = { teamSave: 60000, teamAuth: 45000, teamGet: 60000, siteVisit: 45000, pdfHost: 240000, tgSend: 60000, quoteDup: 8000, enqList: 30000, enqSave: 30000 };
   var S = { user: "", pin: "", tok: "", role: "", data: null, tab: "day", q: "", sheet: null, vk: "site", fq: "all", qz: null, busy: false, pullAt: 0, catAt: 0, ex: "", drDay: "" };   /* 1.6.0 - ex: the executive admin chose ("" = all); drDay: the daily report's day */
   var KINDS = [["site", "Site"], ["plumber", "Plumber"], ["architect", "Architect"], ["showroom", "Showroom"]];
   var MET = ["Owner", "Plumber", "Architect", "Builder", "PMC", "Site only"];
@@ -2986,6 +2986,7 @@ table.att td.ok,table.att td.no{font-size:16px}
     if (N.architect) ensurePartner(N.architect, "Architect", N.dist, N.city);
     saveRow("sites", row).then(function (r) { if (r.refused) return; });
     var made = (S.data.sites || [])[(S.data.sites || []).length - 1];
+    if (N.enq) { var _eq = N.enq; api("enqSave", { id: _eq, status: "Converted", crm: (made && made.id) || "", note: "Site " + N.name }).catch(function () { toast("The site is saved. The enquiry could not be marked converted - mark it from Online enquiries."); }); }   /* 1.9.0 */
     S.sn = null; S.sheet = siteSheet(made); render(); toast("Site saved — it is yours. Log the visit now.");
   }
 
@@ -3379,9 +3380,85 @@ table.att td.ok,table.att td.no{font-size:16px}
       (S.sheet ? '<div class="sheet" data-act="sheet-bg"><div class="inner">' + S.sheet + '</div></div>' : '');
     if (aid && el(aid)) { var e2 = el(aid); try { e2.focus(); if (ss) e2.setSelectionRange(ss[0], ss[1]); } catch (e) { } }
   }
+  /* ================= 1.9.0 - ONLINE ENQUIRIES (29 Oct 2026) =================
+     The rows come from the server's OnlineEnquiries tab (Enquiries.gs). This screen never writes a row itself except
+     through enqSave - a status, a note, the CRM site id. SAY WHAT IS TRUE: while loading it says loading; if the call
+     fails it says why and that nothing changed; it never shows "no enquiries" when it simply could not ask. */
+  var ENQ_ICON = { Facebook: "f", Instagram: "IG", YouTube: "YT", LinkedIn: "in", Threads: "@", X: "X", Pinterest: "P", Google: "G", Justdial: "JD", IndiaMART: "IM", Sulekha: "S", Quora: "Q", Houzz: "H", Hotfrog: "HF" };
+  function enqLoad(show) {
+    S.enqShow = show || S.enqShow || "open";
+    S.enq = { loading: true };
+    S.sheet = enqSheet(); render();
+    api("enqList", { show: S.enqShow }).then(function (r) {
+      if (!r || r.ok !== true || !Array.isArray(r.rows)) { S.enq = { err: (r && r.error === "unknown action") ? "the server has not been updated yet (it needs version V177 deployed)" : ((r && r.error) || "the server said no") }; }   /* an answer without rows is not "nothing open" */
+      else { S.enq = { rows: r.rows || [], counts: r.counts || {} }; S.enqN = (r.counts && r.counts.open) || 0; }
+      if (S.sheet && /data-enq="1"/.test(S.sheet)) { S.sheet = enqSheet(); render(); }
+    }).catch(function (e) {
+      S.enq = { err: apiWhy(e) };
+      if (S.sheet && /data-enq="1"/.test(S.sheet)) { S.sheet = enqSheet(); render(); }
+    });
+  }
+  function enqRowById(id) { return ((S.enq && S.enq.rows) || []).filter(function (r) { return r.id === id; })[0]; }
+  function enqCard(r) {
+    var tone = r.status === "Open" ? "warn" : "";
+    return '<div class="card" data-enq-id="' + esc(r.id) + '"><div class="row"><div class="grow">' +
+      '<div class="ttl2"><span class="chip" style="min-height:28px;padding:0 9px;font-size:12px;margin-right:6px">' + esc(ENQ_ICON[r.source] || r.source) + '</span>' +
+      esc(r.kind) + (r.from ? ' &middot; ' + esc(r.from) : '') + '</div>' +
+      '<div class="meta">' + esc(r.source) + ' &middot; ' + esc(fdt(r.at)) + (r.city ? ' &middot; ' + esc(r.city) : '') +
+      ' &middot; <b>' + esc(r.status) + '</b>' + (r.updatedBy && r.updatedBy !== "collector" ? ' by ' + esc(r.updatedBy) : '') + (r.crm ? ' &middot; site ' + esc(r.crm) : '') + '</div>' +
+      '<div style="margin-top:6px;font-weight:600">' + esc(String(r.subject || "").slice(0, 160)) + '</div>' +
+      (r.text ? '<div class="meta" style="margin-top:4px">' + esc(String(r.text).slice(0, 320)) + (String(r.text).length > 320 ? '…' : '') + '</div>' : '') +
+      (r.note ? '<div class="meta">Note: ' + esc(r.note) + '</div>' : '') +
+      '</div></div>' +
+      (r.draft && r.status === "Open" ? '<div class="note ' + tone + '" style="font-size:13px"><b>Draft reply</b> (send it yourself on ' + esc(r.source) + ')<br>' + esc(r.draft) + '</div>' : '') +
+      '<div class="acts">' +
+      (r.link ? '<a class="btn sm gry" href="' + esc(r.link) + '" target="_blank" rel="noopener">Open on ' + esc(r.source) + '</a>' : '') +
+      (r.draft && r.status === "Open" ? '<button class="btn sm gry" data-act="enq-copy" data-id="' + esc(r.id) + '">Copy draft</button>' : '') +
+      '</div>' +
+      (r.status === "Open" || r.status === "Info" ? '<div class="acts">' +
+        '<button class="btn sm" data-act="enq-set" data-k="Replied" data-id="' + esc(r.id) + '">Replied</button>' +
+        '<button class="btn sm gry" data-act="enq-set" data-k="Not needed" data-id="' + esc(r.id) + '">Not needed</button>' +
+        '<button class="btn sm gry" data-act="enq-site" data-id="' + esc(r.id) + '">+ Make a site</button></div>' : '') +
+      '</div>';
+  }
+  function enqSheet() {
+    var E = S.enq || {}, show = S.enqShow || "open";
+    var head = '<h2 data-enq="1">Online enquiries</h2><div class="meta">Comments, messages, reviews and leads from Facebook, Instagram, Google, Justdial, IndiaMART and the rest. Reply on the platform, then mark it here.</div>' +
+      '<div class="chips">' + [["open", "Open" + (E.counts ? " (" + (E.counts.open || 0) + ")" : "")], ["all", "All" + (E.counts ? " (" + (E.counts.all || 0) + ")" : "")]].map(function (x) {
+        return '<button class="chip' + (show === x[0] ? ' on' : '') + '" data-act="enq-show" data-k="' + x[0] + '">' + x[1] + '</button>'; }).join("") +
+      '<button class="chip" data-act="enq-show" data-k="' + show + '">&#8635; Refresh</button></div>';
+    var body;
+    if (E.loading) body = '<div class="note">Loading the enquiries…</div>';
+    else if (E.err) body = '<div class="note warn"><b>Could not load them:</b> ' + esc(E.err) + '. Nothing was changed. Try Refresh.</div>';
+    else if (!(E.rows || []).length) body = '<div class="note">' + (show === "open" ? "Nothing open - every enquiry has been answered or set aside." : "No online enquiries logged yet.") + '</div>';
+    else body = E.rows.map(enqCard).join("");
+    return head + body + '<div class="acts"><button class="btn gry full" data-act="close">Close</button></div>';
+  }
+  function enqSet(id, status, extra) {
+    var r = enqRowById(id); if (!r) return;
+    var was = r.status; r.status = status; r.updatedBy = S.user;
+    S.sheet = enqSheet(); render();
+    api("enqSave", Object.assign({ id: id, status: status }, extra || {})).then(function (x) {
+      if (!x || x.ok !== true) { r.status = was; toast("Not saved: " + ((x && x.error) || "the server said no") + ". It is still " + was + "."); }
+      else { toast(status === "Converted" ? "Marked converted - it is a site now." : "Marked " + status + "."); if (was === "Open" && S.enqN) S.enqN--; }
+      if (S.sheet && /data-enq="1"/.test(S.sheet)) { S.sheet = enqSheet(); render(); }
+    }).catch(function (e) {
+      r.status = was; toast("Not saved - " + apiWhy(e) + ". It is still " + was + ".");
+      if (S.sheet && /data-enq="1"/.test(S.sheet)) { S.sheet = enqSheet(); render(); }
+    });
+  }
+  function enqToSite(id) {
+    var r = enqRowById(id); if (!r) return;
+    var m = (String((r.text || "") + " " + (r.subject || "")).match(/(?:\+?91[\s-]?)?([6-9]\d{4}[\s-]?\d{5})/) || [])[1] || "";
+    S.sn = { client: r.from && !/^someone$/i.test(r.from) ? nmTitle(r.from) : "", mobile: mob10(m), city: r.city || "",
+             notes: ("Online enquiry - " + r.source + " " + (r.kind || "") + ": " + String(r.subject || "")).slice(0, 200), enq: id };
+    S.sheet = siteNewSheet(); render();
+  }
+
   function menuSheet() {
     return '<h2>' + esc(S.user) + '</h2><div class="meta">' + esc(S.role) + ' &middot; version ' + APP_VERSION + '</div>' +
       '<div class="acts"><button class="btn gry full" data-act="refresh">Update now</button></div>' +
+      '<div class="acts"><button class="btn full" data-act="enq-open">Online enquiries' + (S.enqN ? ' (' + S.enqN + ' open)' : '') + '</button></div>' +   /* 1.9.0 */
       '<div class="acts"><a class="btn gry full" href="../collect/">Open the Collection app</a></div>' +
       '<div class="acts"><a class="btn gry full" href="../team/">Open the CRM (for the office)</a></div>' +
       (pendingN() ? '<div class="note warn">' + pendingN() + ' saved on this phone, waiting for signal. Signing out keeps them on this phone.</div>' : '') +
@@ -3400,6 +3477,12 @@ table.att td.ok,table.att td.no{font-size:16px}
     if (act === "tab") { S.tab = k; S.q = ""; S.near = null; S.sheet = null; render(); window.scrollTo(0, 0); return; }
     if (act === "refresh") { S.sheet = null; pull(true); loadCat(true); return; }
     if (act === "menu") { S.sheet = menuSheet(); render(); return; }
+    /* 1.9.0 - online enquiries */
+    if (act === "enq-open") { enqLoad("open"); return; }
+    if (act === "enq-show") { enqLoad(k); return; }
+    if (act === "enq-set") { enqSet(id, k); return; }
+    if (act === "enq-site") { enqToSite(id); return; }
+    if (act === "enq-copy") { var _er = enqRowById(id); var _et = _er ? String(_er.draft || "") : ""; try { navigator.clipboard.writeText(_et).then(function () { toast("Draft copied - paste it on the platform."); }, function () { toast("Could not copy on this device."); }); } catch (eE) { toast("Could not copy on this device."); } return; }
     /* 1.6.0 - the held journal: Try now (past any backoff), the list, one Retry, one Drop (journal only) */
     if (act === "jrn-retry") { toast("Sending…"); flush(true).then(function () { if (S.sheet && /Held on this phone/.test(S.sheet)) { S.sheet = jrnListSheet(); render(); } else paintSync(); }); return; }
     if (act === "jrn-list") { S.sheet = jrnListSheet(); render(); return; }
