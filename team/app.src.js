@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.913";
+  var APP_VERSION = "6.9.914";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -21487,12 +21487,14 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     var TB = 'border:1px solid #e2e8f0;';
     var thBase = TB + 'padding:6px 8px;font-size:12px;font-weight:700;color:#475569;background:#f1f5f9;';
     var thL = 'style="' + thBase + 'text-align:left"', thR = 'style="' + thBase + 'text-align:right"';
+    /* 6.9.914 - the same rule as the PDF: no discount anywhere, no Rate and Disc% columns */
+    var _qAnyDisc = (z.items || []).some(function (i) { return (Number(lineDisc(i, z)) || 0) > 0; }), _qc = _qAnyDisc ? 6 : 4;
     h += '<div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%;min-width:560px;font-variant-numeric:tabular-nums lining-nums">' +
       '<thead><tr>' +
       '<th ' + thL + '>Item</th>' +
       '<th ' + thR + '>Qty</th>' +
-      '<th ' + thR + '>Rate</th>' +
-      '<th ' + thR + '>Disc%</th>' +
+      (_qAnyDisc ? '<th ' + thR + '>Rate</th>' +
+      '<th ' + thR + '>Disc%</th>' : '') +
       '<th ' + thR + '>Disc. Rate</th>' +
       '<th ' + thR + '>Amount</th>' +
       '</tr></thead><tbody>';
@@ -21502,7 +21504,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     revBrands.forEach(function (b) {
       var bt = brandTotals(z, b);
       var bdPct = (z.brandDiscs && z.brandDiscs[b] != null) ? z.brandDiscs[b] : 0;
-      h += '<tr><td colspan="6" style="' + TB + 'padding:6px 8px;background:#ccfbf1;color:#0f766e;font-weight:700;font-size:12px">' +
+      h += '<tr><td colspan="' + _qc + '" style="' + TB + 'padding:6px 8px;background:#ccfbf1;color:#0f766e;font-weight:700;font-size:12px">' +
         esc(b) + ' &middot; brand ' + esc(bdPct) + '% off</td></tr>';
       (z.items || []).filter(function (i) { return (i.brand || brandByCode(i.code)) === b; }).forEach(function (i) {
         var d = lineDisc(i, z);
@@ -21528,13 +21530,13 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
           /* v6.9.455 - the quantity is a box on the review too (the line's total) */
           '<td ' + tdR + '><input class="qz-qt" data-code="' + esc(i.code) + '" inputmode="decimal" value="' + esc(qShow(i.qty)) + '" title="Quantity" ' +
             'style="width:56px;min-height:44px;box-sizing:border-box;text-align:center;padding:4px 5px;font-size:13px;font-weight:700;border:1px solid #cbd5e1;border-radius:6px;font-family:inherit"/></td>' +
-          '<td ' + tdR + '>' + money(i.price) + '</td>' +
-          '<td ' + tdR + '>' + (Number(d) || 0) + (ov ? '<span style="color:#0f766e">*</span>' : '') + '</td>' +
+          (_qAnyDisc ? '<td ' + tdR + '>' + money(i.price) + '</td>' +
+          '<td ' + tdR + '>' + (Number(d) || 0) + (ov ? '<span style="color:#0f766e">*</span>' : '') + '</td>' : '') +
           '<td ' + tdR + '>' + money(dr) + '</td>' +
           '<td ' + tdR + '>' + (opt ? '<span style="color:#94a3b8">' + money(amt) + '</span>' : '<b>' + money(amt) + '</b>') + '</td>' +
           '</tr>';
       });
-      if (!z.noTotal) h += '<tr><td colspan="5" style="' + TB + 'padding:6px 8px;text-align:right;font-size:12px;background:#f8fafc">' +
+      if (!z.noTotal) h += '<tr><td colspan="' + (_qc - 1) + '" style="' + TB + 'padding:6px 8px;text-align:right;font-size:12px;background:#f8fafc">' +
         esc(b) + ' subtotal (gross ' + money(bt.gross) + ')</td>' +
         '<td style="' + TB + 'padding:6px 8px;text-align:right;background:#f8fafc"><b>' + money(bt.net) + '</b></td></tr>';
     });
@@ -21554,7 +21556,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     }
     var _optCount = (z.items || []).filter(function (i) { return i.optional; }).length;
     h += '</tbody>' + (z.noTotal ? '' : ('<tfoot>' +
-      '<tr><td colspan="5" style="' + TB + 'padding:8px;text-align:right;font-weight:700;font-size:13px">Grand total (before GST)</td>' +
+      '<tr><td colspan="' + (_qc - 1) + '" style="' + TB + 'padding:8px;text-align:right;font-weight:700;font-size:13px">Grand total (before GST)</td>' +
       '<td style="' + TB + 'padding:8px;text-align:right;font-weight:800;font-size:13px;color:#0f766e">' + money(tt.net) + '</td></tr>' +
       '</tfoot>')) + '</table></div>';
     if (z.noTotal) {
@@ -22987,6 +22989,10 @@ function viewCatalogue() {
       /* v6.9.773 - his choice B: the description starts at the left and the picture sits just before
          Unit, so the eye reads #, name, picture, then the figures. The money columns did not move. */
       var X = { n: L + 1, item: L + 6, unit: 117, qty: 127, price: 146, dis: 158, dprice: 177, amt: Rt - 1 };
+      /* 6.9.914 - HIS RULE (31 Oct): "if there is no discount on any product then remove price and dis% column, show only
+         Disc. Price and Total Amt. make it standard rule". Two empty columns give their room to the description. */
+      var _anyDisc = rows.some(function (r) { return Number(r.disc) > 0; });
+      if (!_anyDisc) { X.unit = 141; X.qty = 154; }
       var UNIT_W = 15;                       /* "Per Set", "Per 3 Mtr" at 9pt */
       X.pic = X.unit - UNIT_W - 15.5;
       var DESC_W = X.pic - X.item - 2;
@@ -22998,8 +23004,7 @@ function viewCatalogue() {
         doc.text("ITEM DESCRIPTION", X.item, y);
         doc.text("UNIT", X.unit, y, { align: "right" });
         doc.text("QTY", X.qty, y, { align: "right" });
-        doc.text("PRICE", X.price, y, { align: "right" });
-        doc.text("DIS.%", X.dis, y, { align: "right" });
+        if (_anyDisc) { doc.text("PRICE", X.price, y, { align: "right" }); doc.text("DIS.%", X.dis, y, { align: "right" }); }
         doc.text("DISC. PRICE", X.dprice, y, { align: "right" });
         doc.text("TOTAL AMT", X.amt, y, { align: "right" });
         y += 8.4;
