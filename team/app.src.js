@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.910";
+  var APP_VERSION = "6.9.911";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -54915,7 +54915,8 @@ function viewCatalogue() {
         return qbox + '<div class="meta" style="padding:10px 2px;color:#b45309">Nothing in the ' +
           'catalogue matches \u201c' + esc(qs) + '\u201d \u2014 name, code or brand. If it is a ' +
           'genuinely new product, add it to the catalogue' +
-          (P.offList ? '; if it is a one-off, use <b>+ Item not in the price list</b> above' : '') + '.</div>';
+          (P.offList ? '; if it is a one-off, use <b>+ Item not in the price list</b> above' : '') + '.</div>' +
+          pkNewBtn(P.pre, z.brand || "", "", qs.trim(), "+ Add \u201c" + qs.trim() + "\u201d as a new product");
       }
       return qbox + '<div class="meta" style="margin:0 2px 6px;color:#64748b">' + hits.length +
         (hits.length === 60 ? '+' : '') + ' match' + (hits.length === 1 ? '' : 'es') +
@@ -54945,7 +54946,8 @@ function viewCatalogue() {
     /* a brand you distribute but have not catalogued yet: say so plainly instead of an empty
        "pick a category" with nothing under it (the quote's sentence since v6.9.2xx, everyone's now) */
     if (!brandProducts(z.brand).length) {
-      return h + '<div class="empty" style="text-align:left">No products loaded for <b>' + esc(z.brand) + '</b> yet. Add them under <b>Products</b> (Catalogue) and they will appear here. You can still set this brand\u2019s discount &amp; incentive on the <b>Discounts</b> screen and chase it under <b>Brand follow-up</b>.</div>';
+      return h + '<div class="empty" style="text-align:left">No products loaded for <b>' + esc(z.brand) + '</b> yet. Add them under <b>Products</b> (Catalogue) and they will appear here. You can still set this brand\u2019s discount &amp; incentive on the <b>Discounts</b> screen and chase it under <b>Brand follow-up</b>.</div>' +
+        pkNewBtn(P.pre, z.brand, "", "", "+ Add a " + z.brand + " product");
     }
     var fams = familyList(z.brand);
     h += '<div class="ew-picklabel"><span class="step">2</span>' + esc(z.brand) +
@@ -54963,8 +54965,39 @@ function viewCatalogue() {
     brandProducts(z.brand).filter(function (p) { return famSame(p.family, z.family); }).forEach(function (p) {
       h += pickRow(P, p, z);
     });
-    return h + '</div>';
+    return h + '</div>' + pkNewBtn(P.pre, z.brand, z.family, "", "+ Not in the list? Add a new " + z.family + " product");
   }
+  /* ===== 6.9.911 - ADD A PRODUCT WHERE IT WAS MISSED =====
+     HIS WORDS (31 Oct, on the quote picker): "if any product not found, then also provide option to add new at this
+     point also". Until now a missing product meant leaving the quote, going to Products, adding it and coming back.
+     The button opens the same product form (same checks, same server call, same price list) OVER the quote, with
+     the brand and family already chosen; the quote underneath is not touched. When it is saved the picker opens on
+     that brand and family so its quantity can be set straight away. */
+  function pkNewBtn(pre, brand, fam, desc, label) {
+    if (!(roleIs("admin") || canSee("products"))) return '';
+    return '<div style="margin:10px 0 4px"><button class="btn sm ghost" data-act="pk-np" data-pre="' + esc(pre) + '" data-brand="' + esc(brand) +
+      '" data-fam="' + esc(fam) + '" data-desc="' + esc(desc) + '" style="min-height:44px;border-style:dashed;border-color:#0f766e;color:#0f766e">' + esc(label) + '</button></div>';
+  }
+  function pkNewOpen(pre, brand, fam, desc) {
+    var cv = brand, cat = "", m = {};
+    var bp = brand ? brandProducts(brand) : [];
+    if (bp.length) cv = bp[0].brand || brand;   /* the form lists brands as the price list spells them */
+    bp.filter(function (p) { return !fam || famSame(p.family, fam); }).forEach(function (p) { var c = String(p.cat || "").trim(); if (c) m[c] = (m[c] || 0) + 1; });
+    Object.keys(m).forEach(function (c) { if (!cat || m[c] > m[cat]) cat = c; });
+    var famSp = fam; if (fam) bp.some(function (p) { if (famSame(p.family, fam)) { famSp = p.family; return true; } return false; });
+    var old = el("pk_np"); if (old) old.parentNode.removeChild(old);
+    var html = modalProduct({ brand: cv, family: famSp, cat: cat, desc: desc || "" })
+      .replace('data-act="close"', 'data-act="pk-np-close"')
+      .replace('data-act="cat-save" data-new="1"', 'data-act="cat-save" data-new="1" data-ret="pk" data-pre="' + esc(pre) + '"');
+    var d = document.createElement("div");
+    d.id = "pk_np";
+    d.style.cssText = "position:fixed;inset:0;z-index:9000;background:rgba(15,23,42,.45);overflow:auto;padding:16px";
+    d.innerHTML = '<div class="modal" style="position:relative;max-width:640px;margin:0 auto;background:#fff;border-radius:14px;padding:16px 18px 20px">' +
+      '<div style="font-size:12.5px;color:#0f766e;margin-bottom:4px">Your ' + esc((PICKERS[pre] || {}).noun || "form") + ' stays open underneath \u2014 nothing on it changes.</div>' + html + '</div>';
+    document.body.appendChild(d);
+    setTimeout(function () { var c = el("p_code"); if (c) c.focus(); }, 60);
+  }
+  function pkNewClose() { var o = el("pk_np"); if (o) o.parentNode.removeChild(o); }
   function chPicker() { return prodPicker(S.ch, PICKERS.ch); }
 
   /* Old material, typed in from the books. Deliberately its own form and not a tick-box on the
@@ -62567,6 +62600,8 @@ function viewCatalogue() {
     }
 
     if (act === "cat-new") { S.modal = modalProduct(null); render(); return; }
+    if (act === "pk-np") { pkNewOpen(t.getAttribute("data-pre") || "", t.getAttribute("data-brand") || "", t.getAttribute("data-fam") || "", t.getAttribute("data-desc") || ""); return; }   /* 6.9.911 */
+    if (act === "pk-np-close") { pkNewClose(); return; }
     if (act === "pr-copy") {   /* 6.9.623 */
       var _src = PRODUCTS.filter(function (x) { return x.code === t.getAttribute("data-code"); })[0];
       if (!_src) { toast("That product is not on the list any more."); return; }
@@ -62660,7 +62695,16 @@ function viewCatalogue() {
       }).then(function (r) {
         if (!r || !r.ok) { pReset(); pSay("Not saved \u2014 the server said: " + ((r && r.error) || "no reason given") + ". Nothing was written."); return; }
         if (r._specsDropped) setTimeout(function () { toast("Saved without the specifications \u2014 the server would not take them. Type them in the Product Catalog sheet, column L."); }, 3500);
-        catalogPatch(pForm);              /* v6.9.246 - no full re-download */
+        var _pkItem = catalogPatch(pForm);              /* v6.9.246 - no full re-download */
+        if (t.getAttribute("data-ret") === "pk") {   /* 6.9.911 - back to the quote / challan it was added from */
+          var _pre = t.getAttribute("data-pre"), _z = pickState(_pre);
+          pkNewClose();
+          try { _pcbCache = null; _plcCache = null; } catch (eC) { }
+          if (_z && _pkItem) { _z.q = ""; _z.brand = realBrand(_pkItem) || _pkItem.brand; _z.family = _pkItem.family; }
+          try { repaintPick(_pre); } catch (eR) { renderBg(); }
+          toast(pc + " added to the price list \u2014 set its quantity below.");
+          return;
+        }
         S.modal = null;
         toast(r.created ? "Product added." : "Product updated.");
         renderBg();
