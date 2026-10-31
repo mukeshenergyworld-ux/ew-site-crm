@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.911";
+  var APP_VERSION = "6.9.912";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -21495,8 +21495,8 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       '<th ' + thR + '>Amount</th>' +
       '</tr></thead><tbody>';
 
-    var tdL = 'style="' + TB + 'padding:6px 8px;font-size:12px;text-align:left"';
-    var tdR = 'style="' + TB + 'padding:6px 8px;font-size:12px;text-align:right"';
+    var tdL = 'style="' + TB + 'padding:2px 8px;font-size:12px;text-align:left"';
+    var tdR = 'style="' + TB + 'padding:2px 8px;font-size:12px;text-align:right;white-space:nowrap"';
     revBrands.forEach(function (b) {
       var bt = brandTotals(z, b);
       var bdPct = (z.brandDiscs && z.brandDiscs[b] != null) ? z.brandDiscs[b] : 0;
@@ -21509,18 +21509,23 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         var ov = (i.disc !== "" && i.disc !== undefined && i.disc !== null);
         var opt = !!i.optional;
         h += '<tr style="' + (opt ? 'background:#fffdf5' : '') + '">' +
-          '<td ' + tdL + '><div style="font-weight:600">' + esc(i.desc) +
-            (opt ? ' <span class="pill" style="background:#fef3c7;color:#92400e;font-weight:700">Option</span>' : '') + '</div>' +
-            '<div style="font-size:12px;color:#94a3b8">' + esc(i.code) + '</div>' +
-            '<div style="font-size:12px;margin-top:2px">' +
-              (qzRoomsOf(i).length
-                ? '<span style="color:#0f766e;font-weight:600">' + esc(qzRoomLabel(i)) + '</span>'
-                : '<span style="color:#b45309">No room set</span>') +
-              ' <button class="btn sm ghost" data-act="qz-room-edit" data-code="' + esc(i.code) + '" style="font-size:12px;padding:1px 6px">Room</button></div>' +
-            '<button class="btn sm ghost" data-act="qz-opt" data-code="' + esc(i.code) + '" style="margin-top:3px;font-size:12px;padding:2px 8px">' + (opt ? '&#9745; Optional — not in total' : '&#9744; Mark as option') + '</button></td>' +
+          /* 6.9.912 - HIS WORDS (31 Oct): "make this compact single liner ... try to make everything single liner".
+             One line per product: name and code, the room, then Room and Option as small buttons on the same line.
+             The row is one tap target high (44 px) instead of four lines. */
+          '<td ' + tdL + '><div style="display:flex;align-items:center;gap:8px;white-space:nowrap;min-height:44px">' +
+            '<span style="font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;max-width:340px" title="' + esc(i.desc) + '">' + esc(i.desc) + '</span>' +
+            '<span style="font-size:12px;color:#94a3b8">' + esc(i.code) + '</span>' +
+            (opt ? '<span class="pill" style="background:#fef3c7;color:#92400e;font-weight:700;font-size:12px">Option</span>' : '') +
+            '<span style="flex:1"></span>' +
+            (qzRoomsOf(i).length
+              ? '<span style="color:#0f766e;font-weight:600;font-size:12px">' + esc(qzRoomLabel(i)) + '</span>'
+              : '<span style="color:#b45309;font-size:12px">No room</span>') +
+            '<button class="btn sm ghost" data-act="qz-room-edit" data-code="' + esc(i.code) + '" title="Set the room" style="min-height:44px;font-size:12px;padding:0 10px">Room</button>' +
+            '<button class="btn sm ghost" data-act="qz-opt" data-code="' + esc(i.code) + '" title="' + (opt ? 'Optional - not in the total. Tap to put it back in.' : 'Mark as an option - shown, not added to the total') + '" style="min-height:44px;font-size:12px;padding:0 10px">' + (opt ? '&#9745; Option' : '&#9744; Option') + '</button>' +
+          '</div></td>' +
           /* v6.9.455 - the quantity is a box on the review too (the line's total) */
           '<td ' + tdR + '><input class="qz-qt" data-code="' + esc(i.code) + '" inputmode="decimal" value="' + esc(qShow(i.qty)) + '" title="Quantity" ' +
-            'style="width:56px;text-align:center;padding:4px 5px;font-size:13px;font-weight:700;border:1px solid #cbd5e1;border-radius:6px;font-family:inherit"/></td>' +
+            'style="width:56px;min-height:44px;box-sizing:border-box;text-align:center;padding:4px 5px;font-size:13px;font-weight:700;border:1px solid #cbd5e1;border-radius:6px;font-family:inherit"/></td>' +
           '<td ' + tdR + '>' + money(i.price) + '</td>' +
           '<td ' + tdR + '>' + (Number(d) || 0) + (ov ? '<span style="color:#0f766e">*</span>' : '') + '</td>' +
           '<td ' + tdR + '>' + money(dr) + '</td>' +
