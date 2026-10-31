@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.912";
+  var APP_VERSION = "6.9.913";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -11789,13 +11789,13 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     h += '<div class="card"><h3 style="margin:0 0 4px">' + (f === "open" ? "Sold, but no cost yet" : "Codes") + ' — ' + list.length + '</h3>' +
       (list.length ? pevTable([["Code / product"], ["Brand"], ["Sold 12 m", "right"], ["Cost per unit", "right"], ["Known from"], [""]], list.slice(0, 120).map(function (o) {
         var pend = props.filter(function (p) { return p.code === o.code; })[0];
-        var ask = o.u.known ? '' : '<div style="display:flex;gap:4px;flex-wrap:wrap">' +
+        var ask = o.u.known ? '' : '<div style="display:flex;gap:4px;flex-wrap:nowrap;white-space:nowrap;align-items:center">' +   /* 6.9.913 - one line */
           '<button class="btn sm ghost" style="min-height:40px;padding:2px 8px;font-size:12.5px" data-act="cd-same" data-code="' + esc(o.code) + '">Bought under another code</button>' +
           (pend ? '<span style="font-size:12px;color:#b45309;align-self:center">kit proposed by ' + esc(pend.by || "") + ' — waits for the owner</span>' : '<button class="btn sm ghost" style="min-height:40px;padding:2px 8px;font-size:12.5px" data-act="bom-open" data-code="' + esc(o.code) + '">It is a kit → set BOM</button>') +
           '<button class="btn sm ghost" style="min-height:40px;padding:2px 8px;font-size:12.5px" data-act="cd-labour" data-code="' + esc(o.code) + '">Labour / service</button>' +
           '<input class="pf-cost" data-code="' + esc(o.code) + '" inputmode="numeric" placeholder="local buy: cost/unit" style="width:140px;min-height:40px;font-size:12.5px"/></div>';
         var undo = o.u.known && /^(same:|labour|typed|kit)/.test(o.u.src) ? ' <button class="btn sm ghost" style="min-height:36px;padding:0 6px;font-size:12px" data-act="cd-clear" data-code="' + esc(o.code) + '" data-src="' + esc(o.u.src.split(":")[0]) + '" title="Forget this answer">×</button>' : '';
-        return ['<b>' + esc(o.code) + '</b><div style="font-size:12px;color:#64748b">' + esc(o.desc || "") + '</div>', esc(o.brand), money(Math.round(o.sell)) + '<div style="font-size:12px;color:#64748b">' + Math.round(o.qty * 100) / 100 + ' pcs · last ' + esc(dmy(o.last)) + '</div>',
+        return ['<div style="white-space:nowrap;max-width:420px;overflow:hidden;text-overflow:ellipsis" title="' + esc(o.desc || "") + '"><b>' + esc(o.code) + '</b> <span style="font-size:12px;color:#64748b">' + esc(o.desc || "") + '</span></div>', '<span style="white-space:nowrap">' + esc(o.brand) + '</span>', '<span style="white-space:nowrap">' + money(Math.round(o.sell)) + ' <span style="font-size:12px;color:#64748b">' + Math.round(o.qty * 100) / 100 + ' pcs · ' + esc(dmy(o.last)) + '</span></span>',
           o.u.known ? (o.u.src === "labour" ? '—' : money(Math.round(o.u.cost))) : '<span style="color:#b45309">?</span>', srcTxt(o) + undo, ask];
       })) + (list.length > 120 ? '<div class="meta" style="font-size:12px">Showing 120 of ' + list.length + ' — use the search box.</div>' : '') : '<div class="empty" style="color:#166534">Nothing here.</div>') + '</div>';
     return h;
@@ -20602,37 +20602,39 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       var exec = String(cl.ownedBy || cl.createdBy || "").trim() || "Unassigned";
       var st = String(q.status || "Draft"), mine = qMine(q);
       var rt = qRootOf(q, byId), isRev = rt && rt.id !== q.id;
-      var td = function (v, extra) { return '<td style="padding:7px 8px;border-top:1px solid ' + (sub ? "#f1f5f9" : "#e2e8f0") + ';vertical-align:top' + (extra || "") + '">' + v + '</td>'; };
-      var sm = function (v) { return '<div style="font-size:12px;color:#64748b;margin-top:2px">' + v + '</div>'; };
+      /* 6.9.913 - HIS RULE, said many times: "try to make everything single liner". Every cell of the quote book is
+         one line now - the partners, the brands, who made it and the buttons sit side by side, not stacked. */
+      var td = function (v, extra) { return '<td style="padding:4px 8px;border-top:1px solid ' + (sub ? "#f1f5f9" : "#e2e8f0") + ';vertical-align:middle;white-space:nowrap' + (extra || "") + '">' + v + '</td>'; };
+      var sm = function (v) { return ' <span style="font-size:12px;color:#64748b">' + v + '</span>'; };
       var no = (sub ? '<span style="color:#94a3b8">↳</span> ' : '') +
         (mine ? '<button class="btn sm ghost" data-act="q-card" data-id="' + esc(q.id) + '" style="padding:2px 8px;font-size:13px;font-weight:700;white-space:nowrap" title="Open this quote’s card">' + esc(qNo(q) || "open") + '</button>'
               : '<b style="white-space:nowrap">' + esc(qNo(q)) + '</b>') +
         (sub ? sm(esc(qRevLabel(q))) : (revs ? sm(revs + ' revision' + (revs > 1 ? "s" : "")) : ''));
       /* one line, and not repeated on a revision's row (same client) */
-      var partners = sub ? '' : '<div style="font-size:12px;color:#64748b;margin-top:3px;display:flex;flex-wrap:wrap;gap:2px 10px;align-items:center">' +
-        '<span>Plumber: ' + qPartnerCell(cl, "plumber") + '</span><span>Architect: ' + qPartnerCell(cl, "architect") + '</span></div>';
+      var partners = sub ? '' : '<span style="font-size:12px;color:#64748b;margin-left:8px">' +
+        '<span title="Plumber">P: ' + qPartnerCell(cl, "plumber") + '</span> \u00b7 <span title="Architect">A: ' + qPartnerCell(cl, "architect") + '</span></span>';
       var bd = qBrandDiscs(q);
       var brands = bd.length ? bd.map(function (y) {
-        return '<div style="white-space:nowrap"><b>' + esc(y.b) + '</b> <span style="color:#0f766e;font-weight:700">' + esc(String(y.d)) + '%</span>' + (y.mixed ? ' <span style="font-size:12px;color:#94a3b8">mixed</span>' : '') + '</div>';
-      }).join("") : esc(q.brand || "—");
+        return '<span style="white-space:nowrap"><b>' + esc(y.b) + '</b> <span style="color:#0f766e;font-weight:700">' + esc(String(y.d)) + '%</span>' + (y.mixed ? ' <span style="font-size:12px;color:#94a3b8">mixed</span>' : '') + '</span>';
+      }).join(' <span style="color:#cbd5e1">\u00b7</span> ') : esc(q.brand || "—");
       var made = isRev
         ? '<b style="color:#1e3a8a">Revised</b> <span style="white-space:nowrap">' + esc(qStamp(q.createdAt)) + '</span>' + sm('by ' + esc(q.createdBy || "—")) +
-          sm('First made ' + esc(qStamp(rt.createdAt)) + ' by ' + esc(rt.createdBy || "—"))
+          '<span title="First made ' + esc(qStamp(rt.createdAt)) + ' by ' + esc(rt.createdBy || "—") + '" style="font-size:12px;color:#94a3b8"> \u2139</span>'
         : '<span style="white-space:nowrap">' + esc(qStamp(q.createdAt)) + '</span>' + sm('by ' + esc(q.createdBy || "—"));
       var pill = '<span class="pill ' + (st === "Won" ? "Won" : st === "Lost" ? "Lost" : st === "Draft" ? "" : "teal") + '" style="font-size:12px">' + esc(st) + '</span>';
       var btn = function (act, label, on, solid) {
         return '<button class="btn sm ' + (solid ? "" : "ghost") + '" data-act="' + act + '" data-id="' + esc(q.id) + '" style="padding:2px 9px;font-size:12px;white-space:nowrap' + (on ? ';outline:2px solid #0f766e' : '') + '">' + label + '</button>';
       };
-      var acts = mine ? '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px">' +
+      var acts = mine ? '<span style="display:inline-flex;gap:4px;margin-left:4px;vertical-align:middle">' +
           (o.unsent ? btn("q-sent", "Sent", false, true) : '') +
           (st !== "Won" ? btn("q-win", "Won", false, !o.unsent) : '') +
-          (st !== "Lost" ? btn("q-lose", "Lost") + btn("q-notreq", "Not required") : '') + '</div>' : '';
+          (st !== "Lost" ? btn("q-lose", "Lost") + btn("q-notreq", "Not required") : '') + '</span>' : '';
       h += '<tr style="background:' + (sub ? "#f8fafc" : "#fff") + '">' +
         td(no, sub ? ";padding-left:18px" : "") +
         td(esc(exec)) +
         td('<a href="#" data-act="cl-open" data-id="' + esc(cl.id || "") + '" style="font-weight:700;color:' + (sub ? '#64748b' : '#0b3b36') + ';text-decoration:none">' + esc(q.client || "") + '</a>' + partners, ';min-width:170px') +
         td(phDigits(cl.mobile || "").length >= 10 ? '<a href="tel:' + esc(phDigits(cl.mobile).slice(-10)) + '" style="white-space:nowrap">' + esc(cl.mobile) + '</a>' : esc(cl.mobile || "")) +
-        td(brands) + td(made, ';min-width:140px') + td(pill + ' <button class="btn sm ghost" data-act="q-pdf" data-id="' + esc(q.id) + '" style="padding:2px 9px;font-size:12px;margin-left:4px">PDF</button>' + acts, ';min-width:205px') +   /* PDF beside the status: one column less */
+        td(brands) + td(made) + td(pill + ' <button class="btn sm ghost" data-act="q-pdf" data-id="' + esc(q.id) + '" style="padding:2px 9px;font-size:12px;margin-left:4px">PDF</button>' + acts, ';min-width:205px') +   /* PDF beside the status: one column less */
         '</tr>';
     });
     return h + '</tbody></table></div>';
@@ -23028,7 +23030,10 @@ function viewCatalogue() {
         /* v6.9.772 - the technology chips: TOTO's icon then its name, wrapping in the description column */
         var T_IC = 3.8, T_FS = 8, T_LH = 4.8;   /* 6.9.796 - 8 pt, was 6.8 */
         var _tl = (r.tech && r.tech.length) ? techChipLayout(doc, F, r.tech, BUL_W, T_IC, T_FS) : { chips: [], rows: 0 };
-        var hgt = Math.max(r.pic ? 13 : 8.5, 6 + (tLines.length - 1) * 3.7 + (hasB ? 0.6 : 0) + bCount * 3.3 + (_tl.rows ? 1.2 + _tl.rows * T_LH : 0));   /* 6.9.760 - tighter */
+        /* 6.9.913 - HIS WORDS (31 Oct): "quote pdf also make single whichever column is possible, adjust product pic
+           size accordingly". A row with a picture was at least 13 mm tall even when its name is one line; the
+           picture now fits a 10 mm row, so a one-line product is one line (about a third more lines a page). */
+        var hgt = Math.max(r.pic ? 10 : 7.5, 6 + (tLines.length - 1) * 3.7 + (hasB ? 0.6 : 0) + bCount * 3.3 + (_tl.rows ? 1.2 + _tl.rows * T_LH : 0));   /* 6.9.760 - tighter */
         /* Page-break FIRST, then derive mid from the post-break y. If mid were computed
            before the break, a row that wraps to a new page would draw its serial # and
            figures at the old bottom-of-page y (off the printable area) while the
@@ -23051,7 +23056,7 @@ function viewCatalogue() {
           try {
             /* 6.9.759 - the box IS the cell: from the serial column to the description, and the row's own
                height less a margin, so a picture can never reach the row above or below */
-            var BOXW = 14, BOXH = Math.min(17, hgt - 1.4);   /* v6.9.773 - a 14 mm box before Unit */
+            var BOXW = 14, BOXH = Math.min(17, hgt - 1.2);   /* v6.9.773 - a 14 mm box before Unit; 6.9.913 - as tall as the row allows (8.8 mm on a one-line row) */
             var dm = null;
             try { var _ip = doc.getImageProperties(r.pic); if (_ip && _ip.width && _ip.height) dm = { w: _ip.width, h: _ip.height }; } catch (e3) { }   /* 6.9.762 - the picture's own size */
             if (!dm) dm = (r.dim && r.dim.w && r.dim.h) ? r.dim : { w: BOXW, h: BOXH };
@@ -23067,6 +23072,7 @@ function viewCatalogue() {
 
         /* 6.9.758 - code tag, then the name on the same line */
         var _ty = y + 0.2;
+        if (tLines.length === 1 && !bCount && !_tl.rows) _ty = mid;   /* 6.9.913 - a one-line row reads level with its figures */
         if (_code) {
           fill([232, 245, 242]); doc.roundedRect(X.item, _ty - 2.9, _cw, 3.9, 0.8, 0.8, "F");
           col(TEALD); F("normal"); doc.setFontSize(8); doc.text(_code, X.item + 1.4, _ty);
@@ -32666,8 +32672,8 @@ function viewCatalogue() {
           pending: r.pending > 0.5 ? '<b style="color:#b91c1c">' + money(r.pending) + '</b>'
             : (r.earned - r.payable > 0.5 ? '<span class="pill soon" style="font-size:12px" title="Incentive is paid as the client pays">' + money(r.earned - r.payable) + ' waits for client payment</span>'
             : (r.earned > 0.5 ? '<span class="pill Won" style="font-size:12px">settled</span>' : '<span style="color:#94a3b8">nothing earned</span>')),
-          go: '<button class="btn sm" data-act="p-open" data-k="' + (r.kind === "exec" ? "exec" : "") + '" data-n="' + esc(r.name) + '" style="padding:2px 8px;font-size:12px">Open</button>' +
-              (r.id ? ' <button class="btn sm ghost" data-act="as-open" data-id="' + esc(r.id) + '" style="padding:2px 8px;font-size:12px">Edit</button>' : ''),
+          go: '<span style="white-space:nowrap"><button class="btn sm" data-act="p-open" data-k="' + (r.kind === "exec" ? "exec" : "") + '" data-n="' + esc(r.name) + '" style="padding:2px 8px;font-size:12px">Open</button>' +
+              (r.id ? ' <button class="btn sm ghost" data-act="as-open" data-id="' + esc(r.id) + '" style="padding:2px 8px;font-size:12px">Edit</button>' : '') + '</span>',   /* 6.9.913 - one line */
           billed: money(r.billed), earned: '<b style="color:#0f766e">' + money(r.earned) + '</b>', payable: money(r.payable), paid: money(r.paid),
           on: r.kind === "exec" ? r.clients + ' <span style="color:#94a3b8;font-size:12px">clients</span>' : r.sites + ' <span style="color:#94a3b8;font-size:12px">sites</span> · ' + r.n + ' <span style="color:#94a3b8;font-size:12px">challans</span>'
         } };
@@ -47134,8 +47140,10 @@ function viewCatalogue() {
           'padding:5px 7px;border-top:1px solid #e2e8f0;' +
           /* v6.9.592 - a column may WRAP (c.wrap = its widest width). Opt-in: every sheet that does
              not ask is drawn exactly as before. */
+          /* 6.9.913 - "make everything single liner": a cell of BUTTONS never folds - Quote / Won / Lost /
+             Not required, Open / Edit, Call / HISAB sit side by side on one line */
           (c.wrap ? 'white-space:normal;vertical-align:top;max-width:' + c.wrap + ';'
-           : (c.n || c.nw || k === 0 && c.w ? 'white-space:nowrap;' : 'white-space:normal;vertical-align:top;max-width:280px;')) +
+           : (c.n || c.nw || k === 0 && c.w || /<button/.test(String(v == null ? "" : v)) ? 'white-space:nowrap;vertical-align:middle;' : 'white-space:normal;vertical-align:top;max-width:280px;')) +
           'font-size:12.5px;text-align:' +
           (c.r ? "right" : "left") + '">' + (v == null ? "" : v) + '</td>';
       });
