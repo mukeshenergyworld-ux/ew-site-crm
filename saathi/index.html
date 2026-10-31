@@ -330,6 +330,37 @@ header h1{font-family:'Baloo 2',var(--body);font-weight:800;font-size:26px;text-
 </head>
 <body>
 <script>
+/* ===== ONE TAP, ONE ENTRY  (31 Oct 2026, every Energy World app) =====
+   HIS REPORT: "clicking twice added two machine, make it standard rule to avoid duplicate entry ... apply it everywhere".
+   A second tap on the SAME button that comes before the first one has had time to answer is swallowed here, before
+   the app ever sees it. It runs in the capture phase on the whole page, so it covers every button in every screen,
+   including ones written later, without each screen having to remember. Only buttons that WRITE something are
+   guarded (save, add, record, confirm, send, approve ...): moving around the app is never slowed down.
+   A button that really is meant to be tapped twice in a row carries data-taps="multi". */
+(function () {
+  if (window.__ewTapGuard) return; window.__ewTapGuard = 1;
+  var WINDOW_MS = 2500, last = {};
+  var WRITE = /(save|add|submit|record|confirm|approve|create|send|assign|pay|paid|receiv|recv|dispatch|deliver|issue|book|regist|mark|done|complete|attach|upload|merge|finish|place|generate|new|ok\b|go\b|force|won|lost|remove|del|cancel|return|apply|post|log|set|enter|transfer|accept|reject|close|start|stop|check.?in|check.?out|punch)/i;
+  function sig(el) {
+    var a = el.attributes, s = el.tagName;
+    for (var i = 0; i < a.length; i++) { var n = a[i].name; if (n.indexOf("data-") === 0 && n !== "data-busy" && n.indexOf("data-lock") !== 0) s += "|" + n + "=" + a[i].value; }
+    var oc = el.getAttribute("onclick"); if (oc) s += "|oc=" + oc;
+    return s + "|" + String(el.textContent || "").replace(/\s+/g, " ").trim().slice(0, 60);
+  }
+  document.addEventListener("click", function (e) {
+    var el = e.target && e.target.closest ? e.target.closest("button,[data-act],[role=button],input[type=submit],input[type=button],a.btn") : null;
+    if (!el || el.getAttribute("data-taps") === "multi") return;
+    if (el.getAttribute("data-act") === "bf-tap") return;          /* CRM: once = Won, twice = Not required */
+    var words = (el.getAttribute("data-act") || "") + " " + (el.id || "") + " " + (el.getAttribute("onclick") || "") + " " + String(el.textContent || el.value || "");
+    if (!WRITE.test(words)) return;
+    var k = sig(el), now = Date.now();
+    if (last[k] && now - last[k] < WINDOW_MS) { e.stopImmediatePropagation(); e.preventDefault(); return; }
+    last[k] = now;
+  }, true);
+})();
+</script>
+
+<script>
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -1231,7 +1262,7 @@ function ewRefresh(){
    Nothing you have typed or queued is touched. The sign-in and the
    offline queue live in localStorage and this never goes near them.
 --------------------------------------------------------------------- */
-var BUILD  = '2026.10.28-8';
+var BUILD  = '2026.10.31-1';
 var DROPS = '<svg viewBox="0 0 130 120" width="100%" height="100%" aria-hidden="true"><path d="M48 6C48 6 12 52 12 76a36 36 0 0 0 72 0C84 52 48 6 48 6Z" fill="#0A4F94"/><path d="M82 6C82 6 46 52 46 76a36 36 0 0 0 72 0C118 52 82 6 82 6Z" fill="#F28C28" fill-opacity=".88"/></svg>';   /* the Saathi mark */        /* which build of this file is running */
 var APPKEY = 'SAATHI';
 var VKEY   = 'ew_saathi_ver_v1';
