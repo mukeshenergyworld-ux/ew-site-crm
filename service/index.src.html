@@ -388,6 +388,37 @@ function ewmBuild(n, pre) {
 </script>
 </head>
 <body>
+<script>
+/* ===== ONE TAP, ONE ENTRY  (31 Oct 2026, every Energy World app) =====
+   HIS REPORT: "clicking twice added two machine, make it standard rule to avoid duplicate entry ... apply it everywhere".
+   A second tap on the SAME button that comes before the first one has had time to answer is swallowed here, before
+   the app ever sees it. It runs in the capture phase on the whole page, so it covers every button in every screen,
+   including ones written later, without each screen having to remember. Only buttons that WRITE something are
+   guarded (save, add, record, confirm, send, approve ...): moving around the app is never slowed down.
+   A button that really is meant to be tapped twice in a row carries data-taps="multi". */
+(function () {
+  if (window.__ewTapGuard) return; window.__ewTapGuard = 1;
+  var WINDOW_MS = 2500, last = {};
+  var WRITE = /(save|add|submit|record|confirm|approve|create|send|assign|pay|paid|receiv|recv|dispatch|deliver|issue|book|regist|mark|done|complete|attach|upload|merge|finish|place|generate|new|ok\b|go\b|force|won|lost|remove|del|cancel|return|apply|post|log|set|enter|transfer|accept|reject|close|start|stop|check.?in|check.?out|punch)/i;
+  function sig(el) {
+    var a = el.attributes, s = el.tagName;
+    for (var i = 0; i < a.length; i++) { var n = a[i].name; if (n.indexOf("data-") === 0 && n !== "data-busy" && n.indexOf("data-lock") !== 0) s += "|" + n + "=" + a[i].value; }
+    var oc = el.getAttribute("onclick"); if (oc) s += "|oc=" + oc;
+    return s + "|" + String(el.textContent || "").replace(/\s+/g, " ").trim().slice(0, 60);
+  }
+  document.addEventListener("click", function (e) {
+    var el = e.target && e.target.closest ? e.target.closest("button,[data-act],[role=button],input[type=submit],input[type=button],a.btn") : null;
+    if (!el || el.getAttribute("data-taps") === "multi") return;
+    if (el.getAttribute("data-act") === "bf-tap") return;          /* CRM: once = Won, twice = Not required */
+    var words = (el.getAttribute("data-act") || "") + " " + (el.id || "") + " " + (el.getAttribute("onclick") || "") + " " + String(el.textContent || el.value || "");
+    if (!WRITE.test(words)) return;
+    var k = sig(el), now = Date.now();
+    if (last[k] && now - last[k] < WINDOW_MS) { e.stopImmediatePropagation(); e.preventDefault(); return; }
+    last[k] = now;
+  }, true);
+})();
+</script>
+
 <div id="root"></div>
 <!-- Nothing third-party is loaded here. An engineer opens this in a kitchen with one
      bar of signal; it has to start from the copy on the phone and ask for nothing. -->
@@ -429,7 +460,7 @@ function ewmBuild(n, pre) {
    Nothing here deletes anything, ever. A visit is a row added.
    ========================================================================== */
 
-  var APP_VERSION = "3.3.0";
+  var APP_VERSION = "3.4.0";   /* 3.4.0 (31 Oct 2026) - one tap, one entry */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
