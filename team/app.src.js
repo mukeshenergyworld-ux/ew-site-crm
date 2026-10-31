@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.909";
+  var APP_VERSION = "6.9.910";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -2556,7 +2556,53 @@
   /* p752 - the machine form's shared brands / products */
   window.ewmSharedGet = function () { var o = { b: [], p: [] }; ((S.data && S.data.audit) || []).forEach(function (a) { if (String(a && a.action || "") !== "mach:custom") return; var d = {}; try { d = JSON.parse(a.detail || "{}") || {}; } catch (e) { return; } if ((d.kind === "b" || d.kind === "p") && String(d.name || "").trim()) o[d.kind].push(String(d.name).trim()); }); return o; };
   window.ewmSharedPut = function (kind, v) { save("audit", { id: "", createdAt: new Date().toISOString(), actor: S.user || "", action: "mach:custom", target: String(v), detail: JSON.stringify({ kind: kind, name: String(v) }), ip: "" }, true); };
+  /* ===================== 6.9.910 - ONE TAP, ONE ENTRY =====================
+     HIS REPORT (31 Oct): "clicking twice added two machine, make it standard rule to avoid duplicate entry, its basic
+     problem, apply it everywhere". The Add-machine Save wrote a row on each tap: two taps, two machines, and because each
+     machine gets its own made-up serial (EW-M251119-1, -2) nothing downstream could tell they were one. The old guard
+     (WRITE_ACTS, v6.9.4xx) covered six buttons by name; every other Save in the app had none.
+
+     THREE LAYERS NOW, none of them per-screen:
+       1. THE TAP: index.html swallows a second tap on the same write button within 2.5 s (all seven apps carry it).
+       2. THE CLICK: every click that starts a save is remembered until that save has answered. While it is in flight
+          the same button (same action, same record) is locked - "Still saving - one moment." - and comes back when the
+          server answers, or after 30 s at the latest.
+       3. THE ROW: a NEW row whose content is the same as a new row written by an EARLIER click less than 8 seconds ago
+          is not written again; the first save's answer is handed back. Rows written by one click together (a loop that
+          saves several) are never compared with each other, so nothing intended is ever dropped. Time stamps and ids
+          are left out of the comparison - they are what differ between two taps. */
+  var _tapSeq = 0, _tapCur = null, _tapInflight = {}, _newRows = [];
+  var NEWROW_SAME_MS = 8000;
+  function rowPrint(tab, row) {
+    var o = {}, ks = Object.keys(row || {}).sort();
+    ks.forEach(function (k) {
+      if (k === "id" || k === "createdAt" || k === "updatedAt" || k === "_lid") return;
+      var v = row[k]; if (v === "" || v == null) return;
+      if (k === "detail" && typeof v === "string") { try { var d = JSON.parse(v); if (d && typeof d === "object") { delete d.at; delete d._at; v = JSON.stringify(d, Object.keys(d).sort()); } } catch (e) { } }
+      /* a made-up serial (EW-M<date>-<n>) differs between two taps by design; the real one is kept */
+      if (/serial/i.test(k) && /^EW-M\d{6}-\d+$/.test(String(v))) return;
+      if (k === "productsJson" && typeof v === "string") v = v.replace(/"serial":"EW-M\d{6}-\d+"/g, '"serial":""');
+      o[k] = v;
+    });
+    return tab + "|" + JSON.stringify(o);
+  }
   function save(tab, row, quiet) {
+    var isNew = !!row && (row.id == null || row.id === "" || tab === "audit");   /* the audit tab only ever gains rows (auditFact mints its id first) */
+    var fp = "", now = Date.now();
+    if (isNew) {
+      try { fp = rowPrint(tab, row); } catch (e) { fp = ""; }
+      _newRows = _newRows.filter(function (x) { return now - x.at < NEWROW_SAME_MS; });
+      if (fp) {
+        var twin = _newRows.filter(function (x) { return x.fp === fp && x.seq !== _tapSeq; })[0];
+        if (twin) { try { toast("Already saved — the second tap was not written again."); } catch (e) { } return twin.p; }
+      }
+    }
+    var p = saveCore_(tab, row, quiet);
+    if (isNew && fp) _newRows.push({ fp: fp, at: now, seq: _tapSeq, p: p });
+    if (_tapCur && p && p.then) _tapCur.ps.push(p);
+    return p;
+  }
+  function saveCore_(tab, row, quiet) {
     var _lk = null; try { _lk = lockRefusal(tab, row); } catch (eLk) { _lk = null; }
     if (_lk) { try { toast(_lk); S.lockSay = _lk; setTimeout(function () { if (S.lockSay === _lk) { S.lockSay = ""; } }, 12000); } catch (e) { } return Promise.resolve(null); }   /* 6.9.744 */
     /* 6.9.690 - FOUND BUILDING THE ENGINEER'S JOB LIST. The audit sheet's columns are id, createdAt,
@@ -60785,6 +60831,23 @@ function viewCatalogue() {
 
     /* A write button is dead to a second tap until the first one has settled. */
     if (WRITE_ACTS[act] && !lockBtn(t)) { toast("Still saving \u2014 one moment."); return; }
+
+    /* 6.9.910 - layer 2: the same action on the same record while its save is still on the wire is refused, for
+       EVERY button, not a list of six. The saves this click starts are collected; when they settle the lock lifts. */
+    var _tk = act;
+    try { for (var _ai = 0; _ai < t.attributes.length; _ai++) { var _an = t.attributes[_ai].name; if (_an.indexOf("data-") === 0 && _an !== "data-busy" && _an.indexOf("data-lock") !== 0) _tk += "|" + _an + "=" + t.attributes[_ai].value; } } catch (eTk) { }
+    if (_tapInflight[_tk] && act !== "bf-tap") { toast("Still saving \u2014 one moment."); return; }
+    _tapSeq++;
+    var _tc = _tapCur = { key: _tk, ps: [], t: t };
+    setTimeout(function () {
+      if (_tapCur === _tc) _tapCur = null;
+      if (!_tc.ps.length || act === "bf-tap") return;
+      _tapInflight[_tc.key] = 1;
+      var _own = !WRITE_ACTS[act] && document.body.contains(_tc.t) && lockBtn(_tc.t);
+      var _done = function () { delete _tapInflight[_tc.key]; if (_own) unlockBtn(_tc.t); };
+      var _cap = setTimeout(_done, 30000);
+      Promise.all(_tc.ps.map(function (q) { return q.then(null, function () { return null; }); })).then(function () { clearTimeout(_cap); _done(); });
+    }, 0);
 
     if (act === "login") { doLogin(); return; }
     if (act === "book-retry") { toast("Fetching your book\u2026"); try { refresh(); } catch (e2) { } return; }   /* p747b */
