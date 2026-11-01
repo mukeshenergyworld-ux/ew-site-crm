@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.915";
+  var APP_VERSION = "6.9.916";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -56341,17 +56341,29 @@ function viewCatalogue() {
   function gdOnlyMps() { return !gdCanSwitch() && gdMine() === "MPS"; }
   function gdRefPre() { return gdCur() === "MPS" ? "MPS · " : ""; }
   function gdIsMpsClient(name) { return /modern\s*plumbing/i.test(String(name || "")); }
+  /* part 2 (CRM 6.9.916 / Challan 1.148.0) - HIS "yes" to "a received-at-MPS tick": a transfer leaves the sending
+     godown the day it is saved and lands in the other only when that godown RECEIVES it - an "xferrcv" stock row
+     (code *XFERRCV): desc {xfer: <transfer id>, by, at, lines:[{code, q}]} with what actually came off the vehicle.
+     Until then it is "in transit" - in neither godown's free stock. */
   function gdXfers() {
-    var out = [];
+    var out = [], rcv = {};
+    (S.stock || []).forEach(function (r) {
+      if (String(r && r.type) !== "xferrcv") return;
+      var d = {}; try { d = JSON.parse(r.desc || "{}") || {}; } catch (e) { return; }
+      if (d.xfer && !rcv[d.xfer]) rcv[d.xfer] = { asOn: String(r.asOn || "").slice(0, 10), by: d.by || "", lines: (d.lines || []).filter(function (l) { return l && l.code; }) };
+    });
     (S.stock || []).forEach(function (r) {
       if (String(r && r.type) !== "xfer") return;
       var d = {}; try { d = JSON.parse(r.desc || "{}") || {}; } catch (e) { return; }
       if (d.cancel) return;
       out.push({ id: r.id, from: d.from === "MPS" ? "MPS" : "EW", to: d.to === "EW" ? "EW" : "MPS", asOn: String(r.asOn || "").slice(0, 10),
-        lines: (d.lines || []).filter(function (l) { return l && l.code && Number(l.q) > 0; }), by: d.by || "", ref: r.ref || "" });
+        lines: (d.lines || []).filter(function (l) { return l && l.code && Number(l.q) > 0; }), by: d.by || "", ref: r.ref || "", note: r.notes || "",
+        rcv: rcv[r.id] || null });
     });
     return out;
   }
+  /* what this godown has received of a transfer, line by line (nothing until it is received) */
+  function gdXferGot(x) { var m = {}; ((x && x.rcv && x.rcv.lines) || []).forEach(function (l) { var k = String(l.code || "").trim(); if (k) m[k] = (m[k] || 0) + (Number(l.q) || 0); }); return m; }
   function stkCutoff() {
     var m = {}, z = "";
     (S.stock || []).forEach(function (r) {
@@ -56471,7 +56483,7 @@ function viewCatalogue() {
     (S.stock || []).forEach(function (r) { if (String(r.type) === "bill" && r.ref) _bref[String(r.ref).trim().toLowerCase()] = 1; });
     (S.stock || []).forEach(function (row) {
       var ty = String(row.type || "");
-      if (ty === "xfer" || ty === "gdstaff") return;   /* two godowns: transfers are added below, line by line */
+      if (ty === "xfer" || ty === "xferrcv" || ty === "gdstaff") return;   /* two godowns: transfers are added below, line by line */
       if (gdOfRow(row) !== gdCur()) return;
       if (ty === "bill") return;   /* 6.9.607 - counted below, line by line, from stkBillLines */
       if (ty === "billread" || ty === "billskip" || ty === "lorry") return;   /* 6.9.893 - the night read (code *READ, qty = the bill's rupees), set-aside files and lorry checks are not stock */
@@ -56485,16 +56497,16 @@ function viewCatalogue() {
       if (row.desc && !desc[k]) desc[k] = row.desc;
     });
     if (gdCur() === "EW") stkBillLines().forEach(function (l) { if (stkCounts(l.code, l.asOn, cut)) m[l.code] = (m[l.code] || 0) + l.qty; });   /* two godowns: every purchase bill lands at the EW godown */
-    gdXfers().forEach(function (x) {   /* two godowns: a transfer leaves one and lands in the other on its day */
-      var sg = x.from === gdCur() ? -1 : (x.to === gdCur() ? 1 : 0); if (!sg) return;
-      x.lines.forEach(function (l) { var k = String(l.code || "").trim(); if (k && stkCounts(k, x.asOn, cut)) { m[k] = (m[k] || 0) + sg * (Number(l.q) || 0); if (l.desc && !desc[k]) desc[k] = l.desc; } });
+    gdXfers().forEach(function (x) {   /* two godowns: a transfer leaves one the day it is sent, and lands in the other the day it is RECEIVED */
+      if (x.from === gdCur()) x.lines.forEach(function (l) { var k = String(l.code || "").trim(); if (k && stkCounts(k, x.asOn, cut)) { m[k] = (m[k] || 0) - (Number(l.q) || 0); if (l.desc && !desc[k]) desc[k] = l.desc; } });
+      else if (x.to === gdCur() && x.rcv) { var got = gdXferGot(x); Object.keys(got).forEach(function (k) { if (stkCounts(k, x.rcv.asOn, cut)) m[k] = (m[k] || 0) + got[k]; }); }
     });   /* 6.9.607 - IN is the Tally bill */
     return { m: m, desc: desc };
   }
   /* Per-code reorder level and latest purchase rate — stored as their own stock rows (type
      "reorder" / "rate"), so no new sheet column is needed. Last row wins (rows arrive chronological). */
-  function reorderByCode() {
-    var m = {}; (S.stock || []).forEach(function (r) { if (String(r.type) !== "reorder") return; var k = String(r.code || "").trim(); if (k) m[k] = Number(r.qty) || 0; }); return m;
+  function reorderByCode() {   /* 6.9.916 - each godown has its own reorder points */
+    var m = {}; (S.stock || []).forEach(function (r) { if (String(r.type) !== "reorder" || gdOfRow(r) !== gdCur()) return; var k = String(r.code || "").trim(); if (k) m[k] = Number(r.qty) || 0; }); return m;
   }
   function rateByCode() {
     var m = {}; (S.stock || []).forEach(function (r) { if (String(r.type) !== "rate") return; var k = String(r.code || "").trim(); if (k) m[k] = Number(r.qty) || 0; }); return m;
@@ -56591,17 +56603,22 @@ function viewCatalogue() {
     (S.stock || []).forEach(function (r) {
       var t = String(r.type || ""), k = String(r.code || "").trim();
       if (t === "bill" && r.ref) bref[String(r.ref).trim().toLowerCase()] = 1;
-      if (t === "opening" && k) { var d = String(r.asOn || "").slice(0, 10); if (d) { cnt[k] = cnt[k] || {}; cnt[k][d] = r; } }
+      if (t === "opening" && k && gdOfRow(r) === gdCur()) { var d = String(r.asOn || "").slice(0, 10); if (d) { cnt[k] = cnt[k] || {}; cnt[k][d] = r; } }   /* 6.9.916 - this godown's counts */
     });
     (S.stock || []).forEach(function (r) {
       var t = String(r.type || "");
+      if (gdOfRow(r) !== gdCur()) return;
       if (t === "adjust") add(r.code, r.asOn, Number(r.qty) || 0);
       else if (t === "in" && !bref[String(r.ref || "").trim().toLowerCase()]) add(r.code, r.asOn, Number(r.qty) || 0);
     });
-    stkBillLines().forEach(function (l) { add(l.code, l.asOn, l.qty); });
-    (S.data.challans || []).forEach(function (c) { if (!stkChOut(c)) return; stkExpand(chItems(c), bom).forEach(function (i) { add(i.code, c.createdAt, -(Number(i.qty) || 0)); }); });
+    if (gdCur() === "EW") stkBillLines().forEach(function (l) { add(l.code, l.asOn, l.qty); });
+    gdXfers().forEach(function (x) {
+      if (x.from === gdCur()) x.lines.forEach(function (l) { add(l.code, x.asOn, -(Number(l.q) || 0)); });
+      else if (x.to === gdCur() && x.rcv) { var g = gdXferGot(x); Object.keys(g).forEach(function (k) { add(k, x.rcv.asOn, g[k]); }); }
+    });
+    (S.data.challans || []).forEach(function (c) { if (!stkChOut(c) || gdOfDoc(c) !== gdCur()) return; stkExpand(chItems(c), bom).forEach(function (i) { add(i.code, c.createdAt, -(Number(i.qty) || 0)); }); });
     (S.data.returns || []).forEach(function (r) {
-      if (String(r.status || "").trim().toLowerCase() !== "received") return;
+      if (String(r.status || "").trim().toLowerCase() !== "received" || gdOfDoc(r) !== gdCur()) return;
       var items = []; try { items = JSON.parse(r.itemsJson || "[]"); } catch (e) { items = []; }
       stkExpand(items, bom).forEach(function (i) { add(i.code, r.createdAt, Number(i.qty) || 0); });
     });
@@ -56622,7 +56639,7 @@ function viewCatalogue() {
   }
   function stkCountStats() {
     var last = "", mon = today().slice(0, 7), thisMon = 0, counted = {};
-    (S.stock || []).forEach(function (r) { if (String(r.type) !== "opening") return; var d = String(r.asOn || "").slice(0, 10); if (d > last) last = d; if (d.slice(0, 7) === mon) { thisMon++; counted[String(r.code || "").trim()] = 1; } });
+    (S.stock || []).forEach(function (r) { if (String(r.type) !== "opening" || gdOfRow(r) !== gdCur()) return; var d = String(r.asOn || "").slice(0, 10); if (d > last) last = d; if (d.slice(0, 7) === mon) { thisMon++; counted[String(r.code || "").trim()] = 1; } });
     return { last: last, thisMon: Object.keys(counted).length };
   }
   function stkVarianceCard() {
@@ -56818,6 +56835,7 @@ function viewCatalogue() {
     return '<div style="margin:6px 0 4px">' +
       (gdCanSwitch() ? '<div class="row" style="gap:6px;flex-wrap:wrap">' + b("EW") + b("MPS") + '</div>'
         : '<div style="font-weight:700;color:#0f766e">' + esc(GD_LABEL[cur]) + '</div>') +
+      gdTransitHtml(cur) +
       ((xin || xout) ? '<div class="meta" style="font-size:12.5px;margin-top:4px">Last 30 days: ' + (xin ? plural(xin, "transfer") + ' in' : '') + (xin && xout ? ' · ' : '') + (xout ? plural(xout, "transfer") + ' out' : '') +
         ' <a href="#" data-act="xf-list">see them</a></div>' : '') + '</div>';
   }
@@ -56836,11 +56854,36 @@ function viewCatalogue() {
     S.stock = (S.stock || []).concat([row]); _gdStaffC = null;
     api("stockSave", { row: row }).then(function () { }, function () { });
   }
+  /* 6.9.916 - in transit: sent, not yet received. The receiving godown ticks it off the vehicle. */
+  function gdTransitHtml(cur) {
+    var xs = gdXfers(), inc = xs.filter(function (x) { return x.to === cur && !x.rcv; }), out = xs.filter(function (x) { return x.from === cur && !x.rcv; });
+    var shortX = xs.filter(function (x) { if (!x.rcv) return false; var g = gdXferGot(x); return x.lines.some(function (l) { return Math.abs((g[l.code] || 0) - (Number(l.q) || 0)) > 1e-9; }); });
+    var h = '';
+    if (inc.length) h += '<div class="card" style="margin-top:8px;border-color:#f59e0b;background:#fffbeb"><div style="font-weight:800;color:#92400e">\u{1F69A} ' + plural(inc.length, "transfer") + ' on the way to ' + esc(GD_SHORT[cur]) + ' \u2014 receive when it is unloaded</div>' +
+      inc.map(function (x) { var n = x.lines.reduce(function (a, l) { return a + (Number(l.q) || 0); }, 0);
+        return '<div style="display:flex;align-items:center;gap:8px;margin-top:6px;white-space:nowrap"><span style="overflow:hidden;text-overflow:ellipsis">' + esc(dmy(x.asOn)) + ' \u00b7 from ' + esc(GD_SHORT[x.from]) + ' \u00b7 ' + plural(x.lines.length, "line") + ', ' + qShow(n) + ' pcs \u00b7 ' + esc(x.by) + '</span>' +
+          '<button class="btn sm" data-act="xr-open" data-id="' + esc(x.id) + '" style="min-height:44px">Receive</button></div>'; }).join('') + '</div>';
+    if (out.length) h += '<div class="meta" style="font-size:12.5px;margin-top:6px;color:#92400e">' + plural(out.length, "transfer") + ' sent from here, not yet received at ' + esc(GD_SHORT[cur === "EW" ? "MPS" : "EW"]) + ' (in transit, in neither godown\u2019s stock).</div>';
+    if (shortX.length && gdCanSwitch()) h += '<div class="meta" style="font-size:12.5px;margin-top:6px;color:#b91c1c">' + plural(shortX.length, "transfer") + ' received with a difference \u2014 <a href="#" data-act="xf-list">see them</a>.</div>';
+    return h;
+  }
+  function modalXferRcv(id) {
+    var x = gdXfers().filter(function (y) { return y.id === id; })[0]; if (!x) return '<div class="empty">That transfer is not on this phone.</div>';
+    return '<h2>Receive the transfer</h2>' +
+      '<div class="meta" style="margin-bottom:8px">' + esc(dmy(x.asOn)) + ' \u00b7 ' + esc(GD_SHORT[x.from]) + ' &rarr; ' + esc(GD_SHORT[x.to]) + ' \u00b7 sent by ' + esc(x.by) + (x.note ? ' \u00b7 ' + esc(x.note) : '') + '</div>' +
+      '<div class="meta">Count what came off the vehicle. If everything came, press <b>Everything came</b>.</div>' +
+      x.lines.map(function (l, i) {
+        return '<div style="display:flex;align-items:center;gap:8px;margin-top:6px;white-space:nowrap"><span style="flex:1;overflow:hidden;text-overflow:ellipsis"><b>' + esc(l.code) + '</b> <span class="meta">' + esc(l.desc || "") + '</span></span>' +
+          '<span class="meta">sent ' + qShow(l.q) + '</span><input id="xr_q' + i + '" inputmode="decimal" value="' + esc(qShow(l.q)) + '" style="width:70px;min-height:44px;text-align:center"/></div>';
+      }).join('') +
+      '<div class="foot"><button class="btn ghost" data-act="close">Later</button><button class="btn ghost" data-act="xr-save" data-id="' + esc(x.id) + '">Save what came</button>' +
+      '<button class="btn" data-act="xr-save" data-id="' + esc(x.id) + '" data-all="1">Everything came</button></div>';
+  }
   function modalXfer() {
     var z = S.xf; if (!z) return '';
     return '<h2>Transfer stock</h2>' +
       '<div class="card" style="border-color:#99f6e4;background:#f0fdfa;margin-bottom:10px"><div style="font-size:14px"><b>' + esc(GD_LABEL[z.from]) + '</b> &rarr; <b>' + esc(GD_LABEL[z.to]) + '</b></div>' +
-      '<div class="meta" style="margin-top:3px">Our own material moving between our two godowns: it leaves ' + esc(GD_SHORT[z.from]) + ' and lands in ' + esc(GD_SHORT[z.to]) + ' today. No bill, no dues, no incentive.</div></div>' +
+      '<div class="meta" style="margin-top:3px">Our own material moving between our two godowns: it leaves ' + esc(GD_SHORT[z.from]) + ' now and lands in ' + esc(GD_SHORT[z.to]) + ' when they press Receive there. No bill, no dues, no incentive.</div></div>' +
       '<label>Note (optional)</label><input id="xf_note" placeholder="vehicle / who took it" value="' + esc(z.note || "") + '"/>' +
       '<h3 style="margin:14px 0 4px;font-size:14px">Products <span class="pill teal">' + (z.items || []).length + ' picked</span></h3>' +
       '<div id="xf_pick">' + prodPicker(z, PICKERS.xf) + '</div>' +
@@ -56852,9 +56895,13 @@ function viewCatalogue() {
     var xs = gdXfers().sort(function (a, b) { return String(b.asOn).localeCompare(String(a.asOn)); }).slice(0, 60);
     return '<h2>Transfers between godowns</h2>' + (xs.length ? xs.map(function (x) {
       var n = x.lines.reduce(function (a, l) { return a + (Number(l.q) || 0); }, 0);
-      return '<div class="card" style="margin-top:6px"><div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><b>' + esc(dmy(x.asOn)) + '</b> · ' + esc(GD_SHORT[x.from]) + ' &rarr; ' + esc(GD_SHORT[x.to]) +
-        ' · ' + plural(x.lines.length, "line") + ', ' + qShow(n) + ' pcs · by ' + esc(x.by || "?") + '</div>' +
-        '<div class="meta" style="font-size:12.5px">' + x.lines.map(function (l) { return esc(l.code) + ' × ' + qShow(l.q); }).join(', ') + '</div></div>';
+      var g = gdXferGot(x);
+      var st = !x.rcv ? '<span class="pill" style="background:#fef3c7;color:#92400e">in transit</span>'
+        : '<span class="pill" style="background:#dcfce7;color:#166534">received ' + esc(dmy(x.rcv.asOn)) + ' \u00b7 ' + esc(x.rcv.by) + '</span>';
+      return '<div class="card" style="margin-top:6px"><div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><b>' + esc(dmy(x.asOn)) + '</b> \u00b7 ' + esc(GD_SHORT[x.from]) + ' &rarr; ' + esc(GD_SHORT[x.to]) +
+        ' \u00b7 ' + plural(x.lines.length, "line") + ', ' + qShow(n) + ' pcs \u00b7 by ' + esc(x.by || "?") + ' ' + st + '</div>' +
+        '<div class="meta" style="font-size:12.5px">' + x.lines.map(function (l) { var d = x.rcv ? (g[l.code] || 0) - (Number(l.q) || 0) : 0;
+          return esc(l.code) + ' \u00d7 ' + qShow(l.q) + (d ? ' <b style="color:#b91c1c">(came ' + qShow(g[l.code] || 0) + ')</b>' : ''); }).join(', ') + '</div></div>';
     }).join('') : '<div class="empty">No transfer yet.</div>') + '<div class="foot"><button class="btn ghost" data-act="close">Close</button></div>';
   }
   function viewStock() {
@@ -57046,14 +57093,17 @@ function viewCatalogue() {
       cover: stkNum(o.cover, STK_PLAN_DEF.cover) || STK_PLAN_DEF.cover };
   }
   /* a product's levels: the last "reorder" row wins, as reorderByCode */
-  function stkLvl() {
-    var m = {};
+  function stkLvl() {   /* 6.9.916 - min / max / critical are per godown; the box size is the product's own, from either */
+    var m = {}, pk = {};
     (S.stock || []).forEach(function (r) {
       if (String(r.type) !== "reorder") return;
       var k = String(r.code || "").trim(); if (!k) return;
       var n = {}; try { n = JSON.parse(r.notes || "{}") || {}; } catch (e) { n = {}; }
+      if (Number(n.pack) > 0) pk[k] = Number(n.pack);
+      if (gdOfRow(r) !== gdCur()) return;
       m[k] = { min: Number(r.qty) || 0, max: Number(n.max) || 0, pack: Number(n.pack) || 0, crit: Number(n.crit) || 0 };
     });
+    Object.keys(pk).forEach(function (k) { if (!m[k]) m[k] = { min: 0, max: 0, pack: pk[k], crit: 0 }; else if (!m[k].pack) m[k].pack = pk[k]; });
     return m;
   }
   function stkPMap() {
@@ -57065,8 +57115,10 @@ function viewCatalogue() {
   function stkHist() {
     _stkHistBom = null;
     var DAY = 86400000, now = Date.parse(today() + "T00:00:00"), by = {}, first = "";
-    dedupeChallans(S.data.challans || []).forEach(function (c) {
-      if (!stkChOut(c)) return;
+    var _hx = [];   /* 6.9.916 - a godown's demand: its own challans, and what it sent to the other godown */
+    gdXfers().forEach(function (x) { if (x.from === gdCur()) _hx.push({ createdAt: x.asOn + "T06:00:00Z", status: "Dispatched", _x: 1, itemsJson: JSON.stringify(x.lines.map(function (l) { return { code: l.code, qty: Number(l.q) || 0 }; })) }); });
+    dedupeChallans(S.data.challans || []).filter(function (c) { return gdOfDoc(c) === gdCur(); }).concat(_hx).forEach(function (c) {
+      if (!c._x && !stkChOut(c)) return;
       var d = String(c.createdAt || "").slice(0, 10); if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return;
       if (!first || d < first) first = d;
       var age = Math.max(0, Math.floor((now - Date.parse(d + "T00:00:00")) / DAY));
@@ -57817,7 +57869,7 @@ function viewCatalogue() {
     if (!items.length) return;
     var rows = items.map(function (x, i) {
       return { id: "S-" + Date.now() + "-" + i + "-" + Math.floor(Math.random() * 1000000) + "-reorder", type: "reorder", code: x.code, desc: "",
-        qty: Math.max(0, Number(x.min) || 0), ref: "", asOn: today(), notes: JSON.stringify({ max: Math.max(0, Number(x.max) || 0), pack: Math.max(0, Number(x.pack) || 0), crit: Math.max(0, Number(x.crit) || 0) }) };
+        qty: Math.max(0, Number(x.min) || 0), ref: gdRefPre(), asOn: today(), notes: JSON.stringify({ max: Math.max(0, Number(x.max) || 0), pack: Math.max(0, Number(x.pack) || 0), crit: Math.max(0, Number(x.crit) || 0) }) };
     });
     S.stock = (S.stock || []).concat(rows);
     var next = 0, ok = 0, bad = 0, why = "", total = rows.length;
@@ -61549,7 +61601,7 @@ function viewCatalogue() {
       var _pL = stkLvl()[_pc] || {};
       if (Number(_pv) === _pL.pack) { toast("Per box is already " + _pv + "."); return; }
       var _prow = { id: "S-" + Date.now() + "-" + Math.floor(Math.random() * 1000000) + "-reorder", type: "reorder", code: _pc, desc: "",
-        qty: _pL.min || 0, ref: "", asOn: today(), notes: JSON.stringify({ max: _pL.max || 0, pack: Number(_pv), crit: _pL.crit || 0 }) };
+        qty: _pL.min || 0, ref: gdRefPre(), asOn: today(), notes: JSON.stringify({ max: _pL.max || 0, pack: Number(_pv), crit: _pL.crit || 0 }) };
       S.stock = (S.stock || []).concat([_prow]);
       if (S.stkPkDraft) delete S.stkPkDraft[_pc];
       keepScroll = true; render(); toast("Saving per box…");
@@ -61817,7 +61869,7 @@ function viewCatalogue() {
       t.disabled = true;
       plStockMany(_pk.map(function (x, i) {
         var L = _lv0[x.code] || {};
-        return { id: "S-" + Date.now() + "-" + i + "-" + Math.floor(Math.random() * 1000000) + "-reorder", type: "reorder", code: x.code, desc: "", qty: L.min || 0, ref: "", asOn: today(),
+        return { id: "S-" + Date.now() + "-" + i + "-" + Math.floor(Math.random() * 1000000) + "-reorder", type: "reorder", code: x.code, desc: "", qty: L.min || 0, ref: gdRefPre(), asOn: today(),
           notes: JSON.stringify({ max: L.max || 0, pack: x.want, crit: L.crit || 0 }) };
       }));
       return;
@@ -62073,7 +62125,7 @@ function viewCatalogue() {
       S.modal = null; render(); toast("Saving…");
       var _proms = _saves.map(function (s) {
         var row = { id: "S-" + Date.now() + "-" + Math.floor(Math.random() * 1000000) + "-" + s.type,
-          type: s.type, code: _icode, desc: "", qty: s.qty, ref: "", asOn: today(), notes: s.notes || "" };
+          type: s.type, code: _icode, desc: "", qty: s.qty, ref: s.type === "reorder" ? gdRefPre() : "", asOn: today(), notes: s.notes || "" };
         S.stock = (S.stock || []).concat([row]);
         return api("stockSave", { row: row });
       });
@@ -69267,6 +69319,25 @@ function viewCatalogue() {
     /* 6.9.915 - two godowns */
     if (act === "gd-pick") { S.stkGd = t.getAttribute("data-k") === "MPS" ? "MPS" : "EW"; _stkCtx = null; _chStkC = null; render(); return; }
     if (act === "xf-list") { S.modal = modalXferList(); render(); return; }
+    if (act === "xr-open") { S.modal = modalXferRcv(id); render(); return; }   /* 6.9.916 */
+    if (act === "xr-save") {
+      var _x = gdXfers().filter(function (y) { return y.id === id; })[0];
+      if (!_x) { toast("That transfer is not on this phone \u2014 refresh."); return; }
+      if (_x.rcv) { S.modal = null; render(); toast("Already received by " + _x.rcv.by + "."); return; }
+      var _all = t.getAttribute("data-all") === "1", _bad = "";
+      var _ln = _x.lines.map(function (l, i) { var q = _all ? Number(l.q) || 0 : qnum(val("xr_q" + i)); if (!(q >= 0)) _bad = l.code; return { code: l.code, q: q }; });
+      if (_bad) { toast("The number for " + _bad + " is not a number."); return; }
+      var _rr = { id: "S-" + Date.now() + "-" + Math.floor(Math.random() * 1000000) + "-xr", type: "xferrcv", code: "*XFERRCV", qty: 0, asOn: today(),
+        ref: GD_SHORT[_x.to] + " received " + dmy(today()), notes: "", desc: JSON.stringify({ xfer: _x.id, by: S.user, at: new Date().toISOString(), lines: _ln }) };
+      t.disabled = true; t.textContent = "Saving\u2026";
+      api("stockSave", { row: _rr }).then(function (r) {
+        if (!r || !r.ok) { t.disabled = false; t.textContent = "Save"; toast((r && r.error) || "Not saved."); return; }
+        S.stock = (S.stock || []).concat([_rr]); _stkCtx = null; _chStkC = null; S.modal = null; render();
+        var _short = _ln.filter(function (l, i) { return Math.abs(l.q - (Number(_x.lines[i].q) || 0)) > 1e-9; }).length;
+        toast(_short ? "Received \u2014 " + plural(_short, "line") + " not as sent; the owner sees it." : "Received \u2014 everything is in " + GD_SHORT[_x.to] + " stock.");
+      }, function (e) { t.disabled = false; t.textContent = "Save"; toast("Not saved \u2014 " + apiWhy(e) + "."); });
+      return;
+    }
     if (act === "xf-new") { var _xff = gdCur(); S.xf = { from: _xff, to: _xff === "EW" ? "MPS" : "EW", brand: "", family: "", items: [], q: "" }; S.modal = modalXfer(); render(); return; }
     if (act === "xf-close") { S.xf = null; S.modal = null; render(); return; }
     if (act === "xf-brand" || act === "xf-fam" || act === "xf-brandclear" || act === "xf-famclear") {
@@ -69297,7 +69368,7 @@ function viewCatalogue() {
         S.stock = (S.stock || []).concat([_row]); _stkCtx = null; _chStkC = null;
         var _n = _z.items.length, _to = GD_SHORT[_z.to];
         S.xf = null; S.modal = null; render();
-        toast(plural(_n, "line") + " moved to " + _to + ".");
+        toast(plural(_n, "line") + " sent to " + _to + " \u2014 they press Receive when it is unloaded.");
       }, function (e) { t.disabled = false; t.textContent = "Transfer"; toast("Not saved — " + apiWhy(e) + ". Press Transfer again."); });
       return;
     }
