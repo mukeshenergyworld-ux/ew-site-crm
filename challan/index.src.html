@@ -283,7 +283,7 @@ body{background:#F4F6F9}
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.147.0";   /* 1.147.0 (1 Nov 2026) - two godowns: MPS Sonipat has its own stock; MPS staff see MPS work only; no challan to MPS (it is a transfer) */   /* 1.146.0 (31 Oct 2026) - one tap, one entry: a second tap on a write button is swallowed */   /* 1.145.0 - vehicle no asked every time a driver is picked (not for Porter / Rapido); 1.144.0 lorry check */
+  var APP_VERSION = "1.148.0";   /* 1.148.0 (1 Nov 2026) - a transfer lands only when the other godown receives it */   /* 1.147.0 (1 Nov 2026) - two godowns: MPS Sonipat has its own stock; MPS staff see MPS work only; no challan to MPS (it is a transfer) */   /* 1.146.0 (31 Oct 2026) - one tap, one entry: a second tap on a write button is swallowed */   /* 1.145.0 - vehicle no asked every time a driver is picked (not for Porter / Rapido); 1.144.0 lorry check */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -4675,17 +4675,29 @@ function discRowOn(client, brand, onYmd) {
   function gdOnlyMps() { return !gdCanSwitch() && gdMine() === "MPS"; }
   function gdRefPre() { return gdCur() === "MPS" ? "MPS · " : ""; }
   function gdIsMpsClient(name) { return /modern\s*plumbing/i.test(String(name || "")); }
+  /* part 2 (CRM 6.9.916 / Challan 1.148.0) - HIS "yes" to "a received-at-MPS tick": a transfer leaves the sending
+     godown the day it is saved and lands in the other only when that godown RECEIVES it - an "xferrcv" stock row
+     (code *XFERRCV): desc {xfer: <transfer id>, by, at, lines:[{code, q}]} with what actually came off the vehicle.
+     Until then it is "in transit" - in neither godown's free stock. */
   function gdXfers() {
-    var out = [];
+    var out = [], rcv = {};
+    (S.stock || []).forEach(function (r) {
+      if (String(r && r.type) !== "xferrcv") return;
+      var d = {}; try { d = JSON.parse(r.desc || "{}") || {}; } catch (e) { return; }
+      if (d.xfer && !rcv[d.xfer]) rcv[d.xfer] = { asOn: String(r.asOn || "").slice(0, 10), by: d.by || "", lines: (d.lines || []).filter(function (l) { return l && l.code; }) };
+    });
     (S.stock || []).forEach(function (r) {
       if (String(r && r.type) !== "xfer") return;
       var d = {}; try { d = JSON.parse(r.desc || "{}") || {}; } catch (e) { return; }
       if (d.cancel) return;
       out.push({ id: r.id, from: d.from === "MPS" ? "MPS" : "EW", to: d.to === "EW" ? "EW" : "MPS", asOn: String(r.asOn || "").slice(0, 10),
-        lines: (d.lines || []).filter(function (l) { return l && l.code && Number(l.q) > 0; }), by: d.by || "", ref: r.ref || "" });
+        lines: (d.lines || []).filter(function (l) { return l && l.code && Number(l.q) > 0; }), by: d.by || "", ref: r.ref || "", note: r.notes || "",
+        rcv: rcv[r.id] || null });
     });
     return out;
   }
+  /* what this godown has received of a transfer, line by line (nothing until it is received) */
+  function gdXferGot(x) { var m = {}; ((x && x.rcv && x.rcv.lines) || []).forEach(function (l) { var k = String(l.code || "").trim(); if (k) m[k] = (m[k] || 0) + (Number(l.q) || 0); }); return m; }
   function stkCutoff() {
     var m = {}, z = "";
     (S.stock || []).forEach(function (r) {
@@ -4805,7 +4817,7 @@ function discRowOn(client, brand, onYmd) {
     (S.stock || []).forEach(function (r) { if (String(r.type) === "bill" && r.ref) _bref[String(r.ref).trim().toLowerCase()] = 1; });
     (S.stock || []).forEach(function (row) {
       var ty = String(row.type || "");
-      if (ty === "xfer" || ty === "gdstaff") return;   /* two godowns: transfers are added below, line by line */
+      if (ty === "xfer" || ty === "xferrcv" || ty === "gdstaff") return;   /* two godowns: transfers are added below, line by line */
       if (gdOfRow(row) !== gdCur()) return;
       if (ty === "bill") return;   /* 6.9.607 - counted below, line by line, from stkBillLines */
       if (ty === "billread" || ty === "billskip" || ty === "lorry") return;   /* 1.144.0 - the night read, set-aside files and lorry checks are not stock */
@@ -4819,9 +4831,9 @@ function discRowOn(client, brand, onYmd) {
       if (row.desc && !desc[k]) desc[k] = row.desc;
     });
     if (gdCur() === "EW") stkBillLines().forEach(function (l) { if (stkCounts(l.code, l.asOn, cut)) m[l.code] = (m[l.code] || 0) + l.qty; });   /* two godowns: every purchase bill lands at the EW godown */
-    gdXfers().forEach(function (x) {   /* two godowns: a transfer leaves one and lands in the other on its day */
-      var sg = x.from === gdCur() ? -1 : (x.to === gdCur() ? 1 : 0); if (!sg) return;
-      x.lines.forEach(function (l) { var k = String(l.code || "").trim(); if (k && stkCounts(k, x.asOn, cut)) { m[k] = (m[k] || 0) + sg * (Number(l.q) || 0); if (l.desc && !desc[k]) desc[k] = l.desc; } });
+    gdXfers().forEach(function (x) {   /* two godowns: a transfer leaves one the day it is sent, and lands in the other the day it is RECEIVED */
+      if (x.from === gdCur()) x.lines.forEach(function (l) { var k = String(l.code || "").trim(); if (k && stkCounts(k, x.asOn, cut)) { m[k] = (m[k] || 0) - (Number(l.q) || 0); if (l.desc && !desc[k]) desc[k] = l.desc; } });
+      else if (x.to === gdCur() && x.rcv) { var got = gdXferGot(x); Object.keys(got).forEach(function (k) { if (stkCounts(k, x.rcv.asOn, cut)) m[k] = (m[k] || 0) + got[k]; }); }
     });   /* 6.9.607 - IN is the Tally bill */
     return { m: m, desc: desc };
   }
