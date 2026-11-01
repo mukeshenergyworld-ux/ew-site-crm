@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.914";
+  var APP_VERSION = "6.9.915";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -273,7 +273,7 @@
      brand is added on the spot (picks "+ Register new brand" in the product row). Any brand ever used
      on an install is remembered too, so a once-registered brand keeps appearing. */
   var SVC_BRANDS = ["Pentair", "Green Heat", "Adani", "Grundfos", "Leo"];
-  var SVC_ENGINEERS = ["Manoj","Jaiprakash"];
+  var SVC_ENGINEERS = ["Manoj"];   /* 6.9.915 - Jaiprakash moved to the MPS godown (Sonipat) */
   var VISIT_TYPES = ["Periodic service","Complaint","Salt delivery","AMC visit","Installation","Repair"];
   var WATER = ["Normal","Hard","Very hard"];
   var MIN_VISIT = 500;
@@ -3683,7 +3683,7 @@ window.addEventListener("beforeunload", function (ev) {
     /* v6.9.356 - the challan's product search. Only the picker is redrawn, so the cursor stays
        in the box and the half-filled form around it is not disturbed. */
     /* v6.9.454 - every picker's search (ch_q, rt_q, oc_q, qz_q): the box's own picker is redrawn */
-    if (t && /^(ch|rt|oc|qz)_q$/.test(String(t.id || ""))) {
+    if (t && /^(ch|rt|oc|qz|xf)_q$/.test(String(t.id || ""))) {
       var _pp = t.id.slice(0, 2), _pz = pickState(_pp);
       if (_pz) { _pz.q = t.value; repaintPick(_pp, t); }
       return;
@@ -54682,6 +54682,8 @@ function viewCatalogue() {
           meta: function (p) { return esc(p.code) + ' &middot; ' + esc(p.unit) + (p.brand ? ' &middot; ' + esc(realBrand(p) || p.brand) : ''); },
           lineNote: function (i, z) { return rtLineNote(i, z); },   /* 6.9.713 */
           rowBg: function (i, z) { var k = rtLineState(i, z).k; return k === "no" ? "#fee2e2" : (k === "old" || k === "over") ? "#fffbeb" : ""; } },
+    xf: { pre: "xf", box: "xf_pick", qid: "xf_q", qcls: "xf-q", noun: "transfer",   /* 6.9.915 */
+          meta: function (p) { return esc(p.code) + ' &middot; ' + esc(p.unit || "") + chStkTag(p.code); } },
     oc: { pre: "oc", box: "oc_pick", qid: "oc_q", qcls: "oc-q", noun: "delivery",
           meta: function (p) { return esc(p.code) + ' &middot; ' + money(p.price) + (p.brand ? ' &middot; ' + esc(realBrand(p) || p.brand) : ''); } },
     qz: { pre: "qz", box: "qz_pick", qid: "qz_q", qcls: "qz-q", noun: "quote",
@@ -54717,7 +54719,7 @@ function viewCatalogue() {
              measured on the first render: orange on teal was the one thing on the row hard to read */
           brandExtra: function (b, z, on) { var d = clientDiscount(z.client, b); return d ? '<b style="color:' + (on ? '#fde68a' : '#b45309') + '">' + esc(pctTxt(d)) + '</b>' : ''; } }
   };
-  function pickState(pre) { return pre === "ch" ? S.ch : pre === "rt" ? S.rt : pre === "oc" ? S.oc : pre === "qz" ? S.qz : null; }
+  function pickState(pre) { return pre === "ch" ? S.ch : pre === "rt" ? S.rt : pre === "oc" ? S.oc : pre === "qz" ? S.qz : pre === "xf" ? S.xf : null; }
   /* One product row, so a search hit and a shelf item are the same thing on screen and the
      same +/- and quantity box work on both without either being told about the other. */
   function pickRow(P, p, z) {
@@ -56288,10 +56290,72 @@ function viewCatalogue() {
      product. Measured on his book: 103 lines leave "Not counted" (101 of them now short and suggested), no
      counted product moves by a single piece. Which ones were zeroed is kept on the map, not as a key
      (Object.keys over the cut-off is used for "counted" lists). */
+  /* ===================== TWO GODOWNS  (CRM 6.9.915 / Challan 1.147.0, 1 Nov 2026) =====================
+     HIS WORDS: "we have to manage Modern Plumbing Solution as separate godown - admin there Dinesh Verma, godown
+     incharge 1 Jaiprakash, incharge 2 Satyaprakash" (+ "add one more person as incharge 3 ... a new joining soon").
+     HIS ANSWERS: a second STOCK LOCATION of the same firm (same clients, same price list); Dinesh sees MPS and every
+     client; the in-charges move fully to MPS; MPS stock starts from a fresh count; EW -> MPS is a TRANSFER (no bill,
+     no dues, no incentive); every purchase bill lands at the EW godown.
+
+     WHERE A THING HAPPENED, read without a new sheet column:
+       a person      - his staff record's office: Sonipat = the MPS godown, anything else = Energy World (Panipat).
+                       For a phone that does not get the staff list, the CRM writes the MPS names on a "gdstaff"
+                       stock row.
+       a challan /   - the godown of the man who made it, from GD_SINCE on; everything before stays Energy World.
+       a return
+       a stock row   - "MPS" at the start of its ref (the count writes "MPS · Physical count <day>") or [GD:MPS] in notes.
+       a transfer    - a stock row type "xfer" (code *XFER, qty 0): desc {from, to, lines:[{code, desc, q}], by}. It takes
+                       the lines OUT of `from` and puts them INTO `to` on its date. No challan, so no bill and no dues.
+     Every stock figure is for ONE godown at a time: gdCur(). A godown man sees his own godown; the owner, Dinesh and
+     accounts can switch on the Stock screen. */
+  var GD_SINCE = "2026-11-01";
+  var GD_LABEL = { EW: "Energy World godown · Panipat", MPS: "Modern Plumbing Solution godown · Sonipat" };
+  var GD_SHORT = { EW: "Energy World", MPS: "MPS Sonipat" };
+  var _gdStaffC = null, _gdStaffK = "";
+  function gdStaffMap() {
+    var team = (S.data && S.data.team) || [];
+    var k = ((S.stock || []).length) + "|" + team.length + "|" + (S.user || "");
+    if (_gdStaffC && _gdStaffK === k) return _gdStaffC;
+    var m = {}, best = null;
+    (S.stock || []).forEach(function (r) {
+      if (String(r && r.type) !== "gdstaff") return;
+      if (!best || String(r.asOn || "") + String(r.id || "") > String(best.asOn || "") + String(best.id || "")) best = r;
+    });
+    if (best) { try { (JSON.parse(best.desc || "{}").MPS || []).forEach(function (n) { m[String(n).trim().toLowerCase()] = "MPS"; }); } catch (e) { } }
+    team.forEach(function (t) { if (t && t.name) m[String(t.name).trim().toLowerCase()] = /sonipat/i.test(String(t.office || "")) ? "MPS" : "EW"; });
+    _gdStaffC = m; _gdStaffK = k;
+    return m;
+  }
+  function gdOfName(n) {
+    var k = String(n || "").trim().toLowerCase(), m = gdStaffMap()[k];
+    if (m) return m;
+    if (k && k === String(S.user || "").trim().toLowerCase() && /sonipat/i.test(String(S.office || ""))) return "MPS";   /* before the stock rows arrive */
+    return "EW";
+  }
+  function gdOfRow(r) { return (/^\s*MPS\b/i.test(String((r && r.ref) || "")) || /\[GD:MPS\]/.test(String((r && r.notes) || ""))) ? "MPS" : "EW"; }
+  function gdOfDoc(c) { return String((c && c.createdAt) || "").slice(0, 10) >= GD_SINCE ? gdOfName(c && c.createdBy) : "EW"; }
+  function gdMine() { return gdOfName(S.user); }
+  function gdCanSwitch() { return roleIs("admin") || roleIs("accounts"); }
+  function gdCur() { return (gdCanSwitch() && (S.stkGd === "EW" || S.stkGd === "MPS")) ? S.stkGd : gdMine(); }
+  /* a godown man of MPS sees only MPS work; the owner, Dinesh and accounts see everything */
+  function gdOnlyMps() { return !gdCanSwitch() && gdMine() === "MPS"; }
+  function gdRefPre() { return gdCur() === "MPS" ? "MPS · " : ""; }
+  function gdIsMpsClient(name) { return /modern\s*plumbing/i.test(String(name || "")); }
+  function gdXfers() {
+    var out = [];
+    (S.stock || []).forEach(function (r) {
+      if (String(r && r.type) !== "xfer") return;
+      var d = {}; try { d = JSON.parse(r.desc || "{}") || {}; } catch (e) { return; }
+      if (d.cancel) return;
+      out.push({ id: r.id, from: d.from === "MPS" ? "MPS" : "EW", to: d.to === "EW" ? "EW" : "MPS", asOn: String(r.asOn || "").slice(0, 10),
+        lines: (d.lines || []).filter(function (l) { return l && l.code && Number(l.q) > 0; }), by: d.by || "", ref: r.ref || "" });
+    });
+    return out;
+  }
   function stkCutoff() {
     var m = {}, z = "";
     (S.stock || []).forEach(function (r) {
-      if (String(r.type) !== "opening") return;
+      if (String(r.type) !== "opening" || gdOfRow(r) !== gdCur()) return;   /* two godowns: each counts its own floor */
       var k = String(r.code || "").trim(), d = String(r.asOn || "").slice(0, 10);
       if (k && d && (!m[k] || d > m[k])) m[k] = d;
       if (k && d && (!z || d < z)) z = d;
@@ -56314,7 +56378,7 @@ function viewCatalogue() {
   function stkOpenLast() {
     var cut = stkCutoff(), m = {};
     (S.stock || []).forEach(function (r) {
-      if (String(r.type) !== "opening") return;
+      if (String(r.type) !== "opening" || gdOfRow(r) !== gdCur()) return;
       var k = String(r.code || "").trim();
       if (k && cut[k] && String(r.asOn || "").slice(0, 10) === cut[k]) m[k] = r;
     });
@@ -56388,7 +56452,7 @@ function viewCatalogue() {
   function stockDeliveredByCode() {
     var m = {}, cut = stkCutoff(), _bom = stkBom();
     (S.data.challans || []).forEach(function (c) {
-      if (!stkChOut(c)) return;   /* 6.9.607 - out when dispatched, not when the receipt comes back */
+      if (!stkChOut(c) || gdOfDoc(c) !== gdCur()) return;   /* 6.9.607 - out when dispatched, not when the receipt comes back; two godowns: from the godown that made it */
       stkExpand(chItems(c), _bom).forEach(function (i) { var k = String(i.code || "").trim(); if (k && stkCounts(k, c.createdAt, cut)) m[k] = (m[k] || 0) + (Number(i.qty) || 0); });
     });
     return m;
@@ -56396,7 +56460,7 @@ function viewCatalogue() {
   function stockReturnedByCode() {
     var m = {}, _cutR = stkCutoff(), _bomR = stkBom();
     (S.data.returns || []).forEach(function (r) {
-      if (String(r.status || "").trim().toLowerCase() !== "received") return;
+      if (String(r.status || "").trim().toLowerCase() !== "received" || gdOfDoc(r) !== gdCur()) return;
       var items = []; try { items = JSON.parse(r.itemsJson || "[]"); } catch (e) {}
       stkExpand(items, _bomR).forEach(function (i) { var k = String(i.code || "").trim(); if (k && stkCounts(k, r.createdAt, _cutR)) m[k] = (m[k] || 0) + (Number(i.qty) || 0); });
     });
@@ -56407,6 +56471,8 @@ function viewCatalogue() {
     (S.stock || []).forEach(function (r) { if (String(r.type) === "bill" && r.ref) _bref[String(r.ref).trim().toLowerCase()] = 1; });
     (S.stock || []).forEach(function (row) {
       var ty = String(row.type || "");
+      if (ty === "xfer" || ty === "gdstaff") return;   /* two godowns: transfers are added below, line by line */
+      if (gdOfRow(row) !== gdCur()) return;
       if (ty === "bill") return;   /* 6.9.607 - counted below, line by line, from stkBillLines */
       if (ty === "billread" || ty === "billskip" || ty === "lorry") return;   /* 6.9.893 - the night read (code *READ, qty = the bill's rupees), set-aside files and lorry checks are not stock */
       if (ty === "in" && _bref[String(row.ref || "").trim().toLowerCase()]) return;   /* that bill is already counted from Tally */
@@ -56418,7 +56484,11 @@ function viewCatalogue() {
       m[k] = (m[k] || 0) + (Number(row.qty) || 0);
       if (row.desc && !desc[k]) desc[k] = row.desc;
     });
-    stkBillLines().forEach(function (l) { if (stkCounts(l.code, l.asOn, cut)) m[l.code] = (m[l.code] || 0) + l.qty; });   /* 6.9.607 - IN is the Tally bill */
+    if (gdCur() === "EW") stkBillLines().forEach(function (l) { if (stkCounts(l.code, l.asOn, cut)) m[l.code] = (m[l.code] || 0) + l.qty; });   /* two godowns: every purchase bill lands at the EW godown */
+    gdXfers().forEach(function (x) {   /* two godowns: a transfer leaves one and lands in the other on its day */
+      var sg = x.from === gdCur() ? -1 : (x.to === gdCur() ? 1 : 0); if (!sg) return;
+      x.lines.forEach(function (l) { var k = String(l.code || "").trim(); if (k && stkCounts(k, x.asOn, cut)) { m[k] = (m[k] || 0) + sg * (Number(l.q) || 0); if (l.desc && !desc[k]) desc[k] = l.desc; } });
+    });   /* 6.9.607 - IN is the Tally bill */
     return { m: m, desc: desc };
   }
   /* Per-code reorder level and latest purchase rate — stored as their own stock rows (type
@@ -56738,16 +56808,67 @@ function viewCatalogue() {
     return h + '</div>';
   }
 
+  /* ===== 6.9.915 - TWO GODOWNS: the screen side (the engine is gd_core above stkCutoff) ===== */
+  function gdBarHtml() {
+    var cur = gdCur(), b = function (k) {
+      return '<button class="btn sm ' + (cur === k ? '' : 'ghost') + '" data-act="gd-pick" data-k="' + k + '" style="min-height:44px">' + esc(GD_LABEL[k]) + '</button>';
+    };
+    var xs = gdXfers().filter(function (x) { return x.asOn >= ymdLocal(new Date(Date.now() - 30 * 86400000)); });
+    var xin = xs.filter(function (x) { return x.to === cur; }).length, xout = xs.filter(function (x) { return x.from === cur; }).length;
+    return '<div style="margin:6px 0 4px">' +
+      (gdCanSwitch() ? '<div class="row" style="gap:6px;flex-wrap:wrap">' + b("EW") + b("MPS") + '</div>'
+        : '<div style="font-weight:700;color:#0f766e">' + esc(GD_LABEL[cur]) + '</div>') +
+      ((xin || xout) ? '<div class="meta" style="font-size:12.5px;margin-top:4px">Last 30 days: ' + (xin ? plural(xin, "transfer") + ' in' : '') + (xin && xout ? ' · ' : '') + (xout ? plural(xout, "transfer") + ' out' : '') +
+        ' <a href="#" data-act="xf-list">see them</a></div>' : '') + '</div>';
+  }
+  /* the MPS names on a stock row, for the Challan app (it does not get the staff list) - written by the owner's
+     phone whenever the staff list says something different */
+  var _gdSyncAt = 0;
+  function gdStaffSync() {
+    if (!roleIs("admin") || !STOCK_LOADED || Date.now() - _gdSyncAt < 60000) return;
+    _gdSyncAt = Date.now();
+    var want = ((S.data && S.data.team) || []).filter(function (t) { return t && t.name && /sonipat/i.test(String(t.office || "")); }).map(function (t) { return String(t.name).trim(); }).sort();
+    var best = null;
+    (S.stock || []).forEach(function (r) { if (String(r.type) === "gdstaff" && (!best || String(r.asOn || "") + String(r.id || "") > String(best.asOn || "") + String(best.id || ""))) best = r; });
+    var have = []; try { have = (JSON.parse((best && best.desc) || "{}").MPS || []).slice().sort(); } catch (e) { have = []; }
+    if (JSON.stringify(have) === JSON.stringify(want)) return;
+    var row = { id: "S-" + Date.now() + "-" + Math.floor(Math.random() * 1000000) + "-gd", type: "gdstaff", code: "*GDSTAFF", desc: JSON.stringify({ MPS: want }), qty: 0, ref: "Godown staff", asOn: today(), notes: "written by " + S.user };
+    S.stock = (S.stock || []).concat([row]); _gdStaffC = null;
+    api("stockSave", { row: row }).then(function () { }, function () { });
+  }
+  function modalXfer() {
+    var z = S.xf; if (!z) return '';
+    return '<h2>Transfer stock</h2>' +
+      '<div class="card" style="border-color:#99f6e4;background:#f0fdfa;margin-bottom:10px"><div style="font-size:14px"><b>' + esc(GD_LABEL[z.from]) + '</b> &rarr; <b>' + esc(GD_LABEL[z.to]) + '</b></div>' +
+      '<div class="meta" style="margin-top:3px">Our own material moving between our two godowns: it leaves ' + esc(GD_SHORT[z.from]) + ' and lands in ' + esc(GD_SHORT[z.to]) + ' today. No bill, no dues, no incentive.</div></div>' +
+      '<label>Note (optional)</label><input id="xf_note" placeholder="vehicle / who took it" value="' + esc(z.note || "") + '"/>' +
+      '<h3 style="margin:14px 0 4px;font-size:14px">Products <span class="pill teal">' + (z.items || []).length + ' picked</span></h3>' +
+      '<div id="xf_pick">' + prodPicker(z, PICKERS.xf) + '</div>' +
+      pickedTable(z, PICKERS.xf) +
+      '<div class="foot"><button class="btn ghost" data-act="xf-close">Cancel</button>' +
+      '<button class="btn" data-act="xf-save">Transfer ' + plural((z.items || []).length, "line") + '</button></div>';
+  }
+  function modalXferList() {
+    var xs = gdXfers().sort(function (a, b) { return String(b.asOn).localeCompare(String(a.asOn)); }).slice(0, 60);
+    return '<h2>Transfers between godowns</h2>' + (xs.length ? xs.map(function (x) {
+      var n = x.lines.reduce(function (a, l) { return a + (Number(l.q) || 0); }, 0);
+      return '<div class="card" style="margin-top:6px"><div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><b>' + esc(dmy(x.asOn)) + '</b> · ' + esc(GD_SHORT[x.from]) + ' &rarr; ' + esc(GD_SHORT[x.to]) +
+        ' · ' + plural(x.lines.length, "line") + ', ' + qShow(n) + ' pcs · by ' + esc(x.by || "?") + '</div>' +
+        '<div class="meta" style="font-size:12.5px">' + x.lines.map(function (l) { return esc(l.code) + ' × ' + qShow(l.q); }).join(', ') + '</div></div>';
+    }).join('') : '<div class="empty">No transfer yet.</div>') + '<div class="foot"><button class="btn ghost" data-act="close">Close</button></div>';
+  }
   function viewStock() {
     if (S.imp) return viewStockImport();
     if (S.grn) return viewGrn();
     if (S.pc) return viewPhysCount();
     ensureStock();
-    var h = '<div class="card"><h2 style="margin:0">Stock on hand</h2>' +
+    gdStaffSync();
+    var h = '<div class="card"><h2 style="margin:0">Stock on hand</h2>' + gdBarHtml() +
       '<div class="meta" style="font-size:13px">On hand = physical count + <b>purchase bills uploaded from Tally</b> + adjustments &minus; <b>challans dispatched</b> + returns booked in. Free = on hand &minus; challans made but not yet dispatched.</div>' +
       '<div class="acts" style="margin-top:8px;flex-wrap:wrap;gap:6px">' +
       '<button class="btn sm" data-act="stock-import">&#8593; Upload Tally bills / register</button>' +
       '<button class="btn sm ghost" data-act="pc-open">Physical count</button>' +
+      (roleAny(["admin", "accounts", "godown"]) ? '<button class="btn sm ghost" data-act="xf-new">&#8644; Transfer to ' + esc(GD_SHORT[gdCur() === "EW" ? "MPS" : "EW"]) + '</button>' : '') +
       '<button class="btn sm ghost" data-act="stk-xlsx">&#8681; Excel</button>' +
       '<button class="btn sm ghost" data-act="stock-add" data-type="adjust">Adjustment</button>' +
       (canSetPricing() ? '<button class="btn sm ghost" data-act="stock-landing">Landing %</button>' : '') +
@@ -56983,7 +57104,7 @@ function viewCatalogue() {
   }
   var _stkCtx = null, _stkCtxKey = "";
   function stkCtx() {
-    var key = (S.stock || []).length + "|" + ((S.data && S.data.challans) || []).length + "|" + PRODUCTS.length + "|" + today();
+    var key = (S.stock || []).length + "|" + ((S.data && S.data.challans) || []).length + "|" + PRODUCTS.length + "|" + today() + "|" + gdCur();
     if (_stkCtx && key === _stkCtxKey) return _stkCtx;
     var pmap = stkPMap(), hist = stkHist(), pos = stkPositions(), c = stkClasses(hist, pmap, pos);
     _stkCtx = { pmap: pmap, hist: hist, pos: pos, cls: c.cls, fsn: c.fsn, nDays: c.nDays, plan: stkPlan(), lvl: stkLvl() };
@@ -58131,7 +58252,7 @@ function viewCatalogue() {
     var cut = stkCutoff(), m = {}, _bomV = stkBom();
     ((S.data && S.data.challans) || []).forEach(function (c) {
       if (!c || (skipId && c.id === skipId)) return;
-      if (stkChDead(c) || stkChOut(c)) return;   /* 6.9.607 - held = made, not yet dispatched */
+      if (stkChDead(c) || stkChOut(c) || gdOfDoc(c) !== gdCur()) return;   /* 6.9.607 - held = made, not yet dispatched */
       stkExpand(chItems(c), _bomV).forEach(function (i) {
         var k = String(i.code || "").trim();
         if (k && cut[k] && stkCounts(k, c.createdAt, cut)) m[k] = (m[k] || 0) + (Number(i.qty) || 0);
@@ -58160,7 +58281,7 @@ function viewCatalogue() {
       return pill("stock \u2026", "#f1f5f9", "#94a3b8");
     }
     var skip = String((S.ch && S.ch.id) || "");
-    if (!_chStkC || _chStkC.skip !== skip || Date.now() - _chStkC.at > 4000) _chStkC = { at: Date.now(), skip: skip, m: chStkMap(skip) };
+    if (!_chStkC || _chStkC.skip !== skip || _chStkC.gd !== gdCur() || Date.now() - _chStkC.at > 4000) _chStkC = { at: Date.now(), skip: skip, gd: gdCur(), m: chStkMap(skip) };
     var x = _chStkC.m[code];
     if (!x) return pill("stock not counted", "#f1f5f9", "#64748b");
     var w = Number(want) || 0, fr = x.free > 0 ? x.free : 0;
@@ -59408,13 +59529,13 @@ function viewCatalogue() {
       pcSay();
       _pcQ.timer = setTimeout(pcAutoSave, Math.min(60000, 5000 * Math.pow(2, _pcQ.fail - 1)));
     };
-    api("stockImport", { ref: "Physical count " + date, asOn: date, type: "opening", rows: rows, newItems: [] }, 60000).then(function (r) {
+    api("stockImport", { ref: gdRefPre() + "Physical count " + date, asOn: date, type: "opening", rows: rows, newItems: [] }, 60000).then(function (r) {
       if (!(r && r.ok)) { retry((r && r.error) || "the server refused it"); return; }
       _pcQ.busy = false; _pcQ.sending = {}; _pcQ.fail = 0; _pcQ.err = ""; _pcQ.done += rows.length;
       /* on this phone's copy at once, so the line reads saved and the balance moves; the next pull
          of Stock replaces it with the sheet's own rows */
       S.stock = (S.stock || []).concat(rows.map(function (x, i) {
-        return { id: "PC-" + Date.now() + "-" + i, type: "opening", code: x.code, desc: x.desc, qty: x.qty, ref: "Physical count " + date, asOn: date, notes: "" };
+        return { id: "PC-" + Date.now() + "-" + i, type: "opening", code: x.code, desc: x.desc, qty: x.qty, ref: gdRefPre() + "Physical count " + date, asOn: date, notes: "" };
       }));
       pcSay();
       setTimeout(pcAutoSave, 200);   /* the next ten, if he has typed more */
@@ -61409,7 +61530,7 @@ function viewCatalogue() {
       if (!_sqty) { toast("Enter a quantity."); return; }
       var _sp = (PRODUCTS.filter(function (x) { return x.code === _scode; })[0]) || {};
       var _srow = { id: "S-" + Date.now() + "-" + Math.floor(Math.random() * 1000000), type: _stype, code: _scode,
-        desc: _sp.desc || "", qty: _sqty, ref: String((el("stk_ref") || {}).value || "").trim(),
+        desc: _sp.desc || "", qty: _sqty, ref: gdRefPre() + String((el("stk_ref") || {}).value || "").trim(),   /* 6.9.915 - the godown it happened at */
         asOn: today(), notes: String((el("stk_notes") || {}).value || "").trim() };
       S.modal = null; render(); toast("Saving…");
       api("stockSave", { row: _srow }).then(function (r) {
@@ -69143,6 +69264,43 @@ function viewCatalogue() {
       return;
     }
     if (act === "oc-new") { S.oc = { brand: "", family: "", items: [] }; S.modal = modalOldChallan(); render(); return; }
+    /* 6.9.915 - two godowns */
+    if (act === "gd-pick") { S.stkGd = t.getAttribute("data-k") === "MPS" ? "MPS" : "EW"; _stkCtx = null; _chStkC = null; render(); return; }
+    if (act === "xf-list") { S.modal = modalXferList(); render(); return; }
+    if (act === "xf-new") { var _xff = gdCur(); S.xf = { from: _xff, to: _xff === "EW" ? "MPS" : "EW", brand: "", family: "", items: [], q: "" }; S.modal = modalXfer(); render(); return; }
+    if (act === "xf-close") { S.xf = null; S.modal = null; render(); return; }
+    if (act === "xf-brand" || act === "xf-fam" || act === "xf-brandclear" || act === "xf-famclear") {
+      var _xk = keepFields(["xf_note"]);
+      if (act === "xf-brand") { S.xf.brand = t.getAttribute("data-brand"); S.xf.family = ""; S.xf.q = ""; }
+      else if (act === "xf-fam") { S.xf.family = t.getAttribute("data-fam"); }
+      else if (act === "xf-brandclear") { S.xf.brand = ""; S.xf.family = ""; }
+      else { S.xf.family = ""; }
+      S.modal = modalXfer(); render(); _xk(); return;
+    }
+    if (act === "xf-qty") {
+      var _xk2 = keepFields(["xf_note"]);
+      var _xc = t.getAttribute("data-code"), _xd = Number(t.getAttribute("data-d")) || 0, _xp = PRODUCTS.filter(function (p) { return p.code === _xc; })[0] || {};
+      var _xr = (S.xf.items || []).filter(function (i) { return i.code === _xc; })[0];
+      if (!_xr) { if (_xd < 0) return; S.xf.items.push({ code: _xc, desc: _xp.desc || _xc, unit: _xp.unit || "", qty: 1 }); }
+      else { _xr.qty += _xd; if (_xr.qty <= 0) S.xf.items = S.xf.items.filter(function (i) { return i.code !== _xc; }); }
+      S.modal = modalXfer(); render(); _xk2(); return;
+    }
+    if (act === "xf-save") {
+      var _z = S.xf; if (!_z || !(_z.items || []).length) { toast("Pick at least one product to transfer."); return; }
+      var _note = String(val("xf_note") || "").trim();
+      var _row = { id: "S-" + Date.now() + "-" + Math.floor(Math.random() * 1000000) + "-xf", type: "xfer", code: "*XFER", qty: 0, asOn: today(),
+        ref: GD_SHORT[_z.from] + " → " + GD_SHORT[_z.to] + " " + dmy(today()), notes: _note,
+        desc: JSON.stringify({ from: _z.from, to: _z.to, by: S.user, at: new Date().toISOString(), lines: _z.items.map(function (i) { return { code: i.code, desc: i.desc || "", q: Number(i.qty) || 0 }; }) }) };
+      t.disabled = true; t.textContent = "Saving…";
+      api("stockSave", { row: _row }).then(function (r) {
+        if (!r || !r.ok) { t.disabled = false; t.textContent = "Transfer"; toast((r && r.error) || "Not saved — only admin, accounts or the godown can move stock."); return; }
+        S.stock = (S.stock || []).concat([_row]); _stkCtx = null; _chStkC = null;
+        var _n = _z.items.length, _to = GD_SHORT[_z.to];
+        S.xf = null; S.modal = null; render();
+        toast(plural(_n, "line") + " moved to " + _to + ".");
+      }, function (e) { t.disabled = false; t.textContent = "Transfer"; toast("Not saved — " + apiWhy(e) + ". Press Transfer again."); });
+      return;
+    }
     if (act === "oc-close") { S.oc = null; S.modal = null; render(); return; }
     if (act === "oc-brand" || act === "oc-fam" || act === "oc-brandclear" || act === "oc-famclear") {
       var keepOc = keepFields(["o_client", "o_date", "o_no", "o_site", "o_bill"]);
@@ -69352,6 +69510,7 @@ function viewCatalogue() {
     if (act === "ch-save") {
       var cn = val("m_client");
       if (!cn) { toast("Pick a registered client from the list, or tap + Register new."); return; }
+      if (gdIsMpsClient(cn) && today() >= GD_SINCE && !(S.ch && S.ch.editId)) { toast("Modern Plumbing Solution is our own godown now — send material there with Stock › Transfer to MPS. No challan, no bill."); return; }   /* 6.9.915 */
       if (!clientByName(cn)) { toast("“" + cn + "” isn’t a registered client — register it first so the preset discount applies."); return; }
       /* 6.9.863 - a builder with sites: which site, before anything else */
       var _msAsk = (S.ch && !S.ch.editId && msAsked(S.ch, cn)) ? String(S.ch.siteAsk) : "";
@@ -70604,6 +70763,13 @@ function viewCatalogue() {
     }
     /* v6.9.454 - the old delivery's picker has a quantity box now (it had a bold count and two
        buttons); typed, it writes the line with its rate exactly as oc-qty does */
+    if (t.classList && t.classList.contains("xf-q") && S.xf) {   /* 6.9.915 - a transfer line typed */
+      var xfC = t.getAttribute("data-code"), xfQ = qnum(t.value), xfP = PRODUCTS.filter(function (x) { return x.code === xfC; })[0] || {};
+      var xfR = (S.xf.items || []).filter(function (i) { return i.code === xfC; })[0];
+      if (xfR) { if (xfQ <= 0) S.xf.items = S.xf.items.filter(function (i) { return i.code !== xfC; }); else xfR.qty = xfQ; }
+      else if (xfQ > 0) S.xf.items.push({ code: xfC, desc: xfP.desc || xfC, unit: xfP.unit || "", qty: xfQ });
+      var _xfK = keepFields(["xf_note"]); keepScroll = true; S.modal = modalXfer(); render(); _xfK(); return;
+    }
     if (t.classList && t.classList.contains("oc-q") && S.oc) {
       var ocCode = t.getAttribute("data-code");
       var ocQ = qnum(t.value);
