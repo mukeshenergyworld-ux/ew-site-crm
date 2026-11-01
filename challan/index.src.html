@@ -283,7 +283,7 @@ body{background:#F4F6F9}
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.146.0";   /* 1.146.0 (31 Oct 2026) - one tap, one entry: a second tap on a write button is swallowed */   /* 1.145.0 - vehicle no asked every time a driver is picked (not for Porter / Rapido); 1.144.0 lorry check */
+  var APP_VERSION = "1.147.0";   /* 1.147.0 (1 Nov 2026) - two godowns: MPS Sonipat has its own stock; MPS staff see MPS work only; no challan to MPS (it is a transfer) */   /* 1.146.0 (31 Oct 2026) - one tap, one entry: a second tap on a write button is swallowed */   /* 1.145.0 - vehicle no asked every time a driver is picked (not for Porter / Rapido); 1.144.0 lorry check */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -2346,7 +2346,17 @@ body{background:#F4F6F9}
     var k = lower(n);
     return clients().filter(function (c) { return lower(c.name) === k; })[0] || null;
   }
-  function challans() { return (S.data && S.data.challans) || []; }
+  /* 1.147.0 - TWO GODOWNS: a godown man of MPS Sonipat works MPS challans only (his answer: "move fully to MPS").
+     The owner, Dinesh and accounts still see every challan. */
+  var _chMpsC = null, _chMpsK = "";
+  function challans() {
+    var all = (S.data && S.data.challans) || [];
+    if (!gdOnlyMps()) return all;
+    var k = all.length + "|" + (S.user || "");
+    if (_chMpsC && _chMpsK === k) return _chMpsC;
+    _chMpsC = all.filter(function (c) { return gdOfDoc(c) === "MPS"; }); _chMpsK = k;
+    return _chMpsC;
+  }
   /* any fresh book invalidates the derived list - otherwise a client added by the office
      an hour ago never appears, because the first paint cached the old set. */
   function bustBookClients() { _bookCl = null; }
@@ -4614,10 +4624,72 @@ function discRowOn(client, brand, onYmd) {
      product. Measured on his book: 103 lines leave "Not counted" (101 of them now short and suggested), no
      counted product moves by a single piece. Which ones were zeroed is kept on the map, not as a key
      (Object.keys over the cut-off is used for "counted" lists). */
+  /* ===================== TWO GODOWNS  (CRM 6.9.915 / Challan 1.147.0, 1 Nov 2026) =====================
+     HIS WORDS: "we have to manage Modern Plumbing Solution as separate godown - admin there Dinesh Verma, godown
+     incharge 1 Jaiprakash, incharge 2 Satyaprakash" (+ "add one more person as incharge 3 ... a new joining soon").
+     HIS ANSWERS: a second STOCK LOCATION of the same firm (same clients, same price list); Dinesh sees MPS and every
+     client; the in-charges move fully to MPS; MPS stock starts from a fresh count; EW -> MPS is a TRANSFER (no bill,
+     no dues, no incentive); every purchase bill lands at the EW godown.
+
+     WHERE A THING HAPPENED, read without a new sheet column:
+       a person      - his staff record's office: Sonipat = the MPS godown, anything else = Energy World (Panipat).
+                       For a phone that does not get the staff list, the CRM writes the MPS names on a "gdstaff"
+                       stock row.
+       a challan /   - the godown of the man who made it, from GD_SINCE on; everything before stays Energy World.
+       a return
+       a stock row   - "MPS" at the start of its ref (the count writes "MPS · Physical count <day>") or [GD:MPS] in notes.
+       a transfer    - a stock row type "xfer" (code *XFER, qty 0): desc {from, to, lines:[{code, desc, q}], by}. It takes
+                       the lines OUT of `from` and puts them INTO `to` on its date. No challan, so no bill and no dues.
+     Every stock figure is for ONE godown at a time: gdCur(). A godown man sees his own godown; the owner, Dinesh and
+     accounts can switch on the Stock screen. */
+  var GD_SINCE = "2026-11-01";
+  var GD_LABEL = { EW: "Energy World godown · Panipat", MPS: "Modern Plumbing Solution godown · Sonipat" };
+  var GD_SHORT = { EW: "Energy World", MPS: "MPS Sonipat" };
+  var _gdStaffC = null, _gdStaffK = "";
+  function gdStaffMap() {
+    var team = (S.data && S.data.team) || [];
+    var k = ((S.stock || []).length) + "|" + team.length + "|" + (S.user || "");
+    if (_gdStaffC && _gdStaffK === k) return _gdStaffC;
+    var m = {}, best = null;
+    (S.stock || []).forEach(function (r) {
+      if (String(r && r.type) !== "gdstaff") return;
+      if (!best || String(r.asOn || "") + String(r.id || "") > String(best.asOn || "") + String(best.id || "")) best = r;
+    });
+    if (best) { try { (JSON.parse(best.desc || "{}").MPS || []).forEach(function (n) { m[String(n).trim().toLowerCase()] = "MPS"; }); } catch (e) { } }
+    team.forEach(function (t) { if (t && t.name) m[String(t.name).trim().toLowerCase()] = /sonipat/i.test(String(t.office || "")) ? "MPS" : "EW"; });
+    _gdStaffC = m; _gdStaffK = k;
+    return m;
+  }
+  function gdOfName(n) {
+    var k = String(n || "").trim().toLowerCase(), m = gdStaffMap()[k];
+    if (m) return m;
+    if (k && k === String(S.user || "").trim().toLowerCase() && /sonipat/i.test(String(S.office || ""))) return "MPS";   /* before the stock rows arrive */
+    return "EW";
+  }
+  function gdOfRow(r) { return (/^\s*MPS\b/i.test(String((r && r.ref) || "")) || /\[GD:MPS\]/.test(String((r && r.notes) || ""))) ? "MPS" : "EW"; }
+  function gdOfDoc(c) { return String((c && c.createdAt) || "").slice(0, 10) >= GD_SINCE ? gdOfName(c && c.createdBy) : "EW"; }
+  function gdMine() { return gdOfName(S.user); }
+  function gdCanSwitch() { return roleIs("admin") || roleIs("accounts"); }
+  function gdCur() { return (gdCanSwitch() && (S.stkGd === "EW" || S.stkGd === "MPS")) ? S.stkGd : gdMine(); }
+  /* a godown man of MPS sees only MPS work; the owner, Dinesh and accounts see everything */
+  function gdOnlyMps() { return !gdCanSwitch() && gdMine() === "MPS"; }
+  function gdRefPre() { return gdCur() === "MPS" ? "MPS · " : ""; }
+  function gdIsMpsClient(name) { return /modern\s*plumbing/i.test(String(name || "")); }
+  function gdXfers() {
+    var out = [];
+    (S.stock || []).forEach(function (r) {
+      if (String(r && r.type) !== "xfer") return;
+      var d = {}; try { d = JSON.parse(r.desc || "{}") || {}; } catch (e) { return; }
+      if (d.cancel) return;
+      out.push({ id: r.id, from: d.from === "MPS" ? "MPS" : "EW", to: d.to === "EW" ? "EW" : "MPS", asOn: String(r.asOn || "").slice(0, 10),
+        lines: (d.lines || []).filter(function (l) { return l && l.code && Number(l.q) > 0; }), by: d.by || "", ref: r.ref || "" });
+    });
+    return out;
+  }
   function stkCutoff() {
     var m = {}, z = "";
     (S.stock || []).forEach(function (r) {
-      if (String(r.type) !== "opening") return;
+      if (String(r.type) !== "opening" || gdOfRow(r) !== gdCur()) return;   /* two godowns: each counts its own floor */
       var k = String(r.code || "").trim(), d = String(r.asOn || "").slice(0, 10);
       if (k && d && (!m[k] || d > m[k])) m[k] = d;
       if (k && d && (!z || d < z)) z = d;
@@ -4640,7 +4712,7 @@ function discRowOn(client, brand, onYmd) {
   function stkOpenLast() {
     var cut = stkCutoff(), m = {};
     (S.stock || []).forEach(function (r) {
-      if (String(r.type) !== "opening") return;
+      if (String(r.type) !== "opening" || gdOfRow(r) !== gdCur()) return;
       var k = String(r.code || "").trim();
       if (k && cut[k] && String(r.asOn || "").slice(0, 10) === cut[k]) m[k] = r;
     });
@@ -4714,7 +4786,7 @@ function discRowOn(client, brand, onYmd) {
   function stockDeliveredByCode() {
     var m = {}, cut = stkCutoff(), _bom = stkBom();
     (S.data.challans || []).forEach(function (c) {
-      if (!stkChOut(c)) return;   /* 6.9.607 - out when dispatched, not when the receipt comes back */
+      if (!stkChOut(c) || gdOfDoc(c) !== gdCur()) return;   /* 6.9.607 - out when dispatched, not when the receipt comes back; two godowns: from the godown that made it */
       stkExpand(chItems(c), _bom).forEach(function (i) { var k = String(i.code || "").trim(); if (k && stkCounts(k, c.createdAt, cut)) m[k] = (m[k] || 0) + (Number(i.qty) || 0); });
     });
     return m;
@@ -4722,7 +4794,7 @@ function discRowOn(client, brand, onYmd) {
   function stockReturnedByCode() {
     var m = {}, _cutR = stkCutoff(), _bomR = stkBom();
     (S.data.returns || []).forEach(function (r) {
-      if (String(r.status || "").trim().toLowerCase() !== "received") return;
+      if (String(r.status || "").trim().toLowerCase() !== "received" || gdOfDoc(r) !== gdCur()) return;
       var items = []; try { items = JSON.parse(r.itemsJson || "[]"); } catch (e) {}
       stkExpand(items, _bomR).forEach(function (i) { var k = String(i.code || "").trim(); if (k && stkCounts(k, r.createdAt, _cutR)) m[k] = (m[k] || 0) + (Number(i.qty) || 0); });
     });
@@ -4733,6 +4805,8 @@ function discRowOn(client, brand, onYmd) {
     (S.stock || []).forEach(function (r) { if (String(r.type) === "bill" && r.ref) _bref[String(r.ref).trim().toLowerCase()] = 1; });
     (S.stock || []).forEach(function (row) {
       var ty = String(row.type || "");
+      if (ty === "xfer" || ty === "gdstaff") return;   /* two godowns: transfers are added below, line by line */
+      if (gdOfRow(row) !== gdCur()) return;
       if (ty === "bill") return;   /* 6.9.607 - counted below, line by line, from stkBillLines */
       if (ty === "billread" || ty === "billskip" || ty === "lorry") return;   /* 1.144.0 - the night read, set-aside files and lorry checks are not stock */
       if (ty === "in" && _bref[String(row.ref || "").trim().toLowerCase()]) return;   /* that bill is already counted from Tally */
@@ -4744,7 +4818,11 @@ function discRowOn(client, brand, onYmd) {
       m[k] = (m[k] || 0) + (Number(row.qty) || 0);
       if (row.desc && !desc[k]) desc[k] = row.desc;
     });
-    stkBillLines().forEach(function (l) { if (stkCounts(l.code, l.asOn, cut)) m[l.code] = (m[l.code] || 0) + l.qty; });   /* 6.9.607 - IN is the Tally bill */
+    if (gdCur() === "EW") stkBillLines().forEach(function (l) { if (stkCounts(l.code, l.asOn, cut)) m[l.code] = (m[l.code] || 0) + l.qty; });   /* two godowns: every purchase bill lands at the EW godown */
+    gdXfers().forEach(function (x) {   /* two godowns: a transfer leaves one and lands in the other on its day */
+      var sg = x.from === gdCur() ? -1 : (x.to === gdCur() ? 1 : 0); if (!sg) return;
+      x.lines.forEach(function (l) { var k = String(l.code || "").trim(); if (k && stkCounts(k, x.asOn, cut)) { m[k] = (m[k] || 0) + sg * (Number(l.q) || 0); if (l.desc && !desc[k]) desc[k] = l.desc; } });
+    });   /* 6.9.607 - IN is the Tally bill */
     return { m: m, desc: desc };
   }
   function stkBillKey(supplier, billNo) { return String(supplier || "").trim() + " / " + String(billNo || "").trim(); }
@@ -4773,7 +4851,7 @@ function discRowOn(client, brand, onYmd) {
     var cut = stkCutoff(), m = {}, _bomV = stkBom();
     ((S.data && S.data.challans) || []).forEach(function (c) {
       if (!c || (skipId && c.id === skipId)) return;
-      if (stkChDead(c) || stkChOut(c)) return;   /* 6.9.607 - held = made, not yet dispatched */
+      if (stkChDead(c) || stkChOut(c) || gdOfDoc(c) !== gdCur()) return;   /* 6.9.607 - held = made, not yet dispatched */
       stkExpand(chItems(c), _bomV).forEach(function (i) {
         var k = String(i.code || "").trim();
         if (k && cut[k] && stkCounts(k, c.createdAt, cut)) m[k] = (m[k] || 0) + (Number(i.qty) || 0);
@@ -4802,7 +4880,7 @@ function discRowOn(client, brand, onYmd) {
       return pill("stock \u2026", "#f1f5f9", "#94a3b8");
     }
     var skip = String((S.ch && S.ch.id) || "");
-    if (!_chStkC || _chStkC.skip !== skip || Date.now() - _chStkC.at > 4000) _chStkC = { at: Date.now(), skip: skip, m: chStkMap(skip) };
+    if (!_chStkC || _chStkC.skip !== skip || _chStkC.gd !== gdCur() || Date.now() - _chStkC.at > 4000) _chStkC = { at: Date.now(), skip: skip, gd: gdCur(), m: chStkMap(skip) };
     var x = _chStkC.m[code];
     if (!x) return pill("stock not counted", "#f1f5f9", "#64748b");
     var w = Number(want) || 0, fr = x.free > 0 ? x.free : 0;
@@ -5005,7 +5083,7 @@ function discRowOn(client, brand, onYmd) {
         chDraftBanner() +   /* 1.78.0 */
         '<button class="btn full" data-act="ch-new" style="margin:12px 0">+ New challan</button>' +
         (function () {   /* 1.144.0 - the lorry check: bills the office knows, waiting to be ticked off a lorry */
-          if (!canMake()) return "";
+          if (!canMake() || gdOnlyMps()) return "";   /* 1.147.0 - purchase lorries are unloaded at the EW godown */
           if (!STOCK_LOADED) { try { ensureStock(); } catch (e) { } return ""; }
           var n = lcBills(20).length; if (!n) return "";
           return '<div class="card" data-act="lc-list" style="cursor:pointer;border-color:#f59e0b;background:#fffbeb"><div style="font-weight:800;color:#92400e">&#128666; Lorry check &middot; ' + n + ' supplier bill' + (n === 1 ? '' : 's') + ' to tick off</div>' +
@@ -7663,9 +7741,9 @@ function discRowOn(client, brand, onYmd) {
           try { localStorage.removeItem(BIO_KEY); } catch (e) {}
           S.pin = ""; renderLogin("That saved sign-in is no longer valid. Use your PIN."); return;
         }
-        S.user = r.user.name; S.role = String(r.user.role || "").toLowerCase();
+        S.user = r.user.name; S.role = String(r.user.role || "").toLowerCase(); S.office = String(r.user.office || "");   /* 1.147.0 - his godown */
         if (!roleAny(ALLOWED)) { S.pin = ""; renderLogin(notForYou(S.user, S.role)); S.role = ""; return; }
-        try { credPut(STORE, { user: S.user, pin: saved.pin, role: S.role }); } catch (e) {}
+        try { credPut(STORE, { user: S.user, pin: saved.pin, role: S.role, office: S.office }); } catch (e) {}
         stockApply();                     /* v1.53.0 */
         startFlushTicker();
         pull(false);
@@ -10371,6 +10449,7 @@ function discRowOn(client, brand, onYmd) {
       var z = S.ch || {};
       var cObj = clientByName(z.client);
       if (!cObj) { toast("Pick the client first \u2014 district, then area, then his name."); return; }
+      if (gdIsMpsClient(cObj.name) && today() >= GD_SINCE && !z.editId) { toast("Modern Plumbing Solution is our own godown now \u2014 material for MPS goes as a Transfer from the CRM (Stock \u203a Transfer to MPS). No challan, no bill."); return; }   /* 1.147.0 */
       /* 1.142.0 - a builder with sites: which site, before anything else */
       if (!z.editId && msSites(cObj.name).length && !msAsked(z, cObj.name)) { toast(cObj.name + " is a builder with sites — pick which site this is for, or add a new one."); try { window.scrollTo(0, 0); } catch (e) { } return; }
       /* 1.121.0 - THE "NOT A CLIENT YET" DOOR IS GONE. HIS WORDS, 30 Sep 2026, over a godown screenshot refusing Tagra Sanitary Store: "when making first
@@ -11047,13 +11126,13 @@ function discRowOn(client, brand, onYmd) {
     if (_sb) { _sb.disabled = true; _sb.textContent = "Signing in\u2026"; }
     authOnce(1).then(function (r) {
       if (!r || !r.ok) { S.pin = ""; renderLogin((r && r.error) || "Could not sign in."); return; }
-      S.user = r.user.name; S.role = String(r.user.role || "").toLowerCase();
+      S.user = r.user.name; S.role = String(r.user.role || "").toLowerCase(); S.office = String(r.user.office || "");   /* 1.147.0 - his godown */
       beatStart();                        /* v1.30.0 - from here the phone asks on its own */
       if (!roleAny(ALLOWED)) {
         S.pin = ""; renderLogin(notForYou(S.user, S.role)); S.role = "";
         return;
       }
-      try { credPut(STORE, { user: S.user, pin: pin, role: S.role }); } catch (e) {}
+      try { credPut(STORE, { user: S.user, pin: pin, role: S.role, office: S.office }); } catch (e) {}
       stockApply();                       /* v1.53.0 */
       startFlushTicker();
       pull(false);
@@ -11475,7 +11554,7 @@ function discRowOn(client, brand, onYmd) {
     if (ewProbe()) return;   /* the CRM's money check, see above */
     if (!(sess && sess.user && (sess.pin || sess.tok))) { renderLogin(); regSW(); return; }
 
-    S.user = sess.user; S.pin = sess.pin || ""; S.tok = sess.tok || ""; S.role = sess.role || "";   /* B9 */
+    S.user = sess.user; S.pin = sess.pin || ""; S.tok = sess.tok || ""; S.role = sess.role || ""; S.office = sess.office || "";   /* B9; 1.147.0 office */
     /* v1.7 - the offline copy lives in the big store now, so it has to be in memory before
        the warm paint or the app would open on a holding screen instead of the book. A local
        read of tens of milliseconds against a boot that already waits on two network calls,
@@ -11515,13 +11594,13 @@ function discRowOn(client, brand, onYmd) {
         try { localStorage.removeItem(STORE); } catch (e) {}
         renderLogin("Sign in again."); return;
       }
-      S.user = r.user.name; S.role = String(r.user.role || "").toLowerCase();
+      S.user = r.user.name; S.role = String(r.user.role || "").toLowerCase(); S.office = String(r.user.office || "");   /* 1.147.0 - his godown */
       beatStart();                        /* v1.30.0 - from here the phone asks on its own */
       if (!roleAny(ALLOWED)) {
         refused = true; S.pin = ""; forgetBook();
         renderLogin(notForYou(S.user, S.role)); S.role = ""; return;
       }
-      try { credPut(STORE, { user: S.user, pin: sess.pin, role: S.role }); } catch (e) {}
+      try { credPut(STORE, { user: S.user, pin: sess.pin, role: S.role, office: S.office }); } catch (e) {}
       stockApply();                       /* v1.53.0 - an order from the group, if the link brought him */
       if (S.data) render();
     }).catch(function () {});
