@@ -283,7 +283,7 @@ body{background:#F4F6F9}
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.148.0";   /* 1.148.0 (1 Nov 2026) - a transfer lands only when the other godown receives it */   /* 1.147.0 (1 Nov 2026) - two godowns: MPS Sonipat has its own stock; MPS staff see MPS work only; no challan to MPS (it is a transfer) */   /* 1.146.0 (31 Oct 2026) - one tap, one entry: a second tap on a write button is swallowed */   /* 1.145.0 - vehicle no asked every time a driver is picked (not for Porter / Rapido); 1.144.0 lorry check */
+  var APP_VERSION = "1.149.0";   /* 1.149.0 (1 Nov 2026) - the godown receives a transfer on this phone */   /* 1.148.0 (1 Nov 2026) - a transfer lands only when the other godown receives it */   /* 1.147.0 (1 Nov 2026) - two godowns: MPS Sonipat has its own stock; MPS staff see MPS work only; no challan to MPS (it is a transfer) */   /* 1.146.0 (31 Oct 2026) - one tap, one entry: a second tap on a write button is swallowed */   /* 1.145.0 - vehicle no asked every time a driver is picked (not for Porter / Rapido); 1.144.0 lorry check */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -5046,6 +5046,44 @@ function discRowOn(client, brand, onYmd) {
       toast(!d.short.length && !d.over.length ? "Checked - everything on " + b.billNo + " came." : (d.short.length ? d.short.length + " line" + (d.short.length === 1 ? "" : "s") + " short" : "") + (d.short.length && d.over.length ? ", " : "") + (d.over.length ? d.over.length + " extra" : "") + " - the office is told.");
     }, function () { if (btn) { btn.disabled = false; btn.textContent = "Save what came"; } toast("No answer from the server - it MAY have been saved. Pull to refresh before checking this bill again."); });
   }
+  /* 1.149.0 - receive a transfer from the other godown: count what came off the vehicle */
+  function viewXr() {
+    var x = gdXfers().filter(function (y) { return y.id === S.xr.id; })[0];
+    if (!x) return '<div class="empty">That transfer is not on this phone yet - pull to refresh.</div><button class="btn gry full" data-act="xr-back">Back</button>';
+    if (x.rcv) return '<div class="empty">Already received by ' + esc(x.rcv.by) + '.</div><button class="btn gry full" data-act="xr-back">Back</button>';
+    var h = '<div class="card" style="background:#0f766e;color:#fff;border-color:#0f766e"><div style="font-size:17px;font-weight:800">Receive the transfer</div>' +
+      '<div style="font-size:13px;opacity:.95;margin-top:3px">' + esc(dstr(x.asOn)) + ' &middot; ' + esc(GD_SHORT[x.from]) + ' &rarr; ' + esc(GD_SHORT[x.to]) + ' &middot; sent by ' + esc(x.by || "?") + (x.note ? ' &middot; ' + esc(x.note) : '') + '</div></div>' +
+      '<button class="btn full" data-act="xr-save" data-all="1" style="margin:8px 0">&#10003; Everything came</button>' +
+      '<div class="muted" style="margin:4px 2px 6px">Or change the number that came, line by line:</div><div class="card">';
+    x.lines.forEach(function (l, i) {
+      h += '<div style="border-top:' + (i ? '1px solid #e2e8f0' : '0') + ';padding:8px 0"><div style="font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(l.code) + (l.desc ? ' <span class="muted">' + esc(l.desc) + '</span>' : '') + '</div>' +
+        '<div style="display:flex;gap:8px;align-items:center;margin-top:4px"><span class="muted" style="flex:1">Sent <b>' + esc(String(l.q)) + '</b></span>' +
+        '<span class="muted">Came</span><input id="xr_q' + i + '" inputmode="decimal" value="' + esc(String(S.xr.got[i] != null ? S.xr.got[i] : l.q)) + '" style="width:90px;min-height:44px;text-align:right"/></div></div>';
+    });
+    return h + '</div><button class="btn full" data-act="xr-save" style="margin-top:8px">Save what came</button>' +
+      '<button class="btn gry full" data-act="xr-back" style="margin-top:8px">Back</button>';
+  }
+  function xrSave(all, btn) {
+    var x = gdXfers().filter(function (y) { return y.id === S.xr.id; })[0];
+    if (!x) { toast("That transfer is not on this phone yet - pull to refresh."); return; }
+    if (x.rcv) { S.xr = null; render(); toast("Already received by " + x.rcv.by + "."); return; }
+    var bad = "";
+    var lines = x.lines.map(function (l, i) {
+      var raw = all ? String(l.q) : String((el("xr_q" + i) || {}).value || "").trim(), g = Number(raw.replace(/[^0-9.\-]/g, ""));
+      if (raw === "" || !isFinite(g) || g < 0) bad = bad || ("How many of " + l.code + " came? Type 0 if none.");
+      return { code: l.code, q: isFinite(g) ? g : 0 };
+    });
+    if (bad) { toast(bad); return; }
+    var row = { id: "S-" + Date.now() + "-" + Math.floor(Math.random() * 1000000) + "-xr", type: "xferrcv", code: "*XFERRCV", qty: 0, asOn: today(),
+      ref: GD_SHORT[x.to] + " received " + dstr(today()), notes: "", desc: JSON.stringify({ xfer: x.id, by: S.user || "", at: new Date().toISOString(), lines: lines }) };
+    var off = lines.filter(function (l, i) { return Math.abs(l.q - (Number(x.lines[i].q) || 0)) > 1e-9; }).length;
+    if (btn) { btn.disabled = true; btn.textContent = "Saving..."; }
+    api("stockSave", { row: row }).then(function (r) {
+      if (!(r && r.ok)) { if (btn) { btn.disabled = false; btn.textContent = all ? "Everything came" : "Save what came"; } toast((r && r.error) || "Not saved - try again."); return; }
+      S.stock = (S.stock || []).concat([row]); _chStkC = null; S.xr = null; render();
+      toast(off ? "Received - " + off + " line" + (off === 1 ? "" : "s") + " not as sent; the office is told." : "Received - everything is in " + GD_SHORT[x.to] + " stock.");
+    }, function () { if (btn) { btn.disabled = false; btn.textContent = "Save what came"; } toast("No answer from the server - it MAY have been saved. Pull to refresh before receiving again."); });
+  }
   /* ---- a lorry arrives: the godown counts what came off it, and that is what adds stock ---- */
   function viewGrn() {
     var g = S.grn, reg = stkRegister(), got = stkImportedRefs();
@@ -5084,6 +5122,7 @@ function discRowOn(client, brand, onYmd) {
   function viewMake() {
     if (S.grn) return viewGrn();
     if (S.lc) return viewLc();   /* 1.144.0 */
+    if (S.xr) return viewXr();   /* 1.149.0 */
     var z = S.ch;
     if (!z) {
       var f = S.chFilter || "all";
@@ -5100,6 +5139,17 @@ function discRowOn(client, brand, onYmd) {
           var n = lcBills(20).length; if (!n) return "";
           return '<div class="card" data-act="lc-list" style="cursor:pointer;border-color:#f59e0b;background:#fffbeb"><div style="font-weight:800;color:#92400e">&#128666; Lorry check &middot; ' + n + ' supplier bill' + (n === 1 ? '' : 's') + ' to tick off</div>' +
             '<div class="muted" style="margin-top:2px">When a lorry is unloaded, open its bill and tick what came. One tap if everything came.</div></div>';
+        })() +
+        (function () {   /* 1.149.0 - a transfer from the other godown waits here until this godown receives it */
+          if (!canMake()) return "";
+          if (!STOCK_LOADED) { try { ensureStock(); } catch (e) { } return ""; }
+          var me = gdMine(), inc = gdXfers().filter(function (x) { return x.to === me && !x.rcv; });
+          if (!inc.length) return "";
+          return '<div class="card" style="border-color:#f59e0b;background:#fffbeb"><div style="font-weight:800;color:#92400e">&#128666; ' + inc.length + ' transfer' + (inc.length === 1 ? '' : 's') + ' on the way to ' + esc(GD_SHORT[me]) + '</div>' +
+            '<div class="muted" style="margin-top:2px">When it is unloaded, open it and count what came. One tap if everything came.</div>' +
+            inc.map(function (x) { var n = x.lines.reduce(function (a, l) { return a + (Number(l.q) || 0); }, 0);
+              return '<div style="display:flex;align-items:center;gap:8px;margin-top:8px"><span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(dstr(x.asOn)) + ' &middot; from ' + esc(GD_SHORT[x.from]) + ' &middot; ' + x.lines.length + ' line' + (x.lines.length === 1 ? '' : 's') + ', ' + n + ' pcs</span>' +
+                '<button class="btn" data-act="xr-open" data-id="' + esc(x.id) + '" style="min-height:44px">Receive</button></div>'; }).join('') + '</div>';
         })() +
         /* 1.100.0 - his process, 25 Sep: stock comes in from the Tally bill accounts uploads to the
            CRM, so the lorry button is off this phone. The screen and its handler stay, unused. */
@@ -9931,6 +9981,9 @@ function discRowOn(client, brand, onYmd) {
     if (act === "lc-back") { if (S.lc && S.lc.bill) { S.lc = { bill: null, got: [], extra: [] }; } else S.lc = null; render(); return; }
     if (act === "lc-extra") { lcKeep(); S.lc.extra.push({ name: "", got: "" }); render(); return; }
     if (act === "lc-save") { lcSave(t.getAttribute("data-all") === "1", t); return; }
+    if (act === "xr-open") { if (!canMake()) { toast("Receiving is the godown's or the office's."); return; } S.ch = null; S.grn = null; S.lc = null; S.xr = { id: t.getAttribute("data-id") || "", got: [] }; S.tab = "make"; render(); window.scrollTo(0, 0); return; }   /* 1.149.0 */
+    if (act === "xr-back") { S.xr = null; render(); return; }
+    if (act === "xr-save") { if (S.xr) { var _xg = []; for (var _xi = 0; el("xr_q" + _xi); _xi++) _xg.push(el("xr_q" + _xi).value); S.xr.got = _xg; } xrSave(t.getAttribute("data-all") === "1", t); return; }
     if (act === "grn-line") { grnKeep(); S.grn.lines.push({}); render(); return; }
     if (act === "grn-save") {
       grnKeep();
