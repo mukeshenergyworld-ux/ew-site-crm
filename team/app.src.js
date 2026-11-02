@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.916";
+  var APP_VERSION = "6.9.917";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -56364,6 +56364,35 @@ function viewCatalogue() {
   }
   /* what this godown has received of a transfer, line by line (nothing until it is received) */
   function gdXferGot(x) { var m = {}; ((x && x.rcv && x.rcv.lines) || []).forEach(function (l) { var k = String(l.code || "").trim(); if (k) m[k] = (m[k] || 0) + (Number(l.q) || 0); }); return m; }
+  /* 6.9.917 / 1.150.0 - HIS RULE (2 Nov 2026): "Energy World to MPS, MPS to Energy World will be normal challan
+     making; MPS stock will be managed only from the date after it is counted by hand in the CRM; after that a
+     challan EW -> MPS adds to MPS stock, and vice versa."
+     So a challan whose client is the other godown (Modern Plumbing Solution(s) = MPS, a client named
+     "Energy World..." = EW) goes OUT of the godown that made it (as every challan does) and comes IN to the other
+     godown the day it is dispatched - but only for days AFTER that godown's count: MPS from the day after its
+     first hand count (nothing before it), EW from GD_SINCE; and per product, only after that product's last count
+     (the count already has whatever came that day). */
+  function gdChTo(c) { var n = String((c && (c.customerName || c.client)) || ""); return gdIsMpsClient(n) ? "MPS" : (/^\s*energy\s*world\b/i.test(n) ? "EW" : ""); }
+  function gdMpsStart() {   /* the day MPS was first counted by hand; "" = not yet counted */
+    var d = "";
+    (S.stock || []).forEach(function (r) { if (String(r && r.type) !== "opening" || gdOfRow(r) !== "MPS") return; var x = String(r.asOn || "").slice(0, 10); if (x && (!d || x < d)) d = x; });
+    return d;
+  }
+  function gdChInLines(cut) {   /* what challans from the other godown brought INTO the godown on screen */
+    var g = gdCur(), out = [], bom = stkBom(), start = g === "MPS" ? gdMpsStart() : GD_SINCE;
+    if (!start) return out;
+    (S.data && S.data.challans || []).forEach(function (c) {
+      if (gdChTo(c) !== g || gdOfDoc(c) === g || !stkChOut(c) || (typeof stkChDead === "function" && stkChDead(c))) return;
+      var d = String(c.createdAt || "").slice(0, 10);
+      if (g === "MPS" ? !(d > start) : !(d >= start)) return;
+      stkExpand(chItems(c), bom).forEach(function (i) {
+        var k = String(i.code || "").trim(), q = Number(i.qty) || 0; if (!k || !q) return;
+        if (cut && cut[k] && !(d > cut[k])) return;
+        out.push({ code: k, q: q, d: d, desc: i.desc || "" });
+      });
+    });
+    return out;
+  }
   function stkCutoff() {
     var m = {}, z = "";
     (S.stock || []).forEach(function (r) {
@@ -56501,6 +56530,7 @@ function viewCatalogue() {
       if (x.from === gdCur()) x.lines.forEach(function (l) { var k = String(l.code || "").trim(); if (k && stkCounts(k, x.asOn, cut)) { m[k] = (m[k] || 0) - (Number(l.q) || 0); if (l.desc && !desc[k]) desc[k] = l.desc; } });
       else if (x.to === gdCur() && x.rcv) { var got = gdXferGot(x); Object.keys(got).forEach(function (k) { if (stkCounts(k, x.rcv.asOn, cut)) m[k] = (m[k] || 0) + got[k]; }); }
     });   /* 6.9.607 - IN is the Tally bill */
+    gdChInLines(cut).forEach(function (l) { m[l.code] = (m[l.code] || 0) + l.q; if (l.desc && !desc[l.code]) desc[l.code] = l.desc; });   /* 6.9.917 / 1.150.0 - a challan from the other godown adds here */
     return { m: m, desc: desc };
   }
   /* Per-code reorder level and latest purchase rate — stored as their own stock rows (type
@@ -56616,6 +56646,7 @@ function viewCatalogue() {
       if (x.from === gdCur()) x.lines.forEach(function (l) { add(l.code, x.asOn, -(Number(l.q) || 0)); });
       else if (x.to === gdCur() && x.rcv) { var g = gdXferGot(x); Object.keys(g).forEach(function (k) { add(k, x.rcv.asOn, g[k]); }); }
     });
+    gdChInLines(null).forEach(function (l) { add(l.code, l.d, l.q); });   /* 6.9.917 - challans in from the other godown */
     (S.data.challans || []).forEach(function (c) { if (!stkChOut(c) || gdOfDoc(c) !== gdCur()) return; stkExpand(chItems(c), bom).forEach(function (i) { add(i.code, c.createdAt, -(Number(i.qty) || 0)); }); });
     (S.data.returns || []).forEach(function (r) {
       if (String(r.status || "").trim().toLowerCase() !== "received" || gdOfDoc(r) !== gdCur()) return;
@@ -56915,7 +56946,7 @@ function viewCatalogue() {
       '<div class="acts" style="margin-top:8px;flex-wrap:wrap;gap:6px">' +
       '<button class="btn sm" data-act="stock-import">&#8593; Upload Tally bills / register</button>' +
       '<button class="btn sm ghost" data-act="pc-open">Physical count</button>' +
-      (roleAny(["admin", "accounts", "godown"]) ? '<button class="btn sm ghost" data-act="xf-new">&#8644; Transfer to ' + esc(GD_SHORT[gdCur() === "EW" ? "MPS" : "EW"]) + '</button>' : '') +
+      (false && roleAny(["admin", "accounts", "godown"]) ? '<button class="btn sm ghost" data-act="xf-new">&#8644; Transfer to ' + esc(GD_SHORT[gdCur() === "EW" ? "MPS" : "EW"]) + '</button>' : '') +
       '<button class="btn sm ghost" data-act="stk-xlsx">&#8681; Excel</button>' +
       '<button class="btn sm ghost" data-act="stock-add" data-type="adjust">Adjustment</button>' +
       (canSetPricing() ? '<button class="btn sm ghost" data-act="stock-landing">Landing %</button>' : '') +
@@ -69581,7 +69612,7 @@ function viewCatalogue() {
     if (act === "ch-save") {
       var cn = val("m_client");
       if (!cn) { toast("Pick a registered client from the list, or tap + Register new."); return; }
-      if (gdIsMpsClient(cn) && today() >= GD_SINCE && !(S.ch && S.ch.editId)) { toast("Modern Plumbing Solution is our own godown now — send material there with Stock › Transfer to MPS. No challan, no bill."); return; }   /* 6.9.915 */
+      /* 6.9.917 - the 6.9.915 guard that refused MPS as a client is gone: EW -> MPS is a normal challan again (his rule, 2 Nov) */
       if (!clientByName(cn)) { toast("“" + cn + "” isn’t a registered client — register it first so the preset discount applies."); return; }
       /* 6.9.863 - a builder with sites: which site, before anything else */
       var _msAsk = (S.ch && !S.ch.editId && msAsked(S.ch, cn)) ? String(S.ch.siteAsk) : "";
