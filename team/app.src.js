@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.922";
+  var APP_VERSION = "6.9.923";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -11121,20 +11121,29 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
      screen already uses. Brought forward = trips proved before the month - payouts before it. Balance carried to next
      month = brought forward + this month's proved trips - this month's payouts. Receipt pending is shown beside it: it is
      owed only once the receipt comes in, so it is not in the balance. */
+  /* 6.9.923 - HIS WORDS: "driver name with duration to select option .. driver amt picked subject to receipt only".
+     The span on this screen: From - To (default the month) and one driver or all. Only a trip whose signed receipt is in is
+     money; a trip still waiting for its receipt is in no figure, only counted apart. */
+  function hrFrSpan(month) {
+    var dim = hrDim(month), def = { m: month, from: month + "-01", to: month + "-" + String(dim).padStart(2, "0"), drv: "" };
+    var x = S.hrFr && S.hrFr.m === month ? S.hrFr : def;
+    if (!x.from || !x.to || x.from > x.to) x = Object.assign({}, x, { from: def.from, to: def.to });
+    return x;
+  }
   function hrFreightMonth(month) {
-    var rows = frRows(), pm = function (p) { var d = p && (p.date || p.createdAt); return d ? (String(d).length <= 10 ? String(d).slice(0, 7) : ymLocal(new Date(d))) : ""; };
-    var tm = function (r) { var d = r && r.createdAt; return d ? ymLocal(new Date(d)) : ""; };
-    var out = rows.map(function (g) {
+    var sp = hrFrSpan(month), F = sp.from, T = sp.to, rows = frRows();
+    var dOf = function (v) { return v ? localDay(v) : ""; };
+    var out = rows.filter(function (g) { return !sp.drv || g.key === sp.drv; }).map(function (g) {
       var o = { key: g.key, name: g.name, vehicle: g.vehicle, mobile: g.mobile, provedBefore: 0, proved: 0, provedN: 0, held: 0, heldN: 0, paidBefore: 0, paid: 0 };
       g.trips.forEach(function (t) {
-        var m = tm(t.r), a = frAmt(t.r);
-        if (t.state === "ready") { if (m < month) o.provedBefore += a; else if (m === month) { o.proved += a; o.provedN++; } }
-        else if (t.state === "held" && m === month) { o.held += a; o.heldN++; }
+        var d = dOf(t.r && t.r.createdAt), a = frAmt(t.r);
+        if (t.state === "ready") { if (d < F) o.provedBefore += a; else if (d <= T) { o.proved += a; o.provedN++; } }   /* receipt in: money */
+        else if (t.state === "held" && d >= F && d <= T) { o.held += a; o.heldN++; }                                   /* no receipt: not money yet */
       });
-      dpFor(g.key).forEach(function (p) { var m = pm(p), a = dpAmt(p); if (m < month) o.paidBefore += a; else if (m === month) o.paid += a; });
+      dpFor(g.key).forEach(function (p) { var d = dOf(p && (p.date || p.createdAt)), a = dpAmt(p); if (d < F) o.paidBefore += a; else if (d <= T) o.paid += a; });
       o.bf = o.provedBefore - o.paidBefore; o.bal = o.bf + o.proved - o.paid;
       return o;
-    }).filter(function (o) { return Math.abs(o.bf) > 0.5 || o.proved > 0.5 || o.held > 0.5 || o.paid > 0.5; });
+    }).filter(function (o) { return sp.drv || Math.abs(o.bf) > 0.5 || o.proved > 0.5 || o.held > 0.5 || o.paid > 0.5; });
     return out.sort(function (a, b) { return (b.bal - a.bal) || alpha(a.name, b.name); });
   }
   function hrSumDrvOn(k) { return !(S.hrSumOff && S.hrSumOff[k]); }
@@ -11142,7 +11151,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     var es = hrEmps(true).filter(function (e) { return hrActive(e, month); }), cs = es.map(function (e) { return hrCalc(e, month); });
     var st = cs.filter(function (c) { return c.staff; }), ot = cs.filter(function (c) { return !c.staff; });
     var sum = function (L, k) { return L.reduce(function (a, c) { return a + (c[k] || 0); }, 0); };
-    var add = hrAddExps(month), off = hrOfficeExps(month), fr = hrFreightMonth(month), sel = fr.filter(function (o) { return hrSumDrvOn(o.key); });
+    var add = hrAddExps(month), off = hrOfficeExps(month), fr = hrFreightMonth(month), _spd = hrFrSpan(month).drv, sel = fr.filter(function (o) { return _spd || hrSumDrvOn(o.key); });
     var F = { bf: 0, proved: 0, held: 0, paid: 0, bal: 0 }; sel.forEach(function (o) { Object.keys(F).forEach(function (k) { F[k] += o[k]; }); });
     var addT = add.reduce(function (a, x) { return a + (Number(x.amount) || 0); }, 0), offT = off.reduce(function (a, x) { return a + (Number(x.amount) || 0); }, 0);
     var depo = sum(st, "pfE") + sum(st, "pfR") + sum(st, "esiE") + sum(st, "esiR") + sum(st, "lwf") + sum(st, "lwfR");
@@ -11176,18 +11185,27 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     h += '<div class="card"><h3 style="margin:0 0 4px">Additional monthly expenses &middot; ' + M(C.addT) + '</h3>' + (C.add.length ? xT(C.add) : '<div class="empty">None typed &mdash; add them at the foot of the salary sheet.</div>') + '</div>';
     h += '<div class="card"><h3 style="margin:0 0 4px">Office expenses &middot; ' + M(C.offT) + '</h3>' + (C.off.length ? xT(C.off) : '<div class="empty">None for this month.</div>') + '</div>';
     /* freight */
+    var _sp = hrFrSpan(month), _drvs = frRows().slice().sort(function (a, b) { return alpha(a.name, b.name); });
     h += '<div class="card"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><h3 style="margin:0">Freight &mdash; driver wise</h3><div class="grow"></div>' +
-      '<button class="btn sm ghost" style="min-height:44px" data-act="hr-sum-all" data-v="1">Tick all</button><button class="btn sm ghost" style="min-height:44px" data-act="hr-sum-all" data-v="0">Clear</button></div>' +
-      '<div class="meta" style="font-size:12.5px;margin:3px 0 6px">A trip counts in the month of its delivery once the signed receipt is in. <b>Balance to next month</b> = brought forward + freight this month &minus; paid this month. Receipt pending is owed only when the receipt comes in, so it is shown beside, not in the balance.</div>' +
+      (_sp.drv ? '' : '<button class="btn sm ghost" style="min-height:44px" data-act="hr-sum-all" data-v="1">Tick all</button><button class="btn sm ghost" style="min-height:44px" data-act="hr-sum-all" data-v="0">Clear</button>') + '</div>' +
+      /* 6.9.923 - driver and duration */
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end;margin:6px 0">' +
+        '<div style="flex:1 1 180px"><label style="margin-top:0">Driver</label><select id="hr_fr_drv" style="min-height:44px;width:100%"><option value="">All drivers</option>' +
+          _drvs.map(function (g) { return '<option value="' + esc(g.key) + '"' + (g.key === _sp.drv ? ' selected' : '') + '>' + esc(g.name) + (g.vehicle ? ' \u00b7 ' + esc(g.vehicle) : '') + '</option>'; }).join("") + '</select></div>' +
+        '<div><label style="margin-top:0">From</label><input type="date" id="hr_fr_from" value="' + esc(_sp.from) + '" style="min-height:44px"/></div>' +
+        '<div><label style="margin-top:0">To</label><input type="date" id="hr_fr_to" value="' + esc(_sp.to) + '" style="min-height:44px"/></div>' +
+        '<button class="btn sm ghost" style="min-height:44px" data-act="hr-fr-reset" data-m="' + esc(month) + '">Whole month</button></div>' +
+      '<div class="meta" style="font-size:12.5px;margin:3px 0 6px"><b>Only trips with the signed receipt in are counted</b>, by the date of the delivery. <b>Balance</b> = brought forward + freight in the period &minus; paid in the period. A trip still waiting for its receipt is in no figure &mdash; it is listed apart so nobody pays it before the paper is back.</div>' +
       (!dpOk ? '<div class="meta" style="font-size:12.5px;color:#b45309">Payments to drivers are being read&hellip; paid and balance fill in when they arrive.</div>' : '') +
-      (C.fr.length ? pevTable([[""], ["Driver"], ["Brought forward", "right"], ["Freight this month", "right"], ["Receipt pending", "right"], ["Paid this month", "right"], ["Balance to next month", "right"]],
+      (C.fr.length ? pevTable([[""], ["Driver"], ["Brought forward", "right"], ["Freight (receipt in)", "right"], ["Paid", "right"], ["Balance carried forward", "right"], ["Waiting for receipt (not counted)", "right"]],
         C.fr.map(function (o) { var on = hrSumDrvOn(o.key);
           return ['<input type="checkbox" class="hr-sum-drv" data-k="' + esc(o.key) + '"' + (on ? ' checked' : '') + ' style="width:22px;height:22px"/>',
             '<b' + (on ? '' : ' style="color:#94a3b8"') + '>' + esc(o.name) + '</b>' + (o.vehicle ? '<div style="font-size:12px;color:#64748b">' + esc(o.vehicle) + '</div>' : ''),
-            M(o.bf), o.proved ? M(o.proved) + ' <span style="color:#94a3b8;font-size:12px">' + o.provedN + '</span>' : '—', o.held ? '<span style="color:#b91c1c">' + M(o.held) + '</span> <span style="color:#94a3b8;font-size:12px">' + o.heldN + '</span>' : '—',
-            dpOk ? (o.paid ? M(o.paid) : '—') : '&hellip;', dpOk ? '<b style="color:' + (o.bal > 0.5 ? '#b91c1c' : '#0f766e') + '">' + M(o.bal) + '</b>' : '&hellip;'];
-        }).concat([['', '<b>' + C.sel.length + ' of ' + C.fr.length + ' ticked</b>', '<b>' + M(C.F.bf) + '</b>', '<b>' + M(C.F.proved) + '</b>', '<b>' + M(C.F.held) + '</b>', '<b>' + (dpOk ? M(C.F.paid) : '&hellip;') + '</b>', '<b>' + (dpOk ? M(C.F.bal) : '&hellip;') + '</b>']]), false)
-        : '<div class="empty">No freight in this month.</div>') + '</div>';
+            M(o.bf), o.proved ? M(o.proved) + ' <span style="color:#94a3b8;font-size:12px">' + o.provedN + ' trip' + (o.provedN === 1 ? '' : 's') + '</span>' : '—',
+            dpOk ? (o.paid ? M(o.paid) : '—') : '&hellip;', dpOk ? '<b style="color:' + (o.bal > 0.5 ? '#b91c1c' : '#0f766e') + '">' + M(o.bal) + '</b>' : '&hellip;',
+            o.held ? '<span style="color:#94a3b8">' + M(o.held) + ' &middot; ' + o.heldN + ' trip' + (o.heldN === 1 ? '' : 's') + '</span>' : '—'];
+        }).concat([['', '<b>' + (_sp.drv ? '1 driver' : C.sel.length + ' of ' + C.fr.length + ' ticked') + '</b>', '<b>' + M(C.F.bf) + '</b>', '<b>' + M(C.F.proved) + '</b>', '<b>' + (dpOk ? M(C.F.paid) : '&hellip;') + '</b>', '<b>' + (dpOk ? M(C.F.bal) : '&hellip;') + '</b>', '<span style="color:#94a3b8">' + M(C.F.held) + '</span>']]), false)
+        : '<div class="empty">No freight for ' + (_sp.drv ? 'this driver' : 'any driver') + ' between ' + esc(dmy(_sp.from)) + ' and ' + esc(dmy(_sp.to)) + '.</div>') + '</div>';
     return h;
   }
   /* the summary as rows, for the Excel and the PDF beside it - the ticked drivers only */
@@ -11210,15 +11228,16 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     };
     xR("ADDITIONAL MONTHLY EXPENSES", C.add, C.addT);
     xR("OFFICE EXPENSES", C.off, C.offT);
-    rows.push(S1("FREIGHT - DRIVER WISE (" + C.sel.length + " of " + C.fr.length + " drivers)"));
-    rows.push(["DRIVER", "VEHICLE", "BROUGHT FORWARD", "FREIGHT THIS MONTH", "RECEIPT PENDING", "PAID THIS MONTH", "BALANCE TO NEXT MONTH"].map(H));
-    C.sel.forEach(function (o) { rows.push([o.name, o.vehicle || "", R(o.bf), R(o.proved), R(o.held), R(o.paid), R(o.bal)]); });
-    rows.push([B("TOTAL"), "", RB(C.F.bf), RB(C.F.proved), RB(C.F.held), RB(C.F.paid), RB(C.F.bal)]);
+    var _sp = hrFrSpan(month);
+    rows.push(S1("FREIGHT - " + (_sp.drv ? (C.sel[0] ? C.sel[0].name.toUpperCase() : "ONE DRIVER") : "DRIVER WISE (" + C.sel.length + " of " + C.fr.length + " drivers)") + " - " + dmy(_sp.from) + " TO " + dmy(_sp.to) + " - TRIPS WITH THE RECEIPT IN ONLY"));
+    rows.push(["DRIVER", "VEHICLE", "BROUGHT FORWARD", "FREIGHT (RECEIPT IN)", "TRIPS", "PAID", "BALANCE CARRIED FORWARD", "WAITING FOR RECEIPT (NOT COUNTED)"].map(H));
+    C.sel.forEach(function (o) { rows.push([o.name, o.vehicle || "", R(o.bf), R(o.proved), o.provedN, R(o.paid), R(o.bal), R(o.held)]); });
+    rows.push([B("TOTAL"), "", RB(C.F.bf), RB(C.F.proved), "", RB(C.F.paid), RB(C.F.bal), RB(C.F.held)]);
     rows.push([]);
     rows.push(S1("THE MONTH"));
-    [["Salary net payable", C.salNet], ["PF / ESI / LWF to deposit", C.depo], ["Additional monthly expenses", C.addT], ["Office expenses", C.offT], ["Freight paid", C.F.paid]].forEach(function (x) { rows.push([x[0], "", R(x[1])]); });
+    [["Salary net payable", C.salNet], ["PF / ESI / LWF to deposit", C.depo], ["Additional monthly expenses", C.addT], ["Office expenses", C.offT], ["Freight paid " + dmy(_sp.from) + " to " + dmy(_sp.to), C.F.paid]].forEach(function (x) { rows.push([x[0], "", R(x[1])]); });
     rows.push([B("TOTAL FOR THE MONTH"), "", RB(C.total)]);
-    rows.push(["Freight balance carried to next month", "", R(C.F.bal)]);
+    rows.push(["Freight balance carried forward on " + dmy(_sp.to), "", R(C.F.bal)]);
     return rows;
   }
   /* the sheet as accounts makes it, for Excel (and the PDF beside it) */
@@ -11460,6 +11479,12 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         hrSave("hr:bdraft", be.name, brow).then(function () { keepScroll = true; render(); });
         return;
       }
+      if (t.id === "hr_fr_drv" || t.id === "hr_fr_from" || t.id === "hr_fr_to") {   /* 6.9.923 - driver and duration */
+        var _fm = S.hrMonth || ymLocal(new Date()), _cur = Object.assign({}, hrFrSpan(_fm));
+        if (t.id === "hr_fr_drv") _cur.drv = t.value || ""; else if (t.id === "hr_fr_from") _cur.from = t.value || ""; else _cur.to = t.value || "";
+        if (_cur.from && _cur.to && _cur.from > _cur.to) { toast("From is after To."); t.value = t.id === "hr_fr_from" ? hrFrSpan(_fm).from : hrFrSpan(_fm).to; return; }
+        _cur.m = _fm; S.hrFr = _cur; keepScroll = true; render(); return;
+      }
       if (t.classList.contains("hr-sum-drv")) { S.hrSumOff = S.hrSumOff || {}; var _sk = t.getAttribute("data-k"); if (t.checked) delete S.hrSumOff[_sk]; else S.hrSumOff[_sk] = 1; keepScroll = true; render(); return; }   /* 6.9.922 */
       if ((t.classList.contains("hr-ih") || t.classList.contains("hr-iv")) && roleIs("admin")) {
         var ie = hrEmp(t.getAttribute("data-e")), fr = hrIncFrom(); if (!ie) return;
@@ -11547,6 +11572,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       hrSave("hr:exp", ahd, { xid: mintId("HX"), month: am, date: am + "-01", head: ahd, amount: aa, grp: "add", note: String(val("hr_aanote") || "").trim() }).then(function () { keepScroll = true; render(); toast(ahd + " " + money(aa) + " added for " + fullMonth(am) + "."); });
       return;
     }
+    if (act === "hr-fr-reset") { S.hrFr = null; keepScroll = true; render(); return; }   /* 6.9.923 */
     if (act === "hr-sum-all") { S.hrSumOff = {}; if (t.getAttribute("data-v") === "0") hrFreightMonth(S.hrMonth || ymLocal(new Date())).forEach(function (o) { S.hrSumOff[o.key] = 1; }); keepScroll = true; render(); return; }
     if (act === "hr-sum-xl") {
       var sm = t.getAttribute("data-m");
