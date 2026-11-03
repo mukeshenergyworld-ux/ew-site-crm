@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.923";
+  var APP_VERSION = "6.9.924";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -10954,7 +10954,22 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     var owed = Math.max(0, given - cut);
     return { given: given, recovered: cut, owed: owed, plan: Math.min(owed, plan) };
   }
-  var hrNum = function (v) { return v != null && v !== "" ? Number(v) || 0 : null; };
+  var hrNum = function (v) { return v != null && v !== "" && v !== "auto" ? Number(v) || 0 : null; };
+  /* 6.9.924 - a figure typed for a month carries on to the next months until another is typed, or the box is cleared ("auto") */
+  function hrCarry(eid, month, f) {
+    var L = hrLatest("hr:pay", function (d) { return d.pid; }).filter(function (p) { return p.eid === eid && p.month < month && p[f] != null && p[f] !== ""; })
+      .sort(function (a, b) { return String(b.month).localeCompare(String(a.month)); });
+    if (!L.length || L[0][f] === "auto") return null;
+    return { v: Number(L[0][f]) || 0, from: L[0].month };
+  }
+  /* what is used for a month: typed this month, else carried, else the worked-out figure */
+  function hrPick(p, eid, month, f) {
+    var raw = p[f];
+    if (raw === "auto") return { v: null, how: "auto" };
+    if (raw != null && raw !== "") return { v: Number(raw) || 0, how: "typed" };
+    var c = hrCarry(eid, month, f);
+    return c ? { v: c.v, how: "carried", from: c.from } : { v: null, how: "auto" };
+  }
   function hrCalc(e, month) {
     var st = hrSet(), p = hrPay(e.eid, month) || {}, dim = hrDim(month), staff = hrStaff(e);
     var monthly = hrMonthlyAt(e, month);
@@ -10966,7 +10981,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         esiOn: false, esiE: 0, esiR: 0, lwf: 0, lwfR: 0, adv: adv, advCut: advCut, other: other, ded: advCut + other, net: amt - advCut - other, ctc: amt, saved: !!p.pid, paid: !!p.paidOn };
     }
     var days = hrNum(p.days) != null ? Math.max(0, Math.min(dim, hrNum(p.days))) : dim;
-    var earned = Math.round(monthly * days / dim), extra = Number(p.extra) || 0;
+    var basicAuto = Math.round(monthly * days / dim), _bk = hrPick(p, e.eid, month, "basic"), earned = _bk.v != null ? _bk.v : basicAuto, extra = Number(p.extra) || 0;   /* 6.9.924 - Basic typed / carried */
     var km = Math.max(0, Number(p.km) || 0), rate = Number(e.kmRate) || 0, ta = Math.round(km * rate) + (Number(p.ta) || 0);
     var sub = earned + ta + extra;
     var wage = Number(e.pfWage) || 0;
@@ -10979,14 +10994,15 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     /* 6.9.921 - HIS WORDS: "ESI and PF are not at a fixed %, we want to enter them manually". A figure typed on the sheet
        for the month is used as it is; blank = the worked-out one (pfAuto/esiAuto/lwfAuto, shown as the hint). The firm's
        share follows the typed figure at the set ratio (PF 12:12, ESI 3.25:0.75, LWF x2). */
-    var pfAuto = pfE, esiAuto = esiE, lwfAuto = lwf, pfM = hrNum(p.pf), esiM = hrNum(p.esi), lwfM = hrNum(p.lwf);
+    var pfAuto = pfE, esiAuto = esiE, lwfAuto = lwf, _pk = hrPick(p, e.eid, month, "pf"), _ek = hrPick(p, e.eid, month, "esi"), _lk = hrPick(p, e.eid, month, "lwf"), pfM = _pk.v, esiM = _ek.v, lwfM = _lk.v;   /* 6.9.924 - typed, else carried from the last month typed */
     if (pfM != null) { pfE = pfM; pfR = st.pfEmp > 0 ? Math.round(pfM * st.pfEr / st.pfEmp) : pfM; }
     if (esiM != null) { esiE = esiM; esiR = st.esiEmp > 0 ? Math.round(esiM * st.esiEr / st.esiEmp) : 0; esiOn = esiM > 0; }
     if (lwfM != null) { lwf = lwfM; lwfR = lwfM * (st.lwfEr || 0); }
     var net = sub - pfE - esiE - lwf - advCut - other, ctc = sub + pfR + esiR + lwfR;
     return { e: e, p: p, month: month, staff: true, dim: dim, days: days, monthly: monthly, earned: earned, km: km, rate: rate, ta: ta, extra: extra, sub: sub, gross: sub, pfWage: pfWage, pfE: pfE, pfR: pfR,
       esiOn: esiOn, esiE: esiE, esiR: esiR, lwf: lwf, lwfR: lwfR, adv: adv, advCut: advCut, other: other, ded: pfE + esiE + lwf + advCut + other, net: net, ctc: ctc, saved: !!p.pid, paid: !!p.paidOn,
-      pfAuto: pfAuto, esiAuto: esiAuto, lwfAuto: lwfAuto, pfMan: pfM != null, esiMan: esiM != null, lwfMan: lwfM != null };
+      pfAuto: pfAuto, esiAuto: esiAuto, lwfAuto: lwfAuto, pfMan: pfM != null, esiMan: esiM != null, lwfMan: lwfM != null,
+      basicAuto: basicAuto, how: { basic: _bk, pf: _pk, esi: _ek, lwf: _lk } };
   }
   function hrExps(month) { return hrLatest("hr:exp", function (d) { return d.xid; }).filter(function (x) { return x.month === month; }); }
   /* visits he made in a month: Visit app days (sales) and service visits (engineers) */
@@ -11070,19 +11086,21 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         '<div style="font-size:12px;color:#64748b">other</div>' + hrInp("hr-other", c, c.p.other || "", 64, "0") ;
     };
     /* 6.9.921 - PF / ESI / LWF typed for the month; blank shows the worked-out figure as the hint */
-    var dedCell = function (cls, c, f, auto, man) {
-      return hrInp(cls, c, man ? c.p[f] : "", 64, String(auto || 0)) + '<div style="font-size:12px;color:' + (man ? '#0f766e' : '#94a3b8') + ';white-space:nowrap">' + (man ? 'typed' : 'auto') + '</div>';
+    var dedCell = function (cls, c, f, auto, man) {   /* 6.9.924 - typed / same as last month typed / auto */
+      var k = (c.how && c.how[f]) || { how: man ? "typed" : "auto" }, shown = k.how === "auto" ? "" : String(k.v);
+      var lbl = k.how === "typed" ? '<span style="color:#0f766e">typed</span>' : k.how === "carried" ? '<span style="color:#1d4ed8">same as ' + esc(fullMonth(k.from).replace(/^(\w{3})\w*/, "$1")) + '</span>' : '<span style="color:#94a3b8">auto</span>';
+      return hrInp(cls, c, shown, 64, String(auto || 0)) + '<div style="font-size:12px;white-space:nowrap">' + lbl + '</div>';
     };
     var h = '<div class="card"><h3 style="margin:0">Salary &amp; wages sheet — ' + esc(fullMonth(month)) + ' · ' + plural(cs.length, "line") + ' · ' + paidN + ' paid</h3>' +
       '<div class="meta" style="font-size:13px;margin:4px 0 6px;line-height:1.6">Net to pay <b>' + money(TA.net) + '</b> (staff ' + money(TS.net) + ' + others ' + money(TO.net) + ') · PF to deposit <b>' + money(TS.pfE + TS.pfR) + '</b> · ESI to deposit <b>' + money(TS.esiE + TS.esiR) + '</b> · LWF <b>' + money(TS.lwf + TS.lwfR) + '</b> · advances recovered ' + money(TA.advCut) +
         '<br>Cost to company <b>' + money(TA.ctc) + '</b> + office &amp; additional expenses <b>' + money(exp) + '</b> = <b style="font-size:15px">' + money(TA.ctc + exp) + '</b> for the month.</div>' +
-      '<div class="meta" style="font-size:12.5px">Type the <b>days</b> paid (out of ' + dim + '), the <b>km</b> for a bike (TA = km &times; his rate), any other TA/DA in &#8377;, <b>Other/Arrear</b> and the cuts. <b>P.F., E.S.I. and LWF</b>: type the figure for the month, or leave blank for the worked-out one shown grey. <b>Advance cut</b>: type what to cut this month. Each box saves as you leave it; <b>Paid</b> locks the line.</div>' +
+      '<div class="meta" style="font-size:12.5px">Type the <b>days</b> paid (out of ' + dim + '), the <b>km</b> for a bike (TA = km &times; his rate), any other TA/DA in &#8377;, <b>Other/Arrear</b> and the cuts. <b>Basic, P.F., E.S.I. and LWF</b>: a figure typed stays the same every month after (&ldquo;same as &hellip;&rdquo;) until you type another; clear the box to go back to the worked-out figure shown grey. <b>Advance cut</b>: type what to cut this month. Each box saves as you leave it; <b>Paid</b> locks the line.</div>' +
       '<div class="acts" style="margin:6px 0"><button class="btn sm" style="min-height:44px" data-act="hr-sheet-xl" data-m="' + esc(month) + '">&#8681; Excel</button></div>';
     if (st.length) h += '<div style="font-weight:800;margin:8px 0 4px">Staff</div>' +
       pevTable([["Staff name"], ["Monthly salary", "right"], ["Days", "right"], ["Basic", "right"], ["TA/DA", "right"], ["Other / Arrear", "right"], ["Sub total", "right"], ["P.F.", "right"], ["E.S.I.", "right"], ["LWF", "right"], ["Adv. / Oth.", "right"], ["Net payable", "right"], ["Remark"], [""]],
         st.map(function (c) {
           return [hrWho(c.e), money(c.monthly),
-            hrInp("hr-days", c, hrNum(c.p.days) != null ? c.p.days : "", 52, String(c.dim)), money(c.earned),
+            hrInp("hr-days", c, hrNum(c.p.days) != null ? c.p.days : "", 52, String(c.dim)), dedCell("hr-basic", c, "basic", c.basicAuto, false),   /* 6.9.924 - Basic typed / carried */
             (c.rate ? hrInp("hr-km", c, c.p.km || "", 64, "km") + '<div style="font-size:12px;color:#64748b">@ ' + c.rate + '/km</div>' : '') + hrInp("hr-ta", c, c.p.ta || "", 64, "Rs") + '<div style="font-size:12px;font-weight:700">' + money(c.ta) + '</div>',
             hrInp("hr-extra", c, c.p.extra || "", 68, "0"), '<b>' + money(c.sub) + '</b>',
             dedCell("hr-pfm", c, "pf", c.pfAuto, c.pfMan), dedCell("hr-esim", c, "esi", c.esiAuto, c.esiMan), dedCell("hr-lwfm", c, "lwf", c.lwfAuto, c.lwfMan), advCell(c) + '<div style="font-size:12px;font-weight:700">' + money(c.advCut + c.other) + '</div>',
@@ -11495,7 +11513,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       }
       var f = t.classList.contains("hr-days") ? "days" : t.classList.contains("hr-extra") ? "extra" : t.classList.contains("hr-adv") ? "advCut" : t.classList.contains("hr-other") ? "other" :
         t.classList.contains("hr-km") ? "km" : t.classList.contains("hr-ta") ? "ta" : t.classList.contains("hr-amt") ? "amt" : t.classList.contains("hr-remark") ? "remark" :
-        t.classList.contains("hr-pfm") ? "pf" : t.classList.contains("hr-esim") ? "esi" : t.classList.contains("hr-lwfm") ? "lwf" : "";   /* 6.9.921 */
+        t.classList.contains("hr-pfm") ? "pf" : t.classList.contains("hr-esim") ? "esi" : t.classList.contains("hr-lwfm") ? "lwf" : t.classList.contains("hr-basic") ? "basic" : "";   /* 6.9.921; 6.9.924 basic */
       if (!f || !hrOk()) return;
       var eid = t.getAttribute("data-e"), m = t.getAttribute("data-m"), e = hrEmp(eid); if (!e) return;
       var cur = hrPay(eid, m) || { pid: eid + "|" + m, eid: eid, month: m };
@@ -11503,6 +11521,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       var row = hrClean(cur); row.pid = eid + "|" + m; row.eid = eid; row.month = m;
       var raw = String(t.value || "").trim();
       if (f === "remark") row.remark = raw.slice(0, 200);
+      else if ((f === "pf" || f === "esi" || f === "lwf" || f === "basic") && raw === "") row[f] = "auto";   /* 6.9.924 - cleared: the worked-out figure, and the carrying stops here */
       else row[f] = raw === "" ? "" : Math.max(0, f === "km" ? Math.round((nAmt(raw) || 0) * 10) / 10 : Math.round(nAmt(raw) || 0));
       if (f === "days" && raw !== "" && row.days > hrDim(m)) { toast(m + " has " + hrDim(m) + " days."); t.value = cur.days || ""; return; }
       if (f === "advCut" && raw !== "") { var _ao = hrAdvState(eid, m).owed; if (row.advCut > _ao) { toast(e.name + " owes only " + money(_ao) + " on advances."); t.value = cur.advCut != null ? cur.advCut : ""; return; } }   /* 6.9.921 - refused, not quietly trimmed */
