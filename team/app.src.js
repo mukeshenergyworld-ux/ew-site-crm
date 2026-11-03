@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.925";
+  var APP_VERSION = "6.9.926";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -19272,7 +19272,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       if (!s && lq.length >= 3 && it.hay && it.hay.indexOf(lq) > -1) s = 25;
       if (s) out.push({ it: it, s: s });
     });
-    out.sort(function (a, b) { return b.s - a.s || alpha(a.it.v, b.it.v); });
+    out.sort(function (a, b) { return b.s - a.s || (a.s === 90 ? String(taCode(a.it)).localeCompare(String(taCode(b.it)), undefined, { numeric: true }) : 0) || alpha(a.it.v, b.it.v); });   /* 6.9.926 - "CL06" lists CL060, CL061 ... in order */
     return out.slice(0, max || 8).map(function (x) { return x.it; });
   }
   /* what a box offers: its datalist, or the book it names a record in */
@@ -26250,7 +26250,7 @@ function viewCatalogue() {
      reads. "Skip for now" closes it; the bill then shows "Not saved yet" on that card until it is put there. */
   function modalBillUpload(id, billNo) {
     var c = (S.data.challans || []).filter(function (x) { return x.id === id; })[0] || {};
-    return '<h2>Upload bill ' + esc(billNo) + '?</h2><p class="sub">' + esc(c.challanNo || "") + ' &middot; ' + esc(c.customerName || "") + '</p>' +
+    return '<h2>Upload bill ' + esc(billNo) + '?</h2><p class="sub">' + esc(c.challanNo || "") + ' &middot; ' + clWithCode(c.customerName || "") + '</p>' +
       '<div class="meta" style="font-size:13.5px;margin-bottom:8px">The bill no is saved. Now the bill itself: choose the PDF from Tally (or a photo of it). It is kept in Google Drive, <b>Sales bills &rsaquo; ' + esc(bfMonTxt(String(c.billedAt || today()).slice(0, 7))) + '</b>, as <code>' + esc(bfFileName(billNo)) + '</code>.</div>' +
       '<input id="bu_file" type="file" accept="application/pdf,image/*" style="min-height:44px;font-size:15px;width:100%"/>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Skip for now</button><button class="btn" data-act="bu-go" data-id="' + esc(id) + '" data-no="' + esc(billNo) + '">Upload the bill</button></div>';
@@ -26260,7 +26260,7 @@ function viewCatalogue() {
     if (!c) return '<h2>Billing sheet</h2><div class="empty">Challan not found.</div><div class="foot"><button class="btn" data-act="close">Close</button></div>';
     var D = billSheetData(c), td = 'padding:5px 6px;border-top:1px solid #e2e8f0;font-size:13px;vertical-align:top';
     var h = '<h2>Billing sheet</h2>' +
-      '<p class="sub">' + esc(c.challanNo || "") + ' &middot; ' + esc(c.customerName || "") + (c.site ? ' &middot; ' + esc(c.site) : '') + ' &middot; ' + esc(dmy(String(c.createdAt || "").slice(0, 10))) + '</p>' +
+      '<p class="sub">' + esc(c.challanNo || "") + ' &middot; ' + clWithCode(c.customerName || "") + (c.site ? ' &middot; ' + esc(c.site) : '') + ' &middot; ' + esc(dmy(String(c.createdAt || "").slice(0, 10))) + '</p>' +
       '<div class="meta" style="font-size:13px;margin-bottom:6px">The challan&rsquo;s items at this client&rsquo;s preset discount, to raise the bill from. <b>For accounts and the owner only.</b> These figures are not saved or added to any hisab; only the bill details below are saved on the challan.</div>' +
       '<div style="max-height:52vh;overflow:auto"><table style="width:100%;border-collapse:collapse;table-layout:fixed"><thead><tr style="background:#0b3b36;color:#fff;font-size:12px">' +
       '<th style="padding:6px;text-align:left">ITEM</th><th style="padding:6px;text-align:right;width:40px">QTY</th>' +
@@ -26752,7 +26752,7 @@ function viewCatalogue() {
         h += '<div style="margin-top:10px;font-weight:700;font-size:13.5px;color:#b91c1c">Delivered in ' + tlMonLabel(mon) + ' and on no sales bill &middot; ' + plural(left.length, "challan") + ' &middot; ' + money(lv) + '</div>' +
           '<div class="meta" style="font-size:12px;margin-bottom:4px">Not billed in Tally either, or billed under a number the register above does not have. Open each for billing.</div>' +
           left.slice(0, S.srAll ? left.length : 25).map(function (c) {
-            return '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;padding:5px 0;border-top:1px solid #e2e8f0;font-size:13px"><span><b>' + esc(c.challanNo || "") + '</b> &middot; ' + esc(dmy(localDay(c.createdAt))) + ' &middot; ' + esc(c.customerName || "") + ' &middot; ' + money(dgNum(c.amount)) + '</span>' +
+            return '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;padding:5px 0;border-top:1px solid #e2e8f0;font-size:13px"><span><b>' + esc(c.challanNo || "") + '</b> &middot; ' + esc(dmy(localDay(c.createdAt))) + ' &middot; ' + clWithCode(c.customerName || "") + ' &middot; ' + money(dgNum(c.amount)) + '</span>' +
               '<button class="btn sm ghost" data-act="bill-sheet" data-id="' + esc(c.id) + '" style="min-height:44px;flex:0 0 auto">Open for billing</button></div>';
           }).join("") + (left.length > 25 && !S.srAll ? '<div class="meta" style="font-size:12px">&hellip; and ' + (left.length - 25) + ' more (Show all above)</div>' : '');
       }
@@ -26792,7 +26792,7 @@ function viewCatalogue() {
       '<div class="acts" style="margin:4px 0;gap:6px;flex-wrap:wrap"><button class="btn sm ' + (_old ? '' : 'ghost') + '" data-act="bd-sort" data-k="old" style="min-height:44px">Oldest first</button>' +
       '<button class="btn sm ' + (_old ? 'ghost' : '') + '" data-act="bd-sort" data-k="new" style="min-height:44px">Newest first</button></div>' +
       '<div class="meta" style="font-size:13px">Every passed challan without a bill number, with what went. <b>Open for billing</b> asks the billing name first; the prices at the client&rsquo;s preset discount open after that, and the bill number is saved there.</div>' +
-      '<input id="bd_q" type="search" autocomplete="off" placeholder="Find a challan or client" value="' + esc(S.bdQ || "") + '" style="min-height:44px;font-size:15px;width:100%;box-sizing:border-box;margin-top:6px"/>' +
+      '<input id="bd_q" type="search" autocomplete="off" placeholder="Find a challan, client or client code (CL061)" value="' + esc(S.bdQ || "") + '" style="min-height:44px;font-size:15px;width:100%;box-sizing:border-box;margin-top:6px"/>' +
       '<div id="bd_res">' + billDeskList() + '</div></div>' + billDoneHtml() + localBuysHtml() + billFilesCard("sales");   /* 6.9.850; 6.9.856 - sales bills folder */
   }
   /* ===== 6.9.850 - BOUGHT IN THE MARKET FOR A SITE (p853, with challan 1.137.0) =====
@@ -26831,6 +26831,24 @@ function viewCatalogue() {
         } };
       }), "the shop, what we paid and what it made") + '</div>';
   }
+  /* 6.9.926 - HIS WORDS: "while making billing, show client code with client name, accounts can search client with client code".
+     The code of the client a name is filed under (a merged / misspelt name gives the main client's code). */
+  var _clcC = null, _clcK = "";
+  function clCodeOf(name) {
+    var cl = S.data.clients || [], k = cl.length + "|" + ((S.data.audit || []).length);
+    if (!_clcC || _clcK !== k) { _clcC = {}; _clcK = k; cl.forEach(function (c) { if (c && c.name && c.code && !isCancelled("clients", c.id)) _clcC[dgKey(c.name)] = String(c.code); }); }
+    return _clcC[dgKey(dupMainName(name))] || _clcC[dgKey(name)] || "";
+  }
+  function clCodeTag(name) {
+    var c = clCodeOf(name);
+    return c ? '<span style="display:inline-block;font-size:12px;font-weight:800;color:#1e3a8a;background:#e0e7ff;border-radius:6px;padding:1px 6px;margin-right:4px;white-space:nowrap">' + esc(c) + '</span>' : '';
+  }
+  /* the client's name with his code, for a line of text; the name is kept out of the page-wide tagger so it is not tagged twice */
+  function clWithCode(name) { var mn = dupMainName(name) || name; return clCodeTag(name) + '<span ewcdata-nocode="1"' + (mn !== name ? ' title="On the challan as: ' + esc(name || "") + '"' : '') + '>' + esc(mn || "") + '</span>'; }   /* the client's correct name (a merged / misspelt one shows the main) */
+  function clientByCode(q) {
+    var t = String(q || "").trim().toUpperCase().replace(/\s+/g, ""); if (!/^[A-Z]{2,4}\d{1,5}$/.test(t)) return null;
+    return (S.data.clients || []).filter(function (c) { return c && String(c.code || "").toUpperCase() === t && !isCancelled("clients", c.id); })[0] || null;
+  }
   function billDeskList() {
     var q = String(S.bdQ || "").trim().toLowerCase(), L = billToDo();
     /* 6.9.858 - his words: "all challan require billing will show under billing section" - marked ones not passed yet too */
@@ -26840,14 +26858,14 @@ function viewCatalogue() {
     if (S.bdOld !== false) L = L.slice().reverse();   /* 6.9.820 - oldest first by default */
     var _bnm = billNowMap();   /* 6.9.857 - a bill that must go with the material comes first */
     L = L.filter(function (c) { return billNowOn(c, _bnm); }).concat(L.filter(function (c) { return !billNowOn(c, _bnm); }));
-    if (q) L = L.filter(function (c) { return (String(c.challanNo || "") + " " + String(c.customerName || "") + " " + String(c.site || "")).toLowerCase().indexOf(q) >= 0; });
+    if (q) L = L.filter(function (c) { return (String(c.challanNo || "") + " " + String(c.customerName || "") + " " + String(c.site || "") + " " + clCodeOf(c.customerName) + " " + dupMainName(c.customerName)).toLowerCase().indexOf(q) >= 0; });   /* 6.9.926 - by code too */
     var lim = S.bdAll ? L.length : 40;
     var h = '<div class="meta" style="margin:6px 0"><b>' + plural(L.length, "challan") + '</b> to bill' + (q ? ' (of ' + all + ')' : '') + '</div>';
     if (!L.length) return h + '<div class="empty">Nothing to bill' + (q ? ' for &ldquo;' + esc(S.bdQ) + '&rdquo;' : '') + '.</div>';
     h += L.slice(0, lim).map(function (c) {
       var _bn = billNowOn(c, _bnm);
       return '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-top:1px solid #e2e8f0;font-size:13px' + (_bn ? ';background:#fef2f2;box-shadow:inset 4px 0 0 #dc2626;padding-left:8px' : '') + '">' +
-        '<span style="min-width:0">' + (_bn ? '<b style="color:#991b1b">&#9889; Bill with the material</b>' + (String(c.status || "Draft") === "Draft" ? ' <span style="color:#b45309;font-weight:700">&middot; not passed yet</span>' : '') + '<br>' : '') + '<b>' + esc(c.challanNo || "") + '</b> &middot; ' + esc(dmy(String(c.createdAt || "").slice(0, 10))) + ' &middot; ' + esc(c.customerName || "") +
+        '<span style="min-width:0">' + (_bn ? '<b style="color:#991b1b">&#9889; Bill with the material</b>' + (String(c.status || "Draft") === "Draft" ? ' <span style="color:#b45309;font-weight:700">&middot; not passed yet</span>' : '') + '<br>' : '') + '<b>' + esc(c.challanNo || "") + '</b> &middot; ' + esc(dmy(String(c.createdAt || "").slice(0, 10))) + ' &middot; ' + clWithCode(c.customerName || "") +
         (c.site ? ' <span class="meta">&middot; ' + esc(c.site) + '</span>' : '') + ' <span class="meta">&middot; ' + esc(c.status || "") + '</span>' +
         (c.billTo ? '<br><span style="color:#b45309">Billing started &middot; ' + esc(c.billTo) + '</span>' : '') +
         '<div style="margin-top:3px;color:#334155">' + chItemsSummary(c, 4) + '</div></span>' +
@@ -26867,7 +26885,7 @@ function viewCatalogue() {
   }
   function billedRows() {
     var q = String(S.bdnQ || "").trim().toLowerCase(), L = billedList();
-    if (q) L = L.filter(function (c) { return [c.challanNo, c.customerName, c.billTo, c.billNo, c.billedBy].join(" ").toLowerCase().indexOf(q) >= 0; });
+    if (q) L = L.filter(function (c) { return [c.challanNo, c.customerName, c.billTo, c.billNo, c.billedBy, clCodeOf(c.customerName), dupMainName(c.customerName)].join(" ").toLowerCase().indexOf(q) >= 0; });   /* 6.9.926 */
     return L;
   }
   function billedListHtml() {
@@ -26876,7 +26894,7 @@ function viewCatalogue() {
     return '<div class="meta" style="font-size:12.5px;margin:4px 0">' + plural(L.length, "challan") + ' billed</div>' + show.map(function (c) {
       return '<div style="padding:7px 0;border-top:1px solid #e2e8f0;font-size:13.5px;line-height:1.4">' +
         '<b style="color:#0f766e">Bill ' + esc(c.billNo) + '</b>' + (c.billedAt ? ' &middot; ' + esc(dmy(String(c.billedAt).slice(0, 10))) : '') +
-        ' &middot; <a href="#" data-act="ch-detail" data-id="' + esc(c.id) + '" style="color:#0b3b36;font-weight:700">' + esc(c.challanNo || "") + '</a> &middot; ' + esc(c.customerName || "") +
+        ' &middot; <a href="#" data-act="ch-detail" data-id="' + esc(c.id) + '" style="color:#0b3b36;font-weight:700">' + esc(c.challanNo || "") + '</a> &middot; ' + clWithCode(c.customerName || "") +
         '<br><span class="meta" style="font-size:12.5px">Billed to: ' + esc(c.billTo || "billing name not recorded") + (c.billedBy ? ' &middot; by ' + esc(c.billedBy) : '') + '</span>' +
         ' <button class="btn sm ghost" data-act="bill-sheet" data-id="' + esc(c.id) + '" style="min-height:44px;margin-left:4px">Billing sheet</button></div>';
     }).join("") + (L.length > show.length ? '<button class="btn sm ghost" data-act="bdn-all" style="min-height:44px;margin-top:6px">Show all ' + L.length + '</button>' : '');
@@ -26902,7 +26920,7 @@ function viewCatalogue() {
     var done = (S.data.challans || []).filter(function (c) { return c && String(c.billNo || "").trim(); })
       .sort(function (a, b) { return String(b.billedAt || b.createdAt || "").localeCompare(String(a.billedAt || a.createdAt || "")); }).slice(0, 15);
     if (done.length) h += '<div class="card" style="padding:10px 12px"><h3 style="margin:0 0 4px;font-size:15px">Billed lately</h3>' + done.map(function (c) {
-      return '<div style="padding:6px 0;border-top:1px solid #e2e8f0;font-size:13px"><b>Bill ' + esc(c.billNo) + '</b> &middot; ' + esc(c.challanNo || "") + ' &middot; ' + esc(c.customerName || "") +
+      return '<div style="padding:6px 0;border-top:1px solid #e2e8f0;font-size:13px"><b>Bill ' + esc(c.billNo) + '</b> &middot; ' + esc(c.challanNo || "") + ' &middot; ' + clWithCode(c.customerName || "") +
         '<br><span class="meta">' + esc(c.billTo || "billing name not recorded") + (c.billedAt ? ' &middot; ' + esc(dmy(String(c.billedAt).slice(0, 10))) : '') + (c.billedBy ? ' &middot; ' + esc(c.billedBy) : '') + '</span></div>';
     }).join("") + '</div>';
     return h;
@@ -26923,7 +26941,7 @@ function viewCatalogue() {
   function modalBillStart(id) {
     var c = (S.data.challans || []).filter(function (x) { return x.id === id; })[0];
     if (!c) return '<h2>Open for billing</h2><div class="empty">Challan not found.</div><div class="foot"><button class="btn" data-act="close">Close</button></div>';
-    return '<h2>Open for billing</h2><p class="sub">' + esc(c.challanNo || "") + ' &middot; ' + esc(c.customerName || "") + (c.site ? ' &middot; ' + esc(c.site) : '') + '</p>' +
+    return '<h2>Open for billing</h2><p class="sub">' + esc(c.challanNo || "") + ' &middot; ' + clWithCode(c.customerName || "") + (c.site ? ' &middot; ' + esc(c.site) : '') + '</p>' +
       '<div class="card" style="padding:8px 10px;font-size:13px"><b>What went</b><br>' + chItemsSummary(c, 30) + '</div>' +
       '<div class="meta" style="font-size:13px;margin:6px 0">Choose the name this bill is made in. The prices at the client&rsquo;s preset discount open after that, and the bill number is entered there.</div>' +
       billFormHtml(c, true) +
@@ -34224,6 +34242,7 @@ function viewCatalogue() {
   function hisabResolve(typed) {
     var q = String(typed || "").trim().toLowerCase();
     if (!q) return "";
+    var _bc = clientByCode(q); if (_bc) return _bc.name;   /* 6.9.926 - CL061 opens his hisab */
     var names = hisabClientNames();
     var exact = names.filter(function (n) { return n.trim().toLowerCase() === q; });
     if (exact.length) return exact[0];
@@ -36691,6 +36710,7 @@ function viewCatalogue() {
   }
   function viewBilling() {
     if (!S.billSel) S.billSel = {};
+    var _bcq = S.q && clientByCode(S.q); if (_bcq) S.q = _bcq.name;   /* 6.9.926 - a code typed in the box (CL061) is his name from here on */
     var cl = hisabResolve(S.q);
     _acctCards = {};                                /* v6.9.451 - filled below, one card per received row */
     var billNames = hisabClientNames();
