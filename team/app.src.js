@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.918";
+  var APP_VERSION = "6.9.919";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -50367,9 +50367,19 @@ function viewCatalogue() {
      is ever deleted - a guest, a brand or an expense taken off is a row saying "removed". No server
      change is needed. Old books (the old hisab is a photo or PDF) are not in the figures yet - his
      decision on entering an "old books business" amount is open. */
-  var PEV_ST = { meet: ["Invited", "Confirmed", "Attended", "Absent", "Declined"], trip: ["Shortlisted", "Invited", "Confirmed", "Travelled", "Absent", "Declined"],   /* 6.9.837 - Absent: invited, confirmed, did not come */
+  var PEV_ST = { meet: ["Invited", "Confirmed", "Attended", "Not attended", "Declined", "Gift only"], trip: ["Shortlisted", "Invited", "Confirmed", "Travelled", "Not attended", "Declined", "Gift only"],   /* 6.9.837 - Absent: invited, confirmed, did not come */
     greet: ["To send", "Gift packed", "Delivered", "Greeted on WhatsApp"] };
   var PEV_TYPES = [["meet", "Meet"], ["trip", "Trip"], ["greet", "Greeting"]];
+  /* 6.9.919 - HIS WORDS: "some plumbing contractor are not invited in contractor meet but have to give gift to them ...
+     also some contractor not attended plumber meet ... so to calculate cost to company separately". "Gift only" = on the
+     list for a gift, never invited: no invitation, no head count, no attendance sheet, no share of the event's cost.
+     "Not attended" is the old "Absent" (old rows still say Absent and are read the same). */
+  var PEV_GIFT_ONLY = "Gift only";
+  function pevIsGiftOnly(i) { return String((i && i.st) || "") === PEV_GIFT_ONLY; }
+  function pevIsAbsent(i) { return /^(Absent|Not attended)$/.test(String((i && i.st) || "")); }
+  function pevStShow(st) { return st === "Absent" ? "Not attended" : st; }
+  /* the three groups the cost is counted in */
+  function pevCostGroup(i) { return pevIsGiftOnly(i) ? "Gift only" : /Attended|Travelled|Delivered|Greeted/.test(String((i && i.st) || "")) ? "Attended" : "Invited, not attended"; }
   var _pevCache = null, _pevKey = "";
   function pevRows(action) { return (S.data.audit || []).filter(function (a) { return a.action === action; }).map(function (a) { var d = {}; try { d = JSON.parse(a.detail || "{}"); } catch (e) { d = {}; } d._at = a.createdAt || d.at || ""; d._by = a.actor || ""; return d; }); }
   function pevLatest(action, keyOf) {
@@ -50645,7 +50655,8 @@ function viewCatalogue() {
         city: other ? "" : String(x.loc || ""), tier: other ? "Guest" : String(x.tier || "Base"), rank: other ? 4 : (x.rank == null ? 3 : x.rank), b12: other ? 0 : (x.b12 || 0),
         st: String(i.st || ""), gift: String(i.gift || ""), exec: String(i.exec || (other ? "" : own[dkey(i.partner)] || "")), other: other };
     });
-    if (mode === "sign") rows = rows.filter(function (r) { return !/Declined/.test(r.st); });
+    rows.forEach(function (r) { r.st = pevStShow(r.st); });   /* 6.9.919 */
+    if (mode === "sign") rows = rows.filter(function (r) { return !/Declined|Gift only/.test(r.st); });
     if (mode === "confirm") rows = rows.filter(function (r) { return /Confirmed|Attended|Travelled/.test(r.st); });
     return rows;
   }
@@ -51284,12 +51295,13 @@ function viewCatalogue() {
     var _own = {}; assocLive().forEach(function (a) { if (a.ownedBy) _own[dkey(a.name)] = a.ownedBy; });
     inv.forEach(function (p) { if (!p.i.exec && !p.x.other && _own[dkey(p.i.partner)]) p.i = Object.assign({}, p.i, { exec: _own[dkey(p.i.partner)], _execFromPartner: 1 }); });
     var came = m.inv.filter(function (i) { return /Confirmed|Attended|Travelled/.test(i.st || ""); }).length, declined = m.inv.filter(function (i) { return /Declined/.test(i.st || ""); }).length;
-    var cnt = {}; m.inv.forEach(function (i) { cnt[i.st] = (cnt[i.st] || 0) + 1; });
+    var cnt = {}; m.inv.forEach(function (i) { var _sk = pevStShow(i.st); cnt[_sk] = (cnt[_sk] || 0) + 1; });
+    var nGiftOnly = m.inv.filter(pevIsGiftOnly).length, nInvited = m.inv.length - nGiftOnly;   /* 6.9.919 */
     var h = '<div class="card"><div class="acts" style="align-items:center;margin:0;flex-wrap:wrap;gap:6px"><button class="btn sm ghost" style="min-height:44px" data-act="pev-back">← All events</button>' +
       '<h2 class="grow" style="margin:0">' + esc(e.name) + '</h2><button class="btn sm ghost" style="min-height:44px" data-act="pev-edit" data-id="' + esc(e.eid) + '">Edit</button></div>' +
       '<div class="meta" style="font-size:13px">' + esc((PEV_TYPES.filter(function (t) { return t[0] === e.type; })[0] || ["", ""])[1]) + (e.date ? ' · ' + esc(dmy(e.date)) : '') + (e.venue ? ' · ' + esc(e.venue) : '') + '</div>' +
       '<div class="cards" style="margin-top:8px">' +
-        '<div class="stat"><div class="n">' + m.inv.length + '</div><div class="l">on the list' + (nOther ? ' · ' + nOther + ' other' + (nOther === 1 ? '' : 's') : '') + '</div></div>' +
+        '<div class="stat"><div class="n">' + nInvited + '</div><div class="l">invited' + (nOther ? ' · ' + nOther + ' other' + (nOther === 1 ? '' : 's') : '') + (nGiftOnly ? ' · +' + nGiftOnly + ' gift only' : '') + '</div></div>' +
         sts.map(function (s2) { return '<div class="stat"><div class="n">' + (cnt[s2] || 0) + '</div><div class="l">' + esc(s2) + '</div></div>'; }).join("") +
         '<div class="stat"><div class="n">' + (m.budget ? money(m.budget) : '—') + '</div><div class="l">budget</div></div>' +
         '<div class="stat' + (m.budget && m.spent > m.budget ? ' alert' : '') + '"><div class="n">' + money(m.spent) + '</div><div class="l">spent</div></div>' +
@@ -51311,7 +51323,8 @@ function viewCatalogue() {
         '<div style="flex:1 1 200px"><label style="margin-top:0">or one partner</label><select id="pe_addone" style="min-height:44px;width:100%"><option value="">— pick —</option>' +
           '<option value="__new">+ New partner (not on the list)…</option>' +   /* 6.9.730 - his ask: "add new if not in list" */
           pevPickGroups((S.pevRole == null ? "plumb" : S.pevRole) ? pool.filter(function (x) { return new RegExp(S.pevRole == null ? "plumb" : S.pevRole, "i").test(String(x.role || "")); }) : pool) + '</select></div>' +
-        '<button class="btn sm ghost" style="min-height:44px" data-act="pev-addone" data-id="' + esc(e.eid) + '">Add</button></div>' +
+        '<button class="btn sm ghost" style="min-height:44px" data-act="pev-addone" data-id="' + esc(e.eid) + '">Add</button>' +
+        (isG ? '' : '<button class="btn sm ghost" style="min-height:44px;color:#9d174d;border-color:#f9a8d4" title="On the list for a gift only - not invited, not counted for food, no share of the event cost" data-act="pev-addone" data-gift="1" data-id="' + esc(e.eid) + '">Add for gift only</button>') + '</div>' +
       /* 6.9.730 - anyone who is not a partner: a company man, a brand rep, a guest of honour */
       (isG ? '' : '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end;margin-top:8px;padding-top:8px;border-top:1px dashed #e2e8f0">' +
         '<div style="flex:1 1 160px"><label style="margin-top:0">Other invitee (not a partner)</label><input id="pe_oname" placeholder="name" style="min-height:44px"/></div>' +
@@ -51339,7 +51352,9 @@ function viewCatalogue() {
           var i = p.i, x = p.x, mob = x.mob || "";
           return ['<span style="color:#64748b">' + (k + 1) + '</span>', '<span style="display:inline-flex;align-items:center;gap:6px;white-space:nowrap;line-height:1.25;vertical-align:middle" title="' + esc(i.partner) + (mob ? ' \u00b7 ' + esc(mob) : '') + '"><b data-act="pev-ed" data-id="' + esc(e.eid) + '" data-n="' + esc(i.partner) + '" data-o="' + (x.other ? 1 : 0) + '" style="cursor:pointer;color:#0d766c;text-decoration:underline dotted" title="Tap to change the name">' + (function () { if (x.other) return ''; var _a = (S.data.associates || []).filter(function (a) { return dkey(a.name) === dkey(i.partner); }); var _c = _a.length === 1 ? String(_a[0].code || "") : "";   /* two partners by one name: no guess */ return _c ? '<span class="ewc">' + esc(_c) + '</span>' : ''; })() + esc(i.partner) + '</b></span>', '<span style="display:inline-flex;align-items:center;gap:6px;white-space:nowrap;line-height:1.25;vertical-align:middle">' + '<span style="font-size:12px;color:#64748b">' + (x.other ? esc(x.role || "") + ' · ' : '') + (mob ? esc(mob) : '<span style="color:#b45309">no mobile</span>') + '</span>' + (x.other ? '' : pevAreaBox(e.eid, i.partner) + partnerSitesChip(i.partner).replace('margin-top:3px', 'margin-top:0').replace('min-height:36px', 'min-height:32px').replace('no site on the book', 'no site')) + '</span>',   /* 6.9.875 - area, and the sites chip, on the same line */   /* 6.9.849 sites chip; p754 - his code (PL / AR / BL) already says the role */
             x.other ? '<span style="display:inline-block;font-size:12px;font-weight:800;color:#3730a3;background:#e0e7ff;border-radius:6px;padding:1px 7px;white-space:nowrap">Guest</span>' : pevTierPill(x.tier), x.b12 ? money(x.b12) : '—',
-            '<select class="pev-st" data-id="' + esc(e.eid) + '" data-p="' + esc(i.partner) + '" style="min-height:44px;font-size:13px;padding:4px 2px;width:96px">' + sts.map(function (s2) { return '<option' + (s2 === i.st ? ' selected' : '') + '>' + esc(s2) + '</option>'; }).join("") + '</select>',
+            '<select class="pev-st" data-id="' + esc(e.eid) + '" data-p="' + esc(i.partner) + '" style="min-height:44px;font-size:13px;padding:4px 2px;width:' + (pevIsGiftOnly(i) ? '86' : '96') + 'px' + (pevIsGiftOnly(i) ? ';background:#fdf2f8;color:#9d174d;font-weight:700' : '') + '">' + sts.map(function (s2) { return '<option' + (s2 === pevStShow(i.st) ? ' selected' : '') + '>' + esc(s2) + '</option>'; }).join("") + '</select>' +
+              /* 6.9.919 - after the day, one tap says whether he came */
+              (!isG && e.date && e.date <= today() && /^(Invited|Confirmed)$/.test(String(i.st || "")) ? '<div style="display:flex;gap:4px;margin-top:3px"><button class="btn sm" data-act="pev-came" data-id="' + esc(e.eid) + '" data-p="' + esc(i.partner) + '" data-v="Attended" style="min-height:40px;padding:2px 8px;font-size:12px">Attended</button><button class="btn sm ghost" data-act="pev-came" data-id="' + esc(e.eid) + '" data-p="' + esc(i.partner) + '" data-v="Not attended" style="min-height:40px;padding:2px 8px;font-size:12px">Not attended</button></div>' : ''),
             '<select class="pev-exec" data-id="' + esc(e.eid) + '" data-p="' + esc(i.partner) + '" style="min-height:44px;font-size:13px;padding:4px 2px;width:112px' + (i.exec ? '' : ';border-color:#fca5a5;color:#b91c1c') + '"><option value="">— nobody —</option>' +
               _exN.concat(i.exec && _exN.indexOf(i.exec) < 0 ? [i.exec] : []).map(function (n2) { return '<option' + (n2 === i.exec ? ' selected' : '') + '>' + esc(n2) + '</option>'; }).join("") + '</select>',
             (function () { var sg = pevStage(e, i); return pevStagePill(sg) +
@@ -51356,7 +51371,7 @@ function viewCatalogue() {
         }), true, 2);   /* 6.9.878 - # and the name stay put */
         }).join("");
       })() + (isG ? '' : '<div class="meta" style="font-size:13px;margin-top:8px"><b>Head count for food &amp; drink: ' + came + '</b> (confirmed' + (e.type === "trip" ? ', travelling' : ' or attended') + ') &middot; ' +
-          m.inv.length + ' on the list' + (nOther ? ' incl. ' + nOther + ' other' + (nOther === 1 ? '' : 's') : '') + (declined ? ' &middot; ' + declined + ' declined' : '') + '</div>') : '<div class="empty">No guest yet.</div>') + '</div>';
+          nInvited + ' invited' + (nOther ? ' incl. ' + nOther + ' other' + (nOther === 1 ? '' : 's') : '') + (declined ? ' &middot; ' + declined + ' declined' : '') + (nGiftOnly ? ' &middot; <b style="color:#9d174d">' + nGiftOnly + ' gift only</b> (not invited, not counted)' : '') + '</div>') : '<div class="empty">No guest yet.</div>') + '</div>';
     h += pevGiftCard(e, inv);   /* 6.9.879 */
     /* brands */
     var brs = pevBrands(e.eid), bOpts = (S.data.brands || []).map(function (b) { return String(b.brand || "").trim(); }).filter(isMainBrand).sort();
@@ -51381,16 +51396,22 @@ function viewCatalogue() {
         '<button class="btn sm" style="min-height:44px" data-act="pev-exadd" data-id="' + esc(e.eid) + '">+ Expense</button></div></div>';
     /* 6.9.837 - COST TO US, PARTNER WISE: his gift (or his own cost) + his share of the event's net expenses */
     if (m.inv.length) {
-      var _cc = [{ k: "p", t: "PARTNER" }, { k: "st", t: "STATUS" }, { k: "gift", t: "GIFT" }, { k: "g", t: "GIFT ₹", r: 1, n: 1 }, { k: "sh", t: "SHARE OF EVENT ₹", r: 1, n: 1 }, { k: "tot", t: "COST TO US ₹", r: 1, n: 1 }, { k: "b12", t: "HIS BUSINESS 12 M", r: 1, n: 1 }, { k: "exec", t: "EXECUTIVE" }];
+      var _cc = [{ k: "p", t: "PARTNER" }, { k: "grp", t: "GROUP" }, { k: "st", t: "STATUS" }, { k: "gift", t: "GIFT" }, { k: "g", t: "GIFT ₹", r: 1, n: 1 }, { k: "sh", t: "SHARE OF EVENT ₹", r: 1, n: 1 }, { k: "tot", t: "COST TO US ₹", r: 1, n: 1 }, { k: "b12", t: "HIS BUSINESS 12 M", r: 1, n: 1 }, { k: "exec", t: "EXECUTIVE" }];
       var _sup = {}; try { pevSupport().forEach(function (x) { _sup[dkey(x.name)] = x; }); } catch (e2) { }
+      var _grpOrd = ["Attended", "Invited, not attended", "Gift only"], _gsum = {};
+      _grpOrd.forEach(function (k) { _gsum[k] = { n: 0, g: 0, sh: 0, tot: 0 }; });
       var _cr = m.inv.map(function (i) {
-        var came = m.att.indexOf(i) >= 0, g = Number(i.cost) || 0, sh = came && m.perHead > 0 ? Math.round(m.perHead) : 0, sp = _sup[dkey(i.partner)] || {};
-        return { v: { p: i.partner, st: i.st || "", gift: i.gift || "", g: g, sh: sh, tot: g + sh, b12: sp.b12 || 0, exec: i.exec || "" },
-          cells: { p: '<b>' + esc(i.partner) + '</b>', st: esc(i.st || ""), gift: esc(i.gift || "") + (i.givenAt ? ' <span style="color:#166534">&#10003;</span>' : ''), g: g ? money(g) : "—", sh: sh ? money(sh) : "—", tot: '<b>' + money(g + sh) + '</b>', b12: sp.b12 ? money(sp.b12) : "—", exec: esc(i.exec || "") } };
-      }).sort(function (a, b) { return b.v.tot - a.v.tot; });
+        var came = m.att.indexOf(i) >= 0, g = Number(i.cost) || 0, sh = came && m.perHead > 0 ? Math.round(m.perHead) : 0, sp = _sup[dkey(i.partner)] || {}, grp = pevCostGroup(i);   /* 6.9.919 - three groups */
+        var _gs = _gsum[grp]; _gs.n++; _gs.g += g; _gs.sh += sh; _gs.tot += g + sh;
+        return { v: { p: i.partner, grp: grp, st: pevStShow(i.st || ""), gift: i.gift || "", g: g, sh: sh, tot: g + sh, b12: sp.b12 || 0, exec: i.exec || "" },
+          cells: { p: '<b>' + esc(i.partner) + '</b>', grp: esc(grp), st: esc(pevStShow(i.st || "")), gift: esc(i.gift || "") + (i.givenAt ? ' <span style="color:#166534">&#10003;</span>' : ''), g: g ? money(g) : "—", sh: sh ? money(sh) : "—", tot: '<b>' + money(g + sh) + '</b>', b12: sp.b12 ? money(sp.b12) : "—", exec: esc(i.exec || "") } };
+      }).sort(function (a, b) { return _grpOrd.indexOf(a.v.grp) - _grpOrd.indexOf(b.v.grp) || b.v.tot - a.v.tot; });
       var _ctot = _cr.reduce(function (a, r) { return a + r.v.tot; }, 0);
       h += '<div class="card"><h3 style="margin:0">Cost to us, partner wise &middot; ' + money(_ctot) + '</h3>' +
         '<div class="meta" style="font-size:12.5px;margin:3px 0 4px">Gift ₹ is what was typed on his row; share of event = (expenses − received from brands) ÷ those who came' + (m.perHead > 0 ? ' = ' + money(Math.round(m.perHead)) + ' each' : '') + '. Excel on the right.</div>' +
+        /* 6.9.919 - HIS WORDS: "calculate cost to company separately" - who came, who was invited and did not, who only gets a gift */
+        '<div class="cards" style="margin:4px 0 8px">' + _grpOrd.map(function (k) { var x = _gsum[k]; if (!x.n) return '';
+          return '<div class="stat" style="min-width:150px"><div class="n">' + money(x.tot) + '</div><div class="l"><b>' + esc(k) + '</b> &middot; ' + plural(x.n, "partner") + '<br>gifts ' + money(x.g) + (x.sh ? ' + event share ' + money(x.sh) : (k === "Attended" ? '' : ' &middot; no event share')) + '</div></div>'; }).join('') + '</div>' +
         xlTable("pev-cost-" + e.eid, _cc, _cr, "the figures") + '</div>';
     }
     /* 6.9.837 - DID IT PAY, FOR GREETINGS TOO, PARTNER BY PARTNER. His words: "which partner business contribution
@@ -61978,7 +61999,7 @@ function viewCatalogue() {
     }
     if (act === "pev-addrule" || act === "pev-addone") {
       var _eid = t.getAttribute("data-id"), _ev = pevEvent(_eid); if (!_ev) return;
-      var _st0 = (PEV_ST[_ev.type] || PEV_ST.meet)[0], _have = {}; pevInv(_eid).forEach(function (i) { _have[dkey(i.partner)] = 1; });
+      var _st0 = t.getAttribute("data-gift") === "1" ? PEV_GIFT_ONLY : (PEV_ST[_ev.type] || PEV_ST.meet)[0], _have = {}; pevInv(_eid).forEach(function (i) { _have[dkey(i.partner)] = 1; });   /* 6.9.919 - gift only */
       var _who = [];
       if (act === "pev-addone") { var _one = val("pe_addone"); if (!_one) { toast("Pick a partner."); return; }
         if (_one === "__new") { S.pevBackTo = _eid; S.modal = modalAssociate(null); render(); toast("Save the new partner, then pick him here - he is on the list at once."); return; }   /* 6.9.730 */
@@ -61990,7 +62011,15 @@ function viewCatalogue() {
       _who = _who.filter(function (n) { return !_have[dkey(n)]; });
       if (!_who.length) { toast("Nobody new to add."); return; }
       t.disabled = true; toast("Adding " + plural(_who.length, "guest") + "…");
-      Promise.all(_who.map(function (n) { return pevSaveRow("evt:inv", _eid, { eid: _eid, partner: n, st: _st0, cost: 0 }); })).then(function () { keepScroll = true; render(); toast(plural(_who.length, "guest") + " added."); });
+      Promise.all(_who.map(function (n) { return pevSaveRow("evt:inv", _eid, { eid: _eid, partner: n, st: _st0, cost: 0 }); })).then(function () { keepScroll = true; render(); toast(plural(_who.length, "guest") + (_st0 === PEV_GIFT_ONLY ? " added for a gift only (not invited)." : " added.")); });
+      return;
+    }
+    if (act === "pev-came") {   /* 6.9.919 - one tap after the day: Attended / Not attended */
+      var _ce = t.getAttribute("data-id"), _cp = t.getAttribute("data-p"), _cv = t.getAttribute("data-v") === "Attended" ? "Attended" : "Not attended";
+      var _ccur = pevInv(_ce).filter(function (i) { return dkey(i.partner) === dkey(_cp); })[0];
+      if (!_ccur) { toast("That guest is not on this phone yet - pull down to refresh."); return; }
+      t.disabled = true;
+      pevSaveRow("evt:inv", _ce, Object.assign(pevClean(_ccur), { st: _cv })).then(function () { keepScroll = true; render(); toast(_cp + ": " + _cv + "."); });
       return;
     }
     if (act === "pev-fudone") {   /* 6.9.731 - the executive's one line, before or after */
