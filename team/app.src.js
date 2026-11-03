@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.926";
+  var APP_VERSION = "6.9.927";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -34218,7 +34218,11 @@ function viewCatalogue() {
   /* Distinct customer names that actually have a received challan (these are the billable clients). */
   function hisabClientNames() {
     var seen = {}, out = [];
-    var add = function (nm) { if (nm && !seen[nm]) { seen[nm] = 1; out.push(nm); } };
+    /* 6.9.927 - HIS REPORT: "CL061 not showing any balance, Viajy Gupta hisab has to be shown here". Every delivery of his was
+       filed under the misspelt name; that name is merged into CL061, so it is dropped below as an alias - and CL061 itself had no
+       row under his OWN name to put him on the list, so the whole family vanished from HISAB. A name is now listed as the man
+       it is filed under (dupMainName); his rows are folded in by famRow exactly as before. */
+    var add = function (nm) { if (!nm) return; var mn = dupMainName(nm) || nm; if (!seen[mn]) { seen[mn] = 1; out.push(mn); } };
     /* Any challan for a client — ANY status — makes them findable in HISAB. A just-dispatched or
        approved challan (receipt not yet confirmed) no longer counts in the money, but the client is
        still visible so you can find them and confirm the receipt from here. */
