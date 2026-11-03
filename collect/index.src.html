@@ -208,7 +208,7 @@ table.ct td.wd{white-space:nowrap}
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.72.0";   /* 1.72.0 (3 Nov 2026) - a return is priced the same on every phone: old product codes found, a stale shelf catalogue refreshed */   /* 1.71.0 (31 Oct 2026) - one tap, one entry */   /* 1.70.1 (27 Oct 2026) - GHp mark in the middle of every QR, level H */   /* 1.67.0 - flush busy flag + B9 owner guard, narrower sign-out, Old book under ☰ */
+  var APP_VERSION = "1.73.0";   /* 1.73.0 (3 Nov 2026) - the old hisab paper opens from here, for everyone */   /* 1.72.0 (3 Nov 2026) - a return is priced the same on every phone: old product codes found, a stale shelf catalogue refreshed */   /* 1.71.0 (31 Oct 2026) - one tap, one entry */   /* 1.70.1 (27 Oct 2026) - GHp mark in the middle of every QR, level H */   /* 1.67.0 - flush busy flag + B9 owner guard, narrower sign-out, Old book under ☰ */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -3617,7 +3617,8 @@ function cancelMap() {
     }
     if (r.oldBook > 0) {
       h += '<div class="muted" style="background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:8px 10px;margin-bottom:9px;color:#9a3412">' +
-        '<b>' + money(r.oldBook) + '</b> is brought forward from the old paper books. It carries no date, so it cannot be aged — but it is the oldest money he owes.</div>';
+        '<b>' + money(r.oldBook) + '</b> is brought forward from the old paper books. It carries no date, so it cannot be aged — but it is the oldest money he owes.' +
+        '<div style="margin-top:6px">' + oldHisabBtn(r.name) + '</div></div>';   /* 1.73.0 - and the paper itself */
     }
 
     /* ---- PAYMENTS RECEIVED  (v1.30.0) ----
@@ -3993,6 +3994,36 @@ function cancelMap() {
     return h;
   }
 
+  /* 1.73.0 - the old statement filed on his client record (CRM: client:hisab {clientId, url}); the newest row wins.
+     Read for the whole family, so a merged alias finds the paper filed under either name. */
+  var _ohCache = null;
+  function oldHisabMap() {
+    if (_ohCache) return _ohCache;
+    var m = {};
+    ((S.data && S.data.audit) || []).forEach(function (a) {
+      if (!a || String(a.action || "") !== "client:hisab") return;
+      var d = {}; try { d = JSON.parse(a.detail || "{}") || {}; } catch (e) { return; }
+      if (!d.clientId || !d.url) return;
+      var cur = m[d.clientId];
+      if (!cur || String(a.createdAt || "") > String(cur.at || "")) m[d.clientId] = { url: String(d.url), at: a.createdAt || "", by: a.actor || "", note: d.note || "" };
+    });
+    _ohCache = m;
+    return m;
+  }
+  function oldHisabOf(name) {
+    var m = oldHisabMap(), fam = {}; (dupFamily(name) || [name]).forEach(function (n) { fam[lower(n)] = 1; });
+    var best = null;
+    ((S.data && S.data.clients) || []).forEach(function (c) {
+      if (!c || !fam[lower(c.name)]) return;
+      var h = m[String(c.id || "")]; if (h && (!best || String(h.at) > String(best.at))) best = h;
+    });
+    return best;
+  }
+  function oldHisabBtn(name) {
+    var h = oldHisabOf(name);
+    return h ? '<a class="btn sm" href="' + esc(h.url) + '" target="_blank" rel="noopener" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center">Old hisab &#8599; open / download</a>'
+             : '<span class="pill" style="background:#fef3c7;color:#92400e">Old hisab not attached yet &mdash; ask the office</span>';
+  }
   function obBody(r) {
     var ob = r.ob;
     var h = '<div style="border-top:1px solid #e2e8f0;padding:11px 13px;background:#fafafa">';
@@ -4007,7 +4038,8 @@ function cancelMap() {
       (canWrite() ? '<button class="btn sm" data-act="ob-ans" data-n="' + esc(r.name) + '">Record his answer</button>' : '') +
       '<button class="btn sm gry" data-act="ob-crm" data-n="' + esc(r.name) + '">Open his hisab in the CRM</button>' +
       '</div>';
-    h += '<div class="muted" style="margin-top:7px">The old statement itself is attached on his client record in the CRM — that is the paper that settles the argument.</div>';
+    h += '<div class="acts" style="margin-top:7px">' + oldHisabBtn(r.name) + '</div>' +   /* 1.73.0 */
+      '<div class="muted" style="margin-top:5px">The old statement is the paper that settles the argument. It is filed on his client record in the CRM; anyone can open it from here.</div>';
     return h + '</div>';
   }
 
@@ -5386,7 +5418,7 @@ function cancelMap() {
   /* v1.37.0 - _hsbCache with them. It is built from the audit trail, which arrives in the
      SECOND half of a staged pull: a map built before that half lands is an EMPTY map, and an
      empty map means "nothing is finalised", which understates every due on the screen. */
-  function bust() { _sccCache = null; _rowsCache = null; _fuCache = null; _obCache = null; _pmCache = {}; _flCache = {}; _cxCache = null; _hxCache = null; _aliasCache = null; _hsbCache = null;_dscIdx = null; }
+  function bust() { _ohCache = null; _sccCache = null; _rowsCache = null; _fuCache = null; _obCache = null; _pmCache = {}; _flCache = {}; _cxCache = null; _hxCache = null; _aliasCache = null; _hsbCache = null;_dscIdx = null; }
 
   document.addEventListener("click", function (ev) {
     var t = ev.target.closest("[data-act]");
