@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.919";
+  var APP_VERSION = "6.9.920";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -58178,7 +58178,7 @@ function viewCatalogue() {
       var _gfs2 = pevGifts(eid), _gu2 = pevGiftUse(eid), _ng = String(tg.value || "").trim(), _og = String(cur.gift || "").trim();
       var _gN = _gfs2.filter(function (g) { return dkey(g.name) === dkey(_ng); })[0], _gO = _gfs2.filter(function (g) { return dkey(g.name) === dkey(_og); })[0];
       if (_gN && dkey(_ng) !== dkey(_og) && pevGiftLeft(_gN, _gu2) <= 0) { toast("No " + _gN.name + " left — raise the qty in hand first."); tg.value = _og; return; }
-      if (cur.givenAt && dkey(_ng) !== dkey(_og)) { toast(pn + " has already been handed " + (_og || "his gift") + "."); tg.value = _og; return; }
+      if (cur.givenAt && _og && dkey(_ng) !== dkey(_og)) { toast(pn + " has already been handed " + _og + "."); tg.value = _og; return; }   /* 6.9.920 - marked given with NO gift (a wrong tap): the gift can still be picked */
       var _oc = Number(cur.cost) || 0;
       if (!_oc || (_gO && Number(_gO.rate) === _oc)) nx.cost = _gN && Number(_gN.rate) ? Number(_gN.rate) : (_gO && Number(_gO.rate) === _oc ? 0 : _oc);
     }
@@ -68980,6 +68980,13 @@ function viewCatalogue() {
     if (act === "pev-given") {   /* 6.9.837 - the gift reached him: who handed it over, and when */
       var _ge = t.getAttribute("data-id"), _gp = t.getAttribute("data-p");
       var _gc = pevInv(_ge).filter(function (i) { return dkey(i.partner) === dkey(_gp); })[0]; if (!_gc) { toast("Not on the list."); return; }
+      /* 6.9.920 - HIS WORDS: "if wrongly tapped given, then not able to select gift, do not accept given click without selecting gift" */
+      if (!String(_gc.gift || "").trim()) {
+        var _gsel = Array.prototype.filter.call(document.querySelectorAll(".pev-gift"), function (x) { return x.getAttribute("data-id") === _ge && dkey(x.getAttribute("data-p")) === dkey(_gp); })[0];
+        if (_gsel) { try { _gsel.focus(); } catch (e9) { } }
+        toast("Pick " + _gp + "\u2019s gift first, then press Given.");
+        return;
+      }
       var _gn = Object.assign({}, _gc); delete _gn._at; delete _gn._by; delete _gn.at; _gn.givenAt = new Date().toISOString(); _gn.givenBy = S.user || "";
       var _gev = pevEvent(_ge) || {}; if (_gev.type === "greet" && !/Delivered|Greeted/.test(_gn.st || "")) _gn.st = "Delivered";
       pevSaveRow("evt:inv", _ge, _gn).then(function () { keepScroll = true; render(); toast((_gn.gift ? _gn.gift + " " : "Gift ") + "given to " + _gp + "."); });
