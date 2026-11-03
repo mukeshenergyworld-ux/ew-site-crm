@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.917";
+  var APP_VERSION = "6.9.918";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -31149,11 +31149,42 @@ function viewCatalogue() {
     return pick(mine.filter(function (c) { return String(c.receiptReceived).toUpperCase() === "Y"; })
       .sort(function (a, b) { return String(b.createdAt || "").localeCompare(String(a.createdAt || "")); }));
   }
+  /* 6.9.918 - a return line names the product by whatever code was on the paper. The catalogue may have
+     re-spelt it since (the old spelling stays under `was`) or the phone typed it in another case. An exact
+     match priced "49540750B-I" on one device and left it unpriced on another, and the client's balance
+     differed by that much between the owner and his executive. */
+  function retProd(code) {
+    var k = String(code == null ? "" : code).trim(); if (!k) return null;
+    var p = prodByCode(k); if (p) return p;
+    var lk = k.toLowerCase();
+    for (var i = 0; i < PRODUCTS.length; i++) {
+      var q = PRODUCTS[i]; if (!q) continue;
+      if (String(q.code || "").trim().toLowerCase() === lk) return q;
+      var w = q.was || []; for (var j = 0; j < w.length; j++) if (String(w[j] || "").trim().toLowerCase() === lk) return q;
+    }
+    return null;
+  }
+  /* 6.9.918 - FREEZE THE PRICE ON THE RETURN the day it is booked in. Until now a line with no rate was
+     priced afresh by every reader, from whatever catalogue and discount rows that device had, so one return
+     read as two different credits on two phones. Frozen lines are read first by every app (returnLines
+     here; rnPriceOf in Collect; the Challan app wrote them since 1.92.0), so after this the figure is one.
+     Only lines with no rate are touched; a frozen figure is never overwritten. */
+  function retFreezeLines(r) {
+    var items = []; try { items = JSON.parse(r.itemsJson || "[]"); } catch (e) { return null; }
+    var L = returnLines(r), changed = 0;
+    var out = items.map(function (it, i) {
+      if (!it || (it.rate != null && it.rate !== "") || it.lump) return it;
+      var x = L[i]; if (!x || !(x.rate > 0)) return it;
+      changed++;
+      return Object.assign({}, it, { rate: x.rate, disc: x.disc, brand: it.brand || x.brand || "", frozenAt: today(), frozenFrom: x.est ? "catalogue" : "delivery" });
+    });
+    return changed ? JSON.stringify(out) : null;
+  }
   function returnLines(r) {
     var items = []; try { items = JSON.parse(r.itemsJson || "[]"); } catch (e) { items = []; }
     var cl = r.customerName;
     return items.map(function (it) {
-      var p = PRODUCTS.filter(function (pp) { return pp.code === it.code; })[0] || {};
+      var p = retProd(it.code) || {};
       /* ---- JOB WORK COMES BACK AS JOB WORK  (v6.9.354, 23 Aug 2026) ----
          pricedLines has marked its job lines since v6.9.323, because job work is billed but
          earns nobody an incentive - "a partner earns on the goods he brought us, not on our
@@ -68712,6 +68743,7 @@ function viewCatalogue() {
         if (!r || !r.ok) { toast((r && r.error) || "Could not update."); render(); return; }
         var rec = S.data.returns.filter(function (x) { return x.id === id; })[0];
         if (rec) { rec.status = rto; if (rto === "Received") rec.receivedBy = r.by; }
+        if (rec && rto === "Received") { var _fz = retFreezeLines(rec); if (_fz) { rec.itemsJson = _fz; save("returns", Object.assign({}, rec), true); } }   /* 6.9.918 - the credit is pinned the day it is given */
         rtMoveRemember(id, rto);
         /* WHERE IT WENT, in words. The row leaves one block and joins another, and silence
            about that is what "gone away" was. */
