@@ -208,7 +208,7 @@ table.ct td.wd{white-space:nowrap}
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.71.0";   /* 1.71.0 (31 Oct 2026) - one tap, one entry */   /* 1.70.1 (27 Oct 2026) - GHp mark in the middle of every QR, level H */   /* 1.67.0 - flush busy flag + B9 owner guard, narrower sign-out, Old book under ☰ */
+  var APP_VERSION = "1.72.0";   /* 1.72.0 (3 Nov 2026) - a return is priced the same on every phone: old product codes found, a stale shelf catalogue refreshed */   /* 1.71.0 (31 Oct 2026) - one tap, one entry */   /* 1.70.1 (27 Oct 2026) - GHp mark in the middle of every QR, level H */   /* 1.67.0 - flush busy flag + B9 owner guard, narrower sign-out, Old book under ☰ */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -2122,13 +2122,33 @@ function cancelMap() {
      lets one of them drift, which is the whole reason this app was pricing a return
      differently from the app that raised it. */
   var CAT_KEY = "ew_team_catalog", CAT_V = 2;
-  var PRODUCTS = [], _catP = null, _pcbCache = null;   /* v1.35.0 - code -> brand, derived from PRODUCTS */
+  var PRODUCTS = [], _catP = null, _pcbCache = null, _catAt = 0;   /* v1.35.0 - code -> brand, derived from PRODUCTS */
+  var CAT_STALE_MS = 24 * 3600 * 1000;   /* 1.72.0 - a shelf copy older than a day is asked for again when a return needs it */
   /* what the CRM left on the shelf. Never fetched here on the ordinary path. */
   function catFromShelf() {
     try {
       var c = JSON.parse(bigGet(CAT_KEY) || "null");
-      if (c && c.v === CAT_V && c.items && c.items.length) PRODUCTS = c.items;
+      if (c && c.v === CAT_V && c.items && c.items.length) { PRODUCTS = c.items; _catAt = Number(c.at) || 0; }
     } catch (e) {}
+  }
+  /* 1.72.0 - MEASURED 3 Nov 2026 on Ravi - Parshawnath City: Rs 15,809 of returns on the owner's screen,
+     Rs 14,457 on the executive's phone. Two codes had been re-spelt in the catalogue ("49540750B-I"); the
+     phone's shelf copy still had the old spelling, the exact match found nothing, and the balance read
+     Rs 1,352 too high. The old spelling stays on the product under `was`; this looks there too, and
+     ignores case. Byte-for-byte the CRM's retProd. */
+  function retProd(code) {
+    var k = String(code == null ? "" : code).trim(); if (!k) return null;
+    var lk = k.toLowerCase();
+    for (var i = 0; i < PRODUCTS.length; i++) {
+      var q = PRODUCTS[i]; if (!q) continue;
+      if (String(q.code || "").trim() === k) return q;
+    }
+    for (var i2 = 0; i2 < PRODUCTS.length; i2++) {
+      var q2 = PRODUCTS[i2]; if (!q2) continue;
+      if (String(q2.code || "").trim().toLowerCase() === lk) return q2;
+      var w = q2.was || []; for (var j = 0; j < w.length; j++) if (String(w[j] || "").trim().toLowerCase() === lk) return q2;
+    }
+    return null;
   }
   /* Asked for ONLY when a return line cannot be priced any other way. Returns nothing and
      blocks nothing: it fills PRODUCTS and repaints, so the estimate appears a moment later
@@ -2211,7 +2231,10 @@ function cancelMap() {
     return out;
   }
   function retPriceReady() {
-    if (PRODUCTS.length || _catP) return;
+    /* 1.72.0 - and a shelf copy older than a day, once; a line that still cannot be priced asks again
+       after the next day, never in a loop */
+    if ((PRODUCTS.length && (Date.now() - _catAt) < CAT_STALE_MS) || _catP) return;
+    _catAt = Date.now();   /* asked; whatever comes back, not again today */
     _catP = fetch(GAS + "?action=catalog", { cache: "no-store" })
       .then(function (r) { return r.json(); })
       .then(function (rows) {
@@ -2428,7 +2451,7 @@ function cancelMap() {
     };
     if (item.rate != null && item.rate !== "" && num(item.rate) > 0) {
       var _fb = String(item.brand || "");
-      if (!_fb) { var _fp = PRODUCTS.filter(function (x) { return String(x.code || "").trim() === String(item.code == null ? "" : item.code).trim(); })[0]; if (_fp) _fb = String(realBrand(_fp) || _fp.brand || ""); }
+      if (!_fb) { var _fp = retProd(item.code); if (_fp) _fb = String(realBrand(_fp) || _fp.brand || ""); }
       return { amt: rnNet(item.rate, _rd(item.disc, _fb), item.qty), src: "frozen" };
     }
     var code = String(item.code == null ? "" : item.code).trim();
@@ -2456,12 +2479,12 @@ function cancelMap() {
        A guessed price is not a price he agreed - but it is a great deal closer to the truth
        than pretending the goods were never returned. */
     if (code) {
-      var pr = PRODUCTS.filter(function (x) { return String(x.code || "").trim() === code; })[0];
+      var pr = retProd(code);   /* 1.72.0 - by old code too, any case */
       if (pr && Number(pr.price) > 0) {
         var brnd = String(item.brand || realBrand(pr) || pr.brand || "");
         return { amt: rnNet(pr.price, clientDiscount(r.customerName, brnd), item.qty), src: "catalogue" };
       }
-      retPriceReady();                 /* no catalogue on this phone yet - go and get it once */
+      retPriceReady();                 /* no catalogue on this phone yet, or a stale one - go and get it once */
     }
     return { amt: 0, src: "" };        /* still unpriced - NOT zero, and the caller must say so */
   }
