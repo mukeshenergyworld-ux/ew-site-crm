@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.924";
+  var APP_VERSION = "6.9.925";
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -11175,22 +11175,20 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     var depo = sum(st, "pfE") + sum(st, "pfR") + sum(st, "esiE") + sum(st, "esiR") + sum(st, "lwf") + sum(st, "lwfR");
     return { cs: cs, st: st, ot: ot, sum: sum, add: add, off: off, addT: addT, offT: offT, fr: fr, sel: sel, F: F, depo: depo,
       salNet: sum(cs, "net"), firm: sum(st, "pfR") + sum(st, "esiR") + sum(st, "lwfR"),
-      total: sum(cs, "net") + depo + addT + offT + F.paid };
+      total: sum(cs, "net") + addT + offT + F.proved };   /* 6.9.925 - salary net + expenses + freight to be paid; PF/ESI/LWF is its own total */
   }
   function hrSumHtml(month) {
-    if (S.data && !S.dp && !_dpTried) { _dpTried = true; dpPull().then(function () { render(); }); }
-    var C = hrSumCalc(month), dpOk = !!S.dp, M = function (v) { return money(Math.round(v || 0)); };
+    var C = hrSumCalc(month), M = function (v) { return money(Math.round(v || 0)); };   /* 6.9.925 - no payouts needed here any more */
     var h = '<div class="card"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><h3 style="margin:0">Month summary &mdash; ' + esc(fullMonth(month)) + '</h3><div class="grow"></div>' +
       '<button class="btn sm" style="min-height:44px" data-act="hr-sum-xl" data-m="' + esc(month) + '">&#8681; Excel</button></div>' +
       '<div class="meta" style="font-size:12.5px;margin-top:3px">Salary, the additional and office expenses, and freight for the month. Tick the drivers to include; the download carries exactly what is on screen.</div>' +
       '<div class="cards" style="margin-top:8px">' +
         '<div class="stat"><div class="n">' + M(C.salNet) + '</div><div class="l">salary net payable &middot; ' + C.cs.filter(function (c) { return c.paid; }).length + ' of ' + C.cs.length + ' paid</div></div>' +
-        '<div class="stat"><div class="n">' + M(C.depo) + '</div><div class="l">PF / ESI / LWF to deposit</div></div>' +
-        '<div class="stat"><div class="n">' + M(C.addT) + '</div><div class="l">additional expenses</div></div>' +
-        '<div class="stat"><div class="n">' + M(C.offT) + '</div><div class="l">office expenses</div></div>' +
-        '<div class="stat"><div class="n">' + (dpOk ? M(C.F.paid) : '&hellip;') + '</div><div class="l">freight paid (' + C.sel.length + ' driver' + (C.sel.length === 1 ? '' : 's') + ')</div></div>' +
-        '<div class="stat"><div class="n">' + (dpOk ? M(C.total) : '&hellip;') + '</div><div class="l"><b>total for the month</b></div></div>' +
-      '</div></div>';
+        '<div class="stat"><div class="n">' + M(C.addT + C.offT) + '</div><div class="l">expenses (office ' + M(C.offT) + ' + additional ' + M(C.addT) + ')</div></div>' +
+        '<div class="stat"><div class="n">' + M(C.F.proved) + '</div><div class="l">freight to be paid (' + C.sel.length + ' driver' + (C.sel.length === 1 ? '' : 's') + ')</div></div>' +
+        '<div class="stat" style="border-color:#0b3b36;background:#f0fdfa"><div class="n">' + M(C.total) + '</div><div class="l"><b>total for the month</b></div></div>' +
+        '<div class="stat" style="border-style:dashed"><div class="n">' + M(C.depo) + '</div><div class="l">PF / ESI / LWF to deposit &mdash; <b>separate</b></div></div>' +
+      '</div><div class="meta" style="font-size:12.5px;margin-top:4px">Total for the month = salary net payable + expenses + freight to be paid. PF / ESI / LWF to deposit is a separate total.</div></div>';
     /* salary */
     h += '<div class="card"><h3 style="margin:0 0 4px">Salary &amp; wages</h3>' +
       pevTable([["Name"], ["Sub total", "right"], ["PF", "right"], ["ESI", "right"], ["LWF", "right"], ["Adv. / oth.", "right"], ["Net payable", "right"], ["Paid"]],
@@ -11213,17 +11211,13 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         '<div><label style="margin-top:0">From</label><input type="date" id="hr_fr_from" value="' + esc(_sp.from) + '" style="min-height:44px"/></div>' +
         '<div><label style="margin-top:0">To</label><input type="date" id="hr_fr_to" value="' + esc(_sp.to) + '" style="min-height:44px"/></div>' +
         '<button class="btn sm ghost" style="min-height:44px" data-act="hr-fr-reset" data-m="' + esc(month) + '">Whole month</button></div>' +
-      '<div class="meta" style="font-size:12.5px;margin:3px 0 6px"><b>Only trips with the signed receipt in are counted</b>, by the date of the delivery. <b>Balance</b> = brought forward + freight in the period &minus; paid in the period. A trip still waiting for its receipt is in no figure &mdash; it is listed apart so nobody pays it before the paper is back.</div>' +
-      (!dpOk ? '<div class="meta" style="font-size:12.5px;color:#b45309">Payments to drivers are being read&hellip; paid and balance fill in when they arrive.</div>' : '') +
-      (C.fr.length ? pevTable([[""], ["Driver"], ["Brought forward", "right"], ["Freight (receipt in)", "right"], ["Paid", "right"], ["Balance carried forward", "right"], ["Waiting for receipt (not counted)", "right"]],
-        C.fr.map(function (o) { var on = hrSumDrvOn(o.key);
-          return ['<input type="checkbox" class="hr-sum-drv" data-k="' + esc(o.key) + '"' + (on ? ' checked' : '') + ' style="width:22px;height:22px"/>',
-            '<b' + (on ? '' : ' style="color:#94a3b8"') + '>' + esc(o.name) + '</b>' + (o.vehicle ? '<div style="font-size:12px;color:#64748b">' + esc(o.vehicle) + '</div>' : ''),
-            M(o.bf), o.proved ? M(o.proved) + ' <span style="color:#94a3b8;font-size:12px">' + o.provedN + ' trip' + (o.provedN === 1 ? '' : 's') + '</span>' : '—',
-            dpOk ? (o.paid ? M(o.paid) : '—') : '&hellip;', dpOk ? '<b style="color:' + (o.bal > 0.5 ? '#b91c1c' : '#0f766e') + '">' + M(o.bal) + '</b>' : '&hellip;',
-            o.held ? '<span style="color:#94a3b8">' + M(o.held) + ' &middot; ' + o.heldN + ' trip' + (o.heldN === 1 ? '' : 's') + '</span>' : '—'];
-        }).concat([['', '<b>' + (_sp.drv ? '1 driver' : C.sel.length + ' of ' + C.fr.length + ' ticked') + '</b>', '<b>' + M(C.F.bf) + '</b>', '<b>' + M(C.F.proved) + '</b>', '<b>' + (dpOk ? M(C.F.paid) : '&hellip;') + '</b>', '<b>' + (dpOk ? M(C.F.bal) : '&hellip;') + '</b>', '<span style="color:#94a3b8">' + M(C.F.held) + '</span>']]), false)
-        : '<div class="empty">No freight for ' + (_sp.drv ? 'this driver' : 'any driver') + ' between ' + esc(dmy(_sp.from)) + ' and ' + esc(dmy(_sp.to)) + '.</div>') + '</div>';
+      '<div class="meta" style="font-size:12.5px;margin:3px 0 6px"><b>Freight to be paid</b> = trips in the period with the signed receipt in, by the date of the delivery. Payments made and the balance are in <b>Deliveries &rsaquo; Drivers &amp; freight</b>.</div>' +
+      (C.fr.filter(function (o) { return o.proved > 0.5; }).length ? pevTable([[""], ["Driver"], ["Vehicle"], ["Trips", "right"], ["Freight to be paid", "right"]],
+        C.fr.filter(function (o) { return o.proved > 0.5; }).map(function (o) { var on = hrSumDrvOn(o.key) || !!_sp.drv;
+          return ['<input type="checkbox" class="hr-sum-drv" data-k="' + esc(o.key) + '"' + (on ? ' checked' : '') + (_sp.drv ? ' disabled' : '') + ' style="width:22px;height:22px"/>',
+            '<b' + (on ? '' : ' style="color:#94a3b8"') + '>' + esc(o.name) + '</b>', esc(o.vehicle || ""), String(o.provedN), '<b>' + M(o.proved) + '</b>'];
+        }).concat([['', '<b>' + (_sp.drv ? '1 driver' : C.sel.filter(function (o) { return o.proved > 0.5; }).length + ' of ' + C.fr.filter(function (o) { return o.proved > 0.5; }).length + ' ticked') + '</b>', '', '<b>' + C.sel.reduce(function (a, o) { return a + o.provedN; }, 0) + '</b>', '<b>' + M(C.F.proved) + '</b>']]), false)
+        : '<div class="empty">No freight with the receipt in for ' + (_sp.drv ? 'this driver' : 'any driver') + ' between ' + esc(dmy(_sp.from)) + ' and ' + esc(dmy(_sp.to)) + '.</div>') + '</div>';
     return h;
   }
   /* the summary as rows, for the Excel and the PDF beside it - the ticked drivers only */
@@ -11247,15 +11241,17 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     xR("ADDITIONAL MONTHLY EXPENSES", C.add, C.addT);
     xR("OFFICE EXPENSES", C.off, C.offT);
     var _sp = hrFrSpan(month);
-    rows.push(S1("FREIGHT - " + (_sp.drv ? (C.sel[0] ? C.sel[0].name.toUpperCase() : "ONE DRIVER") : "DRIVER WISE (" + C.sel.length + " of " + C.fr.length + " drivers)") + " - " + dmy(_sp.from) + " TO " + dmy(_sp.to) + " - TRIPS WITH THE RECEIPT IN ONLY"));
-    rows.push(["DRIVER", "VEHICLE", "BROUGHT FORWARD", "FREIGHT (RECEIPT IN)", "TRIPS", "PAID", "BALANCE CARRIED FORWARD", "WAITING FOR RECEIPT (NOT COUNTED)"].map(H));
-    C.sel.forEach(function (o) { rows.push([o.name, o.vehicle || "", R(o.bf), R(o.proved), o.provedN, R(o.paid), R(o.bal), R(o.held)]); });
-    rows.push([B("TOTAL"), "", RB(C.F.bf), RB(C.F.proved), "", RB(C.F.paid), RB(C.F.bal), RB(C.F.held)]);
+    var _fp = C.sel.filter(function (o) { return o.proved > 0.5; });   /* 6.9.925 - freight to be paid only; payouts and balances live in Drivers & freight */
+    rows.push(S1("FREIGHT TO BE PAID - " + dmy(_sp.from) + " TO " + dmy(_sp.to) + " - TRIPS WITH THE RECEIPT IN"));
+    rows.push(["DRIVER", "VEHICLE", "TRIPS", "FREIGHT TO BE PAID"].map(H));
+    _fp.forEach(function (o) { rows.push([o.name, o.vehicle || "", o.provedN, R(o.proved)]); });
+    rows.push([B("TOTAL"), "", _fp.reduce(function (a, o) { return a + o.provedN; }, 0), RB(C.F.proved)]);
     rows.push([]);
     rows.push(S1("THE MONTH"));
-    [["Salary net payable", C.salNet], ["PF / ESI / LWF to deposit", C.depo], ["Additional monthly expenses", C.addT], ["Office expenses", C.offT], ["Freight paid " + dmy(_sp.from) + " to " + dmy(_sp.to), C.F.paid]].forEach(function (x) { rows.push([x[0], "", R(x[1])]); });
+    [["Salary net payable", C.salNet], ["Office expenses", C.offT], ["Additional monthly expenses", C.addT], ["Freight to be paid", C.F.proved]].forEach(function (x) { rows.push([x[0], "", R(x[1])]); });
     rows.push([B("TOTAL FOR THE MONTH"), "", RB(C.total)]);
-    rows.push(["Freight balance carried forward on " + dmy(_sp.to), "", R(C.F.bal)]);
+    rows.push([]);
+    rows.push([B("PF / ESI / LWF TO DEPOSIT (SEPARATE)"), "", RB(C.depo)]);
     return rows;
   }
   /* the sheet as accounts makes it, for Excel (and the PDF beside it) */
