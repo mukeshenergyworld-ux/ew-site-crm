@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.928";   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
+  var APP_VERSION = "6.9.929";   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -32413,7 +32413,14 @@ function viewCatalogue() {
        keep separate"), and when it does, the same challans were walked twice and the partner's
        book doubled. Collapse the list to one entry per name before anything is counted. */
     var _seenCl = {};
-    myClients = (myClients || []).filter(function (cl) {
+    myClients = (myClients || []).map(function (cl) {
+      /* 6.9.929 - a merged client is ONE man: his main record answers for the whole family */
+      if (!cl || !cl.name) return cl;
+      var mn = dupMainName(cl.name);
+      if (dgKey(mn) === dgKey(cl.name)) return cl;
+      var main = null; try { main = clientByName(mn); } catch (e) { main = null; }
+      return main || cl;
+    }).filter(function (cl) {
       var k = dkey(cl && cl.name);
       if (!k || _seenCl[k]) return false;
       _seenCl[k] = 1; return true;
@@ -32439,9 +32446,13 @@ function viewCatalogue() {
     var released = 0;
     myClients.forEach(function (cl) {
       var clLower = dkey(cl.name);
+      var _fh = famRow(cl.name).has, inFam = function (n) { return dkey(n) === clLower || _fh(n); };   /* 6.9.929 - and his old spellings */
+      /* 6.9.929 - the RATE still comes from the record the delivery is filed under, where that record exists (an old spelling
+         kept as its own client, e.g. CL075 for CL064, keeps its own card); an old spelling with no record left reads the main's */
+      var _rc = {}, recOf = function (n) { var k = dkey(n); if (k === clLower) return cl; if (!(k in _rc)) _rc[k] = clientByName(n) || cl; return _rc[k]; };
       var _walk = null; try { _walk = settleWalk(cl.name); } catch (e) { _walk = null; }
       var chs = dedupeChallans(S.data.challans.filter(function (c) {
-        return dkey(c.customerName) === clLower &&
+        return inFam(c.customerName) &&
                String(c.receiptReceived).toUpperCase() === "Y";
       }));
       var clBilled = 0, clFreight = 0, clReturned = 0;
@@ -32470,8 +32481,9 @@ function viewCatalogue() {
           /* 6.9.668 - the executive's base is the line LESS the partners' incentive on it */
           var _f = _sh ? (_sh[dkey(x.brand || c.brand || "")] || 0) : 0;
           var _d = _f ? 100 - (100 - (Number(x.disc) || 0)) * (1 - _f) : x.disc;   /* 6.9.694 - the deeper discount picks the slab */
-          var _pd = deductFor ? deductFor(cl, x.brand || c.brand || "", c, _d) : 0;
-          inc += x.amt * (1 - _f) * (1 - _pd / 100) * rateFor(cl, x.brand || c.brand || "", c, _d) / 100 * _gf;   /* 6.9.693 - the line's own discount picks the slab */
+          var _rcl = recOf(c.customerName);   /* 6.9.929 */
+          var _pd = deductFor ? deductFor(_rcl, x.brand || c.brand || "", c, _d) : 0;
+          inc += x.amt * (1 - _f) * (1 - _pd / 100) * rateFor(_rcl, x.brand || c.brand || "", c, _d) / 100 * _gf;   /* 6.9.693 - the line's own discount picks the slab */
         });
         /* v6.9.609 - REVIEW A9, HIS DECISION 25 Sep 2026: "after further discount". The further
            discount at hisab time and the discount on the whole challan (hisabExtra) come off the
@@ -32488,10 +32500,10 @@ function viewCatalogue() {
         var _dsc = 0; if (_sr && _sr.from) _sr.from.forEach(function (f) { if (f && f.disc) _dsc += Number(f.amt) || 0; });
         var _kf = (_dsc > 0.4 && _sr.amt > 0.4) ? Math.max(0, 1 - _dsc / _sr.amt) : 1;
         if (_kf < 1) { inc = inc * _kf; net = net * _kf; }
-        billed += net; earned += inc; clientNames[c.customerName] = 1;
+        billed += net; earned += inc; clientNames[cl.name] = 1;
         var _paid = _sr && _sr.amt > 0.4 ? Math.max(0, Math.min(1, (_sr.amt - _dsc) > 0.4 ? (_sr.paid - _dsc) / (_sr.amt - _dsc) : 0)) : 0;
         released += inc * _paid;
-        rows.push({ no: c.challanNo, client: c.customerName, site: c.site, brand: c.brand,
+        rows.push({ no: c.challanNo, client: cl.name, site: c.site, brand: c.brand,   /* 6.9.929 - filed under his main name */
           ymd: String(c.createdAt || "").slice(0, 10),
           amount: net, base: net * _gf, off: off, pct: net > 0 ? (inc / (net * _gf) * 100) : 0, inc: inc, ret: false,   /* 6.9.799 - base is the Basic Amt */
           paidShare: _paid, onAcct: !!_sr, rel: inc * _paid });
@@ -32504,7 +32516,7 @@ function viewCatalogue() {
          came off the totals, but it never appeared in the client-wise statement - so
          the statement did not add up to the figure printed above it. Now it does. */
       (S.data.returns || []).filter(function (r) {
-        return dkey(r.customerName) === clLower &&
+        return inFam(r.customerName) &&
                String(r.status || "").trim().toLowerCase() === "received";
       }).forEach(function (r) {
         var rBase = 0, rInc = 0, rBrands = {};
@@ -32522,8 +32534,9 @@ function viewCatalogue() {
           if (x.job || x.nb) return;   /* 6.9.852 */
           var _rf = _rsh ? (_rsh[dkey(x.brand)] || 0) : 0;
           var _rd = _rf ? 100 - (100 - (Number(x.disc) || 0)) * (1 - _rf) : x.disc;   /* 6.9.694 - as it was earned */
-          var _rpd = deductFor ? deductFor(cl, x.brand, rCh, _rd) : 0;   /* 6.9.668 - the mirror */
-          rInc += x.amt * (1 - _rf) * (1 - _rpd / 100) * rateFor(cl, x.brand, rCh, _rd) / 100 * _rgf;
+          var _rrc = recOf(r.customerName);   /* 6.9.929 */
+          var _rpd = deductFor ? deductFor(_rrc, x.brand, rCh, _rd) : 0;   /* 6.9.668 - the mirror */
+          rInc += x.amt * (1 - _rf) * (1 - _rpd / 100) * rateFor(_rrc, x.brand, rCh, _rd) / 100 * _rgf;
           if (x.brand) rBrands[x.brand] = 1;
         });
         /* v6.9.609 - A9: a return carries the same share of its delivery's discount as the credit
@@ -32562,7 +32575,7 @@ function viewCatalogue() {
          cleared an old balance no longer releases incentive on new goods.
          `billed` itself is untouched: it is still the gross value of what went out, because
          it is what the screens report and changing it would quietly change every figure. */
-      collected += (S.data.payments || []).filter(function (p) { return dkey(p.client) === clLower; })
+      collected += (S.data.payments || []).filter(function (p) { return inFam(p.client); })
         .reduce(function (a, p) { return a + payAmt(p); }, 0);
       payBase += clientOpening(cl.name) + clBilled + clFreight - clReturned;
     });
@@ -32580,6 +32593,12 @@ function viewCatalogue() {
      client record does today. Keyed by dkey so it lines up with every other name comparison in
      this file. Cheap: one pass over the challans, and the stamp map behind chIncStamp is
      already cached. */
+  /* 6.9.929 - true when this client or any name merged into him carries the key */
+  function famAnyKey(cl, map) {
+    if (!cl || !cl.name || !map) return false;
+    if (map[dkey(cl.name)]) return true;
+    return dupFamily(cl.name).some(function (n) { return !!map[dkey(n)]; });
+  }
   function incStampClients(nmLower) {
     var out = {};
     if (!nmLower) return out;
@@ -32618,6 +32637,11 @@ function viewCatalogue() {
       });
       Object.keys(roles).forEach(function (k) { (idx[k] = idx[k] || []).push({ s: st, roles: Object.keys(roles[k]) }); });
     });
+    Object.keys(idx).forEach(function (k) {   /* 6.9.929 - one row per merged family's site */
+      var keep = siteFoldFam(idx[k].map(function (r) { return r.s; })), ok = {};
+      keep.forEach(function (st) { ok[st.id] = 1; });
+      idx[k] = idx[k].filter(function (r) { return ok[r.s.id]; });
+    });
     _psIdx = idx; _psKey = key;
     return idx;
   }
@@ -32654,12 +32678,28 @@ function viewCatalogue() {
     return h + '<div class="meta" style="font-size:12px;margin-top:8px">Ongoing = every stage except Post-Handover / AMC. He counts on a site when he is named on the site or on its client.</div>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Close</button></div>';
   }
+  /* 6.9.929 - HIS WORDS: "showing duplicate client entry that i have merged earlier". One site row was made per spelling of a
+     merged client (Viajy Gupta / Vijay Gupta - A 51-52). A partner's and an executive's list show ONE: the rows whose client
+     and site name come to the same main name fold, the row filed under the main name is kept, else the latest. Nothing is
+     deleted; the Sites screen still has every row. */
+  function siteFoldFam(list) {
+    var by = {}, order = [];
+    (list || []).forEach(function (st) {
+      if (!st) return;
+      var k = dgKey(dupMainName(st.client || "")) + "|" + dgKey(dupMainName(st.name || ""));
+      if (!by[k]) { by[k] = st; order.push(k); return; }
+      var cur = by[k], mn = dupMainName(st.client || "");
+      var curMain = dgKey(cur.client || "") === dgKey(mn), stMain = dgKey(st.client || "") === dgKey(mn);
+      if ((stMain && !curMain) || (stMain === curMain && String(st.createdAt || "") > String(cur.createdAt || ""))) by[k] = st;
+    });
+    return order.map(function (k) { return by[k]; });
+  }
   function partnerSites(name) {
     var nm = String(name || "").trim().toLowerCase();
     if (!nm) return [];
-    return (S.data.sites || []).filter(function (st) {
+    return siteFoldFam((S.data.sites || []).filter(function (st) {
       return [st.architect, st.plumber, st.builder, st.pmc].some(function (x) { return String(x || "").trim().toLowerCase() === nm; });
-    });
+    }));   /* 6.9.929 */
   }
   function partnerBook(name) {
     var nm = String(name).trim().toLowerCase();
@@ -32674,7 +32714,7 @@ function viewCatalogue() {
     var stampedCl = incStampClients(nm);
     var histCl = incHistClients(nm, false);   /* 6.9.693 - and every client he held before a change */
     var myClients = (S.data.clients || []).filter(function (cl) {
-      return clientRolesOf(cl, nm).length || stampedCl[dkey(cl.name)] || histCl[dkey(cl.name)];
+      return clientRolesOf(cl, nm).length || famAnyKey(cl, stampedCl) || famAnyKey(cl, histCl);   /* 6.9.929 */
     });
     var bk = incentiveBook(myClients, function (cl, br, c, dsc) {
       return partnerBookRate(cl, br, c, nm, dsc);
@@ -32694,14 +32734,14 @@ function viewCatalogue() {
     var stampedEx = incStampClients(nm), histEx = incHistClients(nm, true);   /* 6.9.693 */
     var myClients = (S.data.clients || []).filter(function (cl) {
       return (String(cl.ownedBy || cl.createdBy || "").trim().toLowerCase() === nm && nm) ||
-             stampedEx[dkey(cl.name)] || histEx[dkey(cl.name)];
+             famAnyKey(cl, stampedEx) || famAnyKey(cl, histEx);   /* 6.9.929 */
     });
     var bk = incentiveBook(myClients, function (cl, br, c, dsc) {
       return execBookRate(cl, br, c, nm, dsc);
     }, nm, partnersRateOn);   /* 6.9.668 - after the partners' incentive */
     var mine = {};
-    myClients.forEach(function (cl) { mine[String(cl.name || "").trim().toLowerCase()] = 1; });
-    bk.sites = S.data.sites.filter(function (st) { return mine[String(st.client || "").trim().toLowerCase()]; });
+    myClients.forEach(function (cl) { dupFamily(cl.name).forEach(function (n) { mine[String(n || "").trim().toLowerCase()] = 1; }); });   /* 6.9.929 */
+    bk.sites = siteFoldFam(S.data.sites.filter(function (st) { return mine[String(st.client || "").trim().toLowerCase()]; }));
     bk.clientCount = myClients.length;
     return bk;
   }
@@ -33179,7 +33219,7 @@ function viewCatalogue() {
          challan is matched to a site by its site name, else by its client. */
       var _bySite = {}, _byClient = {};
       (b.rows || []).forEach(function (r) {
-        var sk = dkey(r.site), ck = dkey(r.client);
+        var sk = dkey(dupMainName(r.site || "")), ck = dkey(dupMainName(r.client || ""));   /* 6.9.929 */
         if (sk) { _bySite[sk] = _bySite[sk] || { base: 0, inc: 0 }; _bySite[sk].base += r.base || 0; _bySite[sk].inc += r.inc || 0; }
         _byClient[ck] = _byClient[ck] || { base: 0, inc: 0 }; _byClient[ck].base += r.base || 0; _byClient[ck].inc += r.inc || 0;
       });
@@ -33188,7 +33228,7 @@ function viewCatalogue() {
         { k: "added", t: "ADDED", n: 1 }, { k: "by", t: "BY" }, { k: "base", t: "DELIVERED", r: 1, n: 1 },
         { k: "inc", t: "INCENTIVE", r: 1, n: 1 }, { k: "quoted", t: "QUOTED", n: 1, r: 1 }, { k: "qbrands", t: "QUOTED FOR" }, { k: "go", t: "" }
       ], b.sites.map(function (st) {
-        var al = siteAlerts(st), m = _bySite[dkey(st.name)] || _byClient[dkey(st.client)] || { base: 0, inc: 0 };
+        var al = siteAlerts(st), m = _bySite[dkey(dupMainName(st.name || ""))] || _byClient[dkey(dupMainName(st.client || ""))] || { base: 0, inc: 0 };   /* 6.9.929 */
         /* v6.9.537 - his item 19: "what quoted at which site". The quotes on this site's client;
            a quote carrying this site's id is counted first, else every quote of the client. */
         var _qs = []; try { _qs = clientQuotes(st.client || "") || []; } catch (e) { _qs = []; }
@@ -33198,12 +33238,13 @@ function viewCatalogue() {
         var _qNet = _qs.reduce(function (a, q) { return a + (Number(q.net) || 0); }, 0);
         var _qB = {}; _qs.forEach(function (q) { quoteBrands(q).forEach(function (bb) { _qB[bb] = (q.status === "Won") ? "won" : (_qB[bb] || (qCatOf(q) === "In play" ? "open" : "lost")); }); });
         var added = String(st.createdAt || "").slice(0, 10);
-        var _sx = st.client ? rvOwner(st.client) : "";   /* 6.9.734 */
+        var _scn = st.client ? dupMainName(st.client) : "";   /* 6.9.929 - a merged client by his main name */
+        var _sx = _scn ? rvOwner(_scn) : "";   /* 6.9.734 */
         return { v: { site: st.name, client: st.client || "", ex: _sx, stage: stageNo(st) || 0, added: added, by: st.createdBy || "", base: m.base, inc: m.inc, quoted: _qs.length, qbrands: Object.keys(_qB).join(", ") },
           cells: {
             site: '<b data-act="site-open" data-id="' + esc(st.id) + '" style="cursor:pointer;color:#0f766e">' + esc(st.name) + '</b>' +
                   (al.open ? ' <span class="pill due">' + al.open + ' to pitch</span>' : ""),
-            client: st.client ? '<b data-act="bill-open" data-n="' + esc(st.client) + '" style="cursor:pointer;color:#0d766c" title="His hisab">' + esc(st.client) + '</b>' : "\u2014",
+            client: _scn ? clCodeTag(_scn) + '<b data-act="bill-open" data-n="' + esc(_scn) + '" style="cursor:pointer;color:#0d766c" title="His hisab" ewcdata-nocode="1">' + esc(_scn) + '</b>' : "\u2014",
             ex: _sx ? whoChip(_sx) : '<span style="color:#b45309">nobody</span>',
             stage: '<span class="pill teal">' + esc(String(stageNo(st) || "?")) + '</span> <span style="color:#94a3b8;font-size:12px">' + esc(st.stage || "") + '</span>',
             added: added ? esc(dmy(added)) : '<span style="color:#94a3b8">\u2014</span>',
