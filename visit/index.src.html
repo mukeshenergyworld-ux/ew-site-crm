@@ -239,7 +239,7 @@ table.att td.ok,table.att td.no{font-size:16px}
       button: function () { return '<button type="button" class="ewthm" onclick="ewTheme.next(this)">' + ewtLabel() + '</button>'; }
     };
   })();
-  var APP_VERSION = "1.10.1";   /* 1.10.1 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */   /* 1.10.0 (4 Nov 2026) - quote as in the CRM: item-wise discount, option lines, item-wise rates without total, GST */   /* 1.9.1 (31 Oct 2026) - one tap, one entry */   /* 1.9.0 (29 Oct 2026) - Menu -> Online enquiries (FB, IG, Google, Justdial, IndiaMART ... from the OnlineEnquiries tab) */   /* 1.8.4 (27 Oct 2026) - GHp mark in the middle of every QR, level H */   /* 1.6.1 - Huliot Group introduction on quotes; 1.6.0 (17 Oct 2026) - a dropped POST never loses a quote; admin sees every executive; daily report; attendance grid */
+  var APP_VERSION = "1.11.0";   /* 1.11.0 (8 Nov 2026) - my month on top: sales, returns, target, incentive, what to dispatch */   /* 1.10.1 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */   /* 1.10.0 (4 Nov 2026) - quote as in the CRM: item-wise discount, option lines, item-wise rates without total, GST */   /* 1.9.1 (31 Oct 2026) - one tap, one entry */   /* 1.9.0 (29 Oct 2026) - Menu -> Online enquiries (FB, IG, Google, Justdial, IndiaMART ... from the OnlineEnquiries tab) */   /* 1.8.4 (27 Oct 2026) - GHp mark in the middle of every QR, level H */   /* 1.6.1 - Huliot Group introduction on quotes; 1.6.0 (17 Oct 2026) - a dropped POST never loses a quote; admin sees every executive; daily report; attendance grid */
   /* 1.6.0 - ONLY THE SERVER'S OWN "NO" SIGNS A MAN OUT. The old test was /pin|locked|not allowed|blocked|removed/:
      any data error that happened to contain "not allowed" or "removed" (a refused row, a removed brand) signed the
      executive out and wiped his snapshot. These are the sign-in answers the server gives (teamAuth: "Wrong name or
@@ -2471,6 +2471,62 @@ table.att td.ok,table.att td.no{font-size:16px}
   }
 
   /* ================= MY DAY ================= */
+  /* ===== 1.11.0 - HIS MONTH, ON TOP OF HIS DAY ===== */
+  function xSnapOf(name) {
+    var best = null;
+    ((S.data && S.data.audit) || []).forEach(function (a) {
+      if (!a || a.action !== "exec:snap" || dkey(a.target) !== dkey(name)) return;
+      if (!best || String(a.createdAt || "") > String(best.createdAt || "")) best = a;
+    });
+    if (!best) return null;
+    var d = {}; try { d = JSON.parse(best.detail || "{}") || {}; } catch (e) { return null; }
+    d.at = best.createdAt; return d;
+  }
+  function xPaceOf(x) {
+    var n = new Date(), ym = today().slice(0, 7), days = new Date(n.getFullYear(), n.getMonth() + 1, 0).getDate();
+    var gone = x.ym === ym ? n.getDate() / days : 1, net = (x.sales || 0) - (x.ret || 0), done = x.tgt > 0 ? net / x.tgt : 0;
+    var left = Math.max(1, days - n.getDate() + 1), gap = Math.max(0, (x.tgt || 0) - net);
+    return { net: net, done: done, gone: gone, left: left, gap: gap, extra: gap * (x.rate || 0), perDay: gap / left, days: days,
+      st: !(x.tgt > 0) ? "none" : done >= 1 ? "met" : done >= gone - 0.1 ? "ok" : "behind" };
+  }
+  function xHeadHtml() {
+    var ym = today().slice(0, 7), adm = roleIs("admin");
+    if (adm && !S.ex) {   /* admin, whole team: one line per executive */
+      var names = {}; ((S.data && S.data.audit) || []).forEach(function (a) { if (a && a.action === "exec:snap") names[dkey(a.target)] = a.target; });
+      var L = Object.keys(names).map(function (k) { return xSnapOf(names[k]); }).filter(function (x) { return x && x.ym === ym; });
+      if (!L.length) return "";
+      return '<div class="card" style="margin-top:8px"><div class="ttl2">Team this month</div>' + L.map(function (x) {
+        var p = xPaceOf(x), col = p.st === "met" ? "#166534" : p.st === "ok" ? "#075985" : p.st === "behind" ? "#991b1b" : "#64748b";
+        return '<div class="meta" style="display:flex;gap:8px;flex-wrap:wrap;padding:4px 0;border-top:1px solid #e2e8f0"><b style="min-width:110px">' + esc(x.exec) + '</b>' +
+          '<span>net ' + money(p.net) + (x.tgt ? ' of ' + money(x.tgt) + ' (<b style="color:' + col + '">' + Math.round(p.done * 100) + '%</b>)' : ' &middot; no target') + '</span>' +
+          '<span>incentive ' + money(x.earned) + '</span></div>';
+      }).join("") + '</div>';
+    }
+    var who = adm ? S.ex : S.user, x = xSnapOf(who);
+    if (!x || x.ym !== ym) return '<div class="card" style="margin-top:8px"><div class="ttl2">My month</div><div class="meta">Your sales and incentive for this month appear here once the office CRM has refreshed today.</div></div>';
+    var p = xPaceOf(x), endDay = p.days + " " + new Date().toLocaleString("en-IN", { month: "short" });
+    var bar = x.tgt > 0 ? '<div style="height:10px;border-radius:6px;background:#e2e8f0;margin:6px 0 2px;position:relative;overflow:hidden">' +
+        '<div style="position:absolute;left:0;top:0;bottom:0;width:' + Math.min(100, Math.round(p.done * 100)) + '%;background:' + (p.st === "behind" ? "#dc2626" : p.st === "met" ? "#16a34a" : "#0d9488") + '"></div>' +
+        '<div title="where you should be today" style="position:absolute;top:0;bottom:0;left:' + Math.round(p.gone * 100) + '%;width:2px;background:#0f172a"></div></div>' +
+        '<div class="meta" style="font-size:12px">' + Math.round(p.done * 100) + '% of target done &middot; ' + Math.round(p.gone * 100) + '% of the month gone</div>' : '';
+    var msg = p.st === "met"
+      ? ['#dcfce7', '#166534', 'Target reached &mdash; well done. Every &#8377;1,00,000 more you dispatch this month earns you about ' + money(100000 * (x.rate || 0)) + '.']
+      : p.st === "ok"
+      ? ['#e0f2fe', '#075985', 'On track. Dispatch ' + money(p.gap) + ' more by ' + esc(endDay) + ' to reach your target &mdash; about ' + money(p.extra) + ' more incentive.']
+      : p.st === "behind"
+      ? ['#fee2e2', '#991b1b', '<b>Behind pace.</b> ' + Math.round(p.gone * 100) + '% of the month is gone and ' + Math.round(p.done * 100) + '% of your target is done. You need about ' + money(p.perDay) + ' of dispatches a day for the next ' + p.left + ' day' + (p.left === 1 ? '' : 's') + ' &mdash; ' + money(p.gap) + ' in all, worth about ' + money(p.extra) + ' incentive.']
+      : ['#f1f5f9', '#475569', 'No target set for you this month yet.'];
+    var t = function (v, l, c) { return '<div style="flex:1 1 130px;border:1px solid #e2e8f0;border-radius:10px;padding:8px 10px;background:#fff"><div style="font-weight:800;font-size:17px;color:' + (c || "#0f172a") + '">' + v + '</div><div class="meta" style="font-size:12px">' + l + '</div></div>'; };
+    return '<div class="card" style="margin-top:8px"><div class="ttl2">' + (adm ? esc(who) + '&rsquo;s month' : 'My month') + ' &mdash; ' + esc(new Date().toLocaleString("en-IN", { month: "long", year: "numeric" })) + '</div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">' +
+        t(money(x.sales), 'Sales this month (' + (x.n || 0) + ' dispatch' + (x.n === 1 ? '' : 'es') + ', before GST)') +
+        t(money(x.ret), 'Material returns this month', x.ret > 0 ? "#b45309" : "") +
+        t(x.tgt ? money(x.tgt) : '&mdash;', 'Target this month') +
+        t(money(x.earned), 'Incentive earned &middot; ' + money(Math.max(0, x.rel || 0)) + ' payable now (client paid)', "#0f766e") +
+      '</div>' + bar +
+      '<div style="margin-top:8px;padding:8px 10px;border-radius:10px;background:' + msg[0] + ';color:' + msg[1] + ';font-size:13px">' + msg[2] + '</div>' +
+      '<div class="meta" style="font-size:12px;margin-top:4px">Net sales = sales less returns. Incentive counts deliveries whose signed receipt is in, and becomes payable as the client pays. As of ' + esc(fd(x.at)) + ' ' + esc(String(new Date(x.at).toTimeString()).slice(0, 5)) + '.</div></div>';
+  }
   function viewDay() {
     var td = today(), mv = myVisits(), vt = mv.filter(function (v) { return dstr(v.at) === td; });
     var adm = roleIs("admin");   /* 1.6.0 - admin's day is the team's day: the chip row decides whose */
@@ -2486,6 +2542,7 @@ table.att td.ok,table.att td.no{font-size:16px}
     var h = '<h2>' + (new Date().getHours() < 12 ? 'Good morning' : new Date().getHours() < 17 ? 'Good afternoon' : 'Good evening') + ', ' + esc(String(S.user).split(" ")[0]) + '</h2>' +
       '<div class="meta">' + esc(fd(td)) + (adm && S.ex ? ' &middot; showing <b>' + esc(S.ex) + '</b>' : adm ? ' &middot; showing the whole team' : '') + '</div>' +
       exChips() +   /* 1.6.0 - admin only */
+      xHeadHtml() +   /* 1.11.0 - his month: sales, returns, target, incentive */
       '<div class="big2"><button class="btn" data-act="go-visit">+ Mark a visit</button><button class="btn" data-act="qz-new">+ New quote</button></div>' +
       '<div class="tiles">' +
         tile(vt.length, adm && !S.ex ? "Team visits today" : "Visits today", vt.length ? "good" : "", "go-visit") +
