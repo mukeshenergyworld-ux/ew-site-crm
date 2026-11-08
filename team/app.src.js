@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.930";   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
+  var APP_VERSION = "6.9.931";   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -3041,6 +3041,7 @@ window.addEventListener("beforeunload", function (ev) {
       beatMark(r && r.stamp);          /* v6.9.314 - the stamp AS AT this book */
       if (r && r.ok) { S.data = r; reconcilePending(); applyPending(); applyConfirmed(); applyMoves(); applyRtMoves(); splitCancelled(); bustCaches(); snapSave(); renderBg(); }
       if (pendCount()) retryPending();
+      try { xSnapPublish(false); } catch (e) { }   /* 6.9.931 - an office CRM left open keeps the Visit headers current */
     }).catch(function () { syncing = false; });
   }
 
@@ -71739,6 +71740,9 @@ function viewCatalogue() {
           if (pendCount()) retryPending();
           try { prfFlush(); } catch (e) { }
           try { maybePartnerNag(); } catch (e) { }
+          /* 6.9.931 - the app start never reached refresh(), so the executives' month went unpublished
+             until someone pulled by hand; publish here too (it still waits 30 min between writes) */
+          setTimeout(function () { try { xSnapPublish(false); } catch (e) { } }, 5000);
         });
       }).catch(function (e) {
         /* Network error on boot. If we already painted a valid warm session (this device's own
