@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.932";   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
+  var APP_VERSION = "6.9.933";   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -33495,9 +33495,36 @@ function viewCatalogue() {
     var _L = incCardSlabs(hit.m), top = _L.length ? _L[_L.length - 1].upto : 0;   /* 6.9.930 */
     return "The incentive card pays this man 0% on " + hit.row.brand + " at the discount given here (the card pays up to " + top + "% discount).";
   }
+  /* 6.9.933 - his words: "brand without discount on lowest side, high moving brand on top side, change as per
+     dispatch pattern". Order: brands that give a discount first, the most dispatched (list value, last 90 days,
+     dispatched or received challans) on top; brands with no discount at the bottom, also by dispatch. Worked out
+     each time the screen opens, so the order follows what is moving. r.mv carries the figure for the screen. */
+  function incCardOrder(rows) {
+    var at = {}, from = new Date(Date.now() - 90 * 864e5).toISOString().slice(0, 10);
+    rows.forEach(function (r, i) {
+      r.mv = 0;
+      [r.brand].concat(r.also || []).forEach(function (n) { var k = incKey(n); if (k && at[k] == null) at[k] = i; });
+    });
+    var bm = {}; ((S.data && S.data.brandmap) || []).forEach(function (x) { if (x && x.catalogValue && x.brand) bm[incKey(x.catalogValue)] = incKey(x.brand); });
+    dedupeChallans(((S.data && S.data.challans) || []).filter(function (c) {
+      return c && !isCancelled("challans", c.id) &&
+        (/^(dispatched|received|delivered)$/i.test(String(c.status || "").trim()) || String(c.receiptReceived).toUpperCase() === "Y") &&
+        String(localDay(c.dispatchedAt || c.createdAt) || "") >= from;
+    })).forEach(function (c) {
+      var items = []; try { items = JSON.parse(c.itemsJson || "[]"); } catch (e) { }
+      items.forEach(function (i) {
+        if (!i || isJobLine(i) || noBrandLine(i)) return;
+        var k = incKey(i.brand || productBrandByCode(i.code) || c.brand || ""), ix = at[k];
+        if (ix == null && bm[k]) ix = at[bm[k]];
+        if (ix != null) rows[ix].mv += (Number(i.qty) || 0) * (Number(i.rate) || 0);
+      });
+    });
+    var disc = function (r) { return (r.slabs || []).some(function (x) { return x && Number(x.upto) > 0; }) ? 1 : 0; };
+    return rows.slice().sort(function (a, b) { return disc(b) - disc(a) || b.mv - a.mv || String(a.brand).localeCompare(String(b.brand)); });
+  }
   function incCardHtml() {
     if (!roleIs("admin")) return "";
-    var C = incCard(), rows = incCardNow().concat((S.icdExtra || []).map(function (b) {
+    var C = incCard(), rows = incCardOrder(incCardNow()).concat((S.icdExtra || []).map(function (b) {
       return { brand: b, also: [], slabs: [incCardSlabOf(0, [0, 0, 0, 0, 0])], extra: true };
     }));
     var live = !!C.start;
@@ -33529,6 +33556,7 @@ function viewCatalogue() {
         '<span style="background:#f0fdf4;color:#166534;padding:4px 9px;border-radius:8px">&#9650; Less discount = more incentive</span>' +
         '<span style="background:#fef2f2;color:#991b1b;padding:4px 9px;border-radius:8px">&#10007; Above the last slab = nothing</span>' +
         '<span style="background:#eff6ff;color:#1e40af;padding:4px 9px;border-radius:8px">&#128197; A change counts from its date only</span>' +
+        '<span style="background:#f0fdfa;color:#0f766e;padding:4px 9px;border-radius:8px">&#8645; Most dispatched on top &middot; no-discount brands at the bottom</span>' +
       '</div>' +
       '<div style="overflow-x:auto;border-radius:10px;border:' + bd + '"><table style="border-collapse:collapse;width:100%;min-width:720px;font-size:13px">' +
       '<tr><th style="padding:8px;font-size:12px;font-weight:700;color:#fff;background:#0b3b36;text-align:left">Brand</th>' +
@@ -33544,6 +33572,7 @@ function viewCatalogue() {
           return '<tr style="background:' + band + '">' +
             (i ? '' : '<td rowspan="' + L.length + '" style="padding:6px 8px;border:' + bd + ';border-left:4px solid ' + BADGE[0] + ';vertical-align:top;min-width:170px;background:' + band + '">' +
               '<div style="font-weight:800;font-size:14px;color:#0f172a">' + esc(r.brand) + '</div>' +
+              (r.extra ? '' : '<div style="font-size:12px;color:' + (r.mv > 0 ? '#0f766e' : '#94a3b8') + '">' + (r.mv > 0 ? '&#9650; ' + esc(money(Math.round(r.mv))) + ' dispatched &middot; 90 days' : 'no dispatch in 90 days') + '</div>') +
               '<div style="display:flex;gap:5px;margin-top:4px">' +
                 '<input class="icd-also" data-b="' + esc(r.brand) + '" value="' + esc((r.also || []).join(", ")) + '" placeholder="also called&hellip;" ' +
                   'style="flex:1 1 auto;min-width:0;font-size:12px;min-height:44px;padding:2px 7px;border-radius:8px"/>' +
