@@ -283,7 +283,7 @@ body{background:#F4F6F9}
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.150.0";   /* 1.150.0 (2 Nov 2026) - EW <-> MPS are normal challans again; they add to the other godown after its count */   /* 1.149.0 (1 Nov 2026) - the godown receives a transfer on this phone */   /* 1.148.0 (1 Nov 2026) - a transfer lands only when the other godown receives it */   /* 1.147.0 (1 Nov 2026) - two godowns: MPS Sonipat has its own stock; MPS staff see MPS work only; no challan to MPS (it is a transfer) */   /* 1.146.0 (31 Oct 2026) - one tap, one entry: a second tap on a write button is swallowed */   /* 1.145.0 - vehicle no asked every time a driver is picked (not for Porter / Rapido); 1.144.0 lorry check */
+  var APP_VERSION = "1.151.0";   /* 1.151.0 (8 Nov 2026) - incentive card: any number of discount slabs (shared block) */   /* 1.150.0 (2 Nov 2026) - EW <-> MPS are normal challans again; they add to the other godown after its count */   /* 1.149.0 (1 Nov 2026) - the godown receives a transfer on this phone */   /* 1.148.0 (1 Nov 2026) - a transfer lands only when the other godown receives it */   /* 1.147.0 (1 Nov 2026) - two godowns: MPS Sonipat has its own stock; MPS staff see MPS work only; no challan to MPS (it is a transfer) */   /* 1.146.0 (31 Oct 2026) - one tap, one entry: a second tap on a write button is swallowed */   /* 1.145.0 - vehicle no asked every time a driver is picked (not for Porter / Rapido); 1.144.0 lorry check */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -8316,11 +8316,20 @@ function discRowOn(client, brand, onYmd) {
     var bm = ((S.data && S.data.brandmap) || []).filter(function (x) { return incKey(x && x.catalogValue) === k; })[0];
     return (bm && bm.brand) ? tryKey(incKey(bm.brand)) : null;
   }
+  /* 6.9.930 - any number of slabs: m.slabs [{upto, plumber, architect, pmc, builder, exec}], lowest limit first.
+     A card row saved before 6.9.930 has only s1 / s2 and reads exactly as it always did. */
+  function incCardSlabs(m) {
+    if (!m) return [];
+    var L = (m.slabs && m.slabs.length) ? m.slabs.slice() : [m.s1, m.s2];
+    return L.filter(function (x) { return x && x.upto != null && x.upto !== ""; })
+      .map(function (x, i) { return { x: x, i: i }; })
+      .sort(function (a, b) { return (Number(a.x.upto) || 0) - (Number(b.x.upto) || 0) || a.i - b.i; })
+      .map(function (o) { return o.x; });
+  }
   function incCardSlab(m, disc) {
-    var d = Number(disc) || 0, e = 1e-9;
-    if (m && m.s1 && d <= (Number(m.s1.upto) || 0) + e) return m.s1;
-    if (m && m.s2 && d <= (Number(m.s2.upto) || 0) + e) return m.s2;
-    return null;
+    var d = Number(disc) || 0, e = 1e-9, L = incCardSlabs(m);
+    for (var i = 0; i < L.length; i++) if (d <= (Number(L[i].upto) || 0) + e) return L[i];   /* lower discount, higher slab */
+    return null;   /* above the last slab nobody earns */
   }
   /* null: the card is not in force on that day - ask the client's own row, as before.
      A number: the card's answer, 0 included. */
