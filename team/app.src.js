@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.929";   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
+  var APP_VERSION = "6.9.930";   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -3227,6 +3227,7 @@ window.addEventListener("beforeunload", function (ev) {
       try { maybePartnerNag(); } catch (e) { }   /* weekly: chase missing plumber/architect names */
       try { staleNag(); } catch (e) { }   /* 6.9.786 - Mondays: old quotes to close */
       try { pstNag(); } catch (e) { }   /* 6.9.789 - 1st to 7th: partner statements to send */
+      try { xSnapPublish(false); } catch (e) { }   /* 6.9.930 - each executive's month, for his Visit app header */
       try { setTimeout(function () { try { rsAutoTick(); } catch (e) { } }, 6000); if (!_rsTick) _rsTick = setInterval(function () { try { rsAutoTick(); } catch (e) { } }, 1800000); } catch (e) { }   /* 6.9.639 - the reports send themselves */
       try { if (roleAny(["admin", "accounts"]) && !_stkNagDone) ensureStock(); } catch (e) { }   /* 6.9.607 - bills to upload */
       try { billRescue(); } catch (e) { }   /* 6.9.814 */
@@ -12863,11 +12864,20 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     var bm = ((S.data && S.data.brandmap) || []).filter(function (x) { return incKey(x && x.catalogValue) === k; })[0];
     return (bm && bm.brand) ? tryKey(incKey(bm.brand)) : null;
   }
+  /* 6.9.930 - any number of slabs: m.slabs [{upto, plumber, architect, pmc, builder, exec}], lowest limit first.
+     A card row saved before 6.9.930 has only s1 / s2 and reads exactly as it always did. */
+  function incCardSlabs(m) {
+    if (!m) return [];
+    var L = (m.slabs && m.slabs.length) ? m.slabs.slice() : [m.s1, m.s2];
+    return L.filter(function (x) { return x && x.upto != null && x.upto !== ""; })
+      .map(function (x, i) { return { x: x, i: i }; })
+      .sort(function (a, b) { return (Number(a.x.upto) || 0) - (Number(b.x.upto) || 0) || a.i - b.i; })
+      .map(function (o) { return o.x; });
+  }
   function incCardSlab(m, disc) {
-    var d = Number(disc) || 0, e = 1e-9;
-    if (m && m.s1 && d <= (Number(m.s1.upto) || 0) + e) return m.s1;
-    if (m && m.s2 && d <= (Number(m.s2.upto) || 0) + e) return m.s2;
-    return null;
+    var d = Number(disc) || 0, e = 1e-9, L = incCardSlabs(m);
+    for (var i = 0; i < L.length; i++) if (d <= (Number(L[i].upto) || 0) + e) return L[i];   /* lower discount, higher slab */
+    return null;   /* above the last slab nobody earns */
   }
   /* null: the card is not in force on that day - ask the client's own row, as before.
      A number: the card's answer, 0 included. */
@@ -32854,6 +32864,106 @@ function viewCatalogue() {
       toast(left + " partner statement" + (left > 1 ? "s" : "") + " for " + monthLabel(ym) + " to send - Incentives tab, at the top.");
     } catch (e) { }
   }
+
+  /* ===== 6.9.930 - EXECUTIVE TARGETS AND THE MONTH, AS THE INCENTIVE ENGINE SEES IT  (8 Nov 2026) =====
+     HIS WORDS: "a proper employee sales vs incentive tracking ... sales this month, material return this month, target this
+     month, incentive earned this month, make more dispatches to earn this much ... individual sales target will be set for
+     employee". His choices: sales = dispatched value before GST (challanNet / 1.18, the Basic Amt the incentive uses); a target
+     per person per month that carries forward; incentive shown earned and payable, with a pace warning.
+     Target: audit "tgt:set" {exec, ym, amt} - the newest for a month on or before the one asked wins.
+     The Visit app cannot run this engine (a sales phone is never sent the card's partner rates), so the office CRM publishes
+     each executive's month as audit "exec:snap" - the same numbers this screen shows - only when one moved. */
+  function xYm(v) { return String(localDay(v) || "").slice(0, 7); }
+  function xTgtFor(name, ym) {
+    var best = null;
+    ((S.data && S.data.audit) || []).forEach(function (a) {
+      if (!a || a.action !== "tgt:set") return;
+      var d = {}; try { d = JSON.parse(a.detail || "{}") || {}; } catch (e) { return; }
+      var m = String(d.ym || "");
+      if (dkey(d.exec) !== dkey(name) || !m || m > ym) return;
+      if (!best || m > best.ym || (m === best.ym && String(a.createdAt || "") > best.at)) best = { ym: m, amt: Number(d.amt) || 0, at: String(a.createdAt || "") };
+    });
+    return best ? best.amt : 0;
+  }
+  function xMonth(name, ym) {
+    var nm = dkey(name), mine = {};
+    (S.data.clients || []).forEach(function (cl) {   /* his clients, every spelling they were merged from */
+      if (!cl || isCancelled("clients", cl.id) || dkey(cl.ownedBy || cl.createdBy) !== nm) return;
+      dupFamily(cl.name).forEach(function (n) { mine[dkey(n)] = 1; });
+    });
+    var sales = 0, n = 0, ret = 0;
+    dedupeChallans((S.data.challans || []).filter(function (c) {
+      return c && !isCancelled("challans", c.id) && mine[dkey(c.customerName)] &&
+        (/^(dispatched|received|delivered)$/i.test(String(c.status || "").trim()) || String(c.receiptReceived).toUpperCase() === "Y") &&
+        xYm(c.dispatchedAt || c.createdAt) === ym;
+    })).forEach(function (c) { sales += challanNet(c) / 1.18; n++; });   /* dispatched, Basic Amt */
+    (S.data.returns || []).forEach(function (r) {
+      if (!r || isCancelled("returns", r.id) || !mine[dkey(r.customerName)] || String(r.status || "").trim().toLowerCase() !== "received") return;
+      if (xYm(r.receivedAt || r.createdAt) === ym) ret += returnNet(r) / 1.18;
+    });
+    var bk = execBook(name), earned = 0, rel = 0, base = 0, allInc = 0, allBase = 0;
+    bk.rows.forEach(function (r) {
+      if (!r.ret) { allInc += r.inc; allBase += r.base; }
+      if (String(r.ymd || "").slice(0, 7) !== ym) return;
+      earned += r.inc; rel += r.rel; if (!r.ret) base += r.base;
+    });
+    /* what one more rupee dispatched earns him: this month's own rate, else his rate so far */
+    var rate = (base > 0.5 && earned > 0) ? earned / base : (allBase > 0.5 ? allInc / allBase : 0);   /* a month a return pulled negative reads his usual rate */
+    return { sales: sales, n: n, ret: ret, net: sales - ret, earned: earned, rel: rel, rate: Math.max(0, rate), tgt: xTgtFor(name, ym) };
+  }
+  /* pace: share of the month gone vs share of the target done */
+  function xPace(x, ym) {
+    var d = new Date(), days = new Date(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)), 0).getDate();
+    var gone = ym === xYm(today()) ? Math.min(1, d.getDate() / days) : 1, done = x.tgt > 0 ? x.net / x.tgt : 0;
+    return { gone: gone, done: done, left: Math.max(0, days - d.getDate()), st: !x.tgt ? "none" : done >= 1 ? "met" : done >= gone - 0.1 ? "ok" : "behind" };
+  }
+  var _xsnapAt = 0;
+  function xSnapLast(name) {
+    var best = null;
+    ((S.data && S.data.audit) || []).forEach(function (a) {
+      if (!a || a.action !== "exec:snap" || dkey(a.target) !== dkey(name)) return;
+      if (!best || String(a.createdAt || "") > String(best.createdAt || "")) best = a;
+    });
+    if (!best) return null;
+    try { return JSON.parse(best.detail || "{}"); } catch (e) { return null; }
+  }
+  function xSnapPublish(force) {
+    if (!roleAny(["admin", "accounts"]) || !S.data || !S.data.challans) return;
+    if (!force && Date.now() - _xsnapAt < 1800000) return;   /* at most every 30 minutes */
+    _xsnapAt = Date.now();
+    var ym = xYm(today());
+    execTeam().forEach(function (u) {
+      var x = xMonth(u.name, ym);
+      var sn = { exec: u.name, ym: ym, tgt: Math.round(x.tgt), sales: Math.round(x.sales), n: x.n, ret: Math.round(x.ret),
+        earned: Math.round(x.earned), rel: Math.round(x.rel), rate: Math.round(x.rate * 10000) / 10000 };
+      var key = function (o) { return o ? [o.ym, o.tgt, o.sales, o.n, o.ret, o.earned, o.rel].join("|") : ""; };
+      if (key(xSnapLast(u.name)) === key(sn)) return;   /* nothing moved - nothing written */
+      auditFact("exec:snap", u.name, sn);
+    });
+  }
+  function xTgtCard() {
+    if (!roleIs("admin")) return "";
+    var ym = xYm(today()), team = execTeam();
+    if (!team.length) return "";
+    var rows = team.map(function (u) { var x = xMonth(u.name, ym); return { u: u, x: x, p: xPace(x, ym) }; });
+    var pill = function (p) {
+      return p.st === "met" ? '<span class="pill" style="background:#dcfce7;color:#166534">target met</span>'
+        : p.st === "ok" ? '<span class="pill" style="background:#e0f2fe;color:#075985">on track</span>'
+        : p.st === "behind" ? '<span class="pill" style="background:#fee2e2;color:#991b1b">behind</span>'
+        : '<span class="pill" style="background:#f1f5f9;color:#64748b">no target</span>';
+    };
+    return '<div class="card"><h3 style="margin:0 0 4px">Executive targets &mdash; ' + esc(monthLabel(ym)) + '</h3>' +
+      '<div class="meta" style="margin-bottom:6px;font-size:12.5px">Sales = dispatched to his clients this month, before GST. Net = sales less material returns booked in. A target carries to the next months until you change it. Each executive sees his own line in the Visit &amp; Quote app.</div>' +
+      '<div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%;min-width:640px;font-size:13px"><tr><th style="text-align:left;padding:5px 6px;background:#0b3b36;color:#fff;font-size:12px">Executive</th><th style="text-align:right;padding:5px 6px;background:#0b3b36;color:#fff;font-size:12px">Target (&#8377;)</th><th style="text-align:right;padding:5px 6px;background:#0b3b36;color:#fff;font-size:12px">Dispatched</th><th style="text-align:right;padding:5px 6px;background:#0b3b36;color:#fff;font-size:12px">Returns</th><th style="text-align:right;padding:5px 6px;background:#0b3b36;color:#fff;font-size:12px">Net</th><th style="text-align:right;padding:5px 6px;background:#0b3b36;color:#fff;font-size:12px">% done</th><th style="text-align:right;padding:5px 6px;background:#0b3b36;color:#fff;font-size:12px">Incentive earned</th><th style="text-align:right;padding:5px 6px;background:#0b3b36;color:#fff;font-size:12px">Payable now</th><th style="text-align:left;padding:5px 6px;background:#0b3b36;color:#fff;font-size:12px"></th></tr>' +
+      rows.map(function (r) {
+        return '<tr><td style="padding:5px 6px;border-top:1px solid #e2e8f0"><b>' + esc(r.u.name) + '</b><div class="meta" style="font-size:12px">' + r.x.n + ' dispatch' + (r.x.n === 1 ? '' : 'es') + '</div></td>' +
+          '<td style="text-align:right;padding:5px 6px;border-top:1px solid #e2e8f0"><input class="xtgt" data-n="' + esc(r.u.name) + '" inputmode="numeric" value="' + (r.x.tgt ? Math.round(r.x.tgt) : '') + '" placeholder="set" style="width:110px;min-height:44px;text-align:right"/></td>' +
+          '<td style="text-align:right;padding:5px 6px;border-top:1px solid #e2e8f0">' + money(r.x.sales) + '</td><td style="text-align:right;padding:5px 6px;border-top:1px solid #e2e8f0">' + (r.x.ret > 0.5 ? money(r.x.ret) : '&mdash;') + '</td>' +
+          '<td style="text-align:right;padding:5px 6px;border-top:1px solid #e2e8f0"><b>' + money(r.x.net) + '</b></td><td style="text-align:right;padding:5px 6px;border-top:1px solid #e2e8f0">' + (r.x.tgt ? Math.round(r.p.done * 100) + '%' : '&mdash;') + '</td>' +
+          '<td style="text-align:right;padding:5px 6px;border-top:1px solid #e2e8f0">' + money(r.x.earned) + '</td><td style="text-align:right;padding:5px 6px;border-top:1px solid #e2e8f0">' + money(r.x.rel) + '</td><td style="padding:5px 6px;border-top:1px solid #e2e8f0">' + pill(r.p) + '</td></tr>';
+      }).join("") + '</table></div>' +
+      '<div class="acts" style="margin-top:8px"><button class="btn" data-act="xtgt-save" style="min-height:44px">Save targets for ' + esc(monthLabel(ym)) + '</button></div></div>';
+  }
   function viewIncentives() {
     if (S.partner) return viewPartnerCard(S.partner);
     var partners = S.data.associates.slice();
@@ -32870,6 +32980,7 @@ function viewCatalogue() {
       '<div class="stat ' + (tot.pending > 0 ? "alert" : "") + '"><div class="n">' + money(tot.pending) + '</div><div class="l">Still to pay</div></div>' +
       '</div>';
     try { h += pstCard(); } catch (ePst) { }   /* 6.9.789 */
+    try { h += xTgtCard(); } catch (eXt) { }   /* 6.9.930 - admin: targets and the month per executive */
     h += '<div class="empty" style="text-align:left;padding:0 0 12px">Incentive = Basic Amt (the net sale after discount, before GST) \u00d7 the rate set for that <b>client &amp; brand</b> on the discount screen, paid to whoever is that client\u2019s plumber / architect / builder / PMC. It only becomes <b>payable as the client pays</b>, and a challan counts only once its material receipt is in. A booked-in material return reverses it.</div>';
 
     /* ---- FIND A MAN (v6.9.330) ----
@@ -33366,27 +33477,27 @@ function viewCatalogue() {
     var C = incCard(), day = today();
     if (!C.start) {
       return INC_CARD_SEED.map(function (x) {
-        return { brand: x[0], also: x[1].slice(), s1: incCardSlabOf(x[2], x[3]), s2: incCardSlabOf(x[4], x[5]), seed: true };
+        return { brand: x[0], also: x[1].slice(), slabs: [incCardSlabOf(x[2], x[3]), incCardSlabOf(x[4], x[5])].filter(Boolean), seed: true };
       });
     }
     var out = [];
     Object.keys(C.vers).forEach(function (cb) {
       var v = incCardLatest(C.vers[cb], day); if (!v) return;
       var m = incMap(v); if (m.off) return;
-      out.push({ brand: v.brand, also: (m.also || []).slice(), s1: m.s1 || null, s2: m.s2 || null, from: discFrom(v) });
+      out.push({ brand: v.brand, also: (m.also || []).slice(), slabs: incCardSlabs(m), from: discFrom(v) });   /* 6.9.930 */
     });
     return out;
   }
   function incCardWhy(brand, day) {
     var hit = incCardFind(brand, day);
     if (!hit) return brand + " is not on the incentive card, so nobody earns on it. Add it to the card to change that.";
-    var m = hit.m, top = m.s2 ? m.s2.upto : (m.s1 ? m.s1.upto : 0);
+    var _L = incCardSlabs(hit.m), top = _L.length ? _L[_L.length - 1].upto : 0;   /* 6.9.930 */
     return "The incentive card pays this man 0% on " + hit.row.brand + " at the discount given here (the card pays up to " + top + "% discount).";
   }
   function incCardHtml() {
     if (!roleIs("admin")) return "";
     var C = incCard(), rows = incCardNow().concat((S.icdExtra || []).map(function (b) {
-      return { brand: b, also: [], s1: incCardSlabOf(0, [0, 0, 0, 0, 0]), s2: null, extra: true };
+      return { brand: b, also: [], slabs: [incCardSlabOf(0, [0, 0, 0, 0, 0])], extra: true };
     }));
     var live = !!C.start;
     var cell = function (b, f, v) {
@@ -33397,20 +33508,26 @@ function viewCatalogue() {
     var heads = "Plumber|Architect|PMC|Builder|Exec".split("|");
     var h = '<div class="card"><h3 style="margin:0 0 4px">Incentive card &mdash; one for every client</h3>' +
       '<div class="meta" style="margin-bottom:8px">' + (live
-        ? 'In force from <b>' + esc(fullDate(C.start)) + '</b>. Every delivery from that day earns what this card says, picked by the discount given on each line: up to slab 1 pays slab 1, up to slab 2 pays slab 2, above that nobody earns. Deliveries before it keep the rates they were made at. A change you save here starts from the date you give it.'
+        ? 'In force from <b>' + esc(fullDate(C.start)) + '</b>. Every delivery from that day earns what this card says, picked by the discount given on each line: the first slab whose &ldquo;disc up to&rdquo; covers it pays, above the last slab nobody earns. Deliveries before it keep the rates they were made at. A change you save here starts from the date you give it.'
         : 'This is your table of 5 Oct 2026, ready to start. <b>Nothing is in force yet</b> &mdash; until you tap Start, every delivery still earns the rates typed on each client.') + '</div>' +
+      '<div class="meta" style="margin-bottom:8px;font-size:12.5px">Add as many slabs as you need with <b>+ slab</b>: the lowest discount pays the most, more discount a lower slab, above the last slab nothing. Set the executive lower than the partners. Partner rates already earned do not move.</div>' +
       '<div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:12.5px;min-width:100%">' +
       '<tr style="color:#475569;text-align:center"><th style="text-align:left;font-weight:600;padding:2px 6px 5px 0;font-size:12px">Brand</th>' +
-      th('Slab 1<br>disc up to %') + heads.map(th).join("") + th('Slab 2<br>disc up to %') + heads.map(th).join("") + '</tr>' +
+      th('Slab') + th('Disc up to %') + heads.map(th).join("") + '</tr>' +
       rows.map(function (r) {
-        var s1 = r.s1 || {}, s2 = r.s2 || {};
-        return '<tr style="border-top:1px solid #e2e8f0;text-align:center">' +
-          '<td style="text-align:left;padding:4px 6px 4px 0;min-width:150px"><b>' + esc(r.brand) + '</b>' +
-            '<input class="icd-also" data-b="' + esc(r.brand) + '" value="' + esc((r.also || []).join(", ")) + '" placeholder="also called&hellip;" ' +
-            'style="display:block;width:100%;margin-top:3px;font-size:12px;min-height:44px;padding:2px 6px"/></td>' +
-          cell(r.brand, "s1.upto", s1.upto) + INC_CARD_ROLES.map(function (k) { return cell(r.brand, "s1." + k, s1[k]); }).join("") +
-          cell(r.brand, "s2.upto", r.s2 ? s2.upto : "") + INC_CARD_ROLES.map(function (k) { return cell(r.brand, "s2." + k, r.s2 ? s2[k] : ""); }).join("") +
-          '</tr>';
+        /* 6.9.930 - every slab of the brand on its own line; "+ slab" adds an empty one (S.icdMore) */
+        var L = (r.slabs || []).slice(), more = (S.icdMore && S.icdMore[incKey(r.brand)]) || 0;
+        for (var j = 0; j < more; j++) L.push({});
+        if (!L.length) L.push({});
+        return L.map(function (sl, i) {
+          return '<tr style="border-top:' + (i ? '1px dashed #e2e8f0' : '1px solid #cbd5e1') + ';text-align:center">' +
+            (i ? '' : '<td rowspan="' + L.length + '" style="text-align:left;padding:4px 6px 4px 0;min-width:150px;vertical-align:top"><b>' + esc(r.brand) + '</b>' +
+              '<input class="icd-also" data-b="' + esc(r.brand) + '" value="' + esc((r.also || []).join(", ")) + '" placeholder="also called&hellip;" ' +
+              'style="display:block;width:100%;margin-top:3px;font-size:12px;min-height:44px;padding:2px 6px"/>' +
+              '<button class="btn sm ghost" data-act="icd-slab" data-b="' + esc(r.brand) + '" style="min-height:44px;margin-top:4px">+ slab</button></td>') +
+            '<td style="font-size:12px;color:#64748b">' + (i + 1) + '</td>' +
+            cell(r.brand, i + ".upto", sl.upto) + INC_CARD_ROLES.map(function (k) { return cell(r.brand, i + "." + k, sl[k]); }).join("") + '</tr>';
+        }).join("");
       }).join("") + '</table></div>';
     /* measured on the live book, every time the screen opens: which brands no card row reaches */
     var day = today(), miss = brandList().filter(function (b) {
@@ -33424,7 +33541,7 @@ function viewCatalogue() {
       '<input id="icd_new" placeholder="Add a brand to the card" style="flex:1 1 200px;min-height:44px"/>' +
       '<button class="btn sm ghost" data-act="icd-add" style="min-height:44px">+ Add</button>' +
       '<button class="btn sm" data-act="icd-save" style="min-height:44px">' + (live ? '&#10003; Save changes' : '&#10003; Start this card from today') + '</button></div>' +
-      '<div class="meta" style="margin-top:6px;font-size:12px">Slab 2 left blank means there is no second slab. A blank rate is 0%. Builders earn what you put under Builder.</div></div>';
+'<div class="meta" style="margin-top:6px;font-size:12px">A slab with &ldquo;disc up to&rdquo; left blank is removed (slab 1 is always kept). A blank rate is 0%. Builders earn what you put under Builder. Every change starts from the date you give it; earlier deliveries keep their rates.</div></div>';
     return h;
   }
   function viewDiscounts() {
@@ -64220,15 +64337,36 @@ function viewCatalogue() {
       if (_have.some(function (r) { return incKey(r.brand) === incKey(_nb); })) { toast(_nb + " is already on the card."); return; }
       S.icdExtra = (S.icdExtra || []).concat([_nb]); keepScroll = true; render(); return;
     }
+    if (act === "xtgt-save") {   /* 6.9.930 */
+      if (!roleIs("admin")) { toast("Targets are set by the owner."); return; }
+      var _xym = xYm(today()), _xn = 0, _xbad = "";
+      document.querySelectorAll(".xtgt").forEach(function (x) {
+        var nm = x.getAttribute("data-n") || "", raw = String(x.value || "").replace(/[^0-9.]/g, "");
+        if (String(x.value || "").trim() === "") return;
+        var v = Math.round(Number(raw) || 0);
+        if (!(v >= 0)) { _xbad = nm; return; }
+        if (Math.round(xTgtFor(nm, _xym)) === v) return;
+        auditFact("tgt:set", nm, { exec: nm, ym: _xym, amt: v }); _xn++;
+      });
+      if (_xbad) { toast("Check the target for " + _xbad + "."); return; }
+      if (!_xn) { toast("No target changed."); return; }
+      toast(plural(_xn, "target") + " saved for " + monthLabel(_xym) + ".");
+      setTimeout(function () { try { xSnapPublish(true); } catch (e) { } }, 800);
+      keepScroll = true; render(); return;
+    }
+    if (act === "icd-slab") {   /* 6.9.930 - one more empty slab under this brand */
+      var _sk = incKey(t.getAttribute("data-b") || ""); S.icdMore = S.icdMore || {};
+      S.icdMore[_sk] = (S.icdMore[_sk] || 0) + 1; keepScroll = true; render(); return;
+    }
     if (act === "icd-save") {
       if (!roleIs("admin")) { toast("The incentive card is the owner’s."); return; }
       var _IC = incCard(), _live = !!_IC.start, _bad = [], _rows = {};
       document.querySelectorAll(".icd").forEach(function (x) {
         var b = x.getAttribute("data-b") || "", f = String(x.getAttribute("data-f") || "").split(".");
-        var g = _rows[incKey(b)] || (_rows[incKey(b)] = { brand: b, s1: {}, s2: {}, also: [] });
+        var g = _rows[incKey(b)] || (_rows[incKey(b)] = { brand: b, sl: {}, also: [] });   /* 6.9.930 - slab index -> fields */
         var raw = String(x.value || "").trim();
         if (raw !== "" && (!isFinite(Number(raw)) || Number(raw) < 0 || Number(raw) > 100)) _bad.push(b);
-        g[f[0]][f[1]] = raw;
+        (g.sl[f[0]] || (g.sl[f[0]] = {}))[f[1]] = raw;
       });
       document.querySelectorAll(".icd-also").forEach(function (x) {
         var g = _rows[incKey(x.getAttribute("data-b") || "")];
@@ -64245,18 +64383,22 @@ function viewCatalogue() {
       var _now = {}; incCardNow().forEach(function (r) { if (!r.seed) _now[incKey(r.brand)] = r; });
       var _write = [];
       Object.keys(_rows).forEach(function (k) {
-        var g = _rows[k], m = { also: g.also, s1: _slab(g.s1, true), s2: _slab(g.s2, false) };
+        var g = _rows[k], _sl = Object.keys(g.sl).map(Number).sort(function (a, b) { return a - b; })
+          .map(function (i, n) { return _slab(g.sl[i], n === 0); }).filter(Boolean);
+        _sl = incCardSlabs({ slabs: _sl });   /* 6.9.930 - kept lowest limit first */
+        var m = { also: g.also, slabs: _sl };
         var was = _now[k];
-        if (_live && was && JSON.stringify({ also: was.also || [], s1: was.s1 || null, s2: was.s2 || null }) === JSON.stringify(m)) return;
+        if (_live && was && JSON.stringify({ also: was.also || [], slabs: was.slabs || [] }) === JSON.stringify(m)) return;
         _write.push({ brand: g.brand, m: m });
       });
       if (!_write.length) { toast("Nothing changed on the card."); return; }
       var _go = function (from) {
         _write.forEach(function (w) {
-          var m = { from: from, also: w.m.also, s1: w.m.s1, s2: w.m.s2 };
-          save("discounts", { id: "", client: "#INCENTIVE CARD#", brand: w.brand, pct: w.m.s1 ? w.m.s1.upto : 0, notes: JSON.stringify(m) }, true);
+          /* slabs is what 6.9.930 reads; s1 / s2 stay for any phone still on an older version */
+          var m = { from: from, also: w.m.also, slabs: w.m.slabs, s1: w.m.slabs[0] || null, s2: w.m.slabs[1] || null };
+          save("discounts", { id: "", client: "#INCENTIVE CARD#", brand: w.brand, pct: w.m.slabs[0] ? w.m.slabs[0].upto : 0, notes: JSON.stringify(m) }, true);
         });
-        S.icdExtra = [];
+        S.icdExtra = []; S.icdMore = {};
         save("audit", { id: "", createdAt: new Date().toISOString(), actor: S.user || "", action: "inc:card", target: from,
           detail: JSON.stringify({ from: from, brands: _write.map(function (w) { return w.brand; }) }).slice(0, 4000), ip: "" }, true);
         toast(_live ? "Incentive card saved — " + plural(_write.length, "brand") + " from " + fullDate(from) + "."
