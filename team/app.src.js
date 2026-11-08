@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.931";   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
+  var APP_VERSION = "6.9.932";   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -33501,33 +33501,56 @@ function viewCatalogue() {
       return { brand: b, also: [], slabs: [incCardSlabOf(0, [0, 0, 0, 0, 0])], extra: true };
     }));
     var live = !!C.start;
-    var cell = function (b, f, v) {
-      return '<td style="padding:3px 3px"><input class="icd" data-b="' + esc(b) + '" data-f="' + f + '" inputmode="decimal" value="' +
-        (v == null || v === "" ? "" : esc(String(v))) + '" style="width:54px;min-height:44px;text-align:center;font-size:13px;padding:2px 3px"/></td>';
+    /* 6.9.932 - his words: "make is simple and colorfull, and in table like format". One grid: a
+       colour per role column, a coloured slab badge (green = lowest discount, pays most -> red),
+       brands banded, and the same inputs (class icd / data-f) so saving is unchanged. */
+    var COL = { upto: ["#334155", "#f1f5f9"], plumber: ["#1d4ed8", "#eff6ff"], architect: ["#6d28d9", "#f5f3ff"],
+      pmc: ["#0f766e", "#f0fdfa"], builder: ["#b45309", "#fffbeb"], exec: ["#be185d", "#fdf2f8"] };
+    var BADGE = ["#16a34a", "#65a30d", "#d97706", "#ea580c", "#dc2626"];
+    var bd = "1px solid #e2e8f0";
+    var cell = function (b, i, k, v) {
+      var c = COL[k];
+      return '<td style="padding:4px;border:' + bd + ';background:' + c[1] + ';text-align:center">' +
+        '<input class="icd" data-b="' + esc(b) + '" data-f="' + i + "." + k + '" inputmode="decimal" value="' +
+        (v == null || v === "" ? "" : esc(String(v))) + '" placeholder="&ndash;" style="width:58px;min-height:44px;text-align:center;font-size:14px;font-weight:700;' +
+        'padding:2px;border:1.5px solid ' + c[0] + '33;border-radius:8px;background:#fff;color:' + c[0] + '"/></td>';
     };
-    var th = function (t) { return '<th style="font-weight:600;padding:2px 3px 5px;font-size:12px">' + t + '</th>'; };
-    var heads = "Plumber|Architect|PMC|Builder|Exec".split("|");
-    var h = '<div class="card"><h3 style="margin:0 0 4px">Incentive card &mdash; one for every client</h3>' +
-      '<div class="meta" style="margin-bottom:8px">' + (live
-        ? 'In force from <b>' + esc(fullDate(C.start)) + '</b>. Every delivery from that day earns what this card says, picked by the discount given on each line: the first slab whose &ldquo;disc up to&rdquo; covers it pays, above the last slab nobody earns. Deliveries before it keep the rates they were made at. A change you save here starts from the date you give it.'
-        : 'This is your table of 5 Oct 2026, ready to start. <b>Nothing is in force yet</b> &mdash; until you tap Start, every delivery still earns the rates typed on each client.') + '</div>' +
-      '<div class="meta" style="margin-bottom:8px;font-size:12.5px">Add as many slabs as you need with <b>+ slab</b>: the lowest discount pays the most, more discount a lower slab, above the last slab nothing. Set the executive lower than the partners. Partner rates already earned do not move.</div>' +
-      '<div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:12.5px;min-width:100%">' +
-      '<tr style="color:#475569;text-align:center"><th style="text-align:left;font-weight:600;padding:2px 6px 5px 0;font-size:12px">Brand</th>' +
-      th('Slab') + th('Disc up to %') + heads.map(th).join("") + '</tr>' +
-      rows.map(function (r) {
-        /* 6.9.930 - every slab of the brand on its own line; "+ slab" adds an empty one (S.icdMore) */
+    var th = function (t, k) {
+      var c = COL[k];
+      return '<th style="padding:8px 4px;font-size:12px;font-weight:700;color:#fff;background:' + c[0] + ';border:1px solid ' + c[0] + ';white-space:nowrap">' + t + '</th>';
+    };
+    var h = '<div class="card" style="padding:12px">' +
+      '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:8px">' +
+        '<h3 style="margin:0;flex:1 1 auto">Incentive card</h3>' +
+        (live ? '<span style="background:#dcfce7;color:#166534;font-weight:700;font-size:12.5px;padding:5px 10px;border-radius:99px">In force from ' + esc(fullDate(C.start)) + '</span>'
+              : '<span style="background:#fef3c7;color:#92400e;font-weight:700;font-size:12.5px;padding:5px 10px;border-radius:99px">Not started yet</span>') +
+      '</div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;font-size:12.5px">' +
+        '<span style="background:#f0fdf4;color:#166534;padding:4px 9px;border-radius:8px">&#9650; Less discount = more incentive</span>' +
+        '<span style="background:#fef2f2;color:#991b1b;padding:4px 9px;border-radius:8px">&#10007; Above the last slab = nothing</span>' +
+        '<span style="background:#eff6ff;color:#1e40af;padding:4px 9px;border-radius:8px">&#128197; A change counts from its date only</span>' +
+      '</div>' +
+      '<div style="overflow-x:auto;border-radius:10px;border:' + bd + '"><table style="border-collapse:collapse;width:100%;min-width:720px;font-size:13px">' +
+      '<tr><th style="padding:8px;font-size:12px;font-weight:700;color:#fff;background:#0b3b36;text-align:left">Brand</th>' +
+      '<th style="padding:8px 4px;font-size:12px;font-weight:700;color:#fff;background:#0b3b36">Slab</th>' +
+      th("Disc up to %", "upto") + th("Plumber %", "plumber") + th("Architect %", "architect") + th("PMC %", "pmc") + th("Builder %", "builder") + th("Exec %", "exec") + '</tr>' +
+      rows.map(function (r, ri) {
         var L = (r.slabs || []).slice(), more = (S.icdMore && S.icdMore[incKey(r.brand)]) || 0;
         for (var j = 0; j < more; j++) L.push({});
         if (!L.length) L.push({});
+        var band = ri % 2 ? "#f8fafc" : "#fff";
         return L.map(function (sl, i) {
-          return '<tr style="border-top:' + (i ? '1px dashed #e2e8f0' : '1px solid #cbd5e1') + ';text-align:center">' +
-            (i ? '' : '<td rowspan="' + L.length + '" style="text-align:left;padding:4px 6px 4px 0;min-width:150px;vertical-align:top"><b>' + esc(r.brand) + '</b>' +
-              '<input class="icd-also" data-b="' + esc(r.brand) + '" value="' + esc((r.also || []).join(", ")) + '" placeholder="also called&hellip;" ' +
-              'style="display:block;width:100%;margin-top:3px;font-size:12px;min-height:44px;padding:2px 6px"/>' +
-              '<button class="btn sm ghost" data-act="icd-slab" data-b="' + esc(r.brand) + '" style="min-height:44px;margin-top:4px">+ slab</button></td>') +
-            '<td style="font-size:12px;color:#64748b">' + (i + 1) + '</td>' +
-            cell(r.brand, i + ".upto", sl.upto) + INC_CARD_ROLES.map(function (k) { return cell(r.brand, i + "." + k, sl[k]); }).join("") + '</tr>';
+          var bc = BADGE[Math.min(i, BADGE.length - 1)];
+          return '<tr style="background:' + band + '">' +
+            (i ? '' : '<td rowspan="' + L.length + '" style="padding:6px 8px;border:' + bd + ';border-left:4px solid ' + BADGE[0] + ';vertical-align:top;min-width:170px;background:' + band + '">' +
+              '<div style="font-weight:800;font-size:14px;color:#0f172a">' + esc(r.brand) + '</div>' +
+              '<div style="display:flex;gap:5px;margin-top:4px">' +
+                '<input class="icd-also" data-b="' + esc(r.brand) + '" value="' + esc((r.also || []).join(", ")) + '" placeholder="also called&hellip;" ' +
+                  'style="flex:1 1 auto;min-width:0;font-size:12px;min-height:44px;padding:2px 7px;border-radius:8px"/>' +
+                '<button class="btn sm ghost" data-act="icd-slab" data-b="' + esc(r.brand) + '" style="min-height:44px;flex:0 0 auto;white-space:nowrap;color:#0f766e;border-color:#99f6e4">+ slab</button>' +
+              '</div></td>') +
+            '<td style="border:' + bd + ';text-align:center;padding:4px"><span style="display:inline-block;min-width:26px;padding:3px 0;border-radius:99px;background:' + bc + ';color:#fff;font-weight:800;font-size:12.5px">' + (i + 1) + '</span></td>' +
+            cell(r.brand, i, "upto", sl.upto) + INC_CARD_ROLES.map(function (k) { return cell(r.brand, i, k, sl[k]); }).join("") + '</tr>';
         }).join("");
       }).join("") + '</table></div>';
     /* measured on the live book, every time the screen opens: which brands no card row reaches */
@@ -33542,7 +33565,7 @@ function viewCatalogue() {
       '<input id="icd_new" placeholder="Add a brand to the card" style="flex:1 1 200px;min-height:44px"/>' +
       '<button class="btn sm ghost" data-act="icd-add" style="min-height:44px">+ Add</button>' +
       '<button class="btn sm" data-act="icd-save" style="min-height:44px">' + (live ? '&#10003; Save changes' : '&#10003; Start this card from today') + '</button></div>' +
-'<div class="meta" style="margin-top:6px;font-size:12px">A slab with &ldquo;disc up to&rdquo; left blank is removed (slab 1 is always kept). A blank rate is 0%. Builders earn what you put under Builder. Every change starts from the date you give it; earlier deliveries keep their rates.</div></div>';
+'<div class="meta" style="margin-top:6px;font-size:12px">Clear &ldquo;disc up to&rdquo; to remove a slab (slab 1 stays) &middot; a blank rate is 0%.</div></div>';
     return h;
   }
   function viewDiscounts() {
