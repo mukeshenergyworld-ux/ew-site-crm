@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.933";   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
+  var APP_VERSION = "6.9.934";   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -33528,6 +33528,7 @@ function viewCatalogue() {
       return { brand: b, also: [], slabs: [incCardSlabOf(0, [0, 0, 0, 0, 0])], extra: true };
     }));
     var live = !!C.start;
+    /* 6.9.934 - header row frozen: the table scrolls in its own 72vh box (sticky holds only inside its scroll box). */
     /* 6.9.932 - his words: "make is simple and colorfull, and in table like format". One grid: a
        colour per role column, a coloured slab badge (green = lowest discount, pays most -> red),
        brands banded, and the same inputs (class icd / data-f) so saving is unchanged. */
@@ -33544,7 +33545,7 @@ function viewCatalogue() {
     };
     var th = function (t, k) {
       var c = COL[k];
-      return '<th style="padding:8px 4px;font-size:12px;font-weight:700;color:#fff;background:' + c[0] + ';border:1px solid ' + c[0] + ';white-space:nowrap">' + t + '</th>';
+      return '<th style="position:sticky;top:0;z-index:3;padding:8px 4px;font-size:12px;font-weight:700;color:#fff;background:' + c[0] + ';border:1px solid ' + c[0] + ';white-space:nowrap">' + t + '</th>';
     };
     var h = '<div class="card" style="padding:12px">' +
       '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:8px">' +
@@ -33558,9 +33559,9 @@ function viewCatalogue() {
         '<span style="background:#eff6ff;color:#1e40af;padding:4px 9px;border-radius:8px">&#128197; A change counts from its date only</span>' +
         '<span style="background:#f0fdfa;color:#0f766e;padding:4px 9px;border-radius:8px">&#8645; Most dispatched on top &middot; no-discount brands at the bottom</span>' +
       '</div>' +
-      '<div style="overflow-x:auto;border-radius:10px;border:' + bd + '"><table style="border-collapse:collapse;width:100%;min-width:720px;font-size:13px">' +
-      '<tr><th style="padding:8px;font-size:12px;font-weight:700;color:#fff;background:#0b3b36;text-align:left">Brand</th>' +
-      '<th style="padding:8px 4px;font-size:12px;font-weight:700;color:#fff;background:#0b3b36">Slab</th>' +
+      '<div style="overflow:auto;max-height:72vh;border-radius:10px;border:' + bd + '"><table style="border-collapse:collapse;width:100%;min-width:720px;font-size:13px">' +
+      '<tr><th style="position:sticky;top:0;z-index:3;padding:8px;font-size:12px;font-weight:700;color:#fff;background:#0b3b36;text-align:left">Brand</th>' +
+      '<th style="position:sticky;top:0;z-index:3;padding:8px 4px;font-size:12px;font-weight:700;color:#fff;background:#0b3b36">Slab</th>' +
       th("Disc up to %", "upto") + th("Plumber %", "plumber") + th("Architect %", "architect") + th("PMC %", "pmc") + th("Builder %", "builder") + th("Exec %", "exec") + '</tr>' +
       rows.map(function (r, ri) {
         var L = (r.slabs || []).slice(), more = (S.icdMore && S.icdMore[incKey(r.brand)]) || 0;
