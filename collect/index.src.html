@@ -208,7 +208,7 @@ table.ct td.wd{white-space:nowrap}
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.73.1";   /* 1.73.1 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */   /* 1.73.0 (3 Nov 2026) - the old hisab paper opens from here, for everyone */   /* 1.72.0 (3 Nov 2026) - a return is priced the same on every phone: old product codes found, a stale shelf catalogue refreshed */   /* 1.71.0 (31 Oct 2026) - one tap, one entry */   /* 1.70.1 (27 Oct 2026) - GHp mark in the middle of every QR, level H */   /* 1.67.0 - flush busy flag + B9 owner guard, narrower sign-out, Old book under ☰ */
+  var APP_VERSION = "1.74.0";   /* 1.74.0 (9 Nov 2026) - FIMA in every finish: a return or a hisab line in a finish code (F1301WLX9CS) finds its product, brand and price */     /* 1.73.1 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */   /* 1.73.0 (3 Nov 2026) - the old hisab paper opens from here, for everyone */   /* 1.72.0 (3 Nov 2026) - a return is priced the same on every phone: old product codes found, a stale shelf catalogue refreshed */   /* 1.71.0 (31 Oct 2026) - one tap, one entry */   /* 1.70.1 (27 Oct 2026) - GHp mark in the middle of every QR, level H */   /* 1.67.0 - flush busy flag + B9 owner guard, narrower sign-out, Old book under ☰ */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -2136,17 +2136,84 @@ function cancelMap() {
      phone's shelf copy still had the old spelling, the exact match found nothing, and the balance read
      Rs 1,352 too high. The old spelling stays on the product under `was`; this looks there too, and
      ignores case. Byte-for-byte the CRM's retProd. */
+  /* 1.74.0 - FIMA IN EVERY FINISH (the CRM's 6.9.943 block, word for word, as in Challan 1.153) */
+  var FIMA_FIN_NAME = { CR: "Chrome", CN: "Black Chrome", SN: "Brushed Nickel", CS: "Brushed Black Chrome", NS: "Black Matt", BS: "White Matt",
+    BG: "Ivory White", SG: "Sand Grey", VE: "Agave Green", AZ: "Indigo Blue", RB: "Burgundy Red", LN: "Polished Nickel", HL: "Champagne",
+    HS: "Brushed Champagne", OR: "Gold", OS: "Brushed Gold", ZL: "Amber Bronze", ZS: "Brushed Amber Bronze", KS: "Brushed Moka Bronze", INOX: "Stainless Steel",
+    CE: "Grey Concrete", LC: "Light Wood", LS: "Dark Wood" };   /* 6.9.945 - the So handles' "materials" (price list p.159) */
+  var FIMA_FIN_RE = /^(.*?)(INOX|CR|CN|SN|CS|NS|BS|BG|SG|VE|AZ|RB|LN|HL|HS|OR|OS|ZL|ZS|KS|CE|LC|LS)(\.[A-Z0-9]+|\d\/\d)?$/;
+  var _ffD = null, _ffIx = null, _ffAt = 0;
+  function fimaFinOf(code) { var m = String(code || "").match(FIMA_FIN_RE); return m ? m[2] : ""; }
+  function fimaFinLoad() {
+    if (_ffD || (_ffAt && Date.now() - _ffAt < 60000)) return;
+    _ffAt = Date.now();
+    fetch("../assets/fima/fima_fin.json?v=4").then(function (r) { return r.json(); }).then(function (d) {
+      if (!d || !d.r) return;
+      _ffD = d; _ffIx = null; _pcbCache = null;
+      try { render(); } catch (e) { }
+    }).catch(function () { });
+  }
+  function fimaFinIndex() {
+    if (_ffIx && _ffIx.n === PRODUCTS.length) return _ffIx;
+    if (!_ffD) { fimaFinLoad(); return { n: -1, code: {}, by: {} }; }
+    var ix = { n: PRODUCTS.length, code: {}, by: {} }, base = {};
+    PRODUCTS.forEach(function (p) { if (p && p.code) base[p.code] = p; });
+    Object.keys(_ffD.r).forEach(function (rc) {
+      var p = base[rc]; if (!p) return;
+      var d0 = String(p.desc || ""), cut = d0.lastIndexOf(" - "), own = FIMA_FIN_NAME[fimaFinOf(rc)] || "";
+      var stem0 = d0, tail = cut > 0 ? d0.slice(cut + 3) : "";
+      if (own && tail.indexOf(own) === 0) stem0 = d0.slice(0, cut);
+      var sp = String(p.specs || "").split(" || Other finishes")[0], rs = rc.replace(FIMA_FIN_RE, "$1"), L = [];
+      _ffD.r[rc].f.forEach(function (x) {
+        var c = String(x[0]); if (base[c]) return;
+        var fin = fimaFinOf(c), st = c.replace(FIMA_FIN_RE, "$1");
+        var fnm = typeof x[3] === "string" ? x[3] : (FIMA_FIN_NAME[fin] || fin);   /* 6.9.945 - a named finish (S2 glass) */
+        var desc = stem0 + " - " + fnm + (typeof x[3] !== "string" && st !== rs ? " \u00b7 option " + st : "") +
+          (x.length > 2 && _ffD.vl[x[2]] ? " (" + String(_ffD.vl[x[2]]).toLowerCase() + ")" : "");
+        var v = { code: c, family: p.family, desc: desc, cat: p.cat, unit: p.unit, price: Number(x[1]) || 0, brand: p.brand,
+          pic: (_ffD.p && _ffD.p[c]) ? "../assets/fima/" + _ffD.p[c] : p.pic, finPic: !!(_ffD.p && _ffD.p[c]),   /* 6.9.947 - its own finish photo where one exists */
+          specs: sp, was: "", label: c + " - " + desc, fin: 1, of: rc };
+        ix.code[c] = v; L.push(v);
+      });
+      if (L.length) ix.by[rc] = L;
+    });
+    return (_ffIx = ix);
+  }
+  /* 6.9.946 - HIS WORDS: "add a small coloured finish badge on the picture". FIMA publishes one (chrome) photo per
+     product, so a finish code shows that photo; a dot in the finish's colour on its corner tells Gold from Black Matt.
+     Colours read off FIMA's own colour-collection pages (price list p.26-27 and the handle finishes, p.159-161). */
+  var FIMA_FIN_HEX = { CR: "#c7ccd1", CN: "#3a3d42", SN: "#a8a398", CS: "#4b4a47", NS: "#1d1d1d", BS: "#f5f5f3", BG: "#e8e0cf",
+    SG: "#c8c1b4", VE: "#7f9e74", AZ: "#6f97ad", RB: "#9b3a2b", LN: "#d9d4ca", HL: "#e5d7a6", HS: "#d0c294", OR: "#d8b257",
+    OS: "#c7a659", ZL: "#b9693c", ZS: "#a8633e", KS: "#6c6356", INOX: "#b8bbbe", CE: "#9b9b97", LC: "#c9a57a", LS: "#6a4a31" };
+  var FIMA_GLASS_HEX = ["#b9bcbf", "#9a7457", "#c9a85a", "#c98f8f", "#7f9e74", "#e8e0cf"];
+  function fimaBadgeOf(code) {
+    var c = String(code == null ? "" : code).trim(); if (!c) return null;
+    var v = fimaFinGet(c), g = c.match(/^S2VS?0([1-6])$/);
+    if (g) return { hex: FIMA_GLASS_HEX[Number(g[1]) - 1], label: v ? String(v.desc).split(" - ").pop() : "Glass" };
+    var f = fimaFinOf(c); if (!f || !FIMA_FIN_HEX[f]) return null;
+    if (!v) { var b = ""; try { b = typeof productBrandByCode === "function" ? String(productBrandByCode(c) || "") : ""; } catch (e) { b = ""; } if (!/fima/i.test(b)) return null; }
+    return { hex: FIMA_FIN_HEX[f], label: FIMA_FIN_NAME[f] + " (" + f + ")" };
+  }
+  function fimaPicWrap(code, imgHtml) {
+    var b = fimaBadgeOf(code); if (!b) return imgHtml;
+    return '<span style="position:relative;display:inline-flex;flex:0 0 auto">' + imgHtml +
+      '<span title="' + b.label + '" aria-label="' + b.label + '" style="position:absolute;right:-4px;bottom:-4px;width:16px;height:16px;border-radius:50%;background:' + b.hex +
+      ';border:2px solid #fff;box-shadow:0 0 0 1px rgba(15,23,42,.35)"></span></span>';
+  }
+  function fimaFinGet(c) { return fimaFinIndex().code[String(c == null ? "" : c)] || null; }
+  function fimaFinVariants(c) { return fimaFinIndex().by[String(c == null ? "" : c)] || []; }
+  function prodByCode(c) {
+    for (var i = 0; i < PRODUCTS.length; i++) if (PRODUCTS[i].code === c) return PRODUCTS[i];
+    return fimaFinGet(c);   /* 6.9.943 - a FIMA finish code */
+  }
   function retProd(code) {
     var k = String(code == null ? "" : code).trim(); if (!k) return null;
+    var p = prodByCode(k); if (p) return p;
     var lk = k.toLowerCase();
     for (var i = 0; i < PRODUCTS.length; i++) {
       var q = PRODUCTS[i]; if (!q) continue;
-      if (String(q.code || "").trim() === k) return q;
-    }
-    for (var i2 = 0; i2 < PRODUCTS.length; i2++) {
-      var q2 = PRODUCTS[i2]; if (!q2) continue;
-      if (String(q2.code || "").trim().toLowerCase() === lk) return q2;
-      var w = q2.was || []; for (var j = 0; j < w.length; j++) if (String(w[j] || "").trim().toLowerCase() === lk) return q2;
+      if (String(q.code || "").trim().toLowerCase() === lk) return q;
+      var w = q.was || []; for (var j = 0; j < w.length; j++) if (String(w[j] || "").trim().toLowerCase() === lk) return q;
     }
     return null;
   }
@@ -2262,7 +2329,10 @@ function cancelMap() {
         if (b) _pcbCache[String(p.code)] = b;
       });
     }
-    return _pcbCache[String(code == null ? "" : code)] || "";
+    var _pb = _pcbCache[String(code == null ? "" : code)];
+    if (_pb) return _pb;
+    var _fv = fimaFinGet(code);   /* 6.9.943 */
+    return _fv ? (realBrand(_fv) || "") : "";
   }
   /* 6.9.860 / CRM - FREIGHT ON A BILLED DELIVERY CARRIES 18% GST. A bill no (on the challan, or accounts' bill:set fact)
      turns the client-borne freight into freight x 1.18; accounts' bill:freight fact can say Energy World bears it (0). */
