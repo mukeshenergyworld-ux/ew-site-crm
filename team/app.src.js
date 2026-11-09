@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.947";   /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
+  var APP_VERSION = "6.9.949";   /* 6.9.949 (9 Nov 2026) - quote PDF: a product picture stays inside its own row (1.2 mm clear of both lines) */     /* 6.9.948 (9 Nov 2026) - quote PDF: each room heading carries its collection and finish with colour dots; every FIMA code chip has its finish dot */     /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -13360,6 +13360,8 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       '<span title="' + b.label + '" aria-label="' + b.label + '" style="position:absolute;right:-4px;bottom:-4px;width:16px;height:16px;border-radius:50%;background:' + b.hex +
       ';border:2px solid #fff;box-shadow:0 0 0 1px rgba(15,23,42,.35)"></span></span>';
   }
+  /* 6.9.948 - the finish colour for jsPDF: [r,g,b] */
+  function fimaHexRgb(h) { var m = String(h || "").match(/^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i); return m ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)] : null; }
   function fimaFinGet(c) { return fimaFinIndex().code[String(c == null ? "" : c)] || null; }
   function fimaFinVariants(c) { return fimaFinIndex().by[String(c == null ? "" : c)] || []; }
   /* a room's collection and finish, read off its FIMA lines: built-in parts carry no finish, so a room holding only
@@ -23334,6 +23336,8 @@ function viewCatalogue() {
         var _code = String(r.code || "");   /* 6.9.758 - the code is a tag; the name starts beside it */
         F("normal"); doc.setFontSize(8);   /* 6.9.793 - was 7.5 */
         var _cw = _code ? doc.getTextWidth(_code) + 2.8 : 0;
+        var _fb = null; try { _fb = _code ? fimaBadgeOf(_code) : null; } catch (eFb) { _fb = null; }   /* 6.9.948 - the finish dot in the code chip */
+        var _fbc = _fb ? fimaHexRgb(_fb.hex) : null; if (_fbc) _cw += 3.4;
         F("normal"); doc.setFontSize(9);
         var _w1 = DESC_W - _cw - 1.8, _words = String(r.title || "").split(/\s+/).filter(Boolean), _l1 = "";
         while (_words.length && doc.getTextWidth((_l1 ? _l1 + " " : "") + _words[0]) <= _w1) _l1 = (_l1 ? _l1 + " " : "") + _words.shift();
@@ -23372,7 +23376,10 @@ function viewCatalogue() {
           try {
             /* 6.9.759 - the box IS the cell: from the serial column to the description, and the row's own
                height less a margin, so a picture can never reach the row above or below */
-            var BOXW = 14, BOXH = Math.min(17, hgt - 1.2);   /* v6.9.773 - a 14 mm box before Unit; 6.9.913 - as tall as the row allows (8.8 mm on a one-line row) */
+            /* 6.9.949 - HIS WORDS: "product pics in pdf looks like entering other item space". The row runs between the hairline
+               above (y - 2.8) and its own (y + hgt - 2.8); the picture was centred on y - 3.6 and 8.8 mm tall, so its white
+               square covered the line above. Now it sits in that band with 1.2 mm clear at top and bottom. */
+            var BOXW = 14, BOXH = Math.min(14, hgt - 2.4);   /* v6.9.773 - a 14 mm box before Unit; 6.9.913 - as tall as the row allows (8.8 mm on a one-line row) */
             var dm = null;
             try { var _ip = doc.getImageProperties(r.pic); if (_ip && _ip.width && _ip.height) dm = { w: _ip.width, h: _ip.height }; } catch (e3) { }   /* 6.9.762 - the picture's own size */
             if (!dm) dm = (r.dim && r.dim.w && r.dim.h) ? r.dim : { w: BOXW, h: BOXH };
@@ -23382,7 +23389,7 @@ function viewCatalogue() {
                (long, wrapped description) used to leave the picture stuck at the top while the
                text ran down beside it - the tank looked top-aligned. Centre it on the row band
                (which starts at y-3.6 and is `hgt` tall) so every photo sits mid-row. */
-            doc.addImage(r.pic, "JPEG", X.pic + 1 + (BOXW - pw) / 2, (y - 3.6) + (hgt - ph) / 2, pw, ph);
+            doc.addImage(r.pic, "JPEG", X.pic + 1 + (BOXW - pw) / 2, (y - 2.8) + (hgt - ph) / 2, pw, ph);
           } catch (e) { }
         }
 
@@ -23392,6 +23399,10 @@ function viewCatalogue() {
         if (_code) {
           fill([232, 245, 242]); doc.roundedRect(X.item, _ty - 2.9, _cw, 3.9, 0.8, 0.8, "F");
           col(TEALD); F("normal"); doc.setFontSize(8); doc.text(_code, X.item + 1.4, _ty);
+          if (_fbc) {
+            doc.setFillColor(_fbc[0], _fbc[1], _fbc[2]); doc.setDrawColor(100, 116, 139); doc.setLineWidth(0.15);
+            doc.circle(X.item + _cw - 2.3, _ty - 0.95, 1.25, "FD"); doc.setLineWidth(0.2);
+          }
         }
         col(r.optional ? [146, 64, 14] : INK); F("normal"); doc.setFontSize(9);
         tLines.forEach(function (tl, k) { if (tl) doc.text(tl, k === 0 ? X.item + _cw + 1.6 : X.item, _ty + k * 3.7); });
@@ -23434,14 +23445,38 @@ function viewCatalogue() {
              heading alone at the foot of a page is a promise the page does not keep */
           /* 6.9.760 - his group name, wrapped to the full width; no count (it printed over a long name), no block */
           var _gl = fitCell(doc, F, pdfSafe(g.room || "Other items"), Rt - X.item - 2, 2, "normal", 9.5);
-          if (y + 8 + _gl.length * 4 > 272) { doc.addPage(); y = 20; head(); }
+          /* 6.9.948 - HIS WORDS: "show color finish in pdf also, may be after room name". The collection and finish
+             he typed for the room (else read off its FIMA codes, "Yet to decide" when only built-in parts),
+             with a dot in each finish's own colour, on a line under the room name. */
+          var _fx = null, _fd = [];
+          try {
+            if (g.room) {
+              var _rt = (items[0] && items[0].rx && items[0].rx[g.room]) || null, _ra = qzRoomAuto(items, g.room);
+              if (_rt || _ra) _fx = { c: (_rt && _rt.c) || (_ra && _ra.c) || "", f: (_rt && _rt.f) || (_ra && _ra.f) || "" };
+              var _seen = {};
+              g.rows.forEach(function (r) { var b = fimaBadgeOf(r.code); if (b && !_seen[b.hex]) { _seen[b.hex] = 1; var c3 = fimaHexRgb(b.hex); if (c3) _fd.push(c3); } });
+            }
+          } catch (eFx) { _fx = null; _fd = []; }
+          var _fxT = _fx ? [_fx.c ? "Collection: " + _fx.c : "", _fx.f ? "Finish: " + _fx.f : ""].filter(Boolean).join("   \u00b7   ") : "";
+          var _fxL = _fxT ? fitCell(doc, F, pdfSafe(_fxT), Rt - X.item - 2 - _fd.length * 4, 2, "normal", 8.5) : [];
+          if (y + 8 + _gl.length * 4 + _fxL.length * 3.8 > 272) { doc.addPage(); y = 20; head(); }
           /* v6.9.774 - his option 3: the heading in amber over an amber line, so a group name is never
              mistaken for an item (the item codes and figures are teal / black) */
           var _gh = 1.8 + (_gl.length - 1) * 4;
           col([180, 83, 9]); F("normal"); doc.setFontSize(9.5);
           _gl.forEach(function (gl, k) { doc.text(gl, X.item, y + 0.6 + k * 4); });
+          if (_fxL.length) {
+            var _fy = y + 0.6 + _gl.length * 4, _fxX = X.item;
+            _fd.forEach(function (c3) {
+              doc.setFillColor(c3[0], c3[1], c3[2]); doc.setDrawColor(100, 116, 139); doc.setLineWidth(0.15);
+              doc.circle(_fxX + 1.5, _fy - 1.05, 1.5, "FD"); _fxX += 4;
+            });
+            doc.setLineWidth(0.2); col(GREY); F("normal"); doc.setFontSize(8.5);
+            _fxL.forEach(function (fl, k) { doc.text(fl, _fxX + (_fd.length ? 0.6 : 0), _fy + k * 3.8); });
+            _gh += _fxL.length * 3.8;
+          }
           doc.setDrawColor(251, 191, 36); doc.setLineWidth(0.3); doc.line(X.item, y + _gh, Rt, y + _gh); doc.setLineWidth(0.2);
-          y += 6.4 + (_gl.length - 1) * 4;
+          y += 6.4 + (_gl.length - 1) * 4 + _fxL.length * 3.8;
         }
         g.rows.forEach(function (r) { drawRow(r, _sn++); });
         if (grouped) {   /* 6.9.761 - one slim total line under each group, as on his supplier's quote */
