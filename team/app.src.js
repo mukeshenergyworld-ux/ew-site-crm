@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.935";   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
+  var APP_VERSION = "6.9.936";   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -31761,6 +31761,7 @@ function viewCatalogue() {
   function admBrandSplit(cl) {
     var tk = admTakenMap(cl), took = [], other = [];
     admClientBrands(cl).forEach(function (b) {
+      if (retiredBrand(b)) return;   /* 6.9.936 - Huliot retired: not a column in the rate table (admClientBrands itself unchanged, the earnings check reads it) */
       if (tk[dkey(b)]) took.push(b); else other.push(b);
     });
     return { took: took, other: other, map: tk };
@@ -31921,6 +31922,7 @@ function viewCatalogue() {
   function agrRatesNow(cl) {
     var out = [];
     admClientBrands(cl).forEach(function (b) {
+      if (retiredBrand(b)) return;   /* 6.9.936 */
       var d = discRow(cl, b), p = d ? (Number(d.pct) || 0) : 0;
       if (p > 0) out.push({ brand: String(b), pct: p });
     });
@@ -32154,7 +32156,7 @@ function viewCatalogue() {
         return '<tr style="background:' + bg + '">' + TD('<b>' + r[0] + '</b>', ';position:sticky;left:0;z-index:1;background:' + bg + ';min-width:150px') +
           brands.map(function (b) { return TD(r[1](b)); }).join('') + '</tr>';
       }).join('') + '</tbody></table></div>';
-    var more = admClientBrands(cl).length - brands.length;
+    var more = admClientBrands(cl).filter(function (b) { return !retiredBrand(b); }).length - brands.length;   /* 6.9.936 */
     if (more > 0) h += '<div class="meta" style="font-size:12px;color:#94a3b8">' + more + (more === 1 ? ' other brand has' : ' other brands have') + ' no rate on file \u2014 Edit to set one.</div>';
     return h;
   }
