@@ -283,7 +283,7 @@ body{background:#F4F6F9}
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.152.0";   /* 1.152.0 (8 Nov 2026) - Add to Hisab: who earns, without incentive % or amount */   /* 1.151.0 (8 Nov 2026) - incentive card: any number of discount slabs (shared block) */   /* 1.150.0 (2 Nov 2026) - EW <-> MPS are normal challans again; they add to the other godown after its count */   /* 1.149.0 (1 Nov 2026) - the godown receives a transfer on this phone */   /* 1.148.0 (1 Nov 2026) - a transfer lands only when the other godown receives it */   /* 1.147.0 (1 Nov 2026) - two godowns: MPS Sonipat has its own stock; MPS staff see MPS work only; no challan to MPS (it is a transfer) */   /* 1.146.0 (31 Oct 2026) - one tap, one entry: a second tap on a write button is swallowed */   /* 1.145.0 - vehicle no asked every time a driver is picked (not for Porter / Rapido); 1.144.0 lorry check */
+  var APP_VERSION = "1.153.0";   /* 1.153.0 (9 Nov 2026) - FIMA in every finish: any of 14,260 finish codes (F1301WLX9CS ...) can go on a challan at its own MRP */     /* 1.152.0 (8 Nov 2026) - Add to Hisab: who earns, without incentive % or amount */   /* 1.151.0 (8 Nov 2026) - incentive card: any number of discount slabs (shared block) */   /* 1.150.0 (2 Nov 2026) - EW <-> MPS are normal challans again; they add to the other godown after its count */   /* 1.149.0 (1 Nov 2026) - the godown receives a transfer on this phone */   /* 1.148.0 (1 Nov 2026) - a transfer lands only when the other godown receives it */   /* 1.147.0 (1 Nov 2026) - two godowns: MPS Sonipat has its own stock; MPS staff see MPS work only; no challan to MPS (it is a transfer) */   /* 1.146.0 (31 Oct 2026) - one tap, one entry: a second tap on a write button is swallowed */   /* 1.145.0 - vehicle no asked every time a driver is picked (not for Porter / Rapido); 1.144.0 lorry check */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -3319,7 +3319,53 @@ function discRowOn(client, brand, onYmd) {
   /* bumped wherever an input to chValue can have changed - the book, the discount table, the
      catalogue. Cheap: one integer, and every stamped row recomputes once on the next read. */
   var _valGen = 0;
-  var _pcbCache = null;
+  /* 1.153.0 - FIMA IN EVERY FINISH (the CRM's 6.9.943 block, word for word) */
+  var FIMA_FIN_NAME = { CR: "Chrome", CN: "Black Chrome", SN: "Brushed Nickel", CS: "Brushed Black Chrome", NS: "Black Matt", BS: "White Matt",
+    BG: "Ivory White", SG: "Sand Grey", VE: "Agave Green", AZ: "Indigo Blue", RB: "Burgundy Red", LN: "Polished Nickel", HL: "Champagne",
+    HS: "Brushed Champagne", OR: "Gold", OS: "Brushed Gold", ZL: "Amber Bronze", ZS: "Brushed Amber Bronze", KS: "Brushed Moka Bronze", INOX: "Stainless Steel" };
+  var FIMA_FIN_RE = /^(.*?)(INOX|CR|CN|SN|CS|NS|BS|BG|SG|VE|AZ|RB|LN|HL|HS|OR|OS|ZL|ZS|KS)(\.[A-Z0-9]+|\d\/\d)?$/;
+  var _ffD = null, _ffIx = null, _ffAt = 0;
+  function fimaFinOf(code) { var m = String(code || "").match(FIMA_FIN_RE); return m ? m[2] : ""; }
+  function fimaFinLoad() {
+    if (_ffD || (_ffAt && Date.now() - _ffAt < 60000)) return;
+    _ffAt = Date.now();
+    fetch("../assets/fima/fima_fin.json?v=1").then(function (r) { return r.json(); }).then(function (d) {
+      if (!d || !d.r) return;
+      _ffD = d; _ffIx = null; _pcbCache = null; _plcCache = null;
+      try { keepScroll = true; render(); } catch (e) { }
+    }).catch(function () { });
+  }
+  function fimaFinIndex() {
+    if (_ffIx && _ffIx.n === PRODUCTS.length) return _ffIx;
+    if (!_ffD) { fimaFinLoad(); return { n: -1, code: {}, by: {} }; }
+    var ix = { n: PRODUCTS.length, code: {}, by: {} }, base = {};
+    PRODUCTS.forEach(function (p) { if (p && p.code) base[p.code] = p; });
+    Object.keys(_ffD.r).forEach(function (rc) {
+      var p = base[rc]; if (!p) return;
+      var d0 = String(p.desc || ""), cut = d0.lastIndexOf(" - "), own = FIMA_FIN_NAME[fimaFinOf(rc)] || "";
+      var stem0 = d0, tail = cut > 0 ? d0.slice(cut + 3) : "";
+      if (own && tail.indexOf(own) === 0) stem0 = d0.slice(0, cut);
+      var sp = String(p.specs || "").split(" || Other finishes")[0], rs = rc.replace(FIMA_FIN_RE, "$1"), L = [];
+      _ffD.r[rc].f.forEach(function (x) {
+        var c = String(x[0]); if (base[c]) return;
+        var fin = fimaFinOf(c), st = c.replace(FIMA_FIN_RE, "$1");
+        var desc = stem0 + " - " + (FIMA_FIN_NAME[fin] || fin) + (st !== rs ? " \u00b7 option " + st : "") +
+          (x.length > 2 && _ffD.vl[x[2]] ? " (" + String(_ffD.vl[x[2]]).toLowerCase() + ")" : "");
+        var v = { code: c, family: p.family, desc: desc, cat: p.cat, unit: p.unit, price: Number(x[1]) || 0, brand: p.brand,
+          pic: p.pic, specs: sp, was: "", label: c + " - " + desc, fin: 1, of: rc };
+        ix.code[c] = v; L.push(v);
+      });
+      if (L.length) ix.by[rc] = L;
+    });
+    return (_ffIx = ix);
+  }
+  function fimaFinGet(c) { return fimaFinIndex().code[String(c == null ? "" : c)] || null; }
+  function fimaFinVariants(c) { return fimaFinIndex().by[String(c == null ? "" : c)] || []; }
+  function prodByCodeC(c) {
+    for (var i = 0; i < PRODUCTS.length; i++) if (PRODUCTS[i].code === c) return PRODUCTS[i];
+    return fimaFinGet(c);
+  }
+  var _pcbCache = null, _plcCache = null, keepScroll = false;
   function productBrandByCode(code) {
     if (!_pcbCache) {
       _pcbCache = {};
@@ -3329,7 +3375,10 @@ function discRowOn(client, brand, onYmd) {
         if (b) _pcbCache[String(p.code)] = b;
       });
     }
-    return _pcbCache[String(code == null ? "" : code)] || "";
+    var _pb = _pcbCache[String(code == null ? "" : code)];
+    if (_pb) return _pb;
+    var _fv = fimaFinGet(code);   /* 1.153.0 */
+    return _fv ? (realBrand(_fv) || "") : "";
   }
   function pricedLines(c, cl) {
     var items = []; try { items = JSON.parse(c.itemsJson || "[]"); } catch (e) { items = []; }
@@ -3560,10 +3609,21 @@ function discRowOn(client, brand, onYmd) {
   function prodsMatching(q) {
     var s2 = lower(q).trim();
     if (s2.length < 2) return [];
-    return PRODUCTS.filter(function (p) {
+    var out = PRODUCTS.filter(function (p) {
       return (String(p.desc || "") + " " + String(p.code || "") + " " + String(p.brand || "") + " " +
               String(brandOf(p) || "") + " " + String(p.family || "") + " " + String(p.cat || "")).toLowerCase().indexOf(s2) >= 0;
     }).slice(0, 60);
+    /* 1.153.0 - FIMA's other finishes after the catalogue's own rows; a typed full code first */
+    if (out.length < 60 && s2.length >= 3) {
+      var fix = fimaFinIndex(), fex = fix.code[String(q || "").trim().toUpperCase()];
+      if (fex) out.unshift(fex);
+      Object.keys(fix.code).some(function (c) {
+        var v = fix.code[c]; if (v === fex) return false;
+        if ((v.code + " " + v.desc).toLowerCase().indexOf(s2) >= 0) out.push(v);
+        return out.length >= 60;
+      });
+    }
+    return out;
   }
   function pkRow(x) {
     var have = qtyOf(x.code);
@@ -3716,7 +3776,7 @@ function discRowOn(client, brand, onYmd) {
     var holder = into === "rt" ? S.rt : S.ch;
     if (!holder) return;
     holder.items = holder.items || [];
-    var prod = PRODUCTS.filter(function (x) { return x.code === code; })[0];
+    var prod = prodByCodeC(code);
     if (!prod) return;
     var qn = num(q);
     var i, hit = -1;
@@ -5132,7 +5192,7 @@ function discRowOn(client, brand, onYmd) {
       '<label>Date received</label><input id="grn_date" type="date" value="' + esc(g.date || today()) + '"/></div>' +
       '<datalist id="grn_prods">' + opts + '</datalist><div class="card"><h3 style="margin:0 0 4px">What came off the lorry</h3>';
     g.lines.forEach(function (l, i) {
-      var p = PRODUCTS.filter(function (x) { return x.code === l.code; })[0];
+      var p = prodByCodeC(l.code);
       h += '<div style="border-top:1px solid #e2e8f0;padding-top:8px;margin-top:8px"><input id="grn_c' + i + '" list="grn_prods" placeholder="Product - type code or name" value="' + esc(l.code || "") + '"/>' +
         (p ? '<div class="muted" style="margin:3px 0">' + esc(p.desc) + (p.unit ? ' · ' + esc(p.unit) : '') + '</div>' : '') +
         '<input id="grn_q' + i + '" inputmode="decimal" placeholder="Quantity" value="' + esc(l.qty || "") + '" style="margin-top:6px"/></div>';
@@ -9035,7 +9095,7 @@ function discRowOn(client, brand, onYmd) {
     };
     if (item.rate != null && item.rate !== "" && num(item.rate) > 0) {
       var _fb = String(item.brand || "");
-      if (!_fb) { var _fp = PRODUCTS.filter(function (x) { return String(x.code || "").trim() === String(item.code == null ? "" : item.code).trim(); })[0]; if (_fp) _fb = String(realBrand(_fp) || _fp.brand || ""); }
+      if (!_fb) { var _fp = PRODUCTS.filter(function (x) { return String(x.code || "").trim() === String(item.code == null ? "" : item.code).trim(); })[0] || fimaFinGet(String(item.code == null ? "" : item.code).trim()); if (_fp) _fb = String(realBrand(_fp) || _fp.brand || ""); }
       return { amt: rnNet(item.rate, _rd(item.disc, _fb), item.qty), src: "frozen" };
     }
     var code = String(item.code == null ? "" : item.code).trim();
@@ -9063,7 +9123,7 @@ function discRowOn(client, brand, onYmd) {
        A guessed price is not a price he agreed - but it is a great deal closer to the truth
        than pretending the goods were never returned. */
     if (code) {
-      var pr = PRODUCTS.filter(function (x) { return String(x.code || "").trim() === code; })[0];
+      var pr = PRODUCTS.filter(function (x) { return String(x.code || "").trim() === code; })[0] || fimaFinGet(code);   /* 1.153.0 */
       if (pr && Number(pr.price) > 0) {
         var brnd = String(item.brand || realBrand(pr) || pr.brand || "");
         return { amt: rnNet(pr.price, clientDiscount(r.customerName, brnd), item.qty), src: "catalogue" };
@@ -10033,7 +10093,7 @@ function discRowOn(client, brand, onYmd) {
       var _rows = {}, _ord = [], _bad = "";
       _g.lines.forEach(function (l) {
         if (!l.code && !l.qty) return;
-        var p = PRODUCTS.filter(function (x) { return x.code === l.code; })[0], q = num(l.qty);
+        var p = prodByCodeC(l.code), q = num(l.qty);
         if (!p) { _bad = _bad || ("Pick \"" + l.code + "\" from the product list."); return; }
         if (!(q > 0)) { _bad = _bad || ("Quantity for " + p.desc + "."); return; }
         if (!_rows[p.code]) { _rows[p.code] = { code: p.code, qty: 0, desc: p.desc }; _ord.push(p.code); }
