@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.939";   /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
+  var APP_VERSION = "6.9.940";   /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -31650,6 +31650,9 @@ function viewCatalogue() {
     var roles = chIncRoles(c, nmLower);
     if (roles && roles.indexOf("exec") < 0) return 0;
     var _eday = rateDayOf(c);
+    /* 6.9.940 - plan term: "this plan replaces the executive column on the incentive card" from 1 Jan 2027.
+       Deliveries up to 31 Dec 2026 keep the card's executive rate; from 1 Jan he earns through the plan only. */
+    if (String(_eday || "") >= "2027-01-01") return 0;
     /* 6.9.693 - with no stamp, the executive is whoever held the client on the delivery's day */
     if (roles === null && dkey(incHolderOn(cl.name, "exec", _eday)) !== dkey(nmLower)) return 0;
     return execRateFor(cl.name, br, _eday, dsc);   /* v6.9.350 - the day of the delivery */
@@ -32961,12 +32964,12 @@ function viewCatalogue() {
       try {   /* 6.9.937 - the plan month, for the Visit header (no salary in it: slabs only) */
         var xp = xpMonth(u.name, ym), xq = xpQuarter(u.name, ym);
         sn.p = { v: 1, trial: !!xp.rule.trial, whatIf: !!xp.rule.whatIf, slabs: xp.slabs.map(Math.round), pct: XP_PCT, k: xp.k, net: Math.round(xp.net), cnt: Math.round(xp.cnt),
-          half: Math.round(xp.half), ret: Math.round(xp.ret), inc: Math.round(xp.inc), capped: xp.capped, sep: Math.round(xp.sep), leftN: xp.left.length, leftV: Math.round(xp.leftV),
+          half: Math.round(xp.half), ret: Math.round(xp.ret), inc: Math.round(xp.inc), ip: { r: Math.round(xp.ip.incPaid), w: Math.round(xp.ip.incWait), l: Math.round(xp.ip.incLap) }, capped: xp.capped, sep: Math.round(xp.sep), leftN: xp.left.length, leftV: Math.round(xp.leftV),
           left: xp.left.slice(0, 8).map(function (l) { return { ch: l.ch, b: l.brand, v: Math.round(l.v), w: l.why }; }),
           q: { label: xq.label, tot: Math.round(xq.tot), th: xq.th.map(Math.round), k: xq.qk, x: Math.round(xq.extra) } };
         if (ym >= XP_START) sn.tgt = Math.round(xp.slabs[0] || 0);
       } catch (eXp) { }
-      var key = function (o) { return o ? [o.ym, o.tgt, o.sales, o.n, o.ret, o.earned, o.rel, o.p ? [o.p.net, o.p.k, o.p.inc, o.p.sep, o.p.leftN, o.p.q && o.p.q.tot].join(",") : ""].join("|") : ""; };
+      var key = function (o) { return o ? [o.ym, o.tgt, o.sales, o.n, o.ret, o.earned, o.rel, o.p ? [o.p.net, o.p.k, o.p.inc, o.p.sep, o.p.leftN, o.p.q && o.p.q.tot, o.p.ip ? o.p.ip.r : ""].join(",") : ""].join("|") : ""; };
       if (key(xSnapLast(u.name)) === key(sn)) return;   /* nothing moved - nothing written */
       auditFact("exec:snap", u.name, sn);
     });
@@ -33067,6 +33070,7 @@ function viewCatalogue() {
     }).sort(function (a, b) { return a._at < b._at ? 1 : -1; });
     return (_xpApC = { n: n, dec: dec, pending: pending, answered: answered });
   }
+  function daysBetweenXp(a, b) { return Math.round((new Date(String(b).slice(0, 10) + "T12:00:00") - new Date(String(a).slice(0, 10) + "T12:00:00")) / 86400000); }
   function xpApprovedFor(client, ck, day) {
     var L = xpApprovals().dec[dkey(dupMainName(client)) + "|" + ck]; if (!L) return null;
     var r = null;
@@ -33133,24 +33137,38 @@ function viewCatalogue() {
     return mine;
   }
   var _xpCache = {};
+  /* 6.9.940 - plan terms: incentive is paid on what the client has paid; a delivery still unpaid 180 days after dispatch lapses.
+     Paid share per challan from agingItems (payments and returns applied to the oldest deliveries first - the same
+     arithmetic as the ageing, the dues and the credit stop), cached per client family for one pass. */
+  var _xpPf = { k: "", m: {} };
+  function xpPaidFrac(c) {
+    var k = (S.data.payments || []).length + "|" + (S.data.challans || []).length + "|" + (S.data.returns || []).length;
+    if (_xpPf.k !== k) _xpPf = { k: k, m: {} };
+    var fk = dkey(dupMainName(c.customerName));
+    if (!_xpPf.m[fk]) { var mm = {}; try { agingItems(c.customerName).forEach(function (it) { if (it.id) mm[it.id] = it; }); } catch (e) { } _xpPf.m[fk] = mm; }
+    var it = _xpPf.m[fk][String(c.id || "")];
+    if (!it) return 1;   /* not in his open book (credit, cancelled twin) - nothing owed on it */
+    return it.orig > 0.5 ? Math.max(0, Math.min(1, 1 - it.amt / it.orig)) : 1;
+  }
   function xpMonth(name, ym) {
-    var ck = name + "|" + ym + "|" + (S.data.challans || []).length + "|" + (S.data.returns || []).length + "|" + (S.data.audit || []).length;
+    var ck = name + "|" + ym + "|" + (S.data.challans || []).length + "|" + (S.data.returns || []).length + "|" + (S.data.audit || []).length + "|" + (S.data.payments || []).length;
     if (_xpCache[ck]) return _xpCache[ck];
     var rule = xpRule(ym), pay = xpPay(name, ym), sal = pay.salary, mine = xpMine(name);
-    var sales = 0, cnt = 0, half = 0, sep = 0, n = 0, left = [], ret = 0, retAll = 0, apv = 0;
+    var sales = 0, cnt = 0, half = 0, sep = 0, n = 0, left = [], ret = 0, retAll = 0, apv = 0, cPaid = 0, cLap = 0, td0 = today();
     dedupeChallans((S.data.challans || []).filter(function (c) {
       return c && !isCancelled("challans", c.id) && mine[dkey(c.customerName)] &&
         (/^(dispatched|received|delivered)$/i.test(String(c.status || "").trim()) || String(c.receiptReceived).toUpperCase() === "Y") &&
         xYm(c.dispatchedAt || c.createdAt) === ym;
     })).forEach(function (c) {
-      n++; var cday = localDay(c.dispatchedAt || c.createdAt), tb = xpTb(cday);
+      n++; var cday = localDay(c.dispatchedAt || c.createdAt), tb = xpTb(cday), cC = 0;
       pricedLines(c, clientByName(c.customerName)).forEach(function (l) {
         if (l.job) return;
         var v = (Number(l.amt) || 0) / 1.18; sales += v;
         var bk = xpKey(l.brand), r = xpLine(rule, tb, bk, l.disc, v, xpApprovedFor(c.customerName, bk, cday));
-        cnt += r.cnt; if (r.half) half += r.cnt; if (r.ap) apv += r.cnt; sep += r.sep || 0;
+        cnt += r.cnt; cC += r.cnt; if (r.half) half += r.cnt; if (r.ap) apv += r.cnt; sep += r.sep || 0;
         if (r.why) left.push({ ch: c.challanNo || "", cl: c.customerName || "", brand: l.brand || "", v: v, why: r.why, sep: r.sep || 0, ck: bk, d: Number(l.disc) || 0, day: cday, ab: !/outside/.test(r.why) });
       });
+      if (cC > 0.5) { var pf = xpPaidFrac(c); cPaid += cC * pf; if (pf < 0.999 && daysBetweenXp(cday, td0) > 180) cLap += cC * (1 - pf); }
     });
     (S.data.returns || []).forEach(function (rt) {   /* returns booked in this month, whenever the goods were sold */
       if (!rt || isCancelled("returns", rt.id) || !mine[dkey(rt.customerName)] || String(rt.status || "").trim().toLowerCase() !== "received") return;
@@ -33170,7 +33188,9 @@ function viewCatalogue() {
     var raw = k >= 0 ? net * XP_PCT[k] / 100 : 0, cap = XP_CAP * sal, inc = Math.min(raw, cap);
     var nx = k + 1 < slabs.length ? { i: k + 1, need: Math.max(0, slabs[k + 1] - net), pct: XP_PCT[k + 1], at: slabs[k + 1] } : null;
     left.sort(function (a, b) { return b.v - a.v; });
-    return (_xpCache[ck] = { ym: ym, rule: rule, pay: pay, sal: sal, sales: sales, n: n, cnt: cnt, half: half, apv: apv, ret: ret, retAll: retAll, net: net,
+    var fP = cnt > 0.5 ? cPaid / cnt : 0, fL = cnt > 0.5 ? cLap / cnt : 0;
+    var ip = { paid: cPaid, lap: cLap, wait: Math.max(0, cnt - cPaid - cLap), incPaid: inc * fP, incLap: inc * fL, incWait: Math.max(0, inc * (1 - fP - fL)) };
+    return (_xpCache[ck] = { ym: ym, rule: rule, pay: pay, sal: sal, sales: sales, n: n, cnt: cnt, half: half, apv: apv, ip: ip, ret: ret, retAll: retAll, net: net,
       sep: Math.max(0, sep), left: left, leftV: left.reduce(function (s2, x) { return s2 + x.v; }, 0), slabs: slabs, k: k, raw: raw, inc: inc, capped: raw > cap + 0.5, cap: cap, next: nx });
   }
   /* 6.9.938 - his daily reports for a month: working days with a visit (the attendance rule) and the days without */
@@ -33221,7 +33241,11 @@ function viewCatalogue() {
         td('<b>' + money(x.net) + '</b>' + (x.ret > 0.5 ? '<div class="meta" style="font-size:12px">returns −' + money(x.ret) + '</div>' : '') + (x.half > 0.5 ? '<div class="meta" style="font-size:12px">half-value ' + money(x.half) + '</div>' : '') + (x.apv > 0.5 ? '<div class="meta" style="font-size:12px;color:#166534">approved ' + money(x.apv) + '</div>' : '')) +
         td(x.left.length ? '<button class="btn sm ghost" data-act="xp-open" data-n="' + esc(u.name) + '" style="min-height:44px">' + money(x.leftV) + ' · ' + x.left.length + ' line' + (x.left.length === 1 ? '' : 's') + '</button>' : '&mdash;') +
         td(slab, 'left') +
-        td('<b>' + money(x.inc) + '</b>' + (x.capped ? '<div class="meta" style="font-size:12px;color:#b45309">capped at 1.5× salary</div>' : '')) +
+        td('<b>' + money(x.inc) + '</b>' + (x.capped ? '<div class="meta" style="font-size:12px;color:#b45309">capped at 1.5× salary</div>' : '') +
+          (x.inc > 0.5 ? '<div class="meta" style="font-size:12px;color:#166534">ready ' + money(x.ip.incPaid) + '</div>' + (x.ip.incWait > 0.5 ? '<div class="meta" style="font-size:12px">waits for payment ' + money(x.ip.incWait) + '</div>' : '') +
+            (x.ip.incLap > 0.5 ? '<div class="meta" style="font-size:12px;color:#b91c1c">lapsed ' + money(x.ip.incLap) + '</div>' : '') : '') +
+          '<div style="display:flex;gap:4px;justify-content:flex-end;margin-top:4px"><button class="btn sm ghost" data-act="xp-pdf" data-n="' + esc(u.name) + '" style="min-height:44px">PDF</button>' +
+          '<button class="btn sm ghost" data-act="xp-wa" data-n="' + esc(u.name) + '" style="min-height:44px;color:#15803d">WhatsApp</button></div>') +
         td(x.sep > 0.5 ? money(x.sep) : '&mdash;') +
         td(esc(q.label) + ': ' + money(q.tot) + '<div class="meta" style="font-size:12px">' + (q.qk >= 0 ? 'Q' + (q.qk + 1) + ' reached · +' + money(q.extra) : 'Q1 at ' + xpL(q.th[0])) + '</div>', 'left') +
         (function () { try { var rp = xpReports(u.name, ym); return td(rp.work ? '<b>' + rp.rep + ' / ' + rp.work + '</b>' + (rp.miss ? '<div class="meta" style="font-size:12px;color:#b45309">' + rp.miss + ' missed</div>' : '<div class="meta" style="font-size:12px;color:#166534">all reported</div>') : '&mdash;'); } catch (e) { return td('&mdash;'); } })() + '</tr>';
@@ -33232,12 +33256,101 @@ function viewCatalogue() {
           (x.left.length > 40 ? '<tr><td colspan="5" class="meta" style="padding:3px 6px">+ ' + (x.left.length - 40) + ' more</td></tr>' : '') + '</table></td></tr>';
       }
     });
-    h += '</table></div><div class="meta" style="margin-top:6px;font-size:12px">Counted = his own clients’ dispatches, after discount, before GST, brands in target within their limit, less returns booked in this month. Incentive = slab % on all counted sales, at most 1.5× salary. Payable-as-paid, the 180-day lapse and the Visit &amp; Quote header come in the next phases.</div>' +
+    var _dn = new Date().getDate(), _cur = ym === xYm(today());
+    h += '</table></div>' + (_cur && _dn >= 20 ? '<div style="margin-top:8px;padding:8px 10px;border-radius:10px;background:#e0f2fe;color:#075985;font-size:13px">&#128197; <b>20th reminder due.</b> Press WhatsApp on each executive &mdash; the message says what he still needs for the next slab.</div>' : '') +
+      (_cur && _dn <= 7 ? '<div style="margin-top:8px;padding:8px 10px;border-radius:10px;background:#f0fdfa;color:#0f766e;font-size:13px">&#128196; <b>Last month&rsquo;s statements are due.</b> Press &lsaquo; above, then PDF and WhatsApp for each executive.</div>' : '') +
+      (!_cur && ym === xYm(new Date(Date.now() - 20 * 86400000).toISOString()) ? '<div style="margin-top:8px;padding:8px 10px;border-radius:10px;background:#f0fdfa;color:#0f766e;font-size:13px">&#128196; <b>' + esc(monthLabel(ym)) + ' statements.</b> Press PDF for each executive&rsquo;s statement and WhatsApp for the summary.</div>' : '') +
+      '<div class="meta" style="margin-top:6px;font-size:12px">Counted = his own clients’ dispatches, after discount, before GST, brands in target within their limit (or approved), less returns booked in this month. Incentive = slab % on all counted sales, at most 1.5× salary. Ready = the share his clients have paid (oldest deliveries first); a delivery unpaid 180 days after dispatch lapses.</div>' +
       '<div class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap"><button class="btn sm ghost" data-act="xp-edit" data-w="pay" style="min-height:44px">Salaries for the plan</button>' +
       '<button class="btn sm ghost" data-act="xp-edit" data-w="tb" style="min-height:44px">Target brands &amp; limits</button></div>';
     if (S.xpEdit === "pay") h += xpPayHtml(team);
     if (S.xpEdit === "tb") h += xpTbHtml();
     return h + '</div>';
+  }
+  /* 6.9.940 - HIS EXECUTIVE'S MONTH ON PAPER: the statement for the 20th / month end and the December trial.
+     No salary printed - the slab ladder only. Trial and preview months say so across the top. */
+  function xpWaText(name, ym) {
+    var x = xpMonth(name, ym), q = xpQuarter(name, ym), first = String(name).split(" ")[0], cur = ym === xYm(today()), d = new Date();
+    var st = x.rule.whatIf ? " (preview - plan starts 1 Dec 2026)" : x.rule.trial ? " (trial month - not paid)" : "";
+    var L = ["Energy World - incentive plan 2027", monthLabel(ym) + st, "", "Hi " + first + ","];
+    L.push("Counted sales: " + money(x.net) + (x.ret > 0.5 ? " (after " + money(x.ret) + " returns)" : ""));
+    L.push(x.k >= 0 ? "Slab " + (x.k + 1) + " reached - " + XP_PCT[x.k] + "% = incentive " + money(x.inc) : "Below slab 1 (" + money(x.slabs[0]) + ")");
+    if (x.next) L.push((cur ? "Still to go: " : "Was short by ") + money(x.next.need) + " for slab " + (x.next.i + 1) + " (" + x.next.pct + "% on everything)" + (cur ? " - " + (new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate() - d.getDate() + 1) + " days left" : ""));
+    if (x.inc > 0.5) L.push("Ready (clients paid): " + money(x.ip.incPaid) + (x.ip.incWait > 0.5 ? " | waits for payment: " + money(x.ip.incWait) : "") + (x.ip.incLap > 0.5 ? " | lapsed: " + money(x.ip.incLap) : ""));
+    if (x.sep > 0.5) L.push("Other brands (separate): " + money(x.sep));
+    if (x.left.length) L.push(x.left.length + " line" + (x.left.length === 1 ? "" : "s") + " left out of target (" + money(x.leftV) + ") - see Visit app");
+    L.push(q.label + " so far: " + money(q.tot) + (q.qk >= 0 ? " - Q" + (q.qk + 1) + " reached" : " - Q1 at " + money(q.th[0])));
+    try { var rp = xpReports(name, ym); if (rp.work) L.push("Daily reports: " + rp.rep + " of " + rp.work + " working days" + (rp.miss ? " (" + rp.miss + " missed)" : "")); } catch (e) { }
+    L.push("", cur ? "Collect payments too - incentive is paid on what clients have paid." : "Full statement PDF from the office.");
+    return L.join("\n");
+  }
+  function xpStatementPdf(name, ym) {
+    var x = xpMonth(name, ym), q = xpQuarter(name, ym), rp = null; try { rp = xpReports(name, ym); } catch (e) { }
+    return loadLogo().then(function () {
+      var doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4" });
+      var F = function (b) { doc.setFont(ppEmbed(doc), b ? "bold" : "normal"); };
+      var W = 210, L = 14, R = W - 14, y = 0, SC = [[56, 189, 248], [14, 165, 233], [37, 99, 235], [124, 58, 237], [22, 163, 74]];
+      var M = function (v) { return pdfSafe(money(v)); };
+      doc.setFillColor(11, 59, 54); doc.rect(0, 0, W, 27, "F"); doc.setFillColor(94, 234, 212); doc.rect(0, 27, W, 1, "F");
+      if (LOGO_B64) { try { doc.addImage(LOGO_B64, "JPEG", L, 6, 25, 13); } catch (e) { } }
+      F(1); doc.setFontSize(14); doc.setTextColor(255, 255, 255); doc.text("INCENTIVE STATEMENT", R, 12, { align: "right" });
+      F(0); doc.setFontSize(9); doc.setTextColor(160, 205, 199); doc.text(pdfSafe(name) + "  \u00b7  " + pdfSafe(monthLabel(ym)) + "  \u00b7  plan 2027", R, 19, { align: "right" });
+      y = 35;
+      if (x.rule.whatIf || x.rule.trial) {
+        doc.setFillColor(254, 243, 199); doc.roundedRect(L, y, R - L, 9, 2, 2, "F"); F(1); doc.setFontSize(10); doc.setTextColor(146, 64, 14);
+        doc.text(x.rule.whatIf ? "PREVIEW - the plan starts 1 December 2026. Nothing on this page is payable." : "TRIAL MONTH - worked out under the new plan to show you. Not paid.", W / 2, y + 6, { align: "center" }); y += 14;
+      }
+      var tile = function (i, v, l, col) {
+        var w = (R - L - 9) / 4, xx = L + i * (w + 3);
+        doc.setDrawColor(226, 232, 240); doc.setFillColor(255, 255, 255); doc.roundedRect(xx, y, w, 20, 2, 2, "FD");
+        F(1); doc.setFontSize(12.5); doc.setTextColor.apply(doc, col || [15, 23, 42]); doc.text(pdfSafe(v), xx + 3, y + 9);
+        F(0); doc.setFontSize(8); doc.setTextColor(71, 85, 105); doc.text(pdfSafe(l), xx + 3, y + 15.5);
+      };
+      tile(0, money(x.net), "Counted sales"); tile(1, x.k >= 0 ? "Slab " + (x.k + 1) + " \u00b7 " + XP_PCT[x.k] + "%" : "Below slab 1", "Slab reached", x.k >= 0 ? SC[x.k] : [100, 116, 139]);
+      tile(2, money(x.inc), "Incentive" + (x.capped ? " (capped)" : ""), [15, 118, 110]); tile(3, money(x.sep), "Other brands (separate)", x.sep > 0.5 ? [22, 163, 74] : null);
+      y += 27;
+      /* the ladder */
+      F(1); doc.setFontSize(10.5); doc.setTextColor(15, 23, 42); doc.text("Your slab ladder this month", L, y); y += 3;
+      var cw = (R - L) / x.slabs.length;
+      x.slabs.forEach(function (sv, i) {
+        var on = i <= x.k, xx = L + i * cw;
+        if (on) { doc.setFillColor.apply(doc, SC[i]); } else doc.setFillColor(241, 245, 249);
+        doc.rect(xx, y, cw - 1.5, 13, "F");
+        F(1); doc.setFontSize(9.5); if (on) doc.setTextColor(255, 255, 255); else doc.setTextColor(51, 65, 85);
+        doc.text("Slab " + (i + 1) + "  \u00b7  " + XP_PCT[i] + "%", xx + 2.5, y + 5.5); F(0); doc.setFontSize(8.5); doc.text(M(sv), xx + 2.5, y + 10.5);
+      });
+      y += 20;
+      var row = function (a, b, col, bold) { F(bold); doc.setFontSize(9.5); doc.setTextColor.apply(doc, col || [30, 41, 59]); doc.text(pdfSafe(a), L + 2, y); doc.text(pdfSafe(b), R - 2, y, { align: "right" }); doc.setDrawColor(241, 245, 249); doc.line(L, y + 2, R, y + 2); y += 6.5; };
+      F(1); doc.setFontSize(10.5); doc.setTextColor(15, 23, 42); doc.text("How the counted sales are made", L, y); y += 6;
+      row("All sales to your clients (before GST, " + x.n + " challans)", money(x.sales));
+      row("Not counted in full (" + x.left.length + " lines)", "- " + money(x.leftV), [185, 28, 28]);
+      if (x.half > 0.5) row("Included at half value (2% grace)", money(x.half), [180, 83, 9]);
+      if (x.apv > 0.5) row("Included above the limit, approved by the owner", money(x.apv), [22, 101, 52]);
+      if (x.ret > 0.5) row("Returns booked this month", "- " + money(x.ret), [185, 28, 28]);
+      row("Counted sales", money(x.net), [15, 23, 42], 1);
+      y += 3; F(1); doc.setFontSize(10.5); doc.setTextColor(15, 23, 42); doc.text("Incentive and payment", L, y); y += 6;
+      row(x.k >= 0 ? "Slab " + (x.k + 1) + ": " + XP_PCT[x.k] + "% on " + money(x.net) + (x.capped ? " (capped at 1.5 x salary)" : "") : "Below slab 1 - no target incentive", money(x.inc), [15, 118, 110], 1);
+      row("Ready - your clients have paid", money(x.ip.incPaid), [22, 101, 52]);
+      row("Waits for the clients' payment", money(x.ip.incWait), [71, 85, 105]);
+      if (x.ip.incLap > 0.5) row("Lapsed - unpaid 180 days after dispatch", money(x.ip.incLap), [185, 28, 28]);
+      if (x.sep > 0.5) row("Other brands, separate incentive", money(x.sep), [22, 163, 74]);
+      row(q.label + " so far" + (q.qk >= 0 ? " - Q" + (q.qk + 1) + " reached" : " - Q1 at " + money(q.th[0]) + ", Q2 at " + money(q.th[1])), money(q.tot) + (q.qk >= 0 ? "  (+" + money(q.extra) + ")" : ""));
+      if (rp && rp.work) row("Daily reports", rp.rep + " of " + rp.work + " working days" + (rp.miss ? " (" + rp.miss + " missed)" : ""), rp.miss ? [180, 83, 9] : [22, 101, 52]);
+      if (x.left.length) {
+        y += 3; F(1); doc.setFontSize(10.5); doc.setTextColor(15, 23, 42); doc.text("Lines left out of your target", L, y); y += 5.5;
+        F(0); doc.setFontSize(8.2);
+        x.left.forEach(function (l) {
+          if (y > 282) { doc.addPage(); y = 16; F(0); doc.setFontSize(8.2); }
+          doc.setTextColor(71, 85, 105); doc.text(pdfSafe(l.ch), L + 1, y); doc.setTextColor(30, 41, 59); doc.text(pdfSafe(String(l.cl).slice(0, 34)), L + 30, y); doc.text(pdfSafe(String(l.brand).slice(0, 18)), L + 92, y);
+          doc.text(M(l.v), L + 140, y, { align: "right" }); doc.setTextColor(/half/.test(l.why) ? 180 : /outside/.test(l.why) ? 71 : 185, /half/.test(l.why) ? 83 : /outside/.test(l.why) ? 85 : 28, /half/.test(l.why) ? 9 : /outside/.test(l.why) ? 105 : 28);
+          doc.text(pdfSafe(String(l.why).replace(/\u2013/g, "-")).slice(0, 40), L + 143, y); y += 4.6;
+        });
+      }
+      if (y > 270) { doc.addPage(); y = 16; }
+      y += 4; F(0); doc.setFontSize(7.8); doc.setTextColor(100, 116, 139);
+      doc.text(doc.splitTextToSize("Counted = your clients' dispatches, after discount, before GST, brands in target within their limit (or approved by the owner), less returns booked this month. The slab % is paid on all counted sales, at most 1.5 x salary. Incentive is paid on what clients have paid (oldest deliveries first); a delivery unpaid 180 days after dispatch lapses. CRM figures are final.", R - L), L, y);
+      return pdfOut(doc, "EW_incentive_" + String(name).replace(/[^A-Za-z0-9]+/g, "_") + "_" + ym + ".pdf", "Incentive statement");
+    });
   }
   /* 6.9.939 - discounts waiting for his approval, newest first, with the last approvals under them */
   function xpAskHtml() {
@@ -33894,7 +34007,7 @@ function viewCatalogue() {
       '<div style="overflow:auto;max-height:72vh;border-radius:10px;border:' + bd + '"><table style="border-collapse:collapse;width:100%;min-width:720px;font-size:13px">' +
       '<tr><th style="position:sticky;top:0;z-index:3;padding:8px;font-size:12px;font-weight:700;color:#fff;background:#0b3b36;text-align:left">Brand</th>' +
       '<th style="position:sticky;top:0;z-index:3;padding:8px 4px;font-size:12px;font-weight:700;color:#fff;background:#0b3b36">Slab</th>' +
-      th("Disc up to %", "upto") + th("Plumber %", "plumber") + th("Architect %", "architect") + th("PMC %", "pmc") + th("Builder %", "builder") + th("Exec %", "exec") + '</tr>' +
+      th("Disc up to %", "upto") + th("Plumber %", "plumber") + th("Architect %", "architect") + th("PMC %", "pmc") + th("Builder %", "builder") + th("Exec % &middot; till 31 Dec 2026", "exec") + '</tr>' +
       rows.map(function (r, ri) {
         var L = (r.slabs || []).slice(), more = (S.icdMore && S.icdMore[incKey(r.brand)]) || 0;
         for (var j = 0; j < more; j++) L.push({});
@@ -64725,6 +64838,13 @@ function viewCatalogue() {
     }
     if (act === "xp-ym") { var _d = Number(t.getAttribute("data-d")) || 0, _c = S.xpYm || xYm(today()); var _y = Number(_c.slice(0, 4)), _m = Number(_c.slice(5, 7)) - 1 + _d; S.xpYm = new Date(_y, _m, 1).getFullYear() + "-" + String(new Date(_y, _m, 1).getMonth() + 1).padStart(2, "0"); keepScroll = true; render(); return; }   /* 6.9.937 */
     if (act === "xp-open") { var _n = t.getAttribute("data-n") || ""; S.xpOpen = S.xpOpen || {}; S.xpOpen[_n] = !S.xpOpen[_n]; keepScroll = true; render(); return; }
+    if (act === "xp-pdf") { var _pn = t.getAttribute("data-n"); xpStatementPdf(_pn, S.xpYm || xYm(today())).catch(function (e) { toast("Could not make the PDF: " + String((e && e.message) || e)); }); return; }   /* 6.9.940 */
+    if (act === "xp-wa") {
+      var _wn = t.getAttribute("data-n"), _wm = (S.data.team || []).filter(function (u) { return u && dkey(u.name) === dkey(_wn); })[0] || {};
+      var _num = String(_wm.mobile || "").replace(/\D/g, ""); if (_num.length === 10) _num = "91" + _num;
+      window.open("https://wa.me/" + _num + "?text=" + encodeURIComponent(xpWaText(_wn, S.xpYm || xYm(today()))), "_blank");
+      return;
+    }
     if (act === "xp-ask-ok" || act === "xp-ask-no") {   /* 6.9.939 */
       var _id = t.getAttribute("data-id"), _q = xpApprovals().pending.filter(function (q) { return q._id === _id; })[0];
       if (!_q) { toast("Already decided."); render(); return; }
