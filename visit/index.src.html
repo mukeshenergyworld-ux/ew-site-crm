@@ -239,7 +239,7 @@ table.att td.ok,table.att td.no{font-size:16px}
       button: function () { return '<button type="button" class="ewthm" onclick="ewTheme.next(this)">' + ewtLabel() + '</button>'; }
     };
   })();
-  var APP_VERSION = "1.11.0";   /* 1.11.0 (8 Nov 2026) - my month on top: sales, returns, target, incentive, what to dispatch */   /* 1.10.1 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */   /* 1.10.0 (4 Nov 2026) - quote as in the CRM: item-wise discount, option lines, item-wise rates without total, GST */   /* 1.9.1 (31 Oct 2026) - one tap, one entry */   /* 1.9.0 (29 Oct 2026) - Menu -> Online enquiries (FB, IG, Google, Justdial, IndiaMART ... from the OnlineEnquiries tab) */   /* 1.8.4 (27 Oct 2026) - GHp mark in the middle of every QR, level H */   /* 1.6.1 - Huliot Group introduction on quotes; 1.6.0 (17 Oct 2026) - a dropped POST never loses a quote; admin sees every executive; daily report; attendance grid */
+  var APP_VERSION = "1.12.0";   /* 1.12.0 (9 Nov 2026) - the 2027 plan on top (counted sales, slab ladder, left-out lines, quarter) and daily reports: entered, missed, streak */   /* 1.11.0 (8 Nov 2026) - my month on top: sales, returns, target, incentive, what to dispatch */   /* 1.10.1 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */   /* 1.10.0 (4 Nov 2026) - quote as in the CRM: item-wise discount, option lines, item-wise rates without total, GST */   /* 1.9.1 (31 Oct 2026) - one tap, one entry */   /* 1.9.0 (29 Oct 2026) - Menu -> Online enquiries (FB, IG, Google, Justdial, IndiaMART ... from the OnlineEnquiries tab) */   /* 1.8.4 (27 Oct 2026) - GHp mark in the middle of every QR, level H */   /* 1.6.1 - Huliot Group introduction on quotes; 1.6.0 (17 Oct 2026) - a dropped POST never loses a quote; admin sees every executive; daily report; attendance grid */
   /* 1.6.0 - ONLY THE SERVER'S OWN "NO" SIGNS A MAN OUT. The old test was /pin|locked|not allowed|blocked|removed/:
      any data error that happened to contain "not allowed" or "removed" (a refused row, a removed brand) signed the
      executive out and wiped his snapshot. These are the sign-in answers the server gives (teamAuth: "Wrong name or
@@ -2489,6 +2489,87 @@ table.att td.ok,table.att td.no{font-size:16px}
     return { net: net, done: done, gone: gone, left: left, gap: gap, extra: gap * (x.rate || 0), perDay: gap / left, days: days,
       st: !(x.tgt > 0) ? "none" : done >= 1 ? "met" : done >= gone - 0.1 ? "ok" : "behind" };
   }
+
+  /* ===== 1.12.0 - THE 2027 PLAN ON TOP, AND HIS DAILY REPORTS  (9 Nov 2026) =====
+     The office CRM (6.9.937) publishes each executive's plan month inside exec:snap as "p": counted sales, the slab ladder,
+     the slab reached, incentive, other brands, the lines left out and the quarter. No salary travels; only the ladder.
+     HIS WORDS for the second panel: "show in header daily report entered and missed count in polished way, he will be
+     motivated towards that also". A daily report = a working day with at least one visit (the attendance rule, attDay). */
+  var XP_SC = ["#38bdf8", "#0ea5e9", "#2563eb", "#7c3aed", "#16a34a"];
+  function xpL(v) { return "₹" + (Math.round((Number(v) || 0) / 1000) / 100).toFixed(2).replace(/\.?0+$/, "") + " L"; }
+  function xPlanHead(x, who, adm) {
+    var p = x.p, mon = new Date().toLocaleString("en-IN", { month: "long", year: "numeric" });
+    var n = new Date(), days = new Date(n.getFullYear(), n.getMonth() + 1, 0).getDate(), gone = n.getDate() / days, left = days - n.getDate();
+    var endDay = days + " " + n.toLocaleString("en-IN", { month: "short" }), k = p.k, sl = p.slabs || [], pct = p.pct || [0.25, 0.5, 0.75, 1, 1.5];
+    var nx = k + 1 < sl.length ? { i: k + 1, need: Math.max(0, sl[k + 1] - p.net), pct: pct[k + 1] } : null;
+    var tag = p.whatIf ? '<span style="background:#fef3c7;color:#92400e;font-weight:700;font-size:12px;padding:3px 8px;border-radius:99px">preview &middot; plan starts 1 Dec</span>'
+      : p.trial ? '<span style="background:#dbeafe;color:#1e40af;font-weight:700;font-size:12px;padding:3px 8px;border-radius:99px">trial month &middot; not paid</span>' : '';
+    var t = function (v, l, c) { return '<div style="flex:1 1 130px;border:1px solid #e2e8f0;border-radius:10px;padding:8px 10px;background:#fff"><div style="font-weight:800;font-size:17px;color:' + (c || "#0f172a") + '">' + v + '</div><div class="meta" style="font-size:12px">' + l + '</div></div>'; };
+    var top = sl.length ? sl[sl.length - 1] * 1.12 : 1, X = function (v) { return Math.max(0, Math.min(100, v / top * 100)); };
+    var bar = '<div style="position:relative;height:12px;border-radius:7px;background:#e2e8f0;margin:14px 0 22px">' +
+      '<div style="position:absolute;left:0;top:0;bottom:0;width:' + X(Math.max(0, p.net)) + '%;border-radius:7px;background:' + (k >= 0 ? XP_SC[k] : '#94a3b8') + '"></div>' +
+      sl.map(function (v, i) { return '<div style="position:absolute;top:-4px;bottom:-4px;left:' + X(v) + '%;width:2px;background:#0f172a"></div>' +
+        '<div style="position:absolute;top:15px;left:' + X(v) + '%;transform:translateX(-50%);font-size:12px;white-space:nowrap;color:' + (i <= k ? XP_SC[i] : '#475569') + ';font-weight:' + (i <= k ? 700 : 400) + '">' + (i + 1) + '</div>'; }).join("") + '</div>';
+    var msg = k >= sl.length - 1
+      ? ['#dcfce7', '#166534', '<b>Top slab reached.</b> ' + pct[k] + '% is paid on all your counted sales this month' + (p.capped ? ' (the 1.5 &times; salary maximum applies)' : '') + '. Excellent work.']
+      : nx ? [k >= 0 ? '#e0f2fe' : '#fef3c7', k >= 0 ? '#075985' : '#92400e', (k >= 0 ? '<b>Slab ' + (k + 1) + ' reached.</b> ' : '') + money(nx.need) + ' more counted sales by ' + esc(endDay) + ' takes you to slab ' + (nx.i + 1) + ': <b>' + nx.pct + '% on everything</b> this month' + (left > 0 ? ' &middot; ' + left + ' day' + (left === 1 ? '' : 's') + ' left' : '') + '.']
+      : ['#f1f5f9', '#475569', ''];
+    var lo = '';
+    if (p.leftN > 0) {
+      var open = S.xpLeftOpen;
+      lo = '<div style="margin-top:6px"><button class="btn sm gry" data-act="xp-left" style="min-height:44px">' + p.leftN + ' line' + (p.leftN === 1 ? '' : 's') + ' left out of your target &middot; ' + money(p.leftV) + (open ? ' &#9650;' : ' &#9660;') + '</button>' +
+        (open ? '<div style="margin-top:6px;font-size:13px">' + (p.left || []).map(function (l) {
+          var c = /half/.test(l.w) ? '#b45309' : /outside/.test(l.w) ? '#475569' : '#b91c1c';
+          return '<div style="display:flex;gap:8px;flex-wrap:wrap;padding:4px 0;border-top:1px solid #e2e8f0"><span style="min-width:120px">' + esc(l.ch) + '</span><b>' + esc(l.b) + '</b><span>' + money(l.v) + '</span><span style="color:' + c + '">' + esc(l.w) + '</span></div>';
+        }).join("") + (p.leftN > (p.left || []).length ? '<div class="meta" style="font-size:12px">+ ' + (p.leftN - p.left.length) + ' more &mdash; the office can show the full list.</div>' : '') + '</div>' : '') + '</div>';
+    }
+    var q = p.q || {}, qth = q.th || [];
+    var ql = q.label ? '<div class="meta" style="font-size:12.5px;margin-top:6px">' + esc(q.label) + ' so far: <b>' + money(q.tot) + '</b>' + (q.k >= 0 ? ' &middot; Q' + (q.k + 1) + ' reached, extra ' + money(q.x) : qth.length ? ' &middot; Q1 at ' + xpL(qth[0]) + ' (+0.25%), Q2 at ' + xpL(qth[1]) + ' (+0.5%)' : '') + '</div>' : '';
+    return '<div class="card" style="margin-top:8px"><div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center"><div class="ttl2" style="flex:1 1 auto">' + (adm ? esc(who) + '&rsquo;s month' : 'My month') + ' &mdash; ' + esc(mon) + '</div>' + tag + '</div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">' +
+        t(money(p.net), 'Counted sales' + (p.ret > 0 ? ' &middot; after ' + money(p.ret) + ' returns' : '') + (p.half > 0 ? ' &middot; ' + money(p.half) + ' at half value' : '')) +
+        t(nx ? xpL(nx.need + p.net) + ' &middot; ' + nx.pct + '%' : 'Top slab', nx ? 'Next slab (' + (nx.i + 1) + ')' : 'Every slab reached', nx ? '' : '#16a34a') +
+        t(money(p.inc), 'Incentive so far' + (k >= 0 ? ' &middot; slab ' + (k + 1) + ' at ' + pct[k] + '%' : ''), '#0f766e') +
+        t(money(p.sep), 'Other brands (separate)', p.sep > 0 ? '#16a34a' : '') +
+      '</div>' + bar +
+      '<div class="meta" style="font-size:12px;margin-top:4px">' + Math.round(gone * 100) + '% of the month gone</div>' +
+      (msg[2] ? '<div style="margin-top:8px;padding:8px 10px;border-radius:10px;background:' + msg[0] + ';color:' + msg[1] + ';font-size:13px">' + msg[2] + '</div>' : '') +
+      lo + ql + xDailyHtml(who) +
+      '<div class="meta" style="font-size:12px;margin-top:6px">Counted = your clients&rsquo; dispatches after discount, before GST, brands in target within their limit, less returns. As of ' + esc(fd(x.at)) + ' ' + esc(String(new Date(x.at).toTimeString()).slice(0, 5)) + '.</div></div>';
+  }
+  /* daily reports this month: entered on working days, the days without one, the streak, the last 7 days */
+  function xDailyHtml(who) {
+    var td = today(), ym = td.slice(0, 7), vd = attVisitDays(who), mk = attMarks(), d0 = ym + "-01";
+    if (d0 < ATT_FROM) d0 = ATT_FROM;
+    var day = function (s) { return new Date(s + "T12:00:00"); }, iso = function (dt) { return dt.getFullYear() + "-" + String(dt.getMonth() + 1).padStart(2, "0") + "-" + String(dt.getDate()).padStart(2, "0"); };
+    var rep = 0, miss = [], extra = 0, open = false;
+    for (var dt = day(d0); iso(dt) <= td; dt.setDate(dt.getDate() + 1)) {
+      var st = attDay(who, iso(dt), vd, mk);
+      if (st === "P") rep++; else if (st === "A") miss.push(iso(dt)); else if (st === "W") extra++; else if (st === "T") open = true;
+    }
+    var work = rep + miss.length, streak = 0;
+    for (var d2 = day(td), guard = 0; guard < 60; guard++, d2.setDate(d2.getDate() - 1)) {
+      var s2 = attDay(who, iso(d2), vd, mk);
+      if (s2 === "T") continue; if (s2 === "P" || s2 === "W") { streak++; continue; } if (s2 === "O" || s2 === "H" || s2 === "L") continue; break;
+    }
+    var dots = [];
+    for (var i = 6; i >= 0; i--) {
+      var d3 = day(td); d3.setDate(d3.getDate() - i); var s3 = attDay(who, iso(d3), vd, mk);
+      var c = s3 === "P" || s3 === "W" ? "#16a34a" : s3 === "A" ? "#f59e0b" : s3 === "T" ? "#fff" : "#cbd5e1";
+      dots.push('<span title="' + esc(fd(iso(d3)) + " – " + (ATT_SAY[s3] || "")) + '" style="display:inline-block;width:14px;height:14px;border-radius:50%;margin-right:4px;background:' + c + ';border:2px solid ' + (s3 === "T" ? "#0ea5e9" : c) + '"></span>');
+    }
+    if (!work && !open) return "";
+    var nm = esc(String(who || "").split(" ")[0]), pctR = work ? Math.round(rep / work * 100) : 100;
+    var note = !miss.length
+      ? (open ? 'Every working day reported so far &mdash; today&rsquo;s report is still open; add your first visit when you can.' : 'Every working day reported this month &mdash; thank you, ' + nm + '.')
+      : miss.length + ' working day' + (miss.length === 1 ? '' : 's') + ' without a report this month (' + miss.slice(-3).map(function (x) { return Number(x.slice(8)); }).join(", ") + ' ' + n3() + '). ' + (open ? 'Today&rsquo;s report is still open.' : 'A visit entry each working day keeps your record clean.');
+    function n3() { return new Date().toLocaleString("en-IN", { month: "short" }); }
+    var ms = streak >= 20 ? ' &middot; <b>' + streak + ' working days in a row &mdash; outstanding.</b>' : streak >= 10 ? ' &middot; <b>' + streak + ' in a row &mdash; well done.</b>' : streak >= 2 ? ' &middot; ' + streak + '-day streak' : '';
+    return '<div style="margin-top:10px;padding:8px 10px;border-radius:10px;border:1px solid #e2e8f0;background:#f8fafc">' +
+      '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center"><b style="flex:1 1 auto">Daily reports &middot; ' + esc(new Date().toLocaleString("en-IN", { month: "long" })) + '</b><span>' + dots.join("") + '</span></div>' +
+      '<div style="font-size:14px;margin-top:4px"><b style="color:' + (miss.length ? '#0f172a' : '#166534') + '">' + rep + ' of ' + work + ' working day' + (work === 1 ? '' : 's') + ' reported</b> &middot; ' + pctR + '%' + ms + (extra ? ' &middot; +' + extra + ' on a day off' : '') + '</div>' +
+      '<div class="meta" style="font-size:12.5px;margin-top:2px;color:' + (miss.length ? '#92400e' : '#475569') + '">' + note + '</div></div>';
+  }
   function xHeadHtml() {
     var ym = today().slice(0, 7), adm = roleIs("admin");
     if (adm && !S.ex) {   /* admin, whole team: one line per executive */
@@ -2498,11 +2579,13 @@ table.att td.ok,table.att td.no{font-size:16px}
       return '<div class="card" style="margin-top:8px"><div class="ttl2">Team this month</div>' + L.map(function (x) {
         var p = xPaceOf(x), col = p.st === "met" ? "#166534" : p.st === "ok" ? "#075985" : p.st === "behind" ? "#991b1b" : "#64748b";
         return '<div class="meta" style="display:flex;gap:8px;flex-wrap:wrap;padding:4px 0;border-top:1px solid #e2e8f0"><b style="min-width:110px">' + esc(x.exec) + '</b>' +
+          (x.p && x.p.v ? '<span>counted ' + money(x.p.net) + ' &middot; ' + (x.p.k >= 0 ? 'slab ' + (x.p.k + 1) : 'below slab 1') + '</span><span>incentive ' + money(x.p.inc) + '</span>' :
           '<span>net ' + money(p.net) + (x.tgt ? ' of ' + money(x.tgt) + ' (<b style="color:' + col + '">' + Math.round(p.done * 100) + '%</b>)' : ' &middot; no target') + '</span>' +
-          '<span>incentive ' + money(x.earned) + '</span></div>';
+          '<span>incentive ' + money(x.earned) + '</span>') + '</div>';
       }).join("") + '</div>';
     }
     var who = adm ? S.ex : S.user, x = xSnapOf(who);
+    if (x && x.ym === ym && x.p && x.p.v) return xPlanHead(x, who, adm);   /* 1.12.0 - the 2027 plan, once the CRM publishes it */
     if (!x || x.ym !== ym) return '<div class="card" style="margin-top:8px"><div class="ttl2">My month</div><div class="meta">Your sales and incentive for this month appear here once the office CRM has refreshed today.</div></div>';
     var p = xPaceOf(x), endDay = p.days + " " + new Date().toLocaleString("en-IN", { month: "short" });
     var bar = x.tgt > 0 ? '<div style="height:10px;border-radius:6px;background:#e2e8f0;margin:6px 0 2px;position:relative;overflow:hidden">' +
@@ -3591,6 +3674,7 @@ table.att td.ok,table.att td.no{font-size:16px}
     var t = ev.target.closest ? ev.target.closest("[data-act]") : null; if (!t) return;
     var act = t.getAttribute("data-act"), k = t.getAttribute("data-k"), id = t.getAttribute("data-id");
     if (act === "sheet-bg") { if (ev.target === t) { S.sheet = null; render(); } return; }
+    if (act === "xp-left") { S.xpLeftOpen = !S.xpLeftOpen; render(); return; }   /* 1.12.0 */
     if (act === "login") { doLogin(t); return; }
     if (!S.data) return;
     if (act === "tab") { S.tab = k; S.q = ""; S.near = null; S.sheet = null; render(); window.scrollTo(0, 0); return; }
