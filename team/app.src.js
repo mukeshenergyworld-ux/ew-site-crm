@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.944";   /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
+  var APP_VERSION = "6.9.947";   /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -3505,7 +3505,7 @@ window.addEventListener("beforeunload", function (ev) {
 
   function picCell(p) {
     return (p && p.pic)
-      ? '<img data-pic="1" src="' + esc(p.pic) + '" loading="lazy" alt=""/>'
+      ? fimaPicWrap(p.code, '<img data-pic="1" src="' + esc(p.pic) + '" loading="lazy" alt=""/>')   /* 6.9.946 */
       : '<div class="noimg">no<br>photo</div>';
   }
   document.addEventListener("error", function (ev) {
@@ -13299,14 +13299,15 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
      line in F1301WLX9CS is an ordinary line everywhere. */
   var FIMA_FIN_NAME = { CR: "Chrome", CN: "Black Chrome", SN: "Brushed Nickel", CS: "Brushed Black Chrome", NS: "Black Matt", BS: "White Matt",
     BG: "Ivory White", SG: "Sand Grey", VE: "Agave Green", AZ: "Indigo Blue", RB: "Burgundy Red", LN: "Polished Nickel", HL: "Champagne",
-    HS: "Brushed Champagne", OR: "Gold", OS: "Brushed Gold", ZL: "Amber Bronze", ZS: "Brushed Amber Bronze", KS: "Brushed Moka Bronze", INOX: "Stainless Steel" };
-  var FIMA_FIN_RE = /^(.*?)(INOX|CR|CN|SN|CS|NS|BS|BG|SG|VE|AZ|RB|LN|HL|HS|OR|OS|ZL|ZS|KS)(\.[A-Z0-9]+|\d\/\d)?$/;
+    HS: "Brushed Champagne", OR: "Gold", OS: "Brushed Gold", ZL: "Amber Bronze", ZS: "Brushed Amber Bronze", KS: "Brushed Moka Bronze", INOX: "Stainless Steel",
+    CE: "Grey Concrete", LC: "Light Wood", LS: "Dark Wood" };   /* 6.9.945 - the So handles' "materials" (price list p.159) */
+  var FIMA_FIN_RE = /^(.*?)(INOX|CR|CN|SN|CS|NS|BS|BG|SG|VE|AZ|RB|LN|HL|HS|OR|OS|ZL|ZS|KS|CE|LC|LS)(\.[A-Z0-9]+|\d\/\d)?$/;
   var _ffD = null, _ffIx = null, _ffAt = 0;
   function fimaFinOf(code) { var m = String(code || "").match(FIMA_FIN_RE); return m ? m[2] : ""; }
   function fimaFinLoad() {
     if (_ffD || (_ffAt && Date.now() - _ffAt < 60000)) return;
     _ffAt = Date.now();
-    fetch("../assets/fima/fima_fin.json?v=1").then(function (r) { return r.json(); }).then(function (d) {
+    fetch("../assets/fima/fima_fin.json?v=3").then(function (r) { return r.json(); }).then(function (d) {
       if (!d || !d.r) return;
       _ffD = d; _ffIx = null; _pcbCache = null; _plcCache = null;
       try { keepScroll = true; render(); } catch (e) { }
@@ -13326,15 +13327,38 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       _ffD.r[rc].f.forEach(function (x) {
         var c = String(x[0]); if (base[c]) return;
         var fin = fimaFinOf(c), st = c.replace(FIMA_FIN_RE, "$1");
-        var desc = stem0 + " - " + (FIMA_FIN_NAME[fin] || fin) + (st !== rs ? " \u00b7 option " + st : "") +
+        var fnm = typeof x[3] === "string" ? x[3] : (FIMA_FIN_NAME[fin] || fin);   /* 6.9.945 - a named finish (S2 glass) */
+        var desc = stem0 + " - " + fnm + (typeof x[3] !== "string" && st !== rs ? " \u00b7 option " + st : "") +
           (x.length > 2 && _ffD.vl[x[2]] ? " (" + String(_ffD.vl[x[2]]).toLowerCase() + ")" : "");
         var v = { code: c, family: p.family, desc: desc, cat: p.cat, unit: p.unit, price: Number(x[1]) || 0, brand: p.brand,
-          pic: p.pic, specs: sp, was: "", label: c + " - " + desc, fin: 1, of: rc };
+          pic: (_ffD.p && _ffD.p[c]) ? "../assets/fima/" + _ffD.p[c] : p.pic, finPic: !!(_ffD.p && _ffD.p[c]),   /* 6.9.947 - its own finish photo where one exists */
+          specs: sp, was: "", label: c + " - " + desc, fin: 1, of: rc };
         ix.code[c] = v; L.push(v);
       });
       if (L.length) ix.by[rc] = L;
     });
     return (_ffIx = ix);
+  }
+  /* 6.9.946 - HIS WORDS: "add a small coloured finish badge on the picture". FIMA publishes one (chrome) photo per
+     product, so a finish code shows that photo; a dot in the finish's colour on its corner tells Gold from Black Matt.
+     Colours read off FIMA's own colour-collection pages (price list p.26-27 and the handle finishes, p.159-161). */
+  var FIMA_FIN_HEX = { CR: "#c7ccd1", CN: "#3a3d42", SN: "#a8a398", CS: "#4b4a47", NS: "#1d1d1d", BS: "#f5f5f3", BG: "#e8e0cf",
+    SG: "#c8c1b4", VE: "#7f9e74", AZ: "#6f97ad", RB: "#9b3a2b", LN: "#d9d4ca", HL: "#e5d7a6", HS: "#d0c294", OR: "#d8b257",
+    OS: "#c7a659", ZL: "#b9693c", ZS: "#a8633e", KS: "#6c6356", INOX: "#b8bbbe", CE: "#9b9b97", LC: "#c9a57a", LS: "#6a4a31" };
+  var FIMA_GLASS_HEX = ["#b9bcbf", "#9a7457", "#c9a85a", "#c98f8f", "#7f9e74", "#e8e0cf"];
+  function fimaBadgeOf(code) {
+    var c = String(code == null ? "" : code).trim(); if (!c) return null;
+    var v = fimaFinGet(c), g = c.match(/^S2VS?0([1-6])$/);
+    if (g) return { hex: FIMA_GLASS_HEX[Number(g[1]) - 1], label: v ? String(v.desc).split(" - ").pop() : "Glass" };
+    var f = fimaFinOf(c); if (!f || !FIMA_FIN_HEX[f]) return null;
+    if (!v) { var b = ""; try { b = typeof productBrandByCode === "function" ? String(productBrandByCode(c) || "") : ""; } catch (e) { b = ""; } if (!/fima/i.test(b)) return null; }
+    return { hex: FIMA_FIN_HEX[f], label: FIMA_FIN_NAME[f] + " (" + f + ")" };
+  }
+  function fimaPicWrap(code, imgHtml) {
+    var b = fimaBadgeOf(code); if (!b) return imgHtml;
+    return '<span style="position:relative;display:inline-flex;flex:0 0 auto">' + imgHtml +
+      '<span title="' + b.label + '" aria-label="' + b.label + '" style="position:absolute;right:-4px;bottom:-4px;width:16px;height:16px;border-radius:50%;background:' + b.hex +
+      ';border:2px solid #fff;box-shadow:0 0 0 1px rgba(15,23,42,.35)"></span></span>';
   }
   function fimaFinGet(c) { return fimaFinIndex().code[String(c == null ? "" : c)] || null; }
   function fimaFinVariants(c) { return fimaFinIndex().by[String(c == null ? "" : c)] || []; }
@@ -55832,7 +55856,7 @@ function viewCatalogue() {
     var pic = qzPicOf(i.code), tot = Number(i.qty) || 0, many = Math.abs(tot - q) > 0.0001;
     return '<tr style="border-bottom:1px solid #e2e8f0">' +
       '<td style="padding:5px 6px;width:52px">' +
-        (pic ? '<img src="' + esc(pic) + '" loading="lazy" alt="" style="width:44px;height:44px;object-fit:contain;border:1px solid #e2e8f0;border-radius:6px;background:#fff"/>'
+        (pic ? fimaPicWrap(i.code, '<img src="' + esc(pic) + '" loading="lazy" alt="" style="width:44px;height:44px;object-fit:contain;border:1px solid #e2e8f0;border-radius:6px;background:#fff"/>')
              : '<div style="width:44px;height:44px;border:1px dashed #cbd5e1;border-radius:6px;color:#94a3b8;font-size:10px;display:flex;align-items:center;justify-content:center;text-align:center">no<br>photo</div>') +
       '</td>' +
       '<td style="padding:5px 6px"><b style="font-size:13px">' + esc(descLines(i.desc).title || i.desc) + '</b>' +
