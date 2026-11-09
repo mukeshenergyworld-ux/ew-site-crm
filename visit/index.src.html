@@ -239,7 +239,7 @@ table.att td.ok,table.att td.no{font-size:16px}
       button: function () { return '<button type="button" class="ewthm" onclick="ewTheme.next(this)">' + ewtLabel() + '</button>'; }
     };
   })();
-  var APP_VERSION = "1.12.0";   /* 1.12.0 (9 Nov 2026) - the 2027 plan on top (counted sales, slab ladder, left-out lines, quarter) and daily reports: entered, missed, streak */   /* 1.11.0 (8 Nov 2026) - my month on top: sales, returns, target, incentive, what to dispatch */   /* 1.10.1 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */   /* 1.10.0 (4 Nov 2026) - quote as in the CRM: item-wise discount, option lines, item-wise rates without total, GST */   /* 1.9.1 (31 Oct 2026) - one tap, one entry */   /* 1.9.0 (29 Oct 2026) - Menu -> Online enquiries (FB, IG, Google, Justdial, IndiaMART ... from the OnlineEnquiries tab) */   /* 1.8.4 (27 Oct 2026) - GHp mark in the middle of every QR, level H */   /* 1.6.1 - Huliot Group introduction on quotes; 1.6.0 (17 Oct 2026) - a dropped POST never loses a quote; admin sees every executive; daily report; attendance grid */
+  var APP_VERSION = "1.13.0";   /* 1.13.0 (9 Nov 2026) - target limit shown under each quote discount; plan updates list (slab reached, lines left out, returns, month closed, 20th reminder) */     /* 1.12.0 (9 Nov 2026) - the 2027 plan on top (counted sales, slab ladder, left-out lines, quarter) and daily reports: entered, missed, streak */   /* 1.11.0 (8 Nov 2026) - my month on top: sales, returns, target, incentive, what to dispatch */   /* 1.10.1 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */   /* 1.10.0 (4 Nov 2026) - quote as in the CRM: item-wise discount, option lines, item-wise rates without total, GST */   /* 1.9.1 (31 Oct 2026) - one tap, one entry */   /* 1.9.0 (29 Oct 2026) - Menu -> Online enquiries (FB, IG, Google, Justdial, IndiaMART ... from the OnlineEnquiries tab) */   /* 1.8.4 (27 Oct 2026) - GHp mark in the middle of every QR, level H */   /* 1.6.1 - Huliot Group introduction on quotes; 1.6.0 (17 Oct 2026) - a dropped POST never loses a quote; admin sees every executive; daily report; attendance grid */
   /* 1.6.0 - ONLY THE SERVER'S OWN "NO" SIGNS A MAN OUT. The old test was /pin|locked|not allowed|blocked|removed/:
      any data error that happened to contain "not allowed" or "removed" (a refused row, a removed brand) signed the
      executive out and wiped his snapshot. These are the sign-in answers the server gives (teamAuth: "Wrong name or
@@ -2497,6 +2497,76 @@ table.att td.ok,table.att td.no{font-size:16px}
      motivated towards that also". A daily report = a working day with at least one visit (the attendance rule, attDay). */
   var XP_SC = ["#38bdf8", "#0ea5e9", "#2563eb", "#7c3aed", "#16a34a"];
   function xpL(v) { return "₹" + (Math.round((Number(v) || 0) / 1000) / 100).toFixed(2).replace(/\.?0+$/, "") + " L"; }
+  /* ===== 1.13.0 - THE BRAND LIMITS ON THE QUOTE, AND HIS PLAN UPDATES  (9 Nov 2026) =====
+     The CRM (6.9.938) publishes one "xp:rules" fact: each card brand's target setting (in target up to N%, or the separate
+     rate outside target) and a catalogue-brand -> card-brand map. Same rule as the office: up to the limit counts in full,
+     within the grace counts at half value, above it does not count. Nothing here stops a quote; it only says it. */
+  function xpK(s) { return String(s == null ? "" : s).toUpperCase().replace(/[^A-Z0-9]/g, ""); }
+  function xpRulesNow() {
+    var best = null;
+    ((S.data && S.data.audit) || []).forEach(function (a) { if (a && a.action === "xp:rules" && (!best || String(a.createdAt || "") > String(best.createdAt || ""))) best = a; });
+    if (!best) return null;
+    try { var d = JSON.parse(best.detail || "{}") || {}; return d.tb ? d : null; } catch (e) { return null; }
+  }
+  function xpLimitHtml(brand, disc) {
+    var R = xpRulesNow(); if (!R || !brand) return "";
+    var k = xpK(brand), ck = (R.map && R.map[k]) || k, t = R.tb[ck], d = Math.round((Number(disc) || 0) * 100) / 100, g = Number(R.grace) || 0;
+    var box = function (bg, fg, txt) { return '<div style="margin-top:6px;padding:6px 8px;border-radius:8px;background:' + bg + ';color:' + fg + ';font-size:12.5px">' + txt + '</div>'; };
+    if (!t) return "";
+    if (t.inT) {
+      var up = Number(t.upto) || 0;
+      if (d <= up + 1e-9) return '<div class="meta" style="margin-top:4px;font-size:12px;color:#166534">&#10003; Counts to your target (limit ' + up + '%)</div>';
+      if (g && up > 0 && d <= up + g + 1e-9) return box('#fef3c7', '#92400e', '&#9888; ' + d + '% is above the ' + up + '% target limit &mdash; this line counts at <b>half value</b>.');
+      return box('#fee2e2', '#991b1b', '&#10007; ' + d + '% is above the ' + up + '% target limit &mdash; this line <b>will not count</b> to your target.' + (up === 0 ? ' This brand counts only at 0% discount.' : ''));
+    }
+    var p = 0;
+    if (t.flat != null && t.flat !== "") p = Number(t.flat) || 0;
+    else (t.sep || []).slice().sort(function (a, b) { return Number(a[0]) - Number(b[0]); }).forEach(function (sb) { if (!p && d <= Number(sb[0]) + 1e-9) p = Number(sb[1]) || 0; });
+    return '<div class="meta" style="margin-top:4px;font-size:12px;color:#475569">Outside target &middot; ' + (p ? p + '% incentive separately at this discount' : 'no incentive at this discount') + '</div>';
+  }
+  /* his plan updates: read from the history of exec:snap facts (the CRM writes one only when something moved) */
+  function xpSeenAt() { try { return localStorage.getItem("ew_xp_seen") || ""; } catch (e) { return ""; } }
+  function xpAlerts(name) {
+    var L = [];
+    ((S.data && S.data.audit) || []).forEach(function (a) {
+      if (!a || a.action !== "exec:snap" || dkey(a.target) !== dkey(name)) return;
+      var d = {}; try { d = JSON.parse(a.detail || "{}") || {}; } catch (e) { return; }
+      if (d.p && d.p.v) L.push({ at: String(a.createdAt || ""), ym: d.ym, p: d.p });
+    });
+    L.sort(function (a, b) { return a.at < b.at ? -1 : a.at > b.at ? 1 : 0; });
+    var out = [], pct = function (p, k) { return (p.pct || [])[k]; };
+    for (var i = 0; i < L.length; i++) {
+      var c = L[i], b = i ? L[i - 1] : null;
+      if (b && b.ym !== c.ym && b.p) out.push({ at: c.at, c: "#0f766e", t: '<b>' + esc(xpMon(b.ym)) + ' closed</b> &mdash; counted ' + money(b.p.net) + (b.p.k >= 0 ? ', slab ' + (b.p.k + 1) + ', incentive ' + money(b.p.inc) : ', below slab 1') + (b.p.sep > 0 ? ' &middot; other brands ' + money(b.p.sep) : '') + (b.p.trial ? ' (trial, not paid)' : b.p.whatIf ? ' (preview)' : '') + '.' });
+      if (!b || b.ym !== c.ym) continue;
+      if (c.p.k > b.p.k) out.push({ at: c.at, c: "#16a34a", t: '&#127881; <b>Slab ' + (c.p.k + 1) + ' reached</b> &mdash; ' + pct(c.p, c.p.k) + '% on all counted sales this month.' });
+      if (c.p.k < b.p.k) out.push({ at: c.at, c: "#b91c1c", t: 'Back to ' + (c.p.k >= 0 ? 'slab ' + (c.p.k + 1) : 'below slab 1') + ' &mdash; counted sales fell to ' + money(c.p.net) + '.' });
+      if (c.p.leftN > b.p.leftN) out.push({ at: c.at, c: "#b45309", t: (c.p.leftN - b.p.leftN) + ' new line' + (c.p.leftN - b.p.leftN === 1 ? '' : 's') + ' left out of your target (' + money(Math.max(0, c.p.leftV - b.p.leftV)) + ') &mdash; discount above the limit or brand outside target.' });
+      if (c.p.ret > b.p.ret) out.push({ at: c.at, c: "#b91c1c", t: 'Return received &mdash; ' + money(c.p.ret - b.p.ret) + ' taken off your counted sales.' });
+      if (c.p.q && b.p.q && c.p.q.k > b.p.q.k) out.push({ at: c.at, c: "#7c3aed", t: '&#127942; <b>Quarter Q' + (c.p.q.k + 1) + ' reached</b> &mdash; extra ' + money(c.p.q.x) + ' for ' + esc(c.p.q.label) + '.' });
+    }
+    var n = new Date(), last = L.length ? L[L.length - 1] : null;
+    if (last && last.ym === today().slice(0, 7) && n.getDate() >= 20) {
+      var p = last.p, sl = p.slabs || [], nk = p.k + 1, left = new Date(n.getFullYear(), n.getMonth() + 1, 0).getDate() - n.getDate();
+      if (nk < sl.length) out.push({ at: today().slice(0, 7) + "-20T00:00:00", c: "#0369a1", t: '&#128197; <b>' + (left + 1) + ' days left this month.</b> ' + money(Math.max(0, sl[nk] - p.net)) + ' more counted sales takes you to slab ' + (nk + 1) + ' (' + pct(p, nk) + '% on everything).' });
+    }
+    out.sort(function (a, b) { return a.at < b.at ? 1 : a.at > b.at ? -1 : 0; });
+    return out;
+  }
+  function xpMon(ym) { var d = new Date(String(ym) + "-15T12:00:00"); return isNaN(d) ? String(ym) : d.toLocaleString("en-IN", { month: "long", year: "numeric" }); }
+  function xpAlertsHtml(who, adm) {
+    var A = xpAlerts(who); if (!A.length) return "";
+    var seen = adm ? "\uffff" : xpSeenAt(), nNew = A.filter(function (a) { return a.at > seen; }).length, open = S.xpAlOpen, show = open ? A.slice(0, 15) : A.slice(0, Math.max(2, Math.min(nNew, 5)));
+    return '<div style="margin-top:10px;padding:8px 10px;border-radius:10px;border:1px solid #e2e8f0;background:#fff">' +
+      '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b style="flex:1 1 auto">&#128276; Plan updates' + (nNew ? ' <span style="background:#dc2626;color:#fff;border-radius:99px;padding:1px 8px;font-size:12px">' + nNew + ' new</span>' : '') + '</b>' +
+        (nNew && !adm ? '<button class="btn sm gry" data-act="xp-al-seen" style="min-height:44px">Mark read</button>' : '') +
+        (A.length > show.length || open ? '<button class="btn sm gry" data-act="xp-al-more" style="min-height:44px">' + (open ? 'Less' : 'All ' + Math.min(A.length, 15)) + '</button>' : '') + '</div>' +
+      show.map(function (a) {
+        var nw = a.at > seen;
+        return '<div style="display:flex;gap:8px;padding:6px 0;border-top:1px solid #f1f5f9;font-size:13px"><span style="flex:0 0 4px;border-radius:2px;background:' + a.c + '"></span>' +
+          '<div style="flex:1 1 auto' + (nw ? ';font-weight:600' : '') + '">' + a.t + '<div class="meta" style="font-size:12px">' + esc(fd(a.at.slice(0, 10))) + '</div></div></div>';
+      }).join("") + '</div>';
+  }
   function xPlanHead(x, who, adm) {
     var p = x.p, mon = new Date().toLocaleString("en-IN", { month: "long", year: "numeric" });
     var n = new Date(), days = new Date(n.getFullYear(), n.getMonth() + 1, 0).getDate(), gone = n.getDate() / days, left = days - n.getDate();
@@ -2534,7 +2604,7 @@ table.att td.ok,table.att td.no{font-size:16px}
       '</div>' + bar +
       '<div class="meta" style="font-size:12px;margin-top:4px">' + Math.round(gone * 100) + '% of the month gone</div>' +
       (msg[2] ? '<div style="margin-top:8px;padding:8px 10px;border-radius:10px;background:' + msg[0] + ';color:' + msg[1] + ';font-size:13px">' + msg[2] + '</div>' : '') +
-      lo + ql + xDailyHtml(who) +
+      lo + ql + xDailyHtml(who) + xpAlertsHtml(who, adm) +
       '<div class="meta" style="font-size:12px;margin-top:6px">Counted = your clients&rsquo; dispatches after discount, before GST, brands in target within their limit, less returns. As of ' + esc(fd(x.at)) + ' ' + esc(String(new Date(x.at).toTimeString()).slice(0, 5)) + '.</div></div>';
   }
   /* daily reports this month: entered on working days, the days without one, the streak, the last 7 days */
@@ -3501,7 +3571,7 @@ table.att td.ok,table.att td.no{font-size:16px}
           '<input class="qz-id" id="qz_id_' + k + '" data-i="' + k + '" inputmode="decimal" value="' + esc(ov ? i.disc : "") + '" placeholder="' + esc(bd) + '"' + (can ? '' : ' readonly') + ' style="width:64px;min-height:44px;text-align:right"/>' +
           (ov ? '<span class="pill" style="font-size:12px">own %</span>' : '<span class="meta" style="font-size:12px">brand ' + esc(bd) + '%</span>') +
           '<button class="chip' + (opt ? ' on' : '') + '" data-act="qz-opt" data-i="' + k + '" style="min-height:44px">' + (opt ? '&#10003; Option' : 'Make option') + '</button>' +
-        '</div></td>' +
+        '</div>' + (opt ? '' : xpLimitHtml(b || brandByCode(i.code), d)) + '</td>' +
         '<td class="r">' + (opt ? '<span class="meta">(' + esc(money(amt)) + ')</span><div class="meta" style="color:#92400e">option</div>' : '<b>' + esc(money(amt)) + '</b>') + '</td></tr>';
     }).join("") + '</table></div>';
   }
@@ -3675,6 +3745,8 @@ table.att td.ok,table.att td.no{font-size:16px}
     var act = t.getAttribute("data-act"), k = t.getAttribute("data-k"), id = t.getAttribute("data-id");
     if (act === "sheet-bg") { if (ev.target === t) { S.sheet = null; render(); } return; }
     if (act === "xp-left") { S.xpLeftOpen = !S.xpLeftOpen; render(); return; }   /* 1.12.0 */
+    if (act === "xp-al-more") { S.xpAlOpen = !S.xpAlOpen; render(); return; }   /* 1.13.0 */
+    if (act === "xp-al-seen") { try { localStorage.setItem("ew_xp_seen", new Date(Date.now() + 60000).toISOString()); } catch (e) { } render(); return; }
     if (act === "login") { doLogin(t); return; }
     if (!S.data) return;
     if (act === "tab") { S.tab = k; S.q = ""; S.near = null; S.sheet = null; render(); window.scrollTo(0, 0); return; }
