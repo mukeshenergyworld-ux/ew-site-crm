@@ -114,18 +114,23 @@ table.t td.r,table.t th.r{text-align:right;white-space:nowrap}
 .req{color:#b91c1c}
 /* 1.4.0 - Pending / Won / Lost on the quote line */
 .qst{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}   /* p748 - his words: "pending won lost are very big boxes, compact them" */
-.qst button{flex:0 0 auto;min-width:84px;padding:0 14px;min-height:44px;border:1px solid #DCE3EA;background:#fff;border-radius:10px;font:inherit;font-size:13px;font-weight:700;color:#5E6875;cursor:pointer}
+.qst button{flex:0 0 auto;min-width:64px;padding:0 10px;min-height:44px;border:1px solid #DCE3EA;background:#fff;border-radius:10px;font:inherit;font-size:13px;font-weight:700;color:#5E6875;cursor:pointer}
 .qst button.pending.on{background:#FEF3C7;border-color:#F59E0B;color:#92400E}
 .qst button.won.on{background:#15803d;border-color:#15803d;color:#fff}
 .qst button.lost.on{background:#b91c1c;border-color:#b91c1c;color:#fff}
-/* 1.17.0 - one tile per quoted brand */
-.qbt{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
-.qbt button{position:relative;flex:0 0 auto;min-width:92px;min-height:48px;padding:4px 10px;border:1.5px solid #DCE3EA;background:#fff;border-radius:10px;font:inherit;font-size:12px;font-weight:700;color:#334155;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
-.qbt button img{max-width:80px;max-height:22px;object-fit:contain}
-.qbt button.won{border-color:#15803d;background:#dcfce7;color:#166534}
-.qbt button.lost{border-color:#b91c1c;background:#fee2e2;color:#991b1b}
-.qbt button.lost img{opacity:.45}
-.qbt button i{font-style:normal;font-size:12px}
+/* 1.17.1 - one compact logo tile per quoted brand, on the same row as Pending / Won / Lost */
+.qrow2{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:8px}
+.qrow2 .qst{margin-top:0}
+.qbt{display:flex;gap:5px;flex-wrap:wrap}
+.qbt button{position:relative;flex:0 0 auto;min-width:58px;height:44px;padding:3px 8px;border:1.5px solid #DCE3EA;background:#fff;border-radius:9px;font:inherit;font-size:12px;font-weight:700;color:#334155;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.qbt button img{max-width:62px;max-height:24px;object-fit:contain;display:block}
+.qbt button.won{border-color:#16a34a;background:#f0fdf4}
+.qbt button.lost{border-color:#dc2626;background:#fef2f2}
+.qbt button.lost img,.qbt button.lost span{opacity:.4}
+.qbt button b{position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;color:#fff;font-size:12px;line-height:18px;text-align:center}
+.qbt button.won b{background:#16a34a}
+.qbt button.lost b{background:#dc2626}
+.qsep{width:1px;height:28px;background:#DCE3EA;margin:0 2px}
 /* 1.3.0 - his number beside every name */
 .code{display:inline-block;font-size:12px;font-weight:800;color:#1F3A5F;background:#E8EEF5;border-radius:6px;padding:1px 6px;margin-right:6px;vertical-align:1px}
 .card.mine{border-left-color:#C9A24A}
@@ -247,7 +252,7 @@ table.att td.ok,table.att td.no{font-size:16px}
       button: function () { return '<button type="button" class="ewthm" onclick="ewTheme.next(this)">' + ewtLabel() + '</button>'; }
     };
   })();
-  var APP_VERSION = "1.17.0";   /* 1.17.0 (9 Nov 2026) - brand-wise Won / Lost on a quote line: tap a brand once = Won, twice = Lost, again = open */     /* 1.16.0 (9 Nov 2026) - FIMA in every finish: type F1301WLX9CS (or any of 14,260 finish codes) and it is on the quote at its own MRP */     /* 1.15.0 (9 Nov 2026) - incentive ready (clients paid) and waiting for payment, on the plan header */     /* 1.14.0 (9 Nov 2026) - ask the owner to approve a discount above the brand limit, right on the quote line */     /* 1.13.0 (9 Nov 2026) - target limit shown under each quote discount; plan updates list (slab reached, lines left out, returns, month closed, 20th reminder) */     /* 1.12.0 (9 Nov 2026) - the 2027 plan on top (counted sales, slab ladder, left-out lines, quarter) and daily reports: entered, missed, streak */   /* 1.11.0 (8 Nov 2026) - my month on top: sales, returns, target, incentive, what to dispatch */   /* 1.10.1 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */   /* 1.10.0 (4 Nov 2026) - quote as in the CRM: item-wise discount, option lines, item-wise rates without total, GST */   /* 1.9.1 (31 Oct 2026) - one tap, one entry */   /* 1.9.0 (29 Oct 2026) - Menu -> Online enquiries (FB, IG, Google, Justdial, IndiaMART ... from the OnlineEnquiries tab) */   /* 1.8.4 (27 Oct 2026) - GHp mark in the middle of every QR, level H */   /* 1.6.1 - Huliot Group introduction on quotes; 1.6.0 (17 Oct 2026) - a dropped POST never loses a quote; admin sees every executive; daily report; attendance grid */
+  var APP_VERSION = "1.17.4";   /* 1.17.4 (9 Nov 2026) - FIMA finish codes with their own finish photo */     /* 1.17.3 (9 Nov 2026) - a small finish-colour dot on FIMA product pictures */     /* 1.17.2 (9 Nov 2026) - FIMA handles S1-S4 in every finish and the S2 glass handles */     /* 1.17.1 (9 Nov 2026) - brand tiles on the quote line: real logos, compact, on one row with Pending / Won / Lost */     /* 1.17.0 (9 Nov 2026) - brand-wise Won / Lost on a quote line: tap a brand once = Won, twice = Lost, again = open */     /* 1.16.0 (9 Nov 2026) - FIMA in every finish: type F1301WLX9CS (or any of 14,260 finish codes) and it is on the quote at its own MRP */     /* 1.15.0 (9 Nov 2026) - incentive ready (clients paid) and waiting for payment, on the plan header */     /* 1.14.0 (9 Nov 2026) - ask the owner to approve a discount above the brand limit, right on the quote line */     /* 1.13.0 (9 Nov 2026) - target limit shown under each quote discount; plan updates list (slab reached, lines left out, returns, month closed, 20th reminder) */     /* 1.12.0 (9 Nov 2026) - the 2027 plan on top (counted sales, slab ladder, left-out lines, quarter) and daily reports: entered, missed, streak */   /* 1.11.0 (8 Nov 2026) - my month on top: sales, returns, target, incentive, what to dispatch */   /* 1.10.1 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */   /* 1.10.0 (4 Nov 2026) - quote as in the CRM: item-wise discount, option lines, item-wise rates without total, GST */   /* 1.9.1 (31 Oct 2026) - one tap, one entry */   /* 1.9.0 (29 Oct 2026) - Menu -> Online enquiries (FB, IG, Google, Justdial, IndiaMART ... from the OnlineEnquiries tab) */   /* 1.8.4 (27 Oct 2026) - GHp mark in the middle of every QR, level H */   /* 1.6.1 - Huliot Group introduction on quotes; 1.6.0 (17 Oct 2026) - a dropped POST never loses a quote; admin sees every executive; daily report; attendance grid */
   /* 1.6.0 - ONLY THE SERVER'S OWN "NO" SIGNS A MAN OUT. The old test was /pin|locked|not allowed|blocked|removed/:
      any data error that happened to contain "not allowed" or "removed" (a refused row, a removed brand) signed the
      executive out and wiped his snapshot. These are the sign-in answers the server gives (teamAuth: "Wrong name or
@@ -845,14 +850,15 @@ table.att td.ok,table.att td.no{font-size:16px}
      product; assets/fima/fima_fin.json carries the other 14,260 finish codes and their MRPs, made into products on the fly. */
   var FIMA_FIN_NAME = { CR: "Chrome", CN: "Black Chrome", SN: "Brushed Nickel", CS: "Brushed Black Chrome", NS: "Black Matt", BS: "White Matt",
     BG: "Ivory White", SG: "Sand Grey", VE: "Agave Green", AZ: "Indigo Blue", RB: "Burgundy Red", LN: "Polished Nickel", HL: "Champagne",
-    HS: "Brushed Champagne", OR: "Gold", OS: "Brushed Gold", ZL: "Amber Bronze", ZS: "Brushed Amber Bronze", KS: "Brushed Moka Bronze", INOX: "Stainless Steel" };
-  var FIMA_FIN_RE = /^(.*?)(INOX|CR|CN|SN|CS|NS|BS|BG|SG|VE|AZ|RB|LN|HL|HS|OR|OS|ZL|ZS|KS)(\.[A-Z0-9]+|\d\/\d)?$/;
+    HS: "Brushed Champagne", OR: "Gold", OS: "Brushed Gold", ZL: "Amber Bronze", ZS: "Brushed Amber Bronze", KS: "Brushed Moka Bronze", INOX: "Stainless Steel",
+    CE: "Grey Concrete", LC: "Light Wood", LS: "Dark Wood" };   /* 6.9.945 - the So handles' "materials" (price list p.159) */
+  var FIMA_FIN_RE = /^(.*?)(INOX|CR|CN|SN|CS|NS|BS|BG|SG|VE|AZ|RB|LN|HL|HS|OR|OS|ZL|ZS|KS|CE|LC|LS)(\.[A-Z0-9]+|\d\/\d)?$/;
   var _ffD = null, _ffIx = null, _ffAt = 0;
   function fimaFinOf(code) { var m = String(code || "").match(FIMA_FIN_RE); return m ? m[2] : ""; }
   function fimaFinLoad() {
     if (_ffD || (_ffAt && Date.now() - _ffAt < 60000)) return;
     _ffAt = Date.now();
-    fetch("../assets/fima/fima_fin.json?v=1").then(function (r) { return r.json(); }).then(function (d) {
+    fetch("../assets/fima/fima_fin.json?v=3").then(function (r) { return r.json(); }).then(function (d) {
       if (!d || !d.r) return;
       _ffD = d; _ffIx = null; _pcbCache = null; _plcCache = null;
       try { keepScroll = true; render(); } catch (e) { }
@@ -872,15 +878,38 @@ table.att td.ok,table.att td.no{font-size:16px}
       _ffD.r[rc].f.forEach(function (x) {
         var c = String(x[0]); if (base[c]) return;
         var fin = fimaFinOf(c), st = c.replace(FIMA_FIN_RE, "$1");
-        var desc = stem0 + " - " + (FIMA_FIN_NAME[fin] || fin) + (st !== rs ? " \u00b7 option " + st : "") +
+        var fnm = typeof x[3] === "string" ? x[3] : (FIMA_FIN_NAME[fin] || fin);   /* 6.9.945 - a named finish (S2 glass) */
+        var desc = stem0 + " - " + fnm + (typeof x[3] !== "string" && st !== rs ? " \u00b7 option " + st : "") +
           (x.length > 2 && _ffD.vl[x[2]] ? " (" + String(_ffD.vl[x[2]]).toLowerCase() + ")" : "");
         var v = { code: c, family: p.family, desc: desc, cat: p.cat, unit: p.unit, price: Number(x[1]) || 0, brand: p.brand,
-          pic: p.pic, specs: sp, was: "", label: c + " - " + desc, fin: 1, of: rc };
+          pic: (_ffD.p && _ffD.p[c]) ? "../assets/fima/" + _ffD.p[c] : p.pic, finPic: !!(_ffD.p && _ffD.p[c]),   /* 6.9.947 - its own finish photo where one exists */
+          specs: sp, was: "", label: c + " - " + desc, fin: 1, of: rc };
         ix.code[c] = v; L.push(v);
       });
       if (L.length) ix.by[rc] = L;
     });
     return (_ffIx = ix);
+  }
+  /* 6.9.946 - HIS WORDS: "add a small coloured finish badge on the picture". FIMA publishes one (chrome) photo per
+     product, so a finish code shows that photo; a dot in the finish's colour on its corner tells Gold from Black Matt.
+     Colours read off FIMA's own colour-collection pages (price list p.26-27 and the handle finishes, p.159-161). */
+  var FIMA_FIN_HEX = { CR: "#c7ccd1", CN: "#3a3d42", SN: "#a8a398", CS: "#4b4a47", NS: "#1d1d1d", BS: "#f5f5f3", BG: "#e8e0cf",
+    SG: "#c8c1b4", VE: "#7f9e74", AZ: "#6f97ad", RB: "#9b3a2b", LN: "#d9d4ca", HL: "#e5d7a6", HS: "#d0c294", OR: "#d8b257",
+    OS: "#c7a659", ZL: "#b9693c", ZS: "#a8633e", KS: "#6c6356", INOX: "#b8bbbe", CE: "#9b9b97", LC: "#c9a57a", LS: "#6a4a31" };
+  var FIMA_GLASS_HEX = ["#b9bcbf", "#9a7457", "#c9a85a", "#c98f8f", "#7f9e74", "#e8e0cf"];
+  function fimaBadgeOf(code) {
+    var c = String(code == null ? "" : code).trim(); if (!c) return null;
+    var v = fimaFinGet(c), g = c.match(/^S2VS?0([1-6])$/);
+    if (g) return { hex: FIMA_GLASS_HEX[Number(g[1]) - 1], label: v ? String(v.desc).split(" - ").pop() : "Glass" };
+    var f = fimaFinOf(c); if (!f || !FIMA_FIN_HEX[f]) return null;
+    if (!v) { var b = ""; try { b = typeof productBrandByCode === "function" ? String(productBrandByCode(c) || "") : ""; } catch (e) { b = ""; } if (!/fima/i.test(b)) return null; }
+    return { hex: FIMA_FIN_HEX[f], label: FIMA_FIN_NAME[f] + " (" + f + ")" };
+  }
+  function fimaPicWrap(code, imgHtml) {
+    var b = fimaBadgeOf(code); if (!b) return imgHtml;
+    return '<span style="position:relative;display:inline-flex;flex:0 0 auto">' + imgHtml +
+      '<span title="' + b.label + '" aria-label="' + b.label + '" style="position:absolute;right:-4px;bottom:-4px;width:16px;height:16px;border-radius:50%;background:' + b.hex +
+      ';border:2px solid #fff;box-shadow:0 0 0 1px rgba(15,23,42,.35)"></span></span>';
   }
   function fimaFinGet(c) { return fimaFinIndex().code[String(c == null ? "" : c)] || null; }
   function fimaFinVariants(c) { return fimaFinIndex().by[String(c == null ? "" : c)] || []; }
@@ -3372,10 +3401,9 @@ table.att td.ok,table.att td.no{font-size:16px}
     return '<div class="card tap mine" data-act="q-open" data-id="' + esc(q.id) + '"><div class="row"><div class="grow"><div class="ttl2">' + codeTag(q.client) + esc(q.client || "") + '</div>' +
       '<div class="meta">' + esc(qNo(q)) + ' &middot; ' + esc(fd(q.createdAt)) + ' &middot; ' + esc(q.brand || "") + '</div></div>' +
       '<div style="text-align:right"><div class="amt">' + esc(money(q.net)) + '</div><span class="pill ' + qTone(st) + '">' + esc(st) + '</span></div></div>' +
-      (mine ? qbTiles(q) : '') +
-      (mine ? '<div class="qst">' + [["Pending", "Pending"], ["Won", "Won"], ["Lost", "Lost"]].map(function (x) {
+      (mine ? '<div class="qrow2">' + qbTiles(q) + '<div class="qst">' + [["Pending", "Pending"], ["Won", "Won"], ["Lost", "Lost"]].map(function (x) {
         return '<button type="button" class="' + x[0].toLowerCase() + (grp === x[0] ? ' on' : '') + '" data-act="qr-st" data-k="' + x[0] + '" data-id="' + esc(q.id) + '" aria-pressed="' + (grp === x[0]) + '">' + x[1] + '</button>';
-      }).join("") + '</div>' : '') + '</div>';
+      }).join("") + '</div></div>' : '') + '</div>';
   }
   /* ===== 1.17.0 - WON BRAND BY BRAND =====
      HIS WORDS: "if three brand quoted and still won only one, so show quoted brand logos, so the won brand can be clicked
@@ -3405,13 +3433,22 @@ table.att td.ok,table.att td.no{font-size:16px}
     var r = qbMapV()[k];
     return r && (r.st === "Won" || r.st === "Lost") ? r.st : "";
   }
+  /* the brand's mark: the site's own files first (visiting card, then brand websites), else the Drive logo if cached */
+  function qbLogo(b) {
+    var c = ""; try { c = cardLogo(b); } catch (e) { c = ""; }
+    if (c) return c;
+    var k = normB(b), hit = "";
+    Object.keys(LOCAL_LOGOS).some(function (n) { var nk = normB(n); if (k === nk || k.indexOf(nk.slice(0, 5)) === 0 || nk.indexOf(k.slice(0, 5)) === 0) { hit = LOCAL_LOGOS[n]; return true; } return false; });
+    if (hit) return hit;
+    try { var L = logoFor(b); return L && (L.src || (typeof L === "string" ? L : "")) || ""; } catch (e) { return ""; }
+  }
   function qbTiles(q) {
     var bs = quoteBrandsV(q); if (bs.length < 2) return "";
     return '<div class="qbt">' + bs.map(function (b) {
-      var st = qbStateV(q, b), lg = logoFor(b);
-      return '<button type="button" class="' + (st === "Won" ? "won" : st === "Lost" ? "lost" : "") + '" data-act="qb-tap" data-id="' + esc(q.id) + '" data-b="' + esc(b) + '" aria-label="' + esc(b) + ' ' + (st || "open") + '">' +
-        (lg ? '<img src="' + esc(lg) + '" alt=""/>' : '') + '<span>' + esc(b) + '</span><i>' + (st === "Won" ? "&#10003; Won" : st === "Lost" ? "&#10007; Lost" : "open") + '</i></button>';
-    }).join("") + '</div><div class="meta" style="font-size:12px;margin-top:2px">Tap a brand once = Won &middot; twice = Lost &middot; again = open</div>';
+      var st = qbStateV(q, b), lg = qbLogo(b);
+      return '<button type="button" class="' + (st === "Won" ? "won" : st === "Lost" ? "lost" : "") + '" data-act="qb-tap" data-id="' + esc(q.id) + '" data-b="' + esc(b) + '" title="' + esc(b) + ': tap once = Won, twice = Lost, again = open" aria-label="' + esc(b) + ' ' + (st || "open") + '">' +
+        (lg ? '<img src="' + esc(lg) + '" alt="' + esc(b) + '"/>' : '<span>' + esc(b) + '</span>') + (st ? '<b>' + (st === "Won" ? "&#10003;" : "&#10007;") + '</b>' : '') + '</button>';
+    }).join("") + '</div>';
   }
   function qbTap(q, b) {
     var k = String(q.id) + "|" + dkey(b), cur = qbStateV(q, b), nx = cur === "" ? "Won" : cur === "Won" ? "Lost" : "";
@@ -3653,7 +3690,7 @@ table.att td.ok,table.att td.no{font-size:16px}
       '<label for="qz_pq">Find a product</label><input id="qz_pq" value="' + esc(z.pq || "") + '" placeholder="Code, name or family" autocomplete="off"/>' +
       '<div id="qz_pres" class="card" style="padding:4px 12px">' + qzProdHits() + '</div>';
     h += '<h3 class="sec">In the quote &mdash; ' + z.items.length + '</h3>' + (z.items.length ? '<div class="card" style="padding:4px 12px">' + z.items.map(function (i, k) {
-      return '<div class="prod">' + (i.pic ? '<img src="' + esc(i.pic) + '" alt="" loading="lazy"/>' : '<div class="ph"></div>') +
+      return '<div class="prod">' + (i.pic ? fimaPicWrap(i.code, '<img src="' + esc(i.pic) + '" alt="" loading="lazy"/>') : '<div class="ph"></div>') +
         '<div class="grow"><div class="ttl2" style="font-size:14px">' + esc(i.desc) + '</div><div class="meta">' + esc(i.code) + ' &middot; ' + esc(money(i.price)) + (i.unit ? ' / ' + esc(i.unit) : '') + '</div></div>' +
         '<div class="qty"><button data-act="qz-q" data-i="' + k + '" data-k="-1" aria-label="less">&minus;</button><input class="qz-qty" data-i="' + k + '" inputmode="decimal" value="' + esc(i.qty) + '"/><button data-act="qz-q" data-i="' + k + '" data-k="1" aria-label="more">+</button></div></div>';
     }).join("") + '</div>' : '<div class="empty">Nothing added yet.</div>');
@@ -3678,7 +3715,7 @@ table.att td.ok,table.att td.no{font-size:16px}
     }
     if (!list.length) return '<div class="meta" style="padding:8px 0">Nothing matches.</div>';
     return list.slice(0, 20).map(function (p) {
-      return '<div class="prod">' + (p.pic ? '<img src="' + esc(p.pic) + '" alt="" loading="lazy"/>' : '<div class="ph"></div>') +
+      return '<div class="prod">' + (p.pic ? fimaPicWrap(p.code, '<img src="' + esc(p.pic) + '" alt="" loading="lazy"/>') : '<div class="ph"></div>') +
         '<div class="grow"><div style="font-size:14px;font-weight:600">' + esc(p.desc) + '</div><div class="meta">' + esc(p.code) + ' &middot; ' + esc(realBrand(p)) + ' &middot; ' + esc(money(p.price)) + '</div></div>' +
         (have[p.code] ? '<span class="pill grn">added</span>' : '<button class="btn sm" data-act="qz-add" data-k="' + esc(p.code) + '">Add</button>') + '</div>';
     }).join("") + (list.length > 20 ? '<div class="meta" style="padding:8px 0">' + (list.length - 20) + ' more &mdash; type more of the name.</div>' : '');
@@ -3715,7 +3752,7 @@ table.att td.ok,table.att td.no{font-size:16px}
     return '<div class="tblw"><table class="t" style="min-width:0"><tr><th></th><th>Item</th><th class="r">Amount</th></tr>' + z.items.map(function (i, k) {
       var d = lineDisc(i, z), ov = i.disc !== "" && i.disc !== undefined && i.disc !== null, b = i.brand || "", bd = Number(z.brandDiscs[b]) || 0;
       var dr = Math.round(i.price * (1 - d / 100)), amt = Math.round(dr * i.qty), opt = !!i.optional;
-      return '<tr' + (opt ? ' style="background:#fffbeb"' : '') + '><td class="pic">' + (i.pic ? '<img src="' + esc(i.pic) + '" alt="" loading="lazy"/>' : '') + '</td>' +
+      return '<tr' + (opt ? ' style="background:#fffbeb"' : '') + '><td class="pic">' + (i.pic ? fimaPicWrap(i.code, '<img src="' + esc(i.pic) + '" alt="" loading="lazy"/>') : '') + '</td>' +
         '<td><b style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">' + esc(i.desc || "") + '</b>' +
         '<div class="meta">' + esc([i.code, b].filter(Boolean).join(" · ")) + '</div>' +
         '<div class="meta">' + esc(qShow(i.qty)) + ' ' + esc(String(i.unit || "").replace(/^Per\s*/i, "")) + ' &times; ' + esc(money(i.price)) + (d ? ' &minus; ' + esc(d) + '% = ' + esc(money(dr)) + ' each' : '') + '</div>' +
