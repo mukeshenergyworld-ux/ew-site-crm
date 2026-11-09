@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.942";   /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
+  var APP_VERSION = "6.9.944";   /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -4536,7 +4536,7 @@ window.addEventListener("beforeunload", function (ev) {
 
     /* an open product wins over everything else on the screen */
     if (S.pvOpen) {
-      var one = PRODUCTS.filter(function (x) { return x.code === S.pvOpen; })[0];
+      var one = prodByCode(S.pvOpen);
       if (one) return h + prodDetail(one);
       S.pvOpen = "";
     }
@@ -7144,7 +7144,7 @@ window.addEventListener("beforeunload", function (ev) {
       var d = {};
       try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
       var qid = String(d.qId || ""), br = String(d.brand || "");
-      if (!qid || !br || QB_STATES.indexOf(String(d.state)) < 0) return;
+      if (!qid || !br || (QB_STATES.indexOf(String(d.state)) < 0 && String(d.state) !== "Open")) return;   /* 6.9.944 - "Open" = answer taken back (Visit 1.17.0) */
       var k = qid + "|" + dkey(br);
       var prev = m[k];
       if (!prev || String(r.createdAt || "") >= String(prev.at || "")) {
@@ -7152,6 +7152,7 @@ window.addEventListener("beforeunload", function (ev) {
                  at: r.createdAt || "", by: r.actor || d.by || "" };
       }
     });
+    Object.keys(m).forEach(function (k) { if (m[k].state === "Open") delete m[k]; });   /* 6.9.944 */
     _qbCache = m;
     return m;
   }
@@ -13288,9 +13289,76 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     });
     return (_tkbIx = ix);
   }
+  /* ===== 6.9.943 - FIMA IN EVERY FINISH =====
+     HIS WORDS: "i want all color finished to be added, like F1301WLX9CS this code i want to enter, its not available only
+     F1301WLX9CR is available". The catalogue keeps ONE row per FIMA product (his 6 Nov choice, so the sheet and every
+     phone did not grow 8x); the price list rescanned on 9 Nov gives 14,260 more order codes in 20 finishes, each with
+     its own MRP. They live in assets/fima/fima_fin.json (346 KB, read once) and are made into products ON THE FLY:
+     same picture, family and words as their row, the finish named in the description, the finish's own price.
+     prodByCode / the brand and list-price lookups / the picker search all fall back to them, so a quote or a challan
+     line in F1301WLX9CS is an ordinary line everywhere. */
+  var FIMA_FIN_NAME = { CR: "Chrome", CN: "Black Chrome", SN: "Brushed Nickel", CS: "Brushed Black Chrome", NS: "Black Matt", BS: "White Matt",
+    BG: "Ivory White", SG: "Sand Grey", VE: "Agave Green", AZ: "Indigo Blue", RB: "Burgundy Red", LN: "Polished Nickel", HL: "Champagne",
+    HS: "Brushed Champagne", OR: "Gold", OS: "Brushed Gold", ZL: "Amber Bronze", ZS: "Brushed Amber Bronze", KS: "Brushed Moka Bronze", INOX: "Stainless Steel" };
+  var FIMA_FIN_RE = /^(.*?)(INOX|CR|CN|SN|CS|NS|BS|BG|SG|VE|AZ|RB|LN|HL|HS|OR|OS|ZL|ZS|KS)(\.[A-Z0-9]+|\d\/\d)?$/;
+  var _ffD = null, _ffIx = null, _ffAt = 0;
+  function fimaFinOf(code) { var m = String(code || "").match(FIMA_FIN_RE); return m ? m[2] : ""; }
+  function fimaFinLoad() {
+    if (_ffD || (_ffAt && Date.now() - _ffAt < 60000)) return;
+    _ffAt = Date.now();
+    fetch("../assets/fima/fima_fin.json?v=1").then(function (r) { return r.json(); }).then(function (d) {
+      if (!d || !d.r) return;
+      _ffD = d; _ffIx = null; _pcbCache = null; _plcCache = null;
+      try { keepScroll = true; render(); } catch (e) { }
+    }).catch(function () { });
+  }
+  function fimaFinIndex() {
+    if (_ffIx && _ffIx.n === PRODUCTS.length) return _ffIx;
+    if (!_ffD) { fimaFinLoad(); return { n: -1, code: {}, by: {} }; }
+    var ix = { n: PRODUCTS.length, code: {}, by: {} }, base = {};
+    PRODUCTS.forEach(function (p) { if (p && p.code) base[p.code] = p; });
+    Object.keys(_ffD.r).forEach(function (rc) {
+      var p = base[rc]; if (!p) return;
+      var d0 = String(p.desc || ""), cut = d0.lastIndexOf(" - "), own = FIMA_FIN_NAME[fimaFinOf(rc)] || "";
+      var stem0 = d0, tail = cut > 0 ? d0.slice(cut + 3) : "";
+      if (own && tail.indexOf(own) === 0) stem0 = d0.slice(0, cut);
+      var sp = String(p.specs || "").split(" || Other finishes")[0], rs = rc.replace(FIMA_FIN_RE, "$1"), L = [];
+      _ffD.r[rc].f.forEach(function (x) {
+        var c = String(x[0]); if (base[c]) return;
+        var fin = fimaFinOf(c), st = c.replace(FIMA_FIN_RE, "$1");
+        var desc = stem0 + " - " + (FIMA_FIN_NAME[fin] || fin) + (st !== rs ? " \u00b7 option " + st : "") +
+          (x.length > 2 && _ffD.vl[x[2]] ? " (" + String(_ffD.vl[x[2]]).toLowerCase() + ")" : "");
+        var v = { code: c, family: p.family, desc: desc, cat: p.cat, unit: p.unit, price: Number(x[1]) || 0, brand: p.brand,
+          pic: p.pic, specs: sp, was: "", label: c + " - " + desc, fin: 1, of: rc };
+        ix.code[c] = v; L.push(v);
+      });
+      if (L.length) ix.by[rc] = L;
+    });
+    return (_ffIx = ix);
+  }
+  function fimaFinGet(c) { return fimaFinIndex().code[String(c == null ? "" : c)] || null; }
+  function fimaFinVariants(c) { return fimaFinIndex().by[String(c == null ? "" : c)] || []; }
+  /* a room's collection and finish, read off its FIMA lines: built-in parts carry no finish, so a room holding only
+     those says "Yet to decide". Rooms with no FIMA line get nothing (he types them). */
+  function qzRoomAuto(items, room) {
+    var cols = [], fins = [], any = false;
+    (items || []).forEach(function (i) {
+      if (!i || !(Number(qzRq(i)[room] || 0) > 0)) return;
+      var p = prodByCode(i.code), b = String((i.brand || (p && p.brand) || "")).toUpperCase();
+      if (b.indexOf("FIMA") < 0) return;
+      any = true;
+      var f = fimaFinOf(i.code); if (!f) return;
+      var fn = FIMA_FIN_NAME[f]; if (fins.indexOf(fn) < 0) fins.push(fn);
+      var m = String(i.desc || (p && p.desc) || "").match(/FIMA ([^-\u00b7(]+?)\s+-/);
+      var col = m ? m[1].trim().toLowerCase().replace(/\b[a-z]/g, function (x) { return x.toUpperCase(); }) : "";
+      if (col && cols.indexOf(col) < 0) cols.push(col);
+    });
+    if (!any) return null;
+    return { c: cols.length ? cols.join(" / ") : "Yet to decide", f: fins.length ? fins.join(" / ") : "Yet to decide" };
+  }
   function prodByCode(c) {
     for (var i = 0; i < PRODUCTS.length; i++) if (PRODUCTS[i].code === c) return PRODUCTS[i];
-    return null;
+    return fimaFinGet(c);   /* 6.9.943 - a FIMA finish code */
   }
   function isTotoLine(it) { return /\btoto\b/i.test(String((it && it.brand) || "")); }
   /* what each picked TOTO line still needs - only codes that are in the price list */
@@ -13533,7 +13601,10 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         if (b) _pcbCache[String(p.code)] = b;
       });
     }
-    return _pcbCache[String(code == null ? "" : code)] || "";
+    var _pb = _pcbCache[String(code == null ? "" : code)];
+    if (_pb) return _pb;
+    var _fv = fimaFinGet(code);   /* 6.9.943 */
+    return _fv ? (realBrand(_fv) || "") : "";
   }
   /* ---- v6.9.489 - THE LIST PRICE, LOOKED UP INSTEAD OF SEARCHED ----
      chDiscGap and chRepriced each ran PRODUCTS.filter() once per line to ask "is this rate still
@@ -13551,7 +13622,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         _plcCache[String(p.code)] = Number(p.price) || 0;
       });
     }
-    return _plcCache[String(code == null ? "" : code)] || 0;
+    return _plcCache[String(code == null ? "" : code)] || ((fimaFinGet(code) || {}).price || 0);   /* 6.9.943 */
   }
   function challanWonBrands(name) {
     var set = {}, t = String(name || "").trim().toLowerCase();
@@ -24549,6 +24620,10 @@ function viewCatalogue() {
             /* the hero band: what this room holds, what it comes to, which sets are in it */
             /* 6.9.852 - and the collection and finish he chose for it, on a line of its own, 8pt */
             var _rx = (rm.room && items[0] && items[0].rx && items[0].rx[rm.room]) || null;
+            try {   /* 6.9.943 - what he did not type comes from the FIMA codes in the room */
+              var _rxa = rm.room ? qzRoomAuto(items, rm.room) : null;
+              if (_rxa) _rx = { c: (_rx && _rx.c) || _rxa.c, f: (_rx && _rx.f) || _rxa.f };
+            } catch (eRa) { }
             var _rxT = _rx ? [_rx.c ? "Collection: " + _rx.c : "", _rx.f ? "Finish: " + _rx.f : ""].filter(Boolean).join("     \u00b7     ") : "";
             var bandH = _rxT ? 23 : 17;
             fill([246, 250, 249]); doc.rect(0, yTop - 4, W, bandH, "F");
@@ -55593,11 +55668,22 @@ function viewCatalogue() {
   function chProdsMatching(q) {
     var s = String(q || "").toLowerCase().trim();
     if (s.length < 2) return [];
-    return PRODUCTS.filter(function (p) {
+    var out = PRODUCTS.filter(function (p) {
       return (String(p.desc || "") + " " + String(p.code || "") + " " +
               String(p.brand || "") + " " + String(realBrand(p) || "") + " " +
               String(p.family || "") + " " + String(p.cat || "")).toLowerCase().indexOf(s) >= 0;
     }).slice(0, 60);
+    /* 6.9.943 - the FIMA finish codes after the catalogue's own rows; a typed full code comes first */
+    if (out.length < 60 && s.length >= 3) {
+      var ix = fimaFinIndex(), ex = ix.code[String(q || "").trim().toUpperCase()];
+      if (ex) out.unshift(ex);
+      Object.keys(ix.code).some(function (c) {
+        var v = ix.code[c]; if (v === ex) return false;
+        if ((v.code + " " + v.desc).toLowerCase().indexOf(s) >= 0) out.push(v);
+        return out.length >= 60;
+      });
+    }
+    return out;
   }
   /* ================= ONE PRODUCT PICKER  (v6.9.454, 9 Sep 2026) =================
      HIS WORDS, with the quote wizard's Products step on screen: "quote making product selection
@@ -55788,9 +55874,12 @@ function viewCatalogue() {
       });
       /* 6.9.852 - HIS ANSWER: "collection + finish boxes per room". Printed on the room's page of the proposal. */
       var rxv = (room && z.rx && z.rx[room]) || {};
+      var rxa = room ? qzRoomAuto(z.items, room) : null;   /* 6.9.943 - from the FIMA codes in this room */
       var rxBox = function (k, lab, ph) {
+        var typed = String(rxv[k] || "").trim(), auto = !typed && rxa ? rxa[k] : "";
         return '<label style="flex:1 1 150px;font-size:12px;font-weight:700;color:#475569;margin:0">' + lab +
-          '<input class="qz-rx" data-r="' + esc(room) + '" data-k="' + k + '" value="' + esc(rxv[k] || "") + '" placeholder="' + ph + '" ' +
+          (auto ? ' <span style="font-weight:500;color:' + (/^Yet/.test(auto) ? '#b45309' : '#0f766e') + '">&middot; from the codes</span>' : '') +
+          '<input class="qz-rx" data-r="' + esc(room) + '" data-k="' + k + '" value="' + esc(typed || auto) + '" placeholder="' + ph + '" ' +
           'style="display:block;width:100%;box-sizing:border-box;min-height:44px;font-size:14px;padding:8px;border:1px solid #cbd5e1;border-radius:6px;margin-top:3px;font-weight:500"/></label>';
       };
       return '<div style="margin-top:10px;border:1px solid ' + (tint ? '#fcd34d' : '#cbd5e1') + ';border-radius:10px;overflow:hidden">' +
@@ -55942,6 +56031,15 @@ function viewCatalogue() {
     h += '<div class="ew-picklabel"><span class="step">3</span>Set quantities</div><div class="plist">';
     brandProducts(z.brand).filter(function (p) { return famSame(p.family, z.family); }).forEach(function (p) {
       h += pickRow(P, p, z);
+      /* 6.9.943 - its other finishes, one tap away; open by itself when one of them is already picked */
+      var fv = fimaFinVariants(p.code);
+      if (fv.length) {
+        var fpk = fv.some(function (v) { return ((z.items || []).some(function (i) { return i.code === v.code; })); });
+        var fop = fpk || (S.finOpen && S.finOpen[p.code]);
+        h += '<div style="margin:-2px 0 6px 52px"><button class="btn sm ghost" data-act="fin-open" data-pre="' + P.pre + '" data-code="' + esc(p.code) + '" style="min-height:44px;font-size:12.5px;color:#0f766e;border-color:#99f6e4">' +
+          (fop ? '&#9650; Hide' : '&#9660; ' + fv.length + ' other finish' + (fv.length === 1 ? '' : 'es') + ' &amp; codes') + '</button></div>';
+        if (fop) fv.forEach(function (v) { h += pickRow(P, v, z); });
+      }
     });
     return h + '</div>' + pkNewBtn(P.pre, z.brand, z.family, "", "+ Not in the list? Add a new " + z.family + " product");
   }
@@ -57945,7 +58043,7 @@ function viewCatalogue() {
     Object.keys(reo).forEach(function (k) { codes[k] = 1; });
     var _sctx = stkCtx(), _sLvl = _sctx.lvl;   /* 6.9.621 - ABC / FSN on every row; 6.9.622 - and the levels */
     var list = Object.keys(codes).map(function (k) {
-      var p = (PRODUCTS.filter(function (x) { return x.code === k; })[0]) || {};
+      var p = (prodByCode(k)) || {};
       var onhand = (mv.m[k] || 0) - (del[k] || 0) + (ret[k] || 0);
       var rl = reo[k] || 0, rt = rate[k] || 0;
       return { code: k, desc: p.desc || mv.desc[k] || k, brand: p.brand || "", inq: mv.m[k] || 0, del: del[k] || 0, ret: ret[k] || 0,
@@ -59359,7 +59457,7 @@ function viewCatalogue() {
     var HEAD = ["Code", "Product", "Brand", "Unit", "Counted on", "Count", "Purchase bills in", "Adjustments", "Out on challans", "Returned", "On hand", "Challans not dispatched", "Free", "Reorder at", "Purchase rate", "Value"];
     var out = [[{ v: "Energy World · Stock · " + fullDate(today()), s: XL.BOLD }], [], HEAD.map(function (t) { return { v: t, s: XL.HEAD }; })];
     Object.keys(codes).sort().forEach(function (k) {
-      var p = PRODUCTS.filter(function (x) { return x.code === k; })[0] || {};
+      var p = prodByCode(k) || {};
       var onh = (mv.m[k] || 0) - (del[k] || 0) + (ret[k] || 0), fr = onh - (res[k] || 0), rt = rate[k] || 0;
       out.push([k, p.desc || mv.desc[k] || "", p.brand || "", p.unit || "", cut[k] ? dmy(cut[k]) : "not counted", open[k] || 0, rin[k] || 0, adj[k] || 0,
         del[k] || 0, ret[k] || 0, onh, res[k] || 0, fr, reo[k] || "", rt || "", rt && onh > 0 ? Math.round(onh * rt) : ""]);
@@ -59427,7 +59525,7 @@ function viewCatalogue() {
      stock rows (admin/godown), so on-hand math is untouched and no sheet column is added. */
   function modalStockItem(code) {
     var mv = stockMovementByCode(), del = stockDeliveredByCode(), ret = stockReturnedByCode(), reo = reorderByCode(), rate = rateByCode();
-    var p = (PRODUCTS.filter(function (x) { return x.code === code; })[0]) || {};
+    var p = (prodByCode(code)) || {};
     var onhand = (mv.m[code] || 0) - (del[code] || 0) + (ret[code] || 0);
     var lbl = 'style="font-size:12px;color:#475569;margin:8px 0 2px"';
     var inp = 'style="width:100%;padding:9px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px"';
@@ -59466,13 +59564,13 @@ function viewCatalogue() {
      items ... option to show or not show bom in challan". Parts are picked by code or name, each
      with how many go into ONE kit. Saved as one "bom" stock row; the last one wins. */
   function modalBom(code) {
-    var p = (PRODUCTS.filter(function (x) { return x.code === code; })[0]) || {};
+    var p = (prodByCode(code)) || {};
     var z = S.bomEd && S.bomEd.code === code ? S.bomEd : (S.bomEd = { code: code, rows: ((stkBom()[code] || {}).parts || []).map(function (x) { return { code: x.code, qty: x.qty }; }), show: !!(stkBom()[code] || {}).show });
     if (!z.rows.length) z.rows.push({ code: "", qty: 1 });
     if (!z.hasOwnProperty("show")) z.show = false;
     var inp = 'style="width:100%;box-sizing:border-box;min-height:44px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;background:#fff"';
     var opts = PRODUCTS.filter(function (x) { return x.code !== code; }).map(function (x) { return '<option value="' + esc(x.code) + '">' + esc(x.code) + ' \u2014 ' + esc(x.desc || "") + '</option>'; }).join("");
-    var nameOf = function (c) { var q = PRODUCTS.filter(function (x) { return x.code === c; })[0]; return q ? q.desc || c : ""; };
+    var nameOf = function (c) { var q = prodByCode(c); return q ? q.desc || c : ""; };
     return '<h2 style="margin:0 0 2px">Parts in this kit</h2>' +
       '<div class="meta" style="font-size:12.5px;margin-bottom:8px"><b>' + esc(p.desc || code) + '</b> \u00b7 ' + esc(code) + '. When a challan carries this, stock goes out of these parts (qty on the challan \u00d7 qty per kit), not out of the kit itself. The same for returns booked in.</div>' +
       '<datalist id="bom_prods">' + opts + '</datalist>' +
@@ -59530,7 +59628,7 @@ function viewCatalogue() {
   function modalStockAdd(type, code) {
     var title = type === "opening" ? "Set opening stock" : (type === "adjust" ? "Stock adjustment" : "Goods received");
     /* 6.9.656 - opened from a count row: the product is already chosen, and its stock is shown */
-    var _pp = code ? (PRODUCTS.filter(function (x) { return x.code === code; })[0] || { code: code }) : null;
+    var _pp = code ? (prodByCode(code) || { code: code }) : null;
     var _px = code ? (stkPositions()[code] || null) : null;
     var lbl = 'style="font-size:12px;color:#475569;margin:8px 0 2px"';
     var inp = 'style="width:100%;padding:9px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px"';
@@ -60559,7 +60657,7 @@ function viewCatalogue() {
     Object.keys(pc.v).forEach(function (k) {
       if (rows.length >= 10 || !pcUnsaved(k, last)) return;
       var q = pcNum(pc.v[k]); if (isNaN(q) || q < 0) return;
-      var p = PRODUCTS.filter(function (x) { return x.code === k; })[0] || {};
+      var p = prodByCode(k) || {};
       rows.push({ code: k, qty: q, desc: p.desc || "" });
     });
     if (!rows.length) { pcSay(); return; }
@@ -62569,7 +62667,7 @@ function viewCatalogue() {
       var _sqty = Number(String((el("stk_qty") || {}).value || "").trim());
       if (!_scode) { toast("Pick a product first."); return; }
       if (!_sqty) { toast("Enter a quantity."); return; }
-      var _sp = (PRODUCTS.filter(function (x) { return x.code === _scode; })[0]) || {};
+      var _sp = (prodByCode(_scode)) || {};
       var _srow = { id: "S-" + Date.now() + "-" + Math.floor(Math.random() * 1000000), type: _stype, code: _scode,
         desc: _sp.desc || "", qty: _sqty, ref: gdRefPre() + String((el("stk_ref") || {}).value || "").trim(),   /* 6.9.915 - the godown it happened at */
         asOn: today(), notes: String((el("stk_notes") || {}).value || "").trim() };
@@ -62659,7 +62757,7 @@ function viewCatalogue() {
         var _bz = S.bomEd || { rows: [] }, _bad = [];
         _bz.rows.forEach(function (r) {
           if (!r.code && !String(r.qty || "").trim()) return;
-          var pr = PRODUCTS.filter(function (x) { return x.code === r.code; })[0], q = Number(String(r.qty || "").replace(/[^0-9.]/g, "")) || 0;
+          var pr = prodByCode(r.code), q = Number(String(r.qty || "").replace(/[^0-9.]/g, "")) || 0;
           if (!pr || !(q > 0) || r.code === _bc) { _bad.push(r.code || "(blank)"); return; }
           _bparts.push({ code: pr.code, qty: q, desc: pr.desc || pr.code });
         });
@@ -62668,7 +62766,7 @@ function viewCatalogue() {
       }
       var _lb = t.textContent; t.disabled = true; t.textContent = "Saving\u2026";
       if (!roleIs("admin") && act === "bom-save") {   /* 6.9.887 - HIS CHOICE: a kit set by accounts or the godown waits for the owner */
-        var _pd = PRODUCTS.filter(function (x) { return x.code === _bc; })[0] || {};
+        var _pd = prodByCode(_bc) || {};
         auditFact("pf:bomprop", _bc, { code: _bc, desc: _pd.desc || "", parts: _bparts.map(function (p) { return { c: p.code, q: p.qty, d: p.desc }; }), show: !!(S.bomEd && S.bomEd.show), by: S.user }).then(function () {
           S.bomEd = null; S.modal = null; render(); toast("Kit proposed: " + plural(_bparts.length, "part") + ". The owner approves it under Products \u203a Codes & costs.");
         }, function () { t.disabled = false; t.textContent = _lb; toast("Not sent - try again."); });
@@ -63158,7 +63256,7 @@ function viewCatalogue() {
       var _rows = {}, _ord = [], _bad2 = "";
       _g.lines.forEach(function (l) {
         if (!l.code && !l.qty) return;
-        var p = PRODUCTS.filter(function (x) { return x.code === l.code; })[0], q = Number(String(l.qty).replace(/[^0-9.\-]/g, ""));
+        var p = prodByCode(l.code), q = Number(String(l.qty).replace(/[^0-9.\-]/g, ""));
         if (!p) { _bad2 = _bad2 || ("Pick \"" + l.code + "\" from the product list."); return; }
         if (!(q > 0)) { _bad2 = _bad2 || ("Quantity for " + p.desc + "."); return; }
         if (!_rows[p.code]) { _rows[p.code] = { code: p.code, qty: 0, desc: p.desc }; _ord.push(p.code); }
@@ -66527,7 +66625,7 @@ function viewCatalogue() {
       String(t.getAttribute("data-codes") || "").split(",").forEach(function (c) {
         c = String(c || "").trim(); if (!c) return;
         if ((S.qz.items || []).some(function (x) { return x.code === c; })) return;
-        var p = PRODUCTS.filter(function (x) { return x.code === c; })[0]; if (!p) return;
+        var p = prodByCode(c); if (!p) return;
         var qb3 = realBrand(p);
         S.qz.items.push({ code: p.code, desc: p.desc, family: p.family, price: p.price, qty: _asQ,
                           pic: p.pic, unit: p.unit, brand: qb3, cat: p.cat || "",
@@ -66539,10 +66637,17 @@ function viewCatalogue() {
       toast(_asN ? (_asN === 1 ? "Added" : _asN + " added") + " at " + qShow(_asQ) + " each, in the same rooms." : "Already on the quote.");
       keepScroll = true; render(); return;
     }
+    if (act === "fin-open") {   /* 6.9.943 */
+      var _fc = t.getAttribute("data-code"); S.finOpen = S.finOpen || {}; S.finOpen[_fc] = !S.finOpen[_fc];
+      keepScroll = true;
+      if (t.getAttribute("data-pre") === "ch" && S.ch) { var _rcF = keepFields(CH_FIELDS); S.modal = modalChallan(); render(); _rcF(); }
+      else render();
+      return;
+    }
     if (act === "qz-qty") {
       var code = t.getAttribute("data-code");
       var delta = Number(t.getAttribute("data-d"));
-      var p = PRODUCTS.filter(function (x) { return x.code === code; })[0];
+      var p = prodByCode(code);
       if (!p) return;
       var it = S.qz.items.filter(function (x) { return x.code === code; })[0];
       if (!it) {
@@ -69506,7 +69611,7 @@ function viewCatalogue() {
       var _ci = []; try { _ci = JSON.parse(_sc.itemsJson || "[]"); } catch (e) { _ci = []; }
       var _cc = clientByName(_sc.customerName) || {};
       var _items = _ci.map(function (i) {
-        var _p = PRODUCTS.filter(function (pp) { return pp.code === i.code; })[0] || {};
+        var _p = prodByCode(i.code) || {};
         return { code: i.code, desc: i.desc || _p.desc || i.code,
                  unit: i.unit || _p.unit || "No's", qty: Number(i.qty) || 0 };
       }).filter(function (i) { return i.code && i.qty > 0; });
@@ -69689,7 +69794,7 @@ function viewCatalogue() {
     }
     if (act === "rt-qty") {
       var rc = t.getAttribute("data-code"), rd = Number(t.getAttribute("data-d")) || 0;
-      var rp = PRODUCTS.filter(function (p) { return p.code === rc; })[0] || {};
+      var rp = prodByCode(rc) || {};
       var rr = (S.rt.items || []).filter(function (i) { return i.code === rc; })[0];
       if (!rr) { if (rd < 0) return; S.rt.items.push({ code: rc, desc: rp.desc || rc, unit: rp.unit || "No's", qty: 1 }); }
       else { rr.qty = Math.max(0, Math.round(((Number(rr.qty) || 0) + rd) * 1000) / 1000);   /* v6.9.303 */
@@ -70442,7 +70547,7 @@ function viewCatalogue() {
     }
     if (act === "xf-qty") {
       var _xk2 = keepFields(["xf_note"]);
-      var _xc = t.getAttribute("data-code"), _xd = Number(t.getAttribute("data-d")) || 0, _xp = PRODUCTS.filter(function (p) { return p.code === _xc; })[0] || {};
+      var _xc = t.getAttribute("data-code"), _xd = Number(t.getAttribute("data-d")) || 0, _xp = prodByCode(_xc) || {};
       var _xr = (S.xf.items || []).filter(function (i) { return i.code === _xc; })[0];
       if (!_xr) { if (_xd < 0) return; S.xf.items.push({ code: _xc, desc: _xp.desc || _xc, unit: _xp.unit || "", qty: 1 }); }
       else { _xr.qty += _xd; if (_xr.qty <= 0) S.xf.items = S.xf.items.filter(function (i) { return i.code !== _xc; }); }
@@ -70476,7 +70581,7 @@ function viewCatalogue() {
     if (act === "oc-qty") {
       var oc2 = keepFields(["o_client", "o_date", "o_no", "o_site", "o_bill"]);
       var ocode = t.getAttribute("data-code"), od = Number(t.getAttribute("data-d")) || 0;
-      var op = PRODUCTS.filter(function (p) { return p.code === ocode; })[0] || {};
+      var op = prodByCode(ocode) || {};
       var orow = (S.oc.items || []).filter(function (i) { return i.code === ocode; })[0];
       if (!orow) { if (od < 0) return; S.oc.items.push({ code: ocode, desc: op.desc || ocode, unit: op.unit || "No's", qty: 1, rate: op.price || 0 }); }
       else { orow.qty += od; if (orow.qty <= 0) S.oc.items = S.oc.items.filter(function (i) { return i.code !== ocode; }); }
@@ -70597,7 +70702,7 @@ function viewCatalogue() {
     if (act === "ch-qty") {
       var pcode = t.getAttribute("data-code");
       var dd2 = Number(t.getAttribute("data-d")) || 0;
-      var prod = PRODUCTS.filter(function (p) { return p.code === pcode; })[0] || {};
+      var prod = prodByCode(pcode) || {};
       var row = (S.ch.items || []).filter(function (i) { return i.code === pcode; })[0];
       if (!row) {
         if (dd2 < 0) return;
@@ -70741,7 +70846,7 @@ function viewCatalogue() {
           return { code: l.code, desc: l.desc, unit: l.unit, qty: l.qty, rate: l.rate, brand: "", disc: 0,
                    local: 1, shop: String(l.shop || ""), cost: Math.round(num(l.cost)) };
         }
-        var prod = (PRODUCTS.filter(function (x) { return x.code === l.code; })[0]) || {};
+        var prod = (prodByCode(l.code)) || {};
         var lb = l.brand || realBrand(prod) || chBrandV;
         /* ===== NO RATE ON FILE IS NOT A RATE OF ZERO  (v6.9.517, 19 September 2026) =====
            clientDiscount() answers 0 to two different questions - "what is his rate on this
@@ -71888,7 +71993,7 @@ function viewCatalogue() {
     if (t.classList && t.classList.contains("qz-q") && S.qz) {
       var code = t.getAttribute("data-code");
       var q = qnum(t.value);   /* v6.9.303 */
-      var p = PRODUCTS.filter(function (x) { return x.code === code; })[0];
+      var p = prodByCode(code);
       /* A typed quantity sets the figure for the room you are working in and
          leaves the other rooms on that line alone - otherwise typing "2" for the
          master bathroom would silently wipe the guest bathrooms off the line. */
@@ -71911,7 +72016,7 @@ function viewCatalogue() {
     if (t.classList && t.classList.contains("ch-q") && S.ch) {
       var chCode = t.getAttribute("data-code");
       var chQ = qnum(t.value);   /* v6.9.303: was Math.floor - see qnum() */
-      var chProd = PRODUCTS.filter(function (x) { return x.code === chCode; })[0] || {};
+      var chProd = prodByCode(chCode) || {};
       var chRow = (S.ch.items || []).filter(function (i) { return i.code === chCode; })[0];
       if (chRow) {
         if (chQ <= 0) S.ch.items = S.ch.items.filter(function (i) { return i.code !== chCode; });
@@ -71927,7 +72032,7 @@ function viewCatalogue() {
     /* v6.9.454 - the old delivery's picker has a quantity box now (it had a bold count and two
        buttons); typed, it writes the line with its rate exactly as oc-qty does */
     if (t.classList && t.classList.contains("xf-q") && S.xf) {   /* 6.9.915 - a transfer line typed */
-      var xfC = t.getAttribute("data-code"), xfQ = qnum(t.value), xfP = PRODUCTS.filter(function (x) { return x.code === xfC; })[0] || {};
+      var xfC = t.getAttribute("data-code"), xfQ = qnum(t.value), xfP = prodByCode(xfC) || {};
       var xfR = (S.xf.items || []).filter(function (i) { return i.code === xfC; })[0];
       if (xfR) { if (xfQ <= 0) S.xf.items = S.xf.items.filter(function (i) { return i.code !== xfC; }); else xfR.qty = xfQ; }
       else if (xfQ > 0) S.xf.items.push({ code: xfC, desc: xfP.desc || xfC, unit: xfP.unit || "", qty: xfQ });
@@ -71936,7 +72041,7 @@ function viewCatalogue() {
     if (t.classList && t.classList.contains("oc-q") && S.oc) {
       var ocCode = t.getAttribute("data-code");
       var ocQ = qnum(t.value);
-      var ocProd = PRODUCTS.filter(function (x) { return x.code === ocCode; })[0] || {};
+      var ocProd = prodByCode(ocCode) || {};
       var ocRow = (S.oc.items || []).filter(function (i) { return i.code === ocCode; })[0];
       if (ocRow) {
         if (ocQ <= 0) S.oc.items = S.oc.items.filter(function (i) { return i.code !== ocCode; });
@@ -71953,7 +72058,7 @@ function viewCatalogue() {
       /* v6.9.121: typed qty on the material-return picker (same as the challan builder). */
       var rtCode = t.getAttribute("data-code");
       var rtQ = qnum(t.value);   /* v6.9.303: was Math.floor - see qnum() */
-      var rtProd = PRODUCTS.filter(function (x) { return x.code === rtCode; })[0] || {};
+      var rtProd = prodByCode(rtCode) || {};
       var rtRow = (S.rt.items || []).filter(function (i) { return i.code === rtCode; })[0];
       if (rtRow) {
         if (rtQ <= 0) S.rt.items = S.rt.items.filter(function (i) { return i.code !== rtCode; });
