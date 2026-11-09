@@ -283,7 +283,7 @@ body{background:#F4F6F9}
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.153.0";   /* 1.153.0 (9 Nov 2026) - FIMA in every finish: any of 14,260 finish codes (F1301WLX9CS ...) can go on a challan at its own MRP */     /* 1.152.0 (8 Nov 2026) - Add to Hisab: who earns, without incentive % or amount */   /* 1.151.0 (8 Nov 2026) - incentive card: any number of discount slabs (shared block) */   /* 1.150.0 (2 Nov 2026) - EW <-> MPS are normal challans again; they add to the other godown after its count */   /* 1.149.0 (1 Nov 2026) - the godown receives a transfer on this phone */   /* 1.148.0 (1 Nov 2026) - a transfer lands only when the other godown receives it */   /* 1.147.0 (1 Nov 2026) - two godowns: MPS Sonipat has its own stock; MPS staff see MPS work only; no challan to MPS (it is a transfer) */   /* 1.146.0 (31 Oct 2026) - one tap, one entry: a second tap on a write button is swallowed */   /* 1.145.0 - vehicle no asked every time a driver is picked (not for Porter / Rapido); 1.144.0 lorry check */
+  var APP_VERSION = "1.153.3";   /* 1.153.3 (9 Nov 2026) - FIMA finish codes with their own finish photo */     /* 1.153.2 (9 Nov 2026) - a small finish-colour dot on FIMA product pictures */     /* 1.153.1 (9 Nov 2026) - FIMA handles S1-S4 in every finish and the S2 glass handles */     /* 1.153.0 (9 Nov 2026) - FIMA in every finish: any of 14,260 finish codes (F1301WLX9CS ...) can go on a challan at its own MRP */     /* 1.152.0 (8 Nov 2026) - Add to Hisab: who earns, without incentive % or amount */   /* 1.151.0 (8 Nov 2026) - incentive card: any number of discount slabs (shared block) */   /* 1.150.0 (2 Nov 2026) - EW <-> MPS are normal challans again; they add to the other godown after its count */   /* 1.149.0 (1 Nov 2026) - the godown receives a transfer on this phone */   /* 1.148.0 (1 Nov 2026) - a transfer lands only when the other godown receives it */   /* 1.147.0 (1 Nov 2026) - two godowns: MPS Sonipat has its own stock; MPS staff see MPS work only; no challan to MPS (it is a transfer) */   /* 1.146.0 (31 Oct 2026) - one tap, one entry: a second tap on a write button is swallowed */   /* 1.145.0 - vehicle no asked every time a driver is picked (not for Porter / Rapido); 1.144.0 lorry check */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -3322,14 +3322,15 @@ function discRowOn(client, brand, onYmd) {
   /* 1.153.0 - FIMA IN EVERY FINISH (the CRM's 6.9.943 block, word for word) */
   var FIMA_FIN_NAME = { CR: "Chrome", CN: "Black Chrome", SN: "Brushed Nickel", CS: "Brushed Black Chrome", NS: "Black Matt", BS: "White Matt",
     BG: "Ivory White", SG: "Sand Grey", VE: "Agave Green", AZ: "Indigo Blue", RB: "Burgundy Red", LN: "Polished Nickel", HL: "Champagne",
-    HS: "Brushed Champagne", OR: "Gold", OS: "Brushed Gold", ZL: "Amber Bronze", ZS: "Brushed Amber Bronze", KS: "Brushed Moka Bronze", INOX: "Stainless Steel" };
-  var FIMA_FIN_RE = /^(.*?)(INOX|CR|CN|SN|CS|NS|BS|BG|SG|VE|AZ|RB|LN|HL|HS|OR|OS|ZL|ZS|KS)(\.[A-Z0-9]+|\d\/\d)?$/;
+    HS: "Brushed Champagne", OR: "Gold", OS: "Brushed Gold", ZL: "Amber Bronze", ZS: "Brushed Amber Bronze", KS: "Brushed Moka Bronze", INOX: "Stainless Steel",
+    CE: "Grey Concrete", LC: "Light Wood", LS: "Dark Wood" };   /* 6.9.945 - the So handles' "materials" (price list p.159) */
+  var FIMA_FIN_RE = /^(.*?)(INOX|CR|CN|SN|CS|NS|BS|BG|SG|VE|AZ|RB|LN|HL|HS|OR|OS|ZL|ZS|KS|CE|LC|LS)(\.[A-Z0-9]+|\d\/\d)?$/;
   var _ffD = null, _ffIx = null, _ffAt = 0;
   function fimaFinOf(code) { var m = String(code || "").match(FIMA_FIN_RE); return m ? m[2] : ""; }
   function fimaFinLoad() {
     if (_ffD || (_ffAt && Date.now() - _ffAt < 60000)) return;
     _ffAt = Date.now();
-    fetch("../assets/fima/fima_fin.json?v=1").then(function (r) { return r.json(); }).then(function (d) {
+    fetch("../assets/fima/fima_fin.json?v=3").then(function (r) { return r.json(); }).then(function (d) {
       if (!d || !d.r) return;
       _ffD = d; _ffIx = null; _pcbCache = null; _plcCache = null;
       try { keepScroll = true; render(); } catch (e) { }
@@ -3349,15 +3350,38 @@ function discRowOn(client, brand, onYmd) {
       _ffD.r[rc].f.forEach(function (x) {
         var c = String(x[0]); if (base[c]) return;
         var fin = fimaFinOf(c), st = c.replace(FIMA_FIN_RE, "$1");
-        var desc = stem0 + " - " + (FIMA_FIN_NAME[fin] || fin) + (st !== rs ? " \u00b7 option " + st : "") +
+        var fnm = typeof x[3] === "string" ? x[3] : (FIMA_FIN_NAME[fin] || fin);   /* 6.9.945 - a named finish (S2 glass) */
+        var desc = stem0 + " - " + fnm + (typeof x[3] !== "string" && st !== rs ? " \u00b7 option " + st : "") +
           (x.length > 2 && _ffD.vl[x[2]] ? " (" + String(_ffD.vl[x[2]]).toLowerCase() + ")" : "");
         var v = { code: c, family: p.family, desc: desc, cat: p.cat, unit: p.unit, price: Number(x[1]) || 0, brand: p.brand,
-          pic: p.pic, specs: sp, was: "", label: c + " - " + desc, fin: 1, of: rc };
+          pic: (_ffD.p && _ffD.p[c]) ? "../assets/fima/" + _ffD.p[c] : p.pic, finPic: !!(_ffD.p && _ffD.p[c]),   /* 6.9.947 - its own finish photo where one exists */
+          specs: sp, was: "", label: c + " - " + desc, fin: 1, of: rc };
         ix.code[c] = v; L.push(v);
       });
       if (L.length) ix.by[rc] = L;
     });
     return (_ffIx = ix);
+  }
+  /* 6.9.946 - HIS WORDS: "add a small coloured finish badge on the picture". FIMA publishes one (chrome) photo per
+     product, so a finish code shows that photo; a dot in the finish's colour on its corner tells Gold from Black Matt.
+     Colours read off FIMA's own colour-collection pages (price list p.26-27 and the handle finishes, p.159-161). */
+  var FIMA_FIN_HEX = { CR: "#c7ccd1", CN: "#3a3d42", SN: "#a8a398", CS: "#4b4a47", NS: "#1d1d1d", BS: "#f5f5f3", BG: "#e8e0cf",
+    SG: "#c8c1b4", VE: "#7f9e74", AZ: "#6f97ad", RB: "#9b3a2b", LN: "#d9d4ca", HL: "#e5d7a6", HS: "#d0c294", OR: "#d8b257",
+    OS: "#c7a659", ZL: "#b9693c", ZS: "#a8633e", KS: "#6c6356", INOX: "#b8bbbe", CE: "#9b9b97", LC: "#c9a57a", LS: "#6a4a31" };
+  var FIMA_GLASS_HEX = ["#b9bcbf", "#9a7457", "#c9a85a", "#c98f8f", "#7f9e74", "#e8e0cf"];
+  function fimaBadgeOf(code) {
+    var c = String(code == null ? "" : code).trim(); if (!c) return null;
+    var v = fimaFinGet(c), g = c.match(/^S2VS?0([1-6])$/);
+    if (g) return { hex: FIMA_GLASS_HEX[Number(g[1]) - 1], label: v ? String(v.desc).split(" - ").pop() : "Glass" };
+    var f = fimaFinOf(c); if (!f || !FIMA_FIN_HEX[f]) return null;
+    if (!v) { var b = ""; try { b = typeof productBrandByCode === "function" ? String(productBrandByCode(c) || "") : ""; } catch (e) { b = ""; } if (!/fima/i.test(b)) return null; }
+    return { hex: FIMA_FIN_HEX[f], label: FIMA_FIN_NAME[f] + " (" + f + ")" };
+  }
+  function fimaPicWrap(code, imgHtml) {
+    var b = fimaBadgeOf(code); if (!b) return imgHtml;
+    return '<span style="position:relative;display:inline-flex;flex:0 0 auto">' + imgHtml +
+      '<span title="' + b.label + '" aria-label="' + b.label + '" style="position:absolute;right:-4px;bottom:-4px;width:16px;height:16px;border-radius:50%;background:' + b.hex +
+      ';border:2px solid #fff;box-shadow:0 0 0 1px rgba(15,23,42,.35)"></span></span>';
   }
   function fimaFinGet(c) { return fimaFinIndex().code[String(c == null ? "" : c)] || null; }
   function fimaFinVariants(c) { return fimaFinIndex().by[String(c == null ? "" : c)] || []; }
@@ -3628,7 +3652,7 @@ function discRowOn(client, brand, onYmd) {
   function pkRow(x) {
     var have = qtyOf(x.code);
     return '<div class="prow' + (have ? ' picked' : '') + '">' +
-      (x.pic ? '<img src="' + esc(x.pic) + '" alt="" loading="lazy"/>' : '<div class="noimg">no<br>photo</div>') +
+      (x.pic ? fimaPicWrap(x.code, '<img src="' + esc(x.pic) + '" alt="" loading="lazy"/>') : '<div class="noimg">no<br>photo</div>') +
       '<div class="pinfo"><div class="pname">' + esc(x.desc) + '</div>' +
       '<div class="pmeta">' + esc(x.code) + (x.unit ? ' · ' + esc(x.unit) : '') + ' · ' + money(x.price) +
         (S.pick && S.pick.into === "rt" ? '' : chStkTag(x.code, have)) + '</div></div>' +   /* 1.116.0 - stock in hand */
