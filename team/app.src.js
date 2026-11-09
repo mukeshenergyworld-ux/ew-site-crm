@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.949";   /* 6.9.949 (9 Nov 2026) - quote PDF: a product picture stays inside its own row (1.2 mm clear of both lines) */     /* 6.9.948 (9 Nov 2026) - quote PDF: each room heading carries its collection and finish with colour dots; every FIMA code chip has its finish dot */     /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
+  var APP_VERSION = "6.9.950";   /* 6.9.950 (9 Nov 2026) - brand introductions: a fuller paragraph, three stage-wise benefits and one next step, on the quote and the proposal */     /* 6.9.949 (9 Nov 2026) - quote PDF: a product picture stays inside its own row (1.2 mm clear of both lines) */     /* 6.9.948 (9 Nov 2026) - quote PDF: each room heading carries its collection and finish with colour dots; every FIMA code chip has its finish dot */     /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -23885,7 +23885,7 @@ function viewCatalogue() {
     groups.forEach(function (g) {
       var mem = (g.members || []).map(function (m) { return String(m).toLowerCase(); });
       var hit = (items || []).some(function (i) { return mem.indexOf(String(i.brand || "").trim().toLowerCase()) >= 0; });
-      if (hit && !seen[g.group]) { seen[g.group] = 1; out.unshift({ brand: g.group, alias: [g.logo || "Huliot"], tagline: g.tagline, about: g.about, origin: g.origin, web: g.web, group: true }); }
+      if (hit && !seen[g.group]) { seen[g.group] = 1; out.unshift({ brand: g.group, alias: [g.logo || "Huliot"], tagline: g.tagline, about: g.about, origin: g.origin, web: g.web, points: g.points, next: g.next, group: true }); }
     });
     return out;
   }
@@ -23904,7 +23904,11 @@ function viewCatalogue() {
       var bl = bs.map(function (x) {
         F("normal"); doc.setFontSize(8);
         var ls = doc.splitTextToSize(pdfSafe(x.about), TW);
-        return { x: x, ls: ls, lg: logoFor(x.brand) || logoFor((x.alias || [])[0] || ""), h: Math.max(LH + 2, 5.4 + ls.length * 3.5) + 3 };
+        /* 6.9.950 - the stage-wise benefits, one line each, and the next step */
+        var pts = (Array.isArray(x.points) ? x.points : []).slice(0, 3).map(function (p) { return doc.splitTextToSize(pdfSafe(p), TW - 4); });
+        F("bold"); var nx = x.next ? doc.splitTextToSize(pdfSafe("Next step: " + x.next), TW) : []; F("normal");
+        var ph = pts.reduce(function (a, p) { return a + p.length * 3.5 + 0.6; }, 0) + (pts.length ? 1.2 : 0) + (nx.length ? nx.length * 3.5 + 1 : 0);
+        return { x: x, ls: ls, pts: pts, nx: nx, lg: logoFor(x.brand) || logoFor((x.alias || [])[0] || ""), h: Math.max(LH + 2, 5.4 + ls.length * 3.5 + ph) + 3 };
       });
       if (y + 12 + bl[0].h > 278) { doc.addPage(); y = 22; } else { y += 4; }
       col(C.DEEP); F("bold"); doc.setFontSize(10);
@@ -23929,6 +23933,13 @@ function viewCatalogue() {
         doc.text(fitCell(doc, F, pdfSafe("- " + b.x.tagline + (b.x.origin ? "  (" + b.x.origin + ")" : "")), TW - bw - 3, 1, "normal", 8)[0], TX + bw + 2.2, y + 2);
         col(C.GREY); F("normal"); doc.setFontSize(8);
         doc.text(b.ls, TX, y + 6);
+        var _py = y + 6 + b.ls.length * 3.5 + 1.2;
+        b.pts.forEach(function (pl) {
+          doc.setFillColor(C.TEAL[0], C.TEAL[1], C.TEAL[2]); doc.circle(TX + 1, _py - 1.1, 0.7, "F");
+          col(C.INK); F("normal"); doc.setFontSize(8); doc.text(pl, TX + 4, _py);
+          _py += pl.length * 3.5 + 0.6;
+        });
+        if (b.nx.length) { _py += 0.4; col(C.TEAL); F("bold"); doc.setFontSize(8); doc.text(b.nx, TX, _py); }
         y += b.h;
       });
     }
@@ -23988,6 +23999,10 @@ function viewCatalogue() {
       if (!b.about) b.about = String(rx.about || "");
       if (!b.origin) b.origin = String(rx.origin || "");
       if (!b.web) b.web = String(rx.web || "");
+      /* 6.9.950 - HIS WORDS: "increase brand introduction size ... 2-3 product benefits matched to the stage of the project,
+         plus one clear next step" */
+      if (!b.points.length && Array.isArray(rx.points)) b.points = rx.points.map(String).filter(Boolean);
+      b.next = String(rx.next || "");
     }
     b.has = !!(b.headline || b.about || b.points.length || b.photo || b.page);
     return b;
@@ -24567,7 +24582,7 @@ function viewCatalogue() {
 
         if (bi.about) {
           col(SLATE); F("normal"); doc.setFontSize(9);
-          var ab = fitCell(doc, F, T(bi.about), LEFTW, 10, "normal", 9);
+          var ab = fitCell(doc, F, T(bi.about), LEFTW, 16, "normal", 9);   /* 6.9.950 - was 10 lines */
           ab.forEach(function (ln, k) { doc.text(ln, L, yy2 + k * 5.2); });
           yy2 += ab.length * 5.2 + 6;
         }
@@ -24580,6 +24595,12 @@ function viewCatalogue() {
           pl.forEach(function (ln, k) { doc.text(ln, L + 5, yy2 + k * 4.6); });
           yy2 += pl.length * 4.6 + 2;
         });
+        if (bi.next && yy2 < H - 30) {   /* 6.9.950 - one clear next step */
+          col(TEAL); F("bold"); doc.setFontSize(8.6);
+          var nl = fitCell(doc, F, T("Next step: " + bi.next), LEFTW, 3, "bold", 8.6);
+          nl.forEach(function (ln, k) { doc.text(ln, L, yy2 + 3 + k * 4.6); });
+          yy2 += 3 + nl.length * 4.6;
+        }
 
         if (bi.web && photo) {
           col(TEAL); F("bold"); doc.setFontSize(8);

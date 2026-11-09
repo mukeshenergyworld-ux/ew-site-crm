@@ -1,6 +1,6 @@
 {
- "v": "2026-10-13",
- "note": "Short brand introductions printed on quotations. hold=1 is not printed until the owner confirms it.",
+ "v": "2026-11-09",
+ "note": "Brand introductions printed on quotations: about, three stage-wise benefits (points) and one next step. hold=1 is not printed until the owner confirms it.",
  "brands": [
   {
    "brand": "TOTO",
@@ -8,14 +8,20 @@
     "TOTO"
    ],
    "tagline": "Japan's pioneer in toilets and Washlets",
-   "about": "TOTO has made sanitaryware in Japan since 1917 and introduced the Washlet, its electronic bidet seat, in 1980. Today it is a listed global company whose toilets, basins and Washlets are known for hygienic glazes, water-saving flushing and long service life. Choosing TOTO means fittings designed and tested to exacting Japanese standards for comfort and cleanliness.",
+   "about": "TOTO was founded in 1917 in Kitakyushu, Japan, as Toyo Toki, and has grown into one of the world's best-known bathroom makers. In 1980 it launched the WASHLET, and more than 70 million have been sold worldwide since. Its own technologies are built into the ceramics: the CEFIONTECT glaze (developed in 1997) is ultra-smooth so dirt and bacteria do not cling, TORNADO FLUSH swirls a powerful flush around a rimless bowl using less water, and EWATER+ mists the bowl with electrolysed water after every use. TOTO has made in India since August 2014, at its own factory in Halol, Gujarat, with its Indian head office in Mumbai. For your home this means a bathroom that stays cleaner with less effort, uses less water and keeps working the way it did on day one.",
    "origin": "Japan",
    "web": "toto.com",
    "hold": 0,
    "src": [
     "https://en.wikipedia.org/wiki/Toto_Ltd.",
     "https://www.toto.com/en/press/pdf/E-WL60MM.pdf"
-   ]
+   ],
+   "points": [
+    "Planning and rough-in: wall-hung and floor models with set outlet distances, so the plumber fixes the right drain and supply points once",
+    "Tiling and fit-out: CEFIONTECT glaze and rimless bowls stay clean with a wipe, so the finished bathroom looks new for years",
+    "Handover and daily use: WASHLET comfort, quiet water-saving flush, and TOTO India's own factory and service behind it"
+   ],
+   "next": "Fix the toilet and WASHLET models before rough-in, so the drain point and electrical socket are placed correctly."
   },
   {
    "brand": "Grundfos",
@@ -23,13 +29,19 @@
     "Grundfos"
    ],
    "tagline": "Danish pump engineering since 1945",
-   "about": "Grundfos was founded in 1945 in Bjerringbro, Denmark, where it is still headquartered, and is majority owned by its founder's foundation. It is regarded as one of the world's largest pump makers, building circulators, pressure boosting, submersible and centrifugal pumps with its own motors and controls. For a home, that means steady water pressure, quiet running and dependable service backup.",
+   "about": "Grundfos was founded in 1945 in Bjerringbro, Denmark, by Poul Due Jensen and is still headquartered there. About 86 percent is owned by the Poul Due Jensen Foundation, which keeps the company focused on long-term engineering rather than short-term profit. Grundfos makes more than 16 million pump units a year, including circulators, pressure boosting systems, submersible and centrifugal pumps, with its own motors and controls, and works in more than 60 locations worldwide. Its fire-fighting pumps meet FM, NFPA 20, LPCB, VdS and EN 12845 standards. For a home, that means steady water pressure on every floor, hot water that arrives quickly, quiet running and service backup from a global leader.",
    "origin": "Denmark",
    "web": "grundfos.com",
    "hold": 0,
    "src": [
     "https://en.wikipedia.org/wiki/Grundfos"
-   ]
+   ],
+   "points": [
+    "Planning: pressure boosting sized to your floors and bathrooms, so every shower gets steady pressure",
+    "Plumbing rough-in: hot-water circulators that bring hot water to the tap in seconds and save water while you wait",
+    "Handover and daily use: quiet, efficient Danish pumps with dependable service backup"
+   ],
+   "next": "Share the number of floors and bathrooms, and we will size the pressure pump and the circulator for your home."
   },
   {
    "brand": "Huliot",
@@ -39,14 +51,20 @@
     "Huliot ULTRA SILENT"
    ],
    "tagline": "Israeli drainage pipes, built for silence",
-   "about": "Huliot began in 1947 at Kibbutz Sde Nehemia in Israel and moved into pipes and fittings in the 1960s. It now makes drainage and water-supply systems in Israel, Slovenia, Portugal and India, where its plant opened in 2014. Its HT PRO and Ultra Silent polypropylene drainage lines are designed for leak-free joints and low noise, so you hear far less water inside your walls.",
+   "about": "Huliot began in 1947 at Kibbutz Sde Nehemia in Israel and has made pipes and fittings since the 1960s. It now makes drainage and water-supply systems in Israel, Slovenia, Portugal and India, where its plant has run since December 2014, and is certified to ISO 9001, ISO 14001 and ISO 45001. Its HT PRO and Ultra Silent polypropylene drainage lines push-fit together with rubber seals, so joints are quick and leak-free, and the Ultra Silent line is mineral-reinforced, so you hear far less water flowing through the walls and shafts.",
    "origin": "Israel",
    "web": "huliot.com",
    "hold": 0,
    "src": [
     "https://huliot.com/about-huliot/",
     "https://innovationisrael.org.il/en/success_story/huliot-1/"
-   ]
+   ],
+   "points": [
+    "Plumbing rough-in: push-fit joints with seals, faster than solvent or threaded drainage",
+    "Shafts and walls: Ultra Silent pipes cut flowing-water noise in bedrooms and living rooms",
+    "For the life of the building: polypropylene that handles hot wastewater without cracking"
+   ],
+   "next": "Share your drainage layout, and we will prepare the HT PRO or Ultra Silent schedule."
   },
   {
    "brand": "Heliroma",
@@ -55,7 +73,7 @@
     "Heliroma PPR"
    ],
    "tagline": "Portuguese PPR water pipes, Huliot Group",
-   "about": "Heliroma Plásticos is a Portuguese maker of thermoplastic piping, based in Albergaria-a-Velha, and has been part of the Huliot Group since 2019. Its PPR pipes and fittings carry hot and cold drinking water and are joined by heat fusion into one continuous piece, leaving no threads to leak. The range holds European certifications including AENOR and DVGW.",
+   "about": "Heliroma Plasticos is a Portuguese maker of thermoplastic piping based in Albergaria-a-Velha, and has been part of the Huliot Group since 2019. Its PPR pipes and fittings carry hot and cold drinking water and are joined by heat fusion, so pipe and fitting melt into one continuous piece with no threads or glue to leak. PPR does not corrode or scale, keeps water hygienic, and holds European certifications including AENOR and DVGW.",
    "origin": "Portugal",
    "web": "heliroma.pt",
    "hold": 0,
@@ -63,7 +81,13 @@
     "https://huliot.com/about-huliot/",
     "https://www.installershow.com/exhibitors/heliroma-plasticos-sa",
     "https://apcmc.pt/associados-apcmc/heliroma-plasticos-sa/"
-   ]
+   ],
+   "points": [
+    "Plumbing rough-in: heat-fused joints that become one piece with the pipe",
+    "Concealed in walls and floors: no corrosion, no scale and no leaking threads",
+    "For the life of the building: hygienic hot and cold water to every tap"
+   ],
+   "next": "Share your plumbing layout, and we will prepare the PPR pipe and fitting schedule."
   },
   {
    "brand": "FIMA",
@@ -71,14 +95,20 @@
     "FIMA"
    ],
    "tagline": "Italian-made faucets with designer finishes",
-   "about": "FIMA Carlo Frattini is an Italian faucet maker whose factory sits in Briga Novarese, in northern Italy's tap-making district. It designs and produces bathroom and kitchen mixers, shower systems and concealed bodies in-house, from machining and polishing to plating and assembly, including hard-wearing PVD finishes. FIMA brings genuine made-in-Italy design and craftsmanship to your bathroom.",
+   "about": "FIMA Carlo Frattini is a family-run Italian faucet maker, founded by Carlo Frattini in 1960, with its factory in Briga Novarese, in northern Italy's tap-making district. The whole production cycle stays in-house, from machining and polishing to plating and assembly. FIMA plates with trivalent chrome rather than hexavalent chrome, runs a zero-emission galvanic line, and has its own PVD plant for colour finishes that resist scratches and fading. Its range covers bathroom and kitchen mixers, thermostatic and concealed shower systems, and handles in more than twenty finishes, from Chrome and Black Matt to Gold, Champagne and Bronze. FIMA brings genuine made-in-Italy design and craftsmanship to your bathroom, in the exact colour your design calls for.",
    "origin": "Italy",
    "web": "fimacf.com",
    "hold": 0,
    "src": [
     "https://www.cosedicasa.com/news/rubinetti-fima-carlo-frattini-belli-e-di-qualita-innovazione-e-crescita-93086",
     "https://shop.mohd.it/it/brands/fima-carlo-frattini.html"
-   ]
+   ],
+   "points": [
+    "Rough-in: FIMA concealed bodies go into the wall first and accept the trim you choose later, so the finish can be decided after the walls are closed",
+    "Design stage: more than twenty PVD and plated finishes, so taps, showers and handles match your tiles and hardware",
+    "Fit-out and handover: Italian-made trims with hard-wearing PVD that keeps its colour with ordinary cleaning"
+   ],
+   "next": "Approve the concealed bodies now for rough-in, then choose the collection and finish for each bathroom from the FIMA finish samples."
   },
   {
    "brand": "Geberit",
@@ -86,14 +116,20 @@
     "Geberit"
    ],
    "tagline": "Swiss concealed cisterns trusted since 1964",
-   "about": "Geberit has been in sanitary technology since 1874 and is headquartered in Rapperswil-Jona, Switzerland. It introduced its first concealed cistern in 1964 and is now a European leader in wall-hung toilet frames, flush systems and piping. Geberit keeps spare parts available for 50 years, so the cistern hidden in your wall stays serviceable for decades.",
+   "about": "Geberit began in 1874 as a one-man business in Rapperswil, Switzerland, where the group is still headquartered. It introduced its first concealed cistern in 1964 and is today the European leader in sanitary technology, with about 11,000 employees, 26 production plants (including one in India) and sales in about 120 countries. Its Duofix frames carry wall-hung toilets and basins inside the wall, its concealed cisterns are pressure-tested before they leave the factory, and its flush plates operate them from the front. Geberit keeps spare parts for concealed cisterns and flush plates available for 50 years, so the cistern hidden in your wall stays serviceable for decades.",
    "origin": "Switzerland",
    "web": "geberit.com",
    "hold": 0,
    "src": [
     "https://en.wikipedia.org/wiki/Geberit",
     "https://www.geberit.com/insights/a-paradigm-shift-in-the-bathroom"
-   ]
+   ],
+   "points": [
+    "Rough-in: Duofix frames and concealed cisterns go in before plastering, at the right height for any wall-hung toilet",
+    "Plastering and tiling: a slim wall with no visible cistern, and the floor below the toilet is free to clean",
+    "Handover and for decades after: the flush plate opens for service, and spare parts are kept for 50 years"
+   ],
+   "next": "Fix the Geberit frame and cistern before plastering, then choose the flush plate design at fit-out."
   },
   {
    "brand": "Pentair",
@@ -101,13 +137,19 @@
     "Pentair"
    ],
    "tagline": "Global water treatment expertise since 1966",
-   "about": "Pentair started in Minnesota, USA, in 1966 and is today a New York Stock Exchange-listed water company working worldwide. Its softeners, sand filters and multiport control valves are used in homes and businesses across the world. A Pentair system gives you cleaner, softer water that protects your skin, fittings and appliances from hard-water scale.",
+   "about": "Pentair was founded in Minnesota, USA, in 1966 and is today a New York Stock Exchange-listed water company with about 10,000 employees and annual revenue of about four billion US dollars. Its Fleck and SIATA control valves, Structural composite vessels and filtration media are used in water softeners and filters in homes and businesses worldwide. A Pentair softener or sand filter removes hardness, iron and sediment before water reaches your bathrooms, protecting skin, hair, tiles, glass and every fitting and appliance from hard-water scale.",
    "origin": "United States (origin)",
    "web": "pentair.com",
    "hold": 0,
    "src": [
     "https://en.wikipedia.org/wiki/Pentair"
-   ]
+   ],
+   "points": [
+    "Planning and rough-in: a softener and filter point at the inlet protects all the plumbing that follows",
+    "Fit-out: soft water keeps new taps, shower glass and tiles free of white scale",
+    "Handover and daily use: automatic regeneration with a time-tested control valve, so the water stays soft with little attention"
+   ],
+   "next": "Send us a water sample or the hardness reading, and we will size the softener and filter for your daily use."
   },
   {
    "brand": "Green Heat",
@@ -117,7 +159,7 @@
     "Green Heat+"
    ],
    "tagline": "Efficient heat pumps for hot water",
-   "about": "Green Heat Plus is a Delhi-based supplier of air-source heat pumps for homes, along with swimming-pool heat pumps and solar water heating. A heat pump draws warmth from the surrounding air rather than heating water directly with an element, so it delivers plenty of hot water for a fraction of the electricity a conventional geyser uses.",
+   "about": "Green Heat Plus supplies air-source heat pumps for homes, along with swimming-pool heat pumps and solar water heating. A heat pump takes warmth from the surrounding air and moves it into the water instead of heating the water directly with an element, so it delivers plenty of hot water for a fraction of the electricity a conventional geyser uses. One central heat pump can serve all the bathrooms and the kitchen, so there is no geyser in every bathroom.",
    "origin": "India",
    "web": "greenheatplus.in",
    "hold": 0,
@@ -125,7 +167,13 @@
     "https://greenheatplus.in/",
     "https://www.greenheatplus.in/swimming-pool-heating-heat-pumps"
    ],
-   "confirmed": "13 Oct 2026 by Mukesh"
+   "confirmed": "13 Oct 2026 by Mukesh",
+   "points": [
+    "Planning: one central hot-water system sized for your whole family",
+    "Plumbing rough-in: hot-water lines to every bathroom from a single unit",
+    "Daily use: large savings on electricity compared with individual geysers"
+   ],
+   "next": "Tell us the number of bathrooms and family members, and we will size the heat pump and tank."
   },
   {
    "brand": "Stellar",
@@ -133,14 +181,20 @@
     "Stellar"
    ],
    "tagline": "Multi-layer stainless steel water tanks",
-   "about": "Stellar tanks are made by Sun Stellar, whose factory is at Bapauli, near Panipat in Haryana. The tanks are built from food-grade 316L stainless steel in five- and seven-layer insulated designs, with PUF-insulated models too. Unlike plastic tanks, stainless steel does not grow algae or break down in sunlight, so your stored water stays cleaner and the tank lasts much longer.",
+   "about": "Stellar tanks are made by Sun Stellar at its factory at Bapauli, near Panipat in Haryana, so they are designed and built close to where you live. The tanks are made of food-grade 316L stainless steel in five- and seven-layer insulated designs, and PUF-insulated models keep stored water cooler in summer and warmer in winter. Stainless steel does not grow algae, leach plastic or crack in the sun the way plastic tanks do, so your stored water stays cleaner and the tank lasts much longer. A local factory also means quick supply and service.",
    "origin": "India",
    "web": "sunstellar.in",
    "hold": 0,
    "src": [
     "https://sunstellar.in/",
     "https://www.stellarsanitar.com/"
-   ]
+   ],
+   "points": [
+    "Structure and terrace: sized and placed at the slab stage, so the stand and connections are planned",
+    "Plumbing rough-in: stainless steel outlets that connect cleanly to your supply line",
+    "Handover and daily use: algae-free, insulated water storage that lasts far longer than plastic"
+   ],
+   "next": "Confirm the tank size and terrace position, and we will plan the stand and connections."
   },
   {
    "brand": "MEA",
@@ -148,13 +202,19 @@
     "MEA"
    ],
    "tagline": "German drainage channels for every load",
-   "about": "MEA Water Management is part of Germany's MEA Group, headquartered in Aichach, and has more than a century of construction experience. It makes surface drainage channels in polymer concrete, glass-fibre composite and stainless steel, with gratings rated under the European standard EN 1433 for loads from foot traffic to heavy vehicles. MEA channels keep driveways, terraces and courtyards dry.",
+   "about": "MEA Water Management is part of Germany's MEA Group, headquartered in Aichach, which has more than a century of experience in construction products. It makes surface drainage channels in polymer concrete, glass-fibre composite and stainless steel, with gratings tested to the European standard EN 1433 for loads from foot traffic to heavy vehicles. Channels lie flush with the floor and carry rainwater and wash water away along their whole length, so driveways, terraces, courtyards and basement ramps stay dry and safe.",
    "origin": "Germany",
    "web": "mea-group.com",
    "hold": 0,
    "src": [
     "https://www.mea-group.com/content/uploads/sites/25/2023/07/EXPORT-Product-catalogue-2023-drainage-solution.pdf"
-   ]
+   ],
+   "points": [
+    "Structure and floor levels: channels set into the slab with the right slope and outlet",
+    "Flooring and paving: gratings flush with tiles or stone, for a clean finished look",
+    "Monsoon and daily use: rainwater cleared fast, rated for the load on that floor"
+   ],
+   "next": "Share your floor plan with the drive, ramp and terrace levels, and we will mark the channel runs and load classes."
   },
   {
    "brand": "Oyster",
@@ -163,14 +223,20 @@
     "OYSTER"
    ],
    "tagline": "Shower and steam bath systems",
-   "about": "Oyster is the brand of Oyster Bath Concepts, a New Delhi company founded in 2003 that supplies shower columns, rain showers, steam cabins, enclosures and spa products. Its range is built around the shower experience, from overhead rain panels to full steam enclosures, letting you create a spa-like bathroom at home with a single, specialist brand.",
+   "about": "Oyster is the brand of Oyster Bath Concepts, a New Delhi company founded in 2003 that supplies shower columns, rain showers, steam cabins, enclosures and spa products. Its range is built around the shower experience, from overhead rain panels to full steam enclosures, and lets you create a spa-like bathroom at home with one specialist brand.",
    "origin": "India",
    "web": "oysterbath.yolasite.com",
    "hold": 0,
    "src": [
     "https://oysterbath.yolasite.com/"
    ],
-   "confirmed": "13 Oct 2026 by Mukesh"
+   "confirmed": "13 Oct 2026 by Mukesh",
+   "points": [
+    "Planning and rough-in: steam generator, drain and supply points placed before the walls are closed",
+    "Tiling: enclosures and panels sized to your shower area",
+    "Handover: a spa-style shower and steam experience at home"
+   ],
+   "next": "Share the shower area size, and we will propose the panel, enclosure or steam option that fits."
   },
   {
    "brand": "Adani Solar",
@@ -179,13 +245,19 @@
     "Adani Solar"
    ],
    "tagline": "India's largest integrated solar manufacturer",
-   "about": "Adani Solar is the solar manufacturing arm of India's Adani Group, which entered the business in 2017. At Mundra, Gujarat, it makes everything from ingots and wafers to cells and modules, describing itself as India's first and largest vertically integrated solar maker. Its panels are independently tested by Kiwa PVEL, giving you confidence in long-term power output.",
+   "about": "Adani Solar is the solar manufacturing arm of India's Adani Group, which entered the business in 2017. At its 800-acre site in Mundra, Gujarat, it makes everything from ingots and wafers to cells and modules, and calls itself India's first and largest vertically integrated solar maker, having shipped more than 20 GW of modules. Its TOPCon and Mono PERC panels reach efficiencies of 21 to 23.7 percent, and Kiwa PVEL has named it a top performer nine years in a row. For your home, that means dependable power output from a large Indian manufacturer.",
    "origin": "India",
    "web": "adanisolar.com",
    "hold": 0,
    "src": [
     "https://www.adanisolar.com/about-us"
-   ]
+   ],
+   "points": [
+    "Structure: roof space and mounting points planned at the slab stage",
+    "Electrical rough-in: cabling and inverter location planned with the house wiring",
+    "Daily use: lower electricity bills from high-efficiency panels made in India"
+   ],
+   "next": "Share your roof area and monthly electricity bill, and we will size the solar system."
   },
   {
    "brand": "Eureka Forbes",
@@ -193,14 +265,20 @@
     "Eureka Forbes"
    ],
    "tagline": "RO purifiers, vacuum and robotic cleaners",
-   "about": "Eureka Forbes was founded in Mumbai in 1982 and is listed on India's stock exchanges. From its range we offer Aquaguard RO water purifiers for safe drinking water, vacuum cleaners, and robotic cleaners that clean your floors on their own. Its strength is a nationwide service network that has looked after Indian homes for over four decades, so help is easy to reach when you need it.",
+   "about": "Eureka Forbes was founded in Mumbai in 1982 and is listed on India's stock exchanges. Its Aquaguard brand is one of India's best-known names in drinking-water purification, and its range also includes vacuum cleaners and robotic cleaners. Its strength is a nationwide service network that has looked after Indian homes for over four decades, so help is easy to reach when you need it.",
    "origin": "India",
    "web": "eurekaforbes.com",
    "hold": 0,
    "src": [
     "https://en.wikipedia.org/wiki/Eureka_Forbes"
    ],
-   "note": "13 Oct 2026, his words: we only promote robotic cleaners, vacuum cleaners and RO, not softeners."
+   "note": "13 Oct 2026, his words: we only promote robotic cleaners, vacuum cleaners and RO, not softeners.",
+   "points": [
+    "Plumbing rough-in: a water point and drain at the purifier location in the kitchen",
+    "Fit-out: Aquaguard RO purifiers matched to your water quality",
+    "Daily use: safe drinking water and a service network close by"
+   ],
+   "next": "Mark the purifier position on the kitchen plan, so the water point and drain are placed."
   },
   {
    "brand": "Sanitaar",
@@ -209,14 +287,20 @@
     "Sanitaar"
    ],
    "tagline": "Stainless steel 316L press-fit plumbing",
-   "about": "Sanitaar is the Stellar Sanitär range of stainless steel plumbing from the Sun Stellar group, manufactured near Panipat. It covers 316L stainless steel pipes, double-press V-profile fittings, headers, valves and unions. Press-fit stainless steel needs no threading or welding on site, resists corrosion and keeps drinking water free of rust and plastic taste for the life of the building.",
+   "about": "Sanitaar is the Stellar Sanitär range of stainless steel plumbing from the Sun Stellar group, made near Panipat. It covers 316L stainless steel pipes, double-press V-profile fittings, headers, valves and unions. Press-fit stainless steel needs no threading or welding on site: each joint is pressed in seconds with a tool, so installation is fast and clean. It resists corrosion, handles hot and cold water, and keeps drinking water free of rust and plastic taste for the life of the building.",
    "origin": "India",
    "web": "stellarsanitar.com",
    "hold": 0,
    "src": [
     "https://www.stellarsanitar.com/"
    ],
-   "confirmed": "13 Oct 2026 by Mukesh: Stellar Sanitär"
+   "confirmed": "13 Oct 2026 by Mukesh: Stellar Sanitär",
+   "points": [
+    "Plumbing rough-in: fast, flame-free press joints and less time on site",
+    "Concealed in walls: corrosion-resistant 316L that does not scale or leak at threads",
+    "For the life of the building: clean drinking water with no plastic taste"
+   ],
+   "next": "Share your plumbing drawings, and we will prepare the pipe and fitting schedule."
   },
   {
    "brand": "TECE",
@@ -224,13 +308,19 @@
     "TECE"
    ],
    "tagline": "German family firm for flush and drainage",
-   "about": "TECE was founded in 1987 in Emsdetten, Germany, and remains a family-owned company with production sites in several countries. It specialises in behind-the-wall bathroom technology: pre-wall frames, concealed cisterns, flush plates, shower channels and pipe systems. TECE products are engineered in Germany for clean, flat bathroom designs that are simple to maintain.",
+   "about": "TECE was founded in 1987 in Emsdetten, Germany, and is still a family-owned company with 28 more sites around the world. It specialises in what goes behind the bathroom wall: TECEprofil and TECEbox pre-wall frames and concealed cisterns, TECEdrainline shower channels, TECEflex pipe systems and TECEfloor heating, together with designer flush plates. TECE products are engineered in Germany for clean, flat bathroom designs that are simple to install and maintain.",
    "origin": "Germany",
    "web": "tece.com",
    "hold": 0,
    "src": [
     "https://www.tece.com/en/company/company-tece"
-   ]
+   ],
+   "points": [
+    "Rough-in: frames and concealed cisterns fixed before plastering",
+    "Tiling: TECEdrainline channels for level-access showers with a single slope",
+    "Fit-out: designer flush plates, with service through the plate"
+   ],
+   "next": "Fix the frame and shower channel positions before plastering."
   },
   {
    "brand": "Lunos",
@@ -239,13 +329,19 @@
     "LUNOS"
    ],
    "tagline": "German decentralised ventilation since 1959",
-   "about": "LUNOS has made ventilation in Berlin since 1959 and builds its products in-house in Germany. It specialises in compact, through-the-wall ventilation units, many with heat recovery; its e² unit was the first fan with heat recovery to reach series production, in 2011. Lunos brings fresh, filtered air into each room without large ducts or major building work.",
+   "about": "LUNOS has made ventilation in Berlin since 1959 and builds its products in-house in Germany. It specialises in compact, through-the-wall ventilation units, many with heat recovery, and its e2 unit was the first fan with heat recovery to reach series production, in 2011. LUNOS brings fresh, filtered air into each room without large ducts or major building work, and it keeps bathrooms free of damp and mould.",
    "origin": "Germany",
    "web": "lunos.de",
    "hold": 0,
    "src": [
     "https://lunos.de/en/about-us"
-   ]
+   ],
+   "points": [
+    "Structure: wall cores planned and drilled before plastering",
+    "Fit-out: slim inner covers that sit flush with the wall",
+    "Daily use: fresh air and less damp, while keeping cooling or heating energy"
+   ],
+   "next": "Mark the rooms that need fresh air, so the wall openings are planned before plastering."
   },
   {
    "brand": "INAIR",
@@ -253,13 +349,19 @@
     "INAIR"
    ],
    "tagline": "Fresh air systems for healthier rooms",
-   "about": "INAIR (InAir Fresh Air Systems) is a ventilation company with its Indian office in Hyderabad. It supplies fresh-air units, energy recovery ventilators, filtration, ducting and fans for homes, offices, hospitals and hotels. An INAIR system brings in filtered outdoor air and removes stale air, cutting dust and stuffiness while recovering energy to keep cooling costs down.",
+   "about": "INAIR (InAir Fresh Air Systems) is a ventilation company with its Indian office in Hyderabad. It supplies fresh-air units, energy recovery ventilators, filtration, ducting and fans for homes, offices, hospitals and hotels. An INAIR system brings in filtered outdoor air and removes stale air, cutting dust and stuffiness, while recovering energy so cooling costs stay down.",
    "origin": "India",
    "web": "in-air.in",
    "hold": 0,
    "src": [
     "https://www.in-air.in/"
-   ]
+   ],
+   "points": [
+    "Planning: duct routes planned with the false ceiling",
+    "Rough-in: ducting and unit positions fixed before the ceiling closes",
+    "Daily use: filtered fresh air in every room, with lower cooling load"
+   ],
+   "next": "Share the floor plan with the ceiling heights, and we will plan the fresh-air system."
   },
   {
    "brand": "Leo Pump",
@@ -268,7 +370,7 @@
     "Leo Pump"
    ],
    "tagline": "Pump maker serving homes worldwide",
-   "about": "LEO pumps are made by Leo Group Co., Ltd., founded in 1995 in Wenling, China, and listed on the Shenzhen Stock Exchange. The company produces pumps for domestic water supply, pressure boosting, agriculture and drainage, sold in many countries. LEO offers practical, cost-effective pumps for everyday household water needs, backed by a large, established manufacturer.",
+   "about": "LEO pumps are made by Leo Group Co., Ltd., founded in 1995 in Wenling, China, and listed on the Shenzhen Stock Exchange. The company produces pumps for domestic water supply, pressure boosting, agriculture and drainage, which are sold in many countries. LEO offers practical, cost-effective pumps for everyday household water needs, backed by a large, established manufacturer.",
    "origin": "China",
    "web": "",
    "hold": 0,
@@ -276,7 +378,13 @@
     "https://finance.yahoo.com/quote/002131.SZ/profile",
     "https://www.elettronew.com/en/leo-pumps-1070"
    ],
-   "confirmed": "13 Oct 2026 by Mukesh"
+   "confirmed": "13 Oct 2026 by Mukesh",
+   "points": [
+    "Planning: the pump sized to the head and flow you need",
+    "Rough-in: the pump and pressure tank placed for easy service",
+    "Daily use: dependable, cost-effective water supply"
+   ],
+   "next": "Share the source and tank levels, and we will select the pump."
   },
   {
    "brand": "Astral",
@@ -284,14 +392,20 @@
     "Astral"
    ],
    "tagline": "India's CPVC plumbing pioneer",
-   "about": "Astral was founded in Ahmedabad in 1996 and brought CPVC piping to India in 1998. It was also the first in India to gain NSF approval for CPVC pipes. CPVC handles both hot and cold water, does not rust or scale and is joined with solvent cement. Astral also makes inspection chambers for underground drainage, giving your home a durable, leak-resistant system from one of India's leading pipe makers.",
+   "about": "Astral was founded in Ahmedabad in 1996, brought CPVC piping to India in 1998, and was the first in India to gain NSF approval for CPVC pipes. CPVC carries both hot and cold water, does not rust or scale, and is joined with solvent cement, so joints are quick and leak-resistant without threading. Astral also makes inspection chambers for underground drainage, giving your home a durable system from one of India's leading pipe makers.",
    "origin": "India",
    "web": "astralpipes.com",
    "hold": 1,
    "src": [
     "https://www.astralpipes.com/about-us"
    ],
-   "holdWhy": "13 Oct 2026: not a primary brand - Energy World is a sub-dealer; no introduction on quotes"
+   "holdWhy": "13 Oct 2026: not a primary brand - Energy World is a sub-dealer; no introduction on quotes",
+   "points": [
+    "Underground work: inspection chambers for clean, serviceable drainage",
+    "Plumbing rough-in: CPVC hot and cold lines with solvent-cement joints",
+    "For the life of the building: no rust or scale inside the walls"
+   ],
+   "next": "Share your plumbing layout, and we will prepare the pipe and fitting list."
   },
   {
    "brand": "IONCARE",
@@ -310,7 +424,13 @@
    "src": [
     "http://ioncares.co.kr/page/sub_01_01.php?locale=en_US",
     "https://www.vvwater.com/ioncares-7000-water-water-ionizer-254.html"
-   ]
+   ],
+   "points": [
+    "Kitchen planning: a water point and drain at the ioniser position",
+    "Fit-out: the plate count chosen to suit your family's use",
+    "Daily use: alkaline drinking water and acidic water for cleaning"
+   ],
+   "next": "Book a home demonstration so the family can taste the water before choosing a model."
   }
  ],
  "updated": "2026-10-18",
@@ -333,7 +453,13 @@
    "src": [
     "https://www.huliotgroup.com",
     "https://huliot.com/about-huliot/"
-   ]
+   ],
+   "points": [
+    "Underground and rough-in: drainage, water supply and chambers from one engineering family",
+    "Walls and shafts: quiet drainage and heat-fused hot and cold lines that do not leak",
+    "For the life of the building: certified materials and one supplier answerable for the whole system"
+   ],
+   "next": "Share your plumbing and drainage drawings, and we will prepare one Huliot Group schedule for the whole building."
   }
  ]
 }
