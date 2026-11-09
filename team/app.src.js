@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.934";   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
+  var APP_VERSION = "6.9.935";   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -12604,6 +12604,12 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     });
     return _dscFam;
   }
+  /* 6.9.935 - his words: "remove huliot as a brand from everywhere, put these tools under accessories".
+     Plain "Huliot" was never a brand: its 2 punching tools now sit under Accessory, and it is off the
+     incentive card from 9 Nov 2026. Its old client discount rows and July 2026 challan lines stay stored,
+     because they set incentive already paid on those deliveries (retagging them moved 5 partners' July
+     figures); they are only kept off every screen that lists a client's brands. */
+  function retiredBrand(b) { return incKey(b) === "HULIOT"; }
   function discRowsFor(client, brand) {
     if (client && typeof client === "object") client = client.name;   /* 6.9.824 - C1: an object was keyed as "[object Object]" */
     var b = dkey(brand), ix = dscIndex();
@@ -19808,7 +19814,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
        number from the one that gets charged. This is what showed "Heliroma 50%" twice. */
     var t = dkey(c.name), seenB = {}, drows = [];
     (S.data.discounts || []).forEach(function (x) {
-      if (dkey(x.client) !== t) return;
+      if (dkey(x.client) !== t || retiredBrand(x.brand)) return;   /* 6.9.935 */
       var bk = dkey(x.brand); if (!bk || seenB[bk]) return; seenB[bk] = 1;
       var win = discPick(discRowsFor(c.name, x.brand));
       if (win && (Number(win.pct) || 0) > 0) drows.push(win);
@@ -31745,7 +31751,7 @@ function viewCatalogue() {
     var tk = admTakenMap(cl);
     Object.keys(tk).forEach(function (k) { add(tk[k].brand); });
     (S.data.discounts || []).forEach(function (d) {
-      if (dkey(d.client) === dkey(cl)) add(d.brand);
+      if (dkey(d.client) === dkey(cl) && !retiredBrand(d.brand)) add(d.brand);   /* 6.9.935 */
     });
     return out.sort(function (a, b) { return a.localeCompare(b); });
   }
@@ -33617,7 +33623,7 @@ function viewCatalogue() {
          anywhere is not shown at all. */
       var agg = {};
       (S.data.discounts || []).forEach(function (d) {
-        if (dkey(d.client) === INC_CARD) return;   /* 6.9.693 - the card has its own place, above */
+        if (dkey(d.client) === INC_CARD || retiredBrand(d.brand)) return;   /* 6.9.693 - the card has its own place, above; 6.9.935 - Huliot retired */
         /* v6.9.207: skip any row that is not the winner for its client+brand, and file it under the
            client's REAL spelling - so "Sandeep Gupta" and "sandeep  gupta" are one card, not two. */
         var win = discPick(discRowsFor(d.client, d.brand));
@@ -35592,7 +35598,7 @@ function viewCatalogue() {
   }
   function mstBrands(master) {
     var names = [master].concat(mstSites(master)), seen = {}, out = [];
-    var add = function (b) { b = String(b || "").trim(); if (b && !seen[dkey(b)]) { seen[dkey(b)] = 1; out.push(b); } };
+    var add = function (b) { b = String(b || "").trim(); if (b && !retiredBrand(b) && !seen[dkey(b)]) { seen[dkey(b)] = 1; out.push(b); } };   /* 6.9.935 */
     names.forEach(function (n) {
       var chs = []; try { chs = famChallansIn(n) || []; } catch (e) { chs = []; }
       chs.forEach(function (c) { chItems(c).forEach(function (i) { add(i.brand || c.brand); }); });
