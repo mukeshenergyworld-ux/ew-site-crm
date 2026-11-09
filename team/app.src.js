@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.938";   /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
+  var APP_VERSION = "6.9.939";   /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -33041,11 +33041,50 @@ function viewCatalogue() {
     return _xpMapC.at[k] || (_xpMapC.bm[k] && _xpMapC.at[_xpMapC.bm[k]]) || k;
   }
   /* one line: what counts, what pays separately, and why it was left out */
-  function xpLine(rule, tb, ck, disc, v) {
+  /* 6.9.939 - HIS DECISION: a discount above a brand's limit that the owner approved counts to the target in full.
+     One approval covers that client (his whole merged family) and that brand, up to the approved %, for 90 days.
+     Facts: "xp:ask" (from Visit & Quote) and "xp:ok" ({client, fam, ck, brand, disc, from, to, ok, ask}). The latest
+     decision for a client + brand that covers the day wins, so a decline after an approval ends it. */
+  var _xpApC = null;
+  function xpApprovals() {
+    var n = (S.data.audit || []).length;
+    if (_xpApC && _xpApC.n === n) return _xpApC;
+    var dec = {}, asks = [];
+    (S.data.audit || []).forEach(function (a) {
+      if (!a || (a.action !== "xp:ok" && a.action !== "xp:ask")) return;
+      var d = {}; try { d = JSON.parse(a.detail || "{}") || {}; } catch (e) { return; }
+      d._at = String(a.createdAt || ""); d._id = String(a.id || ""); d._by = String(a.actor || "");
+      if (a.action === "xp:ask") { asks.push(d); return; }
+      var k = dkey(dupMainName(d.client)) + "|" + d.ck;
+      (dec[k] = dec[k] || []).push(d);
+    });
+    Object.keys(dec).forEach(function (k) { dec[k].sort(function (a, b) { return a._at < b._at ? -1 : 1; }); });
+    var answered = {}; Object.keys(dec).forEach(function (k) { dec[k].forEach(function (d) { if (d.ask) answered[d.ask] = d; }); });
+    var pending = asks.filter(function (q) {
+      if (answered[q._id]) return false;
+      var L = dec[dkey(dupMainName(q.client)) + "|" + q.ck] || [];   /* already covered by a later decision */
+      return !L.some(function (d) { return d._at > q._at && (!d.ok || Number(d.disc) >= Number(q.disc) - 1e-9); });
+    }).sort(function (a, b) { return a._at < b._at ? 1 : -1; });
+    return (_xpApC = { n: n, dec: dec, pending: pending, answered: answered });
+  }
+  function xpApprovedFor(client, ck, day) {
+    var L = xpApprovals().dec[dkey(dupMainName(client)) + "|" + ck]; if (!L) return null;
+    var r = null;
+    L.forEach(function (d) { if (String(d.from) <= day && day <= String(d.to)) r = d; });
+    return r && r.ok ? Number(r.disc) : null;
+  }
+  function xpDecide(o) {   /* o: {client, ck, brand, disc, from, ok, ask, exec} */
+    var main = dupMainName(o.client), from = String(o.from || today()).slice(0, 10), t = new Date(from + "T12:00:00"); t.setDate(t.getDate() + 89);
+    var to = t.getFullYear() + "-" + String(t.getMonth() + 1).padStart(2, "0") + "-" + String(t.getDate()).padStart(2, "0");
+    return auditFact("xp:ok", main, { client: main, fam: dupFamily(main).map(dkey), ck: o.ck, brand: o.brand || o.ck, disc: Math.round((Number(o.disc) || 0) * 100) / 100,
+      from: from, to: to, ok: !!o.ok, ask: o.ask || "", exec: o.exec || "" });
+  }
+  function xpLine(rule, tb, ck, disc, v, ap) {
     var t = tb[ck], d = Math.round((Number(disc) || 0) * 100) / 100;
     if (t && t.inT) {
       var up = Number(t.upto) || 0;
       if (d <= up + 1e-9) return { cnt: v };
+      if (ap != null && d <= Number(ap) + 1e-9) return { cnt: v, ap: 1 };
       if (rule.grace && up > 0 && d <= up + rule.grace + 1e-9) return { cnt: v / 2, half: 1, why: d + "% – half value (limit " + up + "%)" };
       return { cnt: 0, why: d + "% – above the " + up + "% limit" };
     }
@@ -33098,30 +33137,30 @@ function viewCatalogue() {
     var ck = name + "|" + ym + "|" + (S.data.challans || []).length + "|" + (S.data.returns || []).length + "|" + (S.data.audit || []).length;
     if (_xpCache[ck]) return _xpCache[ck];
     var rule = xpRule(ym), pay = xpPay(name, ym), sal = pay.salary, mine = xpMine(name);
-    var sales = 0, cnt = 0, half = 0, sep = 0, n = 0, left = [], ret = 0, retAll = 0;
+    var sales = 0, cnt = 0, half = 0, sep = 0, n = 0, left = [], ret = 0, retAll = 0, apv = 0;
     dedupeChallans((S.data.challans || []).filter(function (c) {
       return c && !isCancelled("challans", c.id) && mine[dkey(c.customerName)] &&
         (/^(dispatched|received|delivered)$/i.test(String(c.status || "").trim()) || String(c.receiptReceived).toUpperCase() === "Y") &&
         xYm(c.dispatchedAt || c.createdAt) === ym;
     })).forEach(function (c) {
-      n++; var tb = xpTb(localDay(c.dispatchedAt || c.createdAt));
+      n++; var cday = localDay(c.dispatchedAt || c.createdAt), tb = xpTb(cday);
       pricedLines(c, clientByName(c.customerName)).forEach(function (l) {
         if (l.job) return;
         var v = (Number(l.amt) || 0) / 1.18; sales += v;
-        var r = xpLine(rule, tb, xpKey(l.brand), l.disc, v);
-        cnt += r.cnt; if (r.half) half += r.cnt; sep += r.sep || 0;
-        if (r.why) left.push({ ch: c.challanNo || "", cl: c.customerName || "", brand: l.brand || "", v: v, why: r.why, sep: r.sep || 0 });
+        var bk = xpKey(l.brand), r = xpLine(rule, tb, bk, l.disc, v, xpApprovedFor(c.customerName, bk, cday));
+        cnt += r.cnt; if (r.half) half += r.cnt; if (r.ap) apv += r.cnt; sep += r.sep || 0;
+        if (r.why) left.push({ ch: c.challanNo || "", cl: c.customerName || "", brand: l.brand || "", v: v, why: r.why, sep: r.sep || 0, ck: bk, d: Number(l.disc) || 0, day: cday, ab: !/outside/.test(r.why) });
       });
     });
     (S.data.returns || []).forEach(function (rt) {   /* returns booked in this month, whenever the goods were sold */
       if (!rt || isCancelled("returns", rt.id) || !mine[dkey(rt.customerName)] || String(rt.status || "").trim().toLowerCase() !== "received") return;
       if (xYm(rt.receivedAt || rt.createdAt) !== ym) return;
-      var tb = xpTb(localDay(rt.receivedAt || rt.createdAt)), it = []; try { it = JSON.parse(rt.itemsJson || "[]"); } catch (e) { it = []; }
+      var rday = localDay(rt.receivedAt || rt.createdAt), tb = xpTb(rday), it = []; try { it = JSON.parse(rt.itemsJson || "[]"); } catch (e) { it = []; }
       /* the return's value is the books' own (returnNet), shared out over its lines by line value, so it agrees with every statement */
       var lt = 0, lc = 0, ls = 0;
       it.forEach(function (i) {
         var v = (Number(i.qty) || 0) * (Number(i.rate) || 0) * (1 - (Number(i.disc) || 0) / 100);
-        var r = xpLine(rule, tb, xpKey(i.brand), i.disc, v); lt += v; lc += r.cnt; ls += r.sep || 0;
+        var bk = xpKey(i.brand), r = xpLine(rule, tb, bk, i.disc, v, xpApprovedFor(rt.customerName, bk, rday)); lt += v; lc += r.cnt; ls += r.sep || 0;
       });
       var rv = (Number(returnNet(rt)) || 0) / 1.18; retAll += rv;
       if (lt > 0.5) { ret += rv * lc / lt; sep -= rv * ls / lt; }
@@ -33131,7 +33170,7 @@ function viewCatalogue() {
     var raw = k >= 0 ? net * XP_PCT[k] / 100 : 0, cap = XP_CAP * sal, inc = Math.min(raw, cap);
     var nx = k + 1 < slabs.length ? { i: k + 1, need: Math.max(0, slabs[k + 1] - net), pct: XP_PCT[k + 1], at: slabs[k + 1] } : null;
     left.sort(function (a, b) { return b.v - a.v; });
-    return (_xpCache[ck] = { ym: ym, rule: rule, pay: pay, sal: sal, sales: sales, n: n, cnt: cnt, half: half, ret: ret, retAll: retAll, net: net,
+    return (_xpCache[ck] = { ym: ym, rule: rule, pay: pay, sal: sal, sales: sales, n: n, cnt: cnt, half: half, apv: apv, ret: ret, retAll: retAll, net: net,
       sep: Math.max(0, sep), left: left, leftV: left.reduce(function (s2, x) { return s2 + x.v; }, 0), slabs: slabs, k: k, raw: raw, inc: inc, capped: raw > cap + 0.5, cap: cap, next: nx });
   }
   /* 6.9.938 - his daily reports for a month: working days with a visit (the attendance rule) and the days without */
@@ -33170,7 +33209,7 @@ function viewCatalogue() {
         '<button class="btn sm ghost" data-act="xp-ym" data-d="-1" style="min-height:44px">&lsaquo;</button>' +
         '<b style="min-width:120px;text-align:center">' + esc(monthLabel(ym)) + '</b>' +
         '<button class="btn sm ghost" data-act="xp-ym" data-d="1" style="min-height:44px">&rsaquo;</button>' +
-        '<span class="meta" style="font-size:12px">Ladder ' + r0.mult.join(" / ") + ' × salary' + (r0.grace ? ' · 2% grace at half value' : '') + '</span></div>' +
+        '<span class="meta" style="font-size:12px">Ladder ' + r0.mult.join(" / ") + ' × salary' + (r0.grace ? ' · 2% grace at half value' : '') + '</span></div>' + xpAskHtml() +
       '<div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%;min-width:980px">' +
       '<tr>' + th("Executive", "left") + th("All sales") + th("Counted") + th("Left out") + th("Slab", "left") + th("Incentive") + th("Other brands") + th("Quarter so far", "left") + th("Daily reports") + '</tr>';
     team.forEach(function (u) {
@@ -33179,7 +33218,7 @@ function viewCatalogue() {
         (x.next ? '<div class="meta" style="font-size:12px">' + money(x.next.need) + ' to slab ' + (x.next.i + 1) + ' (' + x.next.pct + '%)</div>' : '') : '<span style="color:#b91c1c">no salary set</span>';
       h += '<tr>' + td('<b>' + esc(u.name) + '</b><div class="meta" style="font-size:12px">' + (x.sal ? money(x.sal) + ' · ' + esc(x.pay.paidBy || "") : '') + ' · slabs ' + x.slabs.map(xpL).join(" / ") + '</div>', 'left') +
         td(money(x.sales) + '<div class="meta" style="font-size:12px">' + x.n + ' challan' + (x.n === 1 ? '' : 's') + '</div>') +
-        td('<b>' + money(x.net) + '</b>' + (x.ret > 0.5 ? '<div class="meta" style="font-size:12px">returns −' + money(x.ret) + '</div>' : '') + (x.half > 0.5 ? '<div class="meta" style="font-size:12px">half-value ' + money(x.half) + '</div>' : '')) +
+        td('<b>' + money(x.net) + '</b>' + (x.ret > 0.5 ? '<div class="meta" style="font-size:12px">returns −' + money(x.ret) + '</div>' : '') + (x.half > 0.5 ? '<div class="meta" style="font-size:12px">half-value ' + money(x.half) + '</div>' : '') + (x.apv > 0.5 ? '<div class="meta" style="font-size:12px;color:#166534">approved ' + money(x.apv) + '</div>' : '')) +
         td(x.left.length ? '<button class="btn sm ghost" data-act="xp-open" data-n="' + esc(u.name) + '" style="min-height:44px">' + money(x.leftV) + ' · ' + x.left.length + ' line' + (x.left.length === 1 ? '' : 's') + '</button>' : '&mdash;') +
         td(slab, 'left') +
         td('<b>' + money(x.inc) + '</b>' + (x.capped ? '<div class="meta" style="font-size:12px;color:#b45309">capped at 1.5× salary</div>' : '')) +
@@ -33188,7 +33227,8 @@ function viewCatalogue() {
         (function () { try { var rp = xpReports(u.name, ym); return td(rp.work ? '<b>' + rp.rep + ' / ' + rp.work + '</b>' + (rp.miss ? '<div class="meta" style="font-size:12px;color:#b45309">' + rp.miss + ' missed</div>' : '<div class="meta" style="font-size:12px;color:#166534">all reported</div>') : '&mdash;'); } catch (e) { return td('&mdash;'); } })() + '</tr>';
       if (open && x.left.length) {
         h += '<tr><td colspan="9" style="padding:4px 6px 10px;background:#f8fafc"><table style="border-collapse:collapse;width:100%;font-size:12.5px">' +
-          x.left.slice(0, 40).map(function (l) { return '<tr><td style="padding:3px 6px">' + esc(l.ch) + '</td><td style="padding:3px 6px">' + esc(l.cl) + '</td><td style="padding:3px 6px">' + esc(l.brand) + '</td><td style="padding:3px 6px;text-align:right">' + money(l.v) + '</td><td style="padding:3px 6px;color:' + (/half/.test(l.why) ? '#b45309' : /outside/.test(l.why) ? '#475569' : '#b91c1c') + '">' + esc(l.why) + (l.sep ? ' = ' + money(l.sep) : '') + '</td></tr>'; }).join("") +
+          x.left.slice(0, 40).map(function (l) { return '<tr><td style="padding:3px 6px">' + esc(l.ch) + '</td><td style="padding:3px 6px">' + esc(l.cl) + '</td><td style="padding:3px 6px">' + esc(l.brand) + '</td><td style="padding:3px 6px;text-align:right">' + money(l.v) + '</td><td style="padding:3px 6px;color:' + (/half/.test(l.why) ? '#b45309' : /outside/.test(l.why) ? '#475569' : '#b91c1c') + '">' + esc(l.why) + (l.sep ? ' = ' + money(l.sep) : '') + '</td>' +
+            '<td style="padding:3px 6px;text-align:right">' + (l.ab ? '<button class="btn sm ghost" data-act="xp-ap" data-c="' + esc(l.cl) + '" data-k="' + esc(l.ck) + '" data-b="' + esc(l.brand) + '" data-d="' + esc(String(l.d)) + '" data-f="' + esc(l.day) + '" data-e="' + esc(u.name) + '" style="min-height:44px;color:#166534;border-color:#86efac;white-space:nowrap">Approve ' + esc(String(l.d)) + '%</button>' : '') + '</td></tr>'; }).join("") +
           (x.left.length > 40 ? '<tr><td colspan="5" class="meta" style="padding:3px 6px">+ ' + (x.left.length - 40) + ' more</td></tr>' : '') + '</table></td></tr>';
       }
     });
@@ -33198,6 +33238,27 @@ function viewCatalogue() {
     if (S.xpEdit === "pay") h += xpPayHtml(team);
     if (S.xpEdit === "tb") h += xpTbHtml();
     return h + '</div>';
+  }
+  /* 6.9.939 - discounts waiting for his approval, newest first, with the last approvals under them */
+  function xpAskHtml() {
+    var A = xpApprovals(), P = A.pending, R = [];
+    Object.keys(A.dec).forEach(function (k) { A.dec[k].forEach(function (d) { R.push(d); }); });
+    R.sort(function (a, b) { return a._at < b._at ? 1 : -1; });
+    if (!P.length && !R.length) return "";
+    var row = function (q) {
+      return '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:6px 0;border-top:1px solid #fde68a">' +
+        '<div style="flex:1 1 220px"><b>' + esc(q.client) + '</b> &middot; ' + esc(q.brand || q.ck) + ' at <b>' + esc(String(q.disc)) + '%</b> (limit ' + esc(String(q.upto)) + '%)' +
+        '<div class="meta" style="font-size:12px">' + esc(q._by) + ' asked ' + esc(fullDate(q._at)) + (q.quote ? ' &middot; ' + esc(q.quote) : '') + (q.value ? ' &middot; about ' + money(q.value) : '') + '</div></div>' +
+        '<button class="btn sm" data-act="xp-ask-ok" data-id="' + esc(q._id) + '" style="min-height:44px">&#10003; Approve 90 days</button>' +
+        '<button class="btn sm ghost" data-act="xp-ask-no" data-id="' + esc(q._id) + '" style="min-height:44px;color:#b91c1c">Decline</button></div>';
+    };
+    return '<div style="margin:0 0 10px;padding:8px 10px;border-radius:10px;background:#fffbeb;border:1px solid #fde68a">' +
+      '<b>Discounts above the limit</b>' + (P.length ? ' <span style="background:#dc2626;color:#fff;border-radius:99px;padding:1px 8px;font-size:12px">' + P.length + ' waiting</span>' : '') +
+      '<div class="meta" style="font-size:12px">Approved = those lines count to his target in full, for that client and brand up to that %, for 90 days. Declined or not asked = not counted.</div>' +
+      P.slice(0, 20).map(row).join("") +
+      (R.length ? '<div class="meta" style="font-size:12px;margin-top:6px;padding-top:6px;border-top:1px solid #fde68a">Last decisions: ' + R.slice(0, 6).map(function (d) {
+        return '<span style="color:' + (d.ok ? '#166534' : '#b91c1c') + '">' + esc(d.client) + ' &middot; ' + esc(d.brand || d.ck) + ' ' + esc(String(d.disc)) + '% ' + (d.ok ? 'approved till ' + esc(fullDate(d.to)) : 'declined') + '</span>';
+      }).join(" &nbsp;|&nbsp; ") + '</div>' : '') + '</div>';
   }
   function xpPayHtml(team) {
     var ym = xYm(today()) < XP_START ? XP_START : xYm(today());
@@ -64664,6 +64725,20 @@ function viewCatalogue() {
     }
     if (act === "xp-ym") { var _d = Number(t.getAttribute("data-d")) || 0, _c = S.xpYm || xYm(today()); var _y = Number(_c.slice(0, 4)), _m = Number(_c.slice(5, 7)) - 1 + _d; S.xpYm = new Date(_y, _m, 1).getFullYear() + "-" + String(new Date(_y, _m, 1).getMonth() + 1).padStart(2, "0"); keepScroll = true; render(); return; }   /* 6.9.937 */
     if (act === "xp-open") { var _n = t.getAttribute("data-n") || ""; S.xpOpen = S.xpOpen || {}; S.xpOpen[_n] = !S.xpOpen[_n]; keepScroll = true; render(); return; }
+    if (act === "xp-ask-ok" || act === "xp-ask-no") {   /* 6.9.939 */
+      var _id = t.getAttribute("data-id"), _q = xpApprovals().pending.filter(function (q) { return q._id === _id; })[0];
+      if (!_q) { toast("Already decided."); render(); return; }
+      t.disabled = true;
+      xpDecide({ client: _q.client, ck: _q.ck, brand: _q.brand, disc: _q.disc, from: String(_q._at).slice(0, 10) < today() ? localDay(_q._at) : today(), ok: act === "xp-ask-ok", ask: _q._id, exec: _q._by })
+        .then(function () { toast(act === "xp-ask-ok" ? "Approved for 90 days." : "Declined."); keepScroll = true; render(); });
+      return;
+    }
+    if (act === "xp-ap") {   /* 6.9.939 - approve straight from a left-out challan line, from that challan's day */
+      t.disabled = true;
+      xpDecide({ client: t.getAttribute("data-c"), ck: t.getAttribute("data-k"), brand: t.getAttribute("data-b"), disc: t.getAttribute("data-d"), from: t.getAttribute("data-f"), ok: true, exec: t.getAttribute("data-e") })
+        .then(function () { toast("Approved – counts in full for 90 days from that challan."); keepScroll = true; render(); });
+      return;
+    }
     if (act === "xp-edit") { var _w = t.getAttribute("data-w"); S.xpEdit = S.xpEdit === _w ? "" : _w; keepScroll = true; render(); return; }
     if (act === "xp-pay-save") {
       if (!roleIs("admin")) { toast("Salaries are set by the owner."); return; }
