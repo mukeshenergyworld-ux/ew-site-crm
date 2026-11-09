@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.941";   /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
+  var APP_VERSION = "6.9.942";   /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -33229,10 +33229,14 @@ function viewCatalogue() {
     var y = Number(ym.slice(0, 4)), m = Number(ym.slice(5, 7)), q0 = Math.floor((m - 1) / 3) * 3 + 1, months = [];
     for (var i = q0; i <= m; i++) months.push(y + "-" + String(i).padStart(2, "0"));
     var first = y + "-" + String(q0).padStart(2, "0"), rule = xpRule(first), sal = xpPay(name, ym).salary;
-    var tot = months.reduce(function (s2, mm) { return s2 + xpMonth(name, mm).net; }, 0);
+    var tot = 0, cT = 0, cP = 0, cL = 0;
+    months.forEach(function (mm) { var xm = xpMonth(name, mm); tot += xm.net; cT += xm.cnt; cP += xm.ip.paid; cL += xm.ip.lap; });
     var th = rule.qmult.map(function (q) { return q * sal; }), qk = -1;
     th.forEach(function (t, i) { if (sal > 0 && tot >= t - 0.5) qk = i; });
-    return { months: months, tot: tot, th: th, qk: qk, extra: qk >= 0 ? tot * XP_QPCT[qk] / 100 : 0, done: m === q0 + 2, label: "Q" + (Math.floor((m - 1) / 3) + 1) + " " + y };
+    /* 6.9.942 - the quarter extra follows the same plan term as the month: paid on what the clients have paid */
+    var extra = qk >= 0 ? tot * XP_QPCT[qk] / 100 : 0, fP = cT > 0.5 ? cP / cT : 0, fL = cT > 0.5 ? cL / cT : 0;
+    return { months: months, tot: tot, th: th, qk: qk, extra: extra, xPaid: extra * fP, xLap: extra * fL, xWait: Math.max(0, extra * (1 - fP - fL)),
+      done: m === q0 + 2, label: "Q" + (Math.floor((m - 1) / 3) + 1) + " " + y };
   }
   function xpL(v) { return "₹" + (Math.round(v / 1000) / 100).toFixed(2).replace(/\.?0+$/, "") + " L"; }
   function xPlanCard() {
@@ -33269,7 +33273,7 @@ function viewCatalogue() {
           '<div style="display:flex;gap:4px;justify-content:flex-end;margin-top:4px"><button class="btn sm ghost" data-act="xp-pdf" data-n="' + esc(u.name) + '" style="min-height:44px">PDF</button>' +
           '<button class="btn sm ghost" data-act="xp-wa" data-n="' + esc(u.name) + '" style="min-height:44px;color:#15803d">WhatsApp</button></div>') +
         td(x.sep > 0.5 ? money(x.sep) : '&mdash;') +
-        td(esc(q.label) + ': ' + money(q.tot) + '<div class="meta" style="font-size:12px">' + (q.qk >= 0 ? 'Q' + (q.qk + 1) + ' reached · +' + money(q.extra) : 'Q1 at ' + xpL(q.th[0])) + '</div>', 'left') +
+        td(esc(q.label) + ': ' + money(q.tot) + '<div class="meta" style="font-size:12px">' + (q.qk >= 0 ? 'Q' + (q.qk + 1) + ' reached · +' + money(q.extra) + ' (ready ' + money(q.xPaid) + ')' : 'Q1 at ' + xpL(q.th[0])) + '</div>', 'left') +
         (function () { try { var rp = xpReports(u.name, ym); return td(rp.work ? '<b>' + rp.rep + ' / ' + rp.work + '</b>' + (rp.miss ? '<div class="meta" style="font-size:12px;color:#b45309">' + rp.miss + ' missed</div>' : '<div class="meta" style="font-size:12px;color:#166534">all reported</div>') : '&mdash;'); } catch (e) { return td('&mdash;'); } })() + '</tr>';
       if (open && x.left.length) {
         h += '<tr><td colspan="9" style="padding:4px 6px 10px;background:#f8fafc"><table style="border-collapse:collapse;width:100%;font-size:12.5px">' +
@@ -33356,7 +33360,7 @@ function viewCatalogue() {
       row("Waits for the clients' payment", money(x.ip.incWait), [71, 85, 105]);
       if (x.ip.incLap > 0.5) row("Lapsed - unpaid 180 days after dispatch", money(x.ip.incLap), [185, 28, 28]);
       if (x.sep > 0.5) row("Other brands, separate incentive", money(x.sep), [22, 163, 74]);
-      row(q.label + " so far" + (q.qk >= 0 ? " - Q" + (q.qk + 1) + " reached" : " - Q1 at " + money(q.th[0]) + ", Q2 at " + money(q.th[1])), money(q.tot) + (q.qk >= 0 ? "  (+" + money(q.extra) + ")" : ""));
+      row(q.label + " so far" + (q.qk >= 0 ? " - Q" + (q.qk + 1) + " reached" : " - Q1 at " + money(q.th[0]) + ", Q2 at " + money(q.th[1])), money(q.tot) + (q.qk >= 0 ? "  (+" + money(q.extra) + ", ready " + money(q.xPaid) + ")" : ""));
       if (rp && rp.work) row("Daily reports", rp.rep + " of " + rp.work + " working days" + (rp.miss ? " (" + rp.miss + " missed)" : ""), rp.miss ? [180, 83, 9] : [22, 101, 52]);
       if (x.left.length) {
         y += 3; F(1); doc.setFontSize(10.5); doc.setTextColor(15, 23, 42); doc.text("Lines left out of your target", L, y); y += 5.5;
