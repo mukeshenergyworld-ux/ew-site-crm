@@ -118,6 +118,14 @@ table.t td.r,table.t th.r{text-align:right;white-space:nowrap}
 .qst button.pending.on{background:#FEF3C7;border-color:#F59E0B;color:#92400E}
 .qst button.won.on{background:#15803d;border-color:#15803d;color:#fff}
 .qst button.lost.on{background:#b91c1c;border-color:#b91c1c;color:#fff}
+/* 1.17.0 - one tile per quoted brand */
+.qbt{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.qbt button{position:relative;flex:0 0 auto;min-width:92px;min-height:48px;padding:4px 10px;border:1.5px solid #DCE3EA;background:#fff;border-radius:10px;font:inherit;font-size:12px;font-weight:700;color:#334155;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
+.qbt button img{max-width:80px;max-height:22px;object-fit:contain}
+.qbt button.won{border-color:#15803d;background:#dcfce7;color:#166534}
+.qbt button.lost{border-color:#b91c1c;background:#fee2e2;color:#991b1b}
+.qbt button.lost img{opacity:.45}
+.qbt button i{font-style:normal;font-size:12px}
 /* 1.3.0 - his number beside every name */
 .code{display:inline-block;font-size:12px;font-weight:800;color:#1F3A5F;background:#E8EEF5;border-radius:6px;padding:1px 6px;margin-right:6px;vertical-align:1px}
 .card.mine{border-left-color:#C9A24A}
@@ -239,7 +247,7 @@ table.att td.ok,table.att td.no{font-size:16px}
       button: function () { return '<button type="button" class="ewthm" onclick="ewTheme.next(this)">' + ewtLabel() + '</button>'; }
     };
   })();
-  var APP_VERSION = "1.15.0";   /* 1.15.0 (9 Nov 2026) - incentive ready (clients paid) and waiting for payment, on the plan header */     /* 1.14.0 (9 Nov 2026) - ask the owner to approve a discount above the brand limit, right on the quote line */     /* 1.13.0 (9 Nov 2026) - target limit shown under each quote discount; plan updates list (slab reached, lines left out, returns, month closed, 20th reminder) */     /* 1.12.0 (9 Nov 2026) - the 2027 plan on top (counted sales, slab ladder, left-out lines, quarter) and daily reports: entered, missed, streak */   /* 1.11.0 (8 Nov 2026) - my month on top: sales, returns, target, incentive, what to dispatch */   /* 1.10.1 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */   /* 1.10.0 (4 Nov 2026) - quote as in the CRM: item-wise discount, option lines, item-wise rates without total, GST */   /* 1.9.1 (31 Oct 2026) - one tap, one entry */   /* 1.9.0 (29 Oct 2026) - Menu -> Online enquiries (FB, IG, Google, Justdial, IndiaMART ... from the OnlineEnquiries tab) */   /* 1.8.4 (27 Oct 2026) - GHp mark in the middle of every QR, level H */   /* 1.6.1 - Huliot Group introduction on quotes; 1.6.0 (17 Oct 2026) - a dropped POST never loses a quote; admin sees every executive; daily report; attendance grid */
+  var APP_VERSION = "1.17.0";   /* 1.17.0 (9 Nov 2026) - brand-wise Won / Lost on a quote line: tap a brand once = Won, twice = Lost, again = open */     /* 1.16.0 (9 Nov 2026) - FIMA in every finish: type F1301WLX9CS (or any of 14,260 finish codes) and it is on the quote at its own MRP */     /* 1.15.0 (9 Nov 2026) - incentive ready (clients paid) and waiting for payment, on the plan header */     /* 1.14.0 (9 Nov 2026) - ask the owner to approve a discount above the brand limit, right on the quote line */     /* 1.13.0 (9 Nov 2026) - target limit shown under each quote discount; plan updates list (slab reached, lines left out, returns, month closed, 20th reminder) */     /* 1.12.0 (9 Nov 2026) - the 2027 plan on top (counted sales, slab ladder, left-out lines, quarter) and daily reports: entered, missed, streak */   /* 1.11.0 (8 Nov 2026) - my month on top: sales, returns, target, incentive, what to dispatch */   /* 1.10.1 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */   /* 1.10.0 (4 Nov 2026) - quote as in the CRM: item-wise discount, option lines, item-wise rates without total, GST */   /* 1.9.1 (31 Oct 2026) - one tap, one entry */   /* 1.9.0 (29 Oct 2026) - Menu -> Online enquiries (FB, IG, Google, Justdial, IndiaMART ... from the OnlineEnquiries tab) */   /* 1.8.4 (27 Oct 2026) - GHp mark in the middle of every QR, level H */   /* 1.6.1 - Huliot Group introduction on quotes; 1.6.0 (17 Oct 2026) - a dropped POST never loses a quote; admin sees every executive; daily report; attendance grid */
   /* 1.6.0 - ONLY THE SERVER'S OWN "NO" SIGNS A MAN OUT. The old test was /pin|locked|not allowed|blocked|removed/:
      any data error that happened to contain "not allowed" or "removed" (a refused row, a removed brand) signed the
      executive out and wiped his snapshot. These are the sign-in answers the server gives (teamAuth: "Wrong name or
@@ -833,7 +841,54 @@ table.att td.ok,table.att td.no{font-size:16px}
     });
     return { gross: Math.round(gross), net: Math.round(net), count: n };
   }
-  var _pcbCache = null;
+  /* 1.16.0 - FIMA IN EVERY FINISH (the CRM's 6.9.943 block, word for word): the catalogue keeps one row per FIMA
+     product; assets/fima/fima_fin.json carries the other 14,260 finish codes and their MRPs, made into products on the fly. */
+  var FIMA_FIN_NAME = { CR: "Chrome", CN: "Black Chrome", SN: "Brushed Nickel", CS: "Brushed Black Chrome", NS: "Black Matt", BS: "White Matt",
+    BG: "Ivory White", SG: "Sand Grey", VE: "Agave Green", AZ: "Indigo Blue", RB: "Burgundy Red", LN: "Polished Nickel", HL: "Champagne",
+    HS: "Brushed Champagne", OR: "Gold", OS: "Brushed Gold", ZL: "Amber Bronze", ZS: "Brushed Amber Bronze", KS: "Brushed Moka Bronze", INOX: "Stainless Steel" };
+  var FIMA_FIN_RE = /^(.*?)(INOX|CR|CN|SN|CS|NS|BS|BG|SG|VE|AZ|RB|LN|HL|HS|OR|OS|ZL|ZS|KS)(\.[A-Z0-9]+|\d\/\d)?$/;
+  var _ffD = null, _ffIx = null, _ffAt = 0;
+  function fimaFinOf(code) { var m = String(code || "").match(FIMA_FIN_RE); return m ? m[2] : ""; }
+  function fimaFinLoad() {
+    if (_ffD || (_ffAt && Date.now() - _ffAt < 60000)) return;
+    _ffAt = Date.now();
+    fetch("../assets/fima/fima_fin.json?v=1").then(function (r) { return r.json(); }).then(function (d) {
+      if (!d || !d.r) return;
+      _ffD = d; _ffIx = null; _pcbCache = null; _plcCache = null;
+      try { keepScroll = true; render(); } catch (e) { }
+    }).catch(function () { });
+  }
+  function fimaFinIndex() {
+    if (_ffIx && _ffIx.n === PRODUCTS.length) return _ffIx;
+    if (!_ffD) { fimaFinLoad(); return { n: -1, code: {}, by: {} }; }
+    var ix = { n: PRODUCTS.length, code: {}, by: {} }, base = {};
+    PRODUCTS.forEach(function (p) { if (p && p.code) base[p.code] = p; });
+    Object.keys(_ffD.r).forEach(function (rc) {
+      var p = base[rc]; if (!p) return;
+      var d0 = String(p.desc || ""), cut = d0.lastIndexOf(" - "), own = FIMA_FIN_NAME[fimaFinOf(rc)] || "";
+      var stem0 = d0, tail = cut > 0 ? d0.slice(cut + 3) : "";
+      if (own && tail.indexOf(own) === 0) stem0 = d0.slice(0, cut);
+      var sp = String(p.specs || "").split(" || Other finishes")[0], rs = rc.replace(FIMA_FIN_RE, "$1"), L = [];
+      _ffD.r[rc].f.forEach(function (x) {
+        var c = String(x[0]); if (base[c]) return;
+        var fin = fimaFinOf(c), st = c.replace(FIMA_FIN_RE, "$1");
+        var desc = stem0 + " - " + (FIMA_FIN_NAME[fin] || fin) + (st !== rs ? " \u00b7 option " + st : "") +
+          (x.length > 2 && _ffD.vl[x[2]] ? " (" + String(_ffD.vl[x[2]]).toLowerCase() + ")" : "");
+        var v = { code: c, family: p.family, desc: desc, cat: p.cat, unit: p.unit, price: Number(x[1]) || 0, brand: p.brand,
+          pic: p.pic, specs: sp, was: "", label: c + " - " + desc, fin: 1, of: rc };
+        ix.code[c] = v; L.push(v);
+      });
+      if (L.length) ix.by[rc] = L;
+    });
+    return (_ffIx = ix);
+  }
+  function fimaFinGet(c) { return fimaFinIndex().code[String(c == null ? "" : c)] || null; }
+  function fimaFinVariants(c) { return fimaFinIndex().by[String(c == null ? "" : c)] || []; }
+  function prodByCodeV(c) {
+    for (var i = 0; i < PRODUCTS.length; i++) if (PRODUCTS[i].code === c) return PRODUCTS[i];
+    return fimaFinGet(c);
+  }
+  var _pcbCache = null, _plcCache = null, keepScroll = false;
   function productBrandByCode(code) {
     if (!_pcbCache) {
       _pcbCache = {};
@@ -843,7 +898,10 @@ table.att td.ok,table.att td.no{font-size:16px}
         if (b) _pcbCache[String(p.code)] = b;
       });
     }
-    return _pcbCache[String(code == null ? "" : code)] || "";
+    var _pb = _pcbCache[String(code == null ? "" : code)];
+    if (_pb) return _pb;
+    var _fv = fimaFinGet(code);   /* 1.16.0 */
+    return _fv ? (realBrand(_fv) || "") : "";
   }
   function alpha(a, b) {
     return String(a == null ? "" : a).localeCompare(String(b == null ? "" : b),
@@ -3314,9 +3372,63 @@ table.att td.ok,table.att td.no{font-size:16px}
     return '<div class="card tap mine" data-act="q-open" data-id="' + esc(q.id) + '"><div class="row"><div class="grow"><div class="ttl2">' + codeTag(q.client) + esc(q.client || "") + '</div>' +
       '<div class="meta">' + esc(qNo(q)) + ' &middot; ' + esc(fd(q.createdAt)) + ' &middot; ' + esc(q.brand || "") + '</div></div>' +
       '<div style="text-align:right"><div class="amt">' + esc(money(q.net)) + '</div><span class="pill ' + qTone(st) + '">' + esc(st) + '</span></div></div>' +
+      (mine ? qbTiles(q) : '') +
       (mine ? '<div class="qst">' + [["Pending", "Pending"], ["Won", "Won"], ["Lost", "Lost"]].map(function (x) {
         return '<button type="button" class="' + x[0].toLowerCase() + (grp === x[0] ? ' on' : '') + '" data-act="qr-st" data-k="' + x[0] + '" data-id="' + esc(q.id) + '" aria-pressed="' + (grp === x[0]) + '">' + x[1] + '</button>';
       }).join("") + '</div>' : '') + '</div>';
+  }
+  /* ===== 1.17.0 - WON BRAND BY BRAND =====
+     HIS WORDS: "if three brand quoted and still won only one, so show quoted brand logos, so the won brand can be clicked
+     singled and won and other to be decided later like, single click won, double lost".
+     The CRM has kept a per-brand answer on a quote since 6.9.3xx ("quote:brand" audit rows - Won / Later / Lost; the
+     follow-up board, the pitch engine and the sales count all read it). This writes the same rows, so a brand won here
+     is won there and the brands still open stay on the follow-up board. "Open" clears an answer (CRM 6.9.944 reads it).
+     When every brand has an answer the quote follows: any Won -> Won, all Lost -> Lost. */
+  var _qbMap = null, _qbN = -1, _qbT = {};
+  function quoteBrandsV(q) { return String(q.brand || "").split(/,\s*/).map(function (x) { return x.trim(); }).filter(Boolean); }
+  function qbMapV() {
+    var a = (S.data && S.data.audit) || [];
+    if (_qbMap && _qbN === a.length) return _qbMap;
+    var m = {};
+    a.forEach(function (r) {
+      if (!r || r.action !== "quote:brand") return;
+      var d = {}; try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
+      var k = String(d.qId || "") + "|" + dkey(d.brand), at = String(r.createdAt || "");
+      if (!d.qId || !d.brand) return;
+      if (!m[k] || at >= m[k].at) m[k] = { st: String(d.state || ""), at: at };
+    });
+    _qbN = a.length; return (_qbMap = m);
+  }
+  function qbStateV(q, b) {
+    var k = String(q.id) + "|" + dkey(b);
+    if (S.qbPend && S.qbPend[k] != null) return S.qbPend[k];
+    var r = qbMapV()[k];
+    return r && (r.st === "Won" || r.st === "Lost") ? r.st : "";
+  }
+  function qbTiles(q) {
+    var bs = quoteBrandsV(q); if (bs.length < 2) return "";
+    return '<div class="qbt">' + bs.map(function (b) {
+      var st = qbStateV(q, b), lg = logoFor(b);
+      return '<button type="button" class="' + (st === "Won" ? "won" : st === "Lost" ? "lost" : "") + '" data-act="qb-tap" data-id="' + esc(q.id) + '" data-b="' + esc(b) + '" aria-label="' + esc(b) + ' ' + (st || "open") + '">' +
+        (lg ? '<img src="' + esc(lg) + '" alt=""/>' : '') + '<span>' + esc(b) + '</span><i>' + (st === "Won" ? "&#10003; Won" : st === "Lost" ? "&#10007; Lost" : "open") + '</i></button>';
+    }).join("") + '</div><div class="meta" style="font-size:12px;margin-top:2px">Tap a brand once = Won &middot; twice = Lost &middot; again = open</div>';
+  }
+  function qbTap(q, b) {
+    var k = String(q.id) + "|" + dkey(b), cur = qbStateV(q, b), nx = cur === "" ? "Won" : cur === "Won" ? "Lost" : "";
+    S.qbPend = S.qbPend || {}; S.qbPend[k] = nx; render();
+    clearTimeout(_qbT[k]);
+    _qbT[k] = setTimeout(function () {   /* a double tap writes one row, the last answer */
+      var st = S.qbPend[k]; delete S.qbPend[k];
+      var q2 = qById(q.id) || q, now = iso();
+      saveRow("audit", { id: "", createdAt: now, actor: S.user, action: "quote:brand", target: String(q2.quoteNo || q2.id) + " / " + b,
+        detail: JSON.stringify({ qId: q2.id, no: q2.quoteNo || "", client: q2.client || "", brand: b, state: st || "Open", till: "", why: "", by: S.user, at: now }), ip: "" });
+      _qbMap = null;
+      var bs = quoteBrandsV(q2), sts = bs.map(function (x) { return qbStateV(q2, x); });
+      var to = sts.every(function (x) { return x; }) ? (sts.indexOf("Won") >= 0 ? "Won" : "Lost") : "";
+      if (to && q2.status !== to) { var row = Object.assign({}, q2, { status: to }); delete row._lid; saveRow("quotes", row); toast((qNo(q2) || "Quote") + " — every brand answered: " + to + "."); }
+      else toast(b + " — " + (st || "open again") + ".");
+      render();
+    }, 700);
   }
   function qRowSet(q, k) {
     var st = q.status || "Draft", grp = st === "Won" ? "Won" : st === "Lost" ? "Lost" : "Pending";
@@ -3554,6 +3666,16 @@ table.att td.ok,table.att td.no{font-size:16px}
     if (!b && q.length < 2) return '<div class="meta" style="padding:8px 0">Pick a brand or type two letters.</div>';
     var have = {}; z.items.forEach(function (i) { have[i.code] = 1; });
     var list = (b ? brandProducts(b) : PRODUCTS).filter(function (p) { return !q || lower([p.code, p.desc, p.family, p.cat].join(" ")).indexOf(q) >= 0; });
+    /* 1.16.0 - FIMA's other finishes: a typed code or finish name finds them (F1301WLX9CS, "Brushed Gold" ...) */
+    if (q.length >= 3 && (!b || /fima/i.test(b))) {
+      var fix = fimaFinIndex(), fex = fix.code[String(z.pq || "").trim().toUpperCase()];
+      if (fex) list.unshift(fex);
+      Object.keys(fix.code).some(function (c) {
+        var v = fix.code[c]; if (v === fex) return false;
+        if (lower(v.code + " " + v.desc).indexOf(q) >= 0) list.push(v);
+        return list.length >= 200;
+      });
+    }
     if (!list.length) return '<div class="meta" style="padding:8px 0">Nothing matches.</div>';
     return list.slice(0, 20).map(function (p) {
       return '<div class="prod">' + (p.pic ? '<img src="' + esc(p.pic) + '" alt="" loading="lazy"/>' : '<div class="ph"></div>') +
@@ -3869,7 +3991,7 @@ table.att td.ok,table.att td.no{font-size:16px}
     if (act === "qz-client") { S.qz.client = k; S.qz.step = 2; render(); window.scrollTo(0, 0); return; }
     if (act === "qz-brand") { S.qz.brand = k; render(); return; }
     if (act === "qz-add") {
-      var p = PRODUCTS.filter(function (x) { return x.code === k; })[0]; if (!p) return;
+      var p = prodByCodeV(k); if (!p) return;   /* 1.16.0 - a FIMA finish code too */
       var b = realBrand(p);
       S.qz.items.push({ code: p.code, desc: p.desc, family: p.family, price: p.price, qty: 1, pic: p.pic, unit: p.unit, brand: b, cat: p.cat, specs: p.specs });
       if (S.qz.brandDiscs[b] == null) S.qz.brandDiscs[b] = clientDiscount(S.qz.client, b);
@@ -3899,6 +4021,7 @@ table.att td.ok,table.att td.no{font-size:16px}
     if (act === "vq-upd") { vqUpdate(); return; }
     if (act === "q-stale") { S.qStale = !S.qStale; render(); return; }   /* 1.4.20 */
     if (act === "qr-st") { var _qr = qById(id); if (_qr) qRowSet(_qr, k); return; }   /* 1.4.0 */
+    if (act === "qb-tap") { var _qb = qById(id); if (_qb) qbTap(_qb, t.getAttribute("data-b")); return; }   /* 1.17.0 */
     if (act === "q-st") { var q3 = qById(id); if (q3) qSetStatus(q3, k); return; }
     if (act === "q-lost") { var q4 = qById(id); if (!q4) return; S.sheet = qLostSheet(q4); render(); return; }
     if (act === "ql-save") { var q5 = qById(id); if (q5) qlSave(q5); return; }
@@ -4192,6 +4315,7 @@ table.att td.ok,table.att td.no{font-size:16px}
         var p = PRODUCTS[k];
         if (p && String(p.code || "").trim().toUpperCase() === c && p.pic) return p.pic;
       }
+      var fv = fimaFinGet(c); if (fv && fv.pic) return fv.pic;   /* 1.16.0 */
     }
     return (i && i.pic) || "";
   }
