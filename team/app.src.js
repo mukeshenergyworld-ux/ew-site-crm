@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.937";   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
+  var APP_VERSION = "6.9.938";   /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -32936,10 +32936,23 @@ function viewCatalogue() {
     if (!best) return null;
     try { return JSON.parse(best.detail || "{}"); } catch (e) { return null; }
   }
+  /* 6.9.938 - the phones need the brand limits for the quote warning, but a sales phone is never sent the incentive card:
+     one "xp:rules" fact carries today's target settings and a catalogue-brand -> card-brand map, written only when it moves */
+  function xpRulesPublish() {
+    if (typeof xpTb !== "function") return;
+    var tb = xpTb(today()), map = {};
+    (PRODUCTS || []).forEach(function (p) { var b = realBrand(p) || p.brand; var k = incKey(b); if (k && !map[k]) { var ck = xpKey(b); if (ck && ck !== k) map[k] = ck; } });
+    (S.data.discounts || []).forEach(function (d) { var k = incKey(d && d.brand); if (k && !map[k]) { var ck = xpKey(d.brand); if (ck && ck !== k) map[k] = ck; } });
+    var r = { tb: tb, map: map, grace: xpRule(xYm(today())).grace || 0 }, sig = JSON.stringify(r), last = null;
+    ((S.data && S.data.audit) || []).forEach(function (a) { if (a && a.action === "xp:rules" && (!last || String(a.createdAt) > String(last.createdAt))) last = a; });
+    var was = ""; if (last) { try { var d = JSON.parse(last.detail || "{}"); delete d.at; was = JSON.stringify({ tb: d.tb, map: d.map, grace: d.grace }); } catch (e) { } }
+    if (was !== sig) auditFact("xp:rules", "all", r);
+  }
   function xSnapPublish(force) {
     if (!roleAny(["admin", "accounts"]) || !S.data || !S.data.challans) return;
     if (!force && Date.now() - _xsnapAt < 1800000) return;   /* at most every 30 minutes */
     _xsnapAt = Date.now();
+    try { if (PRODUCTS && PRODUCTS.length) xpRulesPublish(); } catch (eR) { }
     var ym = xYm(today());
     execTeam().forEach(function (u) {
       var x = xMonth(u.name, ym);
@@ -33121,6 +33134,16 @@ function viewCatalogue() {
     return (_xpCache[ck] = { ym: ym, rule: rule, pay: pay, sal: sal, sales: sales, n: n, cnt: cnt, half: half, ret: ret, retAll: retAll, net: net,
       sep: Math.max(0, sep), left: left, leftV: left.reduce(function (s2, x) { return s2 + x.v; }, 0), slabs: slabs, k: k, raw: raw, inc: inc, capped: raw > cap + 0.5, cap: cap, next: nx });
   }
+  /* 6.9.938 - his daily reports for a month: working days with a visit (the attendance rule) and the days without */
+  function xpReports(name, ym) {
+    var vd = attVisitDays(name), mk = attMarks(), td = today(), d0 = ym + "-01", rep = 0, miss = 0;
+    if (d0 < ATT_FROM) d0 = ATT_FROM;
+    var iso = function (dt) { return dt.getFullYear() + "-" + String(dt.getMonth() + 1).padStart(2, "0") + "-" + String(dt.getDate()).padStart(2, "0"); };
+    for (var dt = new Date(d0 + "T12:00:00"); iso(dt) <= td && iso(dt).slice(0, 7) === ym; dt.setDate(dt.getDate() + 1)) {
+      var st = attDay(name, iso(dt), vd, mk); if (st === "P") rep++; else if (st === "A") miss++;
+    }
+    return { rep: rep, work: rep + miss, miss: miss };
+  }
   function xpQuarter(name, ym) {
     var y = Number(ym.slice(0, 4)), m = Number(ym.slice(5, 7)), q0 = Math.floor((m - 1) / 3) * 3 + 1, months = [];
     for (var i = q0; i <= m; i++) months.push(y + "-" + String(i).padStart(2, "0"));
@@ -33148,8 +33171,8 @@ function viewCatalogue() {
         '<b style="min-width:120px;text-align:center">' + esc(monthLabel(ym)) + '</b>' +
         '<button class="btn sm ghost" data-act="xp-ym" data-d="1" style="min-height:44px">&rsaquo;</button>' +
         '<span class="meta" style="font-size:12px">Ladder ' + r0.mult.join(" / ") + ' × salary' + (r0.grace ? ' · 2% grace at half value' : '') + '</span></div>' +
-      '<div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%;min-width:900px">' +
-      '<tr>' + th("Executive", "left") + th("All sales") + th("Counted") + th("Left out") + th("Slab", "left") + th("Incentive") + th("Other brands") + th("Quarter so far", "left") + '</tr>';
+      '<div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%;min-width:980px">' +
+      '<tr>' + th("Executive", "left") + th("All sales") + th("Counted") + th("Left out") + th("Slab", "left") + th("Incentive") + th("Other brands") + th("Quarter so far", "left") + th("Daily reports") + '</tr>';
     team.forEach(function (u) {
       var x = xpMonth(u.name, ym), q = xpQuarter(u.name, ym), open = S.xpOpen && S.xpOpen[u.name];
       var slab = x.sal ? (x.k >= 0 ? '<span style="background:' + SC[x.k] + ';color:#fff;font-weight:700;border-radius:99px;padding:2px 8px;font-size:12px">' + (x.k + 1) + '</span> ' + XP_PCT[x.k] + '%' : '<span class="meta">below slab 1</span>') +
@@ -33161,9 +33184,10 @@ function viewCatalogue() {
         td(slab, 'left') +
         td('<b>' + money(x.inc) + '</b>' + (x.capped ? '<div class="meta" style="font-size:12px;color:#b45309">capped at 1.5× salary</div>' : '')) +
         td(x.sep > 0.5 ? money(x.sep) : '&mdash;') +
-        td(esc(q.label) + ': ' + money(q.tot) + '<div class="meta" style="font-size:12px">' + (q.qk >= 0 ? 'Q' + (q.qk + 1) + ' reached · +' + money(q.extra) : 'Q1 at ' + xpL(q.th[0])) + '</div>', 'left') + '</tr>';
+        td(esc(q.label) + ': ' + money(q.tot) + '<div class="meta" style="font-size:12px">' + (q.qk >= 0 ? 'Q' + (q.qk + 1) + ' reached · +' + money(q.extra) : 'Q1 at ' + xpL(q.th[0])) + '</div>', 'left') +
+        (function () { try { var rp = xpReports(u.name, ym); return td(rp.work ? '<b>' + rp.rep + ' / ' + rp.work + '</b>' + (rp.miss ? '<div class="meta" style="font-size:12px;color:#b45309">' + rp.miss + ' missed</div>' : '<div class="meta" style="font-size:12px;color:#166534">all reported</div>') : '&mdash;'); } catch (e) { return td('&mdash;'); } })() + '</tr>';
       if (open && x.left.length) {
-        h += '<tr><td colspan="8" style="padding:4px 6px 10px;background:#f8fafc"><table style="border-collapse:collapse;width:100%;font-size:12.5px">' +
+        h += '<tr><td colspan="9" style="padding:4px 6px 10px;background:#f8fafc"><table style="border-collapse:collapse;width:100%;font-size:12.5px">' +
           x.left.slice(0, 40).map(function (l) { return '<tr><td style="padding:3px 6px">' + esc(l.ch) + '</td><td style="padding:3px 6px">' + esc(l.cl) + '</td><td style="padding:3px 6px">' + esc(l.brand) + '</td><td style="padding:3px 6px;text-align:right">' + money(l.v) + '</td><td style="padding:3px 6px;color:' + (/half/.test(l.why) ? '#b45309' : /outside/.test(l.why) ? '#475569' : '#b91c1c') + '">' + esc(l.why) + (l.sep ? ' = ' + money(l.sep) : '') + '</td></tr>'; }).join("") +
           (x.left.length > 40 ? '<tr><td colspan="5" class="meta" style="padding:3px 6px">+ ' + (x.left.length - 40) + ' more</td></tr>' : '') + '</table></td></tr>';
       }
