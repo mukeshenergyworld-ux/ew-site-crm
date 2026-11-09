@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.936";   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
+  var APP_VERSION = "6.9.937";   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -32945,7 +32945,15 @@ function viewCatalogue() {
       var x = xMonth(u.name, ym);
       var sn = { exec: u.name, ym: ym, tgt: Math.round(x.tgt), sales: Math.round(x.sales), n: x.n, ret: Math.round(x.ret),
         earned: Math.round(x.earned), rel: Math.round(x.rel), rate: Math.round(x.rate * 10000) / 10000 };
-      var key = function (o) { return o ? [o.ym, o.tgt, o.sales, o.n, o.ret, o.earned, o.rel].join("|") : ""; };
+      try {   /* 6.9.937 - the plan month, for the Visit header (no salary in it: slabs only) */
+        var xp = xpMonth(u.name, ym), xq = xpQuarter(u.name, ym);
+        sn.p = { v: 1, trial: !!xp.rule.trial, whatIf: !!xp.rule.whatIf, slabs: xp.slabs.map(Math.round), pct: XP_PCT, k: xp.k, net: Math.round(xp.net), cnt: Math.round(xp.cnt),
+          half: Math.round(xp.half), ret: Math.round(xp.ret), inc: Math.round(xp.inc), capped: xp.capped, sep: Math.round(xp.sep), leftN: xp.left.length, leftV: Math.round(xp.leftV),
+          left: xp.left.slice(0, 8).map(function (l) { return { ch: l.ch, b: l.brand, v: Math.round(l.v), w: l.why }; }),
+          q: { label: xq.label, tot: Math.round(xq.tot), th: xq.th.map(Math.round), k: xq.qk, x: Math.round(xq.extra) } };
+        if (ym >= XP_START) sn.tgt = Math.round(xp.slabs[0] || 0);
+      } catch (eXp) { }
+      var key = function (o) { return o ? [o.ym, o.tgt, o.sales, o.n, o.ret, o.earned, o.rel, o.p ? [o.p.net, o.p.k, o.p.inc, o.p.sep, o.p.leftN, o.p.q && o.p.q.tot].join(",") : ""].join("|") : ""; };
       if (key(xSnapLast(u.name)) === key(sn)) return;   /* nothing moved - nothing written */
       auditFact("exec:snap", u.name, sn);
     });
@@ -32973,6 +32981,237 @@ function viewCatalogue() {
       }).join("") + '</table></div>' +
       '<div class="acts" style="margin-top:8px"><button class="btn" data-act="xtgt-save" style="min-height:44px">Save targets for ' + esc(monthLabel(ym)) + '</button></div></div>';
   }
+
+  /* ===== 6.9.937 - EXECUTIVE INCENTIVE PLAN 2027, PHASE 1  (9 Nov 2026) =====
+     His plan, approved in the PDF of 9 Nov ("yes to all. proceed"): targets are the executive's monthly salary x a ladder;
+     reaching a slab pays its % on ALL his counted sales of the month; a quarter extra on top; capped at 1.5 x salary.
+     Counted = target brands sold within each brand's discount limit, less returns; Jan-Mar 2027 a line up to 2% over the
+     limit counts at half value. Brands outside the target pay a separate % by discount and never count. December 2026 is
+     a trial (worked out, shown, not paid). Months before December are shown as a what-if under the Jan-Mar rules.
+     Salaries live in "hr:xpay" audit rows - the server sends hr: rows only to admin and accounts - so no executive's phone
+     carries another's salary. Brand settings live in "xtb:set" rows, newest from-date on or before the delivery wins. */
+  var XP_RULES = [
+    { from: "2026-12", trial: true, mult: [30, 40, 50, 60, 70], qmult: [90, 120], grace: 2 },
+    { from: "2027-01", mult: [30, 40, 50, 60, 70], qmult: [90, 120], grace: 2 },
+    { from: "2027-04", mult: [40, 50, 60, 70, 80], qmult: [120, 150], grace: 0 }
+  ];
+  var XP_PCT = [0.25, 0.5, 0.75, 1, 1.5], XP_QPCT = [0.25, 0.5], XP_CAP = 1.5, XP_START = "2026-12";
+  function xpRule(ym) { var r = XP_RULES[0]; XP_RULES.forEach(function (x) { if (x.from <= ym) r = x; }); return Object.assign({ whatIf: ym < XP_START }, r); }
+  /* his settings of 9 Nov 2026 (design doc + chat); the CRM card "Target brands" overrides them from a date */
+  var XP_TB_SEED = { HELIROMA: { inT: 1, upto: 55 }, HULIOTHTPRO: { inT: 1, upto: 55 }, HULIOTULTRASILENT: { inT: 1, upto: 52 },
+    GREENHEATPLUS: { inT: 1, upto: 48 }, SANITAAR: { inT: 1, upto: 55 }, MEA: { inT: 1, upto: 55 }, PENTAIR: { inT: 1, upto: 50 },
+    LEO: { inT: 1, upto: 50 }, DRP: { inT: 1, upto: 32 }, GRUNDFOS: { inT: 1, upto: 25 }, CPVCPIPE: { inT: 1, upto: 40 },
+    LUNOS: { inT: 1, upto: 40 }, HELIROMAPPR: { inT: 1, upto: 55 }, DRAINBATHROOM: { inT: 1, upto: 40 }, DWCPIPES: { inT: 1, upto: 55 },
+    INAIR: { inT: 1, upto: 20 }, ACCESSORY: { inT: 1, upto: 0 }, DRAINCHAMBERS: { inT: 1, upto: 0 }, NETPRICEITEMS: { inT: 1, upto: 0 },
+    FIMA: { sep: [[45, 0.5], [50, 0.25]] }, TOTO: { sep: [[45, 0.5], [50, 0.25]] }, OYSTER: { sep: [[32, 0.5], [37, 0.25]] },
+    GEBERIT: { sep: [[32, 0.5], [37, 0.25]] }, ADANI: { flat: 0.25 }, STELLAR: {}, IONCARE: {} };
+  function xpTb(day) {
+    var best = null;
+    ((S.data && S.data.audit) || []).forEach(function (a) {
+      if (!a || a.action !== "xtb:set") return;
+      var d = {}; try { d = JSON.parse(a.detail || "{}") || {}; } catch (e) { return; }
+      if (!d.from || !d.rows || String(d.from) > String(day)) return;
+      if (!best || d.from > best.from || (d.from === best.from && String(a.createdAt || "") > best.at)) best = { from: d.from, at: String(a.createdAt || ""), rows: d.rows };
+    });
+    return best ? best.rows : XP_TB_SEED;
+  }
+  var _xpMapC = null;
+  function xpKey(b) {   /* a line's brand -> its incentive-card brand (card name, "also called", brand map) */
+    var k = incKey(b); if (!k) return "";
+    var n = (S.data.discounts || []).length + ":" + ((S.data.brandmap || []).length);
+    if (!_xpMapC || _xpMapC.n !== n) {
+      var at = {}, bm = {};
+      incCardNow().forEach(function (r) { [r.brand].concat(r.also || []).forEach(function (x) { var kk = incKey(x); if (kk && !at[kk]) at[kk] = incKey(r.brand); }); });
+      (S.data.brandmap || []).forEach(function (x) { if (x && x.catalogValue && x.brand) bm[incKey(x.catalogValue)] = incKey(x.brand); });
+      _xpMapC = { n: n, at: at, bm: bm };
+    }
+    return _xpMapC.at[k] || (_xpMapC.bm[k] && _xpMapC.at[_xpMapC.bm[k]]) || k;
+  }
+  /* one line: what counts, what pays separately, and why it was left out */
+  function xpLine(rule, tb, ck, disc, v) {
+    var t = tb[ck], d = Math.round((Number(disc) || 0) * 100) / 100;
+    if (t && t.inT) {
+      var up = Number(t.upto) || 0;
+      if (d <= up + 1e-9) return { cnt: v };
+      if (rule.grace && up > 0 && d <= up + rule.grace + 1e-9) return { cnt: v / 2, half: 1, why: d + "% – half value (limit " + up + "%)" };
+      return { cnt: 0, why: d + "% – above the " + up + "% limit" };
+    }
+    var p = 0;
+    if (t) {
+      if (t.flat != null && t.flat !== "") p = Number(t.flat) || 0;
+      else (t.sep || []).slice().sort(function (a, b) { return Number(a[0]) - Number(b[0]); }).forEach(function (sb) { if (!p && d <= Number(sb[0]) + 1e-9) p = Number(sb[1]) || 0; });
+    }
+    return { cnt: 0, sep: v * p / 100, why: "outside target" + (p ? ", " + p + "% separately" : t ? ", no incentive" : " (not set)") };
+  }
+  var XP_PAY_SEED = { VIVEKVERMA: { salary: 20000, paidBy: "Energy World" }, ASHISHBHUKER: { salary: 16000, paidBy: "Energy World" }, IMRAN: { salary: 25000, paidBy: "Huliot" } };
+  function xpPayRows(name) {
+    var k = incKey(name);
+    return ((S.data && S.data.audit) || []).filter(function (a) { return a && a.action === "hr:xpay" && incKey(a.target) === k; }).map(function (a) {
+      var d = {}; try { d = JSON.parse(a.detail || "{}") || {}; } catch (e) { d = {}; } d._at = String(a.createdAt || ""); return d;
+    }).sort(function (a, b) { return String(a.from).localeCompare(String(b.from)) || a._at.localeCompare(b._at); });
+  }
+  function xpPay(name, ym) {
+    var rows = xpPayRows(name), r = null;
+    rows.forEach(function (x) { if (String(x.from || "") <= ym) r = x; });
+    if (!r && rows.length) r = rows[0];   /* a what-if month before his first record reads his first record */
+    if (!r) { var sd = XP_PAY_SEED[incKey(name)]; r = sd ? { salary: sd.salary, paidBy: sd.paidBy, from: XP_START, seed: 1 } : { salary: 0, paidBy: "" }; }
+    var sal = Number(r.salary) || 0;
+    if (r.eid && typeof hrEmp === "function") { var e = hrEmp(r.eid); if (e) sal = hrMonthlyAt(e, ym) || sal; }   /* follows his finalised increments */
+    return { salary: sal, paidBy: r.paidBy || "", from: r.from || "", eid: r.eid || "", seed: !!r.seed };
+  }
+  /* who owns each client name: the owner of the family's MAIN record - so a merged client counts for one executive only
+     (measured 9 Nov: 9 merged names sat under two executives, e.g. Vijay Gupta under Vivek and, merged in, under Imran) */
+  var _xpOwnC = null;
+  function xpOwners() {
+    var n = (S.data.clients || []).length + ":" + ((S.data.audit || []).length);
+    if (_xpOwnC && _xpOwnC.n === n) return _xpOwnC.m;
+    var rec = {}, m = {};
+    (S.data.clients || []).forEach(function (cl) { if (cl && !isCancelled("clients", cl.id)) rec[dkey(cl.name)] = cl; });
+    (S.data.clients || []).forEach(function (cl) {
+      if (!cl || isCancelled("clients", cl.id)) return;
+      var main = rec[dkey(dupMainName(cl.name))] || cl, who = dkey(main.ownedBy || main.createdBy);
+      if (!who) return;
+      dupFamily(cl.name).forEach(function (x) { if (!m[dkey(x)]) m[dkey(x)] = who; });
+    });
+    _xpOwnC = { n: n, m: m }; return m;
+  }
+  function xpMine(name) {
+    var nm = dkey(name), own = xpOwners(), mine = {};
+    Object.keys(own).forEach(function (k) { if (own[k] === nm) mine[k] = 1; });
+    return mine;
+  }
+  var _xpCache = {};
+  function xpMonth(name, ym) {
+    var ck = name + "|" + ym + "|" + (S.data.challans || []).length + "|" + (S.data.returns || []).length + "|" + (S.data.audit || []).length;
+    if (_xpCache[ck]) return _xpCache[ck];
+    var rule = xpRule(ym), pay = xpPay(name, ym), sal = pay.salary, mine = xpMine(name);
+    var sales = 0, cnt = 0, half = 0, sep = 0, n = 0, left = [], ret = 0, retAll = 0;
+    dedupeChallans((S.data.challans || []).filter(function (c) {
+      return c && !isCancelled("challans", c.id) && mine[dkey(c.customerName)] &&
+        (/^(dispatched|received|delivered)$/i.test(String(c.status || "").trim()) || String(c.receiptReceived).toUpperCase() === "Y") &&
+        xYm(c.dispatchedAt || c.createdAt) === ym;
+    })).forEach(function (c) {
+      n++; var tb = xpTb(localDay(c.dispatchedAt || c.createdAt));
+      pricedLines(c, clientByName(c.customerName)).forEach(function (l) {
+        if (l.job) return;
+        var v = (Number(l.amt) || 0) / 1.18; sales += v;
+        var r = xpLine(rule, tb, xpKey(l.brand), l.disc, v);
+        cnt += r.cnt; if (r.half) half += r.cnt; sep += r.sep || 0;
+        if (r.why) left.push({ ch: c.challanNo || "", cl: c.customerName || "", brand: l.brand || "", v: v, why: r.why, sep: r.sep || 0 });
+      });
+    });
+    (S.data.returns || []).forEach(function (rt) {   /* returns booked in this month, whenever the goods were sold */
+      if (!rt || isCancelled("returns", rt.id) || !mine[dkey(rt.customerName)] || String(rt.status || "").trim().toLowerCase() !== "received") return;
+      if (xYm(rt.receivedAt || rt.createdAt) !== ym) return;
+      var tb = xpTb(localDay(rt.receivedAt || rt.createdAt)), it = []; try { it = JSON.parse(rt.itemsJson || "[]"); } catch (e) { it = []; }
+      /* the return's value is the books' own (returnNet), shared out over its lines by line value, so it agrees with every statement */
+      var lt = 0, lc = 0, ls = 0;
+      it.forEach(function (i) {
+        var v = (Number(i.qty) || 0) * (Number(i.rate) || 0) * (1 - (Number(i.disc) || 0) / 100);
+        var r = xpLine(rule, tb, xpKey(i.brand), i.disc, v); lt += v; lc += r.cnt; ls += r.sep || 0;
+      });
+      var rv = (Number(returnNet(rt)) || 0) / 1.18; retAll += rv;
+      if (lt > 0.5) { ret += rv * lc / lt; sep -= rv * ls / lt; }
+    });
+    var net = cnt - ret, slabs = rule.mult.map(function (m) { return m * sal; }), k = -1;
+    slabs.forEach(function (sv, i) { if (sal > 0 && net >= sv - 0.5) k = i; });
+    var raw = k >= 0 ? net * XP_PCT[k] / 100 : 0, cap = XP_CAP * sal, inc = Math.min(raw, cap);
+    var nx = k + 1 < slabs.length ? { i: k + 1, need: Math.max(0, slabs[k + 1] - net), pct: XP_PCT[k + 1], at: slabs[k + 1] } : null;
+    left.sort(function (a, b) { return b.v - a.v; });
+    return (_xpCache[ck] = { ym: ym, rule: rule, pay: pay, sal: sal, sales: sales, n: n, cnt: cnt, half: half, ret: ret, retAll: retAll, net: net,
+      sep: Math.max(0, sep), left: left, leftV: left.reduce(function (s2, x) { return s2 + x.v; }, 0), slabs: slabs, k: k, raw: raw, inc: inc, capped: raw > cap + 0.5, cap: cap, next: nx });
+  }
+  function xpQuarter(name, ym) {
+    var y = Number(ym.slice(0, 4)), m = Number(ym.slice(5, 7)), q0 = Math.floor((m - 1) / 3) * 3 + 1, months = [];
+    for (var i = q0; i <= m; i++) months.push(y + "-" + String(i).padStart(2, "0"));
+    var first = y + "-" + String(q0).padStart(2, "0"), rule = xpRule(first), sal = xpPay(name, ym).salary;
+    var tot = months.reduce(function (s2, mm) { return s2 + xpMonth(name, mm).net; }, 0);
+    var th = rule.qmult.map(function (q) { return q * sal; }), qk = -1;
+    th.forEach(function (t, i) { if (sal > 0 && tot >= t - 0.5) qk = i; });
+    return { months: months, tot: tot, th: th, qk: qk, extra: qk >= 0 ? tot * XP_QPCT[qk] / 100 : 0, done: m === q0 + 2, label: "Q" + (Math.floor((m - 1) / 3) + 1) + " " + y };
+  }
+  function xpL(v) { return "₹" + (Math.round(v / 1000) / 100).toFixed(2).replace(/\.?0+$/, "") + " L"; }
+  function xPlanCard() {
+    if (!roleIs("admin")) return "";
+    var team = execTeam(); if (!team.length) return "";
+    var ym = S.xpYm || xYm(today()), r0 = xpRule(ym);
+    var tag = r0.whatIf ? '<span style="background:#fef3c7;color:#92400e;font-weight:700;font-size:12px;padding:3px 8px;border-radius:99px">what-if (plan starts Dec 2026)</span>'
+      : r0.trial ? '<span style="background:#dbeafe;color:#1e40af;font-weight:700;font-size:12px;padding:3px 8px;border-radius:99px">trial month – not paid</span>'
+      : '<span style="background:#dcfce7;color:#166534;font-weight:700;font-size:12px;padding:3px 8px;border-radius:99px">in force</span>';
+    var th = function (t, al) { return '<th style="padding:6px;background:#0b3b36;color:#fff;font-size:12px;text-align:' + (al || 'right') + ';white-space:nowrap">' + t + '</th>'; };
+    var td = function (t, al, x) { return '<td style="padding:6px;border-top:1px solid #e2e8f0;font-size:13px;text-align:' + (al || 'right') + ';vertical-align:top' + (x || '') + '">' + t + '</td>'; };
+    var SC = ["#38bdf8", "#0ea5e9", "#2563eb", "#7c3aed", "#16a34a"];
+    var h = '<div class="card"><div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:6px">' +
+      '<h3 style="margin:0;flex:1 1 auto">Executive incentive plan 2027</h3>' + tag + '</div>' +
+      '<div style="display:flex;gap:6px;align-items:center;margin-bottom:8px">' +
+        '<button class="btn sm ghost" data-act="xp-ym" data-d="-1" style="min-height:44px">&lsaquo;</button>' +
+        '<b style="min-width:120px;text-align:center">' + esc(monthLabel(ym)) + '</b>' +
+        '<button class="btn sm ghost" data-act="xp-ym" data-d="1" style="min-height:44px">&rsaquo;</button>' +
+        '<span class="meta" style="font-size:12px">Ladder ' + r0.mult.join(" / ") + ' × salary' + (r0.grace ? ' · 2% grace at half value' : '') + '</span></div>' +
+      '<div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%;min-width:900px">' +
+      '<tr>' + th("Executive", "left") + th("All sales") + th("Counted") + th("Left out") + th("Slab", "left") + th("Incentive") + th("Other brands") + th("Quarter so far", "left") + '</tr>';
+    team.forEach(function (u) {
+      var x = xpMonth(u.name, ym), q = xpQuarter(u.name, ym), open = S.xpOpen && S.xpOpen[u.name];
+      var slab = x.sal ? (x.k >= 0 ? '<span style="background:' + SC[x.k] + ';color:#fff;font-weight:700;border-radius:99px;padding:2px 8px;font-size:12px">' + (x.k + 1) + '</span> ' + XP_PCT[x.k] + '%' : '<span class="meta">below slab 1</span>') +
+        (x.next ? '<div class="meta" style="font-size:12px">' + money(x.next.need) + ' to slab ' + (x.next.i + 1) + ' (' + x.next.pct + '%)</div>' : '') : '<span style="color:#b91c1c">no salary set</span>';
+      h += '<tr>' + td('<b>' + esc(u.name) + '</b><div class="meta" style="font-size:12px">' + (x.sal ? money(x.sal) + ' · ' + esc(x.pay.paidBy || "") : '') + ' · slabs ' + x.slabs.map(xpL).join(" / ") + '</div>', 'left') +
+        td(money(x.sales) + '<div class="meta" style="font-size:12px">' + x.n + ' challan' + (x.n === 1 ? '' : 's') + '</div>') +
+        td('<b>' + money(x.net) + '</b>' + (x.ret > 0.5 ? '<div class="meta" style="font-size:12px">returns −' + money(x.ret) + '</div>' : '') + (x.half > 0.5 ? '<div class="meta" style="font-size:12px">half-value ' + money(x.half) + '</div>' : '')) +
+        td(x.left.length ? '<button class="btn sm ghost" data-act="xp-open" data-n="' + esc(u.name) + '" style="min-height:44px">' + money(x.leftV) + ' · ' + x.left.length + ' line' + (x.left.length === 1 ? '' : 's') + '</button>' : '&mdash;') +
+        td(slab, 'left') +
+        td('<b>' + money(x.inc) + '</b>' + (x.capped ? '<div class="meta" style="font-size:12px;color:#b45309">capped at 1.5× salary</div>' : '')) +
+        td(x.sep > 0.5 ? money(x.sep) : '&mdash;') +
+        td(esc(q.label) + ': ' + money(q.tot) + '<div class="meta" style="font-size:12px">' + (q.qk >= 0 ? 'Q' + (q.qk + 1) + ' reached · +' + money(q.extra) : 'Q1 at ' + xpL(q.th[0])) + '</div>', 'left') + '</tr>';
+      if (open && x.left.length) {
+        h += '<tr><td colspan="8" style="padding:4px 6px 10px;background:#f8fafc"><table style="border-collapse:collapse;width:100%;font-size:12.5px">' +
+          x.left.slice(0, 40).map(function (l) { return '<tr><td style="padding:3px 6px">' + esc(l.ch) + '</td><td style="padding:3px 6px">' + esc(l.cl) + '</td><td style="padding:3px 6px">' + esc(l.brand) + '</td><td style="padding:3px 6px;text-align:right">' + money(l.v) + '</td><td style="padding:3px 6px;color:' + (/half/.test(l.why) ? '#b45309' : /outside/.test(l.why) ? '#475569' : '#b91c1c') + '">' + esc(l.why) + (l.sep ? ' = ' + money(l.sep) : '') + '</td></tr>'; }).join("") +
+          (x.left.length > 40 ? '<tr><td colspan="5" class="meta" style="padding:3px 6px">+ ' + (x.left.length - 40) + ' more</td></tr>' : '') + '</table></td></tr>';
+      }
+    });
+    h += '</table></div><div class="meta" style="margin-top:6px;font-size:12px">Counted = his own clients’ dispatches, after discount, before GST, brands in target within their limit, less returns booked in this month. Incentive = slab % on all counted sales, at most 1.5× salary. Payable-as-paid, the 180-day lapse and the Visit &amp; Quote header come in the next phases.</div>' +
+      '<div class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap"><button class="btn sm ghost" data-act="xp-edit" data-w="pay" style="min-height:44px">Salaries for the plan</button>' +
+      '<button class="btn sm ghost" data-act="xp-edit" data-w="tb" style="min-height:44px">Target brands &amp; limits</button></div>';
+    if (S.xpEdit === "pay") h += xpPayHtml(team);
+    if (S.xpEdit === "tb") h += xpTbHtml();
+    return h + '</div>';
+  }
+  function xpPayHtml(team) {
+    var ym = xYm(today()) < XP_START ? XP_START : xYm(today());
+    var emps = typeof hrEmps === "function" ? hrEmps(false) : [];
+    return '<div style="margin-top:10px;padding:10px;border:1px solid #e2e8f0;border-radius:10px"><b>Salaries for the plan</b>' +
+      '<div class="meta" style="font-size:12px;margin:2px 0 8px">Only you and accounts receive these. Link a staff record to follow its finalised increments automatically.</div>' +
+      team.map(function (u) {
+        var p = xpPay(u.name, ym);
+        return '<div class="row" style="gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px"><b style="min-width:120px">' + esc(u.name) + '</b>' +
+          '<input class="xpay-sal" data-n="' + esc(u.name) + '" inputmode="numeric" value="' + (p.salary || "") + '" placeholder="salary" style="width:110px;min-height:44px;text-align:right"/>' +
+          '<select class="xpay-by" data-n="' + esc(u.name) + '" style="min-height:44px">' + ["Energy World", "Huliot"].map(function (o) { return '<option' + (o === p.paidBy ? ' selected' : '') + '>' + o + '</option>'; }).join("") + '</select>' +
+          '<select class="xpay-eid" data-n="' + esc(u.name) + '" style="min-height:44px;max-width:200px"><option value="">no staff record</option>' + emps.map(function (e) { return '<option value="' + esc(e.eid) + '"' + (e.eid === p.eid ? ' selected' : '') + '>' + esc(e.name) + '</option>'; }).join("") + '</select>' +
+          (p.seed ? '<span class="meta" style="font-size:12px">from the plan PDF – not saved yet</span>' : '<span class="meta" style="font-size:12px">from ' + esc(p.from) + '</span>') + '</div>';
+      }).join("") +
+      '<div class="row" style="gap:6px;align-items:center;flex-wrap:wrap"><span>From month</span><input id="xpay_from" type="month" value="' + ym + '" style="min-height:44px"/>' +
+      '<button class="btn sm" data-act="xp-pay-save" style="min-height:44px">Save salaries</button></div></div>';
+  }
+  function xpTbHtml() {
+    var tb = xpTb(today()), names = {};
+    incCardNow().forEach(function (r) { names[incKey(r.brand)] = r.brand; });
+    Object.keys(XP_TB_SEED).forEach(function (k) { if (!names[k]) names[k] = k; });
+    Object.keys(tb).forEach(function (k) { if (!names[k]) names[k] = k; });
+    var keys = Object.keys(names).sort(function (a, b) { var ia = tb[a] && tb[a].inT ? 0 : 1, ib = tb[b] && tb[b].inT ? 0 : 1; return ia - ib || names[a].localeCompare(names[b]); });
+    var inp = function (cls, k, v, ph) { return '<input class="' + cls + '" data-k="' + k + '" inputmode="decimal" value="' + (v == null ? "" : esc(String(v))) + '" placeholder="' + ph + '" style="width:58px;min-height:44px;text-align:center"/>'; };
+    return '<div style="margin-top:10px;padding:10px;border:1px solid #e2e8f0;border-radius:10px"><b>Target brands &amp; limits</b>' +
+      '<div class="meta" style="font-size:12px;margin:2px 0 8px">Ticked: counts toward target up to the limit. Not ticked: pays the separate % (first band whose “up to” covers the discount) or the flat %, and never counts.</div>' +
+      '<div style="overflow-x:auto"><table style="border-collapse:collapse;min-width:640px;font-size:13px"><tr style="background:#0b3b36;color:#fff;font-size:12px"><th style="padding:6px;text-align:left">Brand</th><th style="padding:6px">In target</th><th style="padding:6px">Up to %</th><th style="padding:6px">Band 1: up to % → pays %</th><th style="padding:6px">Band 2: up to % → pays %</th><th style="padding:6px">Flat %</th></tr>' +
+      keys.map(function (k) {
+        var t = tb[k] || {}, sp = t.sep || [];
+        return '<tr style="border-top:1px solid #e2e8f0"><td style="padding:4px 6px"><b>' + esc(names[k]) + '</b></td>' +
+          '<td style="text-align:center"><input type="checkbox" class="xtb-in" data-k="' + k + '"' + (t.inT ? ' checked' : '') + ' style="width:22px;height:22px"/></td>' +
+          '<td style="text-align:center">' + inp("xtb-up", k, t.inT ? t.upto : "", "%") + '</td>' +
+          '<td style="text-align:center;white-space:nowrap">' + inp("xtb-1u", k, sp[0] ? sp[0][0] : "", "up to") + ' ' + inp("xtb-1p", k, sp[0] ? sp[0][1] : "", "%") + '</td>' +
+          '<td style="text-align:center;white-space:nowrap">' + inp("xtb-2u", k, sp[1] ? sp[1][0] : "", "up to") + ' ' + inp("xtb-2p", k, sp[1] ? sp[1][1] : "", "%") + '</td>' +
+          '<td style="text-align:center">' + inp("xtb-fl", k, t.flat != null ? t.flat : "", "%") + '</td></tr>';
+      }).join("") + '</table></div>' +
+      '<div class="row" style="margin-top:8px"><button class="btn sm" data-act="xp-tb-save" style="min-height:44px">Save brand settings</button></div></div>';
+  }
   function viewIncentives() {
     if (S.partner) return viewPartnerCard(S.partner);
     var partners = S.data.associates.slice();
@@ -32989,7 +33228,7 @@ function viewCatalogue() {
       '<div class="stat ' + (tot.pending > 0 ? "alert" : "") + '"><div class="n">' + money(tot.pending) + '</div><div class="l">Still to pay</div></div>' +
       '</div>';
     try { h += pstCard(); } catch (ePst) { }   /* 6.9.789 */
-    try { h += xTgtCard(); } catch (eXt) { }   /* 6.9.930 - admin: targets and the month per executive */
+    try { h += xPlanCard(); } catch (eXt) { h += '<div class="card" style="color:#b91c1c">Executive plan could not be drawn: ' + esc(String(eXt && eXt.message || eXt)) + '</div>'; }   /* 6.9.937 - replaces the 6.9.930 amount targets */
     h += '<div class="empty" style="text-align:left;padding:0 0 12px">Incentive = Basic Amt (the net sale after discount, before GST) \u00d7 the rate set for that <b>client &amp; brand</b> on the discount screen, paid to whoever is that client\u2019s plumber / architect / builder / PMC. It only becomes <b>payable as the client pays</b>, and a challan counts only once its material receipt is in. A booked-in material return reverses it.</div>';
 
     /* ---- FIND A MAN (v6.9.330) ----
@@ -64398,6 +64637,47 @@ function viewCatalogue() {
       var _have = incCardNow().concat((S.icdExtra || []).map(function (b) { return { brand: b }; }));
       if (_have.some(function (r) { return incKey(r.brand) === incKey(_nb); })) { toast(_nb + " is already on the card."); return; }
       S.icdExtra = (S.icdExtra || []).concat([_nb]); keepScroll = true; render(); return;
+    }
+    if (act === "xp-ym") { var _d = Number(t.getAttribute("data-d")) || 0, _c = S.xpYm || xYm(today()); var _y = Number(_c.slice(0, 4)), _m = Number(_c.slice(5, 7)) - 1 + _d; S.xpYm = new Date(_y, _m, 1).getFullYear() + "-" + String(new Date(_y, _m, 1).getMonth() + 1).padStart(2, "0"); keepScroll = true; render(); return; }   /* 6.9.937 */
+    if (act === "xp-open") { var _n = t.getAttribute("data-n") || ""; S.xpOpen = S.xpOpen || {}; S.xpOpen[_n] = !S.xpOpen[_n]; keepScroll = true; render(); return; }
+    if (act === "xp-edit") { var _w = t.getAttribute("data-w"); S.xpEdit = S.xpEdit === _w ? "" : _w; keepScroll = true; render(); return; }
+    if (act === "xp-pay-save") {
+      if (!roleIs("admin")) { toast("Salaries are set by the owner."); return; }
+      var _from = String(val("xpay_from") || "").slice(0, 7), _k = 0, _bad = "";
+      if (!/^\d{4}-\d{2}$/.test(_from)) { toast("Pick the month the salary starts from."); return; }
+      document.querySelectorAll(".xpay-sal").forEach(function (x) {
+        var nm = x.getAttribute("data-n") || "", v = Math.round(Number(String(x.value || "").replace(/[^0-9.]/g, "")) || 0);
+        var by = (document.querySelector('.xpay-by[data-n="' + nm.replace(/"/g, '\\"') + '"]') || {}).value || "";
+        var eid = (document.querySelector('.xpay-eid[data-n="' + nm.replace(/"/g, '\\"') + '"]') || {}).value || "";
+        if (!(v > 0)) { _bad = nm; return; }
+        var was = xpPay(nm, _from);
+        if (!was.seed && was.salary === v && was.paidBy === by && (was.eid || "") === eid && was.from === _from) return;
+        auditFact("hr:xpay", nm, { exec: nm, salary: v, paidBy: by, eid: eid, from: _from }); _k++;
+      });
+      if (_bad) { toast("Give a monthly salary for " + _bad + "."); return; }
+      _xpCache = {}; toast(_k ? plural(_k, "salary") + " saved from " + _from + "." : "Nothing changed."); keepScroll = true; render(); return;
+    }
+    if (act === "xp-tb-save") {
+      if (!roleIs("admin")) { toast("Brand settings are the owner’s."); return; }
+      var _rows = {}, _num = function (v) { v = String(v == null ? "" : v).trim(); return v === "" ? null : Number(v); }, _err = "";
+      document.querySelectorAll(".xtb-in").forEach(function (x) {
+        var k = x.getAttribute("data-k"), g = function (c) { var e = document.querySelector("." + c + '[data-k="' + k + '"]'); return e ? _num(e.value) : null; };
+        var up = g("xtb-up"), b1u = g("xtb-1u"), b1p = g("xtb-1p"), b2u = g("xtb-2u"), b2p = g("xtb-2p"), fl = g("xtb-fl");
+        [up, b1u, b1p, b2u, b2p, fl].forEach(function (v) { if (v != null && (!isFinite(v) || v < 0 || v > 100)) _err = k; });
+        if (x.checked) { _rows[k] = { inT: 1, upto: up == null ? 0 : up }; return; }
+        var o = {}; if (fl != null) o.flat = fl; else { var sp = []; if (b1u != null && b1p != null) sp.push([b1u, b1p]); if (b2u != null && b2p != null) sp.push([b2u, b2p]); if (sp.length) o.sep = sp; }
+        _rows[k] = o;
+      });
+      if (_err) { toast("A % must be between 0 and 100 (" + _err + "). Nothing was saved."); return; }
+      promptSheet({ title: "From which date do these brand settings apply?", body: "Deliveries before this date keep the settings they were made under.", type: "date", value: today(), ok: "From this date" })
+      .then(function (d) {
+        if (d === null || d === undefined) return;
+        var v = String(d).trim() || today();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) { toast("Give a date like " + today() + "."); return; }
+        auditFact("xtb:set", "all", { from: v, rows: _rows }); _xpCache = {};
+        toast("Brand settings saved from " + fullDate(v) + "."); keepScroll = true; render();
+      });
+      return;
     }
     if (act === "xtgt-save") {   /* 6.9.930 */
       if (!roleIs("admin")) { toast("Targets are set by the owner."); return; }
