@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.940";   /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
+  var APP_VERSION = "6.9.941";   /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -32941,6 +32941,27 @@ function viewCatalogue() {
   }
   /* 6.9.938 - the phones need the brand limits for the quote warning, but a sales phone is never sent the incentive card:
      one "xp:rules" fact carries today's target settings and a catalogue-brand -> card-brand map, written only when it moves */
+  /* 6.9.941 - HIS "yes" to the automatic 20th / month-end message. The server cannot work the plan out, so the
+     owner's CRM stores the texts once a day (planRemindStore, server V178): this month's position and last month's
+     statement per executive. The server's 09:00 job sends them on the 20th and the 1st through the reminder bot.
+     Only from the plan's first month (Dec 2026 trial) - nothing goes out for preview months. */
+  var _xpRemDay = "";
+  function xpRemindStoreOnce() {
+    if (!roleIs("admin") || _xpRemDay === today()) return;
+    var ym = xYm(today()), d = new Date(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)) - 2, 1);
+    var pym = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
+    if (ym < XP_START) return;
+    _xpRemDay = today();
+    var cur = {}, prev = {};
+    execTeam().forEach(function (u) {
+      try { cur[u.name] = xpWaText(u.name, ym); } catch (e) { }
+      if (pym >= XP_START) { try { prev[u.name] = xpWaText(u.name, pym); } catch (e2) { } }
+    });
+    if (!Object.keys(cur).length) return;
+    api("planRemindStore", { cur: cur, curYm: ym, prev: prev, prevYm: pym >= XP_START ? pym : "" }, 20000).then(function (r) {
+      if (!(r && r.ok)) _xpRemDay = "";   /* the server does not carry it yet (before V178) - try again next open */
+    }).catch(function () { _xpRemDay = ""; });
+  }
   function xpRulesPublish() {
     if (typeof xpTb !== "function") return;
     var tb = xpTb(today()), map = {};
@@ -32956,6 +32977,7 @@ function viewCatalogue() {
     if (!force && Date.now() - _xsnapAt < 1800000) return;   /* at most every 30 minutes */
     _xsnapAt = Date.now();
     try { if (PRODUCTS && PRODUCTS.length) xpRulesPublish(); } catch (eR) { }
+    try { xpRemindStoreOnce(); } catch (eRs) { }
     var ym = xYm(today());
     execTeam().forEach(function (u) {
       var x = xMonth(u.name, ym);
