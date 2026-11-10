@@ -460,7 +460,7 @@ function ewmBuild(n, pre) {
    Nothing here deletes anything, ever. A visit is a row added.
    ========================================================================== */
 
-  var APP_VERSION = "4.0.0";   /* 4.0.0 (10 Nov 2026) - the engineer's three screens: Jobs, Install, My money. Start / Finish with GPS; UPI to the company QR first, cash only with a photo; the owner told on Telegram at once; a WhatsApp receipt for the customer; cash in hand to hand over */     /* 3.4.0 (31 Oct 2026) - one tap, one entry */
+  var APP_VERSION = "4.0.1";   /* 4.0.1 (10 Nov 2026) - the company UPI QR (the same code as on every quote PDF) with the UPI id in words */     /* 4.0.0 (10 Nov 2026) - the engineer's three screens: Jobs, Install, My money. Start / Finish with GPS; UPI to the company QR first, cash only with a photo; the owner told on Telegram at once; a WhatsApp receipt for the customer; cash in hand to hand over */     /* 3.4.0 (31 Oct 2026) - one tap, one entry */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -3849,7 +3849,7 @@ function ewmBuild(n, pre) {
       '<button class="chip bchip' + (F.got === "cash" ? ' on' : '') + '" data-act="sv2-fg" data-k="cash" style="min-height:52px;font-size:15px">Paid cash</button>' +
       '<button class="chip bchip' + (F.got === "part" ? ' on' : '') + '" data-act="sv2-fg" data-k="part" style="min-height:52px">Paid part</button>' +
       '<button class="chip bchip' + (F.got === "no" ? ' on' : '') + '" data-act="sv2-fg" data-k="no" style="min-height:52px">Not paid</button></div>';
-    if (F.got === "upi") h += '<div class="card" style="text-align:center;padding:10px"><div class="meta">Show this QR to the customer. The money goes to Energy World.</div>' +
+    if (F.got === "upi") h += '<div class="card" style="text-align:center;padding:10px"><div class="meta">Show this QR to the customer. The money goes to Energy World.</div><div style="font-weight:800;margin:4px 0">UPI: Pos.11363629@indus</div>' +
       '<img src="../assets/upi_qr.png?v=1" alt="Energy World UPI QR" style="max-width:240px;width:100%;margin:6px auto;display:block" onerror="this.style.display=\'none\';this.nextSibling.style.display=\'block\'"/><div class="note warn-t" style="display:none">The company QR is not on the app yet. Use the Energy World UPI from the office.</div></div>';
     if (F.got === "cash") h += '<div class="card" style="padding:10px"><div style="font-weight:700">Photo of the cash or the signed receipt <span class="pill red">required</span></div>' +
       '<div class="meta" style="margin:2px 0 6px">Cash is only recorded with a photo. The owner gets the photo at once.</div>' +
