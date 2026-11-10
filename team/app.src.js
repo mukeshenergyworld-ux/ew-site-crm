@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.954";   /* 6.9.954 (10 Nov 2026) - the Partner Club: fixed slabs, a bonus on crossing one, the trip and device rewards, every partner's rupees to his next slab, and the quiet-partner watch */     /* 6.9.953 (10 Nov 2026) - Service > Control: cash in each engineer's hand, hand-over recorded, three random customer checks a week */     /* 6.9.952 (10 Nov 2026) - to-bill month by month, screens found from Search, team screen use on Health, a receipt for every incentive payout */     /* 6.9.951 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 6.9.950 (9 Nov 2026) - brand introductions: a fuller paragraph, three stage-wise benefits and one next step, on the quote and the proposal */     /* 6.9.949 (9 Nov 2026) - quote PDF: a product picture stays inside its own row (1.2 mm clear of both lines) */     /* 6.9.948 (9 Nov 2026) - quote PDF: each room heading carries its collection and finish with colour dots; every FIMA code chip has its finish dot */     /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
+  var APP_VERSION = "6.9.955";   /* 6.9.955 (10 Nov 2026) - the old hisab takes more than one file at once: photographed pages become one PDF, and every statement on file is listed */     /* 6.9.954 (10 Nov 2026) - the Partner Club: fixed slabs, a bonus on crossing one, the trip and device rewards, every partner's rupees to his next slab, and the quiet-partner watch */     /* 6.9.953 (10 Nov 2026) - Service > Control: cash in each engineer's hand, hand-over recorded, three random customer checks a week */     /* 6.9.952 (10 Nov 2026) - to-bill month by month, screens found from Search, team screen use on Health, a receipt for every incentive payout */     /* 6.9.951 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 6.9.950 (9 Nov 2026) - brand introductions: a fuller paragraph, three stage-wise benefits and one next step, on the quote and the proposal */     /* 6.9.949 (9 Nov 2026) - quote PDF: a product picture stays inside its own row (1.2 mm clear of both lines) */     /* 6.9.948 (9 Nov 2026) - quote PDF: each room heading carries its collection and finish with colour dots; every FIMA code chip has its finish dot */     /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -18854,6 +18854,18 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     return m;
   }
   function hisabDoc(cid) { return hisabDocMap()[cid] || null; }
+  /* 6.9.955 - all of them, newest first. hisabDoc() still answers with the newest, so every screen that
+     asks "is one on file?" is unchanged. */
+  function hisabDocList(cid) {
+    var out = [];
+    (S.data.audit || []).forEach(function (a) {
+      if (a.action !== "client:hisab") return;
+      var d; try { d = JSON.parse(a.detail || "{}"); } catch (e) { return; }
+      if (!d || String(d.clientId) !== String(cid) || !d.url) return;
+      out.push({ url: d.url, note: String(d.note || ""), at: d.at || a.createdAt || "", by: a.actor || "" });
+    });
+    return out.sort(function (x, y) { return String(y.at).localeCompare(String(x.at)); });
+  }
   /* Who is still owed-from AND has no old book attached. The asking stops the day the money
      clears - chasing paperwork for an old client who has paid up helps nobody. */
   function hisabDocMissing() {
@@ -19185,7 +19197,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         : 'No opening balance is recorded against him, so there may be nothing to attach. It is ' +
           'stored all the same if there is.') + '</div>' +
       '<label style="margin-top:8px">The document</label>' +
-      '<input type="file" id="c_hisab" accept="application/pdf,image/*" ' +
+      '<input type="file" id="c_hisab" multiple accept="application/pdf,image/*" ' +
       'style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;background:#fff"/>' +
       '<div id="c_hisab_note" class="meta" style="margin-top:4px;color:#94a3b8">' + hdNoteHtml() + '</div>' +
       '<label style="margin-top:8px">A note (optional)</label>' +
@@ -20367,14 +20379,19 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
              offered once he exists, because the document is filed against that id. */
           (c.id
             ? (function () {
-                var hd = hisabDoc(c.id);
+                var hdL = hisabDocList(c.id);   /* 6.9.955 - every one on file */
                 return '<div style="margin-top:10px;padding-top:8px;border-top:1px dashed #fcd34d">' +
                   '<label>Old hisab \u2014 his statement from the old books</label>' +
-                  (hd && hd.url
-                    ? '<div class="meta" style="margin-bottom:6px">On file &middot; <a href="' + esc(hd.url) + '" target="_blank" rel="noopener" style="color:#0f766e;font-weight:600">open it &#8599;</a>' +
-                      (hd.note ? ' &middot; ' + esc(hd.note) : "") + '. Attaching another one makes it the current one; nothing is deleted.</div>'
-                    : '<div class="meta" style="margin-bottom:6px">Not attached yet. A PDF is best \u2014 a clear photo of the page also works.</div>') +
-                  '<input type="file" id="c_hisab" accept="application/pdf,image/*" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;background:#fff"/>' +
+                  (hdL.length
+                    ? '<div class="meta" style="margin-bottom:6px">' + plural(hdL.length, "statement") + ' on file. Attaching more never removes these.</div>' +
+                      '<div style="margin-bottom:6px">' + hdL.map(function (x, i) {
+                        return '<div style="padding:3px 0;border-top:' + (i ? '1px solid #fef3c7' : 'none') + ';font-size:12.5px">' +
+                          '<a href="' + esc(x.url) + '" target="_blank" rel="noopener" style="color:#0f766e;font-weight:700">open &#8599;</a>' +
+                          ' <span style="color:#64748b">' + esc(dmy(localDay(x.at))) + (x.note ? ' &middot; ' + esc(x.note) : '') + (x.by ? ' &middot; ' + esc(x.by) : '') + '</span></div>';
+                      }).join("") + '</div>'
+                    : '<div class="meta" style="margin-bottom:6px">Not attached yet. A PDF is best \u2014 clear photos of the pages also work.</div>') +
+                  '<input type="file" id="c_hisab" multiple accept="application/pdf,image/*" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;background:#fff"/>' +
+                  '<div class="meta" style="font-size:12px;color:#94a3b8;margin-top:3px">You can pick several at once \u2014 photographed pages are joined into one PDF, in the order you pick them.</div>' +
                   '<div id="c_hisab_note" class="meta" style="margin-top:4px;color:#94a3b8">' + hdNoteHtml() + '</div>' +
                   '<input id="c_hisab_txt" placeholder="A note, e.g. as on 31-03-2026" style="margin-top:6px"/>' +
                   '<div class="row" style="margin-top:6px"><div class="grow"></div>' +
@@ -25290,13 +25307,15 @@ function viewCatalogue() {
   function hdNoteHtml() {
     if (_hdUp) {
       return '<b style="color:#0f766e">Uploading ' + _hdUp.kb + ' KB\u2026 ' +
-             Math.round((Date.now() - _hdUp.t0) / 1000) + 's</b> \u2014 leave this open. ' +
+             Math.round((Date.now() - _hdUp.t0) / 1000) + 's</b>' + (_hdUp.n > 1 ? ' (' + _hdUp.i + ' of ' + _hdUp.n + ')' : '') + ' \u2014 leave this open. ' +
              'A big scan can take a couple of minutes.';
     }
     if (S.hdFile && S.hdFile.b64) {
-      var k = Math.round(String(S.hdFile.b64).length / 1024);
-      return '<b style="color:#0f766e">Ready \u2014 ' + esc(String(S.hdFile.name || "the file")) +
-             ', ' + k + ' KB.</b> Now press <b>Attach the old hisab</b>.' +
+      var _hl = (S.hdFiles && S.hdFiles.length) || 1;
+      var k = Math.round((S.hdFiles || [S.hdFile]).reduce(function (n, x) { return n + String(x.b64 || "").length; }, 0) / 1024);
+      var _hp = _hl > 1 && (S.hdFiles || []).every(function (x) { return x.kind === "image"; });
+      return '<b style="color:#0f766e">Ready \u2014 ' + (_hl > 1 ? _hl + " files" : esc(String(S.hdFile.name || "the file"))) +
+             ', ' + k + ' KB.</b>' + (_hp ? ' They will be joined into one PDF of ' + _hl + ' pages.' : (_hl > 1 ? ' Each goes up on its own.' : '')) + ' Now press <b>Attach the old hisab</b>.' +
              (k > HISAB_TOOBIG_KB
                ? ' <span style="color:#b91c1c">This is bigger than anything measured to work. ' +
                  '20 MB goes up in about a minute; 44 MB ran four minutes and gave up. ' +
@@ -25325,8 +25344,8 @@ function viewCatalogue() {
     b.style.opacity = disabled ? "0.55" : "";
     b.textContent = label || "Attach the old hisab";
   }
-  function hdStart(kb) {
-    _hdUp = { kb: kb, t0: Date.now() };
+  function hdStart(kb, i, n) {
+    _hdUp = { kb: kb, t0: Date.now(), i: i || 1, n: n || 1 };
     if (_hdTick) clearInterval(_hdTick);
     _hdTick = setInterval(function () { try { if (!hdOverdue()) hdNote(null); } catch (e) {} }, 1000);
     hdNote(null); hdBtn(true, "Going up\u2026");
@@ -25421,6 +25440,35 @@ function viewCatalogue() {
         }
       } catch (e) { }
       try { doc.addImage("data:image/jpeg;base64," + b64, "JPEG", x, yy, iw, ih); } catch (e) { }
+      return doc;
+    });
+  }
+
+  /* 6.9.955 - HIS WORDS: "give option to upload more than one file". An old statement is usually SEVERAL pages, and
+     photographing them one at a time meant one upload and one record per page. Pick them all: the photos become the
+     pages of ONE pdf, in the order they were picked. A real PDF cannot be merged in the browser, so PDFs go up one
+     per file and each keeps its own record - nothing is ever thrown away. */
+  function imgsToPdf(list, title) {
+    return loadFonts().then(function (f) {
+      var doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4" });
+      if (f) {
+        try {
+          doc.addFileToVFS("DejaVuSans.ttf", f.reg); doc.addFont("DejaVuSans.ttf", "DJ", "normal");
+          doc.addFileToVFS("DejaVuSans-Bold.ttf", f.bold); doc.addFont("DejaVuSans-Bold.ttf", "DJ", "bold");
+        } catch (e) { }
+      }
+      (list || []).forEach(function (b64, i) {
+        if (i) doc.addPage();
+        try { doc.setFont(ppEmbed(doc), "bold"); } catch (e) { }
+        doc.setFontSize(11); doc.setTextColor(13, 118, 108);
+        doc.text(String(title || "Document") + (list.length > 1 ? "  \u00b7  page " + (i + 1) + " of " + list.length : ""), 16, 18);
+        var iw = 178, ih = 245, x = 16, yy = 26;
+        try {
+          var ip = doc.getImageProperties("data:image/jpeg;base64," + b64);
+          if (ip && ip.width && ip.height) { var sc = Math.min(178 / ip.width, 245 / ip.height); iw = ip.width * sc; ih = ip.height * sc; x = 16 + (178 - iw) / 2; }
+        } catch (e) { }
+        try { doc.addImage("data:image/jpeg;base64," + b64, "JPEG", x, yy, iw, ih); } catch (e) { }
+      });
       return doc;
     });
   }
@@ -62244,25 +62292,30 @@ function viewCatalogue() {
     var hdEl = el("c_hisab");
     if (hdEl) {
       hdEl.addEventListener("change", function (e) {
-        var f = e.target.files && e.target.files[0];
+        /* 6.9.955 - all of them, in the order he picked them */
+        var fs = [].slice.call((e.target && e.target.files) || []);
         var note = el("c_hisab_note");
-        if (!f) return;
-        var k = fileKind(f);
-        if (k !== "pdf" && k !== "image") {
-          S.hdFile = null;
-          if (note) { note.textContent = "Only a PDF or a photo can be stored. Open it, Save as PDF, and attach that."; note.style.color = "#b45309"; }
+        if (!fs.length) return;
+        var bad = fs.filter(function (f) { var k = fileKind(f); return k !== "pdf" && k !== "image"; });
+        if (bad.length) {
+          S.hdFile = null; S.hdFiles = null;
+          if (note) { note.textContent = "Only PDFs and photos can be stored \u2014 " + bad[0].name + " is neither. Open it, Save as PDF, and attach that."; note.style.color = "#b45309"; }
           return;
         }
-        if (note) { note.textContent = "Reading the file\u2026"; note.style.color = "#94a3b8"; }
-        (k === "pdf" ? fileB64(f) : shrinkPhoto(f)).then(function (b64) {
-          var n4 = el("c_hisab_note");
-          if (!b64) {
-            S.hdFile = null;
-            if (n4) { n4.textContent = "That file could not be read \u2014 try again."; n4.style.color = "#b45309"; }
+        if (note) { note.textContent = fs.length > 1 ? "Reading " + fs.length + " files\u2026" : "Reading the file\u2026"; note.style.color = "#94a3b8"; }
+        Promise.all(fs.map(function (f) {
+          var k = fileKind(f);
+          return (k === "pdf" ? fileB64(f) : shrinkPhoto(f)).then(function (b64) { return b64 ? { b64: b64, name: f.name || "hisab", kind: k } : null; })
+            .catch(function () { return null; });
+        })).then(function (list) {
+          var ok = list.filter(Boolean), n4 = el("c_hisab_note");
+          if (!ok.length) {
+            S.hdFile = null; S.hdFiles = null;
+            if (n4) { n4.textContent = "Nothing could be read \u2014 try again."; n4.style.color = "#b45309"; }
             return;
           }
-          S.hdFile = { b64: b64, name: f.name || "hisab", kind: k };
-          /* v6.9.313 - the size, in KB, before he commits to waiting for it. */
+          S.hdFiles = ok; S.hdFile = ok[0];   /* hdFile stays the first, so every older path still works */
+          if (ok.length < fs.length && n4) { n4.textContent = (fs.length - ok.length) + " of " + fs.length + " could not be read; the rest are ready."; }
           hdNote(null, "#334155");
         });
       });
@@ -71973,6 +72026,10 @@ function viewCatalogue() {
       var hcl = (S.data.clients || []).filter(function (x) { return x.id === id; })[0];
       if (!hcl) { toast("Save the client first, then attach his old hisab."); return; }
       if (!S.hdFile || !S.hdFile.b64) { toast("Pick the file first."); return; }
+      var _hfs = (S.hdFiles && S.hdFiles.length) ? S.hdFiles.slice() : [S.hdFile];
+      /* 6.9.955 - photographed pages become ONE pdf; anything with a real PDF in it goes up one at a time */
+      var _hAllImg = _hfs.length > 1 && _hfs.every(function (x) { return x.kind === "image"; });
+      if (_hAllImg) _hfs = [{ kind: "pages", pages: _hfs.map(function (x) { return x.b64; }), b64: _hfs[0].b64, name: _hfs.length + " pages" }];
       /* v6.9.313 - one at a time. A second press used to start a second upload racing the
          first up the same wire, and both then went slower. */
       if (_hdUp) {
@@ -71981,18 +72038,20 @@ function viewCatalogue() {
         return;
       }
       var hnote = el("c_hisab_txt") ? String(el("c_hisab_txt").value || "").trim() : "";
-      var hf = S.hdFile;
-      var hcid = hcl.id;
-      hdStart(Math.round(String(hf.b64 || "").length / 1024));
+      var hcid = hcl.id, _hi = 0, _hOk = 0, _hUrl = "";
+      var _hNext = function () {
+      var hf = _hfs[_hi];
+      hdStart(Math.round((hf.kind === "pages" ? hf.pages.join("") : String(hf.b64 || "")).length / 1024), _hi + 1, _hfs.length);
       (hf.kind === "pdf"
         ? Promise.resolve(hf.b64)
-        : imgToPdf(hf.b64, String(hcl.name || "") + " \u2014 old hisab").then(function (d) {
+        : (hf.kind === "pages" ? imgsToPdf(hf.pages, String(hcl.name || "") + " \u2014 old hisab")
+                               : imgToPdf(hf.b64, String(hcl.name || "") + " \u2014 old hisab")).then(function (d) {
             return d.output("datauristring").split(",")[1];
           })
       ).then(function (b64h) {
         return api("pdfHost", {
           pdfBase64: b64h,
-          filename: "HISAB-" + String(hcl.name || hcid).replace(/[^\w.-]+/g, "-") + ".pdf"
+          filename: "HISAB-" + String(hcl.name || hcid).replace(/[^\w.-]+/g, "-") + (_hfs.length > 1 ? "-" + (_hi + 1) : "") + ".pdf"
         });
       }).then(function (r) {
         /* v6.9.315 - the server's own words, not a codeword. Since backend v98 this call
@@ -72007,17 +72066,21 @@ function viewCatalogue() {
           id: "HD-" + Date.now() + "-" + Math.floor(Math.random() * 1000000),
           createdAt: nowh, actor: S.user || "", action: "client:hisab",
           target: String(hcl.name || ""),
-          detail: JSON.stringify({ clientId: hcid, name: hcl.name || "", url: r.url, at: nowh, note: hnote }),
+          detail: JSON.stringify({ clientId: hcid, name: hcl.name || "", url: r.url, at: nowh,
+            note: hnote + (_hfs.length > 1 ? (hnote ? " \u00b7 " : "") + "file " + (_hi + 1) + " of " + _hfs.length : "") }),
           ip: ""
         }, true).then(function () {
           var _secs = _hdUp ? Math.round((Date.now() - _hdUp.t0) / 1000) : 0;
-          _hdCache = null; S.hdFile = null;
+          _hdCache = null; _hOk++; _hUrl = r.url;
+          _hi++;
+          if (_hi < _hfs.length) { hdStop(); _hNext(); return; }   /* 6.9.955 - one at a time, like the receipt queue */
+          S.hdFile = null; S.hdFiles = null;
           hdStop();
           /* No repaint on purpose: he may be halfway through editing this very client, and a
              redraw would take his typing with it. The line under the file box just changes. */
-          hdNote('Attached in ' + _secs + 's. <a href="' + esc(r.url) + '" target="_blank" rel="noopener" style="color:#0f766e;font-weight:600">Open it &#8599;</a>', "#0f766e");
+          hdNote((_hOk > 1 ? _hOk + ' files attached' : 'Attached in ' + _secs + 's') + '. <a href="' + esc(_hUrl) + '" target="_blank" rel="noopener" style="color:#0f766e;font-weight:600">Open the last one &#8599;</a>', "#0f766e");
           hdBtn(false, "Attach another");
-          toast("Old hisab attached for " + String(hcl.name || "") + ".");
+          toast((_hOk > 1 ? _hOk + " old hisab files attached for " : "Old hisab attached for ") + String(hcl.name || "") + ".");
         });
       }).catch(function (err) {
         /* v6.9.313 - SAY WHAT HAPPENED. "That did not go up" threw away the one thing worth
@@ -72030,6 +72093,7 @@ function viewCatalogue() {
         hdStop();
         var why = (err && err.message) ? String(err.message) : "the server gave no link back";
         var kb2 = Math.round(String((S.hdFile && S.hdFile.b64) || "").length / 1024);
+        if (_hOk) { _hdCache = null; S.hdFiles = _hfs.slice(_hi); S.hdFile = S.hdFiles[0] || null; }   /* 6.9.955 - what did land is kept */
         hdNote('<b style="color:#b45309">Not gone up \u2014 ' + esc(why) + '</b> (after ' + _s2 + 's, ' +
                kb2 + ' KB). Nothing was lost and the file is still chosen \u2014 press <b>Attach the old hisab</b> ' +
                'to try again.' +
@@ -72041,6 +72105,8 @@ function viewCatalogue() {
         hdBtn(false, "Try again");
         toast("Could not attach it \u2014 " + why + ". Nothing was lost.");
       });
+      };
+      _hNext();
       return;
     }
     if (act === "ch-pdf") {
