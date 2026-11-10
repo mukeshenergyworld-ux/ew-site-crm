@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.953";   /* 6.9.953 (10 Nov 2026) - Service > Control: cash in each engineer's hand, hand-over recorded, three random customer checks a week */     /* 6.9.952 (10 Nov 2026) - to-bill month by month, screens found from Search, team screen use on Health, a receipt for every incentive payout */     /* 6.9.951 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 6.9.950 (9 Nov 2026) - brand introductions: a fuller paragraph, three stage-wise benefits and one next step, on the quote and the proposal */     /* 6.9.949 (9 Nov 2026) - quote PDF: a product picture stays inside its own row (1.2 mm clear of both lines) */     /* 6.9.948 (9 Nov 2026) - quote PDF: each room heading carries its collection and finish with colour dots; every FIMA code chip has its finish dot */     /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
+  var APP_VERSION = "6.9.954";   /* 6.9.954 (10 Nov 2026) - the Partner Club: fixed slabs, a bonus on crossing one, the trip and device rewards, every partner's rupees to his next slab, and the quiet-partner watch */     /* 6.9.953 (10 Nov 2026) - Service > Control: cash in each engineer's hand, hand-over recorded, three random customer checks a week */     /* 6.9.952 (10 Nov 2026) - to-bill month by month, screens found from Search, team screen use on Health, a receipt for every incentive payout */     /* 6.9.951 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 6.9.950 (9 Nov 2026) - brand introductions: a fuller paragraph, three stage-wise benefits and one next step, on the quote and the proposal */     /* 6.9.949 (9 Nov 2026) - quote PDF: a product picture stays inside its own row (1.2 mm clear of both lines) */     /* 6.9.948 (9 Nov 2026) - quote PDF: each room heading carries its collection and finish with colour dots; every FIMA code chip has its finish dot */     /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -722,7 +722,7 @@
   }
 
   var ROLE_TABS = {
-    admin:    ["codes","profit","salary","dash","wareminder","msgs","clientlist","myday","statements","review","agent","report","scorecard","returns","tools","rates","clients","crlog","partners","pevents","quotes","leads","brandfollow","winloss","visits","followups","challans","register","paylog","freight","payments","paidout","billing","discounts","commission","complaints","service","spares","dues","payroll","products","catalogs","brandstory","pricelist","catalogue","rules","teampins","tally","plcheck","health","trouble","changelog","booksweep","dups","stock","brief","attendance"],
+    admin:    ["codes","profit","salary","dash","wareminder","msgs","clientlist","myday","statements","review","agent","report","scorecard","returns","tools","rates","clients","crlog","partners","pevents","club","quotes","leads","brandfollow","winloss","visits","followups","challans","register","paylog","freight","payments","paidout","billing","discounts","commission","complaints","service","spares","dues","payroll","products","catalogs","brandstory","pricelist","catalogue","rules","teampins","tally","plcheck","health","trouble","changelog","booksweep","dups","stock","brief","attendance"],
     accounts: ["codes","salary","dash","wareminder","clientlist","statements","review","agent","returns","tools","clients","crlog","partners","followups","challans","register","paylog","freight","payments","billing","complaints","service","spares","dues","products","catalogs","rates","pricelist","dups","stock","tally","trouble","attendance"],
     godown:   ["dash","agent","returns","tools","challans","freight","products","stock","trouble"],
     sales:    ["myday","msgs","clientlist","dash","review","agent","report","returns","tools","clients","crlog","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","register","paylog","freight","billing","payments","complaints","products","catalogs","dups","brief","trouble"],
@@ -45627,7 +45627,7 @@ function viewCatalogue() {
      nothing else could reach it - so the usage counter would have had to keep a second copy
      of the same forty-two names, and a second copy is how the two quietly stop agreeing.
      Hoisted, not duplicated. render() still reads exactly this. */
-  var TAB_TABS = [["search", "Search"], ["myday", "My day"], ["dash", "Today"], ["statements", "Statements"], ["review", "Twice-weekly review"], ["wareminder", "WhatsApp reminders"], ["msgs", "Messages & posts"], ["clientlist", "Client list"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits & quotes"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["register", "Challan log"], ["paylog", "Payment log"], ["freight", "Drivers & freight"], ["deliveries", "Deliveries"], ["collections", "Payments"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["crlog", "Client & lead log"], ["partners", "Partners"], ["pevents", "Partner events"], ["quotes", "Quotes"], ["commission", "Incentives"], ["complaints", "Complaints"], ["service", "Service"], ["spares", "Spares"], ["dues", "Service dues"], ["payroll", "Payroll"], ["salary", "Salary & staff"], ["profit", "Profit"], ["codes", "Codes & costs"], ["attendance", "Attendance"], ["products", "Products"], ["payments", "Payments"], ["paidout", "Paid out"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["catalogs", "Brand catalogues"], ["brandstory", "Brand stories"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["trouble", "Troubleshoot"], ["changelog", "Change log"], ["booksweep", "Book numbers"], ["dups", "Duplicate check"], ["stock", "Stock"], ["tally", "Tally"], ["plcheck", "Supplier price list"], ["brief", "The brief"]];
+  var TAB_TABS = [["search", "Search"], ["myday", "My day"], ["dash", "Today"], ["statements", "Statements"], ["review", "Twice-weekly review"], ["wareminder", "WhatsApp reminders"], ["msgs", "Messages & posts"], ["clientlist", "Client list"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits & quotes"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["register", "Challan log"], ["paylog", "Payment log"], ["freight", "Drivers & freight"], ["deliveries", "Deliveries"], ["collections", "Payments"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["crlog", "Client & lead log"], ["partners", "Partners"], ["pevents", "Partner events"], ["club", "Partner Club"], ["quotes", "Quotes"], ["commission", "Incentives"], ["complaints", "Complaints"], ["service", "Service"], ["spares", "Spares"], ["dues", "Service dues"], ["payroll", "Payroll"], ["salary", "Salary & staff"], ["profit", "Profit"], ["codes", "Codes & costs"], ["attendance", "Attendance"], ["products", "Products"], ["payments", "Payments"], ["paidout", "Paid out"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["catalogs", "Brand catalogues"], ["brandstory", "Brand stories"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["trouble", "Troubleshoot"], ["changelog", "Change log"], ["booksweep", "Book numbers"], ["dups", "Duplicate check"], ["stock", "Stock"], ["tally", "Tally"], ["plcheck", "Supplier price list"], ["brief", "The brief"]];
   var TAB_LABEL = (function () {
     var m = {}; TAB_TABS.forEach(function (t) { m[t[0]] = t[1]; }); return m;
   })();
@@ -52345,6 +52345,147 @@ function viewCatalogue() {
           x.b12 ? money(x.b12) : '—', x.p12 ? money(x.p12) : '—', x.life ? money(x.life) : '—', x.inc ? money(x.inc) : '—', x.ev ? money(x.ev) : '—',
           x.cost > 0 ? '<b>' + money(Math.round(x.ret)) + '</b>' : (x.b12 > 0 ? '<span style="color:#0f766e">no cost yet</span>' : '—'), x.last ? esc(dmy(x.last)) : '—']; })) +
       (shown.length > 300 ? '<div class="meta" style="font-size:12px">Showing 300 of ' + shown.length + '.</div>' : '') + '</div>';
+    return h;
+  }
+  /* ===== 6.9.954 - THE PARTNER CLUB  (10 Nov 2026) =====
+     HIS WORDS: "like we have managed employee incentive vs sales target ... how can be better manage our gold and
+     platinum partners"; then "we want %age of sales on selecting brand plus bonus on achieving a slab", and the
+     reward at the top is "a forign trip or something else electronic devices".
+
+     WHAT WAS WRONG. The tier was a PERCENTILE (top 10% Platinum) living only on the events screen. A partner could
+     be demoted in a year his business grew, could never be told a target, and a Platinum man earned exactly the
+     same % as a brand-new plumber. Nothing was ever told to the partner at all.
+
+     WHAT THIS IS. The incentive card is untouched - brand-wise % stays exactly as it is. On top of it:
+       a FIXED SLAB on the money COLLECTED from his clients inside one scheme year (Jan-Dec, the executive plan's
+       year), and on crossing it a BONUS on his whole year's collected business plus the tier's reward.
+     Collected, never delivered - the 2027 executive plan's rule. Measured 10 Nov on his own book: partners brought
+     Rs 3.10 Cr of deliveries and Rs 1.71 Cr of it is collected, so paying on deliveries would hand out money on
+     55 paise in the rupee. It also gives every Gold and Platinum partner his own reason to chase your payment.
+
+     HIS APPROVED SLABS (10 Nov), costed against the 12 months to that date: Platinum 5 men, Gold 4, Silver 10,
+     Starter 13 - bonus Rs 89,574 + rewards Rs 2,25,600 = Rs 3,15,174, which is 1.8% of the Rs 1.71 Cr collected. */
+  var CLUB_TIERS = [
+    { k: "Platinum", cut: 1000000, bonus: 0.75, rew: "Foreign trip", cost: 30000 },
+    { k: "Gold",     cut: 600000,  bonus: 0.5,  rew: "Device", cost: 15000 },
+    { k: "Silver",   cut: 200000,  bonus: 0.25, rew: "", cost: 0 },
+    { k: "Starter",  cut: 50000,   bonus: 0,    rew: "Tool kit", cost: 1200 }
+  ];
+  function clubScheme() {
+    var best = null;
+    (S.data.audit || []).forEach(function (a) { if (String(a.action || "") === "club:set" && (!best || String(a.createdAt) > String(best.createdAt))) best = a; });
+    var d = best ? cmpJ(best.detail) : null;
+    var T = (d && Array.isArray(d.tiers) && d.tiers.length) ? d.tiers.map(function (x) {
+      return { k: String(x.k || ""), cut: Math.round(nAmt(x.cut)), bonus: nAmt(x.bonus), rew: String(x.rew || ""), cost: Math.round(nAmt(x.cost)) };
+    }).filter(function (x) { return x.k; }) : CLUB_TIERS.slice();
+    T.sort(function (a, b) { return b.cut - a.cut; });
+    return { tiers: T, at: best ? best.createdAt : "", by: best ? best.actor : "" };
+  }
+  function clubYears() {
+    var y = Number(today().slice(0, 4)) || 2026, out = [];
+    for (var i = y - 1; i <= y + 1; i++) out.push(String(i));
+    return out;
+  }
+  function clubYear() { var y = String(S.clubY || ""); return clubYears().indexOf(y) >= 0 ? y : today().slice(0, 4); }
+  /* collected inside the scheme year, per partner - the same arithmetic pevSupport uses, with a year window */
+  function clubRows(ym) {
+    var y0 = ym + "-01-01", y1 = ym + "-12-31", T = clubScheme().tiers;
+    var out = assocLive().map(function (a) {
+      var bk = null; try { bk = partnerBook(a.name); } catch (e) { bk = null; }
+      var rows = (bk && bk.rows) || [], coll = 0, deliv = 0, last = "";
+      rows.forEach(function (r) {
+        var amt = Number(r.amount) || 0; if (r.ret && amt > 0) amt = -amt;
+        if (r.ymd && r.ymd >= y0 && r.ymd <= y1) { deliv += amt; if (!r.ret) coll += amt * (Number(r.paidShare) || 0); }
+        if (!r.ret && r.ymd > last) last = r.ymd;
+      });
+      coll = Math.round(coll);
+      var tier = null, ti = -1;
+      for (var i = 0; i < T.length; i++) { if (coll >= T[i].cut) { tier = T[i]; ti = i; break; } }
+      var nextT = ti < 0 ? T[T.length - 1] : (ti > 0 ? T[ti - 1] : null);
+      return { a: a, name: a.name, role: String(a.role || ""), loc: a.location || "", mob: String(a.mobile || "").replace(/\D/g, "").slice(-10),
+        coll: coll, deliv: Math.round(deliv), last: last, tier: tier, tierK: tier ? tier.k : "",
+        next: nextT, gap: nextT ? Math.max(0, nextT.cut - coll) : 0,
+        bonus: tier ? Math.round(coll * tier.bonus / 100) : 0,
+        rew: tier ? tier.rew : "", rcost: tier ? tier.cost : 0 };
+    });
+    out.sort(function (x, y2) { return y2.coll - x.coll; });
+    return out;
+  }
+  function clubPill(k) {
+    if (!k) return '<span style="color:#94a3b8">\u2014</span>';
+    var c = { Platinum: ["#1e293b", "#e2e8f0"], Gold: ["#92400e", "#fde68a"], Silver: ["#334155", "#e5e7eb"], Starter: ["#0f766e", "#ccfbf1"] }[k] || ["#64748b", "#f1f5f9"];
+    return '<span style="display:inline-block;font-size:12px;font-weight:800;color:' + c[0] + ';background:' + c[1] + ';border-radius:6px;padding:1px 7px;white-space:nowrap">' + esc(k) + '</span>';
+  }
+  function clubWaText(r) {
+    var L = ["Namaste " + r.name + " ji,", "Energy World Partner Club " + clubYear() + "."];
+    L.push(r.tierK ? "Aapka business is saal: " + money(r.coll) + ". Aap abhi " + r.tierK + " hain." : "Aapka business is saal: " + money(r.coll) + ".");
+    if (r.next) L.push(money(r.gap) + " aur, aur aap " + r.next.k + " ban jaate hain" + (r.next.rew ? " \u2014 " + r.next.rew : "") + ".");
+    L.push("Business wahi gina jaata hai jiska payment aa chuka hai.");
+    L.push("Dhanyavaad, Energy World, Panipat.");
+    return L.join("\n");
+  }
+  function viewClub() {
+    if (!roleIs("admin")) return '<div class="empty">The Partner Club is the owner\'s.</div>';
+    var ym = clubYear(), SC = clubScheme(), T = SC.tiers, rows = clubRows(ym);
+    var inClub = rows.filter(function (r) { return r.tierK; });
+    /* ---- 1. the ladder ---- */
+    var tot = { n: 0, coll: 0, bonus: 0, rcost: 0 };
+    var band = T.map(function (t) {
+      var b = inClub.filter(function (r) { return r.tierK === t.k; });
+      var coll = b.reduce(function (n, r) { return n + r.coll; }, 0), bon = b.reduce(function (n, r) { return n + r.bonus; }, 0), rc = b.length * t.cost;
+      tot.n += b.length; tot.coll += coll; tot.bonus += bon; tot.rcost += rc;
+      return { t: t, b: b, coll: coll, bon: bon, rc: rc };
+    });
+    var h = '<div class="card"><h2 style="margin:0">Partner Club ' + esc(ym) + '</h2>' +
+      '<div class="meta" style="font-size:13px">The incentive card is unchanged \u2014 the brand-wise % keeps paying exactly as it does. This sits on top: cross a slab in the year and you earn the bonus on your whole year, plus the tier\'s reward. <b>Counted on money collected, never on material delivered.</b></div>' +
+      '<div class="acts" style="margin-top:8px;gap:6px;flex-wrap:wrap">' + clubYears().map(function (y) {
+        return '<button class="btn sm' + (y === ym ? '' : ' ghost') + '" style="min-height:44px" data-act="club-y" data-v="' + y + '">' + y + '</button>'; }).join("") + '</div></div>';
+    h += '<div class="card"><h3 style="margin:0">The ladder</h3>' +
+      pevTable([["Tier"], ["Reaches it at", "right"], ["Bonus", "right"], ["Reward"], ["Partners", "right"], ["Collected", "right"], ["Bonus \u20b9", "right"], ["Reward \u20b9", "right"]],
+        band.map(function (x) { return [clubPill(x.t.k), money(x.t.cut), x.t.bonus ? x.t.bonus + "%" : "\u2014", esc(x.t.rew || "\u2014"),
+          '<b>' + x.b.length + '</b>', money(x.coll), money(x.bon), money(x.rc)]; })
+        .concat([['<b>Total</b>', "", "", "", '<b>' + tot.n + '</b>', '<b>' + money(tot.coll) + '</b>', '<b>' + money(tot.bonus) + '</b>', '<b>' + money(tot.rcost) + '</b>']])) +
+      '<div class="meta" style="font-size:12.5px;margin-top:6px">Cost of the club this year: <b>' + money(tot.bonus + tot.rcost) + '</b>' +
+        (tot.coll > 0 ? ' \u2014 ' + (Math.round((tot.bonus + tot.rcost) / tot.coll * 1000) / 10) + '% of what these partners collected' : '') + '. The trip is normally brand-funded.</div></div>';
+    /* ---- 2. who to call ---- */
+    var near = inClub.concat(rows.filter(function (r) { return !r.tierK && r.coll > 0; }))
+      .filter(function (r) { return r.next && r.gap > 0 && r.gap <= Math.max(50000, (r.next.cut - (r.tier ? r.tier.cut : 0)) * 0.35); })
+      .sort(function (a, b) { return a.gap - b.gap; });
+    var quiet = inClub.filter(function (r) { return (r.tierK === "Platinum" || r.tierK === "Gold") && r.last && daysTo(r.last) < -60; })
+      .sort(function (a, b) { return String(a.last).localeCompare(String(b.last)); });
+    h += '<div class="card"><h3 style="margin:0">Who to call</h3>';
+    h += '<div style="margin-top:6px;font-weight:700;color:#0f766e">Within reach of the next slab \u2014 ' + near.length + '</div>';
+    h += near.length ? pevTable([["Partner"], ["Now", "right"], ["Needs", "right"], ["To become"], [""]],
+        near.slice(0, 25).map(function (r) { return ['<b>' + esc(r.name) + '</b><div style="font-size:12px;color:#64748b">' + esc([r.role, r.loc].filter(Boolean).join(" \u00b7 ")) + '</div>',
+          money(r.coll), '<b style="color:#b45309">' + money(r.gap) + '</b>', clubPill(r.next.k) + (r.next.rew ? ' <span style="font-size:12px;color:#64748b">' + esc(r.next.rew) + '</span>' : ''),
+          r.mob.length === 10 ? '<a class="btn sm ghost" style="min-height:44px;display:inline-flex;align-items:center" href="tel:' + r.mob + '">Call</a> <button class="btn sm" style="min-height:44px" data-act="club-wa" data-n="' + esc(r.name) + '">WhatsApp</button>' : '<span class="meta">no mobile</span>']; }), true)
+      : '<div class="meta" style="font-size:12.5px">Nobody is close to a slab yet this year.</div>';
+    h += '<div style="margin-top:12px;font-weight:700;color:' + (quiet.length ? '#b91c1c' : '#166534') + '">Gold or Platinum, gone quiet over 60 days \u2014 ' + quiet.length + '</div>';
+    h += quiet.length ? pevTable([["Partner"], ["Tier"], ["Collected", "right"], ["Last delivery"], [""]],
+        quiet.map(function (r) { return ['<b>' + esc(r.name) + '</b>', clubPill(r.tierK), money(r.coll), esc(dmy(r.last)) + ' <span style="color:#b91c1c">(' + Math.abs(daysTo(r.last)) + ' days)</span>',
+          r.mob.length === 10 ? '<a class="btn sm" style="min-height:44px;display:inline-flex;align-items:center" href="tel:' + r.mob + '">Call</a>' : '<span class="meta">no mobile</span>']; }), true)
+      : '<div class="meta" style="font-size:12.5px">None \u2014 every Gold and Platinum partner has sent business in the last 60 days.</div>';
+    h += '</div>';
+    /* ---- 3. every partner ---- */
+    h += '<div class="card"><h3 style="margin:0">Every partner, ' + esc(ym) + '</h3>' +
+      '<div class="meta" style="font-size:12.5px">Sorted by what has been collected from his clients this year.</div>' +
+      pevTable([["#", "right"], ["Partner"], ["Tier"], ["Collected", "right"], ["Delivered", "right"], ["\u20b9 to next slab", "right"], ["Bonus so far", "right"], ["Reward"], ["Last delivery"]],
+        rows.filter(function (r) { return r.deliv > 0 || r.coll > 0; }).slice(0, 200).map(function (r, i) {
+          return [i + 1, '<b>' + esc(r.name) + '</b><div style="font-size:12px;color:#64748b">' + esc([r.role, r.loc].filter(Boolean).join(" \u00b7 ")) + '</div>', clubPill(r.tierK),
+            '<b>' + money(r.coll) + '</b>', money(r.deliv), r.next ? money(r.gap) + ' <span style="font-size:11px;color:#64748b">to ' + esc(r.next.k) + '</span>' : '\u2014',
+            r.bonus ? money(r.bonus) : '\u2014', esc(r.rew || "\u2014"), r.last ? esc(dmy(r.last)) : '\u2014']; })) + '</div>';
+    /* ---- 4. the scheme itself ---- */
+    h += '<div class="card"><h3 style="margin:0">The scheme</h3>' +
+      '<div class="meta" style="font-size:12.5px">Change a figure and press Save. Nothing is overwritten \u2014 each save is a new dated record.' + (SC.at ? ' Last set ' + esc(dmy(localDay(SC.at))) + (SC.by ? ' by ' + esc(SC.by) : '') + '.' : ' These are the figures agreed on 10 Nov 2026; nothing has been saved yet.') + '</div>' +
+      '<div style="overflow-x:auto"><table style="border-collapse:collapse;min-width:620px;font-size:13px;margin-top:8px">' +
+      '<tr style="background:#0b3b36;color:#fff;font-size:12px"><th style="padding:6px;text-align:left">Tier</th><th style="padding:6px">Reaches it at \u20b9</th><th style="padding:6px">Bonus %</th><th style="padding:6px;text-align:left">Reward</th><th style="padding:6px">Reward costs us \u20b9</th></tr>' +
+      T.map(function (t, i) {
+        var inp = function (f, v, w) { return '<input class="club-in" data-i="' + i + '" data-f="' + f + '" value="' + esc(v == null ? "" : String(v)) + '" style="width:' + w + 'px;min-height:44px;text-align:center"/>'; };
+        return '<tr style="border-top:1px solid #e2e8f0"><td style="padding:4px 6px">' + clubPill(t.k) + '</td>' +
+          '<td style="text-align:center">' + inp("cut", t.cut, 110) + '</td><td style="text-align:center">' + inp("bonus", t.bonus, 60) + '</td>' +
+          '<td style="padding:4px 6px">' + inp("rew", t.rew, 150) + '</td><td style="text-align:center">' + inp("cost", t.cost, 90) + '</td></tr>';
+      }).join("") + '</table></div>' +
+      '<div class="acts" style="margin-top:8px"><button class="btn" style="min-height:44px" data-act="club-save">Save the scheme</button></div></div>';
     return h;
   }
   function modalPevNew(e) {
@@ -61262,7 +61403,7 @@ function viewCatalogue() {
     ["Clients",    ["clients", "clientlist", "leads", "quotes", "visits", "pitch", "winloss", "brandfollow", "crlog", "msgs"]],
     ["Deliveries", ["challans", "register", "returns", "freight", "stock"]],
     ["HISAB",      ["billing", "profit", "payments", "paylog", "paidout", "statements", "wareminder", "dues", "review", "discounts"]],
-    ["Partners",   ["partners", "pevents", "commission"]],
+    ["Partners",   ["partners", "club", "pevents", "commission"]],
     ["Service",    ["complaints", "service"]],
     ["Products",   ["products", "codes", "catalogs", "pricelist", "catalogue", "brandstory", "tally", "plcheck"]],
     ["Admin",      ["payroll", "salary", "scorecard", "report", "teampins", "health", "trouble", "changelog", "dups"]]
@@ -61642,7 +61783,7 @@ function viewCatalogue() {
       if (!_noBookT) _noBookT = setTimeout(function () { _noBookT = null; if (!S.data && (S.pin || S.tok)) { try { refresh(); } catch (e) { } } }, 6000);
       return;
     }
-    var views = { attendance: viewAttendance, statements: viewStatements, agent: viewAgent, search: viewSearch, dossier: viewDossier, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, complaints: viewComplaints, payments: viewPayments, paidout: viewPaidOut, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, catalogs: viewCatalogues, brandstory: viewBrandStories, clients: viewClients, crlog: viewCrLog, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, salary: viewSalary, profit: viewProfit, codes: viewCodes, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, register: viewRegister, paylog: viewPayLog, freight: viewFreight, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, trouble: viewTrouble, changelog: viewChangeLog, booksweep: viewBookSweep, dups: viewDups, stock: viewStock, tally: viewTally, plcheck: viewPlCheck, pevents: viewPev, brief: viewBrief, review: viewReview, myday: viewMyDay, wareminder: viewWaRem, msgs: viewMsgs, clientlist: viewClientList };   /* 6.9.739 - myday */
+    var views = { attendance: viewAttendance, statements: viewStatements, agent: viewAgent, search: viewSearch, dossier: viewDossier, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, complaints: viewComplaints, payments: viewPayments, paidout: viewPaidOut, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, catalogs: viewCatalogues, brandstory: viewBrandStories, clients: viewClients, crlog: viewCrLog, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, salary: viewSalary, profit: viewProfit, codes: viewCodes, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, register: viewRegister, paylog: viewPayLog, freight: viewFreight, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, trouble: viewTrouble, changelog: viewChangeLog, booksweep: viewBookSweep, dups: viewDups, stock: viewStock, tally: viewTally, plcheck: viewPlCheck, pevents: viewPev, club: viewClub, brief: viewBrief, review: viewReview, myday: viewMyDay, wareminder: viewWaRem, msgs: viewMsgs, clientlist: viewClientList };   /* 6.9.739 - myday */
     var tabs = TAB_TABS;
 
     var h = '<div class="top">' +
@@ -63232,6 +63373,25 @@ function viewCatalogue() {
       var _pid = t.getAttribute("data-id") || mintId("EV");
       var _pe = { eid: _pid, name: _pn, type: val("pe_type") || "meet", date: val("pe_date") || "", venue: String(val("pe_venue") || "").trim(), budget: nAmt(val("pe_budget")) || 0, msg: String((el("pe_msg") || {}).value || "") };
       t.disabled = true; pevSaveRow("evt:ev", _pid, _pe).then(function () { S.modal = null; S.pevOpen = _pid; render(); toast("Event saved."); });
+      return;
+    }
+    if (act === "club-y") { S.clubY = t.getAttribute("data-v"); keepScroll = true; render(); return; }   /* 6.9.954 */
+    if (act === "club-wa") {
+      var _cn = t.getAttribute("data-n") || "", _cr = clubRows(clubYear()).filter(function (r) { return dkey(r.name) === dkey(_cn); })[0];
+      if (!_cr || _cr.mob.length !== 10) { toast("No ten-digit mobile on his record."); return; }
+      window.open("https://wa.me/91" + _cr.mob + "?text=" + encodeURIComponent(clubWaText(_cr)), "_blank");
+      return;
+    }
+    if (act === "club-save") {
+      var _ct = clubScheme().tiers.map(function (x) { return { k: x.k, cut: x.cut, bonus: x.bonus, rew: x.rew, cost: x.cost }; });
+      Array.prototype.forEach.call(document.querySelectorAll(".club-in"), function (i2) {
+        var r2 = _ct[Number(i2.getAttribute("data-i"))]; if (!r2) return;
+        var f = i2.getAttribute("data-f");
+        if (f === "rew") r2.rew = String(i2.value || "").trim(); else r2[f] = nAmt(i2.value);
+      });
+      if (!_ct.every(function (x) { return x.cut > 0; })) { toast("Every tier needs the amount it is reached at."); return; }
+      t.disabled = true;
+      auditFact("club:set", "all", { tiers: _ct, year: clubYear() }).then(function () { toast("The scheme is saved."); keepScroll = true; render(); });
       return;
     }
     if (act === "pev-open") { S.pevOpen = t.getAttribute("data-id"); if (S.tab !== "pevents" && canSee("pevents")) S.tab = "pevents"; render(); window.scrollTo(0, 0); return; }   /* 6.9.734 - also from a partner's page */
