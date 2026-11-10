@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.956";   /* 6.9.956 (10 Nov 2026) - rebuilt: the GitHub Pages publish of 6.9.955 failed (run #1675), so nothing had changed on the phones */   /* 6.9.955 (10 Nov 2026) - the old hisab takes more than one file at once: photographed pages become one PDF, and every statement on file is listed */     /* 6.9.954 (10 Nov 2026) - the Partner Club: fixed slabs, a bonus on crossing one, the trip and device rewards, every partner's rupees to his next slab, and the quiet-partner watch */     /* 6.9.953 (10 Nov 2026) - Service > Control: cash in each engineer's hand, hand-over recorded, three random customer checks a week */     /* 6.9.952 (10 Nov 2026) - to-bill month by month, screens found from Search, team screen use on Health, a receipt for every incentive payout */     /* 6.9.951 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 6.9.950 (9 Nov 2026) - brand introductions: a fuller paragraph, three stage-wise benefits and one next step, on the quote and the proposal */     /* 6.9.949 (9 Nov 2026) - quote PDF: a product picture stays inside its own row (1.2 mm clear of both lines) */     /* 6.9.948 (9 Nov 2026) - quote PDF: each room heading carries its collection and finish with colour dots; every FIMA code chip has its finish dot */     /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
+  var APP_VERSION = "6.9.957";   /* 6.9.957 (10 Nov 2026) - each attached old hisab shows its file name, and a wrong one can be set aside */     /* 6.9.956 (10 Nov 2026) - rebuilt: the GitHub Pages publish of 6.9.955 failed (run #1675), so nothing had changed on the phones */   /* 6.9.955 (10 Nov 2026) - the old hisab takes more than one file at once: photographed pages become one PDF, and every statement on file is listed */     /* 6.9.954 (10 Nov 2026) - the Partner Club: fixed slabs, a bonus on crossing one, the trip and device rewards, every partner's rupees to his next slab, and the quiet-partner watch */     /* 6.9.953 (10 Nov 2026) - Service > Control: cash in each engineer's hand, hand-over recorded, three random customer checks a week */     /* 6.9.952 (10 Nov 2026) - to-bill month by month, screens found from Search, team screen use on Health, a receipt for every incentive payout */     /* 6.9.951 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 6.9.950 (9 Nov 2026) - brand introductions: a fuller paragraph, three stage-wise benefits and one next step, on the quote and the proposal */     /* 6.9.949 (9 Nov 2026) - quote PDF: a product picture stays inside its own row (1.2 mm clear of both lines) */     /* 6.9.948 (9 Nov 2026) - quote PDF: each room heading carries its collection and finish with colour dots; every FIMA code chip has its finish dot */     /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -18834,19 +18834,30 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
      Drive, so nobody opens the spreadsheet again. Filed as an audit row, exactly like every other
      document this app stores: no new column is asked of the sheet. */
   var _hdCache = null;
+  /* 6.9.957 - a statement put aside by mistake-correction. Nothing is deleted: a row carrying the same url and
+     removed:1 takes it off every list, and the row that attached it stays in the trail for ever. */
+  function hisabGone() {
+    var g = {};
+    (S.data.audit || []).forEach(function (a) {
+      if (a.action !== "client:hisab") return;
+      var d; try { d = JSON.parse(a.detail || "{}"); } catch (e) { return; }
+      if (d && d.removed && d.url) g[String(d.url)] = 1;
+    });
+    return g;
+  }
   function hisabDocMap() {
     if (_hdCache) return _hdCache;
-    var m = {};
+    var m = {}, gone = hisabGone();
     (S.data.audit || []).forEach(function (a) {
       if (a.action !== "client:hisab") return;
       var d;
       try { d = JSON.parse(a.detail || "{}"); } catch (e) { return; }
-      if (!d || !d.clientId) return;
+      if (!d || !d.clientId || d.removed || !d.url || gone[String(d.url)]) return;   /* 6.9.957 */
       var cur = m[d.clientId];
       if (!cur || String(a.createdAt || "") > String(cur.createdAt || "")) {
         m[d.clientId] = {
           url: d.url || "", at: d.at || a.createdAt || "", note: d.note || "",
-          by: a.actor || "", createdAt: a.createdAt || ""
+          file: d.file || "", by: a.actor || "", createdAt: a.createdAt || ""   /* 6.9.957 */
         };
       }
     });
@@ -18857,12 +18868,12 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
   /* 6.9.955 - all of them, newest first. hisabDoc() still answers with the newest, so every screen that
      asks "is one on file?" is unchanged. */
   function hisabDocList(cid) {
-    var out = [];
+    var out = [], gone = hisabGone();
     (S.data.audit || []).forEach(function (a) {
       if (a.action !== "client:hisab") return;
       var d; try { d = JSON.parse(a.detail || "{}"); } catch (e) { return; }
-      if (!d || String(d.clientId) !== String(cid) || !d.url) return;
-      out.push({ url: d.url, note: String(d.note || ""), at: d.at || a.createdAt || "", by: a.actor || "" });
+      if (!d || String(d.clientId) !== String(cid) || !d.url || d.removed || gone[String(d.url)]) return;   /* 6.9.957 */
+      out.push({ url: d.url, note: String(d.note || ""), file: String(d.file || ""), at: d.at || a.createdAt || "", by: a.actor || "" });
     });
     return out.sort(function (x, y) { return String(y.at).localeCompare(String(x.at)); });
   }
@@ -20385,9 +20396,14 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
                   (hdL.length
                     ? '<div class="meta" style="margin-bottom:6px">' + plural(hdL.length, "statement") + ' on file. Attaching more never removes these.</div>' +
                       '<div style="margin-bottom:6px">' + hdL.map(function (x, i) {
-                        return '<div style="padding:3px 0;border-top:' + (i ? '1px solid #fef3c7' : 'none') + ';font-size:12.5px">' +
-                          '<a href="' + esc(x.url) + '" target="_blank" rel="noopener" style="color:#0f766e;font-weight:700">open &#8599;</a>' +
-                          ' <span style="color:#64748b">' + esc(dmy(localDay(x.at))) + (x.note ? ' &middot; ' + esc(x.note) : '') + (x.by ? ' &middot; ' + esc(x.by) : '') + '</span></div>';
+                        /* 6.9.957 - the file name first: four lines reading only "open" told him nothing about which was which.
+                           Rows attached before this version carry no name, so the note, then "Statement", stands in. */
+                        var _fn = x.file || x.note || "Statement";
+                        return '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:4px 0;border-top:' + (i ? '1px solid #fef3c7' : 'none') + ';font-size:12.5px">' +
+                          '<b style="flex:1 1 170px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(_fn) + '">' + esc(_fn) + '</b>' +
+                          '<span style="color:#64748b;white-space:nowrap">' + esc(dmy(localDay(x.at))) + (x.by ? ' &middot; ' + esc(x.by) : '') + '</span>' +
+                          '<a href="' + esc(x.url) + '" target="_blank" rel="noopener" class="btn sm ghost" style="min-height:44px;display:inline-flex;align-items:center;text-decoration:none">Open</a>' +
+                          '<button class="btn sm ghost" style="min-height:44px;color:#b91c1c;border-color:#fecaca" data-act="hd-del" data-u="' + esc(x.url) + '" data-id="' + esc(c.id) + '" data-f="' + esc(_fn) + '">Take off</button></div>';
                       }).join("") + '</div>'
                     : '<div class="meta" style="margin-bottom:6px">Not attached yet. A PDF is best \u2014 clear photos of the pages also work.</div>') +
                   '<input type="file" id="c_hisab" multiple accept="application/pdf,image/*" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;background:#fff"/>' +
@@ -72022,6 +72038,18 @@ function viewCatalogue() {
     }
     /* ---- the old hisab, attached to a client (v6.9.210) ----
        Uploaded on its own, without saving the client, so a half-filled form is never at risk. */
+    if (act === "hd-del") {   /* 6.9.957 - set a wrong statement aside; the record of it stays */
+      var _du = t.getAttribute("data-u") || "", _dcid = t.getAttribute("data-id") || "", _dfn = t.getAttribute("data-f") || "this statement";
+      if (!_du || !_dcid) return;
+      askSheet({ title: "Take off \u201c" + _dfn + "\u201d?",
+        body: '<div class="meta" style="font-size:13px">It comes off this client\u2019s list. The file itself and the record of who attached it are kept \u2014 nothing is deleted.</div>',
+        yes: "Take it off" }).then(function (ok) {
+          if (!ok) return;
+          auditFact("client:hisab", String((clientById(_dcid) || {}).name || ""), { clientId: _dcid, url: _du, removed: 1, file: _dfn, at: new Date().toISOString() })
+            .then(function () { _hdCache = null; toast("Taken off the list."); keepScroll = true; render(); });
+        });
+      return;
+    }
     if (act === "hd-attach") {
       var hcl = (S.data.clients || []).filter(function (x) { return x.id === id; })[0];
       if (!hcl) { toast("Save the client first, then attach his old hisab."); return; }
@@ -72067,6 +72095,7 @@ function viewCatalogue() {
           createdAt: nowh, actor: S.user || "", action: "client:hisab",
           target: String(hcl.name || ""),
           detail: JSON.stringify({ clientId: hcid, name: hcl.name || "", url: r.url, at: nowh,
+            file: String(hf.name || ""),   /* 6.9.957 - HIS WORDS: "show uploaded file name" */
             note: hnote + (_hfs.length > 1 ? (hnote ? " \u00b7 " : "") + "file " + (_hi + 1) + " of " + _hfs.length : "") }),
           ip: ""
         }, true).then(function () {
