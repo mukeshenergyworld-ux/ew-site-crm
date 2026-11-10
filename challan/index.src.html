@@ -283,7 +283,7 @@ body{background:#F4F6F9}
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.153.4";   /* 1.153.4 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 1.153.3 (9 Nov 2026) - FIMA finish codes with their own finish photo */     /* 1.153.2 (9 Nov 2026) - a small finish-colour dot on FIMA product pictures */     /* 1.153.1 (9 Nov 2026) - FIMA handles S1-S4 in every finish and the S2 glass handles */     /* 1.153.0 (9 Nov 2026) - FIMA in every finish: any of 14,260 finish codes (F1301WLX9CS ...) can go on a challan at its own MRP */     /* 1.152.0 (8 Nov 2026) - Add to Hisab: who earns, without incentive % or amount */   /* 1.151.0 (8 Nov 2026) - incentive card: any number of discount slabs (shared block) */   /* 1.150.0 (2 Nov 2026) - EW <-> MPS are normal challans again; they add to the other godown after its count */   /* 1.149.0 (1 Nov 2026) - the godown receives a transfer on this phone */   /* 1.148.0 (1 Nov 2026) - a transfer lands only when the other godown receives it */   /* 1.147.0 (1 Nov 2026) - two godowns: MPS Sonipat has its own stock; MPS staff see MPS work only; no challan to MPS (it is a transfer) */   /* 1.146.0 (31 Oct 2026) - one tap, one entry: a second tap on a write button is swallowed */   /* 1.145.0 - vehicle no asked every time a driver is picked (not for Porter / Rapido); 1.144.0 lorry check */
+  var APP_VERSION = "1.154.0";   /* 1.154.0 (10 Nov 2026) - admin: a client not on the book is added from the challan itself, as a new lead or an old client */     /* 1.153.4 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 1.153.3 (9 Nov 2026) - FIMA finish codes with their own finish photo */     /* 1.153.2 (9 Nov 2026) - a small finish-colour dot on FIMA product pictures */     /* 1.153.1 (9 Nov 2026) - FIMA handles S1-S4 in every finish and the S2 glass handles */     /* 1.153.0 (9 Nov 2026) - FIMA in every finish: any of 14,260 finish codes (F1301WLX9CS ...) can go on a challan at its own MRP */     /* 1.152.0 (8 Nov 2026) - Add to Hisab: who earns, without incentive % or amount */   /* 1.151.0 (8 Nov 2026) - incentive card: any number of discount slabs (shared block) */   /* 1.150.0 (2 Nov 2026) - EW <-> MPS are normal challans again; they add to the other godown after its count */   /* 1.149.0 (1 Nov 2026) - the godown receives a transfer on this phone */   /* 1.148.0 (1 Nov 2026) - a transfer lands only when the other godown receives it */   /* 1.147.0 (1 Nov 2026) - two godowns: MPS Sonipat has its own stock; MPS staff see MPS work only; no challan to MPS (it is a transfer) */   /* 1.146.0 (31 Oct 2026) - one tap, one entry: a second tap on a write button is swallowed */   /* 1.145.0 - vehicle no asked every time a driver is picked (not for Porter / Rapido); 1.144.0 lorry check */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -4430,6 +4430,28 @@ function discRowOn(client, brand, onYmd) {
         '</div>';
     }
 
+    /* 1.154.0 - HIS WORDS: "if admin is making challan and client is not in list, show option to add new lead or client".
+       Admin only: a short form under the search - name (from the box), mobile, district, area, and New lead / Old client.
+       It writes the same clients row the CRM's client form writes (owner = admin, his house account), picks him for this
+       challan, and says plainly that his discount is set in the CRM - until then lines go at list price. A mobile that is
+       already a client's picks that client instead of making a second one. */
+    var ncHtml = function (z, p, typed) {
+      if (!roleIs("admin")) return "";
+      var nc = z.nc || {}, nm = nc.name != null ? nc.name : typed;
+      if (!z.ncOpen) return '<div style="margin-top:10px"><button class="btn sm" data-act="nc-open" data-p="' + p + '" style="min-height:44px">+ Add &ldquo;' + esc(typed || "a new client") + '&rdquo; as a new lead or client</button></div>';
+      var dl = districts().map(function (d) { return '<option value="' + esc(d.name) + '"></option>'; }).join("");
+      var inp = function (f, lab, v, ph, extra) { return '<label>' + lab + '</label><input class="nc-in" data-p="' + p + '" data-f="' + f + '" id="' + p + '_nc_' + f + '" value="' + esc(v || "") + '" placeholder="' + esc(ph) + '"' + (extra || "") + '/>'; };
+      return '<div class="card" style="margin-top:10px;border:2px solid #0f766e;background:#f0fdfa"><div style="font-weight:800;margin-bottom:4px">New on the book</div>' +
+        inp("name", "Name", nm, "his full name") +
+        inp("mobile", "Mobile", nc.mobile, "10 digits", ' inputmode="numeric"') +
+        inp("location", "District", nc.location, "Panipat", ' list="' + p + '_nc_dl"') + '<datalist id="' + p + '_nc_dl">' + dl + '</datalist>' +
+        inp("area", "Area", nc.area, "colony / sector") +
+        '<label>He is</label><div class="row" style="gap:6px;flex-wrap:wrap">' +
+          ['New', 'Old'].map(function (k) { var on = (nc.leadType || "New") === k; return '<button class="btn sm' + (on ? '' : ' gry') + '" data-act="nc-lt" data-p="' + p + '" data-v="' + k + '" style="min-height:44px">' + (k === "New" ? "New lead" : "Old client") + '</button>'; }).join("") + '</div>' +
+        '<div class="muted" style="font-size:12.5px;margin-top:6px">His discount is set in the CRM. Until then this challan&rsquo;s lines go at list price.</div>' +
+        '<div class="row" style="gap:6px;margin-top:8px"><button class="btn" data-act="nc-save" data-p="' + p + '" style="min-height:44px">Save and use him</button>' +
+        '<button class="btn gry" data-act="nc-close" data-p="' + p + '" style="min-height:44px">Cancel</button></div></div>';
+    };
     var h2 = '<div class="card"><div class="muted" style="font-weight:700;margin-bottom:6px">Who is it for?</div>';
 
     /* ---------- SEARCH FIRST (v1.20.0) ----------
@@ -4464,7 +4486,7 @@ function discRowOn(client, brand, onYmd) {
             : '<br><br><b style="color:#b45309">This phone\u2019s book is ' + esc(_ba.txt) +
               '.</b><br>A client added in the CRM since then will not be in it. ' +
               'Tap the arrow at the top to pull the latest.') +
-          '</div>';
+          '</div>' + ncHtml(z, p, gq);
       } else {
         h2 += '<div style="margin-top:8px">' + hits.slice(0, 30).map(function (c) {
           return '<button class="tile" data-act="cp-pick" data-p="' + p + '" data-n="' + esc(c.name) + '">' +
@@ -4473,7 +4495,7 @@ function discRowOn(client, brand, onYmd) {
             '</span></div><span class="pill">&#8250;</span></button>';
         }).join("") +
         (hits.length > 30 ? '<div class="muted">and ' + (hits.length - 30) + ' more &mdash; type another letter</div>' : '') +
-        '</div>';
+        '</div>' + (roleIs("admin") ? '<div class="muted" style="font-size:12.5px;margin-top:8px">Not in this list?</div>' + ncHtml(z, p, gq) : '');
       }
       /* the three-step browse is not shown while he is searching - it is the other way in,
          not a second thing to read */
@@ -9890,6 +9912,10 @@ function discRowOn(client, brand, onYmd) {
     if (rcq) rcq.addEventListener("input", function () { if (S.rt) { S.rt.cq = rcq.value; repaint(); } });
     /* v1.20.0 - the search box, on both builders. repaint() puts the caret back where it
        was, so it types like a search box and not like a form that redraws under him. */
+    Array.prototype.forEach.call(document.querySelectorAll(".nc-in"), function (i) {   /* 1.154.0 - kept on the holder, so a repaint keeps what he typed */
+      if (i._ewWired) return; i._ewWired = true;
+      i.addEventListener("input", function () { var h = i.getAttribute("data-p") === "r" ? S.rt : S.ch; if (h) { h.nc = h.nc || {}; h.nc[i.getAttribute("data-f")] = i.value; } });
+    });
     ["m", "r"].forEach(function (pf) {
       var gq = el(pf + "_gq");
       if (!gq) return;
@@ -10153,6 +10179,40 @@ function discRowOn(client, brand, onYmd) {
     if (act === "cp-dist")   { var hD = pickHolder(t); if (hD) { hD.dist = t.getAttribute("data-d"); hD.area = ""; hD.cq = ""; } repaint(); return; }
     if (act === "cp-area")   { var hA = pickHolder(t); if (hA) { hA.area = t.getAttribute("data-a") || ""; hA.cq = ""; } repaint(); return; }
     if (act === "cp-pick")   { var hP = pickHolder(t); if (hP) { hP.client = t.getAttribute("data-n"); hP.site = ""; hP.siteNew = false; hP.against = ""; hP.siteAsk = ""; hP.siteAskFor = ""; hP.msNew = false; } repaint(); return; }
+    /* 1.154.0 - a client not on the book, added by the admin from here */
+    if (act === "nc-open")  { var hO = pickHolder(t); if (hO) { hO.ncOpen = true; hO.nc = hO.nc || {}; if (hO.nc.name == null) hO.nc.name = String(hO.gq || "").trim(); } repaint(); return; }
+    if (act === "nc-close") { var hC = pickHolder(t); if (hC) { hC.ncOpen = false; hC.nc = null; } repaint(); return; }
+    if (act === "nc-lt")    { var hL = pickHolder(t); if (hL) { hL.nc = hL.nc || {}; hL.nc.leadType = t.getAttribute("data-v"); } repaint(); return; }
+    if (act === "nc-save") {
+      if (!roleIs("admin")) { toast("Only the owner adds a client here."); return; }
+      var hN = pickHolder(t); if (!hN) return;
+      var nc = hN.nc || {}, pfx = t.getAttribute("data-p") || "m";
+      ["name", "mobile", "location", "area"].forEach(function (f) { var e2 = el(pfx + "_nc_" + f); if (e2) nc[f] = e2.value; });
+      var nm = String(nc.name || "").replace(/\s+/g, " ").trim().replace(/(^|[\s(.-])([a-z])/g, function (a, b, c) { return b + c.toUpperCase(); });
+      var mob = String(nc.mobile || "").replace(/\D/g, "").slice(-10);
+      if (nm.length < 2) { toast("Type his name."); return; }
+      if (mob && mob.length !== 10) { toast("The mobile needs 10 digits, or leave it empty."); return; }
+      var same = clients().filter(function (c) {
+        return lower(c.name) === lower(nm) || (mob && [c.mobile, c.mobile2].some(function (x) { return String(x || "").replace(/\D/g, "").slice(-10) === mob; }));
+      })[0];
+      if (same) {
+        hN.client = same.name; hN.site = ""; hN.siteNew = false; hN.against = ""; hN.siteAsk = ""; hN.siteAskFor = ""; hN.gq = ""; hN.ncOpen = false; hN.nc = null;
+        repaint(); toast("Already on the book as " + same.name + " - picked him."); return;
+      }
+      var row = { name: nm, mobile: mob, location: String(nc.location || "").trim(), area: String(nc.area || "").trim(),
+        leadType: nc.leadType === "Old" ? "Old" : "New", createdBy: S.user, ownedBy: S.user, type: "", notes: "Added from the Challan app (" + APP_VERSION + ")" };
+      t.disabled = true;
+      saveRow("clients", row).then(function (r) {
+        var got = (r && r.row) || row;
+        S.data.clients = S.data.clients || [];
+        if (!S.data.clients.some(function (c) { return lower(c.name) === lower(got.name); })) S.data.clients.push(got);
+        bust();
+        hN.client = got.name; hN.site = ""; hN.siteNew = false; hN.against = ""; hN.siteAsk = ""; hN.siteAskFor = ""; hN.gq = ""; hN.ncOpen = false; hN.nc = null;
+        repaint();
+        toast(r && r.held ? nm + " is kept on this phone and goes up with the next signal. Picked for this challan." : nm + " added to the book and picked. Set his discount in the CRM.");
+      });
+      return;
+    }
     /* 1.142.0 - a builder's new site, typed at the counter */
     if (act === "ms-new")    { var hM = pickHolder(t); if (hM) { hM.msNew = !t.getAttribute("data-off"); } repaint(); return; }
     if (act === "ms-undo")   { var hU = pickHolder(t); if (hU) { hU.siteAsk = ""; hU.siteAskFor = ""; hU.site = ""; hU.msNew = false; } repaint(); return; }
