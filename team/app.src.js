@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.952";   /* 6.9.952 (10 Nov 2026) - to-bill month by month, screens found from Search, team screen use on Health, a receipt for every incentive payout */     /* 6.9.951 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 6.9.950 (9 Nov 2026) - brand introductions: a fuller paragraph, three stage-wise benefits and one next step, on the quote and the proposal */     /* 6.9.949 (9 Nov 2026) - quote PDF: a product picture stays inside its own row (1.2 mm clear of both lines) */     /* 6.9.948 (9 Nov 2026) - quote PDF: each room heading carries its collection and finish with colour dots; every FIMA code chip has its finish dot */     /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
+  var APP_VERSION = "6.9.953";   /* 6.9.953 (10 Nov 2026) - Service > Control: cash in each engineer's hand, hand-over recorded, three random customer checks a week */     /* 6.9.952 (10 Nov 2026) - to-bill month by month, screens found from Search, team screen use on Health, a receipt for every incentive payout */     /* 6.9.951 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 6.9.950 (9 Nov 2026) - brand introductions: a fuller paragraph, three stage-wise benefits and one next step, on the quote and the proposal */     /* 6.9.949 (9 Nov 2026) - quote PDF: a product picture stays inside its own row (1.2 mm clear of both lines) */     /* 6.9.948 (9 Nov 2026) - quote PDF: each room heading carries its collection and finish with colour dots; every FIMA code chip has its finish dot */     /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -10254,7 +10254,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
   }
 
   function viewServiceDesk() {
-    var sub = (S.svcSub === "base" || S.svcSub === "plan" || (S.svcSub === "dash" && roleAny(["admin", "accounts"])) || (S.svcSub === "amcrates" && roleIs("admin"))) ? S.svcSub : "visits";
+    var sub = (S.svcSub === "base" || S.svcSub === "plan" || (S.svcSub === "dash" && roleAny(["admin", "accounts"])) || ((S.svcSub === "amcrates" || S.svcSub === "control") && roleIs("admin"))) ? S.svcSub : "visits";
     var h = '<div class="row" style="margin-bottom:10px;flex-wrap:wrap;gap:6px">' +
       '<button class="btn sm ' + (sub === "visits" ? "" : "ghost") + '" data-act="svc-sub" data-s="visits">Service visits</button>' +
       '<button class="btn sm ' + (sub === "plan" ? "" : "ghost") + '" data-act="svc-sub" data-s="plan">Schedule &amp; renewals</button>' +   /* 6.9.691 */
@@ -10262,8 +10262,91 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       '<button class="btn sm ' + (sub === "base" ? "" : "ghost") + '" data-act="svc-sub" data-s="base">Installed base</button>' +
       (roleIs("admin") ? '<button class="btn sm ' + (sub === "amcrates" ? "" : "ghost") +
         '" data-act="svc-sub" data-s="amcrates">AMC rates</button>' : '') +
+      (roleIs("admin") ? '<button class="btn sm ' + (sub === "control" ? "" : "ghost") + '" data-act="svc-sub" data-s="control" style="border-color:#b91c1c;color:' + (sub === "control" ? '#fff' : '#b91c1c') + (sub === "control" ? ';background:#b91c1c' : '') + '">Control' + svcControlBadge() + '</button>' : '') +   /* 6.9.953 */
       '</div>';
-    return h + (sub === "amcrates" ? viewAmcRates() : sub === "base" ? viewBase() : sub === "plan" ? svcPlanHtml() : sub === "dash" ? svcDashHtml() : viewService());
+    return h + (sub === "control" ? svcControlHtml() : sub === "amcrates" ? viewAmcRates() : sub === "base" ? viewBase() : sub === "plan" ? svcPlanHtml() : sub === "dash" ? svcDashHtml() : viewService());
+  }
+
+  /* ===== 6.9.953 - SERVICE CONTROL  (10 Nov 2026) =====
+     HIS WORDS: "tight control over service team as they sometime visit site and take service charge and put in their
+     pocket". Service 4.0.0 makes the engineer record every rupee with UPI-first, a photo for cash, GPS and a Telegram
+     line to the owner. This screen is the owner's side of it:
+       1. CASH IN HAND per engineer - every cash collection he recorded (cmp:move with mode Cash) less what he handed to
+          the office (audit svc:deposit, written here). Nothing is deleted; a wrong hand-over is set aside (removed).
+       2. THREE RANDOM CHECKS A WEEK - three finished jobs with a charge from the last 14 days, not yet checked, chosen
+          from a seed of the week so the same three show all week. Call the customer; "Matches" or "Does not match"
+          is written as audit svc:check and the mismatch stays red on this screen until he deals with it. */
+  function svcCashRows(eng) {
+    var out = [], me = dkey(eng);
+    (S.data.audit || []).forEach(function (a) {
+      if (String(a.action || "") !== "cmp:move" || dkey(a.actor) !== me) return;
+      var d = cmpJ(a.detail), got = Number(d.collected) || 0; if (!(got > 0)) return;
+      out.push({ at: String(a.createdAt || ""), amt: got, mode: String(d.mode || "Cash"), tk: String(a.target || ""), pic: String(d.pic || ""), gps: d.gps || null });
+    });
+    return out.sort(function (a, b) { return b.at.localeCompare(a.at); });
+  }
+  function svcDeposits(eng) {
+    var me = dkey(eng), rows = {};
+    (S.data.audit || []).forEach(function (a) {
+      if (String(a.action || "") !== "svc:deposit" || dkey(a.target) !== me) return;
+      var d = cmpJ(a.detail), k = String(d.k || a.id);
+      if (!rows[k] || String(a.createdAt) > rows[k].at) rows[k] = { k: k, at: String(a.createdAt || ""), day: String(d.date || localDay(a.createdAt)), amt: Number(d.amt) || 0, by: a.actor || "", note: String(d.note || ""), removed: !!d.removed };
+    });
+    return Object.keys(rows).map(function (k) { return rows[k]; }).filter(function (r) { return !r.removed; }).sort(function (a, b) { return b.at.localeCompare(a.at); });
+  }
+  function svcChecks() {
+    var m = {};
+    (S.data.audit || []).forEach(function (a) { if (String(a.action || "") === "svc:check") { var d = cmpJ(a.detail); m[String(a.target)] = { ok: !!d.ok, note: String(d.note || ""), at: a.createdAt, by: a.actor }; } });
+    return m;
+  }
+  function svcControlBadge() {
+    try { var n = 0, ck = svcChecks(); Object.keys(ck).forEach(function (k) { if (!ck[k].ok && !ck[k].dealt) n++; }); return n ? ' <b style="background:#fff;color:#b91c1c;border-radius:9px;padding:0 6px">' + n + '</b>' : ''; } catch (e) { return ''; }
+  }
+  function svcWeekSeed() { var d = new Date(today()); var day = (d.getDay() + 6) % 7; d.setDate(d.getDate() - day); return d.toISOString().slice(0, 10); }
+  function svcPickChecks(n) {
+    var ck = svcChecks(), since = (function () { var d = new Date(today()); d.setDate(d.getDate() - 14); return d.toISOString().slice(0, 10); })();
+    var pool = cmpAll().filter(function (t) { return (t.charge > 0 || t.collected > 0) && t.resolvedAt && localDay(t.resolvedAt) >= since && !ck[t.id]; });
+    var seed = svcWeekSeed(), h = function (x) { var v = 0, s2 = seed + x; for (var i = 0; i < s2.length; i++) v = (v * 31 + s2.charCodeAt(i)) >>> 0; return v; };
+    return pool.sort(function (a, b) { return h(a.id) - h(b.id); }).slice(0, n);
+  }
+  function svcControlHtml() {
+    var engs = cmpEngineers(), ck = svcChecks();
+    var h = '<div class="card"><h3 style="margin:0 0 4px">Cash in each engineer&rsquo;s hand</h3>' +
+      '<div class="meta" style="font-size:12.5px;margin-bottom:8px">Cash he recorded on the Service app, less what he has handed to the office. UPI goes to the company account and is not counted here.</div>';
+    engs.forEach(function (e) {
+      var rows = svcCashRows(e), cash = rows.filter(function (r) { return r.mode === "Cash"; }), dep = svcDeposits(e);
+      var tot = cash.reduce(function (n, r) { return n + r.amt; }, 0), got = dep.reduce(function (n, r) { return n + r.amt; }, 0), hand = tot - got;
+      var noPic = cash.filter(function (r) { return !r.pic; }).length;
+      h += '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 0;border-top:1px solid #e2e8f0">' +
+        '<b style="flex:0 0 140px">' + esc(e) + '</b>' +
+        '<span style="font-size:18px;font-weight:800;color:' + (hand > 0.5 ? '#b45309' : '#166534') + '">' + money(hand) + '</span>' +
+        '<span class="meta" style="font-size:12.5px">cash ' + money(tot) + ' &middot; handed over ' + money(got) + (noPic ? ' &middot; <b style="color:#b91c1c">' + noPic + ' cash without photo</b>' : '') + '</span>' +
+        '<span style="flex:1"></span>' +
+        '<input id="svdep_' + esc(dkey(e).replace(/[^a-z0-9]/g, "_")) + '" inputmode="numeric" placeholder="\u20b9 received" style="width:110px;min-height:44px"/>' +
+        '<button class="btn sm" data-act="svc-dep" data-n="' + esc(e) + '" style="min-height:44px">Handed to office</button></div>';
+      if (dep.length) h += '<div class="meta" style="font-size:12px;padding:0 0 6px 150px">' + dep.slice(0, 4).map(function (r) { return esc(dmy(r.day)) + ' ' + money(r.amt) + (r.note ? ' (' + esc(r.note) + ')' : '') + ' <a href="#" data-act="svc-dep-undo" data-k="' + esc(r.k) + '" data-n="' + esc(e) + '" style="color:#b91c1c">set aside</a>'; }).join(' &middot; ') + '</div>';
+    });
+    h += '</div>';
+    var picks = svcPickChecks(3), tkById = {}; cmpAll().forEach(function (t) { tkById[t.id] = t; });
+    h += '<div class="card"><h3 style="margin:0 0 4px">Three customers to call this week</h3>' +
+      '<div class="meta" style="font-size:12.5px;margin-bottom:8px">Picked at random from jobs finished in the last 14 days with a charge. Ask what he paid and to whom. The same three stay all week.</div>';
+    if (!picks.length) h += '<div class="empty">Nothing to check: no charged job was finished in the last 14 days, or all are checked.</div>';
+    picks.forEach(function (t) {
+      var c = t.client ? clientByName(t.client) : null, mob = String((c && c.mobile) || t.mobile || "").replace(/\D/g, "").slice(-10);
+      var last = (t.hist || []).filter(function (x) { return Number(x.collected) > 0; }).slice(-1)[0] || {};
+      h += '<div style="padding:8px 0;border-top:1px solid #e2e8f0;font-size:13.5px"><b>' + esc(t.client || t.name || "") + '</b>' + (t.area ? ' &middot; ' + esc(t.area) : '') + ' &middot; ' + esc(t.ref || "") +
+        '<br><span class="meta">' + esc(dmy(localDay(t.resolvedAt))) + ' &middot; ' + esc(t.eng || "no engineer") + ' &middot; charge ' + money(t.charge) + ' &middot; recorded ' + (t.collected > 0 ? money(t.collected) + ' by ' + esc(t.mode || last.mode || "") : 'NOT PAID') + '</span>' +
+        '<div class="row" style="margin-top:6px;gap:6px;flex-wrap:wrap">' + (mob.length === 10 ? '<a class="btn sm ghost" href="tel:' + mob + '" style="min-height:44px;display:inline-flex;align-items:center">Call ' + mob + '</a>' : '<span class="meta">no mobile</span>') +
+        '<button class="btn sm" data-act="svc-ck" data-id="' + esc(t.id) + '" data-ok="1" style="min-height:44px">Matches</button>' +
+        '<button class="btn sm" data-act="svc-ck" data-id="' + esc(t.id) + '" data-ok="0" style="min-height:44px;background:#b91c1c;border-color:#b91c1c">Does not match</button></div></div>';
+    });
+    h += '</div>';
+    var bad = Object.keys(ck).filter(function (k) { return !ck[k].ok; }).map(function (k) { return { id: k, c: ck[k], t: tkById[k] || {} }; }).sort(function (a, b) { return String(b.c.at).localeCompare(String(a.c.at)); });
+    if (bad.length) h += '<div class="card" style="border-color:#fca5a5;background:#fef2f2"><h3 style="margin:0 0 4px;color:#991b1b">Did not match &mdash; ' + bad.length + '</h3>' +
+      bad.map(function (x) { return '<div style="padding:6px 0;border-top:1px solid #fecaca;font-size:13px"><b>' + esc(x.t.client || x.t.name || x.id) + '</b> &middot; ' + esc(x.t.ref || "") + ' &middot; ' + esc(x.t.eng || "") + ' &middot; recorded ' + money(x.t.collected || 0) + ' of ' + money(x.t.charge || 0) + (x.c.note ? '<br><span class="meta">' + esc(x.c.note) + '</span>' : '') + '<br><span class="meta">checked ' + esc(dmy(localDay(x.c.at))) + ' by ' + esc(x.c.by || "") + '</span></div>'; }).join("") + '</div>';
+    var okN = Object.keys(ck).filter(function (k) { return ck[k].ok; }).length;
+    h += '<div class="meta" style="font-size:12.5px;margin-top:6px">' + okN + ' check' + (okN === 1 ? '' : 's') + ' matched so far. Every cash collection, start and finish also reaches you on Telegram the moment the engineer saves it.</div>';
+    return h;
   }
 
   /* ===== THE THREE COMMISSIONING BLOCKS, AS TABLES  (v6.9.520 - his item 23) =====
@@ -67145,6 +67228,25 @@ function viewCatalogue() {
       render(); return;
     }
     if (act === "svc-sub") { S.svcSub = t.getAttribute("data-s"); S.q = ""; render(); return; }
+    if (act === "svc-dep") {   /* 6.9.953 */
+      var _de = t.getAttribute("data-n") || "", _di = el("svdep_" + dkey(_de).replace(/[^a-z0-9]/g, "_")), _da = Math.round(nAmt(_di ? _di.value : 0));
+      if (!(_da > 0)) { toast("Type the cash received from " + _de + "."); return; }
+      t.disabled = true;
+      auditFact("svc:deposit", _de, { k: "D" + Date.now(), amt: _da, date: today(), note: "" }).then(function () { toast(money(_da) + " received from " + _de + "."); keepScroll = true; render(); });
+      return;
+    }
+    if (act === "svc-dep-undo") {
+      var _dk = t.getAttribute("data-k"), _dn = t.getAttribute("data-n") || "";
+      auditFact("svc:deposit", _dn, { k: _dk, removed: 1, date: today() }).then(function () { toast("Set aside (kept in the record)."); keepScroll = true; render(); });
+      return;
+    }
+    if (act === "svc-ck") {
+      var _ok = t.getAttribute("data-ok") === "1", _note = _ok ? "" : (prompt("What did the customer say? (amount, to whom, when)") || "");
+      if (!_ok && !_note) return;
+      t.disabled = true;
+      auditFact("svc:check", t.getAttribute("data-id"), { ok: _ok, note: _note, week: svcWeekSeed() }).then(function () { toast(_ok ? "Noted: matches." : "Noted: does not match. It stays on this screen."); keepScroll = true; render(); });
+      return;
+    }
     /* 6.9.691 - the schedule and the dashboard */
     if (act === "svc-hz") { S.svcHz = Number(t.getAttribute("data-v")) || 30; keepScroll = true; render(); return; }
     if (act === "svc-eng") { S.svcEng = t.getAttribute("data-v") || ""; keepScroll = true; render(); return; }
