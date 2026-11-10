@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.951";   /* 6.9.951 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 6.9.950 (9 Nov 2026) - brand introductions: a fuller paragraph, three stage-wise benefits and one next step, on the quote and the proposal */     /* 6.9.949 (9 Nov 2026) - quote PDF: a product picture stays inside its own row (1.2 mm clear of both lines) */     /* 6.9.948 (9 Nov 2026) - quote PDF: each room heading carries its collection and finish with colour dots; every FIMA code chip has its finish dot */     /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
+  var APP_VERSION = "6.9.952";   /* 6.9.952 (10 Nov 2026) - to-bill month by month, screens found from Search, team screen use on Health, a receipt for every incentive payout */     /* 6.9.951 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 6.9.950 (9 Nov 2026) - brand introductions: a fuller paragraph, three stage-wise benefits and one next step, on the quote and the proposal */     /* 6.9.949 (9 Nov 2026) - quote PDF: a product picture stays inside its own row (1.2 mm clear of both lines) */     /* 6.9.948 (9 Nov 2026) - quote PDF: each room heading carries its collection and finish with colour dots; every FIMA code chip has its finish dot */     /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -3229,6 +3229,7 @@ window.addEventListener("beforeunload", function (ev) {
       try { staleNag(); } catch (e) { }   /* 6.9.786 - Mondays: old quotes to close */
       try { pstNag(); } catch (e) { }   /* 6.9.789 - 1st to 7th: partner statements to send */
       try { xSnapPublish(false); } catch (e) { }   /* 6.9.930 - each executive's month, for his Visit app header */
+      try { setTimeout(function () { try { navUsePublish(); } catch (e) { } }, 9000); } catch (e) { }   /* 6.9.952 - weekly */
       try { setTimeout(function () { try { rsAutoTick(); } catch (e) { } }, 6000); if (!_rsTick) _rsTick = setInterval(function () { try { rsAutoTick(); } catch (e) { } }, 1800000); } catch (e) { }   /* 6.9.639 - the reports send themselves */
       try { if (roleAny(["admin", "accounts"]) && !_stkNagDone) ensureStock(); } catch (e) { }   /* 6.9.607 - bills to upload */
       try { billRescue(); } catch (e) { }   /* 6.9.814 */
@@ -27027,12 +27028,23 @@ function viewCatalogue() {
     var _inL = {}; L.forEach(function (c) { _inL[String(c.id)] = 1; });
     L = L.concat(billNowList().filter(function (c) { return !_inL[String(c.id)]; }));
     var all = L.length;
+    /* 6.9.952 - DELIVERED, NOT YET BILLED - MONTH BY MONTH. A chip per month with its challans and value (goods + freight);
+       a tap keeps only that month, a second tap shows all again. Nothing is left behind in an old month unseen. */
+    var _bm = {}, _bmK = [];
+    L.forEach(function (c) { var k = localDay(c.createdAt || "").slice(0, 7) || "?"; if (!_bm[k]) { _bm[k] = { n: 0, v: 0 }; _bmK.push(k); } _bm[k].n++; try { _bm[k].v += challanNet(c) + chFreight(c); } catch (e) { } });
+    _bmK.sort();
+    if (S.bdYm && !_bm[S.bdYm]) S.bdYm = "";
+    var _bmH = _bmK.length > 1 ? '<div style="display:flex;flex-wrap:wrap;gap:6px;margin:6px 0">' + _bmK.map(function (k) {
+      var on = S.bdYm === k;
+      return '<button class="btn sm' + (on ? '' : ' ghost') + '" data-act="bd-ym" data-ym="' + esc(k) + '" style="min-height:44px">' + esc(k === "?" ? "No date" : monthLabel(k)) + ' &middot; ' + _bm[k].n + ' &middot; ' + money(_bm[k].v) + '</button>';
+    }).join("") + '</div>' : '';
+    if (S.bdYm) L = L.filter(function (c) { return (localDay(c.createdAt || "").slice(0, 7) || "?") === S.bdYm; });
     if (S.bdOld !== false) L = L.slice().reverse();   /* 6.9.820 - oldest first by default */
     var _bnm = billNowMap();   /* 6.9.857 - a bill that must go with the material comes first */
     L = L.filter(function (c) { return billNowOn(c, _bnm); }).concat(L.filter(function (c) { return !billNowOn(c, _bnm); }));
     if (q) L = L.filter(function (c) { return (String(c.challanNo || "") + " " + String(c.customerName || "") + " " + String(c.site || "") + " " + clCodeOf(c.customerName) + " " + dupMainName(c.customerName)).toLowerCase().indexOf(q) >= 0; });   /* 6.9.926 - by code too */
     var lim = S.bdAll ? L.length : 40;
-    var h = '<div class="meta" style="margin:6px 0"><b>' + plural(L.length, "challan") + '</b> to bill' + (q ? ' (of ' + all + ')' : '') + '</div>';
+    var h = _bmH + '<div class="meta" style="margin:6px 0"><b>' + plural(L.length, "challan") + '</b> to bill' + ((q || S.bdYm) ? ' (of ' + all + ')' : '') + '</div>';
     if (!L.length) return h + '<div class="empty">Nothing to bill' + (q ? ' for &ldquo;' + esc(S.bdQ) + '&rdquo;' : '') + '.</div>';
     h += L.slice(0, lim).map(function (c) {
       var _bn = billNowOn(c, _bnm);
@@ -45584,6 +45596,56 @@ function viewCatalogue() {
       localStorage.setItem(TABUSE_KEY, JSON.stringify(all));
     } catch (e) { }        /* a full box must never cost a man his tap */
   }
+  /* 6.9.952 - WHICH SCREENS THE WHOLE TEAM OPENS. Until now the count stayed on each device, so nobody could say which
+     screens are dead for everyone. Once a week each signed-in device sends its own counts (screen key -> opens, nothing
+     else) as an audit row "nav:use"; Health adds them up for the owner. A screen is retired on this evidence, not a guess. */
+  var NAVPUB_KEY = "ew_navpub_v1";
+  function navUsePublish() {
+    if (!S.user || !S.data) return;
+    var all = tabUseAll(), t = all.t || {}; if (!Object.keys(t).length) return;
+    var pub = {}; try { pub = JSON.parse(localStorage.getItem(NAVPUB_KEY) || "{}") || {}; } catch (e) { pub = {}; }
+    var last = String(pub[S.user] || "");
+    if (last && (new Date(today()) - new Date(last)) / 86400000 < 7) return;
+    pub[S.user] = today(); try { localStorage.setItem(NAVPUB_KEY, JSON.stringify(pub)); } catch (e) { return; }
+    var dev = ""; try { dev = localStorage.getItem("ew_navdev") || ""; if (!dev) { dev = String(Date.now()).slice(-6); localStorage.setItem("ew_navdev", dev); } } catch (e) { }
+    try { auditFact("nav:use", S.user, { dev: dev, since: all.since || today(), t: t, v: APP_VERSION, role: String(S.role || "") }); } catch (e) { }
+  }
+  function teamUseCard() {
+    if (!roleIs("admin")) return "";
+    var by = {};
+    ((S.data && S.data.audit) || []).forEach(function (a) {
+      if (!a || a.action !== "nav:use") return;
+      var d = {}; try { d = JSON.parse(a.detail || "{}") || {}; } catch (e) { return; }
+      var k = dkey(a.target) + "|" + (d.dev || "");
+      if (!by[k] || String(a.createdAt) > String(by[k].at)) by[k] = { at: String(a.createdAt || ""), who: a.target, d: d };
+    });
+    var rows = Object.keys(by).map(function (k) { return by[k]; });
+    var h = '<div class="card"><h3 style="margin:0 0 2px">Which screens the team opens</h3>';
+    if (!rows.length) return h + '<div class="meta" style="font-size:12.5px">No device has reported yet. Each one sends its screen counts once a week after this version; look again in a week.</div></div>';
+    var tot = {}, people = {}, since = "9999";
+    rows.forEach(function (r) {
+      if (!people[dkey(r.who)]) people[dkey(r.who)] = { who: r.who, n: 0, t: {} };
+      var p = people[dkey(r.who)];
+      Object.keys(r.d.t || {}).forEach(function (k) { var n = Number(r.d.t[k]) || 0; tot[k] = (tot[k] || 0) + n; p.t[k] = (p.t[k] || 0) + n; p.n += n; });
+      if (r.d.since && String(r.d.since) < since) since = String(r.d.since);
+    });
+    var lab = function (k) { return String(TAB_LABEL[k] || k).replace(/<[^>]*>/g, ""); };
+    var keys = Object.keys(tot).sort(function (a, b) { return tot[b] - tot[a]; }), top = tot[keys[0]] || 1;
+    var known = {}; Object.keys(ROLE_TABS).forEach(function (r) { ROLE_TABS[r].forEach(function (k) { known[k] = 1; }); });
+    var never = Object.keys(known).filter(function (k) { return !tot[k] && TAB_LABEL[k]; }).map(lab).sort();
+    h += '<div class="meta" style="font-size:12.5px">' + Object.keys(people).length + ' people, ' + rows.length + ' device' + (rows.length > 1 ? 's' : '') + ', counted since ' + esc(dmy(since)) + '. Only screen names and counts are sent.</div>' +
+      '<div style="margin-top:8px">' + keys.slice(0, 15).map(function (k) {
+        return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;font-size:12.5px"><span style="flex:0 0 150px;color:#334155">' + esc(lab(k)) + '</span>' +
+          '<span style="flex:1;background:#f1f5f9;border-radius:4px;height:9px;overflow:hidden"><span style="display:block;height:9px;width:' + Math.max(3, Math.round(100 * tot[k] / top)) + '%;background:#0f766e"></span></span>' +
+          '<span style="flex:0 0 42px;text-align:right;color:#64748b">' + tot[k] + '</span></div>';
+      }).join("") + '</div>' +
+      '<div style="margin-top:8px;font-size:12.5px;color:#334155">' + Object.keys(people).map(function (k) { return people[k]; }).sort(function (a, b) { return b.n - a.n; }).map(function (p) {
+        var tk = Object.keys(p.t).sort(function (a, b) { return p.t[b] - p.t[a]; }).slice(0, 3).map(lab).join(", ");
+        return '<div style="padding:3px 0;border-top:1px solid #e2e8f0"><b>' + esc(p.who) + '</b> &middot; ' + p.n + ' opens &middot; mostly ' + esc(tk) + '</div>';
+      }).join("") + '</div>' +
+      (never.length ? '<div class="meta" style="margin-top:8px;font-size:12.5px"><b style="color:#b45309">Opened by nobody who has reported (' + never.length + '):</b> ' + esc(never.join(", ")) + '. Wait until every device has reported for a month before retiring any.</div>' : '');
+    return h + '</div>';
+  }
   function tabUseCard() {
     var all = tabUseAll(), t = all.t || {};
     var names = Object.keys(t).sort(function (a, b) { return t[b] - t[a]; });
@@ -45596,7 +45658,7 @@ function viewCatalogue() {
       return f || k;
     };
     var h = '<div class="card"><h3 style="margin:0 0 2px">Which screens you actually open</h3>' +
-      '<div class="meta" style="font-size:12.5px">Counted on this device only &mdash; never sent anywhere, never in the sheet. ' +
+      '<div class="meta" style="font-size:12.5px">Counted on this device. Once a week the screen names and counts (nothing else) go to the owner&rsquo;s Health screen. ' +
       'Your role carries <b>' + mine.length + '</b> screens. ' +
       (total ? 'Since ' + esc(d10(since)) + ' (' + days + ' day' + (days > 1 ? 's' : '') + ') you have opened <b>' +
                names.length + '</b> of them, <b>' + total + '</b> times.'
@@ -46866,6 +46928,7 @@ function viewCatalogue() {
     h += lineTestCard();
     h += tgMirrorCard();
     h += tabUseCard();
+    try { h += teamUseCard(); } catch (e) { }   /* 6.9.952 */
     h += chNoGapCard();
     try { h += driveCard(); } catch (e) { console.warn("[drive] card:", e); }
 
@@ -49652,8 +49715,15 @@ function viewCatalogue() {
         'references, quotations, sites, drivers, vehicle numbers, partners and products.' +
         '</div></div>';
     }
+    /* 6.9.952 - A SCREEN IS FOUND BY ITS NAME TOO: "salary", "stock", "price" - one tap opens it. Only his own screens. */
+    var _sl = lq.toLowerCase(), _sk = Object.keys(TAB_LABEL).filter(function (k) {
+      return canSee(k) && String(TAB_LABEL[k] || "").replace(/<[^>]*>/g, "").toLowerCase().indexOf(_sl) >= 0;
+    }).slice(0, 8);
+    if (_sk.length) h += '<div class="card" style="padding:8px 10px;margin-bottom:8px"><div class="meta" style="font-size:12.5px;margin-bottom:5px"><b>Screens</b></div><div style="display:flex;flex-wrap:wrap;gap:6px">' +
+      _sk.map(function (k) { return '<button class="btn sm ghost" data-act="tab" data-tab="' + k + '" style="min-height:44px">' + TAB_LABEL[k] + '</button>'; }).join("") + '</div></div>';
     var local = uniHits(lq);
     var n = uniCount(local);
+    if (!n && !S.sres && _sk.length) return h + '<div id="sq_res"></div>';
     if (!n && !S.sres) {
       return h + '<div id="sq_res"><div class="empty">Nothing on this phone matches <b>' +
         esc(lq) + '</b>.<br>It looked at client names and every firm they are billed under, ' +
@@ -56960,10 +57030,11 @@ function viewCatalogue() {
     } else {
       h += xlTable("paidout", [
         { k: "date", t: "DATE", w: "84px" }, { k: "who", t: "PAID TO" }, { k: "kind", t: "KIND" },
-        { k: "amt", t: "AMOUNT", n: 1, r: 1 }, { k: "mode", t: "HOW" }, { k: "for", t: "FOR" }, { k: "by", t: "ENTERED BY" }
+        { k: "amt", t: "AMOUNT", n: 1, r: 1 }, { k: "mode", t: "HOW" }, { k: "for", t: "FOR" }, { k: "by", t: "ENTERED BY" }, { k: "rc", t: "RECEIPT" }
       ], log.map(function (p) {
-        return { v: { date: p.date, who: p.who, kind: p.kind, amt: p.amt, mode: p.mode, "for": p.forWhat, by: p.by },
-          cells: { date: esc(dmy(p.date)), who: '<b>' + esc(p.who || "(nobody named)") + '</b>', kind: paidKindPill(p.kind),
+        return { v: { date: p.date, who: p.who, kind: p.kind, amt: p.amt, mode: p.mode, "for": p.forWhat, by: p.by, rc: "" },
+          cells: { rc: (p.kind !== "driver freight" && p.id) ? '<button class="btn sm ghost" data-act="po-rcpt" data-id="' + esc(p.id) + '" style="min-height:44px">Receipt</button>' : "\u2014",
+                   date: esc(dmy(p.date)), who: '<b>' + esc(p.who || "(nobody named)") + '</b>', kind: paidKindPill(p.kind),
                    amt: money(p.amt), mode: esc(p.mode || "\u2014"), "for": esc(p.forWhat || "\u2014"),
                    by: p.by ? whoChip(p.by) : "\u2014" } };
       }), "how and for what");
@@ -56982,6 +57053,37 @@ function viewCatalogue() {
       '<br><b>Supplier payments</b> are not tracked anywhere in this app at all.' +
       '<br>A driver is paid from <b>Deliveries &rarr; Drivers &amp; freight</b>; it shows here once recorded.</div></div>';
     return h;
+  }
+  /* 6.9.952 - A RECEIPT FOR EVERY INCENTIVE PAYOUT: one A5 page - who was paid, how much, how, for what, who entered it -
+     with a line for the receiver to sign. Printed or sent, it is the proof the payment was handed over. */
+  function poReceiptPdf(id) {
+    var p = paidOutLog().filter(function (x) { return String(x.id) === String(id); })[0];
+    if (!p) return Promise.reject(new Error("payment not found"));
+    return loadLogo().then(function () {
+      var doc = new window.jspdf.jsPDF({ unit: "mm", format: "a5", orientation: "landscape" });
+      var F = function (b) { doc.setFont(ppEmbed(doc), b ? "bold" : "normal"); };
+      var W = 210, L = 14, R = W - 14, y = 0;
+      doc.setFillColor(11, 59, 54); doc.rect(0, 0, W, 24, "F"); doc.setFillColor(94, 234, 212); doc.rect(0, 24, W, 1, "F");
+      if (LOGO_B64) { try { doc.addImage(LOGO_B64, "JPEG", L, 5, 25, 13); } catch (e) { } }
+      F(1); doc.setFontSize(14); doc.setTextColor(255, 255, 255); doc.text("PAYMENT RECEIPT", R, 11, { align: "right" });
+      F(0); doc.setFontSize(9); doc.setTextColor(160, 205, 199); doc.text(pdfSafe("No. " + String(p.id).slice(-8) + "  \u00b7  " + dmy(p.date)), R, 18, { align: "right" });
+      y = 38;
+      var row = function (a, b, big) {
+        F(0); doc.setFontSize(9.5); doc.setTextColor(100, 116, 139); doc.text(pdfSafe(a), L, y);
+        F(1); doc.setFontSize(big ? 15 : 11); doc.setTextColor(15, 23, 42); doc.text(doc.splitTextToSize(pdfSafe(b || "-"), R - L - 44).slice(0, 2), L + 44, y);
+        doc.setDrawColor(226, 232, 240); doc.line(L, y + 3.5, R, y + 3.5); y += big ? 13 : 11;
+      };
+      row("Paid to", p.who);
+      row("Amount", money(p.amt), 1);
+      row("Paid by (mode)", p.mode);
+      row("Towards", (p.kind === "exec incentive" ? "Executive incentive" : "Partner incentive") + (p.forWhat ? " - " + p.forWhat : ""));
+      row("Entered by", p.by);
+      y = 118;
+      F(0); doc.setFontSize(9.5); doc.setTextColor(51, 65, 85); doc.text("Received the above amount.", L, y - 14);
+      doc.setDrawColor(100, 116, 139); doc.line(L, y, L + 70, y); doc.line(R - 70, y, R, y);
+      doc.setFontSize(9); doc.setTextColor(100, 116, 139); doc.text("Receiver's signature and date", L, y + 5); doc.text("For Energy World", R, y + 5, { align: "right" });
+      return pdfOut(doc, "EW_receipt_" + String(p.who).replace(/[^A-Za-z0-9]+/g, "_") + "_" + p.date + ".pdf", "Payment receipt");
+    });
   }
   /* v6.9.529 - every payout, one shape, newest first */
   function paidOutLog() {
@@ -70115,6 +70217,8 @@ function viewCatalogue() {
       S.bsOpen = id; S.modal = modalBillSheet(id); render(); return;
     }
     if (act === "bd-all") { S.bdAll = true; keepScroll = true; render(); return; }   /* 6.9.811 */
+    if (act === "bd-ym") { var _by = t.getAttribute("data-ym") || ""; S.bdYm = (S.bdYm === _by) ? "" : _by; keepScroll = true; render(); return; }   /* 6.9.952 */
+    if (act === "po-rcpt") { poReceiptPdf(t.getAttribute("data-id")).catch(function (e) { toast("Could not make the receipt: " + String((e && e.message) || e)); }); return; }   /* 6.9.952 */
     if (act === "msg-tab") { S.msgTab = t.getAttribute("data-k"); render(); return; }   /* 6.9.822 */
     if (act === "msg-win") { S.msgWin = !!t.getAttribute("data-k"); S.msgAll = false; render(); return; }
     if (act === "msg-all") { S.msgAll = true; keepScroll = true; render(); return; }
