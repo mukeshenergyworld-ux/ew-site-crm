@@ -460,7 +460,7 @@ function ewmBuild(n, pre) {
    Nothing here deletes anything, ever. A visit is a row added.
    ========================================================================== */
 
-  var APP_VERSION = "3.4.0";   /* 3.4.0 (31 Oct 2026) - one tap, one entry */
+  var APP_VERSION = "4.0.0";   /* 4.0.0 (10 Nov 2026) - the engineer's three screens: Jobs, Install, My money. Start / Finish with GPS; UPI to the company QR first, cash only with a photo; the owner told on Telegram at once; a WhatsApp receipt for the customer; cash in hand to hand over */     /* 3.4.0 (31 Oct 2026) - one tap, one entry */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -2990,9 +2990,9 @@ function ewmBuild(n, pre) {
   }
   function sheetCxTell() {
     var t = S.cxTell || {};
-    var msg = cxTellText(t.ref);
+    var msg = t.text || cxTellText(t.ref);   /* 4.0.0 - the receipt with the amount */
     var can = /^\d{10}$/.test(String(t.mobile || ""));
-    return '<h2>Complaint closed</h2>' +
+    return '<h2>' + (t.text ? 'Send the receipt' : 'Complaint closed') + '</h2>' +
       '<div class="muted" style="margin-bottom:10px">' + esc(t.ref || "") + ' &middot; ' +
         esc(t.name || "") + '</div>' +
       (can
@@ -3438,6 +3438,121 @@ function ewmBuild(n, pre) {
     return h;
   }
 
+  /* ---- 4.0.0 - JOBS: one card, one button ---- */
+  function svTown() {
+    var me = ((S.data && S.data.team) || []).filter(function (u) { return lower(u.name) === lower(S.user); })[0] || {};
+    var o = String(me.office || "").toUpperCase();
+    return o === "MPS" ? "sonipat" : o === "EW" ? "panipat" : "";
+  }
+  function svTkTown(t) {
+    var c = ((S.data && S.data.clients) || []).filter(function (x) { return lower(x.name) === lower(t.client); })[0];
+    return lower((c && c.location) || t.area || "");
+  }
+  function gps(ms) {
+    return new Promise(function (res) {
+      if (!navigator.geolocation) { res({}); return; }
+      var done = false, tm = setTimeout(function () { if (!done) { done = true; res({}); } }, ms || 6000);
+      try {
+        navigator.geolocation.getCurrentPosition(function (p) { if (done) return; done = true; clearTimeout(tm); res({ lat: Math.round(p.coords.latitude * 1e5) / 1e5, lng: Math.round(p.coords.longitude * 1e5) / 1e5, acc: Math.round(p.coords.accuracy) }); },
+          function () { if (done) return; done = true; clearTimeout(tm); res({}); }, { enableHighAccuracy: true, timeout: ms || 6000, maximumAge: 60000 });
+      } catch (e) { done = true; clearTimeout(tm); res({}); }
+    });
+  }
+  function svEngCard(t) {
+    var p = svFaultOf(t)[0] || (t.products || [])[0], cv = tkCover(t), a = tkAge(t), b = sv2Bucket(t);
+    var started = t.status === "Visited", mine = tkMine(t), free = !t.eng;
+    var pay = b === "payment";
+    var money1 = pay ? '<span class="pill amb">' + esc(money(sv2Due(t))) + ' to collect</span>'
+      : cv.ok ? '<span class="pill grn">FREE &middot; ' + esc(cv.amc ? "AMC" : "warranty") + '</span>'
+      : '<span class="pill amb">Customer pays ' + esc(money(num(tkRateFor(tkInstall(t) ? "Repair" : "Labour job")) || 0)) + '</span>';
+    var btn = pay ? '<button class="btn" data-act="sv2-pay" data-id="' + esc(t.id) + '" style="min-height:52px;font-size:16px">Collect payment</button>'
+      : started && mine ? '<button class="btn" data-act="sv2-fin" data-id="' + esc(t.id) + '" style="min-height:52px;font-size:16px">Finish job</button>'
+      : (free || mine) ? '<button class="btn" data-act="eng-start" data-id="' + esc(t.id) + '" style="min-height:52px;font-size:16px">Start job</button>'
+      : '<span class="pill blu">' + esc(t.eng) + ' is on it</span>';
+    var mob = cxMob(t.mobile);
+    return '<div class="card cx' + (a && a.late && b === "pending" ? ' urgent' : '') + '">' +
+      '<div class="row" style="align-items:flex-start"><div class="grow" data-act="sv2-open" data-id="' + esc(t.id) + '">' +
+        '<div class="ttl" style="font-size:17px">' + esc(t.client || t.name || "(no name)") + '</div>' +
+        '<div class="meta">' + esc(t.area || "") + (a && b === "pending" ? ' &middot; ' + esc(a.txt) : '') + '</div>' +
+        (p ? '<div class="meta"><b>' + esc(p.desc || "") + '</b></div>' : '') +
+        (t.desc ? '<div class="cxsay">&ldquo;' + esc(String(t.desc).slice(0, 120)) + '&rdquo;</div>' : '') +
+      '</div><div class="right">' + money1 + '</div></div>' +
+      '<div class="row" style="margin-top:8px;gap:8px">' + (mob.length === 10 ? '<a class="btn gry" href="tel:' + mob + '" style="min-height:52px;flex:0 0 auto;display:inline-flex;align-items:center">Call</a>' : '') +
+        '<div class="grow">' + btn + '</div></div></div>';
+  }
+  function viewEngJobs() {
+    var tk = sv2Tickets(), pend = tk.filter(function (t) { return sv2Bucket(t) === "pending"; }), pay = tk.filter(function (t) { return sv2Bucket(t) === "payment"; });
+    var mine = pend.filter(tkMine), town = svTown();
+    var free = pend.filter(function (t) { return !t.eng; }).sort(function (a, b) {
+      var ta = town && svTkTown(a).indexOf(town) >= 0 ? 0 : 1, tb = town && svTkTown(b).indexOf(town) >= 0 ? 0 : 1;
+      return ta - tb || String(a.at).localeCompare(String(b.at));
+    });
+    var myPay = pay.filter(tkMine), others = pend.filter(function (t) { return t.eng && !tkMine(t); });
+    var h = '<div class="sv2bar"><button class="btn" data-act="sv2-new" style="min-height:52px;font-size:16px">+ New complaint</button>' +
+      '<button class="btn ghost" data-act="tab" data-k="history" style="min-height:52px">My work</button></div>';
+    h += '<h3 class="sec">My jobs &mdash; ' + mine.length + '</h3>' + (mine.length ? mine.map(svEngCard).join("") : '<div class="empty">No job on you. Take one from the list below.</div>');
+    if (myPay.length) h += '<h3 class="sec warn">Money to collect &mdash; ' + myPay.length + '</h3>' + myPay.map(svEngCard).join("");
+    if (free.length) h += '<h3 class="sec warn">Waiting for an engineer &mdash; ' + free.length + (town ? ' <span class="meta">(' + esc(town.charAt(0).toUpperCase() + town.slice(1)) + ' first)</span>' : '') + '</h3>' + free.slice(0, 12).map(svEngCard).join("");
+    var due = dueList();
+    if (due.length) h += '<h3 class="sec">Service calls due &mdash; ' + due.length + '</h3>' + due.slice(0, 8).map(insRow).join("");
+    if (others.length) h += '<h3 class="sec">With the other engineer &mdash; ' + others.length + '</h3>' + others.slice(0, 6).map(svEngCard).join("");
+    return h;
+  }
+  /* ---- 4.0.0 - MY MONEY: the cash he holds for the office ---- */
+  function svCashRows(eng) {
+    var out = [], me = lower(eng);
+    ((S.data && S.data.audit) || []).forEach(function (a) {
+      if (String(a.action || "") !== "cmp:move" || lower(a.actor) !== me) return;
+      var d = tkJ(a.detail), got = Number(d.collected) || 0; if (!(got > 0)) return;
+      out.push({ at: String(a.createdAt || ""), day: localDay(a.createdAt), amt: got, mode: String(d.mode || "Cash"), tk: String(a.target || ""), pic: !!d.pic });
+    });
+    return out.sort(function (a, b) { return b.at.localeCompare(a.at); });
+  }
+  function svDeposits(eng) {
+    var out = [], me = lower(eng);
+    ((S.data && S.data.audit) || []).forEach(function (a) {
+      if (String(a.action || "") !== "svc:deposit" || lower(a.target) !== me) return;
+      var d = tkJ(a.detail); if (d.removed) return;
+      out.push({ at: String(a.createdAt || ""), day: String(d.date || localDay(a.createdAt)), amt: Number(d.amt) || 0, by: a.actor || "", note: String(d.note || "") });
+    });
+    return out.sort(function (a, b) { return b.at.localeCompare(a.at); });
+  }
+  function svCashInHand(eng) {
+    var cash = svCashRows(eng).filter(function (r) { return r.mode === "Cash"; }).reduce(function (n, r) { return n + r.amt; }, 0);
+    var dep = svDeposits(eng).reduce(function (n, r) { return n + r.amt; }, 0);
+    return { cash: cash, dep: dep, hand: Math.max(0, cash - dep) };
+  }
+  function viewEngMoney() {
+    var C = svCashInHand(S.user), rows = svCashRows(S.user), deps = svDeposits(S.user), mon = today().slice(0, 7);
+    var upiM = rows.filter(function (r) { return r.mode !== "Cash" && r.day.slice(0, 7) === mon; }).reduce(function (n, r) { return n + r.amt; }, 0);
+    var tkById = {}; sv2Tickets().forEach(function (t) { tkById[t.id] = t; });
+    var pend = sv2Tickets().filter(function (t) { return sv2Bucket(t) === "payment" && tkMine(t); });
+    var h = '<div class="stats sv2g">' +
+      '<div class="stat ' + (C.hand > 0.5 ? 'warn' : 'good') + '"><div class="n">' + esc(money(C.hand)) + '</div><div class="l">Cash with me &mdash; to give to the office</div></div>' +
+      '<div class="stat good"><div class="n">' + esc(money(upiM)) + '</div><div class="l">By UPI this month (already with the company)</div></div>' +
+      '<div class="stat ' + (pend.length ? 'warn' : 'good') + '"><div class="n">' + pend.length + '</div><div class="l">My customers still to pay</div></div></div>';
+    h += '<div class="note">Cash you collect belongs to Energy World. Hand it to the office; the office records it and this figure comes down. Every collection is also sent to the owner the moment you save it.</div>';
+    if (pend.length) h += '<h3 class="sec warn">Still to collect</h3>' + pend.map(svEngCard).join("");
+    h += '<h3 class="sec">My collections</h3>' + (rows.length ? '<div class="card" style="padding:4px 12px"><table class="sv2tab"><tr><th>Date</th><th>Customer</th><th>How</th><th style="text-align:right">Amount</th></tr>' +
+      rows.slice(0, 40).map(function (r) { var t = tkById[r.tk] || {}; return '<tr><td>' + esc(dstr(r.day)) + '</td><td>' + esc(t.client || t.name || r.tk) + '</td><td>' + esc(r.mode) + (r.mode === "Cash" && !r.pic ? ' <span class="pill red">no photo</span>' : '') + '</td><td style="text-align:right"><b>' + esc(money(r.amt)) + '</b></td></tr>'; }).join("") + '</table></div>' : '<div class="empty">Nothing collected yet.</div>');
+    if (deps.length) h += '<h3 class="sec">Handed to the office</h3><div class="card" style="padding:4px 12px"><table class="sv2tab"><tr><th>Date</th><th>Recorded by</th><th style="text-align:right">Amount</th></tr>' +
+      deps.map(function (r) { return '<tr><td>' + esc(dstr(r.day)) + '</td><td>' + esc(r.by) + (r.note ? ' &middot; ' + esc(r.note) : '') + '</td><td style="text-align:right"><b>' + esc(money(r.amt)) + '</b></td></tr>'; }).join("") + '</table></div>';
+    return h;
+  }
+  /* ---- 4.0.0 - the owner is told at once; the customer gets a receipt ---- */
+  function svTellOwner(text) {
+    try { api("tgSend", { bot: "TG_COMPLAINT", text: text }, 60000).catch(function () { }); } catch (e) { }
+  }
+  function svReceiptText(t, chg, got, mode, out, cv) {
+    var L = ["Namaste " + String(t.client || t.name || "") + ",", "Energy World service visit today (" + dstr(today()) + ")" + (t.ref ? " - " + t.ref : "") + ".", "Work done: " + String(out || "")];
+    if (chg > 0) { L.push("Service charge: " + money(chg)); L.push(got > 0 ? "Received: " + money(got) + " by " + mode + (got + 0.5 < chg ? " (balance " + money(chg - got) + ")" : "") : "Payment pending: " + money(chg)); }
+    else L.push("No charge - " + String((cv && cv.txt) || "covered") + ".");
+    L.push("If the amount paid is different from this message, please call Energy World, Panipat at once.");
+    L.push("Thank you.");
+    return L.join("\n");
+  }
+  function svMapLink(g) { return g && g.lat ? "https://maps.google.com/?q=" + g.lat + "," + g.lng : ""; }
+
   /* ================= 2.4.0 - PRODUCT-WISE, IN TABLES  (11 Oct 2026) =================
      HIS WORDS: "manage in table like format, again sanjeev khanna is new client, ask to enter details of installed
      products ... proper product wise system, installed date, commissioned date, warranty terms, warranty status
@@ -3727,9 +3842,42 @@ function ewmBuild(n, pre) {
   }
 
   /* ---- FINISH: the one question about money ---- */
+  function svPayChips(F, due) {
+    /* 4.0.0 - HIS CHOICE: UPI to the company QR first; cash needs a photo; not paid needs a reason */
+    var h = '<label>Did the customer pay ' + esc(money(due)) + '?</label><div class="chips">' +
+      '<button class="chip bchip' + (F.got === "upi" ? ' on' : '') + '" data-act="sv2-fg" data-k="upi" style="min-height:52px;font-size:15px">Paid by UPI (company QR)</button>' +
+      '<button class="chip bchip' + (F.got === "cash" ? ' on' : '') + '" data-act="sv2-fg" data-k="cash" style="min-height:52px;font-size:15px">Paid cash</button>' +
+      '<button class="chip bchip' + (F.got === "part" ? ' on' : '') + '" data-act="sv2-fg" data-k="part" style="min-height:52px">Paid part</button>' +
+      '<button class="chip bchip' + (F.got === "no" ? ' on' : '') + '" data-act="sv2-fg" data-k="no" style="min-height:52px">Not paid</button></div>';
+    if (F.got === "upi") h += '<div class="card" style="text-align:center;padding:10px"><div class="meta">Show this QR to the customer. The money goes to Energy World.</div>' +
+      '<img src="../assets/upi_qr.png?v=1" alt="Energy World UPI QR" style="max-width:240px;width:100%;margin:6px auto;display:block" onerror="this.style.display=\'none\';this.nextSibling.style.display=\'block\'"/><div class="note warn-t" style="display:none">The company QR is not on the app yet. Use the Energy World UPI from the office.</div></div>';
+    if (F.got === "cash") h += '<div class="card" style="padding:10px"><div style="font-weight:700">Photo of the cash or the signed receipt <span class="pill red">required</span></div>' +
+      '<div class="meta" style="margin:2px 0 6px">Cash is only recorded with a photo. The owner gets the photo at once.</div>' +
+      '<input type="file" accept="image/*" capture="environment" id="sv2_cashpic"/>' + (F.cashPic ? '<div class="pill grn" style="margin-top:6px">&#10003; photo taken</div>' : '') + '</div>';
+    if (F.got === "part") h += '<label>How much did he pay (&#8377;)?</label><input id="sv2_amt" inputmode="numeric" value="' + esc(F.amt == null ? "" : F.amt) + '"/>' +
+      '<label>How</label><div class="chips">' + ["UPI", "Cash"].map(function (m) { return '<button class="chip bchip' + ((F.mode || "UPI") === m ? ' on' : '') + '" data-act="sv2-fm" data-k="' + m + '">' + m + '</button>'; }).join("") + '</div>' +
+      (F.mode === "Cash" ? '<div class="card" style="padding:10px"><div style="font-weight:700">Photo of the cash <span class="pill red">required</span></div><input type="file" accept="image/*" capture="environment" id="sv2_cashpic"/>' + (F.cashPic ? '<div class="pill grn" style="margin-top:6px">&#10003; photo taken</div>' : '') + '</div>' : '');
+    if (F.got === "no") h += '<label>Why not?</label><div class="chips">' + ["Customer not at home", "Will pay at the office", "Owner said later", "Customer refused"].map(function (r) { return '<button class="chip bchip' + (F.why === r ? ' on' : '') + '" data-act="sv2-fw" data-k="' + esc(r) + '">' + esc(r) + '</button>'; }).join("") + '</div>' +
+      '<div class="note warn-t">The customer goes on <b>Payment pending</b>. The owner is told.</div>';
+    return h;
+  }
+  function svFinSheetEng(F, t, cv) {
+    var ins = tkInstall(t), rate = num(tkRateFor(ins ? "Repair" : "Labour job"));
+    var misuse = F.out === "Not a fault / misuse", chg = (cv.ok && !misuse) ? 0 : rate;
+    var h = '<h2>Finish &mdash; ' + esc(t.client || t.name || "") + '</h2><div class="muted">' + esc(t.ref || "") + '</div>' +
+      '<label>What did you do?</label><div class="chips">' + SV2_OUT.map(function (o) { return '<button class="chip bchip' + (F.out === o ? ' on' : '') + '" data-act="sv2-fo" data-k="' + esc(o) + '" style="min-height:48px">' + esc(o) + '</button>'; }).join("") + '</div>';
+    if (!F.out) return h + '<div class="acts"><button class="btn gry" data-act="close">Cancel</button></div>';
+    if (chg > 0) h += '<div class="card" style="padding:12px;text-align:center"><div class="meta">Service charge (fixed by the owner)</div><div style="font-size:26px;font-weight:800">' + esc(money(chg)) + '</div>' + (cv.ok ? '<div class="meta">' + esc(cv.txt) + ', but marked misuse - so it is charged.</div>' : '') + '</div>' + svPayChips(F, chg);
+    else if (cv.ok) h += '<div class="card" style="padding:12px;text-align:center;background:#f0fdf4"><div style="font-size:20px;font-weight:800;color:#166534">FREE &mdash; ' + esc(cv.amc ? "under AMC" : "in warranty") + '</div><div class="meta">The customer pays nothing. Do not take any money.</div></div>';
+    else h += '<div class="note warn-t">No service charge is set for this kind of job. Finish it; the office will bill if needed.</div>';
+    h += '<label>Note (optional)</label><input id="sv2_fnote" value="' + esc(F.note || "") + '" placeholder="parts used, what the customer said"/>' +
+      '<div class="acts"><button class="btn gry" data-act="close">Cancel</button><button class="btn grow" data-act="sv2-fsave" style="min-height:52px;font-size:16px">Save and finish</button></div>';
+    return h;
+  }
   function sv2FinSheet() {
     var F = S.fin || {}, t = sv2Find(F.id); if (!t) return '<h2>Not found</h2><div class="acts"><button class="btn gry" data-act="close">Close</button></div>';
     var cv = tkCover(t);
+    if (svEng()) return svFinSheetEng(F, t, cv);   /* 4.0.0 */
     var h = '<h2>Finish &mdash; ' + esc(t.client || t.name || "") + '</h2><div class="muted">' + esc(t.ref || "") + ' &middot; ' + esc(cv.txt) + '</div>' +
       '<label>What was done</label><div class="chips">' + SV2_OUT.map(function (o) { return '<button class="chip bchip' + (F.out === o ? ' on' : '') + '" data-act="sv2-fo" data-k="' + esc(o) + '">' + esc(o) + '</button>'; }).join("") + '</div>' +
       '<label>Service charge (&#8377;)</label><input id="sv2_chg" inputmode="numeric" value="' + esc(F.chg == null ? "" : F.chg) + '" placeholder="' + (cv.ok ? 'Nothing - ' + esc(cv.amc ? 'under AMC' : 'in warranty') : '0') + '"' + (!cv.ok && !roleAny(["admin"]) && F.chg ? ' readonly style="background:#f1f5f9"' : '') + '/>' +   /* 2.2.0 - the owner's rate */
@@ -3752,7 +3900,51 @@ function ewmBuild(n, pre) {
     if (el("sv2_fnote")) F.note = val("sv2_fnote");
     if (el("sv2_pamt")) F.pamt = val("sv2_pamt");
   }
+  function svFinSaveEng() {
+    sv2FinKeep();
+    var F = S.fin || {}, t = sv2Find(F.id); if (!t) return;
+    if (!(t.products || []).length && !t.noProd) { toast("Enter his machines on the complaint first (or: no product of ours)."); return; }
+    if (svNeedsMark(t)) { toast("Mark the machine with the problem first."); return; }
+    if (!F.out) { toast("Say what you did."); return; }
+    var cv = tkCover(t), ins = tkInstall(t), rate = num(tkRateFor(ins ? "Repair" : "Labour job"));
+    var chg = (cv.ok && F.out !== "Not a fault / misuse") ? 0 : rate, got = 0, mode = "";
+    if (chg > 0) {
+      if (!F.got) { toast("Did the customer pay? Pick one."); return; }
+      if (F.got === "upi") { got = chg; mode = "UPI"; }
+      else if (F.got === "cash") { if (!F.cashPic) { toast("Take the photo of the cash or the receipt first."); return; } got = chg; mode = "Cash"; }
+      else if (F.got === "part") { got = num(F.amt); mode = F.mode || "UPI"; if (!(got > 0)) { toast("How much did he pay?"); return; } if (got > chg + 0.5) { toast("That is more than the charge."); return; } if (mode === "Cash" && !F.cashPic) { toast("Take the photo of the cash first."); return; } }
+      else if (F.got === "no") { if (!F.why) { toast("Say why he did not pay."); return; } }
+    }
+    var btn = document.querySelector('[data-act="sv2-fsave"]'); if (btn) { btn.disabled = true; btn.textContent = "Saving\u2026"; }
+    gps(6000).then(function (g) {
+      var row = { id: mintId("SV"), createdAt: new Date().toISOString(), createdBy: S.user, installId: ins ? String(ins.id) : "",
+        client: ins ? String(ins.client || "") : String(t.client || t.name || ""), area: ins ? String(ins.area || "") : String(t.area || ""),
+        date: today(), engineer: S.user, type: ins ? "Repair" : "Labour job", visitCharge: chg, saltBags: 0, saltAmt: 0, partsUsed: "", partsAmt: 0,
+        total: chg, collected: got, balance: chg - got, notes: "Complaint " + (t.ref || "") + ": " + F.out + (F.note ? " - " + F.note : "") + (cv.ok && !chg ? " (" + cv.txt + ")" : "") + (g.lat ? " [gps " + g.lat + "," + g.lng + "]" : ""), updatedAt: new Date().toISOString() };
+      saveRow("visits", row); try { applyJournal(); } catch (e) { }
+      var tk = tkAll().filter(function (x) { return x.id === t.id; })[0] || t;
+      var outW = chg > 0 ? "Service charge" : (cv.ok ? (cv.amc ? "Free under AMC" : "Free under warranty") : "Other");
+      tkMove(tk, { to: "Resolved", outcome: outW, job: F.out, charge: chg, visitId: row.id, eng: S.user, gps: g.lat ? g : undefined, note: F.out + (F.note ? " - " + F.note : "") + (F.got === "no" ? " - not paid: " + F.why : "") });
+      var picUrl = "";
+      var finish = function () {
+        if (got > 0) tkMove(tk, got + 0.5 >= chg ? { to: "Paid", collected: got, mode: mode, pic: picUrl || undefined, gps: g.lat ? g : undefined } : { to: "", collected: got, mode: mode, pic: picUrl || undefined, gps: g.lat ? g : undefined, note: "part received" });
+        var who = String(t.client || t.name || ""), line = "SERVICE - " + S.user + " finished " + (t.ref || "a job") + " at " + who + (t.area ? " (" + t.area + ")" : "") + "\n" + F.out +
+          (chg > 0 ? "\nCharge " + money(chg) + " - " + (got > 0 ? "received " + money(got) + " by " + mode + (mode === "Cash" ? (picUrl ? " (photo: " + picUrl + ")" : " (NO PHOTO)") : "") : "NOT PAID: " + F.why) : "\nFree - " + cv.txt) +
+          (g.lat ? "\nGPS " + svMapLink(g) + " (\u00b1" + g.acc + " m)" : "\nGPS not available");
+        svTellOwner(line);
+        var mob = cxMob(t.mobile);
+        S.fin = null; S.sheet = null; bust(); sv2Bust();
+        S.cxTell = { ref: t.ref, name: who, mobile: mob.length === 10 ? mob : "", text: svReceiptText(t, chg, got, mode, F.out, cv) };
+        S.sheet = sheetCxTell(); render();
+      };
+      if (F.cashPic && mode === "Cash") {
+        api("pdfHost", { pdfBase64: F.cashPic.b64, filename: ("cash-" + (t.ref || t.id) + "-" + Date.now() + ".jpg").replace(/[^\w.-]+/g, "_"), mime: "image/jpeg" }, 240000)
+          .then(function (r) { picUrl = String((r && (r.url || r.link)) || ""); }).catch(function () { }).then(finish);
+      } else finish();
+    });
+  }
   function sv2FinSave() {
+    if (svEng()) return svFinSaveEng();   /* 4.0.0 */
     sv2FinKeep();
     var F = S.fin || {}, t = sv2Find(F.id); if (!t) return;
     if (!(t.products || []).length && !t.noProd) { toast("Enter his installed products on the complaint first (or: no product of ours)."); return; }   /* 2.4.0 */
@@ -3782,6 +3974,9 @@ function ewmBuild(n, pre) {
   function sv2PaySheet() {
     var F = S.fin || {}, t = sv2Find(F.id); if (!t) return "";
     var due = sv2Due(t);
+    if (svEng()) return '<h2>Collect &mdash; ' + esc(t.client || t.name || "") + '</h2><div class="muted">' + esc(t.ref || "") + ' &middot; ' + esc(money(due)) + ' still due</div>' +   /* 4.0.0 */
+      svPayChips(F, due).replace(/data-k="no"[^>]*>Not paid<\/button>/, 'data-k="no" style="display:none"></button>') +
+      '<div class="acts"><button class="btn gry" data-act="close">Cancel</button><button class="btn grow" data-act="sv2-psave" style="min-height:52px;font-size:16px">Save</button></div>';
     return '<h2>Payment received &mdash; ' + esc(t.client || t.name || "") + '</h2><div class="muted">' + esc(t.ref || "") + ' &middot; charge ' + esc(money(t.charge)) + ', ' + esc(money(t.got)) + ' received so far</div>' +
       '<div class="grid2"><div><label>Amount (&#8377;)</label><input id="sv2_pamt" inputmode="numeric" value="' + esc(F.pamt == null ? Math.round(due) : F.pamt) + '"/></div>' +
       '<div><label>How</label><div class="chips">' + ["Cash", "UPI", "Bank"].map(function (m) { return '<button class="chip bchip' + ((F.mode || "Cash") === m ? ' on' : '') + '" data-act="sv2-fm" data-k="' + m + '">' + m + '</button>'; }).join("") + '</div></div></div>' +
@@ -3791,6 +3986,33 @@ function ewmBuild(n, pre) {
     sv2FinKeep();
     var F = S.fin || {}, t = sv2Find(F.id); if (!t) return;
     var amt = num(F.pamt), due = sv2Due(t);
+    if (svEng()) {   /* 4.0.0 - the same chips as Finish */
+      if (!F.got || F.got === "no") { toast("How did he pay? Pick one."); return; }
+      var mode2 = F.got === "upi" ? "UPI" : F.got === "cash" ? "Cash" : (F.mode || "UPI");
+      amt = F.got === "part" ? num(F.amt) : due;
+      if (!(amt > 0)) { toast("How much did he pay?"); return; }
+      if (amt > due + 0.5) { toast("That is more than the " + money(due) + " still due."); return; }
+      if (mode2 === "Cash" && !F.cashPic) { toast("Take the photo of the cash first."); return; }
+      var pb = document.querySelector('[data-act="sv2-psave"]'); if (pb) { pb.disabled = true; pb.textContent = "Saving\u2026"; }
+      gps(6000).then(function (g) {
+        var picUrl = "";
+        var done2 = function () {
+          var tk2 = tkAll().filter(function (x) { return x.id === t.id; })[0] || t;
+          tkMove(tk2, amt + 0.5 >= due ? { to: "Paid", collected: amt, mode: mode2, pic: picUrl || undefined, gps: g.lat ? g : undefined } : { to: "", collected: amt, mode: mode2, pic: picUrl || undefined, gps: g.lat ? g : undefined, note: "part received" });
+          var v2 = t.visitId ? visits().filter(function (x) { return String(x.id) === String(t.visitId); })[0] : null;
+          if (v2) { var nv2 = Object.assign({}, v2, { collected: num(v2.collected) + amt, balance: num(v2.total) - num(v2.collected) - amt, updatedAt: new Date().toISOString() }); saveRow("visits", nv2); try { applyJournal(); } catch (e) { } }
+          svTellOwner("SERVICE - " + S.user + " collected " + money(amt) + " by " + mode2 + " from " + String(t.client || t.name || "") + " (" + (t.ref || "") + ")" + (mode2 === "Cash" ? (picUrl ? "\nphoto: " + picUrl : "\nNO PHOTO") : "") + (g.lat ? "\nGPS " + svMapLink(g) : ""));
+          var mob = cxMob(t.mobile);
+          S.fin = null; S.sheet = null; bust(); sv2Bust();
+          S.cxTell = { ref: t.ref, name: String(t.client || t.name || ""), mobile: mob.length === 10 ? mob : "", text: "Namaste " + String(t.client || t.name || "") + ",\nEnergy World received " + money(amt) + " by " + mode2 + " today (" + dstr(today()) + ")" + (t.ref ? " against " + t.ref : "") + "." + (amt + 0.5 < due ? " Balance " + money(due - amt) + "." : "") + "\nIf this is not what you paid, please call Energy World, Panipat at once.\nThank you." };
+          S.sheet = sheetCxTell(); render();
+        };
+        if (F.cashPic && mode2 === "Cash") api("pdfHost", { pdfBase64: F.cashPic.b64, filename: ("cash-" + (t.ref || t.id) + "-" + Date.now() + ".jpg").replace(/[^\w.-]+/g, "_"), mime: "image/jpeg" }, 240000)
+          .then(function (r) { picUrl = String((r && (r.url || r.link)) || ""); }).catch(function () { }).then(done2);
+        else done2();
+      });
+      return;
+    }
     if (!(amt > 0)) { toast("How much was received?"); return; }
     if (amt > due + 0.5) { toast("That is more than the " + money(due) + " still due."); return; }
     var tk = tkAll().filter(function (x) { return x.id === t.id; })[0] || t;
@@ -5758,6 +5980,18 @@ function ewmBuild(n, pre) {
     { k: "jobs",       t: "Machines" },
     { k: "account",    t: "Account" }
   ];
+  /* ===== 4.0.0 - THE ENGINEER'S APP  (10 Nov 2026) =====
+     HIS WORDS: "service team saying service app is very confusing as they are less educated, how to make it more
+     simpler, and side by side I have to tight control over service team as they sometime visit site and take service
+     charge and put in their pocket". HIS CHOICES: UPI to the company QR first, cash only with a photo and a Telegram
+     line to him at once; a WhatsApp receipt for the customer plus three random calls a week from the CRM; English,
+     simpler words, three screens.
+     An engineer (role service, not admin/accounts) gets: JOBS - his jobs, each with ONE button (Start, then Finish);
+     INSTALL - the install & commissioning list as before; MY MONEY - the cash he is holding for the office.
+     The office and the owner keep the full desk. Nothing was removed; the engineer simply does not see it. */
+  function svEng() { return canRecord() && !seesAllMoney(); }
+  var NAV_ENG = [{ k: "ejobs", t: "Jobs" }, { k: "commission", t: "Install" }, { k: "emoney", t: "My money" }];
+  function navList() { return svEng() ? NAV_ENG : NAV; }
   function navBtn(n) {
     var on = S.tab === n.k || (n.k === "home" && (S.tab === "complaints" || S.tab === "history" || S.tab === "today"));   /* 3.2.0 - the complaint list and My work live under Home */
     return '<button class="nav' + (on ? ' on' : '') + '" data-act="tab" data-k="' + esc(n.k) + '">' +
@@ -5770,7 +6004,8 @@ function ewmBuild(n, pre) {
        a white card. On a narrow phone that mostly stacked anyway and looked passable, which is
        why it survived; on a Mac it is the scattered mess in his screenshot. */
     if (S.sheet) return '<div class="sheet"><div class="inner">' + S.sheet + '</div></div>';
-    var v = { home: viewHome, today: viewHome, complaints: viewComplaints, commission: viewCommission, jobs: viewJobs, history: viewHistory, account: viewAccount, inslog: viewInsLog }[S.tab];
+    var v = { home: viewHome, today: viewHome, complaints: viewComplaints, commission: viewCommission, jobs: viewJobs, history: viewHistory, account: viewAccount, inslog: viewInsLog, ejobs: viewEngJobs, emoney: viewEngMoney }[S.tab];
+    if (svEng() && (!v || S.tab === "home" || S.tab === "today" || S.tab === "account")) return viewEngJobs();   /* 4.0.0 - an engineer lands on his jobs */
     return v ? v() : viewHome();
   }
 
@@ -5822,7 +6057,7 @@ function ewmBuild(n, pre) {
          nothing at all. One missing class, two faults. */
       '<div class="body wrap">' + bodyHtml() + '</div>' +
       '<div id="ew_sync_banner" style="display:none"></div>' +   /* 1.18.0 - the held-record bar jrnPaint() draws */
-      (S.sheet ? '' : '<div class="tabs">' + NAV.map(navBtn).join("") + '</div>');
+      (S.sheet ? '' : '<div class="tabs">' + navList().map(navBtn).join("") + '</div>');
     placePut(_place, S.sheet, S.tab);
     jrnPaint();
     wireInputs(); painted();
@@ -5886,6 +6121,13 @@ function ewmBuild(n, pre) {
     if (ewq) ewq.addEventListener("input", function () {
       S.ewiQ = ewq.value; S.ewiLim = 40; render();
       var q2 = el("ewi_q"); if (q2) { try { q2.focus({ preventScroll: true }); q2.setSelectionRange(q2.value.length, q2.value.length); } catch (e) { } }
+    });
+    var cpc = el("sv2_cashpic");   /* 4.0.0 */
+    if (cpc) cpc.addEventListener("change", function () {
+      sv2FinKeep();
+      var f = (cpc.files || [])[0]; if (!f || !S.fin) return;
+      picRead(f, "cash").then(function (p) { if (!S.fin) return; S.fin.cashPic = p; S.sheet = S.fin.view === "pay" ? sv2PaySheet() : sv2FinSheet(); render(); toast("Photo taken."); })
+        .catch(function () { toast("Could not read that photo. Try again."); });
     });
     var cp = el("cm2_pic");
     if (cp) cp.addEventListener("change", function () {
@@ -6016,7 +6258,7 @@ function ewmBuild(n, pre) {
     if (act === "cx-tell-no") { S.cxTell = null; S.sheet = null; render(); return; }
     if (act === "cx-tell-go") {
       var tt = S.cxTell || {};
-      var url = "https://wa.me/91" + String(tt.mobile || "") + "?text=" + encodeURIComponent(cxTellText(tt.ref));
+      var url = "https://wa.me/91" + String(tt.mobile || "") + "?text=" + encodeURIComponent(tt.text || cxTellText(tt.ref));
       S.cxTell = null; S.sheet = null; render();
       window.open(url, "_blank");
       return;
@@ -6066,10 +6308,23 @@ function ewmBuild(n, pre) {
       S.fin = { id: id, view: "fin", chg: (_fc.ok ? "" : (tkRateFor(_fi ? "Repair" : "Labour job") || "")), mode: "Cash" };
       S.sheet = sv2FinSheet(); render(); return;
     }
+    if (act === "eng-start") {   /* 4.0.0 - take it and mark on site, with the place */
+      if (!canRecord()) return;
+      var _es = sv2Find(id); if (!_es) return;
+      t.disabled = true; t.textContent = "Starting\u2026";
+      gps(6000).then(function (g) {
+        var _tk = tkAll().filter(function (x) { return x.id === _es.id; })[0] || _es;
+        tkMove(_tk, { to: "Visited", eng: S.user, gps: g.lat ? g : undefined, note: "started on the Service app" + (g.lat ? "" : " (no GPS)") });
+        svTellOwner("SERVICE - " + S.user + " started " + (_es.ref || "a job") + " at " + String(_es.client || _es.name || "") + (_es.area ? " (" + _es.area + ")" : "") + (g.lat ? "\nGPS " + svMapLink(g) : "\nGPS not available"));
+        bust(); sv2Bust(); render(); toast("Started. Press Finish job when done.");
+      });
+      return;
+    }
+    if (act === "sv2-fw") { if (!S.fin) return; sv2FinKeep(); S.fin.why = t.getAttribute("data-k"); S.sheet = S.fin.view === "pay" ? sv2PaySheet() : sv2FinSheet(); render(); return; }   /* 4.0.0 */
     if (act === "sv2-fo" || act === "sv2-fg" || act === "sv2-fm") {
       if (!S.fin) return; sv2FinKeep();
       var _fk = t.getAttribute("data-k");
-      if (act === "sv2-fo") S.fin.out = _fk; else if (act === "sv2-fg") S.fin.got = _fk; else S.fin.mode = _fk;
+      if (act === "sv2-fo") S.fin.out = _fk; else if (act === "sv2-fg") { S.fin.got = _fk; if (_fk !== "cash" && _fk !== "part") S.fin.cashPic = null; } else S.fin.mode = _fk;
       S.sheet = S.fin.view === "pay" ? sv2PaySheet() : sv2FinSheet(); render(); return;
     }
     if (act === "sv2-fsave") { sv2FinSave(); return; }
