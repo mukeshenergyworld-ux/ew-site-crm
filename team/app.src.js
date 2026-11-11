@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.964";   /* 6.9.964 (11 Nov 2026) - quote spec table: a value all but a few items share is said once and the few are named, so one tube no longer printed five long columns 25 times */   /* 6.9.963 (11 Nov 2026) - purchase bills: same day + same amount flagged on the Tally screen */   /* 6.9.958 (10 Nov 2026) - a statement attached before the name was kept is told apart by its time, not left as four identical lines */     /* 6.9.957 (10 Nov 2026) - each attached old hisab shows its file name, and a wrong one can be set aside */     /* 6.9.956 (10 Nov 2026) - rebuilt: the GitHub Pages publish of 6.9.955 failed (run #1675), so nothing had changed on the phones */   /* 6.9.955 (10 Nov 2026) - the old hisab takes more than one file at once: photographed pages become one PDF, and every statement on file is listed */     /* 6.9.954 (10 Nov 2026) - the Partner Club: fixed slabs, a bonus on crossing one, the trip and device rewards, every partner's rupees to his next slab, and the quiet-partner watch */     /* 6.9.953 (10 Nov 2026) - Service > Control: cash in each engineer's hand, hand-over recorded, three random customer checks a week */     /* 6.9.952 (10 Nov 2026) - to-bill month by month, screens found from Search, team screen use on Health, a receipt for every incentive payout */     /* 6.9.951 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 6.9.950 (9 Nov 2026) - brand introductions: a fuller paragraph, three stage-wise benefits and one next step, on the quote and the proposal */     /* 6.9.949 (9 Nov 2026) - quote PDF: a product picture stays inside its own row (1.2 mm clear of both lines) */     /* 6.9.948 (9 Nov 2026) - quote PDF: each room heading carries its collection and finish with colour dots; every FIMA code chip has its finish dot */     /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
+  var APP_VERSION = "6.9.966";   /* 6.9.966 (11 Nov 2026) - technical specifications sheet in colour: brand-coloured table heads and code strip, coloured field labels, and the exceptions in an amber panel */   /* 6.9.965 (11 Nov 2026) - old quotes to close: grouped by what the site is doing now, closing windows first, each group carrying that stage's own pitch lines */   /* 6.9.964 (11 Nov 2026) - quote spec table: a value all but a few items share is said once and the few are named, so one tube no longer printed five long columns 25 times */   /* 6.9.963 (11 Nov 2026) - purchase bills: same day + same amount flagged on the Tally screen */   /* 6.9.958 (10 Nov 2026) - a statement attached before the name was kept is told apart by its time, not left as four identical lines */     /* 6.9.957 (10 Nov 2026) - each attached old hisab shows its file name, and a wrong one can be set aside */     /* 6.9.956 (10 Nov 2026) - rebuilt: the GitHub Pages publish of 6.9.955 failed (run #1675), so nothing had changed on the phones */   /* 6.9.955 (10 Nov 2026) - the old hisab takes more than one file at once: photographed pages become one PDF, and every statement on file is listed */     /* 6.9.954 (10 Nov 2026) - the Partner Club: fixed slabs, a bonus on crossing one, the trip and device rewards, every partner's rupees to his next slab, and the quiet-partner watch */     /* 6.9.953 (10 Nov 2026) - Service > Control: cash in each engineer's hand, hand-over recorded, three random customer checks a week */     /* 6.9.952 (10 Nov 2026) - to-bill month by month, screens found from Search, team screen use on Health, a receipt for every incentive payout */     /* 6.9.951 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 6.9.950 (9 Nov 2026) - brand introductions: a fuller paragraph, three stage-wise benefits and one next step, on the quote and the proposal */     /* 6.9.949 (9 Nov 2026) - quote PDF: a product picture stays inside its own row (1.2 mm clear of both lines) */     /* 6.9.948 (9 Nov 2026) - quote PDF: each room heading carries its collection and finish with colour dots; every FIMA code chip has its finish dot */     /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -21250,14 +21250,64 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       return !fresh[dkey(q.client || "")];
     }).sort(function (a, b) { return String(a.updatedAt || a.createdAt || "").localeCompare(String(b.updatedAt || b.createdAt || "")); });
   }
+  /* ======= 6.9.965 - AN OLD QUOTE IS NOT A REMINDER, IT IS A CALL =======
+     MEASURED on the live book, 11 Nov 2026: 39 old quotes, 78 lakh, oldest silent 100 days.
+     The band listed them oldest first and said nothing else, so every one of them read the
+     same - "ring him again" - when the only question that matters is what his site is doing
+     THIS WEEK. The 39 sit on ten different stages:
+
+       Concealed Plumbing (rough-in)  10   pipes and fittings are going in now
+       Final Fitout / Handover         8   geyser, RO, softener, pressure pump
+       Sanitary & CP Fitting           6   CP, sanitaryware, showers
+       Structure / Slab                4   nothing of ours is bought yet
+       Post-Handover / AMC             3   the job is finished
+
+     Ringing the Structure / Slab four about sanitaryware is why a follow-up call goes cold.
+
+     NOW the band groups them by the site's stage and puts the CLOSING WINDOWS first - the
+     stages PITCH2 already marks win:true, concealed work that gets sealed inside the wall.
+     Each group carries that stage's own pitch lines, so what to say is on the screen with
+     the number to ring. PITCH2 is the app's one playbook; this reads it, it does not keep a
+     second copy of the rule. */
   function staleBand(qMine) {
     var st = staleQuotes(qMine); if (!st.length) return "";
     var open = !!S.qStale;
+    var tot = st.reduce(function (a, q) { return a + nAmt(q.total || q.net); }, 0);
     var h = '<div class="card" style="border-color:#fbbf24;background:#fffbeb;padding:10px 12px">' +
-      '<div class="row" style="flex-wrap:wrap;gap:8px;align-items:center"><div class="grow"><b style="color:#92400e">' + st.length + ' old quote' + (st.length > 1 ? 's' : '') + ' to close</b>' +
-      '<div class="meta" style="font-size:12.5px">No word for ' + STALE_DAYS + '+ days and no follow-up with the client. Mark each Won, Lost or Not required, so the win rate and the follow-up lists tell the truth.</div></div>' +
+      '<div class="row" style="flex-wrap:wrap;gap:8px;align-items:center"><div class="grow"><b style="color:#92400e">' + st.length + ' old quote' + (st.length > 1 ? 's' : '') + ' to close \u00b7 ' + money(tot) + '</b>' +
+      '<div class="meta" style="font-size:12.5px">No word for ' + STALE_DAYS + '+ days and no follow-up with the client. Grouped by what the site is doing now, closing windows first. Mark each Won, Lost or Not required, so the win rate and the follow-up lists tell the truth.</div></div>' +
       '<button class="btn sm' + (open ? ' ghost' : '') + '" data-act="q-stale" style="min-height:44px">' + (open ? 'Hide the list' : 'Close them now') + '</button></div>';
-    if (open) h += '<div style="margin-top:8px">' + qRowsTable(st.map(function (q) { return { q: q }; }), { qMine: qMine }) + '</div>';
+    if (open) {
+      var grp = {}, keys = [];
+      st.forEach(function (q) {
+        var sq = q.siteId ? siteById(q.siteId) : null;
+        var k = String((sq && sq.stage) || "").trim() || "\u2014";
+        if (!grp[k]) { grp[k] = []; keys.push(k); }
+        grp[k].push(q);
+      });
+      var val = function (k) { return grp[k].reduce(function (a, q) { return a + nAmt(q.total || q.net); }, 0); };
+      var isWin = function (k) { return !!(PITCH2[k] && PITCH2[k].win); };
+      keys.sort(function (a, b) {
+        if (a === "\u2014") return 1;
+        if (b === "\u2014") return -1;
+        if (isWin(a) !== isWin(b)) return isWin(a) ? -1 : 1;
+        return val(b) - val(a);
+      });
+      h += '<div style="margin-top:8px">';
+      keys.forEach(function (k) {
+        var p = PITCH2[k], win = isWin(k);
+        h += '<div style="margin-top:10px">' +
+          '<div class="row" style="align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">' +
+          (win ? '<span class="pill" style="background:#0f766e;color:#fff;font-size:12px">CLOSING NOW</span>' : '') +
+          '<b style="color:#0b3b36;font-size:13px">' + esc(k === "\u2014" ? "No stage set on the site" : k) + '</b>' +
+          '<span style="font-size:12.5px;color:#64748b">' + grp[k].length + ' \u00b7 ' + money(val(k)) + '</span></div>' +
+          (p && p.lines && p.lines.length
+            ? '<div style="font-size:12.5px;color:#475569;margin-bottom:5px">Say: ' + p.lines.map(esc).join(' <span style="color:#cbd5e1">\u00b7</span> ') + '</div>'
+            : (k === "\u2014" ? '<div style="font-size:12.5px;color:#475569;margin-bottom:5px">Set the stage on the site and the call writes itself.</div>' : '')) +
+          qRowsTable(grp[k].map(function (q) { return { q: q }; }), { qMine: qMine }) + '</div>';
+      });
+      h += '</div>';
+    }
     return h + '</div>';
   }
   function staleNag() {
@@ -24088,7 +24138,10 @@ function viewCatalogue() {
       doc.text("TECHNICAL SPECIFICATIONS", L, y);
       col(C.GREY); F("normal"); doc.setFontSize(7);
       doc.text("Manufacturer's published data. What every item in a brand shares is stated once; the table lists what differs.", L, y + 4.2);
-      fill(C.TEAL); doc.rect(L, y + 6.2, Rt - L, 0.7, "F");
+      /* 6.9.966 - the rule carries the six brand colours, so the page is stamped with the
+         same palette the blocks below use */
+      var seg = (Rt - L) / BRANDC.length;
+      BRANDC.forEach(function (c, z) { fill(c); doc.rect(L + z * seg, y + 6.2, seg + 0.2, 0.9, "F"); });
       y += 11;
     };
     head();
@@ -24110,13 +24163,18 @@ function viewCatalogue() {
       var hs = cols.map(function (cc) { return cc.reduce(function (a, c) { return a + c.v.length * LH; }, 0); });
       var h = Math.max(hs[0], hs[1]) + PAD * 2;
       if (draw) {
-        fill(tint(BC, 0.07)); doc.roundedRect(L, y, Rt - L, h, 1.4, 1.4, "F");
-        fill(BC); doc.rect(L, y, 1.3, h, "F");
+        fill(tint(BC, 0.085)); doc.roundedRect(L, y, Rt - L, h, 1.4, 1.4, "F");
+        fill(BC); doc.rect(L, y, 2.1, h, "F");
+        /* 6.9.966 - a hairline between the two columns, so the eye does not read across */
+        doc.setDrawColor(tint(BC, 0.3)[0], tint(BC, 0.3)[1], tint(BC, 0.3)[2]);
+        doc.setLineWidth(0.15); doc.line(L + 4 + CW - 1, y + 1.6, L + 4 + CW - 1, y + h - 1.6);
+        doc.setLineWidth(0.2);
         cols.forEach(function (cc, ci) {
           var cx = L + 4 + ci * (CW + 1), cy = y + PAD + 2;
           cc.forEach(function (c) {
-            col([120, 140, 150]); F("normal"); doc.setFontSize(FS);
-            doc.text(fitCell(doc, F, c.l, LW - 1, 1, "normal", FS)[0] || c.l, cx, cy);
+            col(tint(BC, 0.78)); F("bold"); doc.setFontSize(FS - 0.2);
+            doc.text(fitCell(doc, F, c.l, LW - 1, 1, "bold", FS - 0.2)[0] || c.l, cx, cy);
+            F("normal"); doc.setFontSize(FS);
             col(C.INK);
             c.v.forEach(function (vl, z) { doc.text(vl, cx + LW, cy + z * LH); });
             cy += c.v.length * LH;
@@ -24226,7 +24284,7 @@ function viewCatalogue() {
       }
 
       if (common.length) {
-        col([120, 140, 150]); F("bold"); doc.setFontSize(5.8);
+        col(tint(BC, 0.85)); F("bold"); doc.setFontSize(5.8);
         room(6);
         doc.text("COMMON TO ALL " + g.length + " ITEMS" + (exCodes.length ? " \u2014 EXCEPT WHERE NOTED BELOW" : ""),
                  L + 1, y + 1.2);
@@ -24239,17 +24297,25 @@ function viewCatalogue() {
       /* the exceptions, by code. Without these the box above would be a claim about an
          item that never made it - a tube has no seal, and the quote must not say it has. */
       if (exCodes.length) {
+        /* 6.9.966 - amber, like every "look at this one" in the apps. Loose grey text under a
+           tinted box read as a footnote nobody has to take in; these are the lines that stop
+           the box above being a false claim, so they are given a panel of their own. */
         F("normal"); doc.setFontSize(5.8);
-        var exW = Rt - L - 26;
+        var exW = Rt - L - 28;
+        var exH = 2.2;
+        exCodes.forEach(function (cd) { exH += doc.splitTextToSize(exBy[cd].join("; "), exW).length * 2.7 + 0.8; });
+        room(Math.min(exH, 120));
+        fill([255, 251, 235]); doc.roundedRect(L, y, Rt - L, exH, 1.2, 1.2, "F");
+        fill([245, 158, 11]); doc.rect(L, y, 1.6, exH, "F");
+        y += 1.6;
         exCodes.forEach(function (cd) {
           var ls = doc.splitTextToSize(exBy[cd].join("; "), exW);
-          room(ls.length * 2.7 + 1.4);
-          col(BC); F("bold"); doc.text(cd, L + 1, y + 2);
-          col([100, 116, 139]); F("normal");
-          ls.forEach(function (ln, z) { doc.text(ln, L + 26, y + 2 + z * 2.7); });
+          col([146, 64, 14]); F("bold"); doc.text(cd, L + 3, y + 2);
+          col([120, 72, 20]); F("normal");
+          ls.forEach(function (ln, z) { doc.text(ln, L + 28, y + 2 + z * 2.7); });
           y += ls.length * 2.7 + 0.8;
         });
-        y += 2.4;
+        y += 3.2;
       }
 
       /* the table: code, name, then the fields that differ */
@@ -24257,8 +24323,8 @@ function viewCatalogue() {
       var rest = W - CODEW - NAMEW, each = cols2.length ? rest / cols2.length : 0;
 
       var drawHead = function () {
-        fill(tint(BC, 0.16)); doc.rect(L, y, W, 4.6, "F");
-        col(BC); F("bold"); doc.setFontSize(5.8);
+        fill(BC); doc.rect(L, y, W, 4.6, "F");
+        col([255, 255, 255]); F("bold"); doc.setFontSize(5.8);
         doc.text("CODE", L + 1.6, y + 3.1);
         doc.text("PRODUCT", L + CODEW + 1.6, y + 3.1);
         cols2.forEach(function (l, k) {
@@ -24278,7 +24344,10 @@ function viewCatalogue() {
         var lines = Math.max(1, nmL.length, cells.reduce(function (a, c) { return Math.max(a, c.length); }, 1));
         var rh = lines * LH + 1.8;
         if (y + rh > 276) { doc.addPage(); y = 20; head(); drawHead(); }
-        if (ri % 2) { fill(tint(BC, 0.045)); doc.rect(L, y, W, rh, "F"); }
+        if (ri % 2) { fill(tint(BC, 0.06)); doc.rect(L, y, W, rh, "F"); }
+        /* 6.9.966 - the code column keeps a tint of its brand all the way down, so a plumber
+           reading across three brands never loses which block he is in */
+        fill(tint(BC, 0.13)); doc.rect(L, y, CODEW, rh, "F");
         col(BC); F("bold"); doc.setFontSize(5.8);
         doc.text(fitCell(doc, F, b.code, CODEW - 2.4, 1, "bold", 5.8)[0] || b.code, L + 1.6, y + 3);
         col(C.INK); F("normal"); doc.setFontSize(FS);
@@ -24287,7 +24356,8 @@ function viewCatalogue() {
         cells.forEach(function (cc, k) {
           cc.forEach(function (cl, z) { doc.text(cl, L + CODEW + NAMEW + k * each + 1.6, y + 3 + z * LH); });
         });
-        doc.setDrawColor(226, 232, 240); doc.setLineWidth(0.1);
+        var rl = tint(BC, 0.22);
+        doc.setDrawColor(rl[0], rl[1], rl[2]); doc.setLineWidth(0.1);
         doc.line(L, y + rh, Rt, y + rh); doc.setLineWidth(0.2);
         y += rh;
       });
