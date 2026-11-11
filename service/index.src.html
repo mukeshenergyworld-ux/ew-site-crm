@@ -460,7 +460,7 @@ function ewmBuild(n, pre) {
    Nothing here deletes anything, ever. A visit is a row added.
    ========================================================================== */
 
-  var APP_VERSION = "4.0.2";   /* 4.0.2 (11 Nov 2026) - Finish said "mark the product with the problem first" with nothing to press: the reason and the button are on the sheet now */   /* 4.0.1 (10 Nov 2026) - the company UPI QR (the same code as on every quote PDF) with the UPI id in words */     /* 4.0.0 (10 Nov 2026) - the engineer's three screens: Jobs, Install, My money. Start / Finish with GPS; UPI to the company QR first, cash only with a photo; the owner told on Telegram at once; a WhatsApp receipt for the customer; cash in hand to hand over */     /* 3.4.0 (31 Oct 2026) - one tap, one entry */
+  var APP_VERSION = "4.0.3";   /* 4.0.3 (11 Nov 2026) - the technician's Finish sheet: which machine asked first with a button, three choices not five, the misuse chip must say why it is charging the customer, the note is taps, and a message to the owner that could not go out is held on the phone */   /* 4.0.2 (11 Nov 2026) - Finish said "mark the product with the problem first" with nothing to press: the reason and the button are on the sheet now */   /* 4.0.1 (10 Nov 2026) - the company UPI QR (the same code as on every quote PDF) with the UPI id in words */     /* 4.0.0 (10 Nov 2026) - the engineer's three screens: Jobs, Install, My money. Start / Finish with GPS; UPI to the company QR first, cash only with a photo; the owner told on Telegram at once; a WhatsApp receipt for the customer; cash in hand to hand over */     /* 3.4.0 (31 Oct 2026) - one tap, one entry */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -3481,6 +3481,8 @@ function ewmBuild(n, pre) {
         '<div class="grow">' + btn + '</div></div></div>';
   }
   function viewEngJobs() {
+    /* 4.0.3 - whatever the phone could not send last time goes out as soon as he has a line */
+    try { if (Date.now() - _svTgAt > 120000) { _svTgAt = Date.now(); setTimeout(svTgFlush, 400); } } catch (e) { }
     var tk = sv2Tickets(), pend = tk.filter(function (t) { return sv2Bucket(t) === "pending"; }), pay = tk.filter(function (t) { return sv2Bucket(t) === "payment"; });
     var mine = pend.filter(tkMine), town = svTown();
     var free = pend.filter(function (t) { return !t.eng; }).sort(function (a, b) {
@@ -3540,8 +3542,41 @@ function ewmBuild(n, pre) {
     return h;
   }
   /* ---- 4.0.0 - the owner is told at once; the customer gets a receipt ---- */
+  /* ======= 4.0.3 - THE LINE THAT WAS SWALLOWED =======
+     This was api(...).catch(function(){}) - fire and forget. A technician finishing a job in
+     a basement, or on a phone with one bar, sent nothing and nobody knew. The visit itself
+     already survives that: saveRow writes to the device journal first and syncs later. The
+     message to the owner did not. Now a failed send is held on the phone and goes out with
+     the next one, carrying the time it was really finished. */
+  var SV_TG_KEY = "ewSvcTgHold", _svTgAt = 0;
+  function svTgHold(text) {
+    try {
+      var q = JSON.parse(localStorage.getItem(SV_TG_KEY) || "[]");
+      q.push({ at: new Date().toISOString(), text: String(text || "") });
+      localStorage.setItem(SV_TG_KEY, JSON.stringify(q.slice(-40)));
+    } catch (e) { }
+  }
+  function svTgFlush() {
+    var q = [];
+    try { q = JSON.parse(localStorage.getItem(SV_TG_KEY) || "[]"); } catch (e) { q = []; }
+    if (!q.length) return;
+    try { localStorage.setItem(SV_TG_KEY, "[]"); } catch (e) { }
+    var next = function () {
+      if (!q.length) return;
+      var m = q.shift();
+      var when = String(m.at || "").slice(0, 16).replace("T", " ");
+      api("tgSend", { bot: "TG_COMPLAINT", text: m.text + (when ? "\n(held on the phone, finished " + when + ")" : "") }, 60000)
+        .then(function (r) { if (!(r && r.ok)) svTgHold(m.text); next(); },
+              function () { svTgHold(m.text); q.forEach(function (x) { svTgHold(x.text); }); q.length = 0; });
+    };
+    next();
+  }
   function svTellOwner(text) {
-    try { api("tgSend", { bot: "TG_COMPLAINT", text: text }, 60000).catch(function () { }); } catch (e) { }
+    try {
+      api("tgSend", { bot: "TG_COMPLAINT", text: text }, 60000)
+        .then(function (r) { if (r && r.ok) svTgFlush(); else svTgHold(text); },
+              function () { svTgHold(text); });
+    } catch (e) { svTgHold(text); }
   }
   function svReceiptText(t, chg, got, mode, out, cv) {
     var L = ["Namaste " + String(t.client || t.name || "") + ",", "Energy World service visit today (" + dstr(today()) + ")" + (t.ref ? " - " + t.ref : "") + ".", "Work done: " + String(out || "")];
@@ -3708,7 +3743,10 @@ function ewmBuild(n, pre) {
       var mk = svFaultCheck(N, t.products || []); if (!mk) return;
       if (!mk.length) { toast("Tap the product that has the problem."); return; }
       tkMove(tk, { replaceProducts: 1, products: mk.map(function (p) { return Object.assign({}, p, { fault: String(N.fault[p.key]).trim() }); }), note: "the product with the problem: " + mk.map(function (p) { return p.desc; }).join(", ") });
-      S.tm = null; S.tmOn = false; bust(); sv2Bust(); S.sheet = sv2Sheet(sv2Find(t.id) || t); render(); toast("Saved."); return;
+      S.tm = null; S.tmOn = false; bust(); sv2Bust();
+      /* 4.0.3 - he was in the middle of finishing the job: put him back there, not on the card */
+      S.sheet = (S.fin && S.fin.id === t.id) ? sv2FinSheet() : sv2Sheet(sv2Find(t.id) || t);
+      render(); toast("Saved."); return;
     }
     var onFile = sv2Products(nm).filter(function (p) { return p.kind !== "item" && !(t.products || []).some(function (q) { return q.key === p.key; }); });
     var oldL = svOldAsList(N);
@@ -3725,7 +3763,9 @@ function ewmBuild(n, pre) {
       .concat(saved.filter(function (p, i) { return N.picks["NI:" + i]; }).map(function (p) { var i = saved.indexOf(p); return Object.assign({}, p, { fault: String(N.fault["NI:" + i]).trim() }); }));
     tkMove(tk, ps.length ? { products: ps, note: "the product with the problem: " + ps.map(function (p) { return p.desc; }).join(", ") } : { noProd: 1, note: "no product of ours at his place" });
     if (due > 0) svOldDueRow(nm, t.mobile, due, N.dueNote, t.ref);
-    S.tm = null; S.tmOn = false; bust(); sv2Bust(); S.sheet = sv2Sheet(sv2Find(t.id) || t); render();
+    S.tm = null; S.tmOn = false; bust(); sv2Bust();
+    S.sheet = (S.fin && S.fin.id === t.id) ? sv2FinSheet() : sv2Sheet(sv2Find(t.id) || t);   /* 4.0.3 */
+    render();
     toast(ps.length ? "Saved — " + ps.length + " product" + (ps.length === 1 ? "" : "s") + " on " + (t.ref || "the complaint") + "." : "Saved — no product of ours." + (due > 0 ? " Old pending " + money(due) + " noted." : ""));
   }
   /* the machines form is shared by the new-complaint sheet and the ticket's own sheet */
@@ -3861,17 +3901,62 @@ function ewmBuild(n, pre) {
       '<div class="note warn-t">The customer goes on <b>Payment pending</b>. The owner is told.</div>';
     return h;
   }
+  /* ======= 4.0.3 - THE TECHNICIAN'S SHEET =======
+     His words, 11 Nov 2026: "more simplification needed for servic app as its to be used by
+     technicians". Four things were measured on this sheet and changed:
+
+     1. THE SAME DEAD END HE HIT, STILL ON THE MAN'S OWN SCREEN. svFinSaveEng refuses with
+        "Enter his machines on the complaint first" and "Mark the machine with the problem
+        first", and this sheet showed neither the reason nor a button. 4.0.2 fixed the OFFICE
+        sheet; the technician's was untouched - and he has no office standing next to him.
+        The reason and the button are here now, and after he marks it the app brings him
+        straight back to this sheet with his answers still in it.
+
+     2. A CHIP THAT MOVED MONEY ON ITS OWN. chg = (cv.ok && out !== "Not a fault / misuse")
+        ? 0 : rate. One tap on that chip turned a free warranty visit into a charged one -
+        no confirmation, no reason kept, nobody to ask afterwards why the customer paid.
+        It now says what it will cost the customer and asks, in one line, why.
+
+     3. FIVE CHOICES WHERE THREE DO. "Advice / settings" against "Other" is not a decision a
+        man makes standing in a bathroom. Three chips; the two rare ones - including the one
+        that moves money - sit behind More, where they are chosen on purpose.
+
+     4. TYPING IS THE ENEMY. The note was a free-text box. The four things he actually writes
+        are taps now; the box stays for anything else. */
+  var SV_OUT_FEW = ["Repaired", "Part replaced", "Advice / settings"];
+  var SV_NOTE_TAGS = ["Parts used", "Customer not at home", "Needs another visit", "Customer will call"];
   function svFinSheetEng(F, t, cv) {
     var ins = tkInstall(t), rate = num(tkRateFor(ins ? "Repair" : "Labour job"));
     var misuse = F.out === "Not a fault / misuse", chg = (cv.ok && !misuse) ? 0 : rate;
-    var h = '<h2>Finish &mdash; ' + esc(t.client || t.name || "") + '</h2><div class="muted">' + esc(t.ref || "") + '</div>' +
-      '<label>What did you do?</label><div class="chips">' + SV2_OUT.map(function (o) { return '<button class="chip bchip' + (F.out === o ? ' on' : '') + '" data-act="sv2-fo" data-k="' + esc(o) + '" style="min-height:48px">' + esc(o) + '</button>'; }).join("") + '</div>';
+    var needMark = svNeedsMark(t), noProd = !(t.products || []).length && !t.noProd;
+    var h = '<h2>Finish &mdash; ' + esc(t.client || t.name || "") + '</h2><div class="muted">' + esc(t.ref || "") + '</div>';
+    if (noProd || needMark) {
+      return h + '<div class="note warn-t" style="font-size:15px"><b>' +
+        (noProd ? 'Which machine of his is this?' : 'Which machine went wrong?') + '</b><div style="margin-top:4px">' +
+        (noProd ? 'His machines are not on this job yet. Put them in and the app knows the warranty - and whether he pays.'
+                : (t.products || []).length + ' of his machines are on this job. Tap the one that went wrong and say what is wrong with it. The warranty, and so the money, is read off that machine.') +
+        '</div><div class="acts" style="margin-top:10px"><button class="btn grow" data-act="sv2-tprod"' + (needMark ? ' data-k="mark"' : '') +
+        ' data-id="' + esc(t.id) + '" style="min-height:56px;font-size:17px">' + (noProd ? 'Add his machines' : 'Tap the machine') + '</button></div></div>' +
+        '<div class="acts"><button class="btn gry" data-act="close">Cancel</button></div>';
+    }
+    var few = SV_OUT_FEW.concat(F.outMore || SV2_OUT.indexOf(F.out) > 2 ? SV2_OUT.slice(3) : []);
+    h += '<label>What did you do?</label><div class="chips">' +
+      few.map(function (o) { return '<button class="chip bchip' + (F.out === o ? ' on' : '') + '" data-act="sv2-fo" data-k="' + esc(o) + '" style="min-height:52px;font-size:15px">' + esc(o) + '</button>'; }).join("") +
+      (few.length === SV_OUT_FEW.length ? '<button class="chip bchip" data-act="sv-outmore" style="min-height:52px;font-size:15px">More&hellip;</button>' : '') + '</div>';
     if (!F.out) return h + '<div class="acts"><button class="btn gry" data-act="close">Cancel</button></div>';
+    if (misuse && cv.ok) {
+      h += '<div class="note warn-t" style="border-color:#b91c1c"><b style="color:#b91c1c">This machine is ' + esc(cv.amc ? "under AMC" : "in warranty") + '.</b> ' +
+        'Marking it misuse makes the customer pay ' + esc(money(rate)) + '. Say why, in a few words - the owner reads it.' +
+        '<input id="sv_why2" value="' + esc(F.why2 || "") + '" placeholder="why it is not a warranty fault" autocomplete="off" style="margin-top:8px"/></div>';
+    }
     if (chg > 0) h += '<div class="card" style="padding:12px;text-align:center"><div class="meta">Service charge (fixed by the owner)</div><div style="font-size:26px;font-weight:800">' + esc(money(chg)) + '</div>' + (cv.ok ? '<div class="meta">' + esc(cv.txt) + ', but marked misuse - so it is charged.</div>' : '') + '</div>' + svPayChips(F, chg);
     else if (cv.ok) h += '<div class="card" style="padding:12px;text-align:center;background:#f0fdf4"><div style="font-size:20px;font-weight:800;color:#166534">FREE &mdash; ' + esc(cv.amc ? "under AMC" : "in warranty") + '</div><div class="meta">The customer pays nothing. Do not take any money.</div></div>';
     else h += '<div class="note warn-t">No service charge is set for this kind of job. Finish it; the office will bill if needed.</div>';
-    h += '<label>Note (optional)</label><input id="sv2_fnote" value="' + esc(F.note || "") + '" placeholder="parts used, what the customer said"/>' +
-      '<div class="acts"><button class="btn gry" data-act="close">Cancel</button><button class="btn grow" data-act="sv2-fsave" style="min-height:52px;font-size:16px">Save and finish</button></div>';
+    F.tags = F.tags || {};
+    h += '<label>Anything to add?</label><div class="chips">' +
+      SV_NOTE_TAGS.map(function (g) { return '<button class="chip bchip' + (F.tags[g] ? ' on' : '') + '" data-act="sv-ftag" data-k="' + esc(g) + '" style="min-height:52px;font-size:15px">' + esc(g) + '</button>'; }).join("") + '</div>' +
+      '<input id="sv2_fnote" value="' + esc(F.note || "") + '" placeholder="anything else (you can leave this empty)"/>' +
+      '<div class="acts"><button class="btn gry" data-act="close">Cancel</button><button class="btn grow" data-act="sv2-fsave" style="min-height:56px;font-size:17px">Save and finish</button></div>';
     return h;
   }
   function sv2FinSheet() {
@@ -3916,15 +4001,25 @@ function ewmBuild(n, pre) {
     if (el("sv2_chg")) F.chg = val("sv2_chg");
     if (el("sv2_amt")) F.amt = val("sv2_amt");
     if (el("sv2_fnote")) F.note = val("sv2_fnote");
+    if (el("sv_why2")) F.why2 = val("sv_why2");   /* 4.0.3 */
     if (el("sv2_pamt")) F.pamt = val("sv2_pamt");
   }
   function svFinSaveEng() {
     sv2FinKeep();
     var F = S.fin || {}, t = sv2Find(F.id); if (!t) return;
-    if (!(t.products || []).length && !t.noProd) { toast("Enter his machines on the complaint first (or: no product of ours)."); return; }
-    if (svNeedsMark(t)) { toast("Mark the machine with the problem first."); return; }
+    if (!(t.products || []).length && !t.noProd) { toast("Tap the button at the top and put his machines in first."); return; }
+    if (svNeedsMark(t)) { toast("Tap the button at the top and say which machine went wrong."); return; }
     if (!F.out) { toast("Say what you did."); return; }
     var cv = tkCover(t), ins = tkInstall(t), rate = num(tkRateFor(ins ? "Repair" : "Labour job"));
+    /* 4.0.3 - the chip that moves money gives its reason */
+    if (F.out === "Not a fault / misuse" && cv.ok && String(F.why2 || "").trim().length < 4) {
+      toast("Say why it is not a warranty fault - the customer is being charged " + money(rate) + ".");
+      var _w2 = el("sv_why2"); if (_w2) { try { _w2.scrollIntoView({ block: "center" }); _w2.focus(); } catch (e) { } }
+      return;
+    }
+    var _tagTxt = Object.keys(F.tags || {}).filter(function (k) { return F.tags[k]; }).join(", ");
+    var _note = [_tagTxt, String(F.note || "").trim()].filter(Boolean).join(" - ");
+    if (F.out === "Not a fault / misuse" && cv.ok) _note = ["misuse: " + String(F.why2).trim(), _note].filter(Boolean).join(" - ");
     var chg = (cv.ok && F.out !== "Not a fault / misuse") ? 0 : rate, got = 0, mode = "";
     if (chg > 0) {
       if (!F.got) { toast("Did the customer pay? Pick one."); return; }
@@ -3938,11 +4033,11 @@ function ewmBuild(n, pre) {
       var row = { id: mintId("SV"), createdAt: new Date().toISOString(), createdBy: S.user, installId: ins ? String(ins.id) : "",
         client: ins ? String(ins.client || "") : String(t.client || t.name || ""), area: ins ? String(ins.area || "") : String(t.area || ""),
         date: today(), engineer: S.user, type: ins ? "Repair" : "Labour job", visitCharge: chg, saltBags: 0, saltAmt: 0, partsUsed: "", partsAmt: 0,
-        total: chg, collected: got, balance: chg - got, notes: "Complaint " + (t.ref || "") + ": " + F.out + (F.note ? " - " + F.note : "") + (cv.ok && !chg ? " (" + cv.txt + ")" : "") + (g.lat ? " [gps " + g.lat + "," + g.lng + "]" : ""), updatedAt: new Date().toISOString() };
+        total: chg, collected: got, balance: chg - got, notes: "Complaint " + (t.ref || "") + ": " + F.out + (_note ? " - " + _note : "") + (cv.ok && !chg ? " (" + cv.txt + ")" : "") + (g.lat ? " [gps " + g.lat + "," + g.lng + "]" : ""), updatedAt: new Date().toISOString() };
       saveRow("visits", row); try { applyJournal(); } catch (e) { }
       var tk = tkAll().filter(function (x) { return x.id === t.id; })[0] || t;
       var outW = chg > 0 ? "Service charge" : (cv.ok ? (cv.amc ? "Free under AMC" : "Free under warranty") : "Other");
-      tkMove(tk, { to: "Resolved", outcome: outW, job: F.out, charge: chg, visitId: row.id, eng: S.user, gps: g.lat ? g : undefined, note: F.out + (F.note ? " - " + F.note : "") + (F.got === "no" ? " - not paid: " + F.why : "") });
+      tkMove(tk, { to: "Resolved", outcome: outW, job: F.out, charge: chg, visitId: row.id, eng: S.user, gps: g.lat ? g : undefined, note: F.out + (_note ? " - " + _note : "") + (F.got === "no" ? " - not paid: " + F.why : "") });
       var picUrl = "";
       var finish = function () {
         if (got > 0) tkMove(tk, got + 0.5 >= chg ? { to: "Paid", collected: got, mode: mode, pic: picUrl || undefined, gps: g.lat ? g : undefined } : { to: "", collected: got, mode: mode, pic: picUrl || undefined, gps: g.lat ? g : undefined, note: "part received" });
@@ -6306,6 +6401,14 @@ function ewmBuild(n, pre) {
       svMKeep(); var _NF = svMN(); if (!_NF) return; _NF.picks = _NF.picks || {}; var _fk = t.getAttribute("data-k");
       if (_NF.picks[_fk]) delete _NF.picks[_fk]; else { _NF.picks[_fk] = 1; _NF.notProd = false; }
       svMPaint(); setTimeout(function () { var e = document.querySelector('input.sv-fault[data-k="' + _fk + '"]'); if (e && !e.value) e.focus(); }, 30); return;
+    }
+    if (act === "sv-outmore") { if (S.fin) { sv2FinKeep(); S.fin.outMore = 1; S.sheet = sv2FinSheet(); render(); } return; }   /* 4.0.3 */
+    if (act === "sv-ftag") {   /* 4.0.3 */
+      if (!S.fin) return;
+      sv2FinKeep(); S.fin.tags = S.fin.tags || {};
+      var _tg = t.getAttribute("data-k");
+      if (S.fin.tags[_tg]) delete S.fin.tags[_tg]; else S.fin.tags[_tg] = 1;
+      S.sheet = sv2FinSheet(); render(); return;
     }
     if (act === "sv-notprod") { svMKeep(); var _NP = svMN(); if (_NP) { _NP.notProd = !_NP.notProd; if (_NP.notProd) _NP.picks = {}; } svMPaint(); return; }
     if (act === "sv-items") { svMKeep(); if (S.nc) S.nc.showItems = true; svMPaint(); return; }
