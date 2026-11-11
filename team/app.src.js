@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.962";   /* 6.9.958 (10 Nov 2026) - a statement attached before the name was kept is told apart by its time, not left as four identical lines */     /* 6.9.957 (10 Nov 2026) - each attached old hisab shows its file name, and a wrong one can be set aside */     /* 6.9.956 (10 Nov 2026) - rebuilt: the GitHub Pages publish of 6.9.955 failed (run #1675), so nothing had changed on the phones */   /* 6.9.955 (10 Nov 2026) - the old hisab takes more than one file at once: photographed pages become one PDF, and every statement on file is listed */     /* 6.9.954 (10 Nov 2026) - the Partner Club: fixed slabs, a bonus on crossing one, the trip and device rewards, every partner's rupees to his next slab, and the quiet-partner watch */     /* 6.9.953 (10 Nov 2026) - Service > Control: cash in each engineer's hand, hand-over recorded, three random customer checks a week */     /* 6.9.952 (10 Nov 2026) - to-bill month by month, screens found from Search, team screen use on Health, a receipt for every incentive payout */     /* 6.9.951 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 6.9.950 (9 Nov 2026) - brand introductions: a fuller paragraph, three stage-wise benefits and one next step, on the quote and the proposal */     /* 6.9.949 (9 Nov 2026) - quote PDF: a product picture stays inside its own row (1.2 mm clear of both lines) */     /* 6.9.948 (9 Nov 2026) - quote PDF: each room heading carries its collection and finish with colour dots; every FIMA code chip has its finish dot */     /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
+  var APP_VERSION = "6.9.963";   /* 6.9.958 (10 Nov 2026) - a statement attached before the name was kept is told apart by its time, not left as four identical lines */     /* 6.9.957 (10 Nov 2026) - each attached old hisab shows its file name, and a wrong one can be set aside */     /* 6.9.956 (10 Nov 2026) - rebuilt: the GitHub Pages publish of 6.9.955 failed (run #1675), so nothing had changed on the phones */   /* 6.9.955 (10 Nov 2026) - the old hisab takes more than one file at once: photographed pages become one PDF, and every statement on file is listed */     /* 6.9.954 (10 Nov 2026) - the Partner Club: fixed slabs, a bonus on crossing one, the trip and device rewards, every partner's rupees to his next slab, and the quiet-partner watch */     /* 6.9.953 (10 Nov 2026) - Service > Control: cash in each engineer's hand, hand-over recorded, three random customer checks a week */     /* 6.9.952 (10 Nov 2026) - to-bill month by month, screens found from Search, team screen use on Health, a receipt for every incentive payout */     /* 6.9.951 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 6.9.950 (9 Nov 2026) - brand introductions: a fuller paragraph, three stage-wise benefits and one next step, on the quote and the proposal */     /* 6.9.949 (9 Nov 2026) - quote PDF: a product picture stays inside its own row (1.2 mm clear of both lines) */     /* 6.9.948 (9 Nov 2026) - quote PDF: each room heading carries its collection and finish with colour dots; every FIMA code chip has its finish dot */     /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -53489,6 +53489,37 @@ function viewCatalogue() {
     };
     keepScroll = true; renderBg(); next();
   }
+  /* the duplicate card - drawn at the top of Tally, above everything else, because a bill
+     counted twice is money and stock that never existed */
+  function tlDupCard() {
+    var d = [];
+    try { d = billDupes(); } catch (e) { d = []; }
+    if (!d.length) return "";
+    return '<div class="card" style="border:1px solid #fbbf24;background:#fffbeb">' +
+      '<div style="font-weight:700;font-size:14px;color:#92400e">&#9888; ' + d.length +
+        (d.length === 1 ? ' possible duplicate bill' : ' possible duplicate bills') + '</div>' +
+      '<div class="muted" style="color:#92400e;font-size:12.5px;margin:3px 0 8px">Same day, same amount to the rupee. Check each one before its goods are counted into stock twice.</div>' +
+      '<div style="overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:13px"><tbody>' +
+      d.slice(0, 40).map(function (g) {
+        return '<tr style="border-top:1px solid #fde68a">' +
+          '<td style="padding:6px 8px;white-space:nowrap"><b>' + esc(fullDate(g.date) || g.date) + '</b><div style="font-size:12px;color:#92400e">' + esc(money(g.amount)) + '</div></td>' +
+          '<td style="padding:6px 8px">' +
+            (g.reUp
+              ? 'Uploaded <b>' + g.reUp + ' times</b>: ' + esc(g.rows[0].supplier) + ' &middot; ' + esc(g.rows[0].billNo) +
+                '<div style="font-size:12px;color:#64748b">The last upload wins and the goods are counted once &mdash; but check the uploads were the same bill.</div>'
+              : g.rows.map(function (r) {
+                  return esc(r.supplier) + ' &middot; <b>' + esc(r.billNo) + '</b>' +
+                    '<span style="font-size:12px;color:#64748b">' + (r.inStock ? ' &mdash; in stock' : r.onReg ? ' &mdash; on the register only' : '') + '</span>';
+                }).join('<br/>')) +
+          '</td>' +
+          '<td style="padding:6px 8px;text-align:right;white-space:nowrap;font-size:12px;color:' + (g.sameSupplier ? '#b91c1c' : '#92400e') + ';font-weight:700">' +
+            (g.reUp ? 'uploaded again' : g.sameSupplier ? 'SAME SUPPLIER' : 'different suppliers') +
+            (g.inStock > 1 ? '<div style="color:#b91c1c">BOTH IN STOCK</div>' : '') +
+          '</td></tr>';
+      }).join("") + '</tbody></table></div>' +
+      (d.length > 40 ? '<div class="muted" style="color:#92400e;font-size:12px;margin-top:6px">' + (d.length - 40) + ' more &mdash; the Excel carries them all.</div>' : '') +
+      '</div>';
+  }
   function viewTally() {
     ensureStock();
     var h = '<div class="card"><div class="acts" style="align-items:center;margin:0;flex-wrap:wrap;gap:6px"><h2 class="grow" style="margin:0">Tally</h2>' +
@@ -53496,6 +53527,7 @@ function viewCatalogue() {
       '<button class="btn sm ghost" data-act="tl-xlsx">&#8681; Excel</button>' +
       '<button class="btn sm ghost" data-act="stock-refresh">Refresh</button></div>' +
       '<div class="meta" style="font-size:12.5px;margin-top:4px">Each month upload <b>GSTR-2B</b> from the GST portal (every bill your suppliers filed against your GSTIN &mdash; ready on the 14th) or the Tally <b>Purchase Register</b>; they say which bills there are. Then upload <b>each bill</b> (Excel or PDF from Tally) &mdash; a bill uploaded puts its goods into stock, and its item codes are matched to Tally&rsquo;s.</div></div>';
+    h += tlDupCard();   /* 6.9.963 - the same bill twice, at the top where it cannot be missed */
     if (!STOCK_LOADED && !(S.stock && S.stock.length)) return h + '<div class="empty">Loading the Tally uploads&hellip;</div>';
     var D = tlData(), adm = roleIs("admin");
     var sum = function (L) { return L.reduce(function (a, b) { return a + (Number(b.value) || 0); }, 0); };
@@ -60911,6 +60943,95 @@ function viewCatalogue() {
     });
     return _xlsxP;
   }
+  /* ===== 6.9.963 - THE SAME BILL TWICE =====
+     HIS WORDS, 11 Nov 2026: "make a system to cross check any duplicate bill, if any bill with
+     same date and same amount, flag it as duplicate if any, a proper system be made."
+
+     WHAT WAS THERE BEFORE: the only duplicate test in the whole chain was the bill NUMBER -
+     stkBillKey(), "supplier / bill no". That catches the same bill uploaded twice under the same
+     number and nothing else. It does NOT catch:
+       - the same bill typed once from Tally and once from the emailed PDF, one digit apart
+       - a supplier who re-issues the same invoice under a new number
+       - the same bill entered against two spellings of the supplier's name
+     In every one of those the goods go into stock twice and the cost of a sale is read from a
+     bill that does not exist. Nothing in the app said a word.
+
+     THE RULE IS HIS: group every purchase bill we know of by the DAY and the AMOUNT TO THE RUPEE,
+     and show any day-and-amount that carries more than one bill.
+
+     Two honest limits, both shown on screen rather than hidden:
+       - the same supplier on the same day for the same rupee is near-certain; a different
+         supplier is rarer but it is still shown, labelled, because only he can tell.
+       - a bill the register carries AND that is in stock is ONE bill, not two - they are matched
+         on their key first, so that can never raise a false flag.
+     Nothing is blocked, nothing is deleted. The flag is a question put to him, not an action. */
+  function billDupes() {
+    /* FIRST, ONE BILL MUST BE ONE ENTRY.
+       Measured on the live book before this was switched on: the first draft keyed on
+       stkBillKey alone and flagged four "duplicates" that were nothing of the kind -
+       "HULIOT PIPES & FITTINGS PRIVATE LIMITED / HPF/26-27/14221" on the register and
+       "Huliot Pipes & Fittings Private Limited / 14221" in stock. One bill, two spellings,
+       because the portal writes the whole invoice number and Tally writes its tail. Four out
+       of four flags were false, which would have taught him to ignore the card in a week.
+       So the register and the stock are matched with the app's OWN loose matcher,
+       stkBkFind / stkNoSame / stkSupNorm - the same one the Tally screen already uses - and
+       never with a second rule of this card's own. */
+    var list = [], ix = null;
+    try { ix = stkBkIdx(); } catch (e) { ix = null; }
+    stkRegister().forEach(function (b) {
+      list.push({ key: b.key, date: String(b.date || "").slice(0, 10), amount: Math.round(Number(b.amount) || 0),
+        supplier: String(b.supplier || ""), billNo: String(b.billNo || ""), onReg: 1, inStock: 0, ups: 0 });
+    });
+    var find = function (sup, no) {
+      for (var i = 0; i < list.length; i++) {
+        var x = list[i];
+        if (stkNoSame({ no: stkNoNorm(x.billNo), tail: stkNoTail(x.billNo) }, { no: stkNoNorm(no), tail: stkNoTail(no) })) {
+          var a = stkSupNorm(x.supplier), b2 = stkSupNorm(sup);
+          if (!a || !b2 || a === b2) return x;
+        }
+      }
+      return null;
+    };
+    tlBills().forEach(function (b) {
+      var o = find(b.supplier, b.billNo);
+      if (o) {
+        o.inStock = 1; o.ups = Number(b.n) || 1;
+        if (!o.amount) o.amount = Math.round(Number(b.value) || 0);
+        if (!o.date) o.date = String(b.date || "").slice(0, 10);
+        return;
+      }
+      list.push({ key: b.key, date: String(b.date || "").slice(0, 10), amount: Math.round(Number(b.value) || 0),
+        supplier: String(b.supplier || ""), billNo: String(b.billNo || ""), onReg: 0, inStock: 1, ups: Number(b.n) || 1 });
+    });
+    var by = {};
+    list.forEach(function (o, i) { by["i" + i] = o; });
+
+    var grp = {};
+    Object.keys(by).forEach(function (k) {
+      var o = by[k];
+      if (!o.date || !o.amount) return;          /* no day or no rupee: nothing to compare */
+      var g = o.date + "|" + o.amount;
+      (grp[g] = grp[g] || []).push(o);
+    });
+
+    var out = [];
+    Object.keys(grp).forEach(function (g) {
+      var rows = grp[g];
+      if (rows.length < 2) return;
+      var sup = {}; rows.forEach(function (r) { sup[stkSupNorm(r.supplier) || String(r.supplier || "").toLowerCase()] = 1; });
+      rows.sort(function (a, b) { return String(a.supplier).localeCompare(String(b.supplier)); });
+      out.push({ date: rows[0].date, amount: rows[0].amount, rows: rows,
+        sameSupplier: Object.keys(sup).length === 1,
+        inStock: rows.filter(function (r) { return r.inStock; }).length });
+    });
+    /* a bill whose own key was uploaded more than once is a duplicate on its own */
+    Object.keys(by).forEach(function (k) {
+      var o = by[k];
+      if ((o.ups || 0) > 1) out.push({ date: o.date, amount: o.amount, rows: [o], sameSupplier: true, inStock: o.inStock, reUp: o.ups });
+    });
+    return out.sort(function (a, b) { return String(b.date).localeCompare(String(a.date)); });
+  }
+
   function stkBillKey(supplier, billNo) { return String(supplier || "").trim() + " / " + String(billNo || "").trim(); }
   /* part number -> catalogue code: the catalogue's own codes, Tally's spelling of them, and every
      part number accounts has matched by hand once ("alias" rows: code = product, ref = the part no) */
