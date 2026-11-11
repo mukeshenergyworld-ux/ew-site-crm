@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.960";   /* 6.9.958 (10 Nov 2026) - a statement attached before the name was kept is told apart by its time, not left as four identical lines */     /* 6.9.957 (10 Nov 2026) - each attached old hisab shows its file name, and a wrong one can be set aside */     /* 6.9.956 (10 Nov 2026) - rebuilt: the GitHub Pages publish of 6.9.955 failed (run #1675), so nothing had changed on the phones */   /* 6.9.955 (10 Nov 2026) - the old hisab takes more than one file at once: photographed pages become one PDF, and every statement on file is listed */     /* 6.9.954 (10 Nov 2026) - the Partner Club: fixed slabs, a bonus on crossing one, the trip and device rewards, every partner's rupees to his next slab, and the quiet-partner watch */     /* 6.9.953 (10 Nov 2026) - Service > Control: cash in each engineer's hand, hand-over recorded, three random customer checks a week */     /* 6.9.952 (10 Nov 2026) - to-bill month by month, screens found from Search, team screen use on Health, a receipt for every incentive payout */     /* 6.9.951 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 6.9.950 (9 Nov 2026) - brand introductions: a fuller paragraph, three stage-wise benefits and one next step, on the quote and the proposal */     /* 6.9.949 (9 Nov 2026) - quote PDF: a product picture stays inside its own row (1.2 mm clear of both lines) */     /* 6.9.948 (9 Nov 2026) - quote PDF: each room heading carries its collection and finish with colour dots; every FIMA code chip has its finish dot */     /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
+  var APP_VERSION = "6.9.962";   /* 6.9.958 (10 Nov 2026) - a statement attached before the name was kept is told apart by its time, not left as four identical lines */     /* 6.9.957 (10 Nov 2026) - each attached old hisab shows its file name, and a wrong one can be set aside */     /* 6.9.956 (10 Nov 2026) - rebuilt: the GitHub Pages publish of 6.9.955 failed (run #1675), so nothing had changed on the phones */   /* 6.9.955 (10 Nov 2026) - the old hisab takes more than one file at once: photographed pages become one PDF, and every statement on file is listed */     /* 6.9.954 (10 Nov 2026) - the Partner Club: fixed slabs, a bonus on crossing one, the trip and device rewards, every partner's rupees to his next slab, and the quiet-partner watch */     /* 6.9.953 (10 Nov 2026) - Service > Control: cash in each engineer's hand, hand-over recorded, three random customer checks a week */     /* 6.9.952 (10 Nov 2026) - to-bill month by month, screens found from Search, team screen use on Health, a receipt for every incentive payout */     /* 6.9.951 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 6.9.950 (9 Nov 2026) - brand introductions: a fuller paragraph, three stage-wise benefits and one next step, on the quote and the proposal */     /* 6.9.949 (9 Nov 2026) - quote PDF: a product picture stays inside its own row (1.2 mm clear of both lines) */     /* 6.9.948 (9 Nov 2026) - quote PDF: each room heading carries its collection and finish with colour dots; every FIMA code chip has its finish dot */     /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -24037,14 +24037,19 @@ function viewCatalogue() {
   function qxSpecAnnex(doc, F, items, L, Rt, C) {
     var col = function (c) { doc.setTextColor(c[0], c[1], c[2]); };
     var fill = function (c) { doc.setFillColor(c[0], c[1], c[2]); };
+    /* 6.9.961 - a colour per brand, so a plumber finds the brand he wants without reading.
+       Deep enough to hold white type on the band, and mixed with white for the panels. */
+    var BRANDC = [[11, 59, 54], [30, 58, 95], [91, 33, 82], [120, 53, 15], [22, 78, 45], [71, 45, 120]];
+    var tint = function (c, k) {
+      return [Math.round(255 - (255 - c[0]) * k), Math.round(255 - (255 - c[1]) * k), Math.round(255 - (255 - c[2]) * k)];
+    };
 
     /* one block per DISTINCT code, in the order the quote lists them */
-    var seen = {}, blocks = [];
+    var seen = {}, all = [];
     (items || []).forEach(function (i) {
       var code = String((i && i.code) || "").trim();
       if (!code || seen[code]) return;
       seen[code] = 1;
-      /* the line carries its own snapshot; an older quote may not, so fall back to the catalogue */
       var raw = String((i && i.specs) || "");
       if (!raw) { try { var p = prodByCode(code); raw = String((p && p.specs) || ""); } catch (e) { raw = ""; } }
       if (!raw) return;
@@ -24053,74 +24058,163 @@ function viewCatalogue() {
       if (!sp.length) return;
       var nm = "";
       try { nm = pdfSafe(descLines(i.desc).title || code); } catch (e) { nm = code; }
-      blocks.push({ code: code, name: nm, brand: pdfSafe(String((i && i.brand) || "")), sp: sp });
-    });
-    if (!blocks.length) return;
-
-    var LH = 3.6, PADX = 4, LBLW = 34, HEADH = 6.2;
-    var VALW = Rt - L - PADX * 2 - LBLW - 2;
-
-    /* measure first, so a block is never split across a page break mid-way */
-    blocks.forEach(function (b) {
-      F("normal"); doc.setFontSize(7.6);
-      b.rows = b.sp.map(function (x) {
-        return { l: pdfSafe(String(x.label || "")), v: doc.splitTextToSize(pdfSafe(String(x.value || "")), VALW) };
+      var map = {}, order = [];
+      sp.forEach(function (x) {
+        var l = pdfSafe(String(x.label || "").trim());
+        var v = pdfSafe(String(x.value || ""));
+        /* a part with no label before the colon is a continuation of the field above it -
+           "Approved for drinking water" after Standards, say. It joins that value instead of
+           becoming a nameless column of its own. */
+        if (!l) {
+          if (order.length) { map[order[order.length - 1]] += "; " + v; return; }
+          l = "Note";
+        }
+        if (map[l] === undefined) { map[l] = v; order.push(l); }
       });
-      b.h = HEADH + b.rows.reduce(function (a, r) { return a + r.v.length * LH; }, 0) + 3.4;
+      all.push({ code: code, name: nm, brand: pdfSafe(String((i && i.brand) || "") || "Other"),
+                 map: map, order: order });
     });
+    if (!all.length) return;
+
+    /* group by brand - within one brand nearly every field is the same word for word */
+    var bn = [], bg = {};
+    all.forEach(function (b) { if (!bg[b.brand]) { bg[b.brand] = []; bn.push(b.brand); } bg[b.brand].push(b); });
 
     doc.addPage();
     var y = 20;
-    var title = function () {
-      col(C.DEEP); F("bold"); doc.setFontSize(13);
+    var FS = 6.4, LH = 2.9, PAD = 2.4;
+    var head = function () {
+      col(C.DEEP); F("bold"); doc.setFontSize(12.5);
       doc.text("TECHNICAL SPECIFICATIONS", L, y);
-      col(C.GREY); F("normal"); doc.setFontSize(8);
-      doc.text("Manufacturer's published data for every product quoted.", L, y + 5);
-      doc.setDrawColor(C.TEAL[0], C.TEAL[1], C.TEAL[2]); doc.setLineWidth(0.5);
-      doc.line(L, y + 7.6, Rt, y + 7.6); doc.setLineWidth(0.2);
-      y += 13;
+      col(C.GREY); F("normal"); doc.setFontSize(7);
+      doc.text("Manufacturer's published data. What every item in a brand shares is stated once; the table lists what differs.", L, y + 4.2);
+      fill(C.TEAL); doc.rect(L, y + 6.2, Rt - L, 0.7, "F");
+      y += 11;
     };
-    title();
+    head();
+    var room = function (h) { if (y + h > 276) { doc.addPage(); y = 20; head(); return true; } return false; };
 
-    /* the header strip: the code as a chip, then the name, then the brand on the right */
-    var head = function (b, cont) {
-      fill([240, 253, 250]); doc.roundedRect(L, y - 3.6, Rt - L, HEADH - 0.6, 1.2, 1.2, "F");
-      F("bold"); doc.setFontSize(7.6);
-      var cw = doc.getTextWidth(b.code) + 3;
-      fill(C.TEAL); doc.roundedRect(L + 1.4, y - 3.1, cw, 4.4, 0.8, 0.8, "F");
-      col([255, 255, 255]); doc.text(b.code, L + 2.9, y);
-      col(C.INK); F("bold"); doc.setFontSize(8.4);
-      var nm = b.name + (cont ? "  (continued)" : "");
-      var nmW = Rt - (L + 2.4 + cw + 2.4) - (b.brand ? 24 : 2);
-      doc.text(fitCell(doc, F, nm, nmW, 1, "bold", 8.4)[0] || nm, L + 2.4 + cw + 2.4, y);
-      if (b.brand) {
-        col(C.GREY); F("normal"); doc.setFontSize(6.8);
-        doc.text(b.brand.toUpperCase(), Rt - 1.6, y - 0.4, { align: "right" });
+    /* lay label/value pairs into two columns, returns the height it will take */
+    var BC = BRANDC[0];
+    var pairBox = function (pairs, b, draw) {
+      var CW = (Rt - L - 5) / 2, LW = 21, VW = CW - LW - 2;
+      F("normal"); doc.setFontSize(FS);
+      var cells = pairs.map(function (p) {
+        return { l: p[0], v: doc.splitTextToSize(p[1], VW) };
+      });
+      /* balance the two columns by height, keeping reading order down then across */
+      var tot = cells.reduce(function (a, c) { return a + c.v.length; }, 0);
+      var half = Math.ceil(tot / 2), run = 0, cut = cells.length;
+      for (var k = 0; k < cells.length; k++) { run += cells[k].v.length; if (run >= half) { cut = k + 1; break; } }
+      var cols = [cells.slice(0, cut), cells.slice(cut)];
+      var hs = cols.map(function (cc) { return cc.reduce(function (a, c) { return a + c.v.length * LH; }, 0); });
+      var h = Math.max(hs[0], hs[1]) + PAD * 2;
+      if (draw) {
+        fill(tint(BC, 0.07)); doc.roundedRect(L, y, Rt - L, h, 1.4, 1.4, "F");
+        fill(BC); doc.rect(L, y, 1.3, h, "F");
+        cols.forEach(function (cc, ci) {
+          var cx = L + 4 + ci * (CW + 1), cy = y + PAD + 2;
+          cc.forEach(function (c) {
+            col([120, 140, 150]); F("normal"); doc.setFontSize(FS);
+            doc.text(fitCell(doc, F, c.l, LW - 1, 1, "normal", FS)[0] || c.l, cx, cy);
+            col(C.INK);
+            c.v.forEach(function (vl, z) { doc.text(vl, cx + LW, cy + z * LH); });
+            cy += c.v.length * LH;
+          });
+        });
       }
-      y += HEADH - 1.2;
+      return h;
     };
 
-    blocks.forEach(function (b) {
-      /* Keep a product whole when it fits. A long one is allowed to run over rather than
-         leave 60 mm of white paper behind it - his own rule for the challan: the blank half
-         gets reused. The overflow carries the code and "(continued)" so nobody reads two
-         halves as two products. */
-      if (y + b.h > 272 && y + HEADH + 6 * LH > 272) { doc.addPage(); y = 20; title(); }
-      head(b, false);
+    bn.forEach(function (brand, bi) {
+      var g = bg[brand];
+      BC = BRANDC[bi % BRANDC.length];
 
-      b.rows.forEach(function (r) {
-        var rh = r.v.length * LH;
-        if (y + rh > 272) { doc.addPage(); y = 20; title(); head(b, true); }
-        col(C.GREY); F("normal"); doc.setFontSize(7.6);
-        if (r.l) doc.text(fitCell(doc, F, r.l, LBLW - 2, 1, "normal", 7.6)[0] || r.l, L + PADX, y);
-        col(C.INK);
-        r.v.forEach(function (vl, k) { doc.text(vl, L + PADX + LBLW, y + k * LH); });
-        y += rh;
+      /* a field every item in this brand carries with the SAME value is said once */
+      var common = [], vary = [];
+      var seenL = [];
+      g.forEach(function (b) { b.order.forEach(function (l) { if (seenL.indexOf(l) < 0) seenL.push(l); }); });
+      seenL.forEach(function (l) {
+        var v0 = g[0].map[l], same = true;
+        for (var k = 0; k < g.length; k++) { if (g[k].map[l] !== v0) { same = false; break; } }
+        if (same && v0 !== undefined && g.length > 1) common.push([l, v0]); else vary.push(l);
       });
 
-      doc.setDrawColor(226, 232, 240); doc.setLineWidth(0.15);
-      doc.line(L, y + 0.6, Rt, y + 0.6); doc.setLineWidth(0.2);
-      y += 3.4;
+      /* the brand band - a one-item brand is measured whole so its band never strands
+         at the foot of a page with its data overleaf */
+      var need = 18;
+      if (g.length === 1) { need = 7.6 + 3.6 + pairBox(g[0].order.map(function (l) { return [l, g[0].map[l]]; }), null, false) + 4; }
+      F("bold"); doc.setFontSize(8);
+      room(Math.min(need, 150));
+      fill(BC); doc.roundedRect(L, y, Rt - L, 6.4, 1.4, 1.4, "F");
+      col([255, 255, 255]); doc.text(brand.toUpperCase(), L + 3, y + 4.3);
+      F("normal"); doc.setFontSize(6.2); col(tint(BC, 0.42));
+      doc.text(g.length + (g.length === 1 ? " item" : " items"), Rt - 3, y + 4.2, { align: "right" });
+      y += 7.6;
+
+      /* one item: there is nothing to tabulate, so print its pairs in the two-column box */
+      if (g.length === 1) {
+        var one = g[0];
+        col(C.INK); F("bold"); doc.setFontSize(7.4);
+        room(10); doc.text(one.code + "   " + one.name, L + 1, y + 1.4); y += 3.6;
+        var ps = one.order.map(function (l) { return [l, one.map[l]]; });
+        var hh = pairBox(ps, one, false);
+        if (room(hh)) { }
+        pairBox(ps, one, true);
+        y += hh + 4;
+        return;
+      }
+
+      if (common.length) {
+        col([120, 140, 150]); F("bold"); doc.setFontSize(5.8);
+        room(6); doc.text("COMMON TO ALL " + g.length + " ITEMS", L + 1, y + 1.2); y += 2.6;
+        var h2 = pairBox(common, null, false);
+        if (room(h2)) { }
+        pairBox(common, null, true);
+        y += h2 + 3.2;
+      }
+
+      /* the table: code, name, then the fields that differ */
+      var cols2 = vary.slice(0, 5);
+      var W = Rt - L, CODEW = 23, NAMEW = Math.max(42, W * 0.3);
+      var rest = W - CODEW - NAMEW, each = cols2.length ? rest / cols2.length : 0;
+
+      var drawHead = function () {
+        fill(tint(BC, 0.16)); doc.rect(L, y, W, 4.6, "F");
+        col(BC); F("bold"); doc.setFontSize(5.8);
+        doc.text("CODE", L + 1.6, y + 3.1);
+        doc.text("PRODUCT", L + CODEW + 1.6, y + 3.1);
+        cols2.forEach(function (l, k) {
+          doc.text(fitCell(doc, F, l.toUpperCase(), each - 2, 1, "bold", 5.8)[0] || l,
+                   L + CODEW + NAMEW + k * each + 1.6, y + 3.1);
+        });
+        y += 4.6;
+      };
+      room(12); drawHead();
+
+      g.forEach(function (b, ri) {
+        F("normal"); doc.setFontSize(FS);
+        var cells = cols2.map(function (l) {
+          return doc.splitTextToSize(b.map[l] === undefined ? "-" : b.map[l], each - 2.4);
+        });
+        var nmL = doc.splitTextToSize(b.name, NAMEW - 3);
+        var lines = Math.max(1, nmL.length, cells.reduce(function (a, c) { return Math.max(a, c.length); }, 1));
+        var rh = lines * LH + 1.8;
+        if (y + rh > 276) { doc.addPage(); y = 20; head(); drawHead(); }
+        if (ri % 2) { fill(tint(BC, 0.045)); doc.rect(L, y, W, rh, "F"); }
+        col(BC); F("bold"); doc.setFontSize(5.8);
+        doc.text(fitCell(doc, F, b.code, CODEW - 2.4, 1, "bold", 5.8)[0] || b.code, L + 1.6, y + 3);
+        col(C.INK); F("normal"); doc.setFontSize(FS);
+        nmL.forEach(function (nl, z) { doc.text(nl, L + CODEW + 1.6, y + 3 + z * LH); });
+        col([51, 65, 85]);
+        cells.forEach(function (cc, k) {
+          cc.forEach(function (cl, z) { doc.text(cl, L + CODEW + NAMEW + k * each + 1.6, y + 3 + z * LH); });
+        });
+        doc.setDrawColor(226, 232, 240); doc.setLineWidth(0.1);
+        doc.line(L, y + rh, Rt, y + rh); doc.setLineWidth(0.2);
+        y += rh;
+      });
+      y += 4.5;
     });
   }
 
@@ -56791,7 +56885,10 @@ function viewCatalogue() {
       '<div><label>Why (optional)</label><input id="m_discnote" placeholder="bargained on site" value="' + esc((z && z.discnote) || "") + '"' + (canSetPricing() ? '' : ' readonly') + '/></div>' +
       '</div>' +
       '<div class="grid2" style="margin-top:6px">' +
-      '<div>' + strictDriverField("m_driver", (z && z.driver) || "") + '</div>' +
+      /* 6.9.962 - a fare makes the driver required, and the label says so before Create is pressed */
+      '<div>' + strictDriverField("m_driver", (z && z.driver) || "",
+        (nAmt((z && z.freight) || 0) > 0 && !String((z && z.driver) || "").trim())
+          ? "Driver \u2014 required, there is a fare on this challan" : "Driver") + '</div>' +
       /* v6.9.251 - his number comes off his own record the moment he is picked. It stays
          editable, because a man does answer a different phone, but it is never the thing
          somebody has to remember and type. */
@@ -71463,6 +71560,21 @@ function viewCatalogue() {
         var restoreFr = keepFields(CH_FIELDS);
         keepScroll = true;
         S.modal = modalChallan(); render(); restoreFr();
+        return;
+      }
+      /* 6.9.962 - A FARE WITH NOBODY TO PAY IT. Same rule as the Challan app's 1.155.0, put in
+         both because a challan can be raised from either. Measured 11 Nov 2026: of 314 challans
+         carrying freight, 171 named no driver - but by month that is a field that came into use
+         in September (July 39/0, August 50/0, September 106/30, October 95/90, November 24/23),
+         not a backlog. Six have slipped through since 1 October, and each is driver freight that
+         cannot be totalled or paid. Nothing has been written at this point, so stopping here
+         costs nothing. */
+      if (nAmt(val("m_freight")) > 0 && !String(val("m_driver") || "").trim()) {
+        toast("Freight is " + money(nAmt(val("m_freight"))) + " \u2014 pick the driver it is paid to.");
+        var restoreDv = keepFields(CH_FIELDS);
+        keepScroll = true;
+        S.modal = modalChallan(); render(); restoreDv();
+        setTimeout(function () { var _d = el("m_driver"); if (_d) { try { _d.scrollIntoView({ block: "center" }); _d.focus(); } catch (e) { } } }, 0);
         return;
       }
       var cObj = clientByName(cn) || {};
