@@ -460,7 +460,7 @@ function ewmBuild(n, pre) {
    Nothing here deletes anything, ever. A visit is a row added.
    ========================================================================== */
 
-  var APP_VERSION = "4.0.1";   /* 4.0.1 (10 Nov 2026) - the company UPI QR (the same code as on every quote PDF) with the UPI id in words */     /* 4.0.0 (10 Nov 2026) - the engineer's three screens: Jobs, Install, My money. Start / Finish with GPS; UPI to the company QR first, cash only with a photo; the owner told on Telegram at once; a WhatsApp receipt for the customer; cash in hand to hand over */     /* 3.4.0 (31 Oct 2026) - one tap, one entry */
+  var APP_VERSION = "4.0.2";   /* 4.0.2 (11 Nov 2026) - Finish said "mark the product with the problem first" with nothing to press: the reason and the button are on the sheet now */   /* 4.0.1 (10 Nov 2026) - the company UPI QR (the same code as on every quote PDF) with the UPI id in words */     /* 4.0.0 (10 Nov 2026) - the engineer's three screens: Jobs, Install, My money. Start / Finish with GPS; UPI to the company QR first, cash only with a photo; the owner told on Telegram at once; a WhatsApp receipt for the customer; cash in hand to hand over */     /* 3.4.0 (31 Oct 2026) - one tap, one entry */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -3878,7 +3878,25 @@ function ewmBuild(n, pre) {
     var F = S.fin || {}, t = sv2Find(F.id); if (!t) return '<h2>Not found</h2><div class="acts"><button class="btn gry" data-act="close">Close</button></div>';
     var cv = tkCover(t);
     if (svEng()) return svFinSheetEng(F, t, cv);   /* 4.0.0 */
+    /* ======= 4.0.2 - A BLOCK WITH NO WAY PAST IT =======
+       REPORTED 11 Nov 2026, on EWC-111026-003: he filled the whole Finish form - Repaired,
+       1300, received by UPI, "heating element" - pressed Finish, and got "Mark the product
+       with the problem first." with nothing on the sheet to press. The complaint carries more
+       than one product of his, and until one is marked faulty the app cannot tell which
+       warranty applies, so sv2FinSave refuses. The step is real; it just lives on ANOTHER
+       sheet (the Mark it button on the complaints table), which the Finish sheet never said.
+
+       A rule that stops a man must show him the way through it. The reason and the button are
+       now at the top of the Finish sheet itself, before he fills anything in. */
+    var _needMark = svNeedsMark(t), _noProd = !(t.products || []).length && !t.noProd;
     var h = '<h2>Finish &mdash; ' + esc(t.client || t.name || "") + '</h2><div class="muted">' + esc(t.ref || "") + ' &middot; ' + esc(cv.txt) + '</div>' +
+      (_noProd
+        ? '<div class="note warn-t"><b>His products are not on this complaint yet.</b> Put them in first &mdash; the warranty, and so the charge, is read off them.' +
+          '<div class="acts" style="margin-top:8px"><button class="btn" data-act="sv2-tprod" data-id="' + esc(t.id) + '">Add his products</button></div></div>'
+        : _needMark
+        ? '<div class="note warn-t"><b>' + (t.products || []).length + ' of his products are on this complaint.</b> Mark the one that went wrong, and say what is wrong with it &mdash; the warranty, and so the charge, is read off that product.' +
+          '<div class="acts" style="margin-top:8px"><button class="btn" data-act="sv2-tprod" data-k="mark" data-id="' + esc(t.id) + '">Mark the faulty product</button></div></div>'
+        : '') +
       '<label>What was done</label><div class="chips">' + SV2_OUT.map(function (o) { return '<button class="chip bchip' + (F.out === o ? ' on' : '') + '" data-act="sv2-fo" data-k="' + esc(o) + '">' + esc(o) + '</button>'; }).join("") + '</div>' +
       '<label>Service charge (&#8377;)</label><input id="sv2_chg" inputmode="numeric" value="' + esc(F.chg == null ? "" : F.chg) + '" placeholder="' + (cv.ok ? 'Nothing - ' + esc(cv.amc ? 'under AMC' : 'in warranty') : '0') + '"' + (!cv.ok && !roleAny(["admin"]) && F.chg ? ' readonly style="background:#f1f5f9"' : '') + '/>' +   /* 2.2.0 - the owner's rate */
       (cv.ok ? '<div class="meta">' + esc(cv.txt) + ' &mdash; no charge, unless it was misuse.</div>' : '') +
@@ -3948,7 +3966,10 @@ function ewmBuild(n, pre) {
     sv2FinKeep();
     var F = S.fin || {}, t = sv2Find(F.id); if (!t) return;
     if (!(t.products || []).length && !t.noProd) { toast("Enter his installed products on the complaint first (or: no product of ours)."); return; }   /* 2.4.0 */
-    if (svNeedsMark(t)) { toast("Mark the product with the problem first."); return; }   /* 2.5.0 */
+    if (svNeedsMark(t)) {   /* 2.5.0; 4.0.2 - and say where the button is */
+      toast("Mark the product with the problem first - the button is at the top of this sheet.");
+      return;
+    }
     if (!F.out) { toast("Say what was done."); return; }
     if (!F.got) { toast("Was the service charge received? Pick Yes, No or No charge."); return; }
     var chg = F.got === "free" ? 0 : num(F.chg);
