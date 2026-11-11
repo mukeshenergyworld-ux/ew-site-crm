@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.958";   /* 6.9.958 (10 Nov 2026) - a statement attached before the name was kept is told apart by its time, not left as four identical lines */     /* 6.9.957 (10 Nov 2026) - each attached old hisab shows its file name, and a wrong one can be set aside */     /* 6.9.956 (10 Nov 2026) - rebuilt: the GitHub Pages publish of 6.9.955 failed (run #1675), so nothing had changed on the phones */   /* 6.9.955 (10 Nov 2026) - the old hisab takes more than one file at once: photographed pages become one PDF, and every statement on file is listed */     /* 6.9.954 (10 Nov 2026) - the Partner Club: fixed slabs, a bonus on crossing one, the trip and device rewards, every partner's rupees to his next slab, and the quiet-partner watch */     /* 6.9.953 (10 Nov 2026) - Service > Control: cash in each engineer's hand, hand-over recorded, three random customer checks a week */     /* 6.9.952 (10 Nov 2026) - to-bill month by month, screens found from Search, team screen use on Health, a receipt for every incentive payout */     /* 6.9.951 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 6.9.950 (9 Nov 2026) - brand introductions: a fuller paragraph, three stage-wise benefits and one next step, on the quote and the proposal */     /* 6.9.949 (9 Nov 2026) - quote PDF: a product picture stays inside its own row (1.2 mm clear of both lines) */     /* 6.9.948 (9 Nov 2026) - quote PDF: each room heading carries its collection and finish with colour dots; every FIMA code chip has its finish dot */     /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
+  var APP_VERSION = "6.9.960";   /* 6.9.958 (10 Nov 2026) - a statement attached before the name was kept is told apart by its time, not left as four identical lines */     /* 6.9.957 (10 Nov 2026) - each attached old hisab shows its file name, and a wrong one can be set aside */     /* 6.9.956 (10 Nov 2026) - rebuilt: the GitHub Pages publish of 6.9.955 failed (run #1675), so nothing had changed on the phones */   /* 6.9.955 (10 Nov 2026) - the old hisab takes more than one file at once: photographed pages become one PDF, and every statement on file is listed */     /* 6.9.954 (10 Nov 2026) - the Partner Club: fixed slabs, a bonus on crossing one, the trip and device rewards, every partner's rupees to his next slab, and the quiet-partner watch */     /* 6.9.953 (10 Nov 2026) - Service > Control: cash in each engineer's hand, hand-over recorded, three random customer checks a week */     /* 6.9.952 (10 Nov 2026) - to-bill month by month, screens found from Search, team screen use on Health, a receipt for every incentive payout */     /* 6.9.951 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 6.9.950 (9 Nov 2026) - brand introductions: a fuller paragraph, three stage-wise benefits and one next step, on the quote and the proposal */     /* 6.9.949 (9 Nov 2026) - quote PDF: a product picture stays inside its own row (1.2 mm clear of both lines) */     /* 6.9.948 (9 Nov 2026) - quote PDF: each room heading carries its collection and finish with colour dots; every FIMA code chip has its finish dot */     /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -4266,7 +4266,7 @@ window.addEventListener("beforeunload", function (ev) {
         '<div style="font-size:13px;line-height:1.6;color:#334155">' +
         sp.map(function (x) {
           return '<div style="display:flex;gap:8px;padding:2px 0;border-bottom:1px solid #f8fafc">' +
-            (x.label ? '<span style="color:#94a3b8;min-width:120px">' + esc(x.label) + '</span>' : '') +
+            (x.label ? '<span style="color:#94a3b8;flex:0 0 150px;padding-right:6px">' + esc(x.label) + '</span>' : '') +
             '<span>' + esc(x.value) + '</span></div>';
         }).join("") + '</div>';
     }
@@ -23818,6 +23818,10 @@ function viewCatalogue() {
         doc.text(String(me.mobile), Rt, sy + 14.5, { align: "right" });
       }
 
+      /* 6.9.959 - the specifications, once per product, after the sign-off and before the
+         footers are stamped, so the new pages are numbered and footed like every other. */
+      try { qxSpecAnnex(doc, F, items, L, Rt, { DEEP: DEEP, INK: INK, GREY: GREY, TEAL: TEALD }); } catch (e) { }
+
       var pages = doc.internal.getNumberOfPages();
       for (var p = 1; p <= pages; p++) {
         doc.setPage(p);
@@ -24012,6 +24016,114 @@ function viewCatalogue() {
   /* plain quote: the brands (logo + name + introduction) first, then the TOTO technologies with
      their icons - drawn before the Terms. Returns y. v6.9.771: his words "use brand logo with
      brand name; about the brand on top then technology if any". */
+  /* ================= TECHNICAL SPECIFICATIONS ANNEXURE =================
+     HIS QUESTION, 10 Nov: "how complete list of spec in pdf ... and how it will
+     effect quote pdf?"
+
+     It could not go on the priced rows. Measured on this document: the table runs
+     from y=20 to the break at y=272, so 252 mm a page, and a row with a photograph
+     is 10-14 mm - 18 to 25 lines a page. A spec line costs 3.3 mm, the same as a
+     feature bullet, and the specifications written for the catalogue average 13
+     lines. On every row that is 53 mm a row, four rows a page: a 25-line quote
+     would go from two pages of table to seven, and the prices would be buried.
+
+     So the specifications are printed ONCE PER PRODUCT at the back instead of once
+     per line. Twenty different products add two or three pages, and the priced
+     table above is not touched by one millimetre. This is also the form a consultant
+     asks for - a schedule he can check against the drawing.
+
+     Only products that actually carry a specification appear. A quote with none
+     prints exactly as it did before. */
+  function qxSpecAnnex(doc, F, items, L, Rt, C) {
+    var col = function (c) { doc.setTextColor(c[0], c[1], c[2]); };
+    var fill = function (c) { doc.setFillColor(c[0], c[1], c[2]); };
+
+    /* one block per DISTINCT code, in the order the quote lists them */
+    var seen = {}, blocks = [];
+    (items || []).forEach(function (i) {
+      var code = String((i && i.code) || "").trim();
+      if (!code || seen[code]) return;
+      seen[code] = 1;
+      /* the line carries its own snapshot; an older quote may not, so fall back to the catalogue */
+      var raw = String((i && i.specs) || "");
+      if (!raw) { try { var p = prodByCode(code); raw = String((p && p.specs) || ""); } catch (e) { raw = ""; } }
+      if (!raw) return;
+      var sp = [];
+      try { sp = specLinesFor(raw, code, i.brand); } catch (e) { sp = specLines(raw); }
+      if (!sp.length) return;
+      var nm = "";
+      try { nm = pdfSafe(descLines(i.desc).title || code); } catch (e) { nm = code; }
+      blocks.push({ code: code, name: nm, brand: pdfSafe(String((i && i.brand) || "")), sp: sp });
+    });
+    if (!blocks.length) return;
+
+    var LH = 3.6, PADX = 4, LBLW = 34, HEADH = 6.2;
+    var VALW = Rt - L - PADX * 2 - LBLW - 2;
+
+    /* measure first, so a block is never split across a page break mid-way */
+    blocks.forEach(function (b) {
+      F("normal"); doc.setFontSize(7.6);
+      b.rows = b.sp.map(function (x) {
+        return { l: pdfSafe(String(x.label || "")), v: doc.splitTextToSize(pdfSafe(String(x.value || "")), VALW) };
+      });
+      b.h = HEADH + b.rows.reduce(function (a, r) { return a + r.v.length * LH; }, 0) + 3.4;
+    });
+
+    doc.addPage();
+    var y = 20;
+    var title = function () {
+      col(C.DEEP); F("bold"); doc.setFontSize(13);
+      doc.text("TECHNICAL SPECIFICATIONS", L, y);
+      col(C.GREY); F("normal"); doc.setFontSize(8);
+      doc.text("Manufacturer's published data for every product quoted.", L, y + 5);
+      doc.setDrawColor(C.TEAL[0], C.TEAL[1], C.TEAL[2]); doc.setLineWidth(0.5);
+      doc.line(L, y + 7.6, Rt, y + 7.6); doc.setLineWidth(0.2);
+      y += 13;
+    };
+    title();
+
+    /* the header strip: the code as a chip, then the name, then the brand on the right */
+    var head = function (b, cont) {
+      fill([240, 253, 250]); doc.roundedRect(L, y - 3.6, Rt - L, HEADH - 0.6, 1.2, 1.2, "F");
+      F("bold"); doc.setFontSize(7.6);
+      var cw = doc.getTextWidth(b.code) + 3;
+      fill(C.TEAL); doc.roundedRect(L + 1.4, y - 3.1, cw, 4.4, 0.8, 0.8, "F");
+      col([255, 255, 255]); doc.text(b.code, L + 2.9, y);
+      col(C.INK); F("bold"); doc.setFontSize(8.4);
+      var nm = b.name + (cont ? "  (continued)" : "");
+      var nmW = Rt - (L + 2.4 + cw + 2.4) - (b.brand ? 24 : 2);
+      doc.text(fitCell(doc, F, nm, nmW, 1, "bold", 8.4)[0] || nm, L + 2.4 + cw + 2.4, y);
+      if (b.brand) {
+        col(C.GREY); F("normal"); doc.setFontSize(6.8);
+        doc.text(b.brand.toUpperCase(), Rt - 1.6, y - 0.4, { align: "right" });
+      }
+      y += HEADH - 1.2;
+    };
+
+    blocks.forEach(function (b) {
+      /* Keep a product whole when it fits. A long one is allowed to run over rather than
+         leave 60 mm of white paper behind it - his own rule for the challan: the blank half
+         gets reused. The overflow carries the code and "(continued)" so nobody reads two
+         halves as two products. */
+      if (y + b.h > 272 && y + HEADH + 6 * LH > 272) { doc.addPage(); y = 20; title(); }
+      head(b, false);
+
+      b.rows.forEach(function (r) {
+        var rh = r.v.length * LH;
+        if (y + rh > 272) { doc.addPage(); y = 20; title(); head(b, true); }
+        col(C.GREY); F("normal"); doc.setFontSize(7.6);
+        if (r.l) doc.text(fitCell(doc, F, r.l, LBLW - 2, 1, "normal", 7.6)[0] || r.l, L + PADX, y);
+        col(C.INK);
+        r.v.forEach(function (vl, k) { doc.text(vl, L + PADX + LBLW, y + k * LH); });
+        y += rh;
+      });
+
+      doc.setDrawColor(226, 232, 240); doc.setLineWidth(0.15);
+      doc.line(L, y + 0.6, Rt, y + 0.6); doc.setLineWidth(0.2);
+      y += 3.4;
+    });
+  }
+
   function qxDrawPlain(doc, F, items, y, L, Rt, C) {
     var td = (_tkb && _tkb.techDict) || {};
     var col = function (c) { doc.setTextColor(c[0], c[1], c[2]); };
@@ -24878,11 +24990,38 @@ function viewCatalogue() {
             col(sc2); F("bold"); doc.setFontSize(4.9);
             doc.text(T(String(i.brand || "").toUpperCase() + (i.code ? "  ·  " + i.code : "")), cx + 6, ty - 3.4);
             col(INK); F("bold"); doc.setFontSize(cols === 2 ? 9 : 7.4);
-            fitCell(doc, F, T(dl.title || i.code), tw, 2, "bold", cols === 2 ? 9 : 7.4)
-              .forEach(function (ln, z) { doc.text(ln, cx + 6, ty + z * (cols === 2 ? 4.6 : 3.9)); });
+            var _nmL = fitCell(doc, F, T(dl.title || i.code), tw, 2, "bold", cols === 2 ? 9 : 7.4);
+            _nmL.forEach(function (ln, z) { doc.text(ln, cx + 6, ty + z * (cols === 2 ? 4.6 : 3.9)); });
 
             /* quantity and money, pinned to the foot of every card */
             var fy = cy + ch - 4.4;
+
+            /* 6.9.959 - the first few specification lines, between the name and the foot.
+               THIS is the document the family reads, and four lines of material, size and
+               standard is what sells a 316L system against a cheaper one. Only as many lines
+               as the card actually has room for: the space is measured here, never assumed,
+               so a three-row page simply shows fewer and nothing ever rides over the price.
+               The full schedule is on the quotation's annexure; this is the headline. */
+            try {
+              var _spRaw = String((i && i.specs) || "");
+              if (!_spRaw) { var _pp = prodByCode(i.code); _spRaw = String((_pp && _pp.specs) || ""); }
+              if (_spRaw) {
+                var _sp = specLinesFor(_spRaw, i.code, i.brand);
+                var _sLH = cols === 2 ? 3.0 : 2.6;
+                var _sTop = ty + _nmL.length * (cols === 2 ? 4.6 : 3.9) + 1.4;
+                var _room = Math.floor((fy - 3.2 - _sTop) / _sLH);
+                var _max = Math.max(0, Math.min(4, _room));
+                if (_max > 0 && _sp.length) {
+                  F("normal"); doc.setFontSize(cols === 2 ? 5.6 : 4.9);
+                  _sp.slice(0, _max).forEach(function (sl, z) {
+                    var txt = (sl.label ? sl.label + "  \u00b7  " : "") + sl.value;
+                    col(GREY);
+                    doc.text(fitCell(doc, F, T(txt), tw, 1, "normal", cols === 2 ? 5.6 : 4.9)[0] || "",
+                             cx + 6, _sTop + z * _sLH);
+                  });
+                }
+              }
+            } catch (eSp) { }
             col(GREY); F("normal"); doc.setFontSize(5.6);
             doc.text(T(x.n + " " + (i.unit || "No's") + "   ×   " + R(i.price)), cx + 6, fy);
             col(INK); F("bold"); doc.setFontSize(cols === 2 ? 9.5 : 8);
