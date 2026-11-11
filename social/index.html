@@ -9,7 +9,7 @@
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-180.png">
 <style>
-:root{--bg:#F3F6FA;--card:#fff;--fg:#13233A;--mut:#5B6B80;--line:#DCE4EE;--navy:#0A4F94;--leaf:#14913A;--ok:#1E8A45;--okb:#E3F4E9;--wait:#A86A00;--waitb:#FDF1DA;--bad:#C62828;--badb:#FBE4E4;--na:#9AA6B5;--chip:#EAF0F8}
+:root{--ff:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;--bg:#F3F6FA;--card:#fff;--fg:#13233A;--mut:#5B6B80;--line:#DCE4EE;--navy:#0A4F94;--leaf:#14913A;--ok:#1E8A45;--okb:#E3F4E9;--wait:#A86A00;--waitb:#FDF1DA;--bad:#C62828;--badb:#FBE4E4;--na:#9AA6B5;--chip:#EAF0F8}
 *{box-sizing:border-box}
 html,body{margin:0}
 body{background:var(--bg);color:var(--fg);font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;padding-bottom:env(safe-area-inset-bottom,0)}
@@ -18,9 +18,9 @@ header{background:var(--navy);color:#fff;border-bottom:4px solid var(--leaf);pad
 .hrow img{width:38px;height:38px;border-radius:8px;background:#fff}
 .hrow h1{font-size:18px;margin:0;font-weight:800;flex:1}
 .hrow .who{font-size:12px;opacity:.85}
-.hrow button{background:rgba(255,255,255,.15);color:#fff;border:0;border-radius:8px;padding:6px 10px;font:600 13px inherit;cursor:pointer}
+.hrow button{background:rgba(255,255,255,.15);color:#fff;border:0;border-radius:8px;padding:6px 10px;font:600 13px var(--ff);cursor:pointer}
 nav{display:flex;gap:2px;max-width:1180px;margin:8px auto 0;overflow-x:auto}
-nav button{background:none;border:0;color:#cfe0f3;font:700 14px inherit;padding:10px 14px;border-bottom:3px solid transparent;cursor:pointer;white-space:nowrap}
+nav button{background:none;border:0;color:#cfe0f3;font:700 14px var(--ff);padding:10px 14px;border-bottom:3px solid transparent;cursor:pointer;white-space:nowrap}
 nav button[aria-current=page]{color:#fff;border-color:#fff}
 main{max-width:1180px;margin:0 auto;padding:14px max(16px,env(safe-area-inset-left,0px)) 40px}
 .kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:12px}
@@ -28,11 +28,11 @@ main{max-width:1180px;margin:0 auto;padding:14px max(16px,env(safe-area-inset-le
 .k b{display:block;font-size:24px;font-weight:800;line-height:1.1}.k span{color:var(--mut);font-size:12px}
 .k.ok b{color:var(--ok)}.k.wait b{color:var(--wait)}.k.bad b{color:var(--bad)}
 .bar{display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 12px;align-items:center}
-.chipb{font:600 13px inherit;border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:999px;padding:6px 12px;cursor:pointer}
+.chipb{font:600 13px var(--ff);border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:999px;padding:6px 12px;cursor:pointer}
 .chipb[aria-pressed=true]{background:var(--navy);border-color:var(--navy);color:#fff}
-select,input,textarea{font:14px inherit;color:var(--fg);background:var(--card);border:1px solid var(--line);border-radius:8px;padding:7px 9px;min-width:0}
+select,input,textarea{font:14px var(--ff);color:var(--fg);background:var(--card);border:1px solid var(--line);border-radius:8px;padding:7px 9px;min-width:0}
 textarea{width:100%;min-height:90px;resize:vertical}
-.btn{text-decoration:none;display:inline-block;background:var(--navy);color:#fff;border:0;border-radius:8px;padding:9px 14px;font:700 14px inherit;cursor:pointer}
+.btn{text-decoration:none;display:inline-block;line-height:1.2;background:var(--navy);color:#fff;border:0;border-radius:8px;padding:9px 14px;font:700 14px var(--ff);cursor:pointer}
 .btn.g{background:var(--leaf)}.btn.l{background:var(--card);color:var(--fg);border:1px solid var(--line)}
 .btn:disabled{opacity:.5;cursor:default}
 button:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-visible,a:focus-visible{outline:3px solid var(--navy);outline-offset:2px}
@@ -74,16 +74,30 @@ label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:70
 .q{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line)}
 .q:first-child{border-top:0}
 .q b{flex:1;min-width:0}
-@media (max-width:640px){.kpis[style]{grid-template-columns:repeat(2,minmax(0,1fr))!important}.hrow .who{display:none}.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.li{grid-template-columns:1fr}.row2{grid-template-columns:1fr}}
+.gal{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px}
+.gc{min-width:0;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;cursor:pointer;text-align:left;padding:0;font:inherit;color:inherit}
+.gc img{display:block;width:100%;height:auto;aspect-ratio:4/5;object-fit:cover;background:var(--chip)}
+.gc div{padding:8px 10px 10px}.gc b{display:block;font-size:13px;line-height:1.3}.gc small{color:var(--mut);font-size:12px}
+.view{position:fixed;inset:0;background:rgba(10,20,35,.82);z-index:25;display:flex;align-items:center;justify-content:center;padding:12px}
+.view>div{background:var(--card);border-radius:14px;max-width:1080px;width:100%;max-height:96vh;overflow:auto;display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr)}
+.view .vi{background:#0d1726;display:flex;align-items:center;justify-content:center}
+.view .vi img{display:block;max-width:100%;max-height:92vh;object-fit:contain}
+.view .vt{padding:16px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.view h2{margin:0;font-size:19px}
+.cap{white-space:pre-wrap;font-size:14px;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px;max-height:40vh;overflow:auto}
+.acts{display:flex;flex-wrap:wrap;gap:8px}
+.vnav{display:flex;gap:8px;margin-top:auto}
+@media (max-width:760px){.view{padding:0}.view>div{grid-template-columns:1fr;max-height:100vh;height:100%;border-radius:0}.view .vi img{max-height:62vh}.gal{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:640px){.hrow h1{font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.hrow button{padding:6px 8px}.kpis[style]{grid-template-columns:repeat(2,minmax(0,1fr))!important}.hrow .who{display:none}.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.li{grid-template-columns:1fr}.row2{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
 <div id="root"></div>
 <script>
-var APP_VERSION="1.0.0";
+var APP_VERSION="1.1.0";
 var GAS="https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
 var STORE="ew_social_session";
-var API_MS={teamAuth:45e3,teamGet:9e4,socGet:6e4,teamSave:6e4,enqList:6e4};
+var API_MS={teamAuth:45e3,teamGet:9e4,socGet:6e4,socList:6e4,teamSave:6e4,enqList:6e4};
 /* the starting list of every site, page, marketplace and map listing. Loaded into the Listings
    tab once, with one tap, the first time the app finds that tab empty - after that the tab is the
    truth and this list is never used again. */
@@ -133,7 +147,11 @@ function loadAll(){
   var a=api("teamGet",{}).then(function(r){if(!r||!r.ok)throw new Error(r&&r.error||"the CRM did not answer");S.data=r}).catch(function(e){S.dataErr=e.message});
   var b=api("socGet",{}).then(function(r){if(!r||!r.ok){S.logErr=r&&r.error||"the post log did not load";return}S.log=r.log;S.logFile=r.file||null;if(!r.log)S.logErr=r.why||"No post log yet."}).catch(function(e){S.logErr=e.message});
   var c=api("enqList",{show:"all"}).then(function(r){if(!r||!r.ok){S.enqErr=r&&r.error||"no answer";return}S.enq=r;S.enqErr=""}).catch(function(e){S.enqErr=e.message});
-  Promise.all([a,b,c]).then(function(){S.busy=false;if(S.dataErr&&/sign in|PIN/i.test(S.dataErr)){signOut();return}render()})}
+  /* V185c - teamGet answers from a fixed list of tabs and never returns "listings" (measured 12 Nov),
+     so the listings come from socList, which reads the sheet itself. */
+  var d=api("socList",{}).then(function(r){S.listings=(r&&r.ok&&r.listings)||null;if(!r||!r.ok)S.listErr=r&&r.error||"the listings did not load"}).catch(function(e){S.listErr=e.message});
+  var g=S.gal?Promise.resolve():fetch("posts.json?x="+Date.now(),{cache:"no-store"}).then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.json()}).then(function(j){S.gal=j}).catch(function(e){S.galErr="The post pictures did not load: "+e.message});
+  Promise.all([a,b,c,d,g]).then(function(){S.busy=false;if(S.data&&S.listings)S.data.listings=S.listings;if(S.dataErr&&/sign in|PIN/i.test(S.dataErr)){signOut();return}render()})}
 
 /* ---------------- dashboard: everything on one screen ---------------- */
 var KEYMK=[["Justdial",/justdial/i],["IndiaMART",/indiamart/i],["Sulekha",/sulekha/i],["Hotfrog",/hotfrog/i],["TradeIndia",/tradeindia/i],["ExportersIndia",/exportersindia/i],["Google Panipat",/google business profile: panipat/i,"Google"],["Apple Business",/apple/i],["Bing Places",/bing places/i],["Mappls",/mappls/i]];
@@ -195,6 +213,7 @@ function postsView(){
 function listingsView(){
   var L=(S.data&&S.data.listings)||null;
   if(!S.data)return '<div class="card">'+esc(S.dataErr||"Loading…")+'</div>';
+  if(S.listErr)return '<div class="card"><b>The listings did not load.</b><p class="note">'+esc(S.listErr)+' - tap Refresh.</p></div>';
   if(!L||!L.length)return '<div class="card"><b>The sites and listings list is empty.</b><p class="note">Load the starting list of '+SEED.length+' sites, pages, marketplaces and map listings - from the Social Hub, updated on 11 Nov. After that, change any status here.</p><button class="btn" id="seed">Load the starting list</button></div>';
   var c=function(k){return L.filter(function(x){return x.status===k}).length};
   var h='<div class="kpis"><div class="k ok"><b>'+c("live")+'</b><span>live</span></div><div class="k wait"><b>'+c("action")+'</b><span>need action</span></div><div class="k"><b>'+c("todo")+'</b><span>to sign up</span></div><div class="k"><b>'+c("skip")+'</b><span>skipped</span></div></div>';
@@ -256,17 +275,61 @@ function compose(){S.sheet='<h2>Message to '+Object.keys(S.sel).filter(function(
 function queueView(){var Q=S.queue,done=Q.list.filter(function(x){return x.sent}).length;
   return '<h2>Sending '+done+' of '+Q.list.length+'</h2><div class="note" style="margin-top:0">Tap Open WhatsApp, press send in WhatsApp, then come back for the next one.</div>'+Q.list.map(function(x,i){return '<div class="q"><b>'+esc(x.a.name)+'<small class="m">'+esc(x.a.role||"")+'</small></b>'+(x.sent?'<span class="s ok">Opened</span>':'<a class="btn g" target="_blank" rel="noopener" data-qi="'+i+'" href="'+esc(wa(x.a,Q.text))+'">Open WhatsApp</a>')+'</div>'}).join("")+'<div class="bar" style="margin-top:12px"><button class="btn l" data-close="1">Done</button></div>'}
 
+/* ---------------- all posts: review, download in HD, share (V1.1, 12 Nov) ----------------
+   The pictures are the exact files that went out (2160 x 2700 JPEG) in p/, with 540-wide WebP
+   thumbnails in t/ and the captions in posts.json - all published beside this page, so a link to
+   a picture works for anyone it is sent to. */
+var BRANDN={toto:"TOTO",huliot:"Huliot",ghp:"GHP+",heliroma:"Heliroma",fest:"Festival",geberit:"Geberit",grundfos:"Grundfos",mea:"MEA",oyster:"Oyster",pentair:"Pentair",fima:"FIMA"};
+var SITE="https://mukeshenergyworld-ux.github.io/ew-site-crm/social/";
+function bname(b){return BRANDN[b]||String(b||"").replace(/^./,function(c){return c.toUpperCase()})}
+function thumb(p){return "t/"+p.img.replace(/\.jpe?g$/i,"")+".webp"}
+function galList(){var P=((S.gal&&S.gal.posts)||[]).slice().sort(function(a,b){return a.date<b.date?1:a.date>b.date?-1:slot(b.time)-slot(a.time)});
+  var q=String(S.gq||"").toLowerCase().trim();
+  return P.filter(function(p){return(S.gb==="all"||!S.gb||p.brand===S.gb)&&(!q||(p.n+" "+p.title+" "+p.caption+" "+bname(p.brand)).toLowerCase().indexOf(q)>=0)})}
+function galleryView(){
+  if(!S.gal)return '<div class="card">'+esc(S.galErr||"Loading the posts…")+'</div>';
+  var all=S.gal.posts||[],cnt={};all.forEach(function(p){cnt[p.brand]=(cnt[p.brand]||0)+1});
+  var L=galList(),T=todayIST();
+  var h='<div class="bar"><input id="gq" type="search" placeholder="Search title, caption or number" value="'+esc(S.gq||"")+'" style="flex:1 1 220px"><select id="gb"><option value="all">All brands ('+all.length+')</option>'+Object.keys(cnt).sort(function(a,b){return cnt[b]-cnt[a]}).map(function(b){return '<option value="'+esc(b)+'"'+(S.gb===b?" selected":"")+'>'+esc(bname(b))+' ('+cnt[b]+')</option>'}).join("")+'</select></div>';
+  h+='<p class="note" style="margin-top:0">'+L.length+' posts, newest first. Tap one to see it full size, download it in HD (2160 × 2700) or share it.</p>';
+  h+=L.length?'<div class="gal">'+L.map(function(p){return '<button class="gc" data-gv="'+esc(p.n)+'"><img loading="lazy" width="540" height="675" src="'+esc(thumb(p))+'" alt=""><div><b>'+esc(cut(p.title,70))+'</b><small>#'+esc(p.n)+' · '+esc(new Date(p.date+"T00:00:00").toLocaleDateString("en-IN",{day:"numeric",month:"short"}))+' · '+esc(bname(p.brand))+(p.date>T?' · upcoming':'')+'</small></div></button>'}).join("")+'</div>':'<div class="card">No post matches. Clear the search or pick All brands.</div>';
+  return h}
+function curPost(){var L=galList();for(var i=0;i<L.length;i++)if(L[i].n===S.view)return{p:L[i],i:i,L:L};var A=(S.gal&&S.gal.posts)||[];for(var j=0;j<A.length;j++)if(A[j].n===S.view)return{p:A[j],i:-1,L:L};return null}
+function viewerHtml(){var c=curPost();if(!c)return "";var p=c.p,u=SITE+"p/"+encodeURIComponent(p.img);
+  return '<div class="view" data-vclose="1"><div role="dialog" aria-label="Post '+esc(p.n)+'"><div class="vi"><img src="p/'+esc(p.img)+'" alt="'+esc(p.title)+'"></div><div class="vt">'+
+  '<small class="m">#'+esc(p.n)+' · '+esc(new Date(p.date+"T00:00:00").toLocaleDateString("en-IN",{weekday:"short",day:"numeric",month:"short",year:"numeric"}))+' · '+esc(p.time)+' · '+esc(bname(p.brand))+'</small><h2>'+esc(p.title)+'</h2>'+
+  '<div class="acts"><a class="btn" href="p/'+esc(p.img)+'" download="'+esc(p.img)+'">Download HD</a><button class="btn g" id="vshare">Share</button><a class="btn l" target="_blank" rel="noopener" href="https://wa.me/?text='+encodeURIComponent(p.title+"\n"+u)+'">WhatsApp</a><button class="btn l" id="vcap">Copy caption</button><button class="btn l" id="vlink">Copy link</button></div>'+
+  '<div class="cap">'+esc(p.caption||"(no caption saved)")+'</div><small class="m">HD file '+esc(p.img)+(p.kb?' · '+(p.kb>=1024?(p.kb/1024).toFixed(1)+' MB':p.kb+' KB'):'')+'</small>'+
+  '<div class="vnav"><button class="btn l" id="vprev"'+(c.i<=0?" disabled":"")+'>‹ Newer</button><button class="btn l" id="vnext"'+(c.i<0||c.i>=c.L.length-1?" disabled":"")+'>Older ›</button><button class="btn l" data-vclose="1" style="margin-left:auto">Close</button></div></div></div></div>'}
+function copyText(t,okMsg){var done=function(){toast(okMsg)};try{navigator.clipboard.writeText(t).then(done,function(){fallbackCopy(t);done()})}catch(e){fallbackCopy(t);done()}}
+function fallbackCopy(t){var a=document.createElement("textarea");a.value=t;document.body.appendChild(a);a.select();try{document.execCommand("copy")}catch(e){}a.remove()}
+function sharePost(){var c=curPost();if(!c)return;var p=c.p,u=SITE+"p/"+encodeURIComponent(p.img);
+  /* Share the picture itself where the device can (phones, Mac Chrome); else the link; else copy the link. */
+  fetch("p/"+p.img).then(function(r){return r.blob()}).then(function(b){var f=new File([b],p.img,{type:"image/jpeg"});
+    if(navigator.canShare&&navigator.canShare({files:[f]}))return navigator.share({files:[f],title:p.title,text:p.caption||p.title});
+    if(navigator.share)return navigator.share({title:p.title,text:p.title,url:u});
+    copyText(u,"Link copied - paste it anywhere")}).catch(function(e){if(e&&e.name==="AbortError")return;copyText(u,"Link copied - paste it anywhere")})}
+function stepView(d){var c=curPost();if(!c||c.i<0)return;var k=c.i+d;if(k<0||k>=c.L.length)return;S.view=c.L[k].n;render()}
+document.addEventListener("keydown",function(e){if(!S.view)return;if(e.key==="Escape"){S.view=null;render()}else if(e.key==="ArrowRight")stepView(1);else if(e.key==="ArrowLeft")stepView(-1)});
+
 /* ---------------- shell ---------------- */
 function render(){
   if(!S.user||!S.tok){renderLogin("");return}
-  var tabs=[["dash","Dashboard"],["posts","Posts"],["listings","Sites & listings"],["blogs","Blogs"],["partners","Partners"]];
-  var body=S.tab==="dash"?dashView():S.tab==="posts"?postsView():S.tab==="listings"?listingsView():S.tab==="blogs"?blogsView():partnersView();
+  var tabs=[["dash","Dashboard"],["posts","Posts"],["gallery","All posts"],["listings","Sites & listings"],["blogs","Blogs"],["partners","Partners"]];
+  var body=S.tab==="dash"?dashView():S.tab==="posts"?postsView():S.tab==="gallery"?galleryView():S.tab==="listings"?listingsView():S.tab==="blogs"?blogsView():partnersView();
   el("root").innerHTML='<header><div class="hrow"><img src="icon-192.png" alt=""><h1>Social &amp; Partners</h1><span class="who">'+esc(S.user)+'</span><button id="rf">'+(S.busy?"Loading…":"Refresh")+'</button><button id="so">Sign out</button></div><nav>'+tabs.map(function(t){return '<button data-tab="'+t[0]+'" aria-current="'+(S.tab===t[0]?"page":"false")+'">'+t[1]+'</button>'}).join("")+'</nav></header><main>'+body+'</main>'+
-    (S.sheet||S.queue?'<div class="sheet" data-close="1"><div>'+(S.queue?queueView():S.sheet)+'</div></div>':'');
+    (S.view?viewerHtml():'')+(S.sheet||S.queue?'<div class="sheet" data-close="1"><div>'+(S.queue?queueView():S.sheet)+'</div></div>':'');
   try{localStorage.setItem("ew_social_tab",S.tab)}catch(e){}
 }
 document.addEventListener("click",function(e){var t=e.target,b;
   if((b=t.closest("[data-tab]"))){S.tab=b.dataset.tab;render();return}
+  if((b=t.closest("[data-gv]"))){S.view=b.dataset.gv;render();return}
+  if(t.dataset&&t.dataset.vclose){S.view=null;render();return}
+  if(t.id==="vshare"){sharePost();return}
+  if(t.id==="vcap"){var c1=curPost();if(c1)copyText(c1.p.caption||c1.p.title,"Caption copied");return}
+  if(t.id==="vlink"){var c2=curPost();if(c2)copyText(SITE+"p/"+encodeURIComponent(c2.p.img),"Link copied");return}
+  if(t.id==="vprev"){stepView(-1);return}
+  if(t.id==="vnext"){stepView(1);return}
   if(t.id==="rf"){S._vol=null;loadAll();return}
   if(t.id==="so"){signOut();return}
   if((b=t.closest("[data-pf]"))){S.pf=b.dataset.pf;render();return}
@@ -286,8 +349,9 @@ document.addEventListener("click",function(e){var t=e.target,b;
 });
 document.addEventListener("change",function(e){var t=e.target;
   if(t.dataset&&t.dataset.sel){S.sel[t.dataset.sel]=t.checked;render();return}
+  if(t.id==="gb"){S.gb=t.value;render();return}
   if(["prole","ploc","parea","pvol"].indexOf(t.id)>=0){S[t.id]=t.value;render();return}});
-document.addEventListener("input",function(e){if(e.target.id==="pq"){S.pq=e.target.value;var pos=e.target.selectionStart;render();var n=el("pq");if(n){n.focus();try{n.setSelectionRange(pos,pos)}catch(x){}}}});
+document.addEventListener("input",function(e){if(e.target.id==="gq"){S.gq=e.target.value;var gp=e.target.selectionStart;render();var gn=el("gq");if(gn){gn.focus();try{gn.setSelectionRange(gp,gp)}catch(x){}}return}if(e.target.id==="pq"){S.pq=e.target.value;var pos=e.target.selectionStart;render();var n=el("pq");if(n){n.focus();try{n.setSelectionRange(pos,pos)}catch(x){}}}});
 (function boot(){try{var c=JSON.parse(localStorage.getItem(STORE)||"null");if(c&&c.tok){S.user=c.user;S.role=c.role;S.tok=c.tok}}catch(e){}
   
   if(S.tok)loadAll();else renderLogin("")})();
