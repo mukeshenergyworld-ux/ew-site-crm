@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>EW Social & Partners</title>
+<meta name="theme-color" content="#0A4F94">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<style>
+:root{--bg:#F3F6FA;--card:#fff;--fg:#13233A;--mut:#5B6B80;--line:#DCE4EE;--navy:#0A4F94;--leaf:#14913A;--ok:#1E8A45;--okb:#E3F4E9;--wait:#A86A00;--waitb:#FDF1DA;--bad:#C62828;--badb:#FBE4E4;--na:#9AA6B5;--chip:#EAF0F8}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--fg);font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;padding-bottom:env(safe-area-inset-bottom,0)}
+header{background:var(--navy);color:#fff;border-bottom:4px solid var(--leaf);padding:12px max(16px,env(safe-area-inset-left,0px)) 0;position:sticky;top:0;z-index:5}
+.hrow{display:flex;align-items:center;gap:10px;max-width:1180px;margin:0 auto}
+.hrow img{width:38px;height:38px;border-radius:8px;background:#fff}
+.hrow h1{font-size:18px;margin:0;font-weight:800;flex:1}
+.hrow .who{font-size:12px;opacity:.85}
+.hrow button{background:rgba(255,255,255,.15);color:#fff;border:0;border-radius:8px;padding:6px 10px;font:600 13px inherit;cursor:pointer}
+nav{display:flex;gap:2px;max-width:1180px;margin:8px auto 0;overflow-x:auto}
+nav button{background:none;border:0;color:#cfe0f3;font:700 14px inherit;padding:10px 14px;border-bottom:3px solid transparent;cursor:pointer;white-space:nowrap}
+nav button[aria-current=page]{color:#fff;border-color:#fff}
+main{max-width:1180px;margin:0 auto;padding:14px max(16px,env(safe-area-inset-left,0px)) 40px}
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:12px}
+.k{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.k b{display:block;font-size:24px;font-weight:800;line-height:1.1}.k span{color:var(--mut);font-size:12px}
+.k.ok b{color:var(--ok)}.k.wait b{color:var(--wait)}.k.bad b{color:var(--bad)}
+.bar{display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 12px;align-items:center}
+.chipb{font:600 13px inherit;border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:999px;padding:6px 12px;cursor:pointer}
+.chipb[aria-pressed=true]{background:var(--navy);border-color:var(--navy);color:#fff}
+select,input,textarea{font:14px inherit;color:var(--fg);background:var(--card);border:1px solid var(--line);border-radius:8px;padding:7px 9px;min-width:0}
+textarea{width:100%;min-height:90px;resize:vertical}
+.btn{text-decoration:none;display:inline-block;background:var(--navy);color:#fff;border:0;border-radius:8px;padding:9px 14px;font:700 14px inherit;cursor:pointer}
+.btn.g{background:var(--leaf)}.btn.l{background:var(--card);color:var(--fg);border:1px solid var(--line)}
+.btn:disabled{opacity:.5;cursor:default}
+button:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-visible,a:focus-visible{outline:3px solid var(--navy);outline-offset:2px}
+.day{margin:14px 0 4px;font-weight:800;font-size:14px}.day small{color:var(--mut);font-weight:600}
+.tw{overflow-x:auto;background:var(--card);border:1px solid var(--line);border-radius:12px}
+table{border-collapse:collapse;width:100%}
+th,td{padding:8px 10px;text-align:left;border-bottom:1px solid var(--line);font-size:14px;vertical-align:middle}
+th{font-size:12px;color:var(--mut);font-weight:700}
+tr:last-child td{border-bottom:0}
+table.posts{min-width:820px;table-layout:fixed}
+col.c1{width:80px}col.c2{width:52px}col.cc{width:112px}
+.s{display:inline-block;font-size:12px;font-weight:700;border-radius:6px;padding:2px 8px;white-space:nowrap;text-decoration:none}
+.s.ok{background:var(--okb);color:var(--ok)}.s.wait{background:var(--waitb);color:var(--wait)}.s.bad{background:var(--badb);color:var(--bad)}.s.na{color:var(--na)}.s.sch{background:var(--chip);color:var(--navy)}
+small.m{display:block;color:var(--mut);font-size:12px}
+.note{color:var(--mut);font-size:13px;margin:12px 0;max-width:80ch}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:10px}
+.grp{margin:16px 0 6px;font-size:13px;font-weight:800;color:var(--mut)}
+.li{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,2fr) 150px;gap:6px 14px;padding:10px 14px;border-top:1px solid var(--line);align-items:start}
+.li:first-child{border-top:0}
+.li a{color:var(--navy);font-size:13px;word-break:break-all}
+.pill{display:inline-block;border-radius:20px;padding:2px 10px;font-size:12px;font-weight:700}
+.pill.live{background:var(--okb);color:var(--ok)}.pill.action{background:var(--waitb);color:var(--wait)}.pill.todo{background:var(--chip);color:var(--navy)}.pill.skip{background:#EEF0F3;color:#6B7280}
+.pt{min-width:760px}
+.pt td.sel{width:34px}
+.vol{font-variant-numeric:tabular-nums;white-space:nowrap}
+.badge{display:inline-block;font-size:11px;font-weight:800;border-radius:4px;padding:1px 6px;margin-left:6px;background:var(--waitb);color:var(--wait)}
+.sheet{position:fixed;inset:0;background:rgba(10,20,35,.45);display:flex;align-items:flex-end;justify-content:center;z-index:20}
+.sheet>div{background:var(--card);width:100%;max-width:640px;max-height:88vh;overflow:auto;border-radius:16px 16px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom,0px))}
+.sheet h2{margin:0 0 8px;font-size:18px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:700;color:var(--mut);margin-bottom:10px}
+.login{max-width:360px;margin:60px auto;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px}
+.login img{display:block;width:96px;margin:0 auto 8px}
+.login h2{text-align:center;margin:0 0 4px}
+.login label{display:block;font-size:12px;font-weight:700;color:var(--mut);margin:12px 0 4px}
+.login input{width:100%}
+.err{color:var(--bad);font-size:13px;margin-top:10px}
+.toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#13233A;color:#fff;padding:10px 16px;border-radius:10px;font-size:14px;z-index:30;max-width:90vw}
+.q{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line)}
+.q:first-child{border-top:0}
+.q b{flex:1;min-width:0}
+@media (max-width:640px){.kpis[style]{grid-template-columns:repeat(2,minmax(0,1fr))!important}.hrow .who{display:none}.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.li{grid-template-columns:1fr}.row2{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+var APP_VERSION="1.0.0";
+var GAS="https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
+var STORE="ew_social_session";
+var API_MS={teamAuth:45e3,teamGet:9e4,socGet:6e4,teamSave:6e4,enqList:6e4};
+/* the starting list of every site, page, marketplace and map listing. Loaded into the Listings
+   tab once, with one tap, the first time the app finds that tab empty - after that the tab is the
+   truth and this list is never used again. */
+var SEED=[{"id": "LS-apple", "name": "Apple Business Connect", "grp": "Maps & listings", "brand": "EW", "url": "https://businessconnect.apple.com/", "handle": "", "status": "action", "note": "Organisation and both locations (Energy World, Modern Plumbing Solution) in review since 1 Nov. Domain verified. Apple Support wants photo ID, business card and business documents; their upload link expired - ask Apple Support for a new one."}, {"id": "LS-bing", "name": "Bing Places", "grp": "Maps & listings", "brand": "EW", "url": "https://www.bing.com/forbusiness/", "handle": "", "status": "live", "note": "Imported from Google Business Profile; syncs weekly."}, {"id": "LS-blog", "name": "Blogger", "grp": "Blog & web", "brand": "EW", "url": "https://energyworldpanipat.blogspot.com/", "handle": "energyworldpanipat.blogspot.com", "status": "live", "note": "Blog 1 (heat pump vs geyser) live 5 Nov. Blogs 2-4 go out on 12, 19 and 26 Nov. Header shows the new banner."}, {"id": "LS-bwt", "name": "Bing Webmaster Tools", "grp": "Search tools", "brand": "EW", "url": "https://www.bing.com/webmasters", "handle": "energyworld.co.in", "status": "todo", "note": "Free. Imports from Search Console in one step."}, {"id": "LS-fb", "name": "Facebook Page", "grp": "Social", "brand": "EW", "url": "https://www.facebook.com/energywrld", "handle": "Energy World", "status": "live", "note": "2K followers. New logo, cover, bio (since 2009), links to website, blog, YouTube, X."}, {"id": "LS-fsq", "name": "Foursquare", "grp": "Maps & listings", "brand": "EW", "url": "https://foursquare.com/", "handle": "", "status": "skip", "note": "Login opened Foursquare Spatial Studio (developer tool), not a business listing. Low value; skipped."}, {"id": "LS-gbp", "name": "Google Business Profile: Panipat", "grp": "Maps & listings", "brand": "EW", "url": "https://business.google.com/locations", "handle": "Energy World, TDI City", "status": "live", "note": "Verified. New cover uploaded 11 Nov - Google reviewing. One post a day from the 7:47 PM run."}, {"id": "LS-gbpg", "name": "Google Business Profile: Green Heat+", "grp": "Maps & listings", "brand": "GHP+", "url": "https://business.google.com/", "handle": "", "status": "action", "note": "Request to manage the Green Plus Heat Pvt. Ltd. profile (West Vinod Nagar) sent 11 Nov - waiting for the current owner."}, {"id": "LS-gbps", "name": "Google Business Profile: Sonipat", "grp": "Maps & listings", "brand": "EW", "url": "https://business.google.com/locations", "handle": "Energy World, Sector 15", "status": "action", "note": "Google says the request to manage the existing profile was accepted; this 'Duplicate' entry is a leftover copy that Google suggests removing. Not deleted (house rule) – Mukesh to decide."}, {"id": "LS-gmc", "name": "Google Merchant Center", "grp": "Search tools", "brand": "EW", "url": "https://merchants.google.com/", "handle": "", "status": "action", "note": "Account doesn't exist yet. Mukesh to click 'Sign up for Merchant Center'."}, {"id": "LS-gsc", "name": "Google Search Console", "grp": "Search tools", "brand": "EW", "url": "https://search.google.com/search-console", "handle": "energyworld.co.in", "status": "live", "note": "Verified 30 Oct (HTML tag on home page; keep it). Sitemap with 20 pages submitted and read successfully."}, {"id": "LS-hotfrog", "name": "Hotfrog India", "grp": "Maps & listings", "brand": "EW", "url": "https://www.hotfrog.in/", "handle": "", "status": "live", "note": "Listing claimed and verified 29 Oct. Logo/banner still to add; Hotfrog logged out on 30 Oct, so Mukesh logs in at hotfrog.in/login, then Claude uploads."}, {"id": "LS-houzz", "name": "Houzz", "grp": "Marketplaces", "brand": "EW", "url": "https://www.houzz.in/", "handle": "", "status": "skip", "note": "Houzz Pro is not available in India (checked 29 Oct)."}, {"id": "LS-ig", "name": "Instagram", "grp": "Social", "brand": "EW", "url": "https://www.instagram.com/energyworld007/", "handle": "@energyworld007", "status": "live", "note": "496 followers. New logo and bio. Linked to the Facebook page."}, {"id": "LS-im", "name": "IndiaMART", "grp": "Marketplaces", "brand": "EW", "url": "https://seller.indiamart.com/", "handle": "Ganaur seller account", "status": "live", "note": "Panipat showroom contact added 29 Oct (main address locked to Ganaur via GST). MPS Sonipat branch (90504 44139) waiting for OTP. Add products next."}, {"id": "LS-jd", "name": "Justdial (3 listings)", "grp": "Maps & listings", "brand": "EW", "url": "https://www.justdial.com/", "handle": "Kabri Panipat · Gannaur · Railway Rd Sonipat", "status": "live", "note": "Kabri listing: address SCO 132 First Floor + year 2009 saved 29 Oct (JD review up to 2 days). Plumbing categories NOT added: JD would delete 23 solar categories – needs Mukesh's decision."}, {"id": "LS-li", "name": "LinkedIn company page", "grp": "Social", "brand": "EW", "url": "https://www.linkedin.com/company/energywrld/", "handle": "Energy World", "status": "live", "note": "545 followers. Logo, banner, overview done. Founded 2009 saved 29 Oct."}, {"id": "LS-mappls", "name": "Mappls (MapmyIndia)", "grp": "Maps & listings", "brand": "EW", "url": "https://www.mappls.com/", "handle": "", "status": "action", "note": "Business submitted 29 Oct (TDI Town Centre pin, standard DP + banner). Awaiting Mappls approval."}, {"id": "LS-med", "name": "Medium", "grp": "Blog & web", "brand": "EW", "url": "https://medium.com/@mukesh.energyworld", "handle": "@mukesh.energyworld", "status": "live", "note": "Name 'Energy World Panipat', logo and bio set. Republish blog articles here."}, {"id": "LS-pin", "name": "Pinterest Business", "grp": "Social", "brand": "EW", "url": "https://in.pinterest.com/energyworldpanipat/", "handle": "energyworldpanipat", "status": "live", "note": "New business account with logo, about and website. Start boards: Bathrooms, Hot water, Plumbing."}, {"id": "LS-quo", "name": "Quora (Space + profile)", "grp": "Social", "brand": "EW", "url": "https://energyworldpanipatplumbingbathhotwater.quora.com/", "handle": "Space: Energy World Panipat: Plumbing, Bath & Hot Water", "status": "live", "note": "Space live under 'Mukesh Kumar'. Icon and cover are up (checked 30 Oct)."}, {"id": "LS-sc", "name": "ShareChat / Moj", "grp": "Social", "brand": "EW", "url": "https://sharechat.com/", "handle": "", "status": "todo", "note": "Free Indian short-video apps. Repost reels here. Low priority."}, {"id": "LS-sul", "name": "Sulekha", "grp": "Maps & listings", "brand": "EW", "url": "https://www.sulekha.com/", "handle": "", "status": "live", "note": "Logo, 12-brand banner, About (both addresses + MPS 90504 44139), 12 photos, payments, company details. Profile 45%. Pending: work hours, KYC (Mukesh)."}, {"id": "LS-tg", "name": "Telegram channel", "grp": "Social", "brand": "EW", "url": "https://telegram.org/", "handle": "", "status": "todo", "note": "Free. Optional; low priority for Panipat customers."}, {"id": "LS-thr", "name": "Threads", "grp": "Social", "brand": "EW", "url": "https://www.threads.com/@energyworld007", "handle": "@energyworld007", "status": "live", "note": "Standard DP (E) now showing; bio set."}, {"id": "LS-ti", "name": "TradeIndia", "grp": "Marketplaces", "brand": "EW", "url": "https://www.tradeindia.com/", "handle": "Energy World (User ID 5238192)", "status": "live", "note": "Profile updated 29 Oct (TDI City address, est. 2009, logo, banner, description). 12 brand products listed 29 Oct, awaiting TradeIndia approval. Still to add: GST/PAN (Mukesh)."}, {"id": "LS-wac", "name": "WhatsApp Channel", "grp": "Social", "brand": "EW", "url": "https://www.whatsapp.com/channels", "handle": "Energy World", "status": "todo", "note": "Free broadcast channel from WhatsApp Business app. Good for offers and new arrivals to existing customers."}, {"id": "LS-web", "name": "Website energyworld.co.in", "grp": "Blog & web", "brand": "EW", "url": "https://www.energyworld.co.in", "handle": "energyworld.co.in", "status": "live", "note": "energyworld.co.in on Cloudflare Pages. GHP+ XLPE insulation page added 11 Nov."}, {"id": "LS-x", "name": "X (Twitter)", "grp": "Social", "brand": "EW", "url": "https://x.com/EnergyWrld", "handle": "@EnergyWrld", "status": "live", "note": "New logo and header (banner refreshed 11 Nov). One post a day from the 7:47 PM run."}, {"id": "LS-yt", "name": "YouTube: Energy World Panipat", "grp": "Video", "brand": "EW", "url": "https://www.youtube.com/@energyworldplumbing", "handle": "@energyworldplumbing", "status": "live", "note": "Banner and picture updated (picture can take a few minutes to show)."}, {"id": "LS-ytg", "name": "YouTube: Green Heat+ Hot Water", "grp": "Video", "brand": "GHP+", "url": "https://www.youtube.com/", "handle": "@GreenHeatPlus (planned)", "status": "action", "note": "Mukesh to click Create; then Claude sets handle, logo, banner, description."}, {"id": "LS-ghpweb", "name": "Website greenheatplus.in", "grp": "Blog & web", "brand": "GHP+", "url": "https://www.greenheatplus.in", "handle": "", "status": "live", "note": "GHP+ heat pumps, plumbing and XLPE insulation pages. Search Console verified."}, {"id": "LS-exind", "name": "ExportersIndia", "grp": "Marketplaces", "brand": "EW", "url": "https://www.exportersindia.com/", "handle": "", "status": "action", "note": "Signed up 1 Nov; the new primary email was never confirmed."}, {"id": "LS-ghpli", "name": "GHP+ product pages on energyworld.co.in", "grp": "Blog & web", "brand": "GHP+", "url": "https://www.energyworld.co.in/brands/ghp", "handle": "", "status": "live", "note": "Heat pump + tank, hot-water plumbing, XLPE insulation."}];
+var S={user:"",pin:"",tok:"",role:"",tab:"dash",data:null,log:null,logErr:"",logFile:null,pf:"today",lf:"all",pq:"",prole:"",ploc:"",parea:"",pvol:"",sel:{},msg:"",queue:null,sheet:null,busy:false};
+var CH=[["fb+ig","FB + IG"],["gbp","Google"],["linkedin","LinkedIn"],["x","X"],["threads","Threads"],["pinterest","Pinterest"]];
+var LSTAT={live:"Live",action:"Action needed",todo:"To sign up",skip:"Skipped"};
+var GRPS=["Social","Video","Blog & web","Maps & listings","Marketplaces","Search tools"];
+function el(id){return document.getElementById(id)}
+function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
+function toast(t){var d=document.createElement("div");d.className="toast";d.textContent=t;document.body.appendChild(d);setTimeout(function(){d.remove()},3200)}
+function todayIST(){return new Date(Date.now()+5.5*36e5).toISOString().slice(0,10)}
+function credPut(){try{localStorage.setItem(STORE,JSON.stringify({user:S.user,role:S.role,tok:S.tok}))}catch(e){}}
+function api(action,extra){
+  var body=Object.assign({action:action,user:S.user,pin:S.pin,app:"Social "+APP_VERSION},extra||{});
+  if(S.tok)body.tok=S.tok;
+  if(action==="teamAuth")body.keep=1;
+  var ms=API_MS[action]||3e4,ctrl=null;try{ctrl=new AbortController}catch(e){}
+  var opts={method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(body)};if(ctrl)opts.signal=ctrl.signal;
+  return new Promise(function(res,rej){
+    var t=setTimeout(function(){try{ctrl&&ctrl.abort()}catch(e){}rej(new Error("no answer in "+Math.round(ms/1e3)+"s"))},ms);
+    fetch(GAS,opts).then(function(r){return r.text()}).then(function(txt){
+      clearTimeout(t);var j=null;try{j=JSON.parse(txt)}catch(e){}
+      if(!j||typeof j!=="object"){rej(new Error("the server sent something that is not an answer"));return}
+      if(j.ok&&j.tok&&j.tok!==S.tok){S.tok=String(j.tok);credPut()}
+      res(j)}).catch(function(e){clearTimeout(t);var m=String(e&&e.message||e);if(/abort/i.test(m))m="no answer in "+Math.round(ms/1e3)+"s";else if(/fetch|network|load failed/i.test(m))m="no internet, or Google did not answer";rej(new Error(m))})})}
+
+/* ---------------- sign-in: the same name and PIN as the CRM; he types the PIN ---------------- */
+function renderLogin(msg){
+  el("root").innerHTML='<div class="login"><img src="icon-192.png" alt=""><h2>Social &amp; Partners</h2><div class="note" style="text-align:center;margin:0">Post log, sites and listings, blogs and partners. Same name and PIN as the CRM.</div>'+
+  '<label for="ln">Name</label><input id="ln" autocomplete="username" value="'+esc(S.user)+'">'+
+  '<label for="lp">PIN</label><input id="lp" type="password" inputmode="numeric" autocomplete="current-password">'+
+  '<div style="margin-top:16px"><button class="btn" id="lgo" style="width:100%">Sign in</button></div>'+(msg?'<div class="err">'+esc(msg)+'</div>':'')+'</div>';
+  el("lgo").onclick=doLogin;el("lp").onkeydown=function(e){if(e.key==="Enter")doLogin()};
+}
+function doLogin(){var n=el("ln").value.trim(),p=el("lp").value.trim();if(!n||!p){renderLogin("Enter your name and PIN.");return}
+  S.user=n;S.pin=p;S.tok="";el("lgo").disabled=true;el("lgo").textContent="Signing in…";
+  api("teamAuth",{ua:navigator.userAgent}).then(function(r){
+    if(!r||!r.ok){S.pin="";renderLogin(r&&r.error||"Could not sign in.");return}
+    S.user=r.user.name;S.role=String(r.user.role||"").toLowerCase();S.pin="";credPut();loadAll()
+  }).catch(function(e){S.pin="";renderLogin("Could not sign in: "+e.message)})}
+function signOut(){try{localStorage.removeItem(STORE)}catch(e){}S.tok="";S.pin="";S.data=null;S.log=null;renderLogin("")}
+
+/* ---------------- loading ---------------- */
+function loadAll(){
+  S.busy=true;render();
+  var a=api("teamGet",{}).then(function(r){if(!r||!r.ok)throw new Error(r&&r.error||"the CRM did not answer");S.data=r}).catch(function(e){S.dataErr=e.message});
+  var b=api("socGet",{}).then(function(r){if(!r||!r.ok){S.logErr=r&&r.error||"the post log did not load";return}S.log=r.log;S.logFile=r.file||null;if(!r.log)S.logErr=r.why||"No post log yet."}).catch(function(e){S.logErr=e.message});
+  var c=api("enqList",{show:"all"}).then(function(r){if(!r||!r.ok){S.enqErr=r&&r.error||"no answer";return}S.enq=r;S.enqErr=""}).catch(function(e){S.enqErr=e.message});
+  Promise.all([a,b,c]).then(function(){S.busy=false;if(S.dataErr&&/sign in|PIN/i.test(S.dataErr)){signOut();return}render()})}
+
+/* ---------------- dashboard: everything on one screen ---------------- */
+var KEYMK=[["Justdial",/justdial/i],["IndiaMART",/indiamart/i],["Sulekha",/sulekha/i],["Hotfrog",/hotfrog/i],["TradeIndia",/tradeindia/i],["ExportersIndia",/exportersindia/i],["Google Panipat",/google business profile: panipat/i,"Google"],["Apple Business",/apple/i],["Bing Places",/bing places/i],["Mappls",/mappls/i]];
+function cut(t,n){t=String(t||"");return t.length>n?t.slice(0,t.lastIndexOf(" ",n)>n-40?t.lastIndexOf(" ",n):n)+"…":t}
+function lstFind(re){return((S.data&&S.data.listings)||[]).filter(function(x){return re.test(x.name)})[0]||null}
+function enqFor(src){var E=(S.enq&&S.enq.rows)||[];return E.filter(function(r){return String(r.source||"").toLowerCase()===String(src).toLowerCase()})}
+function dashView(){
+  var T=todayIST(),L=logBy(),P=((S.log&&S.log.posts)||[]);
+  var today=P.filter(function(p){return p.date===T}).sort(function(a,b){return slot(a.time)-slot(b.time)});
+  var wk=new Date(new Date(T+"T00:00:00")-7*864e5).toISOString().slice(0,10),miss=[];
+  P.forEach(function(p){if(p.date<wk||p.date>=T)return;CH.forEach(function(c){if(c[0]==="fb+ig")return;if(/s bad/.test(cell(p,c[0],L,T)))miss.push({p:p,c:c[1]})})});
+  var LS=(S.data&&S.data.listings)||[],act=LS.filter(function(x){return x.status==="action"}),todo=LS.filter(function(x){return x.status==="todo"});
+  var openE=((S.enq&&S.enq.rows)||[]).filter(function(r){return r.status==="Open"});
+  var A=(S.data&&S.data.associates)||[],ev=[];A.forEach(function(a){[["birthday","Birthday"],["anniversary","Anniversary"]].forEach(function(k){var n=nextDate(a[k[0]],T);if(n){var d=daysTo(n,T);if(d<=7)ev.push({a:a,k:k[1],d:d})}})});ev.sort(function(x,y){return x.d-y.d});
+  var nb=((S.log&&S.log.blogs)||[]),due={blog1:"2026-11-05",blog2:"2026-11-12",blog3:"2026-11-19",blog4:"2026-11-26"};
+  var h='<div class="kpis" style="grid-template-columns:repeat(5,minmax(0,1fr))"><div class="k"><b>'+today.length+'</b><span>posts today</span></div><div class="k bad"><b>'+miss.length+'</b><span>missed cross-posts, last 7 days</span></div><div class="k wait"><b>'+act.length+'</b><span>listings need action</span></div><div class="k'+(openE.length?' wait':'')+'"><b>'+(S.enq?openE.length:"–")+'</b><span>open online enquiries</span></div><div class="k"><b>'+ev.length+'</b><span>birthdays & anniversaries in 7 days</span></div></div>';
+  h+='<div class="card"><b>Today\'s posts</b>'+(S.log?(today.length?'<div class="tw" style="margin-top:8px"><table class="posts"><colgroup><col class="c1"><col class="c2"><col>'+CH.map(function(){return '<col class="cc">'}).join("")+'</colgroup><tbody>'+today.map(function(p){return '<tr><td>'+esc(p.time)+'</td><td><b>'+esc(p.n)+'</b></td><td>'+esc(p.title)+(p.extra?'<span class="badge">extra</span>':'')+'</td>'+CH.map(function(c){return '<td><small class="m">'+c[1]+'</small>'+cell(p,c[0],L,T)+'</td>'}).join("")+'</tr>'}).join("")+'</tbody></table></div>':'<div class="note">No post is scheduled for today.</div>'):'<div class="note">'+esc(S.logErr||"Loading…")+'</div>')+'</div>';
+  h+='<div class="card"><b>Marketplaces & listings</b><div class="tw" style="margin-top:8px"><table style="min-width:720px"><thead><tr><th>Where</th><th>Status</th><th>Open enquiries</th><th>Last enquiry</th><th>Note</th></tr></thead><tbody>'+KEYMK.map(function(m){var x=lstFind(m[1]);var en=enqFor(m[2]||m[0]),op=en.filter(function(r){return r.status==="Open"}).length,last=en.map(function(r){return String(r.at||"")}).sort().pop()||"";
+    return '<tr><td><b>'+esc(m[0])+'</b>'+(x&&x.url?'<small class="m"><a href="'+esc(x.url)+'" target="_blank" rel="noopener">open ↗</a></small>':'')+'</td><td>'+(x?'<span class="pill '+esc(x.status)+'">'+esc(LSTAT[x.status]||x.status)+'</span>':'<span class="s na">not on the list</span>')+'</td><td>'+(S.enq?(op?'<span class="s wait">'+op+' open</span>':'<span class="s na">0</span>')+(en.length?'<small class="m">'+en.length+' in all</small>':''):'<span class="s na">–</span>')+'</td><td>'+(last?esc(last.slice(0,10)):'<span class="s na">none</span>')+'</td><td style="font-size:13px">'+esc(x?cut(x.note,170):"")+'</td></tr>'}).join("")+'</tbody></table></div>'+(S.enqErr?'<div class="note">Enquiries could not load: '+esc(S.enqErr)+'</div>':'<div class="note">Enquiries are the notification e-mails these sites send, read every 10 minutes by the CRM (Visit app → Online enquiries). Reply on the site, then mark it there.</div>')+'</div>';
+  var todoL=[];act.forEach(function(x){todoL.push('<div class="q"><b>'+esc(x.name)+'<small class="m">'+esc(String(x.note||"").slice(0,160))+'</small></b><button class="chipb" data-edl="'+esc(x.id)+'">Update</button></div>')});
+  var mg={},mo=[];miss.forEach(function(m){if(!mg[m.p.n]){mg[m.p.n]={p:m.p,c:[]};mo.push(m.p.n)}mg[m.p.n].c.push(m.c)});
+  mo.forEach(function(k){var g=mg[k];todoL.push('<div class="q"><b>'+esc(g.p.n)+' '+esc(g.p.title)+'<small class="m">'+esc(g.p.date)+' - not posted on '+esc(g.c.join(", "))+'</small></b></div>')});
+  nb.forEach(function(b){var d=due[b.key];if(d&&d<=T&&!(b.where||{}).blogger)todoL.push('<div class="q"><b>Blog not published: '+esc(b.title)+'<small class="m">Was due '+esc(d)+'</small></b></div>')});
+  h+='<div class="card"><b>Needs action ('+todoL.length+')</b>'+(todoL.join("")||'<div class="note">Nothing waiting.</div>')+(todo.length?'<div class="note">Not signed up yet: '+todo.map(function(x){return esc(x.name)}).join(", ")+'.</div>':'')+'</div>';
+  h+='<div class="row2"><div class="card"><b>Blogs</b>'+nb.map(function(b){var w=b.where||{};return '<div class="q"><b>'+esc(b.title)+'<small class="m">Due '+esc(due[b.key]||"")+'</small></b>'+(w.blogger?'<span class="s ok">Live</span>':'<span class="s na">Not yet</span>')+'</div>'}).join("")+'</div>';
+  h+='<div class="card"><b>Partners this week</b>'+(ev.length?ev.map(function(e){return '<div class="q"><b>'+esc(e.a.name)+'<small class="m">'+esc(e.k)+' · '+(e.d===0?"today":e.d===1?"tomorrow":"in "+e.d+" days")+'</small></b>'+(digits(e.a.mobile)?'<button class="btn g" data-wish="'+esc(e.a.id)+'" data-k="'+esc(e.k)+'">Send wish</button>':'')+'</div>'}).join(""):'<div class="note">No birthdays or anniversaries in the next 7 days.</div>')+'<div style="margin-top:8px"><button class="chipb" data-tab="partners">All partners</button></div></div></div>';
+  return h}
+
+/* ---------------- posts ---------------- */
+var SLOT={"10:30 AM":0,"11:00 AM":1,"2:00 PM":2,"6:00 PM":3,"7:30 PM":4};function slot(t){return t in SLOT?SLOT[t]:9}
+function logBy(){var m={};((S.log&&S.log.log)||[]).forEach(function(r){var ch=String(r.channel||"").toLowerCase();(m[r.n]=m[r.n]||{})[ch]=r});return m}
+function crossStart(){return "2026-11-03"}
+function planned(p,ch){if(ch==="fb+ig")return true;if(p.date<crossStart())return false;if(ch==="pinterest")return true;return p.time==="2:00 PM"||p.extra||/^happy|शुभ/i.test(p.title||"")||p.brand==="fest"}
+function cell(p,ch,L,T){var e=(L[p.n]||{})[ch];
+  if(ch==="fb+ig")return '<span class="s sch">'+(p.date<T?"Scheduled (auto)":"Scheduled")+'</span>';
+  if(e){var v=String(e.result||"");if(/pending/i.test(v))return '<span class="s wait">Pending review</span>';
+    if(/^https?:/.test(v))return '<a class="s ok" target="_blank" rel="noopener" href="'+esc(v.split(",")[0])+'">Posted ↗</a>';
+    if(/already-scheduled/i.test(v))return '<span class="s ok">Scheduled there</span>';
+    if(/fail|skip|error|logged out/i.test(v))return '<span class="s bad" title="'+esc(v)+'">Failed</span>';
+    return '<span class="s ok">Posted</span>'}
+  if(!planned(p,ch))return '<span class="s na">–</span>';
+  if(p.date<T)return '<span class="s bad">Missed</span>';
+  if(p.date===T)return '<span class="s wait">Tonight</span>';
+  return '<span class="s na">Planned</span>'}
+function postsView(){
+  if(!S.log)return '<div class="card">'+esc(S.logErr||"Loading the post log…")+'</div>';
+  var T=todayIST(),L=logBy(),P=(S.log.posts||[]).slice().sort(function(a,b){return a.date<b.date?-1:a.date>b.date?1:slot(a.time)-slot(b.time)});
+  var tot={ok:0,w:0,m:0,up:0},miss={};
+  P.forEach(function(p){CH.forEach(function(c){if(c[0]==="fb+ig")return;var h=cell(p,c[0],L,T);if(/s bad/.test(h)){tot.m++;miss[p.n]=1}else if(/s ok/.test(h))tot.ok++;else if(/s wait/.test(h))tot.w++});if(p.date>=T)tot.up++});
+  var rows=P.filter(function(p){var f=S.pf;return f==="all"||(f==="today"&&p.date===T)||(f==="upcoming"&&p.date>T)||(f==="missed"&&miss[p.n])});
+  var by={},ks=[];rows.forEach(function(p){if(!by[p.date]){by[p.date]=[];ks.push(p.date)}by[p.date].push(p)});
+  var h='<div class="kpis"><div class="k ok"><b>'+tot.ok+'</b><span>cross-posts done</span></div><div class="k wait"><b>'+tot.w+'</b><span>pending review or tonight</span></div><div class="k bad"><b>'+tot.m+'</b><span>missed on a channel</span></div><div class="k"><b>'+tot.up+'</b><span>posts still to go out</span></div></div>';
+  h+='<div class="bar">'+[["today","Today"],["missed","Missed"],["upcoming","Upcoming"],["all","All"]].map(function(x){return '<button class="chipb" data-pf="'+x[0]+'" aria-pressed="'+(S.pf===x[0])+'">'+x[1]+'</button>'}).join("")+'<span class="note" style="margin:0 0 0 auto">Log saved '+esc(S.log.updated||"")+'</span></div>';
+  h+=ks.length?ks.map(function(d){return '<div class="day">'+esc(new Date(d+"T00:00:00").toLocaleDateString("en-IN",{weekday:"short",day:"numeric",month:"short"}))+(d===T?' <small>today</small>':'')+'</div><div class="tw"><table class="posts"><colgroup><col class="c1"><col class="c2"><col>'+CH.map(function(){return '<col class="cc">'}).join("")+'</colgroup><thead><tr><th>Time</th><th>#</th><th>Post</th>'+CH.map(function(c){return '<th>'+c[1]+'</th>'}).join("")+'</tr></thead><tbody>'+by[d].map(function(p){return '<tr><td>'+esc(p.time)+'</td><td><b>'+esc(p.n)+'</b></td><td>'+esc(p.title)+(p.extra?'<span class="badge">extra</span>':'')+'<small class="m">'+esc(({ghp:"GHP+",fest:"Festival",mea:"MEA",toto:"TOTO",fima:"FIMA"})[p.brand]||String(p.brand||"").charAt(0).toUpperCase()+String(p.brand||"").slice(1))+'</small></td>'+CH.map(function(c){return '<td>'+cell(p,c[0],L,T)+'</td>'}).join("")+'</tr>'}).join("")+'</tbody></table></div>'}).join(""):'<div class="card">Nothing here'+(S.pf==="missed"?" - no channel has been missed.":".")+'</div>';
+  h+='<p class="note">Facebook and Instagram are scheduled in Meta Business Suite and go out on their own. Google, LinkedIn, X and Threads get one post a day (the 2:00 PM post, a festival, or an extra such as GHP+ XLPE); Pinterest gets every post. These come from the 7:47 PM run on the Mac, which saves this log to Google Drive each night. Cross-posting began on 3 Nov.</p>';
+  return h}
+
+/* ---------------- sites, pages and marketplaces ---------------- */
+function listingsView(){
+  var L=(S.data&&S.data.listings)||null;
+  if(!S.data)return '<div class="card">'+esc(S.dataErr||"Loading…")+'</div>';
+  if(!L||!L.length)return '<div class="card"><b>The sites and listings list is empty.</b><p class="note">Load the starting list of '+SEED.length+' sites, pages, marketplaces and map listings - from the Social Hub, updated on 11 Nov. After that, change any status here.</p><button class="btn" id="seed">Load the starting list</button></div>';
+  var c=function(k){return L.filter(function(x){return x.status===k}).length};
+  var h='<div class="kpis"><div class="k ok"><b>'+c("live")+'</b><span>live</span></div><div class="k wait"><b>'+c("action")+'</b><span>need action</span></div><div class="k"><b>'+c("todo")+'</b><span>to sign up</span></div><div class="k"><b>'+c("skip")+'</b><span>skipped</span></div></div>';
+  h+='<div class="bar">'+[["all","All"],["action","Action needed"],["live","Live"],["todo","To sign up"]].map(function(x){return '<button class="chipb" data-lf="'+x[0]+'" aria-pressed="'+(S.lf===x[0])+'">'+x[1]+'</button>'}).join("")+'</div>';
+  GRPS.forEach(function(g){var r=L.filter(function(x){return x.grp===g&&(S.lf==="all"||x.status===S.lf)});if(!r.length)return;
+    h+='<div class="grp">'+esc(g)+'</div><div class="tw">'+r.map(function(x){return '<div class="li"><div><b>'+esc(x.name)+'</b><small class="m">'+esc(x.brand)+'</small>'+(x.url?'<a href="'+esc(x.url)+'" target="_blank" rel="noopener">'+esc(String(x.url).replace(/^https?:\/\/(www\.)?/,""))+'</a>':'')+'</div><div style="font-size:14px">'+esc(x.note)+(x.updatedAt?'<small class="m">Updated '+esc(String(x.updatedAt).slice(0,10))+(x.updatedBy?' by '+esc(x.updatedBy):'')+'</small>':'')+'</div><div><span class="pill '+esc(x.status)+'">'+esc(LSTAT[x.status]||x.status)+'</span><div style="margin-top:6px"><button class="chipb" data-edl="'+esc(x.id)+'">Change</button></div></div></div>'}).join("")+'</div>'});
+  return h}
+function editListing(id){var x=(S.data.listings||[]).filter(function(r){return r.id===id})[0];if(!x)return;
+  S.sheet='<h2>'+esc(x.name)+'</h2><label class="f">Status<select id="es">'+Object.keys(LSTAT).map(function(k){return '<option value="'+k+'"'+(k===x.status?" selected":"")+'>'+LSTAT[k]+'</option>'}).join("")+'</select></label><label class="f">Note<textarea id="en">'+esc(x.note)+'</textarea></label><label class="f">Link<input id="eu" value="'+esc(x.url)+'"></label><div class="bar"><button class="btn" id="esave" data-id="'+esc(id)+'">Save</button><button class="btn l" data-close="1">Cancel</button></div>';render()}
+function saveRow(tab,row){return api("teamSave",{tab:tab,row:row}).then(function(r){if(!r||!r.ok)throw new Error(r&&r.error||"the server refused it");var arr=S.data[tab]=S.data[tab]||[];var i=-1;arr.forEach(function(x,k){if(String(x.id)===String(row.id))i=k});var nr=r.row||row;if(i>=0)arr[i]=nr;else arr.push(nr);return nr})}
+
+/* ---------------- blogs ---------------- */
+function blogsView(){
+  if(!S.log)return '<div class="card">'+esc(S.logErr||"Loading…")+'</div>';
+  var dates={blog1:"5 Nov",blog2:"12 Nov",blog3:"19 Nov",blog4:"26 Nov"},T=todayIST();
+  var W=[["blogger","Blogger"],["medium","Medium"],["linkedin","LinkedIn"],["quora","Quora"]];
+  return '<div class="tw"><table style="min-width:680px"><thead><tr><th>Blog</th><th>Due</th>'+W.map(function(w){return '<th>'+w[1]+'</th>'}).join("")+'</tr></thead><tbody>'+(S.log.blogs||[]).map(function(b){return '<tr><td><b>'+esc(b.title)+'</b><small class="m">'+esc(b.key)+'</small></td><td>'+esc(dates[b.key]||"")+'</td>'+W.map(function(w){var v=(b.where||{})[w[0]];return '<td>'+(v?(/^https?:/.test(v)?'<a class="s ok" target="_blank" rel="noopener" href="'+esc(v)+'">Live ↗</a>':'<span class="s ok">Shared</span>'):'<span class="s na">Not yet</span>')+'</td>'}).join("")+'</tr>'}).join("")+'</tbody></table></div><p class="note">One blog every Thursday, published on Blogger and Medium and shared on LinkedIn and the Quora Space by the 7:47 PM run.</p>'}
+
+/* ---------------- partners ---------------- */
+function digits(m){var d=String(m||"").replace(/\D/g,"");if(d.length>10)d=d.slice(-10);return d.length===10?d:""}
+function volumes(){ /* business per partner: challans of the clients and sites that name him as plumber, architect, builder or PMC */
+  if(S._vol)return S._vol;var d=S.data||{},A=d.associates||[],key={},vol={};
+  A.forEach(function(a){key[String(a.id)]=a.id;if(a.code)key[String(a.code)]=a.id;key[String(a.name||"").trim().toLowerCase()]=a.id});
+  var who=function(v){v=String(v||"").trim();return key[v]||key[v.toLowerCase()]||null};
+  var cl={};(d.clients||[]).forEach(function(c){var ps=[];["plumber","architect","builder","pmc"].forEach(function(f){var w=who(c[f]);if(w&&ps.indexOf(w)<0)ps.push(w)});cl[c.id]=ps});
+  (d.challans||[]).forEach(function(ch){if(/cancel/i.test(ch.status||""))return;var amt=Number(ch.amount)||0;var ps=(cl[ch.customerId]||[]).slice();var a=who(ch.associate);if(a&&ps.indexOf(a)<0)ps.push(a);ps.forEach(function(p){vol[p]=(vol[p]||0)+amt})});
+  var vals=Object.keys(vol).map(function(k){return vol[k]}).sort(function(a,b){return b-a});var hi=vals[Math.floor(vals.length*0.2)]||0;
+  S._vol={v:vol,hi:hi};return S._vol}
+function band(v,hi){if(!v)return "none";if(v>=hi)return "high";if(v>=hi/4)return "mid";return "low"}
+function inr(n){return "₹"+Math.round(n).toLocaleString("en-IN")}
+function nextDate(md,T){if(!md)return null;var m=String(md).match(/(\d{4})-(\d{2})-(\d{2})/);if(!m)return null;var y=Number(T.slice(0,4)),t=y+"-"+m[2]+"-"+m[3];if(t<T)t=(y+1)+"-"+m[2]+"-"+m[3];return t}
+function daysTo(d,T){return Math.round((new Date(d+"T00:00:00")-new Date(T+"T00:00:00"))/864e5)}
+function partnersView(){
+  if(!S.data)return '<div class="card">'+esc(S.dataErr||"Loading…")+'</div>';
+  var A=(S.data.associates||[]).filter(function(a){return a&&a.name}),V=volumes(),T=todayIST();
+  var roles=[],locs=[],areas=[];A.forEach(function(a){if(a.role&&roles.indexOf(a.role)<0)roles.push(a.role);var l=String(a.location||"").trim();if(l&&locs.indexOf(l)<0)locs.push(l);var r=String(a.area||"").trim();if(r&&areas.indexOf(r)<0)areas.push(r)});
+  roles.sort();locs.sort();areas.sort();
+  var q=S.pq.toLowerCase();
+  var list=A.filter(function(a){return(!S.prole||a.role===S.prole)&&(!S.ploc||String(a.location||"").trim()===S.ploc)&&(!S.parea||String(a.area||"").trim()===S.parea)&&(!S.pvol||band(V.v[a.id],V.hi)===S.pvol)&&(!q||(a.name+" "+a.code+" "+a.location+" "+a.area).toLowerCase().indexOf(q)>=0)});
+  list.sort(function(a,b){return(V.v[b.id]||0)-(V.v[a.id]||0)||String(a.name).localeCompare(String(b.name))});
+  var ev=[];A.forEach(function(a){[["birthday","Birthday"],["anniversary","Anniversary"]].forEach(function(k){var n=nextDate(a[k[0]],T);if(n){var dd=daysTo(n,T);if(dd<=30)ev.push({a:a,k:k[1],d:dd,dt:n})}})});ev.sort(function(x,y){return x.d-y.d});
+  var nb=A.filter(function(a){return a.birthday}).length,na=A.filter(function(a){return a.anniversary}).length;
+  var nsel=Object.keys(S.sel).filter(function(k){return S.sel[k]}).length;
+  var h='<div class="kpis"><div class="k"><b>'+A.length+'</b><span>partners in the CRM</span></div><div class="k ok"><b>'+Object.keys(V.v).length+'</b><span>with business on record</span></div><div class="k wait"><b>'+ev.length+'</b><span>birthdays & anniversaries in 30 days</span></div><div class="k"><b>'+nb+' / '+na+'</b><span>birthdays / anniversaries entered</span></div></div>';
+  h+='<div class="card"><b>Coming up</b>'+(ev.length?ev.slice(0,12).map(function(e){return '<div class="q"><b>'+esc(e.a.name)+' <small class="m">'+esc(e.a.role||"")+' · '+esc(e.k)+' · '+(e.d===0?"today":e.d===1?"tomorrow":"in "+e.d+" days")+'</small></b>'+(digits(e.a.mobile)?'<button class="btn g" data-wish="'+esc(e.a.id)+'" data-k="'+esc(e.k)+'">Send wish</button>':'<small class="m">no mobile</small>')+'</div>'}).join(""):'<div class="note">None in the next 30 days. Only '+nb+' birthdays and '+na+' anniversaries are entered - tap Edit on a partner to add them.</div>')+'</div>';
+  h+='<div class="bar"><input id="pq" placeholder="Search name, code, area" value="'+esc(S.pq)+'" style="flex:1;min-width:180px">'+
+    sel("prole","All roles",roles,S.prole)+sel("ploc","All locations",locs,S.ploc)+sel("parea","All areas",areas,S.parea)+
+    '<select id="pvol"><option value="">All business</option>'+[["high","High business"],["mid","Medium"],["low","Low"],["none","No business yet"]].map(function(x){return '<option value="'+x[0]+'"'+(S.pvol===x[0]?" selected":"")+'>'+x[1]+'</option>'}).join("")+'</select></div>';
+  h+='<div class="bar"><button class="chipb" id="selall">Select all '+list.length+' shown</button><button class="chipb" id="selnone">Clear selection</button><b style="margin-left:auto">'+nsel+' selected</b><button class="btn g" id="compose"'+(nsel?"":" disabled")+'>Message selected on WhatsApp</button></div>';
+  h+='<div class="tw"><table class="pt"><thead><tr><th></th><th>Partner</th><th>Role</th><th>Location · area</th><th>Business</th><th>Birthday</th><th>Anniversary</th><th></th></tr></thead><tbody>'+list.slice(0,400).map(function(a){var v=V.v[a.id]||0,b=band(v,V.hi);return '<tr><td class="sel"><input type="checkbox" aria-label="Select '+esc(a.name)+'" data-sel="'+esc(a.id)+'"'+(S.sel[a.id]?" checked":"")+(digits(a.mobile)?"":" disabled")+'></td><td><b>'+esc(a.name)+'</b><small class="m">'+esc(a.code||"")+(digits(a.mobile)?"":" · no valid mobile")+'</small></td><td>'+esc(a.role)+'</td><td>'+esc(a.location||"")+(a.area?' · '+esc(a.area):'')+'</td><td class="vol">'+(v?inr(v)+'<small class="m">'+({high:"High",mid:"Medium",low:"Low"})[b]+'</small>':'<span class="s na">–</span>')+'</td><td>'+esc(fmtD(a.birthday))+'</td><td>'+esc(fmtD(a.anniversary))+'</td><td><button class="chipb" data-edp="'+esc(a.id)+'">Edit</button></td></tr>'}).join("")+'</tbody></table></div>';
+  h+='<p class="note">Business is the total of challans for the clients and sites where this partner is named as plumber, architect, builder or PMC (cancelled challans left out). High is the top fifth. Partners are the CRM\'s own list - edits here save to the CRM, and nothing is ever deleted.</p>';
+  return h}
+function sel(id,all,opts,cur){return '<select id="'+id+'"><option value="">'+all+'</option>'+opts.map(function(o){return '<option'+(o===cur?" selected":"")+'>'+esc(o)+'</option>'}).join("")+'</select>'}
+function fmtD(d){var m=String(d||"").match(/(\d{4})-(\d{2})-(\d{2})/);if(!m)return "";return Number(m[3])+" "+["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][Number(m[2])-1]}
+function editPartner(id){var a=(S.data.associates||[]).filter(function(x){return String(x.id)===String(id)})[0];if(!a)return;
+  S.sheet='<h2>'+esc(a.name)+'</h2><div class="note" style="margin-top:0">'+esc(a.role||"")+' · '+esc(a.code||"")+'</div><div class="row2"><label class="f">Birthday<input type="date" id="pb" value="'+esc(String(a.birthday||"").slice(0,10))+'"></label><label class="f">Anniversary<input type="date" id="pa" value="'+esc(String(a.anniversary||"").slice(0,10))+'"></label><label class="f">Location<input id="pl" value="'+esc(a.location||"")+'"></label><label class="f">Area<input id="par" value="'+esc(a.area||"")+'"></label></div><div class="bar"><button class="btn" id="psave" data-id="'+esc(a.id)+'">Save to CRM</button><button class="btn l" data-close="1">Cancel</button></div>';render()}
+function wa(a,text){var d=digits(a.mobile);return d?"https://wa.me/91"+d+"?text="+encodeURIComponent(text.replace(/\{name\}/g,String(a.name||"").split(" ")[0])):""}
+function compose(){S.sheet='<h2>Message to '+Object.keys(S.sel).filter(function(k){return S.sel[k]}).length+' partners</h2><div class="note" style="margin-top:0">{name} becomes each partner\'s first name. WhatsApp only allows sending one chat at a time from here, so the next screen opens each chat ready to send - one tap each.</div><textarea id="mt" placeholder="Namaste {name} ji, …">'+esc(S.msg)+'</textarea><div class="bar"><button class="btn g" id="mgo">Next: send one by one</button><button class="btn l" data-close="1">Cancel</button></div>';render()}
+function queueView(){var Q=S.queue,done=Q.list.filter(function(x){return x.sent}).length;
+  return '<h2>Sending '+done+' of '+Q.list.length+'</h2><div class="note" style="margin-top:0">Tap Open WhatsApp, press send in WhatsApp, then come back for the next one.</div>'+Q.list.map(function(x,i){return '<div class="q"><b>'+esc(x.a.name)+'<small class="m">'+esc(x.a.role||"")+'</small></b>'+(x.sent?'<span class="s ok">Opened</span>':'<a class="btn g" target="_blank" rel="noopener" data-qi="'+i+'" href="'+esc(wa(x.a,Q.text))+'">Open WhatsApp</a>')+'</div>'}).join("")+'<div class="bar" style="margin-top:12px"><button class="btn l" data-close="1">Done</button></div>'}
+
+/* ---------------- shell ---------------- */
+function render(){
+  if(!S.user||!S.tok){renderLogin("");return}
+  var tabs=[["dash","Dashboard"],["posts","Posts"],["listings","Sites & listings"],["blogs","Blogs"],["partners","Partners"]];
+  var body=S.tab==="dash"?dashView():S.tab==="posts"?postsView():S.tab==="listings"?listingsView():S.tab==="blogs"?blogsView():partnersView();
+  el("root").innerHTML='<header><div class="hrow"><img src="icon-192.png" alt=""><h1>Social &amp; Partners</h1><span class="who">'+esc(S.user)+'</span><button id="rf">'+(S.busy?"Loading…":"Refresh")+'</button><button id="so">Sign out</button></div><nav>'+tabs.map(function(t){return '<button data-tab="'+t[0]+'" aria-current="'+(S.tab===t[0]?"page":"false")+'">'+t[1]+'</button>'}).join("")+'</nav></header><main>'+body+'</main>'+
+    (S.sheet||S.queue?'<div class="sheet" data-close="1"><div>'+(S.queue?queueView():S.sheet)+'</div></div>':'');
+  try{localStorage.setItem("ew_social_tab",S.tab)}catch(e){}
+}
+document.addEventListener("click",function(e){var t=e.target,b;
+  if((b=t.closest("[data-tab]"))){S.tab=b.dataset.tab;render();return}
+  if(t.id==="rf"){S._vol=null;loadAll();return}
+  if(t.id==="so"){signOut();return}
+  if((b=t.closest("[data-pf]"))){S.pf=b.dataset.pf;render();return}
+  if((b=t.closest("[data-lf]"))){S.lf=b.dataset.lf;render();return}
+  if((b=t.closest("[data-edl]"))){editListing(b.dataset.edl);return}
+  if((b=t.closest("[data-edp]"))){editPartner(b.dataset.edp);return}
+  if(t.dataset&&t.dataset.close&&(t.classList.contains("sheet")||t.tagName==="BUTTON")){S.sheet=null;S.queue=null;render();return}
+  if(t.id==="seed"){t.disabled=true;t.textContent="Saving "+SEED.length+"…";var i=0,fail=0;(function next(){if(i>=SEED.length){toast(fail?fail+" did not save - tap Refresh and try again":"Starting list saved");render();return}var r=Object.assign({},SEED[i++],{updatedAt:new Date().toISOString(),updatedBy:S.user});saveRow("listings",r).catch(function(){fail++}).then(function(){t.textContent="Saving "+i+" of "+SEED.length+"…";next()})})();return}
+  if(t.id==="esave"){var id=t.dataset.id,x=(S.data.listings||[]).filter(function(r){return r.id===id})[0];var row=Object.assign({},x,{status:el("es").value,note:el("en").value.trim(),url:el("eu").value.trim(),updatedAt:new Date().toISOString(),updatedBy:S.user});t.disabled=true;t.textContent="Saving…";saveRow("listings",row).then(function(){S.sheet=null;toast("Saved");render()}).catch(function(err){t.disabled=false;t.textContent="Save";toast("Not saved: "+err.message+" - nothing changed")});return}
+  if(t.id==="psave"){var a=(S.data.associates||[]).filter(function(x){return String(x.id)===String(t.dataset.id)})[0];var nr=Object.assign({},a,{birthday:el("pb").value,anniversary:el("pa").value,location:el("pl").value.trim(),area:el("par").value.trim()});delete nr.updatedAt;t.disabled=true;t.textContent="Saving…";saveRow("associates",nr).then(function(){S.sheet=null;S._vol=null;toast("Saved to the CRM");render()}).catch(function(err){t.disabled=false;t.textContent="Save to CRM";toast("Not saved: "+err.message+" - nothing changed")});return}
+  if(t.id==="selall"){document.querySelectorAll("[data-sel]").forEach(function(c){if(!c.disabled)S.sel[c.dataset.sel]=true});render();return}
+  if(t.id==="selnone"){S.sel={};render();return}
+  if(t.id==="compose"){compose();return}
+  if(t.id==="mgo"){var txt=el("mt").value.trim();if(!txt){toast("Write the message first");return}S.msg=txt;var A=S.data.associates||[];S.queue={text:txt,list:A.filter(function(a){return S.sel[a.id]&&digits(a.mobile)}).map(function(a){return{a:a,sent:false}})};S.sheet=null;render();return}
+  if((b=t.closest("[data-qi]"))){var qi=Number(b.dataset.qi);setTimeout(function(){S.queue.list[qi].sent=true;render()},300);return}
+  if((b=t.closest("[data-wish]"))){var p=(S.data.associates||[]).filter(function(x){return String(x.id)===String(b.dataset.wish)})[0];var k=b.dataset.k;var msg=k==="Birthday"?"Happy birthday {name} ji! Wishing you good health, happiness and a great year ahead. - Mukesh, Energy World":"Happy anniversary {name} ji! Wishing you both many happy years together. - Mukesh, Energy World";window.open(wa(p,msg),"_blank","noopener");return}
+});
+document.addEventListener("change",function(e){var t=e.target;
+  if(t.dataset&&t.dataset.sel){S.sel[t.dataset.sel]=t.checked;render();return}
+  if(["prole","ploc","parea","pvol"].indexOf(t.id)>=0){S[t.id]=t.value;render();return}});
+document.addEventListener("input",function(e){if(e.target.id==="pq"){S.pq=e.target.value;var pos=e.target.selectionStart;render();var n=el("pq");if(n){n.focus();try{n.setSelectionRange(pos,pos)}catch(x){}}}});
+(function boot(){try{var c=JSON.parse(localStorage.getItem(STORE)||"null");if(c&&c.tok){S.user=c.user;S.role=c.role;S.tok=c.tok}}catch(e){}
+  
+  if(S.tok)loadAll();else renderLogin("")})();
+</script>
+</body>
+</html>
