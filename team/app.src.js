@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.963";   /* 6.9.958 (10 Nov 2026) - a statement attached before the name was kept is told apart by its time, not left as four identical lines */     /* 6.9.957 (10 Nov 2026) - each attached old hisab shows its file name, and a wrong one can be set aside */     /* 6.9.956 (10 Nov 2026) - rebuilt: the GitHub Pages publish of 6.9.955 failed (run #1675), so nothing had changed on the phones */   /* 6.9.955 (10 Nov 2026) - the old hisab takes more than one file at once: photographed pages become one PDF, and every statement on file is listed */     /* 6.9.954 (10 Nov 2026) - the Partner Club: fixed slabs, a bonus on crossing one, the trip and device rewards, every partner's rupees to his next slab, and the quiet-partner watch */     /* 6.9.953 (10 Nov 2026) - Service > Control: cash in each engineer's hand, hand-over recorded, three random customer checks a week */     /* 6.9.952 (10 Nov 2026) - to-bill month by month, screens found from Search, team screen use on Health, a receipt for every incentive payout */     /* 6.9.951 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 6.9.950 (9 Nov 2026) - brand introductions: a fuller paragraph, three stage-wise benefits and one next step, on the quote and the proposal */     /* 6.9.949 (9 Nov 2026) - quote PDF: a product picture stays inside its own row (1.2 mm clear of both lines) */     /* 6.9.948 (9 Nov 2026) - quote PDF: each room heading carries its collection and finish with colour dots; every FIMA code chip has its finish dot */     /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
+  var APP_VERSION = "6.9.964";   /* 6.9.964 (11 Nov 2026) - quote spec table: a value all but a few items share is said once and the few are named, so one tube no longer printed five long columns 25 times */   /* 6.9.963 (11 Nov 2026) - purchase bills: same day + same amount flagged on the Tally screen */   /* 6.9.958 (10 Nov 2026) - a statement attached before the name was kept is told apart by its time, not left as four identical lines */     /* 6.9.957 (10 Nov 2026) - each attached old hisab shows its file name, and a wrong one can be set aside */     /* 6.9.956 (10 Nov 2026) - rebuilt: the GitHub Pages publish of 6.9.955 failed (run #1675), so nothing had changed on the phones */   /* 6.9.955 (10 Nov 2026) - the old hisab takes more than one file at once: photographed pages become one PDF, and every statement on file is listed */     /* 6.9.954 (10 Nov 2026) - the Partner Club: fixed slabs, a bonus on crossing one, the trip and device rewards, every partner's rupees to his next slab, and the quiet-partner watch */     /* 6.9.953 (10 Nov 2026) - Service > Control: cash in each engineer's hand, hand-over recorded, three random customer checks a week */     /* 6.9.952 (10 Nov 2026) - to-bill month by month, screens found from Search, team screen use on Health, a receipt for every incentive payout */     /* 6.9.951 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 6.9.950 (9 Nov 2026) - brand introductions: a fuller paragraph, three stage-wise benefits and one next step, on the quote and the proposal */     /* 6.9.949 (9 Nov 2026) - quote PDF: a product picture stays inside its own row (1.2 mm clear of both lines) */     /* 6.9.948 (9 Nov 2026) - quote PDF: each room heading carries its collection and finish with colour dots; every FIMA code chip has its finish dot */     /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -24130,14 +24130,74 @@ function viewCatalogue() {
       var g = bg[brand];
       BC = BRANDC[bi % BRANDC.length];
 
-      /* a field every item in this brand carries with the SAME value is said once */
-      var common = [], vary = [];
+      /* ======= 6.9.964 - ONE ODD ITEM WAS PRINTING A LONG LINE 25 TIMES =======
+         MEASURED on QT147, 25 SANITAAR items, 11 Nov 2026. The rule was all-or-nothing:
+         a field counted as "common" only if EVERY item carried the same value. On that
+         quote one item - STTUBE31654, a tube, not a fitting - states no Seal, no Check
+         and no Fits, and one other carries a different Material and Joint. So:
+
+           Material  24 of 25 identical  ->  a column, "stainless steel 316L (EN 1.4404),
+                                             fully annealed" written out 25 times
+           Seal      24 of 25 identical  ->  a column, same way
+           Joint     24 of 25 identical  ->  a column, and its value is 18 words long
+           Check     24 of 25            ->  a column
+           Fits      22 of 25            ->  a column
+
+         Five columns of near-identical text pushed every row to about 75 mm, and the
+         SANITAAR block alone ran to three pages. That is exactly the "very lengthy"
+         he reported, and the table rewrite had not cured it.
+
+         NOW: a field whose value is the same on all but a FEW items is said once, and
+         the few are named underneath. Honesty first - the common box can never claim a
+         value for an item that does not have it, so every exception is printed, by code,
+         either as its own different value or as "not stated".
+
+         The tolerance is 15% of the brand's items, never more than 3, and never on a
+         brand of fewer than six items, where repeating a line costs nothing anyway. */
+      var common = [], vary = [], exBy = {}, exCodes = [];
       var seenL = [];
       g.forEach(function (b) { b.order.forEach(function (l) { if (seenL.indexOf(l) < 0) seenL.push(l); }); });
+      var TOLER = g.length >= 6 ? Math.min(3, Math.floor(g.length * 0.15)) : 0;
+      var noteEx = function (b, l) {
+        if (!exBy[b.code]) { exBy[b.code] = []; exCodes.push(b.code); }
+        exBy[b.code].push(b.map[l] === undefined ? l + " not stated" : l + " : " + b.map[l]);
+      };
       seenL.forEach(function (l) {
-        var v0 = g[0].map[l], same = true;
-        for (var k = 0; k < g.length; k++) { if (g[k].map[l] !== v0) { same = false; break; } }
-        if (same && v0 !== undefined && g.length > 1) common.push([l, v0]); else vary.push(l);
+        var cnt = {}, best, bestN = 0;
+        g.forEach(function (b) {
+          var v = b.map[l];
+          if (v === undefined) return;
+          cnt[v] = (cnt[v] || 0) + 1;
+          if (cnt[v] > bestN) { bestN = cnt[v]; best = v; }
+        });
+        if (!bestN || g.length < 2) { vary.push(l); return; }
+        var odd = g.length - bestN;                       /* differ, or do not state it */
+        if (odd === 0) { common.push([l, best]); return; }
+        if (TOLER && odd <= TOLER) {
+          common.push([l, best]);
+          g.forEach(function (b) { if (b.map[l] !== best) noteEx(b, l); });
+          return;
+        }
+        vary.push(l);
+      });
+      /* the table has room for five columns, so the fields the most items carry go in it.
+         Before 6.9.964 it took the first five in reading order, which on QT147 spent two
+         of them on Size and Length - fields ONE item of the 25 carries. */
+      var cover = {};
+      vary.forEach(function (l) { cover[l] = g.filter(function (b) { return b.map[l] !== undefined; }).length; });
+      vary.sort(function (a, b2) { return cover[b2] - cover[a]; });
+      /* A COLUMN HAS TO EARN ITS WIDTH. On QT147 the two manifolds are the only items of 25
+         carrying Type, Main and Branch, so those three took three of the five columns and
+         printed a dash on the other 23 rows - width spent on nothing. A field is a column
+         only if at least a quarter of the brand's items carry it (and at least three do).
+         The rest are printed against the few items that have them, under the common box,
+         where they read as what they are: this item also states X. */
+      var earns = function (l) { return cover[l] >= Math.max(3, Math.ceil(g.length * 0.25)); };
+      var cols2 = vary.filter(earns).slice(0, 5);
+      vary.forEach(function (l) {
+        if (cols2.indexOf(l) >= 0) return;
+        if (cover[l] > 4) return;                 /* too many to name one by one - let it go */
+        g.forEach(function (b) { if (b.map[l] !== undefined) noteEx(b, l); });
       });
 
       /* the brand band - a one-item brand is measured whole so its band never strands
@@ -24167,15 +24227,32 @@ function viewCatalogue() {
 
       if (common.length) {
         col([120, 140, 150]); F("bold"); doc.setFontSize(5.8);
-        room(6); doc.text("COMMON TO ALL " + g.length + " ITEMS", L + 1, y + 1.2); y += 2.6;
+        room(6);
+        doc.text("COMMON TO ALL " + g.length + " ITEMS" + (exCodes.length ? " \u2014 EXCEPT WHERE NOTED BELOW" : ""),
+                 L + 1, y + 1.2);
+        y += 2.6;
         var h2 = pairBox(common, null, false);
         if (room(h2)) { }
         pairBox(common, null, true);
         y += h2 + 3.2;
       }
+      /* the exceptions, by code. Without these the box above would be a claim about an
+         item that never made it - a tube has no seal, and the quote must not say it has. */
+      if (exCodes.length) {
+        F("normal"); doc.setFontSize(5.8);
+        var exW = Rt - L - 26;
+        exCodes.forEach(function (cd) {
+          var ls = doc.splitTextToSize(exBy[cd].join("; "), exW);
+          room(ls.length * 2.7 + 1.4);
+          col(BC); F("bold"); doc.text(cd, L + 1, y + 2);
+          col([100, 116, 139]); F("normal");
+          ls.forEach(function (ln, z) { doc.text(ln, L + 26, y + 2 + z * 2.7); });
+          y += ls.length * 2.7 + 0.8;
+        });
+        y += 2.4;
+      }
 
       /* the table: code, name, then the fields that differ */
-      var cols2 = vary.slice(0, 5);
       var W = Rt - L, CODEW = 23, NAMEW = Math.max(42, W * 0.3);
       var rest = W - CODEW - NAMEW, each = cols2.length ? rest / cols2.length : 0;
 
