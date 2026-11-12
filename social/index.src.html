@@ -95,7 +95,7 @@ label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:70
 <body>
 <div id="root"></div>
 <script>
-var APP_VERSION="1.1.1";
+var APP_VERSION="1.1.2";
 var GAS="https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
 var STORE="ew_social_session";
 var API_MS={teamAuth:45e3,teamGet:9e4,socGet:6e4,socList:6e4,teamSave:6e4,enqList:6e4};
@@ -110,6 +110,7 @@ var GRPS=["Social","Video","Blog & web","Maps & listings","Marketplaces","Search
 function el(id){return document.getElementById(id)}
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
 function toast(t){var d=document.createElement("div");d.className="toast";d.textContent=t;document.body.appendChild(d);setTimeout(function(){d.remove()},3200)}
+function daysBack(d,n){var t=new Date(d+"T00:00:00Z");t.setUTCDate(t.getUTCDate()-n);return t.toISOString().slice(0,10)}
 function todayIST(){return new Date(Date.now()+5.5*36e5).toISOString().slice(0,10)}
 function credPut(){try{localStorage.setItem(STORE,JSON.stringify({user:S.user,role:S.role,tok:S.tok}))}catch(e){}}
 function api(action,extra){
@@ -194,8 +195,11 @@ function cell(p,ch,L,T){var e=(L[p.n]||{})[ch];
     if(/fail|skip|error|logged out/i.test(v))return '<span class="s bad" title="'+esc(v)+'">Failed</span>';
     return '<span class="s ok">Posted</span>'}
   if(!planned(p,ch))return '<span class="s na">–</span>';
+  /* 12 Nov: the Mac is off at night, so cross-posting runs every hour 11 AM-5 PM and catches up
+     on anything not done for today and the 2 days before. Only older ones are really missed. */
+  if(p.date<T&&p.date>=daysBack(T,2))return '<span class="s wait">Catching up</span>';
   if(p.date<T)return '<span class="s bad">Missed</span>';
-  if(p.date===T)return '<span class="s wait">Tonight</span>';
+  if(p.date===T)return '<span class="s wait">Today 11–5</span>';
   return '<span class="s na">Planned</span>'}
 function postsView(){
   if(!S.log)return '<div class="card">'+esc(S.logErr||"Loading the post log…")+'</div>';
@@ -204,10 +208,10 @@ function postsView(){
   P.forEach(function(p){CH.forEach(function(c){if(c[0]==="fb+ig")return;var h=cell(p,c[0],L,T);if(/s bad/.test(h)){tot.m++;miss[p.n]=1}else if(/s ok/.test(h))tot.ok++;else if(/s wait/.test(h))tot.w++});if(p.date>=T)tot.up++});
   var rows=P.filter(function(p){var f=S.pf;return f==="all"||(f==="today"&&p.date===T)||(f==="upcoming"&&p.date>T)||(f==="missed"&&miss[p.n])});
   var by={},ks=[];rows.forEach(function(p){if(!by[p.date]){by[p.date]=[];ks.push(p.date)}by[p.date].push(p)});
-  var h='<div class="kpis"><div class="k ok"><b>'+tot.ok+'</b><span>cross-posts done</span></div><div class="k wait"><b>'+tot.w+'</b><span>pending review or tonight</span></div><div class="k bad"><b>'+tot.m+'</b><span>missed on a channel</span></div><div class="k"><b>'+tot.up+'</b><span>posts still to go out</span></div></div>';
+  var h='<div class="kpis"><div class="k ok"><b>'+tot.ok+'</b><span>cross-posts done</span></div><div class="k wait"><b>'+tot.w+'</b><span>pending review or still to post</span></div><div class="k bad"><b>'+tot.m+'</b><span>missed on a channel</span></div><div class="k"><b>'+tot.up+'</b><span>posts still to go out</span></div></div>';
   h+='<div class="bar">'+[["today","Today"],["missed","Missed"],["upcoming","Upcoming"],["all","All"]].map(function(x){return '<button class="chipb" data-pf="'+x[0]+'" aria-pressed="'+(S.pf===x[0])+'">'+x[1]+'</button>'}).join("")+'<span class="note" style="margin:0 0 0 auto">Log saved '+esc(S.log.updated||"")+'</span></div>';
   h+=ks.length?ks.map(function(d){return '<div class="day">'+esc(new Date(d+"T00:00:00").toLocaleDateString("en-IN",{weekday:"short",day:"numeric",month:"short"}))+(d===T?' <small>today</small>':'')+'</div><div class="tw"><table class="posts"><colgroup><col class="c1"><col class="c2"><col>'+CH.map(function(){return '<col class="cc">'}).join("")+'</colgroup><thead><tr><th>Time</th><th>#</th><th>Post</th>'+CH.map(function(c){return '<th>'+c[1]+'</th>'}).join("")+'</tr></thead><tbody>'+by[d].map(function(p){return '<tr><td>'+esc(p.time)+'</td><td><b>'+esc(p.n)+'</b></td><td><button class="plink" data-gv="'+esc(p.n)+'" title="See the picture">'+esc(p.title)+'</button>'+(p.extra?'<span class="badge">extra</span>':'')+'<small class="m">'+esc(({ghp:"GHP+",fest:"Festival",mea:"MEA",toto:"TOTO",fima:"FIMA"})[p.brand]||String(p.brand||"").charAt(0).toUpperCase()+String(p.brand||"").slice(1))+'</small></td>'+CH.map(function(c){return '<td>'+cell(p,c[0],L,T)+'</td>'}).join("")+'</tr>'}).join("")+'</tbody></table></div>'}).join(""):'<div class="card">Nothing here'+(S.pf==="missed"?" - no channel has been missed.":".")+'</div>';
-  h+='<p class="note">Facebook and Instagram are scheduled in Meta Business Suite and go out on their own. Google, LinkedIn, X and Threads get one post a day (the 2:00 PM post, a festival, or an extra such as GHP+ XLPE); Pinterest gets every post. These come from the 7:47 PM run on the Mac, which saves this log to Google Drive each night. Cross-posting began on 3 Nov.</p>';
+  h+='<p class="note">Facebook and Instagram are scheduled in Meta Business Suite and go out on their own. Google, LinkedIn, X and Threads get one post a day (the 2:00 PM post, a festival, or an extra such as GHP+ XLPE); Pinterest gets every post. These go out from the Mac, which tries every hour from 11 AM to 5 PM: whenever the Mac is open it posts what is due, and catches up on the 2 days before if the Mac was shut. Each run saves this log to Google Drive. Cross-posting began on 3 Nov.</p>';
   return h}
 
 /* ---------------- sites, pages and marketplaces ---------------- */
