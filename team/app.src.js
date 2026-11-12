@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.971";   /* 6.9.971 (12 Nov 2026) - a brand with no preset is set from the return-finalise card itself */   /* 6.9.970 (12 Nov 2026) - quote PDF: a product description is printed whole, not cut at three lines */   /* 6.9.969 (11 Nov 2026) - deliveries with no signed paper split by age: the ones past 30 days get the red number, the fresh ones are stated quietly */   /* 6.9.968 (11 Nov 2026) - a purchase bill already fully in stock is not brought in a second time: Huliot's invoice arrives in three mails, and all three were being uploaded */   /* 6.9.967 (11 Nov 2026) - GHP+ logo in the registered Green Heat+ colours (#00539F / #ED1D24) on PDFs, quotes, challans and QR centres */   /* 6.9.966 (11 Nov 2026) - technical specifications sheet in colour: brand-coloured table heads and code strip, coloured field labels, and the exceptions in an amber panel */   /* 6.9.965 (11 Nov 2026) - old quotes to close: grouped by what the site is doing now, closing windows first, each group carrying that stage's own pitch lines */   /* 6.9.964 (11 Nov 2026) - quote spec table: a value all but a few items share is said once and the few are named, so one tube no longer printed five long columns 25 times */   /* 6.9.963 (11 Nov 2026) - purchase bills: same day + same amount flagged on the Tally screen */   /* 6.9.958 (10 Nov 2026) - a statement attached before the name was kept is told apart by its time, not left as four identical lines */     /* 6.9.957 (10 Nov 2026) - each attached old hisab shows its file name, and a wrong one can be set aside */     /* 6.9.956 (10 Nov 2026) - rebuilt: the GitHub Pages publish of 6.9.955 failed (run #1675), so nothing had changed on the phones */   /* 6.9.955 (10 Nov 2026) - the old hisab takes more than one file at once: photographed pages become one PDF, and every statement on file is listed */     /* 6.9.954 (10 Nov 2026) - the Partner Club: fixed slabs, a bonus on crossing one, the trip and device rewards, every partner's rupees to his next slab, and the quiet-partner watch */     /* 6.9.953 (10 Nov 2026) - Service > Control: cash in each engineer's hand, hand-over recorded, three random customer checks a week */     /* 6.9.952 (10 Nov 2026) - to-bill month by month, screens found from Search, team screen use on Health, a receipt for every incentive payout */     /* 6.9.951 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 6.9.950 (9 Nov 2026) - brand introductions: a fuller paragraph, three stage-wise benefits and one next step, on the quote and the proposal */     /* 6.9.949 (9 Nov 2026) - quote PDF: a product picture stays inside its own row (1.2 mm clear of both lines) */     /* 6.9.948 (9 Nov 2026) - quote PDF: each room heading carries its collection and finish with colour dots; every FIMA code chip has its finish dot */     /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
+  var APP_VERSION = "6.9.972";   /* 6.9.972 (12 Nov 2026) - return finalise: try a rate on the lines, and change the preset from today with a PIN */   /* 6.9.971 (12 Nov 2026) - a brand with no preset is set from the return-finalise card itself */   /* 6.9.970 (12 Nov 2026) - quote PDF: a product description is printed whole, not cut at three lines */   /* 6.9.969 (11 Nov 2026) - deliveries with no signed paper split by age: the ones past 30 days get the red number, the fresh ones are stated quietly */   /* 6.9.968 (11 Nov 2026) - a purchase bill already fully in stock is not brought in a second time: Huliot's invoice arrives in three mails, and all three were being uploaded */   /* 6.9.967 (11 Nov 2026) - GHP+ logo in the registered Green Heat+ colours (#00539F / #ED1D24) on PDFs, quotes, challans and QR centres */   /* 6.9.966 (11 Nov 2026) - technical specifications sheet in colour: brand-coloured table heads and code strip, coloured field labels, and the exceptions in an amber panel */   /* 6.9.965 (11 Nov 2026) - old quotes to close: grouped by what the site is doing now, closing windows first, each group carrying that stage's own pitch lines */   /* 6.9.964 (11 Nov 2026) - quote spec table: a value all but a few items share is said once and the few are named, so one tube no longer printed five long columns 25 times */   /* 6.9.963 (11 Nov 2026) - purchase bills: same day + same amount flagged on the Tally screen */   /* 6.9.958 (10 Nov 2026) - a statement attached before the name was kept is told apart by its time, not left as four identical lines */     /* 6.9.957 (10 Nov 2026) - each attached old hisab shows its file name, and a wrong one can be set aside */     /* 6.9.956 (10 Nov 2026) - rebuilt: the GitHub Pages publish of 6.9.955 failed (run #1675), so nothing had changed on the phones */   /* 6.9.955 (10 Nov 2026) - the old hisab takes more than one file at once: photographed pages become one PDF, and every statement on file is listed */     /* 6.9.954 (10 Nov 2026) - the Partner Club: fixed slabs, a bonus on crossing one, the trip and device rewards, every partner's rupees to his next slab, and the quiet-partner watch */     /* 6.9.953 (10 Nov 2026) - Service > Control: cash in each engineer's hand, hand-over recorded, three random customer checks a week */     /* 6.9.952 (10 Nov 2026) - to-bill month by month, screens found from Search, team screen use on Health, a receipt for every incentive payout */     /* 6.9.951 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 6.9.950 (9 Nov 2026) - brand introductions: a fuller paragraph, three stage-wise benefits and one next step, on the quote and the proposal */     /* 6.9.949 (9 Nov 2026) - quote PDF: a product picture stays inside its own row (1.2 mm clear of both lines) */     /* 6.9.948 (9 Nov 2026) - quote PDF: each room heading carries its collection and finish with colour dots; every FIMA code chip has its finish dot */     /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -16222,6 +16222,47 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     });
   }
   function retFlagged(r) { return retCheckLines(r).filter(function (x) { return x.flag === "noset" || x.flag === "zero"; }); }
+  /* ===== 6.9.972 - TRY A PRESET ON THIS RETURN BEFORE SETTING IT  (12 Nov 2026) =====
+     HIS WORDS on the brand summary, over a credit of 3,68,047: "show option to edit for admin,
+     change dist will reflect to item wise, so that we can finalize preset .. prest change with
+     pin only and from current date only, change log to be maintained".
+
+     The two halves of that pull against each other, and he chose how to settle it. A preset saved
+     TODAY cannot reach a return dated 3 Nov: every figure on this card reads the rate as it stood
+     on the return's own day (discRowOn), which is the rule that stops a rate written now from
+     quietly rewriting the past. So the % he types here is a TRIAL - the lines and the credit
+     redraw at once so he can see what the number does - and saving writes the rate from today,
+     for what comes next. The credit on this return and the money on the client's account are not
+     touched by either. Nothing here moves money, exactly as the card has always said.
+
+     The trial lives in S.rtTry and is thrown away when the card is closed. It is never read by
+     retCheckLines, retFlagged or the stamp: a trial that could change what gets stamped would be
+     worse than no trial at all. */
+  /* 6.9.972 - the % box and the 0% tick that sit beside the pressed button. Scoped to the row
+     for the same reason dpat-save is: one brand can now appear in two tables at once. */
+  function rtpRead(t, brand) {
+    var sel = function (c) { return c + '[data-brand="' + String(brand || "").replace(/"/g, '\\"') + '"]'; };
+    var sc = (t.closest && (t.closest("tr") || t.closest(".card"))) || null;
+    var q = function (c) { return (sc && sc.querySelector(sel(c))) || document.querySelector(sel(c)); };
+    var bx = q("input.dp-pct"), nb = q("input.dp-non");
+    var raw = String((bx && bx.value) || "").trim(), no = !!(nb && nb.checked);
+    if (!no && !raw) return { err: "Put a % in, or tick 0%, for " + brand + "." };
+    if (!no && (!/^[0-9]+(\.[0-9]+)?$/.test(raw) || Number(raw) > 100)) return { err: brand + ": a discount is a number from 0 to 100." };
+    return { pct: no ? 0 : Number(raw) };
+  }
+  function rtTryMap(r) {
+    var T = S.rtTry;
+    return (T && r && T.id === r.id && T.m) ? T.m : {};
+  }
+  /* the line as it would be at the trial rate, or null when no trial touches it */
+  function rtTryLine(x, m) {
+    if (!x || x.job || x.lump) return null;
+    var k = dkey(x.brand || "");
+    if (!k || !m || m[k] == null) return null;
+    var pct = Number(m[k]) || 0;
+    var dr = Math.round((Number(x.rate) || 0) * (1 - pct / 100) * 100) / 100;
+    return { pct: pct, dr: dr, amt: (Number(x.qty) || 0) * dr };
+  }
   function modalRetFinal(id) {
     var r = (S.data.returns || []).filter(function (x) { return x.id === id; })[0];
     if (!r) return '<h2>Not found</h2><div class="foot"><button class="btn" data-act="close">Close</button></div>';
@@ -16260,22 +16301,41 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       '<th style="font-weight:600;padding:3px 6px 5px">Disc</th><th style="font-weight:600;padding:3px 6px 5px">Net rate</th>' +
       '<th style="font-weight:600;padding:3px 6px 5px">Credit</th><th style="text-align:left;font-weight:600;padding:3px 0 5px 6px">Check</th></tr>';
     if (!rl.length) h += '<tr><td colspan="7" style="color:#94a3b8;padding:6px 0">No items on this return.</td></tr>';
+    var _try = rtTryMap(r), _tryGross = 0, _tryAny = 0;   /* 6.9.972 */
     rl.forEach(function (x) {
       var red = x.flag === "noset" || x.flag === "zero";
+      var tl = rtTryLine(x, _try);
+      _tryGross += tl ? tl.amt : x.amt;
+      if (tl) _tryAny++;
+      var _t2 = function (v) { return tl ? '<div style="font-size:11.5px;color:#92400e;margin-top:1px;white-space:nowrap">' + v + '</div>' : ''; };
       h += '<tr style="border-top:1px solid #e2e8f0;text-align:right' + (red ? ';background:#fef2f2' : '') + '">' +
         '<td style="text-align:left;padding:5px 6px 5px 0;min-width:170px">' + esc(x.desc || x.code || "") + (x.brand ? ' <span style="color:#94a3b8;font-size:12px;white-space:nowrap">' + esc(x.brand) + '</span>' : '') + '</td>' +
         '<td style="padding:5px 6px">' + esc(String(x.qty)) + '</td>' +
         '<td style="padding:5px 6px;color:' + (x.disc > 0 ? '#94a3b8;text-decoration:line-through' : '#334155') + '">' + money(x.rate) + '</td>' +
-        '<td style="padding:5px 6px;font-weight:700;color:' + (red ? '#b91c1c' : (x.disc > 0 ? '#0f766e' : '#94a3b8')) + '">' + (x.job ? '&mdash;' : (x.disc > 0 ? x.disc + '%' : (red ? 'NONE' : '&mdash;'))) + '</td>' +
-        '<td style="padding:5px 6px">' + money(x.dr) + '</td>' +
-        '<td style="padding:5px 6px;font-weight:700;color:#b91c1c">&minus;' + money(x.amt) + '</td>' +
+        '<td style="padding:5px 6px;font-weight:700;color:' + (red ? '#b91c1c' : (x.disc > 0 ? '#0f766e' : '#94a3b8')) + '">' + (x.job ? '&mdash;' : (x.disc > 0 ? x.disc + '%' : (red ? 'NONE' : '&mdash;'))) + _t2('try ' + tl.pct + '%') + '</td>' +
+        '<td style="padding:5px 6px">' + money(x.dr) + _t2(money(tl.dr)) + '</td>' +
+        '<td style="padding:5px 6px;font-weight:700;color:#b91c1c">&minus;' + money(x.amt) + _t2('&minus;' + money(tl.amt)) + '</td>' +
         '<td style="text-align:left;padding:5px 0 5px 6px;white-space:nowrap">' + _why(x) + '</td></tr>';
     });
     h += '</table></div>' +
       '<div style="margin-top:8px;border-top:2px solid #cbd5e1;padding-top:7px">' +
       '<div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline"><span style="font-size:12.5px;color:#475569">Goods back</span><span style="font-weight:700;font-size:13px">&minus;' + money(gross) + '</span></div>' +
       (amt !== gross ? '<div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;margin-top:2px"><span style="font-size:12.5px;color:#475569">Less the same share the delivery was given off</span><span style="font-weight:700;font-size:13px">' + money(gross - amt) + '</span></div>' : '') +
-      '<div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;margin-top:5px;padding-top:5px;border-top:1px solid #e2e8f0"><span style="font-weight:800;font-size:13px;color:#0f172a">Credit to client</span><span style="font-weight:800;font-size:15px;color:#b91c1c;white-space:nowrap">&minus;' + money(amt) + '</span></div></div></div>';
+      '<div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;margin-top:5px;padding-top:5px;border-top:1px solid #e2e8f0"><span style="font-weight:800;font-size:13px;color:#0f172a">Credit to client</span><span style="font-weight:800;font-size:15px;color:#b91c1c;white-space:nowrap">&minus;' + money(amt) + '</span></div>' +
+      /* 6.9.972 - the trial total, in the same amber as the trial figures above it */
+      (function () {
+        if (!_tryAny) return '';
+        var tNet = Math.round(_tryGross * retShare(r).factor), gap = amt - tNet;
+        return '<div style="margin-top:7px;padding:7px 9px;border:1px dashed #fcd34d;background:#fffbeb;border-radius:8px">' +
+          '<div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline">' +
+          '<span style="font-size:12.5px;color:#92400e;font-weight:700">If the preset were what you typed</span>' +
+          '<span style="font-weight:800;font-size:15px;color:#92400e;white-space:nowrap">&minus;' + money(tNet) + '</span></div>' +
+          '<div class="meta" style="font-size:12px;color:#92400e;margin-top:3px">' +
+          (gap === 0 ? 'The same credit as it stands.'
+            : money(Math.abs(gap)) + (gap > 0 ? ' less' : ' more') + ' than the credit above.') +
+          ' <b>This is a trial only</b> &mdash; nothing is saved, this return’s credit is unchanged, and the client’s account has not moved. ' +
+          'Saving a preset sets the rate from today, for what comes next.</div></div>';
+      })() + '</div></div>';
     /* 3. brand by brand, against the preset on the day of the return */
     var bm = {}, bo = [];
     rl.forEach(function (x) {
@@ -16298,17 +16358,25 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
            return he was half-way through stamping. Same widget and same dpat-save handler as the
            Discount pattern card, so there is one way to set a preset and one audit trail; the
            only new thing is data-rt, which paints this return again with the figures redone. */
-        var setHere = (canFinalise() && b.real && b.pre === null)
-          ? ' <span style="display:inline-flex;gap:4px;align-items:center;white-space:nowrap;margin-left:6px">' +
-            '<input class="dp-pct" data-brand="' + esc(b.brand) + '" inputmode="decimal" placeholder="%" style="width:58px;min-height:36px;padding:4px 6px;font-size:13px">' +
+        /* 6.9.972 - TRY, for every real brand, preset or not. The % box is shared with the
+           Set it / Change it buttons below it, so one number is typed once. */
+        var tryHere = (canFinalise() && b.real)
+          ? '<div style="display:inline-flex;gap:4px;align-items:center;white-space:nowrap;margin-left:6px">' +
+            '<input class="dp-pct" data-brand="' + esc(b.brand) + '" inputmode="decimal" placeholder="%" value="' + (_try[dkey(b.brand)] != null ? esc(String(_try[dkey(b.brand)])) : '') + '" style="width:58px;min-height:36px;padding:4px 6px;font-size:13px">' +
             '<label style="font-size:12px;display:inline-flex;gap:3px;align-items:center;cursor:pointer"><input type="checkbox" class="dp-non" data-brand="' + esc(b.brand) + '" style="width:18px;height:18px"> 0%</label>' +
-            '<button class="btn sm" data-act="dpat-save" data-n="' + esc(cl) + '" data-brand="' + esc(b.brand) + '" data-rt="' + esc(r.id) + '" style="min-height:36px;padding:2px 9px;font-size:12px">Set it</button></span>'
+            '<button class="btn sm gry" data-act="rtp-try" data-id="' + esc(r.id) + '" data-brand="' + esc(b.brand) + '" style="min-height:36px;padding:2px 9px;font-size:12px" title="Redraw the lines above at this rate. Nothing is saved.">Try it</button>' +
+            (b.pre === null
+              ? '<button class="btn sm" data-act="dpat-save" data-n="' + esc(cl) + '" data-brand="' + esc(b.brand) + '" data-rt="' + esc(r.id) + '" style="min-height:36px;padding:2px 9px;font-size:12px">Set it</button>'
+              : '<button class="btn sm" data-act="rtp-save" data-n="' + esc(cl) + '" data-brand="' + esc(b.brand) + '" data-rt="' + esc(r.id) + '" data-was="' + esc(String(b.pre)) + '" style="min-height:36px;padding:2px 9px;font-size:12px;background:#b45309;border-color:#b45309" title="Change the preset from today, with your PIN. Past deliveries and returns keep the rate they were priced at.">Change it</button>') +
+            (_try[dkey(b.brand)] != null ? '<button class="btn sm ghost" data-act="rtp-clear" data-id="' + esc(r.id) + '" data-brand="' + esc(b.brand) + '" style="min-height:36px;padding:2px 9px;font-size:12px">Undo the trial</button>' : '') +
+            '</div>'
           : '';
         var chk = !b.real ? '<span style="color:#94a3b8">n/a</span>'
-          : b.pre === null ? '<b style="color:#b91c1c">NOT SET</b>' + setHere
+          : b.pre === null ? '<b style="color:#b91c1c">NOT SET</b>'
           : b.bad > 0 ? '<b style="color:#b91c1c">' + money(b.bad) + ' credited at MRP</b>'
           : (ap.length === 1 && Math.abs(ap[0] - b.pre) < 0.05) ? '<span style="color:#0f766e">&#10003; matches</span>'
           : '<span style="color:#92400e">follows the challan line, not the preset</span>';
+        chk += (b.pre === null ? '' : '') + tryHere;   /* 6.9.972 - the boxes follow whatever the check says */
         h += '<tr style="border-top:1px solid #e2e8f0;text-align:right' + (b.bad > 0 || (b.real && b.pre === null) ? ';background:#fef2f2' : '') + '">' +
           '<td style="text-align:left;padding:5px 6px 5px 0;font-weight:600">' + esc(b.brand) + '</td><td style="padding:5px 6px">&minus;' + money(b.amt) + '</td>' +
           '<td style="padding:5px 6px;font-weight:700">' + esc(apT) + '</td>' +
@@ -63074,6 +63142,7 @@ function viewCatalogue() {
       try { pb.focus(); } catch (e) {}
     };
     wirePin("pass_pin", "pass-pin-go"); wirePin("op_pin", "op-pin-go"); wirePin("disc_pin", "disc-pin-go");
+    if (el("rtp_pin")) wirePin("rtp_pin", "rtp-pin-go");   /* 6.9.972 */
     /* v6.9.452 - and the one-line prompt's box: Enter is OK, as it was in the system dialog. A
        multi-line box keeps Enter for a new line and only takes focus. */
     (function () { var pb = el("prompt_in"); if (!pb) return; if (pb.tagName === "TEXTAREA") { try { pb.focus(); } catch (e) {} return; } wirePin("prompt_in", "prompt-ok"); })();
@@ -63450,6 +63519,76 @@ function viewCatalogue() {
       api("teamAuth", { pin: dpin }).then(function (r) {
         if (r && r.ok) { S.pin = dpin; _dpGo(); } else pinNote("disc_pin", "PIN incorrect — discount not changed.");
       }).catch(function () { pinNote("disc_pin", "Could not reach the server — the discount is unchanged."); });
+      return;
+    }
+    /* ===== 6.9.972 - TRY A RATE ON A RETURN, AND CHANGE THE PRESET FROM TODAY =====
+       Try it is free and writes nothing. Change it asks the PIN EVERY time - this is a rate, not a
+       line, and the three-minute unlock that suits a run of line edits is wrong for it. */
+    if (act === "rtp-try" || act === "rtp-clear") {
+      if (!canFinalise()) return;
+      var _rtId = t.getAttribute("data-id") || "", _rtB = t.getAttribute("data-brand") || "";
+      if (!_rtId || !_rtB) return;
+      if (!S.rtTry || S.rtTry.id !== _rtId) S.rtTry = { id: _rtId, m: {} };
+      if (act === "rtp-clear") { delete S.rtTry.m[dkey(_rtB)]; }
+      else {
+        var _rv = rtpRead(t, _rtB);
+        if (_rv.err) { toast(_rv.err); return; }
+        S.rtTry.m[dkey(_rtB)] = _rv.pct;
+      }
+      try { S.modal = modalRetFinal(_rtId); } catch (e) { }
+      render();
+      return;
+    }
+    if (act === "rtp-save") {
+      if (!canFinalise()) { toast("Changing a client\u2019s preset is the owner\u2019s."); return; }
+      var _rsC = t.getAttribute("data-n") || "", _rsB = t.getAttribute("data-brand") || "";
+      var _rsR = t.getAttribute("data-rt") || "", _rsW = t.getAttribute("data-was") || "";
+      var _rs = rtpRead(t, _rsB);
+      if (_rs.err) { toast(_rs.err); return; }
+      if (String(_rs.pct) === String(Number(_rsW))) { toast(_rsB + " is already at " + _rsW + "% \u2014 nothing to change."); return; }
+      S.rtPend = { client: _rsC, brand: _rsB, pct: _rs.pct, rt: _rsR, was: _rsW };
+      S.modal = sheetMoneyPin("Your PIN to change a pre-set discount",
+        '<b>' + esc(_rsC) + '</b> \u2014 ' + esc(_rsB) + '<br>' +
+        '<b>' + esc(_rsW) + '%</b> &rarr; <b>' + (_rs.pct > 0 ? _rs.pct + '%' : '0% (no discount, approved)') + '</b>, <b>from ' + esc(dmy(today())) + '</b><br>' +
+        '<span style="color:#64748b">Everything delivered or returned before today keeps the rate it was priced at \u2014 ' +
+        'including this return. The change is written with your name and shows in the change log.</span>',
+        "rtp_pin", "rtp-pin-go", "Change it from today", "");
+      render();
+      return;
+    }
+    if (act === "rtp-pin-go") {
+      if (!canFinalise()) return;
+      var _rp = S.rtPend;
+      if (!_rp) { S.modal = null; render(); return; }
+      var _rpin = el("rtp_pin") ? String(el("rtp_pin").value || "").trim() : "";
+      if (!_rpin) { pinNote("rtp_pin", "Type your PIN first. The preset is unchanged."); return; }
+      var _rpGo = function () {
+        S.pin = S.pin || _rpin; S.rtPend = null; S.modal = null;
+        var _from = today();
+        /* the incentives on the old row come forward. A new row that dropped them would stop
+           paying the plumber and the architect on this brand from today, silently. */
+        var _old = discRow(_rp.client, _rp.brand, _from);
+        var _m = incMap(_old) || {};
+        _m.from = _from;
+        save("discounts", { id: mintId("D"), client: _rp.client, brand: _rp.brand, pct: _rp.pct, notes: JSON.stringify(_m) }, true);
+        /* pin: so chgNeverFold keeps it - a rate change must never be folded into a neighbour */
+        save("audit", { id: mintId("A"), createdAt: new Date().toISOString(), actor: S.user || "",
+          action: "pin:preset", target: _rp.client + " / " + _rp.brand,
+          detail: JSON.stringify({ client: _rp.client, brand: _rp.brand, was: _rp.was, now: _rp.pct,
+            from: _from, where: "return finalise", rtId: _rp.rt, carried: Object.keys(_m).filter(function (k) { return k !== "from"; }) }),
+          ip: "" }, true);
+        _dscIdx = null; _dscFam = null; _rpgCache = null;
+        toast(_rp.brand + ": " + _rp.was + "% \u2192 " + (_rp.pct > 0 ? _rp.pct + "%" : "0%, approved") + " for " + _rp.client + ", from " + dmy(_from) + ".");
+        if (_rp.rt) { try { S.modal = modalRetFinal(_rp.rt); } catch (e) { } }
+        render();
+      };
+      if (S.pin) {
+        if (String(_rpin) !== String(S.pin)) { pinNote("rtp_pin", "PIN incorrect \u2014 the preset is unchanged."); return; }
+        _rpGo(); return;
+      }
+      api("teamAuth", { pin: _rpin }).then(function (rr) {
+        if (rr && rr.ok) { S.pin = _rpin; _rpGo(); } else pinNote("rtp_pin", "PIN incorrect \u2014 the preset is unchanged.");
+      }).catch(function () { pinNote("rtp_pin", "Could not reach the server \u2014 the preset is unchanged."); });
       return;
     }
     /* Clicking the dimmed background no longer closes a popup - a stray click while making a
@@ -69889,6 +70028,7 @@ function viewCatalogue() {
       if (!canFinalise()) { toast("Only the owner finalises a return."); return; }
       if (retStamp(_rf)) { toast("That return is already finalised."); return; }
       if (String(_rf.status || "") !== "Received") { toast("Book it in at the godown first (Received at godown) - nothing was stamped."); return; }
+      S.rtTry = null;   /* 6.9.972 - a card opened fresh carries no trial from the last one */
       S.modal = modalRetFinal(_rf.id); render(); return;
     }
     if (act === "rt-final-ok") {
