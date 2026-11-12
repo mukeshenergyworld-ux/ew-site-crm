@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.975";   /* 6.9.975 (12 Nov 2026) - a finalised return can be opened again, and repriced, with it recorded as after the stamp */   /* 6.9.974 (12 Nov 2026) - Change it reprices this return as well as setting the preset from today */   /* 6.9.973 (12 Nov 2026) - FIX: the Finalise card on a return threw before it drew (6.9.972) */   /* 6.9.972 (12 Nov 2026) - return finalise: try a rate on the lines, and change the preset from today with a PIN */   /* 6.9.971 (12 Nov 2026) - a brand with no preset is set from the return-finalise card itself */   /* 6.9.970 (12 Nov 2026) - quote PDF: a product description is printed whole, not cut at three lines */   /* 6.9.969 (11 Nov 2026) - deliveries with no signed paper split by age: the ones past 30 days get the red number, the fresh ones are stated quietly */   /* 6.9.968 (11 Nov 2026) - a purchase bill already fully in stock is not brought in a second time: Huliot's invoice arrives in three mails, and all three were being uploaded */   /* 6.9.967 (11 Nov 2026) - GHP+ logo in the registered Green Heat+ colours (#00539F / #ED1D24) on PDFs, quotes, challans and QR centres */   /* 6.9.966 (11 Nov 2026) - technical specifications sheet in colour: brand-coloured table heads and code strip, coloured field labels, and the exceptions in an amber panel */   /* 6.9.965 (11 Nov 2026) - old quotes to close: grouped by what the site is doing now, closing windows first, each group carrying that stage's own pitch lines */   /* 6.9.964 (11 Nov 2026) - quote spec table: a value all but a few items share is said once and the few are named, so one tube no longer printed five long columns 25 times */   /* 6.9.963 (11 Nov 2026) - purchase bills: same day + same amount flagged on the Tally screen */   /* 6.9.958 (10 Nov 2026) - a statement attached before the name was kept is told apart by its time, not left as four identical lines */     /* 6.9.957 (10 Nov 2026) - each attached old hisab shows its file name, and a wrong one can be set aside */     /* 6.9.956 (10 Nov 2026) - rebuilt: the GitHub Pages publish of 6.9.955 failed (run #1675), so nothing had changed on the phones */   /* 6.9.955 (10 Nov 2026) - the old hisab takes more than one file at once: photographed pages become one PDF, and every statement on file is listed */     /* 6.9.954 (10 Nov 2026) - the Partner Club: fixed slabs, a bonus on crossing one, the trip and device rewards, every partner's rupees to his next slab, and the quiet-partner watch */     /* 6.9.953 (10 Nov 2026) - Service > Control: cash in each engineer's hand, hand-over recorded, three random customer checks a week */     /* 6.9.952 (10 Nov 2026) - to-bill month by month, screens found from Search, team screen use on Health, a receipt for every incentive payout */     /* 6.9.951 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 6.9.950 (9 Nov 2026) - brand introductions: a fuller paragraph, three stage-wise benefits and one next step, on the quote and the proposal */     /* 6.9.949 (9 Nov 2026) - quote PDF: a product picture stays inside its own row (1.2 mm clear of both lines) */     /* 6.9.948 (9 Nov 2026) - quote PDF: each room heading carries its collection and finish with colour dots; every FIMA code chip has its finish dot */     /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
+  var APP_VERSION = "6.9.977";   /* 6.9.977 (12 Nov 2026) - a partner or driver payout entered wrongly can be set aside, with a reason, and brought back */   /* 6.9.976 (12 Nov 2026) - a brand already set aside stops nagging from the empty-brand card */   /* 6.9.975 (12 Nov 2026) - a finalised return can be opened again, and repriced, with it recorded as after the stamp */   /* 6.9.974 (12 Nov 2026) - Change it reprices this return as well as setting the preset from today */   /* 6.9.973 (12 Nov 2026) - FIX: the Finalise card on a return threw before it drew (6.9.972) */   /* 6.9.972 (12 Nov 2026) - return finalise: try a rate on the lines, and change the preset from today with a PIN */   /* 6.9.971 (12 Nov 2026) - a brand with no preset is set from the return-finalise card itself */   /* 6.9.970 (12 Nov 2026) - quote PDF: a product description is printed whole, not cut at three lines */   /* 6.9.969 (11 Nov 2026) - deliveries with no signed paper split by age: the ones past 30 days get the red number, the fresh ones are stated quietly */   /* 6.9.968 (11 Nov 2026) - a purchase bill already fully in stock is not brought in a second time: Huliot's invoice arrives in three mails, and all three were being uploaded */   /* 6.9.967 (11 Nov 2026) - GHP+ logo in the registered Green Heat+ colours (#00539F / #ED1D24) on PDFs, quotes, challans and QR centres */   /* 6.9.966 (11 Nov 2026) - technical specifications sheet in colour: brand-coloured table heads and code strip, coloured field labels, and the exceptions in an amber panel */   /* 6.9.965 (11 Nov 2026) - old quotes to close: grouped by what the site is doing now, closing windows first, each group carrying that stage's own pitch lines */   /* 6.9.964 (11 Nov 2026) - quote spec table: a value all but a few items share is said once and the few are named, so one tube no longer printed five long columns 25 times */   /* 6.9.963 (11 Nov 2026) - purchase bills: same day + same amount flagged on the Tally screen */   /* 6.9.958 (10 Nov 2026) - a statement attached before the name was kept is told apart by its time, not left as four identical lines */     /* 6.9.957 (10 Nov 2026) - each attached old hisab shows its file name, and a wrong one can be set aside */     /* 6.9.956 (10 Nov 2026) - rebuilt: the GitHub Pages publish of 6.9.955 failed (run #1675), so nothing had changed on the phones */   /* 6.9.955 (10 Nov 2026) - the old hisab takes more than one file at once: photographed pages become one PDF, and every statement on file is listed */     /* 6.9.954 (10 Nov 2026) - the Partner Club: fixed slabs, a bonus on crossing one, the trip and device rewards, every partner's rupees to his next slab, and the quiet-partner watch */     /* 6.9.953 (10 Nov 2026) - Service > Control: cash in each engineer's hand, hand-over recorded, three random customer checks a week */     /* 6.9.952 (10 Nov 2026) - to-bill month by month, screens found from Search, team screen use on Health, a receipt for every incentive payout */     /* 6.9.951 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 6.9.950 (9 Nov 2026) - brand introductions: a fuller paragraph, three stage-wise benefits and one next step, on the quote and the proposal */     /* 6.9.949 (9 Nov 2026) - quote PDF: a product picture stays inside its own row (1.2 mm clear of both lines) */     /* 6.9.948 (9 Nov 2026) - quote PDF: each room heading carries its collection and finish with colour dots; every FIMA code chip has its finish dot */     /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -7360,7 +7360,18 @@ window.addEventListener("beforeunload", function (ev) {
      billed Rs 1,045 for one visit worth Rs 545, because the form was saved twice eight seconds
      apart and the second save lost the salt bag. Nothing is deleted - the second row is set
      aside with a reason, exactly as a duplicate challan is, and can be brought back. */
-  var CANCEL_TABS = { challans: "Challan", clients: "Client / lead", sites: "Site (lead)", returns: "Material return", payments: "Payment received", quotes: "Quote", pitch: "Brand record", visits: "Service visit", installs: "Installation", associates: "Partner" };   /* 6.9.898 - his ask: "option to delete any partner" - set aside, never deleted */
+  /* 6.9.977 - commpay and driverpay join the list. HIS QUESTION, 12 Nov: "how to edit / delete a
+     partner or driver payout if wrongly entered". MEASURED: there was no answer. Both logs were
+     append-only - the Paid out screen offered a Receipt button and nothing else, and a driver
+     payout lives on the server entirely. A payment typed twice, or against the wrong man, stood
+     in the total for ever and silently moved what he is still owed.
+     EDITING is still not offered, and that is deliberate: a payout is a record of money that
+     left the firm on a day, and quietly rewriting one is how a figure changes with no trace.
+     Set the wrong one aside with a reason and enter the right one - two honest rows.
+     driverpay is NOT a key in S.data: its rows come from the server (dpPull). It is in this map
+     so the sheet, the reasons, the Bin and Bring back all work the one way, and splitCancelled
+     skips it; payouts() does the filtering instead. */
+  var CANCEL_TABS = { challans: "Challan", clients: "Client / lead", sites: "Site (lead)", returns: "Material return", payments: "Payment received", quotes: "Quote", pitch: "Brand record", visits: "Service visit", installs: "Installation", associates: "Partner", commpay: "Incentive payout", driverpay: "Driver payout" };   /* 6.9.898 - his ask: "option to delete any partner" - set aside, never deleted */
   /* Fixed list, same reasoning as the loss reasons: free text cannot be counted, and "mistake",
      "Mistake" and "wrong entry" are three rows and one reason. */
   var CANCEL_REASONS = [
@@ -7538,6 +7549,16 @@ window.addEventListener("beforeunload", function (ev) {
     _cxCache = null;
     var m = cancelMap();
     Object.keys(CANCEL_TABS).forEach(function (tab) {
+      /* 6.9.977 - a server-side list has no S.data tab to split. Its cancelled rows are held
+         here so the Bin and Bring back read the same way; the reader filters the live ones. */
+      if (tab === "driverpay") {
+        var _m2 = m;
+        S.cancelled.driverpay = dpAll().filter(function (p) {
+          var c2 = _m2["driverpay|" + String((p && p.id) || "")];
+          return !!(c2 && c2.on);
+        });
+        return;
+      }
       var live = S.data[tab] || [], held = S.cancelled[tab] || [];
       var seen = {}, keep = [], gone = [];
       live.concat(held).forEach(function (r) {
@@ -7559,6 +7580,12 @@ window.addEventListener("beforeunload", function (ev) {
     _ledCache = null; _cqCache = null; _cwbCache = null;
   }
 
+  /* 6.9.977 - where a row of this kind is found. Cancelled ones are included, because the Bin
+     and Bring back have to read a row that is no longer live. */
+  function cxRows(tab) {
+    if (tab === "driverpay") return dpAll();
+    return ((S.data || {})[tab] || []).concat(((S.cancelled || {})[tab]) || []);
+  }
   function cancelLabel(tab, r) {
     if (!r) return "";
     if (tab === "challans") return String(r.challanNo || r.id || "");
@@ -7568,6 +7595,8 @@ window.addEventListener("beforeunload", function (ev) {
     if (tab === "pitch") return String(r.brand || r.id || "");
     if (tab === "visits") return fullDate(String(r.date || r.createdAt || "").slice(0, 10)) + " visit";
     if (tab === "installs") return String(r.product || "") + (r.serial ? " " + r.serial : "");
+    if (tab === "commpay") return String(r.associate || r.id || "");            /* 6.9.977 */
+    if (tab === "driverpay") return String(r.driver || r.id || "");             /* 6.9.977 */
     return String(r.name || r.id || "");
   }
   function cxValue(tab, r) {
@@ -7578,6 +7607,8 @@ window.addEventListener("beforeunload", function (ev) {
       if (tab === "quotes") return Math.round(Number(r.net) || 0);
       if (tab === "visits") return Math.round(nAmt(r.total) ||
         (nAmt(r.visitCharge) + nAmt(r.saltAmt) + nAmt(r.partsAmt)));
+      if (tab === "commpay") return Math.round(payAmt(r));                      /* 6.9.977 */
+      if (tab === "driverpay") return Math.round(dpAmt(r));                     /* 6.9.977 */
     } catch (e) { }
     return 0;
   }
@@ -7586,6 +7617,12 @@ window.addEventListener("beforeunload", function (ev) {
     if (tab === "challans") return String(r.customerName || "") + (r.site ? " · " + r.site : "") + " · " + money(cxValue("challans", r));
     if (tab === "returns") return String(r.customerName || "") + (r.challanNo ? " · against " + r.challanNo : "");
     if (tab === "payments") return String(r.client || "") + " · " + money(r.amount) + " · " + String(r.mode || "") + " · " + fullDate(r.date);
+    /* 6.9.977 - say the rupees and the day, because two payouts to one man differ by nothing else */
+    if (tab === "commpay") return money(payAmt(r)) + (r.mode ? " · " + String(r.mode) : "") +
+      " · " + fullDate(String(r.date || r.createdAt || "").slice(0, 10)) + (r.notes ? " · " + String(r.notes) : "");
+    if (tab === "driverpay") return money(dpAmt(r)) + (r.mode ? " · " + String(r.mode) : "") +
+      " · " + fullDate(String(r.date || r.createdAt || "").slice(0, 10)) +
+      (r.forTrips ? " · " + String(r.forTrips) : "") + (r.ref ? " · " + String(r.ref) : "");
     if (tab === "sites") return String(r.client || "") + (r.area ? " · " + r.area : "");
     if (tab === "quotes") return String(r.client || "") + (r.brand ? " · " + r.brand : "") +
       (Number(r.net) ? " · " + money(r.net) : "") + (r.status ? " · " + r.status : "");
@@ -7690,9 +7727,19 @@ window.addEventListener("beforeunload", function (ev) {
   var CX_OPENQ = ["Draft", "Sent", "Negotiating", "Revised"];
   function cancelBlockers(tab, id) {
     var out = { stop: [], warn: [] }, D = S.data || {}, n;
-    var row = (D[tab] || []).filter(function (x) { return x.id === id; })[0];
+    var row = cxRows(tab).filter(function (x) { return x.id === id; })[0];   /* 6.9.977 */
     if (!row) return out;
     function s(x) { return x > 1 ? "s" : ""; }
+    /* 6.9.977 - money going back the other way, said before he presses */
+    if (tab === "commpay") {
+      out.warn.push("This payment comes OFF what " + String(row.associate || "he") +
+        " has been paid, so " + money(payAmt(row)) + " goes back onto what he is still owed");
+    }
+    if (tab === "driverpay") {
+      out.warn.push("The driver\u2019s balance goes back UP by " + money(dpAmt(row)) +
+        " \u2014 it reads as still owed to him");
+      out.warn.push("The row stays on the server untouched; this app stops counting it");
+    }
     if (tab === "clients") {
       var nm = String(row.name || "");
       n = (D.challans || []).filter(function (x) { return x.customerName === nm; }).length;
@@ -7936,7 +7983,7 @@ window.addEventListener("beforeunload", function (ev) {
     if (!CANCEL_TABS[tab]) return "";
     var own = roleIs("admin");
     if (!own && !canAskCancel()) return "";
-    var row = ((S.data || {})[tab] || []).filter(function (x) { return x.id === id; })[0];
+    var row = cxRows(tab).filter(function (x) { return x.id === id; })[0];   /* 6.9.977 */
     if (!row) return "";
     var b = cancelBlockers(tab, id), lbl = cancelLabel(tab, row), sub = cancelSub(tab, row);
     var _ask = cxAsk(tab, id), _last = cxAskLast(tab, id);
@@ -13259,7 +13306,18 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     return t;
   }
   function emptyBrandCard() {
-    var list = emptyBrands();
+    /* ===== 6.9.976 - A BRAND ALREADY SET ASIDE IS NOT A FAULT  (12 Nov 2026) =====
+       MEASURED after the 11 Nov brand map work: GHP Drain Chambers and Drain Chambers were set
+       aside (active = N) because their products moved to Nugreen and Net Price Items. Both kept
+       appearing in this red card, which offers Edit or Remove - and Remove would lose the
+       discount history tied to them, so the only honest answer was to leave them there and read
+       past the warning every day. A card that cannot be cleared is a card that stops being read,
+       and this one carries the brands that genuinely ARE broken.
+       A brand that has been set aside has already been dealt with. It comes out of the count and
+       is stated in one line underneath, so nothing vanishes - it just stops shouting. */
+    var all = emptyBrands();
+    var list = all.filter(function (x) { return x.active; });
+    var aside = all.length - list.length;
     if (!list.length) return "";
     return '<div class="card" style="border-color:#fca5a5;background:#fef2f2">' +
       '<h3 style="margin:0 0 2px">' + list.length + ' brand' + (list.length === 1 ? '' : 's') +
@@ -13284,7 +13342,12 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
           '<button class="btn sm" data-act="br-open" data-id="' + esc(x.id) + '">Edit</button>' +
           '<button class="btn sm ghost" data-act="br-del" data-id="' + esc(x.id) + '" style="color:#b91c1c">Remove</button>' +
           '</div>';
-      }).join("") + '</div>';
+      }).join("") +
+      (aside ? '<div class="meta" style="font-size:12px;color:#7f1d1d;margin-top:9px;padding-top:7px;border-top:1px solid #fca5a5">' +
+        'Not counted above: ' + plural(aside, "brand") + ' with no products already <b>set aside</b>. ' +
+        'Nothing was deleted \u2014 ' + (aside === 1 ? 'it is' : 'they are') + ' on the Brands screen, ' +
+        'still holding whatever discount history ' + (aside === 1 ? 'it has' : 'they have') + '.</div>' : '') +
+      '</div>';
   }
 
   function bucketedBrandCard() {
@@ -30411,7 +30474,17 @@ function viewCatalogue() {
       return (b.held - a.held) || (b.ready - a.ready) || alpha(a.name, b.name);
     });
   }
-  function payouts() { return (S.dp && S.dp.rows) || []; }
+  function dpAll() { return (S.dp && S.dp.rows) || []; }   /* 6.9.977 - raw, cancelled ones included */
+  /* 6.9.977 - ONE chokepoint. Every screen that counts driver money - paidTo, the ledger, the
+     payouts table, the Paid out log, the monthly figure - goes through here, so a payout set
+     aside leaves all of them at once and none of those readers had to learn about cancelling. */
+  function payouts() {
+    var m = cancelMap();
+    return dpAll().filter(function (p) {
+      var c = m["driverpay|" + String((p && p.id) || "")];
+      return !(c && c.on);
+    });
+  }
   function dpAmt(p) { return num(p && p.amount); }
   function dpKey(p) {
     return drvResolve(drvRawKey(p && p.driverId, p && p.driver));
@@ -30563,10 +30636,11 @@ function viewCatalogue() {
     if (pays.length) {
       h += '<h3 style="margin:16px 0 4px;font-size:15px">Paid to drivers <span class="pill teal">' + pays.length + '</span></h3>';
       h += xlTable("driverpay", [
-        { k: "date", t: "DATE", w: "84px" }, { k: "driver", t: "DRIVER" }, { k: "amt", t: "AMOUNT", n: 1, r: 1 }, { k: "mode", t: "HOW" }, { k: "ref", t: "REFERENCE" }, { k: "for", t: "FOR" }, { k: "by", t: "ENTERED BY" }
+        { k: "date", t: "DATE", w: "84px" }, { k: "driver", t: "DRIVER" }, { k: "amt", t: "AMOUNT", n: 1, r: 1 }, { k: "mode", t: "HOW" }, { k: "ref", t: "REFERENCE" }, { k: "for", t: "FOR" }, { k: "by", t: "ENTERED BY" }, { k: "cx", t: "" }
       ], pays.map(function (p) {
-        return { v: { date: String(p.createdAt || "").slice(0, 10), driver: p.driver || "", amt: dpAmt(p), mode: p.mode || "", ref: p.ref || "", "for": p.forTrips || "", by: p.createdBy || "" },
-          cells: { date: esc(dmy(String(p.createdAt || "").slice(0, 10))), driver: '<b ewcdata-nocode="1">' + esc(p.driver || "") + '</b>', amt: money(dpAmt(p)), mode: esc(p.mode || "—"),
+        return { v: { date: String(p.createdAt || "").slice(0, 10), driver: p.driver || "", amt: dpAmt(p), mode: p.mode || "", ref: p.ref || "", "for": p.forTrips || "", by: p.createdBy || "", cx: "" },
+          cells: { cx: p.id ? cxCardBtn("driverpay", p.id, { what: "this payout" }) : "\u2014",   /* 6.9.977 */
+                   date: esc(dmy(String(p.createdAt || "").slice(0, 10))), driver: '<b ewcdata-nocode="1">' + esc(p.driver || "") + '</b>', amt: money(dpAmt(p)), mode: esc(p.mode || "—"),
                    ref: esc(p.ref || "—"), "for": esc(p.forTrips || "—") + (p.note ? ' <span style="color:#94a3b8">' + esc(p.note) + '</span>' : ''), by: esc(p.createdBy || "—") } };
       }), "how it was paid and against what");
     }
@@ -57924,10 +57998,15 @@ function viewCatalogue() {
     } else {
       h += xlTable("paidout", [
         { k: "date", t: "DATE", w: "84px" }, { k: "who", t: "PAID TO" }, { k: "kind", t: "KIND" },
-        { k: "amt", t: "AMOUNT", n: 1, r: 1 }, { k: "mode", t: "HOW" }, { k: "for", t: "FOR" }, { k: "by", t: "ENTERED BY" }, { k: "rc", t: "RECEIPT" }
+        { k: "amt", t: "AMOUNT", n: 1, r: 1 }, { k: "mode", t: "HOW" }, { k: "for", t: "FOR" }, { k: "by", t: "ENTERED BY" }, { k: "rc", t: "RECEIPT" }, { k: "cx", t: "" }
       ], log.map(function (p) {
-        return { v: { date: p.date, who: p.who, kind: p.kind, amt: p.amt, mode: p.mode, "for": p.forWhat, by: p.by, rc: "" },
-          cells: { rc: (p.kind !== "driver freight" && p.id) ? '<button class="btn sm ghost" data-act="po-rcpt" data-id="' + esc(p.id) + '" style="min-height:44px">Receipt</button>' : "\u2014",
+        /* 6.9.977 - the answer to "how to edit / delete a payout wrongly entered": set it aside
+           with a reason and enter the right one. The same button, sheet, reasons and Bin that a
+           wrong payment received has used since v6.9.209. */
+        var _cxTab = p.kind === "driver freight" ? "driverpay" : "commpay";
+        return { v: { date: p.date, who: p.who, kind: p.kind, amt: p.amt, mode: p.mode, "for": p.forWhat, by: p.by, rc: "", cx: "" },
+          cells: { cx: p.id ? cxCardBtn(_cxTab, p.id, { what: "this payout" }) : "\u2014",
+                   rc: (p.kind !== "driver freight" && p.id) ? '<button class="btn sm ghost" data-act="po-rcpt" data-id="' + esc(p.id) + '" style="min-height:44px">Receipt</button>' : "\u2014",
                    date: esc(dmy(p.date)), who: '<b>' + esc(p.who || "(nobody named)") + '</b>', kind: paidKindPill(p.kind),
                    amt: money(p.amt), mode: esc(p.mode || "\u2014"), "for": esc(p.forWhat || "\u2014"),
                    by: p.by ? whoChip(p.by) : "\u2014" } };
@@ -57945,7 +58024,11 @@ function viewCatalogue() {
       '<b>Engineer salary</b> is a monthly figure on the Payroll screen, not a payment &mdash; ' +
       'nothing records the day it was actually handed over.' +
       '<br><b>Supplier payments</b> are not tracked anywhere in this app at all.' +
-      '<br>A driver is paid from <b>Deliveries &rarr; Drivers &amp; freight</b>; it shows here once recorded.</div></div>';
+      '<br>A driver is paid from <b>Deliveries &rarr; Drivers &amp; freight</b>; it shows here once recorded.</div>' +
+      '<div class="meta" style="font-size:12.5px;margin-top:7px;padding-top:6px;border-top:1px solid #e2e8f0">' +
+      '<b>Entered wrongly?</b> There is no edit, on purpose &mdash; a payout is a record of money that left the ' +
+      'firm on a day, and rewriting one changes a figure with no trace. <b>Cancel</b> the wrong row (it asks a ' +
+      'reason, goes to the Bin and can be brought back) and enter the right one. Two honest rows.</div></div>';
     return h;
   }
   /* 6.9.952 - A RECEIPT FOR EVERY INCENTIVE PAYOUT: one A5 page - who was paid, how much, how, for what, who entered it -
