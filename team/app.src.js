@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.974";   /* 6.9.974 (12 Nov 2026) - Change it reprices this return as well as setting the preset from today */   /* 6.9.973 (12 Nov 2026) - FIX: the Finalise card on a return threw before it drew (6.9.972) */   /* 6.9.972 (12 Nov 2026) - return finalise: try a rate on the lines, and change the preset from today with a PIN */   /* 6.9.971 (12 Nov 2026) - a brand with no preset is set from the return-finalise card itself */   /* 6.9.970 (12 Nov 2026) - quote PDF: a product description is printed whole, not cut at three lines */   /* 6.9.969 (11 Nov 2026) - deliveries with no signed paper split by age: the ones past 30 days get the red number, the fresh ones are stated quietly */   /* 6.9.968 (11 Nov 2026) - a purchase bill already fully in stock is not brought in a second time: Huliot's invoice arrives in three mails, and all three were being uploaded */   /* 6.9.967 (11 Nov 2026) - GHP+ logo in the registered Green Heat+ colours (#00539F / #ED1D24) on PDFs, quotes, challans and QR centres */   /* 6.9.966 (11 Nov 2026) - technical specifications sheet in colour: brand-coloured table heads and code strip, coloured field labels, and the exceptions in an amber panel */   /* 6.9.965 (11 Nov 2026) - old quotes to close: grouped by what the site is doing now, closing windows first, each group carrying that stage's own pitch lines */   /* 6.9.964 (11 Nov 2026) - quote spec table: a value all but a few items share is said once and the few are named, so one tube no longer printed five long columns 25 times */   /* 6.9.963 (11 Nov 2026) - purchase bills: same day + same amount flagged on the Tally screen */   /* 6.9.958 (10 Nov 2026) - a statement attached before the name was kept is told apart by its time, not left as four identical lines */     /* 6.9.957 (10 Nov 2026) - each attached old hisab shows its file name, and a wrong one can be set aside */     /* 6.9.956 (10 Nov 2026) - rebuilt: the GitHub Pages publish of 6.9.955 failed (run #1675), so nothing had changed on the phones */   /* 6.9.955 (10 Nov 2026) - the old hisab takes more than one file at once: photographed pages become one PDF, and every statement on file is listed */     /* 6.9.954 (10 Nov 2026) - the Partner Club: fixed slabs, a bonus on crossing one, the trip and device rewards, every partner's rupees to his next slab, and the quiet-partner watch */     /* 6.9.953 (10 Nov 2026) - Service > Control: cash in each engineer's hand, hand-over recorded, three random customer checks a week */     /* 6.9.952 (10 Nov 2026) - to-bill month by month, screens found from Search, team screen use on Health, a receipt for every incentive payout */     /* 6.9.951 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 6.9.950 (9 Nov 2026) - brand introductions: a fuller paragraph, three stage-wise benefits and one next step, on the quote and the proposal */     /* 6.9.949 (9 Nov 2026) - quote PDF: a product picture stays inside its own row (1.2 mm clear of both lines) */     /* 6.9.948 (9 Nov 2026) - quote PDF: each room heading carries its collection and finish with colour dots; every FIMA code chip has its finish dot */     /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
+  var APP_VERSION = "6.9.975";   /* 6.9.975 (12 Nov 2026) - a finalised return can be opened again, and repriced, with it recorded as after the stamp */   /* 6.9.974 (12 Nov 2026) - Change it reprices this return as well as setting the preset from today */   /* 6.9.973 (12 Nov 2026) - FIX: the Finalise card on a return threw before it drew (6.9.972) */   /* 6.9.972 (12 Nov 2026) - return finalise: try a rate on the lines, and change the preset from today with a PIN */   /* 6.9.971 (12 Nov 2026) - a brand with no preset is set from the return-finalise card itself */   /* 6.9.970 (12 Nov 2026) - quote PDF: a product description is printed whole, not cut at three lines */   /* 6.9.969 (11 Nov 2026) - deliveries with no signed paper split by age: the ones past 30 days get the red number, the fresh ones are stated quietly */   /* 6.9.968 (11 Nov 2026) - a purchase bill already fully in stock is not brought in a second time: Huliot's invoice arrives in three mails, and all three were being uploaded */   /* 6.9.967 (11 Nov 2026) - GHP+ logo in the registered Green Heat+ colours (#00539F / #ED1D24) on PDFs, quotes, challans and QR centres */   /* 6.9.966 (11 Nov 2026) - technical specifications sheet in colour: brand-coloured table heads and code strip, coloured field labels, and the exceptions in an amber panel */   /* 6.9.965 (11 Nov 2026) - old quotes to close: grouped by what the site is doing now, closing windows first, each group carrying that stage's own pitch lines */   /* 6.9.964 (11 Nov 2026) - quote spec table: a value all but a few items share is said once and the few are named, so one tube no longer printed five long columns 25 times */   /* 6.9.963 (11 Nov 2026) - purchase bills: same day + same amount flagged on the Tally screen */   /* 6.9.958 (10 Nov 2026) - a statement attached before the name was kept is told apart by its time, not left as four identical lines */     /* 6.9.957 (10 Nov 2026) - each attached old hisab shows its file name, and a wrong one can be set aside */     /* 6.9.956 (10 Nov 2026) - rebuilt: the GitHub Pages publish of 6.9.955 failed (run #1675), so nothing had changed on the phones */   /* 6.9.955 (10 Nov 2026) - the old hisab takes more than one file at once: photographed pages become one PDF, and every statement on file is listed */     /* 6.9.954 (10 Nov 2026) - the Partner Club: fixed slabs, a bonus on crossing one, the trip and device rewards, every partner's rupees to his next slab, and the quiet-partner watch */     /* 6.9.953 (10 Nov 2026) - Service > Control: cash in each engineer's hand, hand-over recorded, three random customer checks a week */     /* 6.9.952 (10 Nov 2026) - to-bill month by month, screens found from Search, team screen use on Health, a receipt for every incentive payout */     /* 6.9.951 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 6.9.950 (9 Nov 2026) - brand introductions: a fuller paragraph, three stage-wise benefits and one next step, on the quote and the proposal */     /* 6.9.949 (9 Nov 2026) - quote PDF: a product picture stays inside its own row (1.2 mm clear of both lines) */     /* 6.9.948 (9 Nov 2026) - quote PDF: each room heading carries its collection and finish with colour dots; every FIMA code chip has its finish dot */     /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -16195,7 +16195,17 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     return '<span class="pill Won" style="font-size:12px" title="Finalised by ' + esc(st.by) +
       (st.noProof ? ' without a signed goods-in receipt: ' + esc(st.noProof) : '') + '">finalised ' +
       esc(dmy(String(st.at).slice(0, 10)).slice(0, 5)) + '</span>' +
-      (st.noProof && !chProofAny(r).has ? ' <span class="pill" style="background:#fef3c7;color:#92400e;font-size:12px" title="' + esc(st.noProof) + '">no paper</span>' : '');
+      (st.noProof && !chProofAny(r).has ? ' <span class="pill" style="background:#fef3c7;color:#92400e;font-size:12px" title="' + esc(st.noProof) + '">no paper</span>' : '') +
+      /* ===== 6.9.975 - A FINALISED RETURN CAN BE OPENED AGAIN  (12 Nov 2026) =====
+         HIS WORDS: "i have clicked chage it , but not done, how to change it and set preset for
+         a brand". MEASURED on his own screen: that return says "finalised 12/11". The Finalise
+         button is drawn only while a return is UNSTAMPED (retFinaliseBtn, and the client card at
+         38823 draws the pill INSTEAD of the button), and rt-final refuses a stamped return
+         outright. So the card holding Try it and Change it had no door left - he was pressing in
+         a room he could not enter. The stamp is a record that it was checked, not a lock on
+         looking at it again. */
+      (canFinalise() ? ' <button class="btn sm ghost" data-act="rt-recheck" data-id="' + esc(r.id) +
+        '" style="padding:2px 9px;font-size:12px;min-height:34px" title="Open the check card again - the lines, the rates and the preset tools. The stamp stays.">Check again</button>' : '');
   }
   /* ===== 6.9.729 - A RETURN IS FINALISED THE WAY A DELIVERY IS  (11 Oct 2026) =====
      HIS WORDS: "clicking on return finalised also open screen same like finalising challan, to cross
@@ -16438,6 +16448,17 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         'Set the preset in the brand summary just above &mdash; put the % in and press Set it, and these figures are redone at once. ' +
         'If the client really is at 0% for it, approve 0% there, and this goes quiet.</div>' +
         '<label style="display:flex;gap:8px;align-items:flex-start;margin-top:8px;font-size:13px;color:#7f1d1d;cursor:pointer"><input type="checkbox" id="rtf_checked" style="width:20px;height:20px;margin-top:1px;flex:0 0 auto"> I have checked these lines and the credit is right as it stands.</label></div>';
+    }
+    /* 6.9.975 - a card opened on a stamped return says so and offers no second stamp */
+    var _stp = retStamp(r);
+    if (_stp) {
+      h += '<div class="card" style="border-color:#99f6e4;background:#f0fdfa"><div class="meta" style="font-size:13px;line-height:1.55;color:#134e4a">' +
+        '<b>Already finalised</b> by ' + esc(_stp.by || "\u2014") + ' on ' + esc(dmy(String(_stp.at).slice(0, 10))) +
+        (_stp.noProof ? ', without a signed goods-in slip: ' + esc(_stp.noProof) : '') + '. ' +
+        'The stamp stays where it is. You can still try a rate and change a preset here \u2014 a change made now is recorded as made after the stamp.' +
+        '</div></div>' +
+        '<div class="foot"><button class="btn" data-act="close">Close</button></div>';
+      return h;
     }
     h += '<div class="card"><div class="meta" style="font-size:13px;line-height:1.55">Your stamp that this return is checked: the lines, the rates and what comes back off the incentive. The credit is already on his account from the day it was booked in at the godown &mdash; finalising moves no money.</div></div>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Not now</button>' +
@@ -63589,11 +63610,14 @@ function viewCatalogue() {
       if (_rs.err) { toast(_rs.err); return; }
       if (String(_rs.pct) === String(Number(_rsW))) { toast(_rsB + " is already at " + _rsW + "% \u2014 nothing to change."); return; }
       var _rsRow = (S.data.returns || []).filter(function (x) { return x.id === _rsR; })[0];
-      var _rsStamped = _rsRow ? !!retStamp(_rsRow) : false;
-      var _rep = (_rsRow && !_rsStamped) ? rtRepriced(_rsRow, _rsB, _rs.pct) : null;
+      /* 6.9.975 - a stamped return is repriced too. Refusing it left him with a wrong credit
+         and no way to put it right; the honest answer is to allow it and to RECORD that it
+         happened after the stamp, which the sheet says and the audit row keeps. */
+      var _rsStamp = _rsRow ? retStamp(_rsRow) : null;
+      var _rep = _rsRow ? rtRepriced(_rsRow, _rsB, _rs.pct) : null;
       S.rtPend = { client: _rsC, brand: _rsB, pct: _rs.pct, rt: _rsR, was: _rsW,
                    items: _rep ? _rep.items : null, repWas: _rep ? _rep.was : 0, repNow: _rep ? _rep.now : 0,
-                   n: _rep ? _rep.lines.length : 0 };
+                   n: _rep ? _rep.lines.length : 0, afterStamp: !!_rsStamp };
       var _gap = _rep ? (_rep.was - _rep.now) : 0;
       S.modal = sheetMoneyPin("Your PIN to change a pre-set discount",
         '<b>' + esc(_rsC) + '</b> \u2014 ' + esc(_rsB) + '<br>' +
@@ -63602,8 +63626,9 @@ function viewCatalogue() {
           ? '<span style="color:#b91c1c"><b>This return is repriced too.</b> ' + plural(_rep.lines.length, "line") + ' \u2014 ' +
             'credit <b>&minus;' + money(_rep.was) + '</b> &rarr; <b>&minus;' + money(_rep.now) + '</b>, ' +
             '<b>' + money(Math.abs(_gap)) + (_gap > 0 ? ' less' : ' more') + '</b> on his account.</span><br>'
-          : (_rsStamped ? '<span style="color:#92400e">This return is already finalised, so it is <b>not</b> repriced \u2014 only the preset changes.</span><br>'
-                        : '<span style="color:#92400e">No line on this return can take the new rate, so nothing here is repriced \u2014 only the preset changes.</span><br>')) +
+          : '<span style="color:#92400e">No line on this return can take the new rate, so nothing here is repriced \u2014 only the preset changes.</span><br>') +
+        (_rsStamp ? '<span style="color:#92400e">This return was <b>finalised on ' + esc(dmy(String(_rsStamp.at).slice(0, 10))) + '</b> by ' + esc(_rsStamp.by || "\u2014") +
+          '. The stamp stays; the change is recorded as made after it.</span><br>' : '') +
         (_rep && _rep.skipped.length
           ? '<span style="color:#92400e">Left alone, priced at a net rate, not MRP: ' + esc(_rep.skipped.slice(0, 4).join(", ")) +
             (_rep.skipped.length > 4 ? ' and ' + (_rep.skipped.length - 4) + ' more' : '') + '.</span><br>' : '') +
@@ -63645,7 +63670,8 @@ function viewCatalogue() {
             save("audit", { id: mintId("A"), createdAt: new Date().toISOString(), actor: S.user || "",
               action: "pin:return-reprice", target: (_rr.returnNo || _rr.id) + " / " + (_rr.customerName || ""),
               detail: JSON.stringify({ rtId: _rr.id, no: _rr.returnNo, brand: _rp.brand, was: _rp.was, now: _rp.pct,
-                lines: _rp.n, creditWas: _rp.repWas, creditNow: _rp.repNow, where: "return finalise" }), ip: "" }, true);
+                lines: _rp.n, creditWas: _rp.repWas, creditNow: _rp.repNow, where: "return finalise",
+                afterStamp: !!_rp.afterStamp }), ip: "" }, true);
             _said += " This return repriced: \u2212" + money(_rp.repWas) + " \u2192 \u2212" + money(_rp.repNow) + ".";
           }
         }
@@ -70101,6 +70127,13 @@ function viewCatalogue() {
       if (String(_rf.status || "") !== "Received") { toast("Book it in at the godown first (Received at godown) - nothing was stamped."); return; }
       S.rtTry = null;   /* 6.9.972 - a card opened fresh carries no trial from the last one */
       S.modal = modalRetFinal(_rf.id); render(); return;
+    }
+    if (act === "rt-recheck") {   /* 6.9.975 - the same card, on a return already stamped */
+      var _rq = (S.data.returns || []).filter(function (x) { return x.id === t.getAttribute("data-id"); })[0];
+      if (!_rq) { toast("That return is not on this device yet - pull down to refresh."); return; }
+      if (!canFinalise()) { toast("Only the owner opens a finalised return."); return; }
+      S.rtTry = null;
+      S.modal = modalRetFinal(_rq.id); render(); return;
     }
     if (act === "rt-final-ok") {
       var _rk = (S.data.returns || []).filter(function (x) { return x.id === t.getAttribute("data-id"); })[0];
