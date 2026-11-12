@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.977";   /* 6.9.977 (12 Nov 2026) - a partner or driver payout entered wrongly can be set aside, with a reason, and brought back */   /* 6.9.976 (12 Nov 2026) - a brand already set aside stops nagging from the empty-brand card */   /* 6.9.975 (12 Nov 2026) - a finalised return can be opened again, and repriced, with it recorded as after the stamp */   /* 6.9.974 (12 Nov 2026) - Change it reprices this return as well as setting the preset from today */   /* 6.9.973 (12 Nov 2026) - FIX: the Finalise card on a return threw before it drew (6.9.972) */   /* 6.9.972 (12 Nov 2026) - return finalise: try a rate on the lines, and change the preset from today with a PIN */   /* 6.9.971 (12 Nov 2026) - a brand with no preset is set from the return-finalise card itself */   /* 6.9.970 (12 Nov 2026) - quote PDF: a product description is printed whole, not cut at three lines */   /* 6.9.969 (11 Nov 2026) - deliveries with no signed paper split by age: the ones past 30 days get the red number, the fresh ones are stated quietly */   /* 6.9.968 (11 Nov 2026) - a purchase bill already fully in stock is not brought in a second time: Huliot's invoice arrives in three mails, and all three were being uploaded */   /* 6.9.967 (11 Nov 2026) - GHP+ logo in the registered Green Heat+ colours (#00539F / #ED1D24) on PDFs, quotes, challans and QR centres */   /* 6.9.966 (11 Nov 2026) - technical specifications sheet in colour: brand-coloured table heads and code strip, coloured field labels, and the exceptions in an amber panel */   /* 6.9.965 (11 Nov 2026) - old quotes to close: grouped by what the site is doing now, closing windows first, each group carrying that stage's own pitch lines */   /* 6.9.964 (11 Nov 2026) - quote spec table: a value all but a few items share is said once and the few are named, so one tube no longer printed five long columns 25 times */   /* 6.9.963 (11 Nov 2026) - purchase bills: same day + same amount flagged on the Tally screen */   /* 6.9.958 (10 Nov 2026) - a statement attached before the name was kept is told apart by its time, not left as four identical lines */     /* 6.9.957 (10 Nov 2026) - each attached old hisab shows its file name, and a wrong one can be set aside */     /* 6.9.956 (10 Nov 2026) - rebuilt: the GitHub Pages publish of 6.9.955 failed (run #1675), so nothing had changed on the phones */   /* 6.9.955 (10 Nov 2026) - the old hisab takes more than one file at once: photographed pages become one PDF, and every statement on file is listed */     /* 6.9.954 (10 Nov 2026) - the Partner Club: fixed slabs, a bonus on crossing one, the trip and device rewards, every partner's rupees to his next slab, and the quiet-partner watch */     /* 6.9.953 (10 Nov 2026) - Service > Control: cash in each engineer's hand, hand-over recorded, three random customer checks a week */     /* 6.9.952 (10 Nov 2026) - to-bill month by month, screens found from Search, team screen use on Health, a receipt for every incentive payout */     /* 6.9.951 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 6.9.950 (9 Nov 2026) - brand introductions: a fuller paragraph, three stage-wise benefits and one next step, on the quote and the proposal */     /* 6.9.949 (9 Nov 2026) - quote PDF: a product picture stays inside its own row (1.2 mm clear of both lines) */     /* 6.9.948 (9 Nov 2026) - quote PDF: each room heading carries its collection and finish with colour dots; every FIMA code chip has its finish dot */     /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
+  var APP_VERSION = "6.9.978";   /* 6.9.978 (12 Nov 2026) - one Change button on a money row: edit it with the PIN asked twice, or cancel it */   /* 6.9.977 (12 Nov 2026) - a partner or driver payout entered wrongly can be set aside, with a reason, and brought back */   /* 6.9.976 (12 Nov 2026) - a brand already set aside stops nagging from the empty-brand card */   /* 6.9.975 (12 Nov 2026) - a finalised return can be opened again, and repriced, with it recorded as after the stamp */   /* 6.9.974 (12 Nov 2026) - Change it reprices this return as well as setting the preset from today */   /* 6.9.973 (12 Nov 2026) - FIX: the Finalise card on a return threw before it drew (6.9.972) */   /* 6.9.972 (12 Nov 2026) - return finalise: try a rate on the lines, and change the preset from today with a PIN */   /* 6.9.971 (12 Nov 2026) - a brand with no preset is set from the return-finalise card itself */   /* 6.9.970 (12 Nov 2026) - quote PDF: a product description is printed whole, not cut at three lines */   /* 6.9.969 (11 Nov 2026) - deliveries with no signed paper split by age: the ones past 30 days get the red number, the fresh ones are stated quietly */   /* 6.9.968 (11 Nov 2026) - a purchase bill already fully in stock is not brought in a second time: Huliot's invoice arrives in three mails, and all three were being uploaded */   /* 6.9.967 (11 Nov 2026) - GHP+ logo in the registered Green Heat+ colours (#00539F / #ED1D24) on PDFs, quotes, challans and QR centres */   /* 6.9.966 (11 Nov 2026) - technical specifications sheet in colour: brand-coloured table heads and code strip, coloured field labels, and the exceptions in an amber panel */   /* 6.9.965 (11 Nov 2026) - old quotes to close: grouped by what the site is doing now, closing windows first, each group carrying that stage's own pitch lines */   /* 6.9.964 (11 Nov 2026) - quote spec table: a value all but a few items share is said once and the few are named, so one tube no longer printed five long columns 25 times */   /* 6.9.963 (11 Nov 2026) - purchase bills: same day + same amount flagged on the Tally screen */   /* 6.9.958 (10 Nov 2026) - a statement attached before the name was kept is told apart by its time, not left as four identical lines */     /* 6.9.957 (10 Nov 2026) - each attached old hisab shows its file name, and a wrong one can be set aside */     /* 6.9.956 (10 Nov 2026) - rebuilt: the GitHub Pages publish of 6.9.955 failed (run #1675), so nothing had changed on the phones */   /* 6.9.955 (10 Nov 2026) - the old hisab takes more than one file at once: photographed pages become one PDF, and every statement on file is listed */     /* 6.9.954 (10 Nov 2026) - the Partner Club: fixed slabs, a bonus on crossing one, the trip and device rewards, every partner's rupees to his next slab, and the quiet-partner watch */     /* 6.9.953 (10 Nov 2026) - Service > Control: cash in each engineer's hand, hand-over recorded, three random customer checks a week */     /* 6.9.952 (10 Nov 2026) - to-bill month by month, screens found from Search, team screen use on Health, a receipt for every incentive payout */     /* 6.9.951 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 6.9.950 (9 Nov 2026) - brand introductions: a fuller paragraph, three stage-wise benefits and one next step, on the quote and the proposal */     /* 6.9.949 (9 Nov 2026) - quote PDF: a product picture stays inside its own row (1.2 mm clear of both lines) */     /* 6.9.948 (9 Nov 2026) - quote PDF: each room heading carries its collection and finish with colour dots; every FIMA code chip has its finish dot */     /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -7894,6 +7894,59 @@ window.addEventListener("beforeunload", function (ev) {
      footer that ALREADY has a Cancel - the one that closes the form. Two buttons reading
      "Cancel" side by side, one of which shuts a window and the other of which cancels a record
      with money against it, is a trap. So those two say what they cancel, and so does the ask. */
+  /* ===== 6.9.978 - ONE MENU ON THE ROW ITSELF  (12 Nov 2026) =====
+     HIS WORDS: "make provision that clicking a payment will show option to change , delete or
+     edit, with double pin .... only for admin. make it for every entery that will will make
+     things more simple , not have to click many tab to reach".
+
+     His three answers, taken as given: double PIN means the PIN typed, the change shown, then
+     the PIN typed AGAIN; Edit rewrites the row and the log keeps before and after; money
+     entries first.
+
+     The button goes INTO cxCardBtn, which every money row already draws. So a payment received,
+     an incentive payout and a driver payout all gain it in one change, and so does anything
+     added to ROW_EDIT later - no table had to be rewritten, and nothing a non-admin sees moved.
+
+     driverpay is in the menu for Cancel but NOT for Edit, and the sheet says why: that row lives
+     on the server and driverPaySave only MAKES rows - it has no id to write back to. Recreating
+     it would quietly re-date the payment to today, which is worse than not offering it. A proper
+     server-side edit is a V185 change whenever he wants it. */
+  var ROW_EDIT = {
+    payments: { what: "payment received", tab: "payments",
+      fields: [ { k: "date", t: "Date", ty: "date" }, { k: "amount", t: "Amount", ty: "num" },
+                { k: "mode", t: "How it came", ty: "text" }, { k: "ref", t: "Reference", ty: "text" },
+                { k: "notes", t: "Note", ty: "text" } ] },
+    commpay: { what: "incentive payout", tab: "commpay",
+      fields: [ { k: "date", t: "Date", ty: "date" }, { k: "amount", t: "Amount", ty: "num" },
+                { k: "mode", t: "How it was paid", ty: "text" }, { k: "notes", t: "For what", ty: "text" } ] },
+    driverpay: { what: "driver payout", tab: "driverpay", noEdit:
+      "This row lives on the server, and the server call that records a payout only makes new " +
+      "rows \u2014 there is nothing to write back to. Recreating it would re-date the payment to " +
+      "today, which would be worse than leaving it. Cancel it and record the right one, or say " +
+      "the word and I will add a proper edit on the server." }
+  };
+  function reDef(kind) { return ROW_EDIT[kind] || null; }
+  function reRow(kind, id) {
+    return cxRows(kind).filter(function (x) { return String(x.id) === String(id); })[0] || null;
+  }
+  function reShow(f, v) {
+    if (f.ty === "num") return money(nAmt(v));
+    if (f.ty === "date") return v ? fullDate(String(v).slice(0, 10)) : "\u2014";
+    return String(v == null || v === "" ? "\u2014" : v);
+  }
+  /* what he actually changed, field by field - the sheet shows this and the log keeps it */
+  function reDiff(kind, row, vals) {
+    var d = reDef(kind), out = [];
+    if (!d || !row) return out;
+    d.fields.forEach(function (f) {
+      var was = row[f.k] == null ? "" : String(row[f.k]);
+      var now = vals[f.k] == null ? "" : String(vals[f.k]);
+      if (f.ty === "num") { if (Math.round(nAmt(was)) === Math.round(nAmt(now))) return; }
+      else if (was.trim() === now.trim()) return;
+      out.push({ k: f.k, t: f.t, ty: f.ty, was: row[f.k], now: vals[f.k] });
+    });
+    return out;
+  }
   function cxCardBtn(tab, id, opt) {
     if (!CANCEL_TABS[tab]) return "";
     opt = opt || {};
@@ -7901,6 +7954,12 @@ window.addEventListener("beforeunload", function (ev) {
     var clsOn = opt.big ? "btn" : "btn sm";
     var what = opt.what ? " " + opt.what : "";            /* "this client", "this site" */
     var a = cxAsk(tab, id);
+    /* 6.9.978 - for a row the owner can work on, one button that opens the menu. The
+       ask-to-cancel path below, and everything a non-admin sees, is untouched. */
+    if (roleIs("admin") && ROW_EDIT[tab] && !a) {
+      return '<button class="' + cls + '" data-act="rowacts" data-tab="' + esc(tab) + '" data-id="' + esc(id) +
+        '" style="color:#0f766e;border-color:#99f6e4" title="Change, edit or cancel this entry">Change</button>';
+    }
     if (roleIs("admin")) {
       return (a
         ? '<button class="' + clsOn + '" data-act="cx-open" data-tab="' + esc(tab) + '" data-id="' + esc(id) +
@@ -7917,6 +7976,59 @@ window.addEventListener("beforeunload", function (ev) {
         '. Nothing has moved.">Cancel asked \u2014 withdraw</button>'
       : '<button class="' + cls + '" data-act="cx-open" data-tab="' + esc(tab) + '" data-id="' + esc(id) +
         '" style="color:#b91c1c">Ask to cancel' + what + '</button>');
+  }
+  /* 6.9.978 - the menu that opens on the row */
+  function modalRowActs(kind, id) {
+    if (!roleIs("admin")) return "";
+    var d = reDef(kind), row = reRow(kind, id);
+    if (!d || !row) return '<h2>Not found</h2><div class="foot"><button class="btn" data-act="close">Close</button></div>';
+    var h = '<h2>' + esc(cancelLabel(kind, row) || "This entry") + '</h2>' +
+      '<p class="sub">' + esc(String(CANCEL_TABS[kind] || d.what)) + ' &middot; ' + esc(cancelSub(kind, row)) + '</p>';
+    if (d.noEdit) {
+      h += '<div class="card" style="border-color:#fed7aa;background:#fff7ed;padding:10px 12px">' +
+        '<b style="color:#7c2d12">This one cannot be edited</b>' +
+        '<div class="meta" style="font-size:12.5px;color:#7c2d12;margin-top:3px">' + esc(d.noEdit) + '</div></div>';
+    } else {
+      h += '<button class="btn full" data-act="re-open" data-kind="' + esc(kind) + '" data-id="' + esc(id) +
+        '" style="margin-bottom:8px">\u270E Edit it \u2014 your PIN, twice</button>';
+    }
+    h += '<button class="btn full" data-act="cx-open" data-tab="' + esc(kind) + '" data-id="' + esc(id) +
+      '" style="background:#b91c1c;border-color:#b91c1c;margin-bottom:8px">Cancel this entry</button>' +
+      '<div class="card" style="padding:9px 12px"><div class="meta" style="font-size:12.5px">' +
+      '<b>Cancel</b> sets it aside with a reason, out of every total, in the Bin for 30 days, and you can bring it back. ' +
+      'Nothing is ever deleted' + (d.noEdit ? '.' : ', and an edit keeps the old figure in the change log beside the new one.') +
+      '</div></div>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Close</button></div>';
+    return h;
+  }
+  function modalRowEdit(kind, id) {
+    if (!roleIs("admin")) return "";
+    var d = reDef(kind), row = reRow(kind, id);
+    if (!d || !row || d.noEdit) return "";
+    var h = '<h2>Edit this ' + esc(d.what) + '</h2>' +
+      '<p class="sub">' + esc(cancelLabel(kind, row)) + ' &middot; ' + esc(cancelSub(kind, row)) + '</p>';
+    d.fields.forEach(function (f) {
+      var v = row[f.k] == null ? "" : String(row[f.k]);
+      if (f.ty === "date") v = v.slice(0, 10);
+      h += '<label>' + esc(f.t) + '</label>' +
+        '<input id="re_' + esc(f.k) + '"' + (f.ty === "date" ? ' type="date"' : f.ty === "num" ? ' inputmode="decimal"' : '') +
+        ' value="' + esc(v) + '" autocomplete="off" style="width:100%;box-sizing:border-box"/>';
+    });
+    return h + '<div class="card" style="padding:9px 12px;margin-top:10px"><div class="meta" style="font-size:12.5px">' +
+      'Nothing is written until you have seen what changes and typed your PIN twice. ' +
+      'The old figure stays in the change log beside the new one, with your name and the time.</div></div>' +
+      '<div class="foot"><button class="btn ghost" data-act="rowacts" data-tab="' + esc(kind) + '" data-id="' + esc(id) + '">Back</button>' +
+      '<button class="btn" data-act="re-check" data-kind="' + esc(kind) + '" data-id="' + esc(id) + '">See what changes</button></div>';
+  }
+  /* the diff, written the one way for the sheet and for the log */
+  function reDiffHtml(kind, diff) {
+    return '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12.5px">' +
+      diff.map(function (x) {
+        return '<tr style="border-top:1px solid #e2e8f0">' +
+          '<td style="padding:5px 8px 5px 0;color:#475569">' + esc(x.t) + '</td>' +
+          '<td style="padding:5px 8px;color:#b91c1c;text-decoration:line-through;white-space:nowrap">' + esc(reShow(x, x.was)) + '</td>' +
+          '<td style="padding:5px 8px;font-weight:700;color:#0f766e;white-space:nowrap">' + esc(reShow(x, x.now)) + '</td></tr>';
+      }).join("") + '</table></div>';
   }
   /* Everything waiting on his word, in one place. Counted, not guessed - and it names who asked
      and why, because a list of requests he cannot read is a list he will stop opening. */
@@ -30777,7 +30889,8 @@ function viewCatalogue() {
           TD('<b style="color:#0f766e">Payment</b>', bg) +
           TD(esc([e.p.mode, e.p.ref].filter(Boolean).join(" · ") || "—") + (e.p.note ? '<div style="color:#64748b;font-size:12px">' + esc(e.p.note) + '</div>' : '') +
              '<div style="color:#64748b;font-size:12px">entered by ' + esc(e.p.createdBy || "—") + (e.p.forTrips ? ' &middot; for ' + esc(e.p.forTrips) : '') + '</div>', bg) +
-          TD('<span class="pill teal" style="font-size:12px">paid</span>', bg) +
+          TD('<span class="pill teal" style="font-size:12px">paid</span>' +
+             (e.p.id ? '<div style="margin-top:3px">' + cxCardBtn("driverpay", e.p.id) + '</div>' : ''), bg) +   /* 6.9.978 */
           TD('', bg) + TD(money(e.amt), bg + 'text-align:right;white-space:nowrap;color:#0f766e;font-weight:700') +
           TD(money(e.bal), bg + 'text-align:right;white-space:nowrap;font-weight:700') + '</tr>';
         return;
@@ -63289,6 +63402,8 @@ function viewCatalogue() {
     };
     wirePin("pass_pin", "pass-pin-go"); wirePin("op_pin", "op-pin-go"); wirePin("disc_pin", "disc-pin-go");
     if (el("rtp_pin")) wirePin("rtp_pin", "rtp-pin-go");   /* 6.9.972 */
+    if (el("re_pin1")) wirePin("re_pin1", "re-pin1");      /* 6.9.978 */
+    if (el("re_pin2")) wirePin("re_pin2", "re-pin2");
     /* v6.9.452 - and the one-line prompt's box: Enter is OK, as it was in the system dialog. A
        multi-line box keeps Enter for a new line and only takes focus. */
     (function () { var pb = el("prompt_in"); if (!pb) return; if (pb.tagName === "TEXTAREA") { try { pb.focus(); } catch (e) {} return; } wirePin("prompt_in", "prompt-ok"); })();
@@ -69340,6 +69455,101 @@ function viewCatalogue() {
     }
     if (act === "dg-back") {
       S.tab = S.dgFrom || "dash"; S.dgWho = ""; render(); return;
+    }
+    /* ===== 6.9.978 - the row menu, the edit form, and the PIN asked twice ===== */
+    if (act === "rowacts") {
+      if (!roleIs("admin")) { toast("Changing an entry is the owner\u2019s."); return; }
+      S.modal = modalRowActs(t.getAttribute("data-tab"), t.getAttribute("data-id")); render(); return;
+    }
+    if (act === "re-open") {
+      if (!roleIs("admin")) return;
+      S.modal = modalRowEdit(t.getAttribute("data-kind"), t.getAttribute("data-id")); render(); return;
+    }
+    if (act === "re-check") {
+      if (!roleIs("admin")) return;
+      var _rk = t.getAttribute("data-kind") || "", _ri = t.getAttribute("data-id") || "";
+      var _rd = reDef(_rk), _rr = reRow(_rk, _ri);
+      if (!_rd || !_rr) { toast("That entry has gone \u2014 open it again."); return; }
+      var _rv = {}, _bad = "";
+      _rd.fields.forEach(function (f) {
+        var e = el("re_" + f.k), v = e ? String(e.value || "").trim() : "";
+        if (f.ty === "num") {
+          if (!v || !/^-?[0-9]+(\.[0-9]+)?$/.test(v)) { _bad = _bad || (f.t + " must be a number."); return; }
+          if (Math.abs(nAmt(v)) < 1) { _bad = _bad || (f.t + " cannot be zero."); return; }
+          v = String(Math.round(nAmt(v)));
+        }
+        if (f.ty === "date") {
+          if (!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(v)) { _bad = _bad || ("Pick a " + lower(f.t) + "."); return; }
+          if (v > today()) { _bad = _bad || "That date has not arrived yet \u2014 check it once."; return; }
+        }
+        _rv[f.k] = v;
+      });
+      if (_bad) { toast(_bad); return; }
+      var _diff = reDiff(_rk, _rr, _rv);
+      if (!_diff.length) { toast("Nothing was changed."); return; }
+      S.rePend = { kind: _rk, id: _ri, vals: _rv, diff: _diff };
+      S.modal = sheetMoneyPin("Your PIN \u2014 one of two",
+        '<b>' + esc(cancelLabel(_rk, _rr)) + '</b> \u2014 ' + esc(reDef(_rk).what) + '<br>' +
+        plural(_diff.length, "field") + ' change' + (_diff.length === 1 ? 's' : '') +
+        '. <span style="color:#64748b">You will see exactly what, and be asked once more, before anything is written.</span>',
+        "re_pin1", "re-pin1", "Go on", "");
+      render();
+      return;
+    }
+    if (act === "re-pin1") {
+      if (!roleIs("admin")) return;
+      var _p1 = S.rePend;
+      if (!_p1) { S.modal = null; render(); return; }
+      var _v1 = el("re_pin1") ? String(el("re_pin1").value || "").trim() : "";
+      if (!_v1) { pinNote("re_pin1", "Type your PIN first. Nothing has changed."); return; }
+      var _go1 = function () {
+        S.pin = S.pin || _v1;
+        var _rw = reRow(_p1.kind, _p1.id);
+        /* 6.9.978 - the SECOND PIN, with the change in front of him. The first PIN says "it is
+           me"; this one says "and this is the change I meant". A different box id, so a browser
+           that filled the first one cannot answer the second by itself. */
+        S.modal = sheetMoneyPin("Your PIN again \u2014 this is what will change",
+          '<b>' + esc(cancelLabel(_p1.kind, _rw)) + '</b> \u2014 ' + esc(reDef(_p1.kind).what) + '</p>' +
+          '<div class="card" style="border-color:#fcd34d;background:#fffbeb;padding:9px 12px;margin-bottom:10px">' +
+          reDiffHtml(_p1.kind, _p1.diff) +
+          '<div class="meta" style="font-size:12px;color:#92400e;margin-top:6px">The old figure stays in the change log ' +
+          'beside the new one, with your name and the time. Nothing is deleted.</div></div><p class="sub">',
+          "re_pin2", "re-pin2", "Change it", "");
+        render();
+      };
+      if (S.pin) {
+        if (String(_v1) !== String(S.pin)) { pinNote("re_pin1", "PIN incorrect \u2014 nothing has changed."); return; }
+        _go1(); return;
+      }
+      api("teamAuth", { pin: _v1 }).then(function (rr) {
+        if (rr && rr.ok) { S.pin = _v1; _go1(); } else pinNote("re_pin1", "PIN incorrect \u2014 nothing has changed.");
+      }).catch(function () { pinNote("re_pin1", "Could not reach the server \u2014 nothing has changed."); });
+      return;
+    }
+    if (act === "re-pin2") {
+      if (!roleIs("admin")) return;
+      var _p2 = S.rePend;
+      if (!_p2) { S.modal = null; render(); return; }
+      var _v2 = el("re_pin2") ? String(el("re_pin2").value || "").trim() : "";
+      if (!_v2) { pinNote("re_pin2", "Type your PIN once more. Nothing has changed."); return; }
+      if (String(_v2) !== String(S.pin || "")) { pinNote("re_pin2", "PIN incorrect \u2014 nothing has changed."); return; }
+      var _d2 = reDef(_p2.kind), _row2 = reRow(_p2.kind, _p2.id);
+      if (!_d2 || !_row2) { S.rePend = null; S.modal = null; render(); toast("That entry has gone \u2014 nothing was written."); return; }
+      var _next = Object.assign({}, _row2);
+      _d2.fields.forEach(function (f) {
+        _next[f.k] = f.ty === "num" ? Math.round(nAmt(_p2.vals[f.k])) : _p2.vals[f.k];
+      });
+      S.rePend = null; S.modal = null;
+      /* the row first, then the record of it - a pin: action, so chgNeverFold keeps it whole */
+      save(_d2.tab, _next, true);
+      save("audit", { id: mintId("A"), createdAt: new Date().toISOString(), actor: S.user || "",
+        action: "pin:row-edit", target: String(CANCEL_TABS[_p2.kind] || _d2.what) + " / " + cancelLabel(_p2.kind, _row2),
+        detail: JSON.stringify({ kind: _p2.kind, recId: _p2.id,
+          changed: _p2.diff.map(function (x) { return { field: x.k, was: x.was, now: x.now }; }) }), ip: "" }, true);
+      _cxCache = null;
+      toast(plural(_p2.diff.length, "field") + " changed on this " + _d2.what + ". The old figures are in the change log.");
+      render();
+      return;
     }
     if (act === "cx-open") { S.modal = modalCancelRec(t.getAttribute("data-tab"), t.getAttribute("data-id")); render(); return; }
     /* ================= THE REQUEST, AND THE ANSWER  (v6.9.363) ================= */
