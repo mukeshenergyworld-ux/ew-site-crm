@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.979";   /* 6.9.979 (12 Nov 2026) - Make challan is on every quotation, not only a won one; converting offers to mark it Won */   /* 6.9.978 (12 Nov 2026) - one Change button on a money row: edit it with the PIN asked twice, or cancel it */   /* 6.9.977 (12 Nov 2026) - a partner or driver payout entered wrongly can be set aside, with a reason, and brought back */   /* 6.9.976 (12 Nov 2026) - a brand already set aside stops nagging from the empty-brand card */   /* 6.9.975 (12 Nov 2026) - a finalised return can be opened again, and repriced, with it recorded as after the stamp */   /* 6.9.974 (12 Nov 2026) - Change it reprices this return as well as setting the preset from today */   /* 6.9.973 (12 Nov 2026) - FIX: the Finalise card on a return threw before it drew (6.9.972) */   /* 6.9.972 (12 Nov 2026) - return finalise: try a rate on the lines, and change the preset from today with a PIN */   /* 6.9.971 (12 Nov 2026) - a brand with no preset is set from the return-finalise card itself */   /* 6.9.970 (12 Nov 2026) - quote PDF: a product description is printed whole, not cut at three lines */   /* 6.9.969 (11 Nov 2026) - deliveries with no signed paper split by age: the ones past 30 days get the red number, the fresh ones are stated quietly */   /* 6.9.968 (11 Nov 2026) - a purchase bill already fully in stock is not brought in a second time: Huliot's invoice arrives in three mails, and all three were being uploaded */   /* 6.9.967 (11 Nov 2026) - GHP+ logo in the registered Green Heat+ colours (#00539F / #ED1D24) on PDFs, quotes, challans and QR centres */   /* 6.9.966 (11 Nov 2026) - technical specifications sheet in colour: brand-coloured table heads and code strip, coloured field labels, and the exceptions in an amber panel */   /* 6.9.965 (11 Nov 2026) - old quotes to close: grouped by what the site is doing now, closing windows first, each group carrying that stage's own pitch lines */   /* 6.9.964 (11 Nov 2026) - quote spec table: a value all but a few items share is said once and the few are named, so one tube no longer printed five long columns 25 times */   /* 6.9.963 (11 Nov 2026) - purchase bills: same day + same amount flagged on the Tally screen */   /* 6.9.958 (10 Nov 2026) - a statement attached before the name was kept is told apart by its time, not left as four identical lines */     /* 6.9.957 (10 Nov 2026) - each attached old hisab shows its file name, and a wrong one can be set aside */     /* 6.9.956 (10 Nov 2026) - rebuilt: the GitHub Pages publish of 6.9.955 failed (run #1675), so nothing had changed on the phones */   /* 6.9.955 (10 Nov 2026) - the old hisab takes more than one file at once: photographed pages become one PDF, and every statement on file is listed */     /* 6.9.954 (10 Nov 2026) - the Partner Club: fixed slabs, a bonus on crossing one, the trip and device rewards, every partner's rupees to his next slab, and the quiet-partner watch */     /* 6.9.953 (10 Nov 2026) - Service > Control: cash in each engineer's hand, hand-over recorded, three random customer checks a week */     /* 6.9.952 (10 Nov 2026) - to-bill month by month, screens found from Search, team screen use on Health, a receipt for every incentive payout */     /* 6.9.951 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 6.9.950 (9 Nov 2026) - brand introductions: a fuller paragraph, three stage-wise benefits and one next step, on the quote and the proposal */     /* 6.9.949 (9 Nov 2026) - quote PDF: a product picture stays inside its own row (1.2 mm clear of both lines) */     /* 6.9.948 (9 Nov 2026) - quote PDF: each room heading carries its collection and finish with colour dots; every FIMA code chip has its finish dot */     /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
+  var APP_VERSION = "6.9.981";   /* 6.9.981 (12 Nov 2026) - merging quotations: one line per product, and a disagreed discount falls to the client\u2019s preset and is named */   /* 6.9.980 (12 Nov 2026) - tick several quotations and send them out on one challan */   /* 6.9.979 (12 Nov 2026) - Make challan is on every quotation, not only a won one; converting offers to mark it Won */   /* 6.9.978 (12 Nov 2026) - one Change button on a money row: edit it with the PIN asked twice, or cancel it */   /* 6.9.977 (12 Nov 2026) - a partner or driver payout entered wrongly can be set aside, with a reason, and brought back */   /* 6.9.976 (12 Nov 2026) - a brand already set aside stops nagging from the empty-brand card */   /* 6.9.975 (12 Nov 2026) - a finalised return can be opened again, and repriced, with it recorded as after the stamp */   /* 6.9.974 (12 Nov 2026) - Change it reprices this return as well as setting the preset from today */   /* 6.9.973 (12 Nov 2026) - FIX: the Finalise card on a return threw before it drew (6.9.972) */   /* 6.9.972 (12 Nov 2026) - return finalise: try a rate on the lines, and change the preset from today with a PIN */   /* 6.9.971 (12 Nov 2026) - a brand with no preset is set from the return-finalise card itself */   /* 6.9.970 (12 Nov 2026) - quote PDF: a product description is printed whole, not cut at three lines */   /* 6.9.969 (11 Nov 2026) - deliveries with no signed paper split by age: the ones past 30 days get the red number, the fresh ones are stated quietly */   /* 6.9.968 (11 Nov 2026) - a purchase bill already fully in stock is not brought in a second time: Huliot's invoice arrives in three mails, and all three were being uploaded */   /* 6.9.967 (11 Nov 2026) - GHP+ logo in the registered Green Heat+ colours (#00539F / #ED1D24) on PDFs, quotes, challans and QR centres */   /* 6.9.966 (11 Nov 2026) - technical specifications sheet in colour: brand-coloured table heads and code strip, coloured field labels, and the exceptions in an amber panel */   /* 6.9.965 (11 Nov 2026) - old quotes to close: grouped by what the site is doing now, closing windows first, each group carrying that stage's own pitch lines */   /* 6.9.964 (11 Nov 2026) - quote spec table: a value all but a few items share is said once and the few are named, so one tube no longer printed five long columns 25 times */   /* 6.9.963 (11 Nov 2026) - purchase bills: same day + same amount flagged on the Tally screen */   /* 6.9.958 (10 Nov 2026) - a statement attached before the name was kept is told apart by its time, not left as four identical lines */     /* 6.9.957 (10 Nov 2026) - each attached old hisab shows its file name, and a wrong one can be set aside */     /* 6.9.956 (10 Nov 2026) - rebuilt: the GitHub Pages publish of 6.9.955 failed (run #1675), so nothing had changed on the phones */   /* 6.9.955 (10 Nov 2026) - the old hisab takes more than one file at once: photographed pages become one PDF, and every statement on file is listed */     /* 6.9.954 (10 Nov 2026) - the Partner Club: fixed slabs, a bonus on crossing one, the trip and device rewards, every partner's rupees to his next slab, and the quiet-partner watch */     /* 6.9.953 (10 Nov 2026) - Service > Control: cash in each engineer's hand, hand-over recorded, three random customer checks a week */     /* 6.9.952 (10 Nov 2026) - to-bill month by month, screens found from Search, team screen use on Health, a receipt for every incentive payout */     /* 6.9.951 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 6.9.950 (9 Nov 2026) - brand introductions: a fuller paragraph, three stage-wise benefits and one next step, on the quote and the proposal */     /* 6.9.949 (9 Nov 2026) - quote PDF: a product picture stays inside its own row (1.2 mm clear of both lines) */     /* 6.9.948 (9 Nov 2026) - quote PDF: each room heading carries its collection and finish with colour dots; every FIMA code chip has its finish dot */     /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -21521,8 +21521,9 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       '<button class="btn sm ' + (qg === "list" ? "" : "ghost") + '" data-act="q-group" data-k="list">List</button></div>';
     if (qg === "table") return h + quotesTableHtml(shown, stPill, qMine);
     if (grp) return h + quotesByClientHtml(shown, stPill, qMine);
-    h += xlTable("qlog", [
-      { k: "date", t: "QUOTE", wrap: "170px" }, { k: "client", t: "CLIENT", wrap: "240px" },
+    h += qSelBar() +   /* 6.9.980 */
+      xlTable("qlog", [
+      { k: "pick", t: "" }, { k: "date", t: "QUOTE", wrap: "170px" }, { k: "client", t: "CLIENT", wrap: "240px" },
       { k: "st", t: "STATUS" }, { k: "total", t: "INCL GST", n: 1, r: 1 }, { k: "exec", t: "WHO" }
     ], shown.map(function (q) {
       var cl = clientByName(q.client) || {};
@@ -21530,8 +21531,12 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       var d = String(q.createdAt || "").slice(0, 10);
       var st = String(q.status || "Draft");
       var brands = quoteBrands(q);
-      return { v: { date: d, no: q.quoteNo || "", client: q.client || "", brand: brands.join(", ") || q.brand || "", st: st, go: "", net: Number(q.net) || 0, total: Number(q.total) || 0, exec: exec, by: q.createdBy || "" },
+      var _pk = !!(S.qSel && S.qSel[q.id]);
+      return { v: { pick: _pk ? 1 : 0, date: d, no: q.quoteNo || "", client: q.client || "", brand: brands.join(", ") || q.brand || "", st: st, go: "", net: Number(q.net) || 0, total: Number(q.total) || 0, exec: exec, by: q.createdBy || "" },
         cells: {
+          /* 6.9.980 - tick two or three and they go out on one challan */
+          pick: qMine(q) ? '<input type="checkbox" class="qsel" data-id="' + esc(q.id) + '"' + (_pk ? ' checked' : '') +
+                ' style="width:20px;height:20px" title="Tick to send this quotation out with others on one challan"/>' : '',
           date: (qMine(q) ? '<button class="btn sm ghost" data-act="q-card" data-id="' + esc(q.id) + '" style="padding:1px 8px;font-size:12.5px;font-weight:700;white-space:normal;word-break:break-all;text-align:left" title="Open this quote’s card">' + esc(qNo(q) || "open") + '</button>'
                 : '<b style="font-size:12.5px;word-break:break-all">' + esc(qNo(q) || "") + '</b>') +   /* 6.9.654 - another's: read-only */
               (Number(q.version) > 1 ? ' <span class="pill" style="font-size:12px">v' + esc(q.version) + '</span>' : "") +
@@ -57368,6 +57373,72 @@ function viewCatalogue() {
   }
   /* 6.9.979 - the conversion itself, lifted out of the handler so the status question can
      sit in front of it without the body being written twice. */
+  /* ===== 6.9.980 - MORE THAN ONE QUOTATION ONTO ONE CHALLAN  (12 Nov 2026) =====
+     HIS WORDS: "make provision to select more than one quote and make one challan frm them".
+
+     A site is quoted in pieces - the pump on one quotation, the bathroom on another, the fittings
+     on a third - and then it all goes out on one lorry. Until now that meant converting one and
+     typing the rest by hand off the other two, with the agreed discount re-typed from memory.
+
+     THE LINES ARE NOT BLINDLY ADDED UP. Two quotations can carry the same product at two
+     different discounts - a later one agreed at 50% where the first said 45%. Summing those into
+     one line would silently pick a rate he never agreed to. So a line is merged only when the
+     code, the rate AND the discount all match; anything else stays its own line, and he is told
+     how many did. A challan with the same code twice at two rates is honest; one line at a rate
+     nobody agreed is not. */
+  function qcLines(qcits) {
+    return (qcits || []).map(function (i) {
+      var d = (i.disc !== "" && i.disc != null) ? Number(i.disc) : (Number(i.bd) || 0);
+      return { code: i.code, desc: i.desc, unit: i.unit || "No's", brand: String(i.brand || ""),   /* 6.9.981 - for the preset */
+        qty: Number(i.qty) || 1, rate: Number(i.price || 0), disc: Number(d) || 0 };
+    });
+  }
+  /* ===== 6.9.981 - ONE CLIENT, ONE LINE PER PRODUCT =====
+     HIS WORDS, on 6.9.980: "two quote of same client is to be conveted into one challan for same
+     client, hence dist will be pre set or can be set at the time of challan finalization".
+
+     6.9.980 kept the same product on two lines when two quotations priced it differently. He is
+     right that this is the wrong answer HERE: it is one client, so he has one rate with us - the
+     preset - and the challan's own discount step and Finalise can both still change it.
+
+     So one line per product. The discount is kept when every quotation agreed on it; where they
+     disagree there is no honest way to choose between 45% and 50%, so the CLIENT'S PRESET is
+     used and the disagreement is named on the challan, with what each quotation said. It is not
+     settled quietly: the man typed two different numbers and he gets told. */
+  function qcPreset(client, code, brand) {
+    var p = null; try { p = prodByCode(code); } catch (e) { p = null; }
+    var b = ""; try { b = (p && realBrand(p)) || String(brand || ""); } catch (e) { b = String(brand || ""); }
+    return b ? (Number(clientDiscount(client, b)) || 0) : 0;
+  }
+  function qcMerge(lines, client) {
+    var out = [], ix = {}, folded = 0, seen = {}, clash = [];
+    (lines || []).forEach(function (l) {
+      var k = String(l.code), d = Number(l.disc) || 0;
+      if (!seen[k]) seen[k] = [];
+      if (seen[k].indexOf(d) < 0) seen[k].push(d);
+      if (ix[k] == null) { ix[k] = out.length; out.push(Object.assign({}, l)); return; }
+      var t = out[ix[k]];
+      t.qty = (Number(t.qty) || 0) + (Number(l.qty) || 0);
+      /* a list price that differs between two quotations: the later quotation's is the current
+         one, and the rate column is the catalogue's, not a negotiated figure */
+      if (Math.abs((Number(t.rate) || 0) - (Number(l.rate) || 0)) >= 0.5) t.rate = Number(l.rate) || t.rate;
+      folded++;
+    });
+    out.forEach(function (l) {
+      var ds = seen[String(l.code)] || [];
+      if (ds.length < 2) return;
+      var pre = qcPreset(client, l.code, l.brand);
+      clash.push({ code: l.code, desc: l.desc, quoted: ds.slice().sort(function (a, b) { return a - b; }), used: pre });
+      l.disc = pre;
+    });
+    return { lines: out, folded: folded, clash: clash };
+  }
+  function qcBuild(label, client, brand, lines) {
+    S.chx = null;
+    S.ch = { brand: String(brand || "").split(",")[0].trim(), family: "",
+             client: client, fromQuote: label, disc: 0, items: lines };
+    S.modal = modalChallan(); render();
+  }
   function qcGo(wqc, qcits) {
       /* v6.9.277 - CARRY THE LIST PRICE AND THE DISCOUNT, NOT THE NET.
          This used to multiply the agreed discount into the unit rate and record disc 0:
@@ -57383,17 +57454,31 @@ function viewCatalogue() {
          honest numbers instead of one misleading one. It also makes `amount` the gross, which
          is what the rest of the app already assumes - the deliveries screen prints
          money(c.amount) + " at list". */
-      S.chx = null;
-      S.ch = {
-        brand: String(wqc.brand || "").split(",")[0].trim(),
-        family: "", client: wqc.client, fromQuote: wqc.quoteNo, disc: 0,
-        items: qcits.map(function (i) {
-          var d = (i.disc !== "" && i.disc != null) ? Number(i.disc) : (Number(i.bd) || 0);
-          return { code: i.code, desc: i.desc, unit: i.unit || "No's",
-            qty: Number(i.qty) || 1, rate: Number(i.price || 0), disc: Number(d) || 0 };
-        })
-      };
-      S.modal = modalChallan(); render();
+      qcBuild(wqc.quoteNo, wqc.client, wqc.brand, qcLines(qcits));   /* 6.9.980 - one path */
+  }
+  /* the ticked quotations, in the order they were quoted */
+  function qSelRows() {
+    var m = S.qSel || {};
+    return (S.data.quotes || []).filter(function (q) { return m[q.id]; })
+      .sort(function (a, b) { return String(a.createdAt || "").localeCompare(String(b.createdAt || "")); });
+  }
+  function qSelBar() {
+    var rows = qSelRows();
+    if (!rows.length) return "";
+    var names = {}, order = [];
+    rows.forEach(function (q) { var k = dkey(q.client); if (!names[k]) { names[k] = String(q.client || ""); order.push(k); } });
+    var one = order.length === 1, tot = rows.reduce(function (a, q) { return a + (Number(q.total) || 0); }, 0);
+    return '<div class="card" style="border-color:' + (one ? '#99f6e4' : '#fca5a5') + ';background:' + (one ? '#f0fdfa' : '#fef2f2') + ';padding:9px 12px;margin:4px 0 8px">' +
+      '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
+      '<div class="grow" style="min-width:180px"><b style="font-size:13.5px">' + plural(rows.length, "quotation") + ' ticked</b>' +
+      '<div class="meta" style="font-size:12.5px">' +
+        (one ? esc(names[order[0]]) + ' &middot; ' + money(tot) + ' incl GST &middot; ' + esc(rows.map(function (q) { return qNo(q); }).join(", "))
+             : '<b style="color:#b91c1c">' + order.length + ' different clients</b> \u2014 ' + esc(order.map(function (k) { return names[k]; }).join(", ")) +
+               '. A challan goes to one client, so untick all but one.') +
+      '</div></div>' +
+      (one && rows.length > 1 ? '<button class="btn sm" data-act="q-multi">Make one challan from ' + rows.length + '</button>' : '') +
+      '<button class="btn sm ghost" data-act="q-selclear">Clear</button>' +
+      '</div></div>';
   }
 
   function modalChallan() {
@@ -57410,11 +57495,23 @@ function viewCatalogue() {
     return '<h2>' + (isEdit ? 'Edit challan ' + esc(z.editNo || "") : 'New delivery challan') + '</h2>' +
       '<p class="sub">The printed challan carries no prices and no pictures - it is a delivery note, not a quote.</p>' +
       (isEdit && z.editStatus === "Approved" ? '<div class="empty" style="text-align:left;padding:0 0 10px;color:#b45309">This challan is <b>Approved</b>. Saving a change sends it back to <b>Draft</b> so it must be approved again before dispatch - approval releases material and can\'t carry over to changed contents.</div>' : "") +
-      ((z && z.fromQuote) ? '<div class="empty" style="text-align:left;padding:0 0 10px;color:#0d9488">Pre-filled from quote <b>' + esc(z.fromQuote) + '</b> - review the products and discount, then create.' +
+      ((z && z.fromQuote) ? '<div class="empty" style="text-align:left;padding:0 0 10px;color:#0d9488">Pre-filled from ' +
+        (String(z.fromQuote).indexOf(" + ") >= 0 ? 'quotations' : 'quote') + ' <b>' + esc(z.fromQuote) + '</b> - review the products and discount, then create.' +
         /* v6.9.273 - the quote is a starting point, not a cage. Fitting a quoted pump usually
            needs elbows, a union, a valve; they belong on the delivery that carries them and they
            do not belong on a quote the customer has already accepted. */
         '<br><span style="color:#0f766e">You can add anything else this job needs \u2014 fittings, valves, extra pipe. It goes on this challan only; the quote is not changed.</span></div>' : "") +
+      /* 6.9.981 - where the quotations disagreed on a discount, named, with what each said */
+      ((z && z.quoteClash && z.quoteClash.length)
+        ? '<div class="card" style="border-color:#fcd34d;background:#fffbeb;padding:9px 12px;margin:0 0 10px">' +
+          '<b style="color:#92400e;font-size:13px">' + plural(z.quoteClash.length, "product") + ' quoted at more than one discount</b>' +
+          '<div class="meta" style="font-size:12.5px;color:#92400e;margin-top:3px">' +
+          z.quoteClash.map(function (c) {
+            return '<b>' + esc(c.desc || c.code) + '</b> \u2014 quoted at ' + c.quoted.map(function (d) { return d + '%'; }).join(" and ") +
+              '; this challan uses his preset <b>' + c.used + '%</b>';
+          }).join('<br>') +
+          '<br><span style="color:#7c2d12">There is no honest way to pick between two numbers he was given, so the preset stands. ' +
+          'Change it on the discount step below, or at Finalise.</span></div></div>' : "") +
       ((z && z.copyOf) ? '<div class="empty" style="text-align:left;padding:0 0 10px;color:#1d4ed8">Copied from challan <b>' + esc(z.copyOf) + '</b> \u2014 same client, site and products. Check the quantities, then create. <b>The old challan is not changed</b>, and this becomes a new challan with its own number.</div>' : "") +
       '<label>Location</label><select id="m_loc">' + opts(LOCATIONS, (z && z.loc) || LOCATIONS[0]) + '</select>' +
       strictClientField("m_client", (S.ch && S.ch.client) || "") +
@@ -68317,6 +68414,51 @@ function viewCatalogue() {
       }, function (e) { toast("Not saved \u2014 " + apiWhy(e) + ". It will go up when the line is back."); });
       render(); return;
     }
+    if (act === "q-selclear") { S.qSel = {}; render(); return; }   /* 6.9.980 */
+    if (act === "q-multi") {
+      var _ms = qSelRows();
+      if (_ms.length < 2) { toast("Tick two or more quotations first."); return; }
+      var _mc = {}; _ms.forEach(function (q) { _mc[dkey(q.client)] = String(q.client || ""); });
+      var _mk = Object.keys(_mc);
+      if (_mk.length > 1) { toast("Those quotations are for " + _mk.length + " different clients (" + _mk.map(function (k) { return _mc[k]; }).join(", ") + "). A challan goes to one client."); return; }
+      var _ml = [], _mb = "", _mn = [];
+      _ms.forEach(function (q) {
+        var its = []; try { its = JSON.parse(q.items || "[]"); } catch (e) { its = []; }
+        if (!its.length) return;
+        _mn.push(qNo(q));
+        if (!_mb) _mb = String(q.brand || "");
+        _ml = _ml.concat(qcLines(its));
+      });
+      if (!_ml.length) { toast("There is nothing on those quotations to send."); return; }
+      if (_mn.length < 2) { toast("Only one of the ticked quotations has anything on it \u2014 use its own Make challan button."); return; }
+      var _mm = qcMerge(_ml, _ms[0].client);
+      var _mo = _ms.filter(function (q) {
+        return !(String(q.status) === "Won" || quoteBrands(q).some(function (b) { return qBrandWon(q, b); }));
+      });
+      var _mgo = function () {
+        qcBuild(_mn.join(" + "), _ms[0].client, _mb, _mm.lines);
+        /* 6.9.981 - the disagreement travels to the challan, where he is about to decide */
+        S.ch.quoteClash = _mm.clash;
+        S.qSel = {};
+        if (_mm.folded) toast(plural(_mm.folded, "repeated line") + " added together \u2014 one line per product.");
+      };
+      if (!_mo.length) { _mgo(); return; }
+      askSheet({
+        title: "Mark " + plural(_mo.length, "quotation") + " as Won?",
+        sub: esc(_mo.map(function (q) { return qNo(q); }).join(", ")) + " " + (_mo.length === 1 ? "is" : "are") +
+             " not marked Won. You are sending material against " + (_mo.length === 1 ? "it" : "them") +
+             ", so Won is almost certainly right \u2014 and " + (_mo.length === 1 ? "it comes" : "they come") +
+             " off the follow-up radar and the old-quotes list at once.",
+        body: '<div class="meta">Either way the challan opens next, carrying ' + plural(_mm.lines.length, "line") +
+              ' from ' + plural(_mn.length, "quotation") + '.</div>',
+        yes: "Yes, mark " + (_mo.length === 1 ? "it" : "them") + " Won", no: "No, leave them"
+      }).then(function (yes) {
+        if (yes) _mo.forEach(function (q) { q.status = "Won"; save("quotes", q).then(function () { }, function () { }); });
+        if (yes) toast(plural(_mo.length, "quotation") + " marked Won.");
+        _mgo();
+      });
+      return;
+    }
     if (act === "q-stale") { S.qStale = !S.qStale; render(); return; }   /* 6.9.786 */
     if (act === "q-notreq") {
       var _qnr = (S.data.quotes || []).filter(function (x) { return x.id === id; })[0];
@@ -73652,6 +73794,13 @@ function viewCatalogue() {
     if (t.classList && t.classList.contains("bb-amt")) {
       var pa = {}; pa[t.getAttribute("data-f")] = t.value;
       saveBrandStatus(t.getAttribute("data-c"), t.getAttribute("data-b"), t.getAttribute("data-id"), pa);
+      return;
+    }
+    if (t.classList && t.classList.contains("qsel")) {   /* 6.9.980 */
+      if (!S.qSel) S.qSel = {};
+      var _qi = t.getAttribute("data-id") || "";
+      if (t.checked) S.qSel[_qi] = true; else delete S.qSel[_qi];
+      var _qy = window.scrollY; render(); window.scrollTo(0, _qy);
       return;
     }
     if (t.classList && t.classList.contains("billsel")) {
