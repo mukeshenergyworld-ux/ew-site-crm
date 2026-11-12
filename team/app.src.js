@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.978";   /* 6.9.978 (12 Nov 2026) - one Change button on a money row: edit it with the PIN asked twice, or cancel it */   /* 6.9.977 (12 Nov 2026) - a partner or driver payout entered wrongly can be set aside, with a reason, and brought back */   /* 6.9.976 (12 Nov 2026) - a brand already set aside stops nagging from the empty-brand card */   /* 6.9.975 (12 Nov 2026) - a finalised return can be opened again, and repriced, with it recorded as after the stamp */   /* 6.9.974 (12 Nov 2026) - Change it reprices this return as well as setting the preset from today */   /* 6.9.973 (12 Nov 2026) - FIX: the Finalise card on a return threw before it drew (6.9.972) */   /* 6.9.972 (12 Nov 2026) - return finalise: try a rate on the lines, and change the preset from today with a PIN */   /* 6.9.971 (12 Nov 2026) - a brand with no preset is set from the return-finalise card itself */   /* 6.9.970 (12 Nov 2026) - quote PDF: a product description is printed whole, not cut at three lines */   /* 6.9.969 (11 Nov 2026) - deliveries with no signed paper split by age: the ones past 30 days get the red number, the fresh ones are stated quietly */   /* 6.9.968 (11 Nov 2026) - a purchase bill already fully in stock is not brought in a second time: Huliot's invoice arrives in three mails, and all three were being uploaded */   /* 6.9.967 (11 Nov 2026) - GHP+ logo in the registered Green Heat+ colours (#00539F / #ED1D24) on PDFs, quotes, challans and QR centres */   /* 6.9.966 (11 Nov 2026) - technical specifications sheet in colour: brand-coloured table heads and code strip, coloured field labels, and the exceptions in an amber panel */   /* 6.9.965 (11 Nov 2026) - old quotes to close: grouped by what the site is doing now, closing windows first, each group carrying that stage's own pitch lines */   /* 6.9.964 (11 Nov 2026) - quote spec table: a value all but a few items share is said once and the few are named, so one tube no longer printed five long columns 25 times */   /* 6.9.963 (11 Nov 2026) - purchase bills: same day + same amount flagged on the Tally screen */   /* 6.9.958 (10 Nov 2026) - a statement attached before the name was kept is told apart by its time, not left as four identical lines */     /* 6.9.957 (10 Nov 2026) - each attached old hisab shows its file name, and a wrong one can be set aside */     /* 6.9.956 (10 Nov 2026) - rebuilt: the GitHub Pages publish of 6.9.955 failed (run #1675), so nothing had changed on the phones */   /* 6.9.955 (10 Nov 2026) - the old hisab takes more than one file at once: photographed pages become one PDF, and every statement on file is listed */     /* 6.9.954 (10 Nov 2026) - the Partner Club: fixed slabs, a bonus on crossing one, the trip and device rewards, every partner's rupees to his next slab, and the quiet-partner watch */     /* 6.9.953 (10 Nov 2026) - Service > Control: cash in each engineer's hand, hand-over recorded, three random customer checks a week */     /* 6.9.952 (10 Nov 2026) - to-bill month by month, screens found from Search, team screen use on Health, a receipt for every incentive payout */     /* 6.9.951 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 6.9.950 (9 Nov 2026) - brand introductions: a fuller paragraph, three stage-wise benefits and one next step, on the quote and the proposal */     /* 6.9.949 (9 Nov 2026) - quote PDF: a product picture stays inside its own row (1.2 mm clear of both lines) */     /* 6.9.948 (9 Nov 2026) - quote PDF: each room heading carries its collection and finish with colour dots; every FIMA code chip has its finish dot */     /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
+  var APP_VERSION = "6.9.979";   /* 6.9.979 (12 Nov 2026) - Make challan is on every quotation, not only a won one; converting offers to mark it Won */   /* 6.9.978 (12 Nov 2026) - one Change button on a money row: edit it with the PIN asked twice, or cancel it */   /* 6.9.977 (12 Nov 2026) - a partner or driver payout entered wrongly can be set aside, with a reason, and brought back */   /* 6.9.976 (12 Nov 2026) - a brand already set aside stops nagging from the empty-brand card */   /* 6.9.975 (12 Nov 2026) - a finalised return can be opened again, and repriced, with it recorded as after the stamp */   /* 6.9.974 (12 Nov 2026) - Change it reprices this return as well as setting the preset from today */   /* 6.9.973 (12 Nov 2026) - FIX: the Finalise card on a return threw before it drew (6.9.972) */   /* 6.9.972 (12 Nov 2026) - return finalise: try a rate on the lines, and change the preset from today with a PIN */   /* 6.9.971 (12 Nov 2026) - a brand with no preset is set from the return-finalise card itself */   /* 6.9.970 (12 Nov 2026) - quote PDF: a product description is printed whole, not cut at three lines */   /* 6.9.969 (11 Nov 2026) - deliveries with no signed paper split by age: the ones past 30 days get the red number, the fresh ones are stated quietly */   /* 6.9.968 (11 Nov 2026) - a purchase bill already fully in stock is not brought in a second time: Huliot's invoice arrives in three mails, and all three were being uploaded */   /* 6.9.967 (11 Nov 2026) - GHP+ logo in the registered Green Heat+ colours (#00539F / #ED1D24) on PDFs, quotes, challans and QR centres */   /* 6.9.966 (11 Nov 2026) - technical specifications sheet in colour: brand-coloured table heads and code strip, coloured field labels, and the exceptions in an amber panel */   /* 6.9.965 (11 Nov 2026) - old quotes to close: grouped by what the site is doing now, closing windows first, each group carrying that stage's own pitch lines */   /* 6.9.964 (11 Nov 2026) - quote spec table: a value all but a few items share is said once and the few are named, so one tube no longer printed five long columns 25 times */   /* 6.9.963 (11 Nov 2026) - purchase bills: same day + same amount flagged on the Tally screen */   /* 6.9.958 (10 Nov 2026) - a statement attached before the name was kept is told apart by its time, not left as four identical lines */     /* 6.9.957 (10 Nov 2026) - each attached old hisab shows its file name, and a wrong one can be set aside */     /* 6.9.956 (10 Nov 2026) - rebuilt: the GitHub Pages publish of 6.9.955 failed (run #1675), so nothing had changed on the phones */   /* 6.9.955 (10 Nov 2026) - the old hisab takes more than one file at once: photographed pages become one PDF, and every statement on file is listed */     /* 6.9.954 (10 Nov 2026) - the Partner Club: fixed slabs, a bonus on crossing one, the trip and device rewards, every partner's rupees to his next slab, and the quiet-partner watch */     /* 6.9.953 (10 Nov 2026) - Service > Control: cash in each engineer's hand, hand-over recorded, three random customer checks a week */     /* 6.9.952 (10 Nov 2026) - to-bill month by month, screens found from Search, team screen use on Health, a receipt for every incentive payout */     /* 6.9.951 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 6.9.950 (9 Nov 2026) - brand introductions: a fuller paragraph, three stage-wise benefits and one next step, on the quote and the proposal */     /* 6.9.949 (9 Nov 2026) - quote PDF: a product picture stays inside its own row (1.2 mm clear of both lines) */     /* 6.9.948 (9 Nov 2026) - quote PDF: each room heading carries its collection and finish with colour dots; every FIMA code chip has its finish dot */     /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -21220,8 +21220,18 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       /* v6.9.343 - a two-brand quote whose Green Heat Plus is sold and whose Pentair is
          deferred is not "Won" as a whole, and he still has material to send out today. The
          button follows whether ANY brand on it is won. */
-      (q.status === "Won" || quoteBrands(q).some(function (b) { return qBrandWon(q, b); })
-        ? '<button class="btn sm" data-act="q-challan" data-id="' + esc(q.id) + '">Make challan</button>' : "") +
+      /* 6.9.979 - HIS WORDS: "make provison ji select quote and convert them to challan". The
+         button existed since v6.9.343 but only on a quote already marked Won, or with one brand
+         won - so a quote he had just agreed on the phone, still sitting at Sent, had no way
+         through, and he had to go and change the status first to find the button that would
+         have changed it for him. It is on every quote now. A won one keeps the solid button; on
+         the rest it is quiet, and converting offers to mark the quote Won at the same time. */
+      (function () {
+        var _qw = (q.status === "Won" || quoteBrands(q).some(function (b) { return qBrandWon(q, b); }));
+        return '<button class="btn sm' + (_qw ? '' : ' ghost') + '" data-act="q-challan" data-id="' + esc(q.id) + '"' +
+          (_qw ? '' : ' title="This quote is marked ' + esc(q.status || "Draft") + '. You can still send material against it - you will be asked whether to mark it Won."') +
+          '>Make challan</button>';
+      })() +
       /* v6.9.205 - every quote already marked Lost can still be answered, so the back
          catalogue is fillable without a migration. The pill carries the SHORT label: the
          full reason is 38 characters and would burst the acts row on a phone. */
@@ -57356,6 +57366,36 @@ function viewCatalogue() {
       '<div class="foot"><button class="btn ghost" data-act="close">Later</button>' +
       '<button class="btn" data-act="fcs-setup" data-cl="' + esc(cn) + '">Set discount &amp; incentive</button></div>';
   }
+  /* 6.9.979 - the conversion itself, lifted out of the handler so the status question can
+     sit in front of it without the body being written twice. */
+  function qcGo(wqc, qcits) {
+      /* v6.9.277 - CARRY THE LIST PRICE AND THE DISCOUNT, NOT THE NET.
+         This used to multiply the agreed discount into the unit rate and record disc 0:
+             netRate = round(price * (1 - d/100));  return { ..., rate: netRate };
+         So 71,561 less the 47% agreed with Pritpaul Singh became a 37,927 "rate" matching
+         nothing in the catalogue, and the discount he had given vanished from the record. The
+         customer could not see what he had been allowed, a return against the line credited a
+         price that existed nowhere, and - once v6.9.274 added re-pricing - the app offered to
+         take the same 47% off a second time.
+
+         The billed money does not change by a rupee: challanNet is
+         qty x round(rate x (1 - disc/100)), which is the identical arithmetic, just kept as two
+         honest numbers instead of one misleading one. It also makes `amount` the gross, which
+         is what the rest of the app already assumes - the deliveries screen prints
+         money(c.amount) + " at list". */
+      S.chx = null;
+      S.ch = {
+        brand: String(wqc.brand || "").split(",")[0].trim(),
+        family: "", client: wqc.client, fromQuote: wqc.quoteNo, disc: 0,
+        items: qcits.map(function (i) {
+          var d = (i.disc !== "" && i.disc != null) ? Number(i.disc) : (Number(i.bd) || 0);
+          return { code: i.code, desc: i.desc, unit: i.unit || "No's",
+            qty: Number(i.qty) || 1, rate: Number(i.price || 0), disc: Number(d) || 0 };
+        })
+      };
+      S.modal = modalChallan(); render();
+  }
+
   function modalChallan() {
     try { ensureStock(); } catch (eS) { }   /* v6.9.606 - so Save can warn when a line asks for more than is free */
     if (!S.ch) S.ch = { brand: "", family: "", items: [] };
@@ -68228,31 +68268,30 @@ function viewCatalogue() {
       if (!wqc) return;
       var qcits = [];
       try { qcits = JSON.parse(wqc.items || "[]"); } catch (e) { }
-      /* v6.9.277 - CARRY THE LIST PRICE AND THE DISCOUNT, NOT THE NET.
-         This used to multiply the agreed discount into the unit rate and record disc 0:
-             netRate = round(price * (1 - d/100));  return { ..., rate: netRate };
-         So 71,561 less the 47% agreed with Pritpaul Singh became a 37,927 "rate" matching
-         nothing in the catalogue, and the discount he had given vanished from the record. The
-         customer could not see what he had been allowed, a return against the line credited a
-         price that existed nowhere, and - once v6.9.274 added re-pricing - the app offered to
-         take the same 47% off a second time.
-
-         The billed money does not change by a rupee: challanNet is
-         qty x round(rate x (1 - disc/100)), which is the identical arithmetic, just kept as two
-         honest numbers instead of one misleading one. It also makes `amount` the gross, which
-         is what the rest of the app already assumes - the deliveries screen prints
-         money(c.amount) + " at list". */
-      S.chx = null;
-      S.ch = {
-        brand: String(wqc.brand || "").split(",")[0].trim(),
-        family: "", client: wqc.client, fromQuote: wqc.quoteNo, disc: 0,
-        items: qcits.map(function (i) {
-          var d = (i.disc !== "" && i.disc != null) ? Number(i.disc) : (Number(i.bd) || 0);
-          return { code: i.code, desc: i.desc, unit: i.unit || "No's",
-            qty: Number(i.qty) || 1, rate: Number(i.price || 0), disc: Number(d) || 0 };
-        })
-      };
-      S.modal = modalChallan(); render(); return;
+      if (!qcits.length) { toast("There is nothing on that quotation to send."); return; }
+      /* 6.9.979 - the status question, asked ONCE and here, where he is deciding anyway. The
+         challan opens either way: the delivery is the thing he came to do, and a quote left at
+         Sent is a reporting detail, not a reason to stop him. Answering yes also takes it out
+         of the follow-up radar and the stale-quote list by itself, because both read status. */
+      var _qcWon = (String(wqc.status) === "Won" || quoteBrands(wqc).some(function (b) { return qBrandWon(wqc, b); }));
+      if (!_qcWon) {
+        askSheet({
+          title: "Mark " + String(wqc.quoteNo || "this quotation") + " as Won?",
+          sub: "It is marked <b>" + esc(String(wqc.status || "Draft")) + "</b>. You are sending material against it, so Won is almost certainly right \u2014 and it comes off the follow-up radar and the old-quotes list at once.",
+          body: '<div class="meta">Either way the challan opens next. Say no and the quotation stays as it is; you can change it on the select beside it whenever you like.</div>',
+          yes: "Yes, mark it Won", no: "No, leave it"
+        }).then(function (yes) {
+          if (yes) {
+            wqc.status = "Won";
+            save("quotes", wqc).then(function (r) { if (r) toast(String(wqc.quoteNo || "The quotation") + " marked Won."); },
+              function (e) { toast("Not saved \u2014 " + apiWhy(e) + ". The challan is unaffected."); });
+          }
+          qcGo(wqc, qcits);
+        });
+        return;
+      }
+      qcGo(wqc, qcits);
+      return;
     }
     /* ===== v6.9.410 - the two taps that end a never-sent quotation ===== */
     /* v6.9.497 - AND IT CARRIES THE TAB NOW. This set the filter and not the tab, because the
