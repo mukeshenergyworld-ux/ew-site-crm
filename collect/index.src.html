@@ -208,7 +208,7 @@ table.ct td.wd{white-space:nowrap}
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.74.1";   /* 1.74.1 (11 Nov 2026) - GHP+ logo in the registered Green Heat+ colours (#00539F / #ED1D24) on PDFs, quotes, challans and QR centres */   /* 1.74.0 (9 Nov 2026) - FIMA in every finish: a return or a hisab line in a finish code (F1301WLX9CS) finds its product, brand and price */     /* 1.73.1 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */   /* 1.73.0 (3 Nov 2026) - the old hisab paper opens from here, for everyone */   /* 1.72.0 (3 Nov 2026) - a return is priced the same on every phone: old product codes found, a stale shelf catalogue refreshed */   /* 1.71.0 (31 Oct 2026) - one tap, one entry */   /* 1.70.1 (27 Oct 2026) - GHp mark in the middle of every QR, level H */   /* 1.67.0 - flush busy flag + B9 owner guard, narrower sign-out, Old book under ☰ */
+  var APP_VERSION = "1.75.0";   /* 1.75.0 (14 Nov 2026) - FIX: a return line frozen at 0%% was credited at full list price; the CRM's rule (6.9.728) is now this app's rule too - Rs 2,12,214 across 5 clients */   /* 1.74.1 (1.74.1 (11 Nov 2026) - GHP+ logo in the registered Green Heat+ colours (#00539F / #ED1D24) on PDFs, quotes, challans and QR centres */   /* 1.74.0 (9 Nov 2026) - FIMA in every finish: a return or a hisab line in a finish code (F1301WLX9CS) finds its product, brand and price */     /* 1.73.1 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */   /* 1.73.0 (3 Nov 2026) - the old hisab paper opens from here, for everyone */   /* 1.72.0 (3 Nov 2026) - a return is priced the same on every phone: old product codes found, a stale shelf catalogue refreshed */   /* 1.71.0 (31 Oct 2026) - one tap, one entry */   /* 1.70.1 (27 Oct 2026) - GHp mark in the middle of every QR, level H */   /* 1.67.0 - flush busy flag + B9 owner guard, narrower sign-out, Old book under ☰ */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -2410,7 +2410,46 @@ function cancelMap() {
     });
     return _dscIdx;
   }
+  /* ===== THE FAMILY RATE  (the CRM's, 17 Oct 2026; the Challan app has carried it since) =====
+     A client is given one rate for Huliot and the paper says "Huliot HT PRO"; one for Heliroma
+     and the line says "DRP". The CRM and the Challan app fall back to a sister brand in the same
+     family; this app did not, so it found no row at all and priced those lines at FULL MRP.
+     MEASURED on his book on 14 Nov 2026 by the CRM's money check: Unnat Hotel read Rs 5,45,172
+     here against the CRM's Rs 3,40,685, Kainos Hospital Rs 11,430 high, Bitu Israna Rs 825 -
+     Rs 2,16,742 asked for that nobody owes. Body lifted from team/app.js, byte for byte. */
+  var DISC_FAM_RULES = [
+    ["huliot", ["huliot", "ht pro", "htpro", "ultra silent", "ultrasilent"]],
+    ["heliroma", ["heliroma", "drp", "ppr"]],
+    ["stellar", ["stellar", "sanitaar", "sanitar"]],
+    ["inair", ["inair", "lunos"]],
+    ["green heat", ["green heat", "greenheat"]],
+    ["fima", ["fima"]], ["toto", ["toto"]], ["grundfos", ["grundfos"]], ["pentair", ["pentair"]],
+    ["geberit", ["geberit"]], ["oyster", ["oyster"]], ["mea", ["mea"]], ["ioncare", ["ioncare", "ion care"]],
+    ["adani", ["adani"]], ["leo", ["leo"]]
+  ];
+  function discFam(b) {
+    var s = " " + String(b == null ? "" : b).toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/^\s+|\s+$/g, "") + " ";
+    if (s === "  ") return "";
+    for (var i = 0; i < DISC_FAM_RULES.length; i++) {
+      var keys = DISC_FAM_RULES[i][1];
+      for (var j = 0; j < keys.length; j++) if (s.indexOf(" " + keys[j] + " ") > -1) return DISC_FAM_RULES[i][0];
+    }
+    return "";
+  }
+  var _dscFam = null;
+  function dscFamIndex() {
+    if (_dscFam) return _dscFam;
+    _dscFam = {};
+    ((S.data && S.data.discounts) || []).forEach(function (x) {
+      var f = discFam(x.brand);
+      if (!f) return;
+      var k = dkey(x.client) + "||" + f;
+      (_dscFam[k] || (_dscFam[k] = [])).push(x);
+    });
+    return _dscFam;
+  }
   function discRowsFor(client, brand) {
+    if (client && typeof client === "object") client = client.name;   /* the CRM's 6.9.824 guard */
     var b = dkey(brand), ix = dscIndex();
     var pick = function (nm) {
       return (ix[dkey(nm) + "||" + b] || []).slice();
@@ -2430,8 +2469,29 @@ function cancelMap() {
     }
     return own;
   }
+  /* the family rate: this man first, then the names he was merged out of; head brand first,
+     then any sister brand, the exact brand excluded - the CRM's order, unchanged */
+  function discFamRows(client, brand) {
+    var b = dkey(brand), f = discFam(brand);
+    if (!f) return [];
+    var names = [client];
+    var am = dupAliasMap(), k = dgKey(client);
+    if (am.byName[k] || am.aliasOf[k]) {
+      var fam = dupFamily(client);
+      for (var q = 0; q < fam.length; q++) if (dgKey(fam[q]) !== k) names.push(fam[q]);
+    }
+    var fx = dscFamIndex();
+    for (var i = 0; i < names.length; i++) {
+      var rows = (fx[dkey(names[i]) + "||" + f] || []).filter(function (x) { return dkey(x.brand) !== b; });
+      if (!rows.length) continue;
+      var head = rows.filter(function (x) { return dkey(x.brand) === f; });
+      return (head.length ? head : rows).slice();
+    }
+    return [];
+  }
   function discRowOn(client, brand, onYmd) {
     var rows = discRowsFor(client, brand);
+    if (!rows.length) rows = discFamRows(client, brand);   /* 1.75.0 - the family rate */
     if (!rows.length) return null;
     /* same reason as discFrom: no dstr, and no today() either - the two apps build today's date
        their own way and this block must mean one thing in both. */
@@ -2510,6 +2570,48 @@ function cancelMap() {
     }
     return his;
   }
+
+  /* ===== A FROZEN 0% IS NOT A DISCOUNT  (ports the CRM's 6.9.728, 11 Oct 2026) =====
+     HIS WORDS over ARMANISHGU/081026/R01 credited at MRP: "why return not picking preset
+     discount, this is huge loss to me". The CRM was fixed that day; this app was not, so for a
+     month the two have credited the same return differently. MEASURED on his book on 14 Nov
+     2026, by the CRM's own money check: 73 return lines across 5 clients carry a frozen disc
+     of 0, and this app credited every one at FULL LIST PRICE - Rs 2,12,214 more than those
+     clients were ever charged. Four of them showed on the collector's screen owing that much
+     less than they owe.
+     A godown or an accounts phone receives NO discount rows (the server never sends money to
+     those roles), so the Challan app froze 0 onto each line and this reader believed it.
+     The rule below is the CRM's, line for line: a frozen zero is re-derived from the delivery
+     line the goods actually went out on, and failing that from the client's rate on the day of
+     the return. A frozen figure ABOVE zero is kept as typed. Job work, a line typed as a lump
+     total, and an off-catalogue code are left exactly as they are. */
+  function rnSrcLine(r, code, allChallans) {
+    var want = String(code == null ? "" : code).trim();
+    if (!want) return null;
+    var src = rnSourceLines(r, allChallans);
+    for (var i = 0; i < src.length; i++) {
+      var lines = [];
+      try { lines = JSON.parse(src[i].itemsJson || "[]"); } catch (e) { lines = []; }
+      for (var j = 0; j < (lines || []).length; j++) {
+        var L = lines[j];
+        if (L && String(L.code == null ? "" : L.code).trim() === want && L.rate != null && L.rate !== "") return L;
+      }
+    }
+    return null;
+  }
+  function rnDisc(item, r, brand, allChallans) {
+    var raw = (item && item.disc != null && item.disc !== "") ? num(item.disc) : null;
+    var day = d10(r && r.createdAt);
+    var d = (raw != null) ? raw : clientDiscountOn(r && r.customerName, brand || "", day);
+    if (d > 0) return d;
+    if (item && (item.lump || isJobLine(item))) return d;
+    var code = String((item && item.code) == null ? "" : item.code).trim();
+    if (!code || !retProd(code)) return d;
+    var s0 = rnSrcLine(r, code, allChallans);
+    var d0 = (s0 && s0.disc != null && s0.disc !== "") ? num(s0.disc) : 0;
+    if (!(d0 > 0)) d0 = clientDiscountOn(r && r.customerName, (s0 && s0.brand) || brand || "", day);
+    return d0 > 0 ? d0 : d;
+  }
   function rnPriceOf(item, r, allChallans) {
     /* v1.51.0 - A BLANK DISCOUNT IS NOT ZERO PERCENT. The Challan app has never written a disc on
        a return line, so every frozen-rate line here was credited at FULL list price while the CRM
@@ -2522,7 +2624,7 @@ function cancelMap() {
     if (item.rate != null && item.rate !== "" && num(item.rate) > 0) {
       var _fb = String(item.brand || "");
       if (!_fb) { var _fp = retProd(item.code); if (_fp) _fb = String(realBrand(_fp) || _fp.brand || ""); }
-      return { amt: rnNet(item.rate, _rd(item.disc, _fb), item.qty), src: "frozen" };
+      return { amt: rnNet(item.rate, rnDisc(item, r, _fb, allChallans), item.qty), src: "frozen" };
     }
     var code = String(item.code == null ? "" : item.code).trim();
     if (code) {
@@ -2534,7 +2636,7 @@ function cancelMap() {
           var L = lines[j];
           if (!L || String(L.code == null ? "" : L.code).trim() !== code) continue;
           if (!(num(L.rate) > 0)) continue;
-          return { amt: rnNet(L.rate, _rd(L.disc, L.brand || item.brand), item.qty),
+          return { amt: rnNet(L.rate, rnDisc({ code: item.code, qty: item.qty, disc: L.disc, lump: item.lump, job: item.job, brand: L.brand || item.brand }, r, L.brand || item.brand, allChallans), item.qty),
                    src: String(src[i].challanNo || "").trim() === String(r.challanNo || "").trim()
                         ? "against" : "delivered" };
         }
@@ -5488,7 +5590,7 @@ function cancelMap() {
   /* v1.37.0 - _hsbCache with them. It is built from the audit trail, which arrives in the
      SECOND half of a staged pull: a map built before that half lands is an EMPTY map, and an
      empty map means "nothing is finalised", which understates every due on the screen. */
-  function bust() { _ohCache = null; _sccCache = null; _rowsCache = null; _fuCache = null; _obCache = null; _pmCache = {}; _flCache = {}; _cxCache = null; _hxCache = null; _aliasCache = null; _hsbCache = null;_dscIdx = null; }
+  function bust() { _dscFam = null; _ohCache = null; _sccCache = null; _rowsCache = null; _fuCache = null; _obCache = null; _pmCache = {}; _flCache = {}; _cxCache = null; _hxCache = null; _aliasCache = null; _hsbCache = null;_dscIdx = null; }
 
   document.addEventListener("click", function (ev) {
     var t = ev.target.closest("[data-act]");
