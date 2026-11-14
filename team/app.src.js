@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.984";   /* 6.9.984 (14 Nov 2026) - the waiting-bill sheet names the lines that still have no code, with the supplier\u2019s own code and the nearest catalogue ones */   /* 6.9.983 (14 Nov 2026) - the red "not matched" line on Stock to order says what it means and opens: which bill, how many, and how to put it right */   /* 6.9.982 (12 Nov 2026) - the quote tick moved to the quote book he actually looks at; it had been on the List view only */   /* 6.9.981 (12 Nov 2026) - merging quotations: one line per product, and a disagreed discount falls to the client\u2019s preset and is named */   /* 6.9.980 (12 Nov 2026) - tick several quotations and send them out on one challan */   /* 6.9.979 (12 Nov 2026) - Make challan is on every quotation, not only a won one; converting offers to mark it Won */   /* 6.9.978 (12 Nov 2026) - one Change button on a money row: edit it with the PIN asked twice, or cancel it */   /* 6.9.977 (12 Nov 2026) - a partner or driver payout entered wrongly can be set aside, with a reason, and brought back */   /* 6.9.976 (12 Nov 2026) - a brand already set aside stops nagging from the empty-brand card */   /* 6.9.975 (12 Nov 2026) - a finalised return can be opened again, and repriced, with it recorded as after the stamp */   /* 6.9.974 (12 Nov 2026) - Change it reprices this return as well as setting the preset from today */   /* 6.9.973 (12 Nov 2026) - FIX: the Finalise card on a return threw before it drew (6.9.972) */   /* 6.9.972 (12 Nov 2026) - return finalise: try a rate on the lines, and change the preset from today with a PIN */   /* 6.9.971 (12 Nov 2026) - a brand with no preset is set from the return-finalise card itself */   /* 6.9.970 (12 Nov 2026) - quote PDF: a product description is printed whole, not cut at three lines */   /* 6.9.969 (11 Nov 2026) - deliveries with no signed paper split by age: the ones past 30 days get the red number, the fresh ones are stated quietly */   /* 6.9.968 (11 Nov 2026) - a purchase bill already fully in stock is not brought in a second time: Huliot's invoice arrives in three mails, and all three were being uploaded */   /* 6.9.967 (11 Nov 2026) - GHP+ logo in the registered Green Heat+ colours (#00539F / #ED1D24) on PDFs, quotes, challans and QR centres */   /* 6.9.966 (11 Nov 2026) - technical specifications sheet in colour: brand-coloured table heads and code strip, coloured field labels, and the exceptions in an amber panel */   /* 6.9.965 (11 Nov 2026) - old quotes to close: grouped by what the site is doing now, closing windows first, each group carrying that stage's own pitch lines */   /* 6.9.964 (11 Nov 2026) - quote spec table: a value all but a few items share is said once and the few are named, so one tube no longer printed five long columns 25 times */   /* 6.9.963 (11 Nov 2026) - purchase bills: same day + same amount flagged on the Tally screen */   /* 6.9.958 (10 Nov 2026) - a statement attached before the name was kept is told apart by its time, not left as four identical lines */     /* 6.9.957 (10 Nov 2026) - each attached old hisab shows its file name, and a wrong one can be set aside */     /* 6.9.956 (10 Nov 2026) - rebuilt: the GitHub Pages publish of 6.9.955 failed (run #1675), so nothing had changed on the phones */   /* 6.9.955 (10 Nov 2026) - the old hisab takes more than one file at once: photographed pages become one PDF, and every statement on file is listed */     /* 6.9.954 (10 Nov 2026) - the Partner Club: fixed slabs, a bonus on crossing one, the trip and device rewards, every partner's rupees to his next slab, and the quiet-partner watch */     /* 6.9.953 (10 Nov 2026) - Service > Control: cash in each engineer's hand, hand-over recorded, three random customer checks a week */     /* 6.9.952 (10 Nov 2026) - to-bill month by month, screens found from Search, team screen use on Health, a receipt for every incentive payout */     /* 6.9.951 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 6.9.950 (9 Nov 2026) - brand introductions: a fuller paragraph, three stage-wise benefits and one next step, on the quote and the proposal */     /* 6.9.949 (9 Nov 2026) - quote PDF: a product picture stays inside its own row (1.2 mm clear of both lines) */     /* 6.9.948 (9 Nov 2026) - quote PDF: each room heading carries its collection and finish with colour dots; every FIMA code chip has its finish dot */     /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
+  var APP_VERSION = "6.9.985";   /* 6.9.985 (14 Nov 2026) - Tally match: a line already picked is drawn as picked, and settled lines fold away so only what needs him is on screen */   /* 6.9.984 (14 Nov 2026) - the waiting-bill sheet names the lines that still have no code, with the supplier\u2019s own code and the nearest catalogue ones */   /* 6.9.983 (14 Nov 2026) - the red "not matched" line on Stock to order says what it means and opens: which bill, how many, and how to put it right */   /* 6.9.982 (12 Nov 2026) - the quote tick moved to the quote book he actually looks at; it had been on the List view only */   /* 6.9.981 (12 Nov 2026) - merging quotations: one line per product, and a disagreed discount falls to the client\u2019s preset and is named */   /* 6.9.980 (12 Nov 2026) - tick several quotations and send them out on one challan */   /* 6.9.979 (12 Nov 2026) - Make challan is on every quotation, not only a won one; converting offers to mark it Won */   /* 6.9.978 (12 Nov 2026) - one Change button on a money row: edit it with the PIN asked twice, or cancel it */   /* 6.9.977 (12 Nov 2026) - a partner or driver payout entered wrongly can be set aside, with a reason, and brought back */   /* 6.9.976 (12 Nov 2026) - a brand already set aside stops nagging from the empty-brand card */   /* 6.9.975 (12 Nov 2026) - a finalised return can be opened again, and repriced, with it recorded as after the stamp */   /* 6.9.974 (12 Nov 2026) - Change it reprices this return as well as setting the preset from today */   /* 6.9.973 (12 Nov 2026) - FIX: the Finalise card on a return threw before it drew (6.9.972) */   /* 6.9.972 (12 Nov 2026) - return finalise: try a rate on the lines, and change the preset from today with a PIN */   /* 6.9.971 (12 Nov 2026) - a brand with no preset is set from the return-finalise card itself */   /* 6.9.970 (12 Nov 2026) - quote PDF: a product description is printed whole, not cut at three lines */   /* 6.9.969 (11 Nov 2026) - deliveries with no signed paper split by age: the ones past 30 days get the red number, the fresh ones are stated quietly */   /* 6.9.968 (11 Nov 2026) - a purchase bill already fully in stock is not brought in a second time: Huliot's invoice arrives in three mails, and all three were being uploaded */   /* 6.9.967 (11 Nov 2026) - GHP+ logo in the registered Green Heat+ colours (#00539F / #ED1D24) on PDFs, quotes, challans and QR centres */   /* 6.9.966 (11 Nov 2026) - technical specifications sheet in colour: brand-coloured table heads and code strip, coloured field labels, and the exceptions in an amber panel */   /* 6.9.965 (11 Nov 2026) - old quotes to close: grouped by what the site is doing now, closing windows first, each group carrying that stage's own pitch lines */   /* 6.9.964 (11 Nov 2026) - quote spec table: a value all but a few items share is said once and the few are named, so one tube no longer printed five long columns 25 times */   /* 6.9.963 (11 Nov 2026) - purchase bills: same day + same amount flagged on the Tally screen */   /* 6.9.958 (10 Nov 2026) - a statement attached before the name was kept is told apart by its time, not left as four identical lines */     /* 6.9.957 (10 Nov 2026) - each attached old hisab shows its file name, and a wrong one can be set aside */     /* 6.9.956 (10 Nov 2026) - rebuilt: the GitHub Pages publish of 6.9.955 failed (run #1675), so nothing had changed on the phones */   /* 6.9.955 (10 Nov 2026) - the old hisab takes more than one file at once: photographed pages become one PDF, and every statement on file is listed */     /* 6.9.954 (10 Nov 2026) - the Partner Club: fixed slabs, a bonus on crossing one, the trip and device rewards, every partner's rupees to his next slab, and the quiet-partner watch */     /* 6.9.953 (10 Nov 2026) - Service > Control: cash in each engineer's hand, hand-over recorded, three random customer checks a week */     /* 6.9.952 (10 Nov 2026) - to-bill month by month, screens found from Search, team screen use on Health, a receipt for every incentive payout */     /* 6.9.951 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 6.9.950 (9 Nov 2026) - brand introductions: a fuller paragraph, three stage-wise benefits and one next step, on the quote and the proposal */     /* 6.9.949 (9 Nov 2026) - quote PDF: a product picture stays inside its own row (1.2 mm clear of both lines) */     /* 6.9.948 (9 Nov 2026) - quote PDF: each room heading carries its collection and finish with colour dots; every FIMA code chip has its finish dot */     /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -61698,6 +61698,20 @@ function viewCatalogue() {
       (adm && w.length ? '<button class="btn sm" data-act="tb-wait">Match them now</button>' : '') +
       (d.length ? '<button class="btn sm ghost" data-act="tb-drift">Change ' + plural(d.length, "code") + ' to Tally&rsquo;s</button>' : '') + '</div></div>';
   }
+  /* 6.9.985 - the product a typed pick resolves to, or null. One place, so the row that draws
+     it and the fold that hides it can never disagree about whether the line has an answer. */
+  function tbPicked(l, pmap) {
+    var v = String((l && l.pick) || "").trim();
+    if (!v) return null;
+    var q = (pmap && pmap[v]) || null;
+    if (!q) { try { q = findProduct(v); } catch (e) { q = null; } }
+    return q || null;
+  }
+  function tbSettled(b, l, pmap) {
+    if (b && b.done) return true;
+    if (l && (l.state === "ok" || l.state === "close")) return true;
+    return !!tbPicked(l, pmap);
+  }
   function tbKeep() {
     var im = S.imp; if (!im || im.step !== "tally") return;
     (im.bills || []).forEach(function (b, bi) {
@@ -62094,6 +62108,7 @@ function viewCatalogue() {
       var rg = reg[b.key.toLowerCase()];
       var totOk = rg ? Math.abs(rg.amount - b.total) < 1 : null;
       var open = b.lines.filter(function (l) { return l.state !== "ok" && l.state !== "close" && !(adm && (l.mode === "new" || l.pick)); }).length;
+      var _nSet = 0, _openAll = !!(S.tbAll && S.tbAll[b.key || bi]);   /* 6.9.985 */
       var rcv = stkReceivedFor(b.key), anyRcv = Object.keys(rcv).length > 0;
       var brands = {}; b.lines.forEach(function (l) { var p = pmap[l.code]; if (p && p.brand) brands[p.brand] = (brands[p.brand] || 0) + 1; });
       b.hint = Object.keys(brands).sort(function (x, y) { return brands[y] - brands[x]; })[0] || "";
@@ -62111,8 +62126,23 @@ function viewCatalogue() {
         '<div style="overflow-x:auto"><table style="width:100%;min-width:680px;border-collapse:collapse;font-size:13px"><thead><tr style="background:#e2e8f0">' +
         '<th style="padding:5px 7px;text-align:left">#</th><th style="padding:5px 7px;text-align:left">IN TALLY</th><th style="padding:5px 7px;text-align:left">IN THE CRM</th>' +
         '<th style="padding:5px 7px;text-align:right">INTO STOCK</th><th style="padding:5px 7px;text-align:right">RATE</th></tr></thead><tbody>' +
+        /* ===== 6.9.985 - A LINE HE HAS ALREADY PICKED LOOKS PICKED  (14 Nov 2026) =====
+           HIS WORDS: "i have selected code and press saved , even then its shows here, once
+           matched must not shown here, only pending one to be shown".
+
+           MEASURED on his screenshot of Huliot 14505: the header already read "all matched" in
+           green - the count has excluded a picked line since 6.9.886 - but the row below still
+           drew the amber "Pick the product" box with his code sitting in it, and a "+ New
+           product" button beside it. The same line said matched at the top and unmatched
+           underneath, so of course it read as though the save had not taken.
+
+           tbSettled() is now the one answer to "is there anything left to decide on this line",
+           and both the row and the fold read it. A line being made as a NEW product is NOT
+           settled: its boxes are still being typed and tbKeep() reads them back. */
         b.lines.map(function (l, li) {
           var p = pmap[l.code], pn = String(l.partNo || "").trim(), cell = "", id = bi + '_' + li;
+          var _set = tbSettled(b, l, pmap), _hide = _set && !_openAll;
+          if (_set) _nSet++;
           var prodTxt = function (q) { return '<b style="color:#0f766e">' + esc(q.desc) + '</b><div style="font-size:12px;color:#64748b">' + esc(q.code) + (q.brand ? ' &middot; ' + esc(q.brand) : '') + '</div>'; };
           if (b.done) cell = p ? prodTxt(p) : '<span style="color:#94a3b8">—</span>';
           else if (l.state === "ok" && p) cell = prodTxt(p);
@@ -62146,6 +62176,18 @@ function viewCatalogue() {
               '<input id="tbn_price_' + id + '" inputmode="decimal" placeholder="List price (optional)" value="' + esc(nb.price || "") + '" ' + inp + '/></div>' +
               '<input id="tbn_pic_' + id + '" type="url" inputmode="url" placeholder="Picture link (Google Drive or image URL)" value="' + esc(nb.pic || "") + '" ' + inp + '/>' +
               '<button class="btn sm ghost" data-act="tb-not" data-b="' + bi + '" data-l="' + li + '">Pick a product instead</button>';
+          } else if (tbPicked(l, pmap)) {
+            /* 6.9.985 - the product in green, and what Save will do to its code. The box and
+               the New product button are for a line with no answer yet; this one has one.
+               "Change" puts it back through tb-not, the control that already undoes a match. */
+            var _pq = tbPicked(l, pmap);
+            cell = prodTxt(_pq) +
+              '<div style="font-size:12px;margin-top:2px;color:#b45309">' +
+              (pn && String(pn) !== String(_pq.code)
+                ? (adm ? 'on Save, CRM code <b>' + esc(_pq.code) + '</b> becomes Tally&rsquo;s <b>' + esc(pn) + '</b>'
+                       : 'picked \u2014 the owner approves and brings the code in line with Tally&rsquo;s ' + esc(pn))
+                : 'picked' + (adm ? '' : ' \u2014 the owner approves')) + '</div>' +
+              '<button class="btn sm ghost" style="margin-top:4px" data-act="tb-not" data-b="' + bi + '" data-l="' + li + '">Change</button>';
           } else {
             var cands = (l.cands || []).map(function (c) { return pmap[c]; }).filter(Boolean);
             cell = (cands.length ? '<div style="font-size:12px;color:#b45309;margin-bottom:4px">Two products answer to this code &mdash; which brand?</div>' +
@@ -62156,13 +62198,21 @@ function viewCatalogue() {
           }
           if (!adm && l.state !== "ok" && l.state !== "close" && !b.done) cell = '<div style="font-size:12px;color:#b45309;margin-bottom:3px">Not in the CRM &mdash; propose the product; the owner approves</div>' + cell;   /* 6.9.886 */
           if (adm && l.prop && l.state !== "ok" && l.state !== "close") cell = '<div style="font-size:12px;color:#1d4ed8;margin-bottom:3px">Proposed by ' + esc(l.prop.by || "accounts") + (l.prop.mode === "new" ? ' as a new product' : l.prop.pick ? ': ' + esc(l.prop.pick) : '') + '</div>' + cell;
-          return '<tr style="border-top:1px solid #e2e8f0;vertical-align:top">' +
+          if (_hide) return '';
+          return '<tr style="border-top:1px solid #e2e8f0;vertical-align:top' + (_set ? ';background:#f8fafc' : '') + '">' +
             '<td style="padding:5px 7px;color:#64748b">' + l.sl + '</td>' +
             '<td style="padding:5px 7px">' + esc(l.desc) + '<div style="font-size:12px;color:#64748b">' + (pn ? (l.fromName ? 'code <b>' + esc(pn) + '</b> (from the name)' : 'Part No. <b>' + esc(pn) + '</b>') : 'no part no') + (l.hsn ? ' &middot; HSN ' + esc(l.hsn) : '') + '</div></td>' +
             '<td style="padding:5px 7px;min-width:240px">' + cell + '</td>' +
             '<td style="padding:5px 7px;text-align:right;white-space:nowrap"><b>' + l.qty + '</b> ' + esc(l.unit) + '</td>' +
             '<td style="padding:5px 7px;text-align:right;white-space:nowrap">' + money(l.net) + (l.disc ? '<div style="font-size:12px;color:#64748b">' + l.disc + '% off ' + money(l.rate) + '</div>' : '') + '</td></tr>';
-        }).join("") + '</tbody></table></div></div>';
+        }).join("") + '</tbody></table></div>' +
+        /* 6.9.985 - nothing disappears without being counted, and one tap brings it back */
+        (_nSet ? '<div style="padding:6px 10px;font-size:12.5px;color:#64748b;background:#f8fafc;border-top:1px solid #e2e8f0">' +
+          (_openAll ? plural(_nSet, "line") + ' already settled, shown above. '
+                    : plural(_nSet, "line") + ' already settled and hidden \u2014 only what still needs you is above. ') +
+          '<button class="btn sm ghost" data-act="tb-showall" data-k="' + esc(b.key || bi) + '" style="min-height:34px;padding:1px 9px;font-size:12px">' +
+          (_openAll ? 'Hide the settled ones' : 'Show all ' + b.lines.length) + '</button></div>' : '') +
+        '</div>';
     });
     var say = [];
     if (nSave) say.push(plural(nSave, "bill") + ' into stock');
@@ -65050,6 +65100,11 @@ function viewCatalogue() {
       if (!_ln) return;
       if (act === "tb-new") { _ln.mode = "new"; if (!_ln.nb || !_ln.nb.desc) _ln.nb = tallyNewDefaults(_bb, _ln); }   /* 6.9.677 - filled from the bill */
       if (act === "tb-edit") { _ln.nb = _ln.nb || tallyNewDefaults(_bb, _ln); _ln.nb.edit = true; }
+      if (act === "tb-showall") {   /* 6.9.985 */
+        var _tk = t.getAttribute("data-k") || "";
+        S.tbAll = S.tbAll || {}; S.tbAll[_tk] = !S.tbAll[_tk];
+        tbKeep(); keepScroll = true; render(); return;
+      }
       if (act === "tb-not") { _ln.mode = ""; _ln.pick = ""; if (_ln.state === "close" || _ln.state === "ok") { _ln.state = "none"; _ln.code = ""; } }
       if (act === "tb-cand") { _ln.mode = ""; _ln.pick = String(t.getAttribute("data-c") || ""); }
       render(); return;
