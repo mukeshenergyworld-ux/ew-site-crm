@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.982";   /* 6.9.982 (12 Nov 2026) - the quote tick moved to the quote book he actually looks at; it had been on the List view only */   /* 6.9.981 (12 Nov 2026) - merging quotations: one line per product, and a disagreed discount falls to the client\u2019s preset and is named */   /* 6.9.980 (12 Nov 2026) - tick several quotations and send them out on one challan */   /* 6.9.979 (12 Nov 2026) - Make challan is on every quotation, not only a won one; converting offers to mark it Won */   /* 6.9.978 (12 Nov 2026) - one Change button on a money row: edit it with the PIN asked twice, or cancel it */   /* 6.9.977 (12 Nov 2026) - a partner or driver payout entered wrongly can be set aside, with a reason, and brought back */   /* 6.9.976 (12 Nov 2026) - a brand already set aside stops nagging from the empty-brand card */   /* 6.9.975 (12 Nov 2026) - a finalised return can be opened again, and repriced, with it recorded as after the stamp */   /* 6.9.974 (12 Nov 2026) - Change it reprices this return as well as setting the preset from today */   /* 6.9.973 (12 Nov 2026) - FIX: the Finalise card on a return threw before it drew (6.9.972) */   /* 6.9.972 (12 Nov 2026) - return finalise: try a rate on the lines, and change the preset from today with a PIN */   /* 6.9.971 (12 Nov 2026) - a brand with no preset is set from the return-finalise card itself */   /* 6.9.970 (12 Nov 2026) - quote PDF: a product description is printed whole, not cut at three lines */   /* 6.9.969 (11 Nov 2026) - deliveries with no signed paper split by age: the ones past 30 days get the red number, the fresh ones are stated quietly */   /* 6.9.968 (11 Nov 2026) - a purchase bill already fully in stock is not brought in a second time: Huliot's invoice arrives in three mails, and all three were being uploaded */   /* 6.9.967 (11 Nov 2026) - GHP+ logo in the registered Green Heat+ colours (#00539F / #ED1D24) on PDFs, quotes, challans and QR centres */   /* 6.9.966 (11 Nov 2026) - technical specifications sheet in colour: brand-coloured table heads and code strip, coloured field labels, and the exceptions in an amber panel */   /* 6.9.965 (11 Nov 2026) - old quotes to close: grouped by what the site is doing now, closing windows first, each group carrying that stage's own pitch lines */   /* 6.9.964 (11 Nov 2026) - quote spec table: a value all but a few items share is said once and the few are named, so one tube no longer printed five long columns 25 times */   /* 6.9.963 (11 Nov 2026) - purchase bills: same day + same amount flagged on the Tally screen */   /* 6.9.958 (10 Nov 2026) - a statement attached before the name was kept is told apart by its time, not left as four identical lines */     /* 6.9.957 (10 Nov 2026) - each attached old hisab shows its file name, and a wrong one can be set aside */     /* 6.9.956 (10 Nov 2026) - rebuilt: the GitHub Pages publish of 6.9.955 failed (run #1675), so nothing had changed on the phones */   /* 6.9.955 (10 Nov 2026) - the old hisab takes more than one file at once: photographed pages become one PDF, and every statement on file is listed */     /* 6.9.954 (10 Nov 2026) - the Partner Club: fixed slabs, a bonus on crossing one, the trip and device rewards, every partner's rupees to his next slab, and the quiet-partner watch */     /* 6.9.953 (10 Nov 2026) - Service > Control: cash in each engineer's hand, hand-over recorded, three random customer checks a week */     /* 6.9.952 (10 Nov 2026) - to-bill month by month, screens found from Search, team screen use on Health, a receipt for every incentive payout */     /* 6.9.951 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 6.9.950 (9 Nov 2026) - brand introductions: a fuller paragraph, three stage-wise benefits and one next step, on the quote and the proposal */     /* 6.9.949 (9 Nov 2026) - quote PDF: a product picture stays inside its own row (1.2 mm clear of both lines) */     /* 6.9.948 (9 Nov 2026) - quote PDF: each room heading carries its collection and finish with colour dots; every FIMA code chip has its finish dot */     /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
+  var APP_VERSION = "6.9.983";   /* 6.9.983 (14 Nov 2026) - the red "not matched" line on Stock to order says what it means and opens: which bill, how many, and how to put it right */   /* 6.9.982 (12 Nov 2026) - the quote tick moved to the quote book he actually looks at; it had been on the List view only */   /* 6.9.981 (12 Nov 2026) - merging quotations: one line per product, and a disagreed discount falls to the client\u2019s preset and is named */   /* 6.9.980 (12 Nov 2026) - tick several quotations and send them out on one challan */   /* 6.9.979 (12 Nov 2026) - Make challan is on every quotation, not only a won one; converting offers to mark it Won */   /* 6.9.978 (12 Nov 2026) - one Change button on a money row: edit it with the PIN asked twice, or cancel it */   /* 6.9.977 (12 Nov 2026) - a partner or driver payout entered wrongly can be set aside, with a reason, and brought back */   /* 6.9.976 (12 Nov 2026) - a brand already set aside stops nagging from the empty-brand card */   /* 6.9.975 (12 Nov 2026) - a finalised return can be opened again, and repriced, with it recorded as after the stamp */   /* 6.9.974 (12 Nov 2026) - Change it reprices this return as well as setting the preset from today */   /* 6.9.973 (12 Nov 2026) - FIX: the Finalise card on a return threw before it drew (6.9.972) */   /* 6.9.972 (12 Nov 2026) - return finalise: try a rate on the lines, and change the preset from today with a PIN */   /* 6.9.971 (12 Nov 2026) - a brand with no preset is set from the return-finalise card itself */   /* 6.9.970 (12 Nov 2026) - quote PDF: a product description is printed whole, not cut at three lines */   /* 6.9.969 (11 Nov 2026) - deliveries with no signed paper split by age: the ones past 30 days get the red number, the fresh ones are stated quietly */   /* 6.9.968 (11 Nov 2026) - a purchase bill already fully in stock is not brought in a second time: Huliot's invoice arrives in three mails, and all three were being uploaded */   /* 6.9.967 (11 Nov 2026) - GHP+ logo in the registered Green Heat+ colours (#00539F / #ED1D24) on PDFs, quotes, challans and QR centres */   /* 6.9.966 (11 Nov 2026) - technical specifications sheet in colour: brand-coloured table heads and code strip, coloured field labels, and the exceptions in an amber panel */   /* 6.9.965 (11 Nov 2026) - old quotes to close: grouped by what the site is doing now, closing windows first, each group carrying that stage's own pitch lines */   /* 6.9.964 (11 Nov 2026) - quote spec table: a value all but a few items share is said once and the few are named, so one tube no longer printed five long columns 25 times */   /* 6.9.963 (11 Nov 2026) - purchase bills: same day + same amount flagged on the Tally screen */   /* 6.9.958 (10 Nov 2026) - a statement attached before the name was kept is told apart by its time, not left as four identical lines */     /* 6.9.957 (10 Nov 2026) - each attached old hisab shows its file name, and a wrong one can be set aside */     /* 6.9.956 (10 Nov 2026) - rebuilt: the GitHub Pages publish of 6.9.955 failed (run #1675), so nothing had changed on the phones */   /* 6.9.955 (10 Nov 2026) - the old hisab takes more than one file at once: photographed pages become one PDF, and every statement on file is listed */     /* 6.9.954 (10 Nov 2026) - the Partner Club: fixed slabs, a bonus on crossing one, the trip and device rewards, every partner's rupees to his next slab, and the quiet-partner watch */     /* 6.9.953 (10 Nov 2026) - Service > Control: cash in each engineer's hand, hand-over recorded, three random customer checks a week */     /* 6.9.952 (10 Nov 2026) - to-bill month by month, screens found from Search, team screen use on Health, a receipt for every incentive payout */     /* 6.9.951 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 6.9.950 (9 Nov 2026) - brand introductions: a fuller paragraph, three stage-wise benefits and one next step, on the quote and the proposal */     /* 6.9.949 (9 Nov 2026) - quote PDF: a product picture stays inside its own row (1.2 mm clear of both lines) */     /* 6.9.948 (9 Nov 2026) - quote PDF: each room heading carries its collection and finish with colour dots; every FIMA code chip has its finish dot */     /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -59766,6 +59766,80 @@ function viewCatalogue() {
     });
     return { by: by, bills: bills };
   }
+  /* ===== 6.9.983 - "WHAT DOES NOT MATCHED MEAN"  (14 Nov 2026) =====
+     HIS WORDS, over the stock-to-order sheet: "What this means not matched , click red
+     highlihted text should show what not manching and hot to match them".
+
+     The wording was wrong, which is why it could not be read. stkWaitIn() keys a quantity under
+     a product code ONLY WHEN THE BILL LINE MATCHED that product - that is how it knows which
+     row to put it on. "not matched" was describing the BILL (not yet taken into stock), not the
+     line, so the sheet said the opposite of what had happened: the line matched fine; the bill
+     it sits on has not been saved into stock yet, so the goods are in the godown and not in the
+     figure. The line now says "+168 waiting on Huliot HPF/14364 - not in stock yet", and it is
+     a button.
+
+     It opens on the product, not on the whole pile: which bills carry it, how many pieces each,
+     the date, how many of that bill's own lines matched - and the one button that fixes it. */
+  function stkWaitFor(code) {
+    var ix = stkMatchIdx(), out = [];
+    code = String(code || "").trim();
+    if (!code) return out;
+    stkWaiting().forEach(function (o) {
+      var mine = [], n = 0, hit = 0;
+      (o.lines || []).forEach(function (l0) {
+        var l = Object.assign({}, l0), cn = tallyCodeInName(l.desc), pn0 = String(l.partNo == null ? "" : l.partNo).trim();
+        if (cn && (!pn0 || pn0 === cn.code)) l.partNo = cn.code;
+        stkMatchLine(l, ix); n++;
+        if (l.code) hit++;
+        if (l.code === code) mine.push({ desc: String(l.desc || ""), partNo: String(l.partNo || ""), qty: Number(l.qty) || 0, state: String(l.state || "") });
+      });
+      if (!mine.length) return;
+      out.push({ supplier: String(o.supplier || ""), billNo: String(o.billNo || ""),
+                 date: String(o.date || "").slice(0, 10), lines: n, matched: hit, mine: mine,
+                 qty: mine.reduce(function (a, m) { return a + m.qty; }, 0) });
+    });
+    return out;
+  }
+  function modalStkWait(code) {
+    var rows = stkWaitFor(code), p = null;
+    try { p = prodByCode(code); } catch (e) { p = null; }
+    var name = (p && p.desc) || code;
+    if (!rows.length) {
+      return '<h2>' + esc(name) + '</h2><p class="sub">Nothing is waiting on a bill for this product any more.</p>' +
+        '<div class="foot"><button class="btn" data-act="close">Close</button></div>';
+    }
+    var tot = rows.reduce(function (a, r) { return a + r.qty; }, 0);
+    var h = '<h2>' + esc(name) + '</h2>' +
+      '<p class="sub">' + esc(code) + ' &middot; <b>' + esc(stkOrdN(tot)) + '</b> waiting on ' + plural(rows.length, "purchase bill") + '</p>' +
+      '<div class="card" style="border-color:#fcd34d;background:#fffbeb;padding:10px 12px">' +
+      '<b style="color:#92400e">These pieces are in the godown, but not in the stock figure</b>' +
+      '<div class="meta" style="font-size:12.5px;color:#92400e;margin-top:3px">' +
+      'The bill\u2019s line for this product <b>did match</b> \u2014 that is how we know it belongs here. ' +
+      'What has not happened is the <b>bill being taken into stock</b>: until it is saved, nothing on it counts, ' +
+      'so this row reads short and may suggest an order you have already placed.</div></div>';
+    rows.forEach(function (r) {
+      h += '<div class="card" style="padding:9px 12px">' +
+        '<b>' + esc(r.supplier || "(no supplier)") + ' &middot; ' + esc(r.billNo || "(no number)") + '</b>' +
+        (r.date ? ' <span class="pill" style="font-size:12px">' + esc(dmy(r.date)) + '</span>' : '') +
+        '<div class="meta" style="font-size:12.5px;margin-top:3px">' +
+        r.mine.map(function (m) {
+          return '<b>' + esc(stkOrdN(m.qty)) + '</b> \u00d7 ' + esc(m.desc || code) +
+            (m.partNo ? ' <span style="color:#94a3b8">' + esc(m.partNo) + '</span>' : '') +
+            (m.state === "ok" ? ' <span style="color:#0f766e">&#10003; code matches exactly</span>'
+             : m.state === "close" ? ' <span style="color:#0f766e">&#10003; matched by name</span>' : '');
+        }).join('<br>') +
+        '<div style="color:#64748b;margin-top:3px">' + r.matched + ' of ' + r.lines + ' lines on this bill match a product' +
+        (r.matched < r.lines ? ' \u2014 the other ' + (r.lines - r.matched) + ' need a code before the bill can be saved' : '') +
+        '</div></div></div>';
+    });
+    h += '<div class="card" style="padding:9px 12px"><div class="meta" style="font-size:12.5px">' +
+      '<b>How to put it right:</b> open the bill on <b>Stock &rsaquo; Tally</b>, give a code to any line still without one, and save it. ' +
+      'The goods go into stock the moment it is saved, and this row corrects itself.</div></div>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Close</button>' +
+      (roleIs("admin") ? '<button class="btn" data-act="tb-wait">Match them now</button>'
+                       : '<span class="meta" style="align-self:center;font-size:12.5px">The owner matches it.</span>') + '</div>';
+    return h;
+  }
   function stkRoundPack(q, pack) { q = Math.max(0, q); return pack > 0 ? Math.ceil(q / pack) * pack : Math.ceil(q); }
   /* 6.9.710 - the boxes typed on the Stock table: {code: boxes}, on this device only */
   var _stkBx = null;
@@ -59983,7 +60057,13 @@ function viewCatalogue() {
           if (x.zero && !x.added) sugTxt += '<div style="font-size:12px;color:#64748b;white-space:normal">never counted &middot; 0 on ' + esc(dmy(stkCutoff()._day || "")) + (x.free < 0 ? ', ordered from 0' : '') + '</div>';   /* 6.9.864 */
           return _mvH + '<tr id="so_r' + i + '"' + (x.unc ? ' class="so-unc"' : '') + '>' +
             td('<div style="display:flex;gap:8px;align-items:center">' + stkOrdPic(x.code) + '<div style="min-width:0"><div style="font-weight:700;white-space:normal;min-width:120px">' + esc(x.desc) + '</div><div style="font-size:12px;color:#64748b;white-space:normal">' + esc(x.code) + '</div>' +
-              (wi && wi.by[x.code] ? '<div style="font-size:12px;color:#b45309;white-space:normal">+' + stkOrdN(wi.by[x.code].qty) + ' on ' + esc(wi.by[x.code].bills.join(", ")) + ', not matched</div>' : '') + '</div></div>', 'left') +
+              (wi && wi.by[x.code]
+                ? '<div class="meta" style="font-size:12px;white-space:normal;margin-top:1px">' +
+                  '<button class="btn sm ghost" data-act="stk-wait-why" data-code="' + esc(x.code) + '" ' +
+                  'style="min-height:34px;padding:1px 8px;font-size:12px;color:#b45309;border-color:#fcd34d;white-space:normal;text-align:left" ' +
+                  'title="Why this is short, and how to put it right">+' + stkOrdN(wi.by[x.code].qty) +
+                  ' waiting on ' + esc(wi.by[x.code].bills.join(", ")) + ' \u2014 not in stock yet</button></div>'
+                : '') + '</div></div>', 'left') +
             td(oc ? stkMoveTag(x.code, oc) : '', 'left') +
             td(esc(String(x.unit || stkUnit(x.code) || "").replace(/^Per\s+/i, "").replace(/\.$/, "")), 'left', ';color:#475569') +
             td(esc(stkOrdN(x.onhand || 0))) +
@@ -60180,7 +60260,7 @@ function viewCatalogue() {
     var _wi = full && L.length ? stkWaitIn() : null, _wShort = _wi ? L.filter(function (x) { return _wi.by[x.code]; }) : [];   /* 6.9.709 */
     if (_wShort.length) {
       h += '<div style="margin-top:8px;padding:9px 11px;border-radius:10px;background:#fff;border:1.5px solid #f59e0b;font-size:13px">' +
-        '<b style="color:#b45309">' + plural(_wShort.length, "line") + ' here ' + (_wShort.length === 1 ? 'is' : 'are') + ' short because a purchase bill is waiting to be matched</b> &mdash; ' +
+        '<b style="color:#b45309">' + plural(_wShort.length, "line") + ' here ' + (_wShort.length === 1 ? 'is' : 'are') + ' short because a purchase bill has not been taken into stock yet</b> &mdash; ' +
         esc(_wi.bills.filter(function (b) { return b.matched; }).map(function (b) { return String(b.supplier).split(/\s+/)[0] + " " + b.billNo + " (" + b.matched + " of " + b.lines + " lines match)"; }).join(", ")) +
         '. Its goods are in the godown but not in stock until the bill is saved.' +
         (roleIs("admin") ? ' <button class="btn sm" style="min-height:44px;margin-left:4px" data-act="tb-wait">Match them now</button>' : ' The owner matches it.') + '</div>';
@@ -64951,6 +65031,9 @@ function viewCatalogue() {
       if (act === "tb-not") { _ln.mode = ""; _ln.pick = ""; if (_ln.state === "close" || _ln.state === "ok") { _ln.state = "none"; _ln.code = ""; } }
       if (act === "tb-cand") { _ln.mode = ""; _ln.pick = String(t.getAttribute("data-c") || ""); }
       render(); return;
+    }
+    if (act === "stk-wait-why") {   /* 6.9.983 */
+      S.modal = modalStkWait(t.getAttribute("data-code") || ""); render(); return;
     }
     if (act === "tb-wait") {   /* 6.9.671 - the bills accounts sent up */
       var _w = stkWaiting().map(function (o) { return { billNo: o.billNo, date: o.date, supplier: o.supplier, total: Number(o.total) || 0, billTotal: Number(o.billTotal) || Number(o.total) || 0, partial: o.partial || 0, doneBefore: o.doneBefore || 0, file: o.file || "", src: o.src || "", lines: o.lines }; });
