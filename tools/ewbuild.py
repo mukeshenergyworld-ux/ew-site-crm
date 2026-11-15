@@ -52,9 +52,22 @@ def doc_start(src, i):
         break
     return start
 
-def bare(s):
-    """comments out, strings and regexes intact - the same rule the test rig uses, because a
-       naive stripper reads `"image/*"` as a comment opener and eats real code."""
+def bare(s, blank=False):
+    r"""comments out, strings and regexes intact - the same rule the test rig uses, because a
+       naive stripper reads `"image/*"` as a comment opener and eats real code.
+
+       blank=True also empties what is INSIDE a string or a regex, one space per character so
+       every offset still lines up. depths() needs that and nothing else does.
+
+       WHY (15 Nov 2026). An escaped brace inside a regex was being emitted whole: this line,
+           var cut = d.search(/\s[\u2014\u2013-]\s|[\u2600-\u27bf]|:|\{|\(|\s\|\s/);
+       put a lone `{` into the counted text, so from character 600,578 onward EVERY function in
+       the CRM read one brace deeper than it is. top_level() picks the depth most functions sit
+       at, so it chose 2 - and the EW-CORE block, which sits above that line at the real depth 1,
+       fell outside the map. The build could therefore not see a single core function in the CRM,
+       and the one time it mattered it refused to let any money rule in, reporting them LOST.
+       There are 13 escaped opening braces and 12 closing ones in that file. The apps were never
+       wrong; the ruler was."""
     out, i, n, prev = [], 0, len(s), ""
     def can_regex():
         return prev == "" or prev in "(,=:[!&|?{};+-*%<>~^" or \
@@ -62,10 +75,10 @@ def bare(s):
     while i < n:
         c = s[i]; d = s[i+1] if i+1 < n else ''
         if c in '"\'`':
-            q = c; out.append(c); i += 1
+            q = c; out.append(' ' if blank else c); i += 1
             while i < n:
-                if s[i] == '\\': out.append(s[i:i+2]); i += 2; continue
-                out.append(s[i])
+                if s[i] == '\\': out.append('  ' if blank else s[i:i+2]); i += 2; continue
+                out.append(' ' if blank else s[i])
                 if s[i] == q: i += 1; break
                 i += 1
             prev = q; continue
@@ -74,14 +87,14 @@ def bare(s):
         if c == '/' and d == '/':
             e = s.find('\n', i); out.append(' '); i = n if e < 0 else e; continue
         if c == '/' and can_regex():
-            out.append(c); i += 1; cls = False
+            out.append(' ' if blank else c); i += 1; cls = False
             while i < n:
-                if s[i] == '\\': out.append(s[i:i+2]); i += 2; continue
+                if s[i] == '\\': out.append('  ' if blank else s[i:i+2]); i += 2; continue
                 if s[i] == '[': cls = True
                 elif s[i] == ']': cls = False
-                elif s[i] == '/' and not cls: out.append(s[i]); i += 1; break
+                elif s[i] == '/' and not cls: out.append(' ' if blank else s[i]); i += 1; break
                 elif s[i] == '\n': break
-                out.append(s[i]); i += 1
+                out.append(' ' if blank else s[i]); i += 1
             prev = '/'; continue
         out.append(c)
         if not c.isspace(): prev = c
@@ -96,7 +109,7 @@ def depths(js):
        convention; braces are the truth. `upFrom` is indented like a top-level function and is
        in fact defined INSIDE bottomFurniture - cutting it changed its parent, which is how
        this was found."""
-    b = bare(js)
+    b = bare(js, blank=True)   # 15 Nov 2026 - a brace inside a string or a regex is not a brace
     d, out = 0, [0] * (len(b) + 1)
     for i, c in enumerate(b):
         if c == '{': d += 1
