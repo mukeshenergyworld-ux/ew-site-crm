@@ -208,7 +208,7 @@ table.ct td.wd{white-space:nowrap}
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.75.1";   /* 1.75.1 (15 Nov 2026) - nine money rules now come from core/ew-core.js, byte-identical with the Challan app; no figure changes */   /* 1.75.0 (1.75.0 (14 Nov 2026) - FIX: a return line frozen at 0%% was credited at full list price; the CRM's rule (6.9.728) is now this app's rule too - Rs 2,12,214 across 5 clients */   /* 1.74.1 (1.74.1 (11 Nov 2026) - GHP+ logo in the registered Green Heat+ colours (#00539F / #ED1D24) on PDFs, quotes, challans and QR centres */   /* 1.74.0 (9 Nov 2026) - FIMA in every finish: a return or a hisab line in a finish code (F1301WLX9CS) finds its product, brand and price */     /* 1.73.1 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */   /* 1.73.0 (3 Nov 2026) - the old hisab paper opens from here, for everyone */   /* 1.72.0 (3 Nov 2026) - a return is priced the same on every phone: old product codes found, a stale shelf catalogue refreshed */   /* 1.71.0 (31 Oct 2026) - one tap, one entry */   /* 1.70.1 (27 Oct 2026) - GHp mark in the middle of every QR, level H */   /* 1.67.0 - flush busy flag + B9 owner guard, narrower sign-out, Old book under ☰ */
+  var APP_VERSION = "1.75.2";   /* 1.75.2 (15 Nov 2026) - six money rules now shared with the CRM as well, not just the Challan app */   /* 1.75.1 (1.75.1 (15 Nov 2026) - nine money rules now come from core/ew-core.js, byte-identical with the Challan app; no figure changes */   /* 1.75.0 (1.75.0 (14 Nov 2026) - FIX: a return line frozen at 0%% was credited at full list price; the CRM's rule (6.9.728) is now this app's rule too - Rs 2,12,214 across 5 clients */   /* 1.74.1 (1.74.1 (11 Nov 2026) - GHP+ logo in the registered Green Heat+ colours (#00539F / #ED1D24) on PDFs, quotes, challans and QR centres */   /* 1.74.0 (9 Nov 2026) - FIMA in every finish: a return or a hisab line in a finish code (F1301WLX9CS) finds its product, brand and price */     /* 1.73.1 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */   /* 1.73.0 (3 Nov 2026) - the old hisab paper opens from here, for everyone */   /* 1.72.0 (3 Nov 2026) - a return is priced the same on every phone: old product codes found, a stale shelf catalogue refreshed */   /* 1.71.0 (31 Oct 2026) - one tap, one entry */   /* 1.70.1 (27 Oct 2026) - GHp mark in the middle of every QR, level H */   /* 1.67.0 - flush busy flag + B9 owner guard, narrower sign-out, Old book under ☰ */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -805,7 +805,11 @@ table.ct td.wd{white-space:nowrap}
 
 /* ==EWCORE:rawbook:END== */
 /* ==EWCORE:money== THE MONEY RULES THE TWO FIELD APPS SHARE. 15 Nov 2026 - the Payment app and the Challan app spent a month crediting a return and pricing a brand differently from the CRM: Rs 2,12,214 over-credited and Rs 2,16,742 over-chased, both from one rule living in three files. Nineteen money functions live in more than one app and nine have drifted. These are the ones that had NOT drifted between these two; from here they cannot, because the build refuses unless both still read the same.
-     THE CRM IS DELIBERATELY NOT IN THIS LIST, and the reason is worth writing down. Its EW-CORE block sits at a different scope from its own functions - idbOpen, which has been in it since August, is not top-level in the CRM while it is in both field apps. Moving a CRM function in would put it where fn_map cannot see it, and the build would be unable to prove the function had not changed. A proof that cannot see the thing it is proving is worth nothing, so the CRM is held to the same rules by TEST instead, until its block is moved to its own top level. That move is its own job, on its own day. */
+     THE CRM IS IN THIS LIST SINCE 15 Nov 2026, and the reason it was not is worth keeping. Its EW-CORE block sits at a different scope from its own functions - idbOpen, which has been in it since August, is not top-level in the CRM while it is in both field apps. Moving a CRM function in would put it where fn_map cannot see it, and the build would be unable to prove the function had not changed. A proof that cannot see the thing it is proving is worth nothing, so the CRM is held to the same rules by TEST instead, until its block is moved to its own top level. IT NEVER WAS AT A DIFFERENT SCOPE. The ruler was wrong: ewbuild's
+     bare() emitted an escaped brace from inside a regex as a real brace, so from one line of
+     ewiShortCrm onward every function in the CRM counted one level deep and top_level picked
+     the wrong depth. Thirteen escaped braces in that file. Fixed in ewbuild.bare(blank=True),
+     and the CRM joined the same day. */
   function hisabOwed(c) { return hisabCounts(c) && (!HISAB_GATE || !hisabBookReady() || inHisab(c)); }
 
   /* THE RATE THAT WAS IN FORCE ON A GIVEN DAY. clientDiscount() answers "what is this client's
@@ -852,6 +856,9 @@ table.ct td.wd{white-space:nowrap}
   function payAmt(p) { return nAmt((p || {}).amount); }
 
   function isJobLine(l) { return !!(l && (l.job === true || String(l.code || "") === JOB_CODE)); }
+
+/* ==EWCORE:money:END== */
+/* ==EWCORE:money_field== The money rules the two FIELD apps share and the CRM states its own way. Kept apart from the section above only because the CRM has no rnLines, dedupe or hisabExtraOf of its own: writing them in would ADD a function to that app, and the build is right to refuse that. */
 function rnLines(r) {
     var items = [];
     try { items = JSON.parse(r.itemsJson || "[]"); } catch (e) { items = []; }
@@ -867,7 +874,7 @@ function rnLines(r) {
   }
 
   function hisabExtraOf(c) { return ((c && c.id) ? (Number(hisabExtraMap()[c.id]) || 0) : 0) + Math.max(0, nAmt(c && c.discAmt)); }
-/* ==EWCORE:money:END== */
+/* ==EWCORE:money_field:END== */
   /* ==EW-CORE:END== */
   /* ---- mergeBook is this app's own again (15 Nov 2026) ----
      It sat inside the core block, and it is no longer the same function in both field apps:
