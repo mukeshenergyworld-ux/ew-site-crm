@@ -313,10 +313,123 @@
 
   function isJobLine(l) { return !!(l && (l.job === true || String(l.code || "") === JOB_CODE)); }
 
+
+  /* ===== 15 Nov 2026 - THE ONE THAT COST Rs 2,16,742 =====
+     The Payment app had no family-rate fallback: a client given one rate for Huliot against a
+     line that says "Huliot HT PRO", or Heliroma against "DRP", found no row at all and the line
+     was priced at FULL MRP. Unnat Hotel read Rs 5,45,172 there against the CRM's Rs 3,40,685.
+     The morning fix made it BEHAVE like the CRM's but written differently - which closed the
+     bug and widened the crack it came through. Both are now the CRM's text, byte for byte, and
+     the build will not let them part again.
+     PROVED before promotion: 1,228 client x brand x day combinations off his own book, 560 of
+     them carrying a real discount, and all three apps answer identically on every one. */
+
+  function discRowsFor(client, brand) {
+    if (client && typeof client === "object") client = client.name;   /* 6.9.824 - C1: an object was keyed as "[object Object]" */
+    var b = dkey(brand), ix = dscIndex();
+    var pick = function (nm) {
+      return (ix[dkey(nm) + "||" + b] || []).slice();
+    };
+    var names = [client];
+    /* not one man under two names - there is nothing further to look at. MEASURED on his book
+       on 10 Sep 2026: 167 clients, THREE live aliases, so this is the answer 164 times out of
+       167 and it is the line that must stay cheap */
+    var am = dupAliasMap(), k = dgKey(client);
+    if (am.byName[k] || am.aliasOf[k]) {
+      var fam = dupFamily(client);
+      for (var q = 0; q < fam.length; q++) if (dgKey(fam[q]) !== k) names.push(fam[q]);
+    }
+    var i, r;
+    for (i = 0; i < names.length; i++) { r = pick(names[i]); if (r.length) return r; }
+    /* 17 Oct 2026 - the family rate: head name first, then any sister brand, exact brand excluded */
+    var f = discFam(brand);
+    if (!f) return [];
+    var fx = dscFamIndex();
+    for (i = 0; i < names.length; i++) {
+      var rows = (fx[dkey(names[i]) + "||" + f] || []).filter(function (x) { return dkey(x.brand) !== b; });
+      if (!rows.length) continue;
+      var head = rows.filter(function (x) { return dkey(x.brand) === f; });
+      return (head.length ? head : rows).slice();
+    }
+    return [];
+  }
+
+  /* The rate in force on a given day. Rows that had not started yet are out; among the rest the
+     LATEST start wins, and an undated row - "since the beginning" - loses to any dated one, so
+     the first dated rate he writes takes over cleanly from the row that was there before it. */
+  function discRowOn(client, brand, onYmd) {
+    var rows = discRowsFor(client, brand);
+    if (!rows.length) return null;
+    /* same reason as discFrom: no dstr, and no today() either - the two apps build today's date
+       their own way and this block must mean one thing in both. */
+    var day = String(onYmd || "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+      var _n = new Date();
+      day = _n.getFullYear() + "-" + String(_n.getMonth() + 1).padStart(2, "0") +
+            "-" + String(_n.getDate()).padStart(2, "0");
+    }
+    var dated = [], undated = [];
+    rows.forEach(function (r) { (discFrom(r) ? dated : undated).push(r); });
+    var live = dated.filter(function (r) { return discFrom(r) <= day; });
+    if (live.length) {
+      var best = live[0];
+      for (var i = 1; i < live.length; i++) {
+        var a = discFrom(live[i]), b = discFrom(best);
+        /* two rates starting the same day: the one written later is the correction */
+        if (a > b || (a === b && discStamp(live[i]) > discStamp(best))) best = live[i];
+      }
+      return best;
+    }
+    /* nothing dated has started yet - fall back to whatever was there before dates existed,
+       and never to a rate that has not begun */
+    return undated.length ? discPick(undated) : null;
+  }
+
+  /* ===== 15 Nov 2026 - ONE STAMP READER, THREE APPS =====
+     Three versions of this existed and all three differed. The CRM's wrote nine fields on each
+     stamp, the Challan app's seven, the Payment app's TWO - at and by - so a question the CRM
+     could answer off a stamp (who earns on this delivery, what further discount was given when
+     it was passed, was there no signed paper, was it off-brand) simply could not be asked on a
+     phone. Nothing read those fields wrongly; they were absent, which is how two screens come
+     to give different answers about the same delivery without either being broken.
+     The CRM's is a strict superset of the other two, so it is the one that stays, with the
+     field apps' S.data guard folded in. A field nobody reads yet costs nothing; a field nobody
+     CAN read costs an argument six months from now. */
+  function hisabStampMap() {
+    if (_hsbCache) return _hsbCache;
+    var m = {};
+    /* 15 Nov 2026 - GUARDED, because this is now the one copy and the two field apps paint
+       BEFORE the book has arrived. The CRM never needed it and is not harmed by it. */
+    ((S.data && S.data.audit) || []).forEach(function (r) {
+      if (!r || String(r.action || "") !== "challan:hisab") return;
+      var d = {};
+      try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
+      if (!d.chId) return;
+      var prev = m[d.chId];
+      /* newest row wins, same convention as every other audit-backed fact */
+      if (!prev || String(r.createdAt || "") >= String(prev.at || "")) {
+        /* v6.9.324 - a stamp now also carries WHO earns on this delivery and any further
+           discount given at the moment of passing it. Both are absent from every stamp written
+           before v6.9.324: `inc` reads null and `extra` reads 0, and every reader below treats
+           that as "no answer, behave exactly as you did yesterday". Money must never move
+           because a feature was deployed. */
+        m[d.chId] = { at: r.createdAt || "", by: r.actor || d.by || "",
+                      set: d.set || [], ignored: d.ignored || [],
+                      inc: (d.inc && d.inc.length !== undefined) ? d.inc : null,
+                      extra: Number(d.extra) || 0, extraNote: String(d.extraNote || ""),
+                      /* v6.9.342 - carried out of the audit row so the card can show it. An
+                         old stamp has no such key and reads "", which is exactly right: every
+                         stamp written before today required a receipt to exist. */
+                      noProof: String(d.noProof || ""), offBrand: String(d.offBrand || "") };   /* 6.9.694 */
+      }
+    });
+    _hsbCache = m;
+    return m;
+  }
 /* ==EWCORE:money:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.993";   /* 6.9.993 (15 Nov 2026) - the challan log leaves the screen: an Excel and a PDF of exactly what is filtered, built for the godown to chase the signed paper - oldest first, driver and vehicle on it, no balances */   /* 6.9.992 (6.9.992 (15 Nov 2026) - the CRM joins the shared money core: six rules are now one copy across all three apps */   /* 6.9.991 (6.9.991 (15 Nov 2026) - nine money rules moved into the shared core so the Challan and Payment apps can no longer drift apart on them; the core build, broken since minifying began, runs again */   /* 6.9.990 (6.9.990 (15 Nov 2026) - the duplicate radar reads every record tab, not clients alone: a row whose every field matches another, and the same money to the same man on the same day */   /* 6.9.989 (6.9.989 (15 Nov 2026) - FIX: the money check called a settled account\u2019s folded lines missing; it opens the fold while it reads */   /* 6.9.988 (6.9.988 (15 Nov 2026) - one item on a delivery can be given its own discount at finalise, owner only; it beats the brand box and nothing else moves */   /* 6.9.987 (6.9.987 (15 Nov 2026) - Call this week: the live sites at a buying stage, by town, with the man to ring and his mobile; a site rests 14 days once it is rung */   /* 6.9.986 (6.9.986 (14 Nov 2026) - FIX: the same part-save counted again inflated stock; 16 products were over by 3,027 pieces */   /* 6.9.985 (14 Nov 2026) - Tally match: a line already picked is drawn as picked, and settled lines fold away so only what needs him is on screen */   /* 6.9.984 (14 Nov 2026) - the waiting-bill sheet names the lines that still have no code, with the supplier\u2019s own code and the nearest catalogue ones */   /* 6.9.983 (14 Nov 2026) - the red "not matched" line on Stock to order says what it means and opens: which bill, how many, and how to put it right */   /* 6.9.982 (12 Nov 2026) - the quote tick moved to the quote book he actually looks at; it had been on the List view only */   /* 6.9.981 (12 Nov 2026) - merging quotations: one line per product, and a disagreed discount falls to the client\u2019s preset and is named */   /* 6.9.980 (12 Nov 2026) - tick several quotations and send them out on one challan */   /* 6.9.979 (12 Nov 2026) - Make challan is on every quotation, not only a won one; converting offers to mark it Won */   /* 6.9.978 (12 Nov 2026) - one Change button on a money row: edit it with the PIN asked twice, or cancel it */   /* 6.9.977 (12 Nov 2026) - a partner or driver payout entered wrongly can be set aside, with a reason, and brought back */   /* 6.9.976 (12 Nov 2026) - a brand already set aside stops nagging from the empty-brand card */   /* 6.9.975 (12 Nov 2026) - a finalised return can be opened again, and repriced, with it recorded as after the stamp */   /* 6.9.974 (12 Nov 2026) - Change it reprices this return as well as setting the preset from today */   /* 6.9.973 (12 Nov 2026) - FIX: the Finalise card on a return threw before it drew (6.9.972) */   /* 6.9.972 (12 Nov 2026) - return finalise: try a rate on the lines, and change the preset from today with a PIN */   /* 6.9.971 (12 Nov 2026) - a brand with no preset is set from the return-finalise card itself */   /* 6.9.970 (12 Nov 2026) - quote PDF: a product description is printed whole, not cut at three lines */   /* 6.9.969 (11 Nov 2026) - deliveries with no signed paper split by age: the ones past 30 days get the red number, the fresh ones are stated quietly */   /* 6.9.968 (11 Nov 2026) - a purchase bill already fully in stock is not brought in a second time: Huliot's invoice arrives in three mails, and all three were being uploaded */   /* 6.9.967 (11 Nov 2026) - GHP+ logo in the registered Green Heat+ colours (#00539F / #ED1D24) on PDFs, quotes, challans and QR centres */   /* 6.9.966 (11 Nov 2026) - technical specifications sheet in colour: brand-coloured table heads and code strip, coloured field labels, and the exceptions in an amber panel */   /* 6.9.965 (11 Nov 2026) - old quotes to close: grouped by what the site is doing now, closing windows first, each group carrying that stage's own pitch lines */   /* 6.9.964 (11 Nov 2026) - quote spec table: a value all but a few items share is said once and the few are named, so one tube no longer printed five long columns 25 times */   /* 6.9.963 (11 Nov 2026) - purchase bills: same day + same amount flagged on the Tally screen */   /* 6.9.958 (10 Nov 2026) - a statement attached before the name was kept is told apart by its time, not left as four identical lines */     /* 6.9.957 (10 Nov 2026) - each attached old hisab shows its file name, and a wrong one can be set aside */     /* 6.9.956 (10 Nov 2026) - rebuilt: the GitHub Pages publish of 6.9.955 failed (run #1675), so nothing had changed on the phones */   /* 6.9.955 (10 Nov 2026) - the old hisab takes more than one file at once: photographed pages become one PDF, and every statement on file is listed */     /* 6.9.954 (10 Nov 2026) - the Partner Club: fixed slabs, a bonus on crossing one, the trip and device rewards, every partner's rupees to his next slab, and the quiet-partner watch */     /* 6.9.953 (10 Nov 2026) - Service > Control: cash in each engineer's hand, hand-over recorded, three random customer checks a week */     /* 6.9.952 (10 Nov 2026) - to-bill month by month, screens found from Search, team screen use on Health, a receipt for every incentive payout */     /* 6.9.951 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 6.9.950 (9 Nov 2026) - brand introductions: a fuller paragraph, three stage-wise benefits and one next step, on the quote and the proposal */     /* 6.9.949 (9 Nov 2026) - quote PDF: a product picture stays inside its own row (1.2 mm clear of both lines) */     /* 6.9.948 (9 Nov 2026) - quote PDF: each room heading carries its collection and finish with colour dots; every FIMA code chip has its finish dot */     /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
+  var APP_VERSION = "6.9.994";   /* 6.9.994 (15 Nov 2026) - money core phase 2b: the discount rules and the stamp reader are one copy across all three apps, proved on 1,228 client-brand-day combinations; and tools/test, so the next one is checked by a command and not by memory */   /* 6.9.993 (6.9.993 (15 Nov 2026) - the challan log leaves the screen: an Excel and a PDF of exactly what is filtered, built for the godown to chase the signed paper - oldest first, driver and vehicle on it, no balances */   /* 6.9.992 (6.9.992 (15 Nov 2026) - the CRM joins the shared money core: six rules are now one copy across all three apps */   /* 6.9.991 (6.9.991 (15 Nov 2026) - nine money rules moved into the shared core so the Challan and Payment apps can no longer drift apart on them; the core build, broken since minifying began, runs again */   /* 6.9.990 (6.9.990 (15 Nov 2026) - the duplicate radar reads every record tab, not clients alone: a row whose every field matches another, and the same money to the same man on the same day */   /* 6.9.989 (6.9.989 (15 Nov 2026) - FIX: the money check called a settled account\u2019s folded lines missing; it opens the fold while it reads */   /* 6.9.988 (6.9.988 (15 Nov 2026) - one item on a delivery can be given its own discount at finalise, owner only; it beats the brand box and nothing else moves */   /* 6.9.987 (6.9.987 (15 Nov 2026) - Call this week: the live sites at a buying stage, by town, with the man to ring and his mobile; a site rests 14 days once it is rung */   /* 6.9.986 (6.9.986 (14 Nov 2026) - FIX: the same part-save counted again inflated stock; 16 products were over by 3,027 pieces */   /* 6.9.985 (14 Nov 2026) - Tally match: a line already picked is drawn as picked, and settled lines fold away so only what needs him is on screen */   /* 6.9.984 (14 Nov 2026) - the waiting-bill sheet names the lines that still have no code, with the supplier\u2019s own code and the nearest catalogue ones */   /* 6.9.983 (14 Nov 2026) - the red "not matched" line on Stock to order says what it means and opens: which bill, how many, and how to put it right */   /* 6.9.982 (12 Nov 2026) - the quote tick moved to the quote book he actually looks at; it had been on the List view only */   /* 6.9.981 (12 Nov 2026) - merging quotations: one line per product, and a disagreed discount falls to the client\u2019s preset and is named */   /* 6.9.980 (12 Nov 2026) - tick several quotations and send them out on one challan */   /* 6.9.979 (12 Nov 2026) - Make challan is on every quotation, not only a won one; converting offers to mark it Won */   /* 6.9.978 (12 Nov 2026) - one Change button on a money row: edit it with the PIN asked twice, or cancel it */   /* 6.9.977 (12 Nov 2026) - a partner or driver payout entered wrongly can be set aside, with a reason, and brought back */   /* 6.9.976 (12 Nov 2026) - a brand already set aside stops nagging from the empty-brand card */   /* 6.9.975 (12 Nov 2026) - a finalised return can be opened again, and repriced, with it recorded as after the stamp */   /* 6.9.974 (12 Nov 2026) - Change it reprices this return as well as setting the preset from today */   /* 6.9.973 (12 Nov 2026) - FIX: the Finalise card on a return threw before it drew (6.9.972) */   /* 6.9.972 (12 Nov 2026) - return finalise: try a rate on the lines, and change the preset from today with a PIN */   /* 6.9.971 (12 Nov 2026) - a brand with no preset is set from the return-finalise card itself */   /* 6.9.970 (12 Nov 2026) - quote PDF: a product description is printed whole, not cut at three lines */   /* 6.9.969 (11 Nov 2026) - deliveries with no signed paper split by age: the ones past 30 days get the red number, the fresh ones are stated quietly */   /* 6.9.968 (11 Nov 2026) - a purchase bill already fully in stock is not brought in a second time: Huliot's invoice arrives in three mails, and all three were being uploaded */   /* 6.9.967 (11 Nov 2026) - GHP+ logo in the registered Green Heat+ colours (#00539F / #ED1D24) on PDFs, quotes, challans and QR centres */   /* 6.9.966 (11 Nov 2026) - technical specifications sheet in colour: brand-coloured table heads and code strip, coloured field labels, and the exceptions in an amber panel */   /* 6.9.965 (11 Nov 2026) - old quotes to close: grouped by what the site is doing now, closing windows first, each group carrying that stage's own pitch lines */   /* 6.9.964 (11 Nov 2026) - quote spec table: a value all but a few items share is said once and the few are named, so one tube no longer printed five long columns 25 times */   /* 6.9.963 (11 Nov 2026) - purchase bills: same day + same amount flagged on the Tally screen */   /* 6.9.958 (10 Nov 2026) - a statement attached before the name was kept is told apart by its time, not left as four identical lines */     /* 6.9.957 (10 Nov 2026) - each attached old hisab shows its file name, and a wrong one can be set aside */     /* 6.9.956 (10 Nov 2026) - rebuilt: the GitHub Pages publish of 6.9.955 failed (run #1675), so nothing had changed on the phones */   /* 6.9.955 (10 Nov 2026) - the old hisab takes more than one file at once: photographed pages become one PDF, and every statement on file is listed */     /* 6.9.954 (10 Nov 2026) - the Partner Club: fixed slabs, a bonus on crossing one, the trip and device rewards, every partner's rupees to his next slab, and the quiet-partner watch */     /* 6.9.953 (10 Nov 2026) - Service > Control: cash in each engineer's hand, hand-over recorded, three random customer checks a week */     /* 6.9.952 (10 Nov 2026) - to-bill month by month, screens found from Search, team screen use on Health, a receipt for every incentive payout */     /* 6.9.951 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 6.9.950 (9 Nov 2026) - brand introductions: a fuller paragraph, three stage-wise benefits and one next step, on the quote and the proposal */     /* 6.9.949 (9 Nov 2026) - quote PDF: a product picture stays inside its own row (1.2 mm clear of both lines) */     /* 6.9.948 (9 Nov 2026) - quote PDF: each room heading carries its collection and finish with colour dots; every FIMA code chip has its finish dot */     /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -12937,35 +13050,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
      because they set incentive already paid on those deliveries (retagging them moved 5 partners' July
      figures); they are only kept off every screen that lists a client's brands. */
   function retiredBrand(b) { return incKey(b) === "HULIOT"; }
-  function discRowsFor(client, brand) {
-    if (client && typeof client === "object") client = client.name;   /* 6.9.824 - C1: an object was keyed as "[object Object]" */
-    var b = dkey(brand), ix = dscIndex();
-    var pick = function (nm) {
-      return (ix[dkey(nm) + "||" + b] || []).slice();
-    };
-    var names = [client];
-    /* not one man under two names - there is nothing further to look at. MEASURED on his book
-       on 10 Sep 2026: 167 clients, THREE live aliases, so this is the answer 164 times out of
-       167 and it is the line that must stay cheap */
-    var am = dupAliasMap(), k = dgKey(client);
-    if (am.byName[k] || am.aliasOf[k]) {
-      var fam = dupFamily(client);
-      for (var q = 0; q < fam.length; q++) if (dgKey(fam[q]) !== k) names.push(fam[q]);
-    }
-    var i, r;
-    for (i = 0; i < names.length; i++) { r = pick(names[i]); if (r.length) return r; }
-    /* 17 Oct 2026 - the family rate: head name first, then any sister brand, exact brand excluded */
-    var f = discFam(brand);
-    if (!f) return [];
-    var fx = dscFamIndex();
-    for (i = 0; i < names.length; i++) {
-      var rows = (fx[dkey(names[i]) + "||" + f] || []).filter(function (x) { return dkey(x.brand) !== b; });
-      if (!rows.length) continue;
-      var head = rows.filter(function (x) { return dkey(x.brand) === f; });
-      return (head.length ? head : rows).slice();
-    }
-    return [];
-  }
+
   /* The richest row wins: a real discount counts most, then each partner incentive it carries,
      and the newest row breaks a tie. Deliberate - it keeps the row holding BOTH plumber and
      architect over a later one that only holds the plumber, so nobody loses an incentive. */
@@ -13062,36 +13147,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     });
   }
 
-  /* The rate in force on a given day. Rows that had not started yet are out; among the rest the
-     LATEST start wins, and an undated row - "since the beginning" - loses to any dated one, so
-     the first dated rate he writes takes over cleanly from the row that was there before it. */
-  function discRowOn(client, brand, onYmd) {
-    var rows = discRowsFor(client, brand);
-    if (!rows.length) return null;
-    /* same reason as discFrom: no dstr, and no today() either - the two apps build today's date
-       their own way and this block must mean one thing in both. */
-    var day = String(onYmd || "").slice(0, 10);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) {
-      var _n = new Date();
-      day = _n.getFullYear() + "-" + String(_n.getMonth() + 1).padStart(2, "0") +
-            "-" + String(_n.getDate()).padStart(2, "0");
-    }
-    var dated = [], undated = [];
-    rows.forEach(function (r) { (discFrom(r) ? dated : undated).push(r); });
-    var live = dated.filter(function (r) { return discFrom(r) <= day; });
-    if (live.length) {
-      var best = live[0];
-      for (var i = 1; i < live.length; i++) {
-        var a = discFrom(live[i]), b = discFrom(best);
-        /* two rates starting the same day: the one written later is the correction */
-        if (a > b || (a === b && discStamp(live[i]) > discStamp(best))) best = live[i];
-      }
-      return best;
-    }
-    /* nothing dated has started yet - fall back to whatever was there before dates existed,
-       and never to a rate that has not begun */
-    return undated.length ? discPick(undated) : null;
-  }
+
   /* Unchanged for every caller that does not know a date: it asks for today's rate, which is
      what asking for "the rate" has always meant. */
   function discRow(client, brand, onYmd) { return discRowOn(client, brand, onYmd); }
@@ -16186,35 +16242,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
      again, and billing afterwards finds exactly what was decided here. */
   var HISAB_STAMP_FROM = "2026-08-13";
   var _hsbCache = null;
-  function hisabStampMap() {
-    if (_hsbCache) return _hsbCache;
-    var m = {};
-    (S.data.audit || []).forEach(function (r) {
-      if (!r || String(r.action || "") !== "challan:hisab") return;
-      var d = {};
-      try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
-      if (!d.chId) return;
-      var prev = m[d.chId];
-      /* newest row wins, same convention as every other audit-backed fact */
-      if (!prev || String(r.createdAt || "") >= String(prev.at || "")) {
-        /* v6.9.324 - a stamp now also carries WHO earns on this delivery and any further
-           discount given at the moment of passing it. Both are absent from every stamp written
-           before v6.9.324: `inc` reads null and `extra` reads 0, and every reader below treats
-           that as "no answer, behave exactly as you did yesterday". Money must never move
-           because a feature was deployed. */
-        m[d.chId] = { at: r.createdAt || "", by: r.actor || d.by || "",
-                      set: d.set || [], ignored: d.ignored || [],
-                      inc: (d.inc && d.inc.length !== undefined) ? d.inc : null,
-                      extra: Number(d.extra) || 0, extraNote: String(d.extraNote || ""),
-                      /* v6.9.342 - carried out of the audit row so the card can show it. An
-                         old stamp has no such key and reads "", which is exactly right: every
-                         stamp written before today required a receipt to exist. */
-                      noProof: String(d.noProof || ""), offBrand: String(d.offBrand || "") };   /* 6.9.694 */
-      }
-    });
-    _hsbCache = m;
-    return m;
-  }
+
   function hisabStamp(c) { return (c && c.id) ? (hisabStampMap()[c.id] || null) : null; }
   /* Everything that was already on the books when this shipped. Read from createdAt, not
      from a migration: no row is written, nothing is touched, and the old book is simply
