@@ -252,7 +252,7 @@ table.att td.ok,table.att td.no{font-size:16px}
       button: function () { return '<button type="button" class="ewthm" onclick="ewTheme.next(this)">' + ewtLabel() + '</button>'; }
     };
   })();
-  var APP_VERSION = "1.17.6";   /* 1.17.6 (11 Nov 2026) - GHP+ logo in the registered Green Heat+ colours (#00539F / #ED1D24) on PDFs, quotes, challans and QR centres */   /* 1.17.5 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 1.17.4 (9 Nov 2026) - FIMA finish codes with their own finish photo */     /* 1.17.3 (9 Nov 2026) - a small finish-colour dot on FIMA product pictures */     /* 1.17.2 (9 Nov 2026) - FIMA handles S1-S4 in every finish and the S2 glass handles */     /* 1.17.1 (9 Nov 2026) - brand tiles on the quote line: real logos, compact, on one row with Pending / Won / Lost */     /* 1.17.0 (9 Nov 2026) - brand-wise Won / Lost on a quote line: tap a brand once = Won, twice = Lost, again = open */     /* 1.16.0 (9 Nov 2026) - FIMA in every finish: type F1301WLX9CS (or any of 14,260 finish codes) and it is on the quote at its own MRP */     /* 1.15.0 (9 Nov 2026) - incentive ready (clients paid) and waiting for payment, on the plan header */     /* 1.14.0 (9 Nov 2026) - ask the owner to approve a discount above the brand limit, right on the quote line */     /* 1.13.0 (9 Nov 2026) - target limit shown under each quote discount; plan updates list (slab reached, lines left out, returns, month closed, 20th reminder) */     /* 1.12.0 (9 Nov 2026) - the 2027 plan on top (counted sales, slab ladder, left-out lines, quarter) and daily reports: entered, missed, streak */   /* 1.11.0 (8 Nov 2026) - my month on top: sales, returns, target, incentive, what to dispatch */   /* 1.10.1 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */   /* 1.10.0 (4 Nov 2026) - quote as in the CRM: item-wise discount, option lines, item-wise rates without total, GST */   /* 1.9.1 (31 Oct 2026) - one tap, one entry */   /* 1.9.0 (29 Oct 2026) - Menu -> Online enquiries (FB, IG, Google, Justdial, IndiaMART ... from the OnlineEnquiries tab) */   /* 1.8.4 (27 Oct 2026) - GHp mark in the middle of every QR, level H */   /* 1.6.1 - Huliot Group introduction on quotes; 1.6.0 (17 Oct 2026) - a dropped POST never loses a quote; admin sees every executive; daily report; attendance grid */
+  var APP_VERSION = "1.17.7";   /* 1.17.7 (15 Nov 2026) - FIX: no family-rate fallback here, so a quote line reading "Huliot HT PRO" for a client given a Huliot rate was quoted at FULL MRP - 9 client-and-brand pairs on his own book */   /* 1.17.6 (1.17.6 (11 Nov 2026) - GHP+ logo in the registered Green Heat+ colours (#00539F / #ED1D24) on PDFs, quotes, challans and QR centres */   /* 1.17.5 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 1.17.4 (9 Nov 2026) - FIMA finish codes with their own finish photo */     /* 1.17.3 (9 Nov 2026) - a small finish-colour dot on FIMA product pictures */     /* 1.17.2 (9 Nov 2026) - FIMA handles S1-S4 in every finish and the S2 glass handles */     /* 1.17.1 (9 Nov 2026) - brand tiles on the quote line: real logos, compact, on one row with Pending / Won / Lost */     /* 1.17.0 (9 Nov 2026) - brand-wise Won / Lost on a quote line: tap a brand once = Won, twice = Lost, again = open */     /* 1.16.0 (9 Nov 2026) - FIMA in every finish: type F1301WLX9CS (or any of 14,260 finish codes) and it is on the quote at its own MRP */     /* 1.15.0 (9 Nov 2026) - incentive ready (clients paid) and waiting for payment, on the plan header */     /* 1.14.0 (9 Nov 2026) - ask the owner to approve a discount above the brand limit, right on the quote line */     /* 1.13.0 (9 Nov 2026) - target limit shown under each quote discount; plan updates list (slab reached, lines left out, returns, month closed, 20th reminder) */     /* 1.12.0 (9 Nov 2026) - the 2027 plan on top (counted sales, slab ladder, left-out lines, quarter) and daily reports: entered, missed, streak */   /* 1.11.0 (8 Nov 2026) - my month on top: sales, returns, target, incentive, what to dispatch */   /* 1.10.1 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */   /* 1.10.0 (4 Nov 2026) - quote as in the CRM: item-wise discount, option lines, item-wise rates without total, GST */   /* 1.9.1 (31 Oct 2026) - one tap, one entry */   /* 1.9.0 (29 Oct 2026) - Menu -> Online enquiries (FB, IG, Google, Justdial, IndiaMART ... from the OnlineEnquiries tab) */   /* 1.8.4 (27 Oct 2026) - GHp mark in the middle of every QR, level H */   /* 1.6.1 - Huliot Group introduction on quotes; 1.6.0 (17 Oct 2026) - a dropped POST never loses a quote; admin sees every executive; daily report; attendance grid */
   /* 1.6.0 - ONLY THE SERVER'S OWN "NO" SIGNS A MAN OUT. The old test was /pin|locked|not allowed|blocked|removed/:
      any data error that happened to contain "not allowed" or "removed" (a refused row, a removed brand) signed the
      executive out and wiped his snapshot. These are the sign-in answers the server gives (teamAuth: "Wrong name or
@@ -263,6 +263,88 @@ table.att td.ok,table.att td.no{font-size:16px}
   var API_READS = { teamAuth: 1, teamGet: 1, quoteDup: 1, enqList: 1 };
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_vq_session", JRN = "ew_vq_journal_v1", CALLQ = "ew_vq_calls_v1", SNAPK = "ew_vq_snap_";
+
+  /* ==EW-CORE:BEGIN== built by tools/build_core.py — do not edit here, edit core/ew-core.js == */
+/* ==EWCORE:disc== THE DISCOUNT RULE, FOR ALL FOUR APPS. One client rate, asked the same way by the book of record, the two that move money and the one that quotes. The Payment app had no family-rate fallback and chased Rs 2,16,742 nobody owed; the Visit app had none either and quoted nine client-and-brand pairs at FULL MRP - which costs no rupee on the book, it just loses the order. Proved before promotion on 1,228 client x brand x day combinations off his own book, 560 of them carrying a real discount: all four answer identically on every one. */
+  function discRowsFor(client, brand) {
+    if (client && typeof client === "object") client = client.name;   /* 6.9.824 - C1: an object was keyed as "[object Object]" */
+    var b = dkey(brand), ix = dscIndex();
+    var pick = function (nm) {
+      return (ix[dkey(nm) + "||" + b] || []).slice();
+    };
+    var names = [client];
+    /* not one man under two names - there is nothing further to look at. MEASURED on his book
+       on 10 Sep 2026: 167 clients, THREE live aliases, so this is the answer 164 times out of
+       167 and it is the line that must stay cheap */
+    var am = dupAliasMap(), k = dgKey(client);
+    if (am.byName[k] || am.aliasOf[k]) {
+      var fam = dupFamily(client);
+      for (var q = 0; q < fam.length; q++) if (dgKey(fam[q]) !== k) names.push(fam[q]);
+    }
+    var i, r;
+    for (i = 0; i < names.length; i++) { r = pick(names[i]); if (r.length) return r; }
+    /* 17 Oct 2026 - the family rate: head name first, then any sister brand, exact brand excluded */
+    var f = discFam(brand);
+    if (!f) return [];
+    var fx = dscFamIndex();
+    for (i = 0; i < names.length; i++) {
+      var rows = (fx[dkey(names[i]) + "||" + f] || []).filter(function (x) { return dkey(x.brand) !== b; });
+      if (!rows.length) continue;
+      var head = rows.filter(function (x) { return dkey(x.brand) === f; });
+      return (head.length ? head : rows).slice();
+    }
+    return [];
+  }
+
+  /* The rate in force on a given day. Rows that had not started yet are out; among the rest the
+     LATEST start wins, and an undated row - "since the beginning" - loses to any dated one, so
+     the first dated rate he writes takes over cleanly from the row that was there before it. */
+  function discRowOn(client, brand, onYmd) {
+    var rows = discRowsFor(client, brand);
+    if (!rows.length) return null;
+    /* same reason as discFrom: no dstr, and no today() either - the two apps build today's date
+       their own way and this block must mean one thing in both. */
+    var day = String(onYmd || "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+      var _n = new Date();
+      day = _n.getFullYear() + "-" + String(_n.getMonth() + 1).padStart(2, "0") +
+            "-" + String(_n.getDate()).padStart(2, "0");
+    }
+    var dated = [], undated = [];
+    rows.forEach(function (r) { (discFrom(r) ? dated : undated).push(r); });
+    var live = dated.filter(function (r) { return discFrom(r) <= day; });
+    if (live.length) {
+      var best = live[0];
+      for (var i = 1; i < live.length; i++) {
+        var a = discFrom(live[i]), b = discFrom(best);
+        /* two rates starting the same day: the one written later is the correction */
+        if (a > b || (a === b && discStamp(live[i]) > discStamp(best))) best = live[i];
+      }
+      return best;
+    }
+    /* nothing dated has started yet - fall back to whatever was there before dates existed,
+       and never to a rate that has not begun */
+    return undated.length ? discPick(undated) : null;
+  }
+
+  /* NO dstr() IN HERE, AND THAT IS DELIBERATE. This block is shared byte-for-byte with the
+     Challan app, and the two apps have a function called dstr that does OPPOSITE things: in the
+     CRM it truncates to "2026-08-01", in the Challan app it FORMATS to "1 Aug 2026". Calling it
+     here read every dated rate as undated in the Challan app - so a challan would have been
+     priced at the old percent while the CRM used the new one, silently, and nothing on either
+     screen would have said so. Caught by t_apps_agree the moment the port landed, which is what
+     that suite is for. Ten characters of slicing, no shared name, no trap. */
+  function discFrom(row) {
+    var f = String((incMap(row) || {}).from || "").slice(0, 10);
+    return /^\d{4}-\d{2}-\d{2}$/.test(f) ? f : "";
+  }
+
+  function incMap(row) {
+    try { var m = JSON.parse((row && row.notes) || "{}"); return (m && typeof m === "object") ? m : {}; } catch (e) { return {}; }
+  }
+/* ==EWCORE:disc:END== */
+  /* ==EW-CORE:END== */
+
   var CAT_KEY = "ew_team_catalog", CAT_V = 2;   /* the CRM's own shelf copy of the price list - shared, same origin */
   var ALLOWED = ["admin", "sales", "accounts"];
   var FAST = ["clients", "sites", "sitevisits", "quotes", "associates", "discounts", "brands", "brandmap", "logos", "followups", "pitch", "team"];
@@ -709,26 +791,57 @@ table.att td.ok,table.att td.no{font-size:16px}
     });
     return _dscIdx;
   }
-  function discRowsFor(client, brand) {
-    var b = dkey(brand), ix = dscIndex();
-    var pick = function (nm) {
-      return (ix[dkey(nm) + "||" + b] || []).slice();
-    };
-    var own = pick(client);
-    if (own.length) return own;
-    /* not one man under two names - there is nothing further to look at. MEASURED on his book
-       on 10 Sep 2026: 167 clients, THREE live aliases, so this is the answer 164 times out of
-       167 and it is the line that must stay cheap */
-    var am = dupAliasMap(), k = dgKey(client);
-    if (!am.byName[k] && !am.aliasOf[k]) return own;
-    var fam = dupFamily(client);
-    for (var i = 0; i < fam.length; i++) {
-      if (dgKey(fam[i]) === k) continue;
-      var r = pick(fam[i]);
-      if (r.length) return r;
+  /* ===== THE FAMILY RATE, HERE TOO  (1.17.7, 15 Nov 2026) =====
+     A client is given one rate for Huliot and the quote line says "Huliot HT PRO"; one for
+     Heliroma and the line says "DRP". The CRM, the Challan app and the Payment app all fall back
+     to a sister brand in the same family. This app did not, so it found NO row and quoted the
+     line at FULL MRP - which is not a small thing on a quotation: the customer simply goes
+     elsewhere and nobody ever learns why.
+
+     MEASURED on his own book before this was written, asking both apps for the rate ON THE SAME
+     DAY: 9 client-and-brand pairs where the CRM finds a rate and this app finds none - Bitu
+     Israna 52%, Karan Chawla 50%, Himanshu Kumawat 45%, Kainos Hospital 32%, Sanjay Ji 53%,
+     Unnat Hotel 51% three times. Every one of them would have been quoted at list price.
+
+     (An earlier count said 17, in both directions. That was wrong and the fault was in the
+     measuring: it asked the CRM for the rate on the delivery's own day and asked THIS app for
+     the rate TODAY, because clientDiscount here takes no date. Two different questions. The
+     nine above are what is left when both are asked the same one, and they all point one way.)
+
+     Lifted from team/app.js byte for byte, with discRowsFor itself, so the four apps cannot
+     answer differently again. */
+  var DISC_FAM_RULES = [
+    ["huliot", ["huliot", "ht pro", "htpro", "ultra silent", "ultrasilent"]],
+    ["heliroma", ["heliroma", "drp", "ppr"]],
+    ["stellar", ["stellar", "sanitaar", "sanitar"]],
+    ["inair", ["inair", "lunos"]],
+    ["green heat", ["green heat", "greenheat"]],
+    ["fima", ["fima"]], ["toto", ["toto"]], ["grundfos", ["grundfos"]], ["pentair", ["pentair"]],
+    ["geberit", ["geberit"]], ["oyster", ["oyster"]], ["mea", ["mea"]], ["ioncare", ["ioncare", "ion care"]],
+    ["adani", ["adani"]], ["leo", ["leo"]]
+  ];
+  function discFam(b) {
+    var s = " " + String(b == null ? "" : b).toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/^\s+|\s+$/g, "") + " ";
+    if (s === "  ") return "";
+    for (var i = 0; i < DISC_FAM_RULES.length; i++) {
+      var keys = DISC_FAM_RULES[i][1];
+      for (var j = 0; j < keys.length; j++) if (s.indexOf(" " + keys[j] + " ") > -1) return DISC_FAM_RULES[i][0];
     }
-    return own;
+    return "";
   }
+  var _dscFam = null;
+  function dscFamIndex() {
+    if (_dscFam) return _dscFam;
+    _dscFam = {};
+    ((S.data && S.data.discounts) || []).forEach(function (x) {
+      var f = discFam(x.brand);
+      if (!f) return;
+      var k = dkey(x.client) + "||" + f;
+      (_dscFam[k] || (_dscFam[k] = [])).push(x);
+    });
+    return _dscFam;
+  }
+
   function discScore(d) {
     var s = (Number(d && d.pct) || 0) > 0 ? 4 : 0, m = incMap(d);
     Object.keys(m).forEach(function (k) { if (Number(m[k]) > 0) s += 1; });
@@ -745,41 +858,10 @@ table.att td.ok,table.att td.no{font-size:16px}
     return best;
   }
   function clientDiscount(client, brand) { var d = discRow(client, brand); return d ? Number(d.pct) || 0 : 0; }
-  function discFrom(row) {
-    var f = String((incMap(row) || {}).from || "").slice(0, 10);
-    return /^\d{4}-\d{2}-\d{2}$/.test(f) ? f : "";
-  }
-  function discRowOn(client, brand, onYmd) {
-    var rows = discRowsFor(client, brand);
-    if (!rows.length) return null;
-    /* same reason as discFrom: no dstr, and no today() either - the two apps build today's date
-       their own way and this block must mean one thing in both. */
-    var day = String(onYmd || "").slice(0, 10);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) {
-      var _n = new Date();
-      day = _n.getFullYear() + "-" + String(_n.getMonth() + 1).padStart(2, "0") +
-            "-" + String(_n.getDate()).padStart(2, "0");
-    }
-    var dated = [], undated = [];
-    rows.forEach(function (r) { (discFrom(r) ? dated : undated).push(r); });
-    var live = dated.filter(function (r) { return discFrom(r) <= day; });
-    if (live.length) {
-      var best = live[0];
-      for (var i = 1; i < live.length; i++) {
-        var a = discFrom(live[i]), b = discFrom(best);
-        /* two rates starting the same day: the one written later is the correction */
-        if (a > b || (a === b && discStamp(live[i]) > discStamp(best))) best = live[i];
-      }
-      return best;
-    }
-    /* nothing dated has started yet - fall back to whatever was there before dates existed,
-       and never to a rate that has not begun */
-    return undated.length ? discPick(undated) : null;
-  }
+
+
   function discRow(client, brand, onYmd) { return discRowOn(client, brand, onYmd); }
-  function incMap(row) {
-    try { var m = JSON.parse((row && row.notes) || "{}"); return (m && typeof m === "object") ? m : {}; } catch (e) { return {}; }
-  }
+
   function realBrand(p) {
     var m = ((S.data && S.data.brandmap) || []).filter(function (x) { return String(x.catalogValue) === String(p.brand); })[0];
     return (m && m.brand) ? m.brand : "";
