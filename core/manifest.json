@@ -158,14 +158,24 @@
     ]
   },
   "money": {
-    "why": "The money rules the two field apps share, locked against drift.",
+    "why": "The money rules all three apps share, locked against drift.",
     "fns": [
       "hisabOwed",
       "clientDiscountOn",
       "discFrom",
       "incMap",
       "payAmt",
-      "isJobLine",
+      "isJobLine"
+    ],
+    "apps": [
+      "CRM",
+      "Challan",
+      "Payment"
+    ]
+  },
+  "money_field": {
+    "why": "The money rules the two field apps share.",
+    "fns": [
       "rnLines",
       "dedupe",
       "hisabExtraOf"

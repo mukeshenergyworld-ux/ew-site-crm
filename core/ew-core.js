@@ -616,7 +616,11 @@
 
 
 /* ==EWCORE:money== THE MONEY RULES THE TWO FIELD APPS SHARE. 15 Nov 2026 - the Payment app and the Challan app spent a month crediting a return and pricing a brand differently from the CRM: Rs 2,12,214 over-credited and Rs 2,16,742 over-chased, both from one rule living in three files. Nineteen money functions live in more than one app and nine have drifted. These are the ones that had NOT drifted between these two; from here they cannot, because the build refuses unless both still read the same.
-     THE CRM IS DELIBERATELY NOT IN THIS LIST, and the reason is worth writing down. Its EW-CORE block sits at a different scope from its own functions - idbOpen, which has been in it since August, is not top-level in the CRM while it is in both field apps. Moving a CRM function in would put it where fn_map cannot see it, and the build would be unable to prove the function had not changed. A proof that cannot see the thing it is proving is worth nothing, so the CRM is held to the same rules by TEST instead, until its block is moved to its own top level. That move is its own job, on its own day. */
+     THE CRM IS IN THIS LIST SINCE 15 Nov 2026, and the reason it was not is worth keeping. Its EW-CORE block sits at a different scope from its own functions - idbOpen, which has been in it since August, is not top-level in the CRM while it is in both field apps. Moving a CRM function in would put it where fn_map cannot see it, and the build would be unable to prove the function had not changed. A proof that cannot see the thing it is proving is worth nothing, so the CRM is held to the same rules by TEST instead, until its block is moved to its own top level. IT NEVER WAS AT A DIFFERENT SCOPE. The ruler was wrong: ewbuild's
+     bare() emitted an escaped brace from inside a regex as a real brace, so from one line of
+     ewiShortCrm onward every function in the CRM counted one level deep and top_level picked
+     the wrong depth. Thirteen escaped braces in that file. Fixed in ewbuild.bare(blank=True),
+     and the CRM joined the same day. */
   function hisabOwed(c) { return hisabCounts(c) && (!HISAB_GATE || !hisabBookReady() || inHisab(c)); }
 
   /* THE RATE THAT WAS IN FORCE ON A GIVEN DAY. clientDiscount() answers "what is this client's
@@ -663,6 +667,10 @@
   function payAmt(p) { return nAmt((p || {}).amount); }
 
   function isJobLine(l) { return !!(l && (l.job === true || String(l.code || "") === JOB_CODE)); }
+
+/* ==EWCORE:money:END== */
+
+/* ==EWCORE:money_field== The money rules the two FIELD apps share and the CRM states its own way. Kept apart from the section above only because the CRM has no rnLines, dedupe or hisabExtraOf of its own: writing them in would ADD a function to that app, and the build is right to refuse that. */
 function rnLines(r) {
     var items = [];
     try { items = JSON.parse(r.itemsJson || "[]"); } catch (e) { items = []; }
@@ -678,6 +686,7 @@ function rnLines(r) {
   }
 
   function hisabExtraOf(c) { return ((c && c.id) ? (Number(hisabExtraMap()[c.id]) || 0) : 0) + Math.max(0, nAmt(c && c.discAmt)); }
-/* ==EWCORE:money:END== */
+/* ==EWCORE:money_field:END== */
+
 
 
