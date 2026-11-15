@@ -27,6 +27,8 @@ echo ""
 echo "== 3. the apps agree about money =="
 node tools/test/t_money_agrees.js || fail=1
 node tools/test/t_nav_order.js || fail=1
+node tools/test/t_quote_sent.js || fail=1
+node tools/test/t_driver_payouts.js || fail=1
 
 echo ""
 if [ "$fail" = "0" ]; then echo "ALL CLEAR — safe to build and upload"; else echo "SOMETHING FAILED — do not upload"; fi
