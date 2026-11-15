@@ -29,6 +29,9 @@ APPS = {
   # A proof that cannot run is not a proof, and that is why no money rule ever reached the core.
   'Challan': {'file': 'challan/index.src.html',   'anchor': '  var STORE = "ew_challan_session";'},
   'Payment': {'file': 'collect/index.src.html',   'anchor': '  var STORE = "ew_collect_session";'},
+  # 15 Nov 2026 - the fourth app. It prices QUOTATIONS, so a discount rule that disagrees here
+  # does not cost a rupee on the book - it loses the order, and nobody ever learns why.
+  'Visit':   {'file': 'visit/index.src.html',     'anchor': '  var STORE = "ew_vq_session", JRN = "ew_vq_journal_v1", CALLQ = "ew_vq_calls_v1", SNAPK = "ew_vq_snap_";'},
 }
 BEGIN = "  /* ==EW-CORE:BEGIN== built by tools/build_core.py — do not edit here, edit core/ew-core.js == */"
 END   = "  /* ==EW-CORE:END== */"
@@ -148,6 +151,8 @@ if not CHECK:
         p = cfg['file']
         if built[app] != B.read(p):
             io.open(R + p, 'w', encoding='utf-8').write(built[app])
-print("\n%s: every function in all three apps is byte-identical to before, except the ones\n"
+# 15 Nov 2026 - it said "all three apps" while checking four. A message that miscounts the thing
+# it is proving is the same fault as a test that passes without testing.
+print("\n%s: every function in all %d apps is byte-identical to before, except the ones\n"
       "listed above as taken from the core - and each of those now reads exactly as the core reads." %
-      ("CHECK" if CHECK else "BUILT"))
+      ("CHECK" if CHECK else "BUILT", len(APPS)))
