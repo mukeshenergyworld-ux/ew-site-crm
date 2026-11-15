@@ -429,9 +429,33 @@
     try { var m = JSON.parse((row && row.notes) || "{}"); return (m && typeof m === "object") ? m : {}; } catch (e) { return {}; }
   }
 /* ==EWCORE:disc:END== */
+/* ==EWCORE:drivers== DRIVER PAYOUTS AS THEY STAND. The server keeps the payout; a cancel and an edit are audit rows laid over it when read. One copy in the CRM and the Challan app, because the godown pays drivers from the Challan app and was still counting payouts the CRM had cancelled. */
+  function dpLive(rows, audit, keepCancelled) {
+    rows = rows || []; audit = audit || [];
+    var slot = keepCancelled ? "k" : "l", c = dpLive.c || (dpLive.c = {}), was = c[slot];
+    var sig = rows.length + "|" + audit.length + "|" + String((audit[audit.length - 1] || {}).id || "");
+    if (was && was.rows === rows && was.audit === audit && was.sig === sig) return was.out;
+    var off = {}, fix = {};
+    audit.filter(function (a) {
+      var x = a && String(a.action || "");
+      return x === "rec:cancel" || x === "pin:row-edit";
+    }).sort(function (a, b) { return String(a.createdAt || "").localeCompare(String(b.createdAt || "")); })
+      .forEach(function (a) {
+        var d = {}; try { d = JSON.parse(a.detail || "{}") || {}; } catch (e) { return; }
+        if (a.action === "rec:cancel") { if (String(d.tab || "") === "driverpay" && d.recId) off[String(d.recId)] = !d.undo; return; }
+        if (String(d.kind || "") !== "driverpay" || !d.recId) return;
+        var f = fix[String(d.recId)] || (fix[String(d.recId)] = {});
+        (d.changed || []).forEach(function (ch) { if (ch && ch.field) f[String(ch.field)] = ch.now; });
+      });
+    var out = rows.filter(function (p) { return keepCancelled || !(p && off[String(p.id || "")]); })
+      .map(function (p) { var f = p && fix[String(p.id || "")]; return f ? Object.assign({}, p, f, { edited: 1 }) : p; });
+    c[slot] = { rows: rows, audit: audit, sig: sig, out: out };
+    return out;
+  }
+/* ==EWCORE:drivers:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.996";   /* 6.9.996 (15 Nov 2026) - the screens inside a nav group sit most-opened first, from the team\u2019s own published counts, instead of alphabetically; and the second tab called \u201cPayments\u201d is named for what it is */   /* 6.9.995 (6.9.995 (15 Nov 2026) - the discount rule is one copy across FOUR apps now: the Visit app, which quotes with it, had no family-rate fallback and was quoting nine client-and-brand pairs at full MRP */   /* 6.9.994 (6.9.994 (15 Nov 2026) - money core phase 2b: the discount rules and the stamp reader are one copy across all three apps, proved on 1,228 client-brand-day combinations; and tools/test, so the next one is checked by a command and not by memory */   /* 6.9.993 (6.9.993 (15 Nov 2026) - the challan log leaves the screen: an Excel and a PDF of exactly what is filtered, built for the godown to chase the signed paper - oldest first, driver and vehicle on it, no balances */   /* 6.9.992 (6.9.992 (15 Nov 2026) - the CRM joins the shared money core: six rules are now one copy across all three apps */   /* 6.9.991 (6.9.991 (15 Nov 2026) - nine money rules moved into the shared core so the Challan and Payment apps can no longer drift apart on them; the core build, broken since minifying began, runs again */   /* 6.9.990 (6.9.990 (15 Nov 2026) - the duplicate radar reads every record tab, not clients alone: a row whose every field matches another, and the same money to the same man on the same day */   /* 6.9.989 (6.9.989 (15 Nov 2026) - FIX: the money check called a settled account\u2019s folded lines missing; it opens the fold while it reads */   /* 6.9.988 (6.9.988 (15 Nov 2026) - one item on a delivery can be given its own discount at finalise, owner only; it beats the brand box and nothing else moves */   /* 6.9.987 (6.9.987 (15 Nov 2026) - Call this week: the live sites at a buying stage, by town, with the man to ring and his mobile; a site rests 14 days once it is rung */   /* 6.9.986 (6.9.986 (14 Nov 2026) - FIX: the same part-save counted again inflated stock; 16 products were over by 3,027 pieces */   /* 6.9.985 (14 Nov 2026) - Tally match: a line already picked is drawn as picked, and settled lines fold away so only what needs him is on screen */   /* 6.9.984 (14 Nov 2026) - the waiting-bill sheet names the lines that still have no code, with the supplier\u2019s own code and the nearest catalogue ones */   /* 6.9.983 (14 Nov 2026) - the red "not matched" line on Stock to order says what it means and opens: which bill, how many, and how to put it right */   /* 6.9.982 (12 Nov 2026) - the quote tick moved to the quote book he actually looks at; it had been on the List view only */   /* 6.9.981 (12 Nov 2026) - merging quotations: one line per product, and a disagreed discount falls to the client\u2019s preset and is named */   /* 6.9.980 (12 Nov 2026) - tick several quotations and send them out on one challan */   /* 6.9.979 (12 Nov 2026) - Make challan is on every quotation, not only a won one; converting offers to mark it Won */   /* 6.9.978 (12 Nov 2026) - one Change button on a money row: edit it with the PIN asked twice, or cancel it */   /* 6.9.977 (12 Nov 2026) - a partner or driver payout entered wrongly can be set aside, with a reason, and brought back */   /* 6.9.976 (12 Nov 2026) - a brand already set aside stops nagging from the empty-brand card */   /* 6.9.975 (12 Nov 2026) - a finalised return can be opened again, and repriced, with it recorded as after the stamp */   /* 6.9.974 (12 Nov 2026) - Change it reprices this return as well as setting the preset from today */   /* 6.9.973 (12 Nov 2026) - FIX: the Finalise card on a return threw before it drew (6.9.972) */   /* 6.9.972 (12 Nov 2026) - return finalise: try a rate on the lines, and change the preset from today with a PIN */   /* 6.9.971 (12 Nov 2026) - a brand with no preset is set from the return-finalise card itself */   /* 6.9.970 (12 Nov 2026) - quote PDF: a product description is printed whole, not cut at three lines */   /* 6.9.969 (11 Nov 2026) - deliveries with no signed paper split by age: the ones past 30 days get the red number, the fresh ones are stated quietly */   /* 6.9.968 (11 Nov 2026) - a purchase bill already fully in stock is not brought in a second time: Huliot's invoice arrives in three mails, and all three were being uploaded */   /* 6.9.967 (11 Nov 2026) - GHP+ logo in the registered Green Heat+ colours (#00539F / #ED1D24) on PDFs, quotes, challans and QR centres */   /* 6.9.966 (11 Nov 2026) - technical specifications sheet in colour: brand-coloured table heads and code strip, coloured field labels, and the exceptions in an amber panel */   /* 6.9.965 (11 Nov 2026) - old quotes to close: grouped by what the site is doing now, closing windows first, each group carrying that stage's own pitch lines */   /* 6.9.964 (11 Nov 2026) - quote spec table: a value all but a few items share is said once and the few are named, so one tube no longer printed five long columns 25 times */   /* 6.9.963 (11 Nov 2026) - purchase bills: same day + same amount flagged on the Tally screen */   /* 6.9.958 (10 Nov 2026) - a statement attached before the name was kept is told apart by its time, not left as four identical lines */     /* 6.9.957 (10 Nov 2026) - each attached old hisab shows its file name, and a wrong one can be set aside */     /* 6.9.956 (10 Nov 2026) - rebuilt: the GitHub Pages publish of 6.9.955 failed (run #1675), so nothing had changed on the phones */   /* 6.9.955 (10 Nov 2026) - the old hisab takes more than one file at once: photographed pages become one PDF, and every statement on file is listed */     /* 6.9.954 (10 Nov 2026) - the Partner Club: fixed slabs, a bonus on crossing one, the trip and device rewards, every partner's rupees to his next slab, and the quiet-partner watch */     /* 6.9.953 (10 Nov 2026) - Service > Control: cash in each engineer's hand, hand-over recorded, three random customer checks a week */     /* 6.9.952 (10 Nov 2026) - to-bill month by month, screens found from Search, team screen use on Health, a receipt for every incentive payout */     /* 6.9.951 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 6.9.950 (9 Nov 2026) - brand introductions: a fuller paragraph, three stage-wise benefits and one next step, on the quote and the proposal */     /* 6.9.949 (9 Nov 2026) - quote PDF: a product picture stays inside its own row (1.2 mm clear of both lines) */     /* 6.9.948 (9 Nov 2026) - quote PDF: each room heading carries its collection and finish with colour dots; every FIMA code chip has its finish dot */     /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
+  var APP_VERSION = "6.9.997";   /* 6.9.997 (15 Nov 2026) - a driver payout can be edited (PIN twice, the paid date kept), and the Challan app now counts cancelled and edited payouts the same way; a quotation remembers what has gone: Make challan offers only what is left, the quote says how many lines went and on which challan, and a challan can pull a client\u2019s quotation in from its own side */   /* 6.9.996 (6.9.996 (15 Nov 2026) - the screens inside a nav group sit most-opened first, from the team\u2019s own published counts, instead of alphabetically; and the second tab called \u201cPayments\u201d is named for what it is */   /* 6.9.995 (6.9.995 (15 Nov 2026) - the discount rule is one copy across FOUR apps now: the Visit app, which quotes with it, had no family-rate fallback and was quoting nine client-and-brand pairs at full MRP */   /* 6.9.994 (6.9.994 (15 Nov 2026) - money core phase 2b: the discount rules and the stamp reader are one copy across all three apps, proved on 1,228 client-brand-day combinations; and tools/test, so the next one is checked by a command and not by memory */   /* 6.9.993 (6.9.993 (15 Nov 2026) - the challan log leaves the screen: an Excel and a PDF of exactly what is filtered, built for the godown to chase the signed paper - oldest first, driver and vehicle on it, no balances */   /* 6.9.992 (6.9.992 (15 Nov 2026) - the CRM joins the shared money core: six rules are now one copy across all three apps */   /* 6.9.991 (6.9.991 (15 Nov 2026) - nine money rules moved into the shared core so the Challan and Payment apps can no longer drift apart on them; the core build, broken since minifying began, runs again */   /* 6.9.990 (6.9.990 (15 Nov 2026) - the duplicate radar reads every record tab, not clients alone: a row whose every field matches another, and the same money to the same man on the same day */   /* 6.9.989 (6.9.989 (15 Nov 2026) - FIX: the money check called a settled account\u2019s folded lines missing; it opens the fold while it reads */   /* 6.9.988 (6.9.988 (15 Nov 2026) - one item on a delivery can be given its own discount at finalise, owner only; it beats the brand box and nothing else moves */   /* 6.9.987 (6.9.987 (15 Nov 2026) - Call this week: the live sites at a buying stage, by town, with the man to ring and his mobile; a site rests 14 days once it is rung */   /* 6.9.986 (6.9.986 (14 Nov 2026) - FIX: the same part-save counted again inflated stock; 16 products were over by 3,027 pieces */   /* 6.9.985 (14 Nov 2026) - Tally match: a line already picked is drawn as picked, and settled lines fold away so only what needs him is on screen */   /* 6.9.984 (14 Nov 2026) - the waiting-bill sheet names the lines that still have no code, with the supplier\u2019s own code and the nearest catalogue ones */   /* 6.9.983 (14 Nov 2026) - the red "not matched" line on Stock to order says what it means and opens: which bill, how many, and how to put it right */   /* 6.9.982 (12 Nov 2026) - the quote tick moved to the quote book he actually looks at; it had been on the List view only */   /* 6.9.981 (12 Nov 2026) - merging quotations: one line per product, and a disagreed discount falls to the client\u2019s preset and is named */   /* 6.9.980 (12 Nov 2026) - tick several quotations and send them out on one challan */   /* 6.9.979 (12 Nov 2026) - Make challan is on every quotation, not only a won one; converting offers to mark it Won */   /* 6.9.978 (12 Nov 2026) - one Change button on a money row: edit it with the PIN asked twice, or cancel it */   /* 6.9.977 (12 Nov 2026) - a partner or driver payout entered wrongly can be set aside, with a reason, and brought back */   /* 6.9.976 (12 Nov 2026) - a brand already set aside stops nagging from the empty-brand card */   /* 6.9.975 (12 Nov 2026) - a finalised return can be opened again, and repriced, with it recorded as after the stamp */   /* 6.9.974 (12 Nov 2026) - Change it reprices this return as well as setting the preset from today */   /* 6.9.973 (12 Nov 2026) - FIX: the Finalise card on a return threw before it drew (6.9.972) */   /* 6.9.972 (12 Nov 2026) - return finalise: try a rate on the lines, and change the preset from today with a PIN */   /* 6.9.971 (12 Nov 2026) - a brand with no preset is set from the return-finalise card itself */   /* 6.9.970 (12 Nov 2026) - quote PDF: a product description is printed whole, not cut at three lines */   /* 6.9.969 (11 Nov 2026) - deliveries with no signed paper split by age: the ones past 30 days get the red number, the fresh ones are stated quietly */   /* 6.9.968 (11 Nov 2026) - a purchase bill already fully in stock is not brought in a second time: Huliot's invoice arrives in three mails, and all three were being uploaded */   /* 6.9.967 (11 Nov 2026) - GHP+ logo in the registered Green Heat+ colours (#00539F / #ED1D24) on PDFs, quotes, challans and QR centres */   /* 6.9.966 (11 Nov 2026) - technical specifications sheet in colour: brand-coloured table heads and code strip, coloured field labels, and the exceptions in an amber panel */   /* 6.9.965 (11 Nov 2026) - old quotes to close: grouped by what the site is doing now, closing windows first, each group carrying that stage's own pitch lines */   /* 6.9.964 (11 Nov 2026) - quote spec table: a value all but a few items share is said once and the few are named, so one tube no longer printed five long columns 25 times */   /* 6.9.963 (11 Nov 2026) - purchase bills: same day + same amount flagged on the Tally screen */   /* 6.9.958 (10 Nov 2026) - a statement attached before the name was kept is told apart by its time, not left as four identical lines */     /* 6.9.957 (10 Nov 2026) - each attached old hisab shows its file name, and a wrong one can be set aside */     /* 6.9.956 (10 Nov 2026) - rebuilt: the GitHub Pages publish of 6.9.955 failed (run #1675), so nothing had changed on the phones */   /* 6.9.955 (10 Nov 2026) - the old hisab takes more than one file at once: photographed pages become one PDF, and every statement on file is listed */     /* 6.9.954 (10 Nov 2026) - the Partner Club: fixed slabs, a bonus on crossing one, the trip and device rewards, every partner's rupees to his next slab, and the quiet-partner watch */     /* 6.9.953 (10 Nov 2026) - Service > Control: cash in each engineer's hand, hand-over recorded, three random customer checks a week */     /* 6.9.952 (10 Nov 2026) - to-bill month by month, screens found from Search, team screen use on Health, a receipt for every incentive payout */     /* 6.9.951 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 6.9.950 (9 Nov 2026) - brand introductions: a fuller paragraph, three stage-wise benefits and one next step, on the quote and the proposal */     /* 6.9.949 (9 Nov 2026) - quote PDF: a product picture stays inside its own row (1.2 mm clear of both lines) */     /* 6.9.948 (9 Nov 2026) - quote PDF: each room heading carries its collection and finish with colour dots; every FIMA code chip has its finish dot */     /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -7781,7 +7805,7 @@ window.addEventListener("beforeunload", function (ev) {
   /* 6.9.977 - where a row of this kind is found. Cancelled ones are included, because the Bin
      and Bring back have to read a row that is no longer live. */
   function cxRows(tab) {
-    if (tab === "driverpay") return dpAll();
+    if (tab === "driverpay") return dpLive(dpAll(), (S.data && S.data.audit) || [], true);   /* 6.9.997 - as edited, cancelled ones kept for the Bin */
     return ((S.data || {})[tab] || []).concat(((S.cancelled || {})[tab]) || []);
   }
   function cancelLabel(tab, r) {
@@ -8117,11 +8141,12 @@ window.addEventListener("beforeunload", function (ev) {
     commpay: { what: "incentive payout", tab: "commpay",
       fields: [ { k: "date", t: "Date", ty: "date" }, { k: "amount", t: "Amount", ty: "num" },
                 { k: "mode", t: "How it was paid", ty: "text" }, { k: "notes", t: "For what", ty: "text" } ] },
-    driverpay: { what: "driver payout", tab: "driverpay", noEdit:
-      "This row lives on the server, and the server call that records a payout only makes new " +
-      "rows \u2014 there is nothing to write back to. Recreating it would re-date the payment to " +
-      "today, which would be worse than leaving it. Cancel it and record the right one, or say " +
-      "the word and I will add a proper edit on the server." }
+    /* 6.9.997 - EDITABLE NOW, WITHOUT A SERVER CHANGE. The edit is the pin:row-edit row itself,
+       laid over the server's list by dpLive in this app and the Challan app alike. No date field:
+       the server stamped the day it was paid, and that stays. */
+    driverpay: { what: "driver payout", tab: "driverpay", overlay: 1,
+      fields: [ { k: "amount", t: "Amount", ty: "num" }, { k: "mode", t: "How it was paid", ty: "text" },
+                { k: "ref", t: "Reference", ty: "text" }, { k: "note", t: "Note", ty: "text" } ] }
   };
   function reDef(kind) { return ROW_EDIT[kind] || null; }
   function reRow(kind, id) {
@@ -21340,9 +21365,12 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
          the rest it is quiet, and converting offers to mark the quote Won at the same time. */
       (function () {
         var _qw = (q.status === "Won" || quoteBrands(q).some(function (b) { return qBrandWon(q, b); }));
+        var _qlb = null; try { _qlb = quoteLeft(q); } catch (e) { _qlb = null; }   /* 6.9.997 */
         return '<button class="btn sm' + (_qw ? '' : ' ghost') + '" data-act="q-challan" data-id="' + esc(q.id) + '"' +
           (_qw ? '' : ' title="This quote is marked ' + esc(q.status || "Draft") + '. You can still send material against it - you will be asked whether to mark it Won."') +
-          '>Make challan</button>';
+          '>' + (_qlb && _qlb.part ? 'Send the rest (' + plural(_qlb.lines.length, "line") + ')' : 'Make challan') + '</button>' +
+          (_qlb && _qlb.on.length ? '<span class="pill" style="background:' + (_qlb.none ? '#dcfce7;color:#166534' : '#fef3c7;color:#92400e') + '" title="' + esc("Went on " + _qlb.on.join(", ")) + '">' +
+            (_qlb.none ? 'All sent' : (_qlb.all - _qlb.lines.length) + ' of ' + _qlb.all + ' lines sent') + ' &middot; ' + esc(_qlb.on[_qlb.on.length - 1]) + (_qlb.on.length > 1 ? ' +' + (_qlb.on.length - 1) : '') + '</span>' : '');
       })() +
       /* v6.9.205 - every quote already marked Lost can still be answered, so the back
          catalogue is fillable without a migration. The pill carries the SHORT label: the
@@ -30731,13 +30759,8 @@ function viewCatalogue() {
   /* 6.9.977 - ONE chokepoint. Every screen that counts driver money - paidTo, the ledger, the
      payouts table, the Paid out log, the monthly figure - goes through here, so a payout set
      aside leaves all of them at once and none of those readers had to learn about cancelling. */
-  function payouts() {
-    var m = cancelMap();
-    return dpAll().filter(function (p) {
-      var c = m["driverpay|" + String((p && p.id) || "")];
-      return !(c && c.on);
-    });
-  }
+
+  function payouts() { return dpLive(dpAll(), (S.data && S.data.audit) || [], false); }   /* 6.9.997 - cancels AND edits, one rule with the Challan app */
   function dpAmt(p) { return num(p && p.amount); }
   function dpKey(p) {
     return drvResolve(drvRawKey(p && p.driverId, p && p.driver));
@@ -57968,10 +57991,82 @@ function viewCatalogue() {
     });
     return { lines: out, folded: folded, clash: clash };
   }
-  function qcBuild(label, client, brand, lines) {
+  /* ===== 6.9.997 - A QUOTATION REMEMBERS WHAT HAS GONE =====
+     Material goes to a site in stages: the pipes when the walls are open, the fittings at
+     plastering, the sanitaryware at handover. Until now every Make challan put the WHOLE
+     quotation on the delivery again, so the second and third challan against one quote were
+     typed down by hand from memory - and nothing on the quote said what had already gone.
+
+     So each challan made from a quotation leaves a "quote:sent" audit row naming the quote(s)
+     and the challan number. Nothing is copied: the quantities are read from the LIVE challan
+     every time, so a challan edited before dispatch, or cancelled, moves the count by itself.
+     A challan carrying two quotations fills the earlier one first, product by product; anything
+     on the challan that was not on the quote (the elbows a pump needs) counts against nothing.
+
+     To send part of a quote, make the challan and take the quantities down; the next Make
+     challan offers only what is left. */
+  var _qsCache = null, _qsKey = "";
+  function qcKey(l) { return String((l && l.code) || "").trim() || ("~" + dkey((l && l.desc) || "")); }
+  function qcQuoted(q) {
+    var its = []; try { its = JSON.parse((q && q.items) || "[]") || []; } catch (e) { its = []; }
+    var m = {}; its.forEach(function (i) { var k = qcKey(i); m[k] = (m[k] || 0) + (Number(i.qty) || 1); });
+    return m;
+  }
+  function quoteSentBook() {
+    var au = (S.data && S.data.audit) || [], chs = (S.data && S.data.challans) || [];
+    var _sz = 0; for (var _i = 0; _i < chs.length; _i++) _sz += String((chs[_i] && chs[_i].itemsJson) || "").length;   /* an edit changes the lines, not the count */
+    var key = au.length + "|" + chs.length + "|" + _sz + "|" + ((au[au.length - 1] || {}).id || "");
+    if (_qsCache && _qsKey === key) return _qsCache;
+    var byNo = {};
+    chs.forEach(function (c) { if (c && c.challanNo && !isCancelled("challans", c.id)) byNo[String(c.challanNo)] = c; });
+    var qById = {}; ((S.data && S.data.quotes) || []).forEach(function (q) { if (q && q.id) qById[q.id] = q; });
+    var quoted = {}, sent = {}, on = {}, done = {};
+    au.filter(function (a) { return a && String(a.action || "") === "quote:sent"; })
+      .sort(function (a, b) { return String(a.createdAt || "").localeCompare(String(b.createdAt || "")); })
+      .forEach(function (a) {
+        var d = {}; try { d = JSON.parse(a.detail || "{}") || {}; } catch (e) { return; }
+        var no = String(d.ch || ""), ch = byNo[no];
+        if (!ch || done[no]) return;          /* cancelled, not on the book yet, or already counted */
+        done[no] = 1;
+        var ids = (d.q || []).filter(function (x) { return qById[x]; });
+        ids.forEach(function (qid) { if (!quoted[qid]) { quoted[qid] = qcQuoted(qById[qid]); sent[qid] = {}; on[qid] = []; } on[qid].push(no); });
+        var lines = []; try { lines = JSON.parse(ch.itemsJson || "[]") || []; } catch (e) { lines = []; }
+        lines.forEach(function (l) {
+          var k = qcKey(l), left = Number(l.qty) || 0;
+          ids.forEach(function (qid) {
+            if (left <= 0) return;
+            var room = (quoted[qid][k] || 0) - (sent[qid][k] || 0);
+            if (room <= 0) return;
+            var take = Math.min(room, left);
+            sent[qid][k] = (sent[qid][k] || 0) + take; left -= take;
+          });
+        });
+      });
+    _qsKey = key; _qsCache = { sent: sent, on: on };
+    return _qsCache;
+  }
+  /* what is still to go on one quotation: its own lines, quantities taken down by what went */
+  function quoteLeft(q) {
+    var its = []; try { its = JSON.parse((q && q.items) || "[]") || []; } catch (e) { its = []; }
+    var B = quoteSentBook(), gone = Object.assign({}, B.sent[q && q.id] || {}), on = (B.on[q && q.id] || []).slice();
+    var left = [];
+    its.forEach(function (i) {
+      var k = qcKey(i), q0 = Number(i.qty) || 1, g = Math.min(q0, gone[k] || 0);
+      gone[k] = (gone[k] || 0) - g;
+      if (q0 - g > 0) left.push(Object.assign({}, i, { qty: Math.round((q0 - g) * 1000) / 1000 }));
+    });
+    return { lines: left, all: its.length, on: on, part: on.length > 0 && left.length > 0, none: on.length > 0 && !left.length };
+  }
+  /* written once the challan has its number: which quotation(s) it came from */
+  function quoteSentWrite(ids, label, no, recId) {
+    if (!ids || !ids.length || !no) return;
+    try { auditFact("quote:sent", String(no), { q: ids, nos: String(label || ""), ch: String(no), rec: String(recId || "") }); } catch (e) { }
+  }
+  function qcBuild(label, client, brand, lines, ids) {
     S.chx = null;
     S.ch = { brand: String(brand || "").split(",")[0].trim(), family: "",
              client: client, fromQuote: label, disc: 0, items: lines };
+    S.ch.fromQuoteIds = ids || [];   /* 6.9.997 - which quotation(s), written as quote:sent on Create */
     S.modal = modalChallan(); render();
   }
   function qcGo(wqc, qcits) {
@@ -57989,7 +58084,8 @@ function viewCatalogue() {
          honest numbers instead of one misleading one. It also makes `amount` the gross, which
          is what the rest of the app already assumes - the deliveries screen prints
          money(c.amount) + " at list". */
-      qcBuild(wqc.quoteNo, wqc.client, wqc.brand, qcLines(qcits));   /* 6.9.980 - one path */
+      qcBuild(wqc.quoteNo, wqc.client, wqc.brand, qcLines(qcits), [wqc.id]);   /* 6.9.980 - one path; 6.9.997 - and which quote */
+      try { var _ql = quoteLeft(wqc); if (_ql.part) S.ch.quoteSentOn = _ql.on; } catch (e) { }
   }
   /* the ticked quotations, in the order they were quoted */
   function qSelRows() {
@@ -58016,6 +58112,36 @@ function viewCatalogue() {
       '</div></div>';
   }
 
+  /* 6.9.997 - PULL A QUOTE IN FROM THE CHALLAN SIDE. He starts from the client as often as from
+     the quote: "send Sharma ji the next lot". One button under the client: his quotations that
+     still have something to go, each with an Add. Adding puts what is left on this challan; the
+     same quote:sent row is written on Create, so the quote counts it either way round. */
+  function chQuoteList(client) {
+    var k = dkey(client); if (!k) return [];
+    return ((S.data && S.data.quotes) || []).filter(function (q) {
+      return q && dkey(q.client) === k && String(q.status || "") !== "Lost" && !isCancelled("quotes", q.id);
+    }).map(function (q) { return { q: q, left: quoteLeft(q) }; })
+      .filter(function (x) { return x.left.lines.length; })
+      .sort(function (a, b) { return String(b.q.createdAt || "").localeCompare(String(a.q.createdAt || "")); });
+  }
+  function chQuotePullHtml(z) {
+    if (!z) return "";
+    if (!z.qPick) return '<div style="margin:2px 0 8px"><button class="btn sm ghost" data-act="ch-qpick" style="min-height:44px">+ Add lines from his quotation</button></div>';
+    var L = chQuoteList(z.qPickFor || z.client || "");
+    var have = {}; (z.fromQuoteIds || []).forEach(function (x) { have[x] = 1; });
+    return '<div class="card" style="border-color:#99f6e4;background:#f0fdfa;padding:9px 12px;margin:2px 0 10px">' +
+      '<div style="display:flex;gap:8px;align-items:center"><b class="grow" style="font-size:13.5px">' +
+      (L.length ? 'Quotations for ' + esc(z.qPickFor || z.client) + ' with something still to send' : 'No quotation for ' + esc(z.qPickFor || z.client || "this client") + ' has anything left to send') +
+      '</b><button class="btn sm ghost" data-act="ch-qpick-off" style="min-height:44px">Close</button></div>' +
+      L.slice(0, 12).map(function (x) {
+        var q = x.q, n = x.left.lines.length;
+        return '<div style="display:flex;gap:8px;align-items:center;padding:6px 0;border-top:1px solid #ccfbf1;font-size:13px">' +
+          '<span class="grow"><b>' + esc(qNo(q)) + '</b> &middot; ' + esc(dmy(String(q.createdAt || "").slice(0, 10))) + ' &middot; ' + plural(n, "line") + ' left' +
+          (x.left.on.length ? ' <span class="meta" style="font-size:12px">(part went on ' + esc(x.left.on.join(", ")) + ')</span>' : '') + '</span>' +
+          (have[q.id] ? '<span class="pill" style="background:#dcfce7;color:#166534">Added</span>'
+            : '<button class="btn sm" data-act="ch-qadd" data-id="' + esc(q.id) + '" style="min-height:44px">Add</button>') + '</div>';
+      }).join("") + '</div>';
+  }
   function modalChallan() {
     try { ensureStock(); } catch (eS) { }   /* v6.9.606 - so Save can warn when a line asks for more than is free */
     if (!S.ch) S.ch = { brand: "", family: "", items: [] };
@@ -58047,10 +58173,15 @@ function viewCatalogue() {
           }).join('<br>') +
           '<br><span style="color:#7c2d12">There is no honest way to pick between two numbers he was given, so the preset stands. ' +
           'Change it on the discount step below, or at Finalise.</span></div></div>' : "") +
+      /* 6.9.997 - part of this quotation has gone before: say where, and that this is the rest */
+      ((z && z.quoteSentOn && z.quoteSentOn.length && !isEdit)
+        ? '<div class="empty" style="text-align:left;padding:0 0 10px;color:#92400e">Part of this quotation already went on <b>' + esc(z.quoteSentOn.join(", ")) +
+          '</b>. This challan carries only what is left. Take a quantity down to send less now — the quote keeps the rest for the next one.</div>' : "") +
       ((z && z.copyOf) ? '<div class="empty" style="text-align:left;padding:0 0 10px;color:#1d4ed8">Copied from challan <b>' + esc(z.copyOf) + '</b> \u2014 same client, site and products. Check the quantities, then create. <b>The old challan is not changed</b>, and this becomes a new challan with its own number.</div>' : "") +
       '<label>Location</label><select id="m_loc">' + opts(LOCATIONS, (z && z.loc) || LOCATIONS[0]) + '</select>' +
       strictClientField("m_client", (S.ch && S.ch.client) || "") +
       (isEdit ? '' : '<div id="m_client_mst">' + msAskHtml((S.ch && S.ch.client) || "") + '</div>') +   /* 6.9.863 */
+      (isEdit ? '' : chQuotePullHtml(z)) +   /* 6.9.997 */
       /* v6.9.253 - SMALL, AND IN THE CORNER.
          It shouted for a reason once: in v6.9.238 every challan was still being written in
          the paper book first, and a blank box had to be visible from across the room. That
@@ -69202,6 +69333,18 @@ function viewCatalogue() {
       var qcits = [];
       try { qcits = JSON.parse(wqc.items || "[]"); } catch (e) { }
       if (!qcits.length) { toast("There is nothing on that quotation to send."); return; }
+      /* 6.9.997 - only what has not gone yet. Everything gone: ask before sending it all again. */
+      var _qleft = quoteLeft(wqc);
+      if (_qleft.none) {
+        askSheet({
+          title: "Everything on " + String(wqc.quoteNo || "this quotation") + " has gone",
+          sub: "It went on " + esc(_qleft.on.join(", ")) + ".",
+          body: '<div class="meta">Send the whole quotation again only if the site really needs it a second time.</div>',
+          yes: "Send it all again", no: "No"
+        }).then(function (yes) { if (yes) qcGo(wqc, qcits); });
+        return;
+      }
+      if (_qleft.part) qcits = _qleft.lines;
       /* 6.9.979 - the status question, asked ONCE and here, where he is deciding anyway. The
          challan opens either way: the delivery is the thing he came to do, and a quote left at
          Sent is a reporting detail, not a reason to stop him. Answering yes also takes it out
@@ -69257,11 +69400,12 @@ function viewCatalogue() {
       var _mc = {}; _ms.forEach(function (q) { _mc[dkey(q.client)] = String(q.client || ""); });
       var _mk = Object.keys(_mc);
       if (_mk.length > 1) { toast("Those quotations are for " + _mk.length + " different clients (" + _mk.map(function (k) { return _mc[k]; }).join(", ") + "). A challan goes to one client."); return; }
-      var _ml = [], _mb = "", _mn = [];
+      var _ml = [], _mb = "", _mn = [], _mids = [];
       _ms.forEach(function (q) {
         var its = []; try { its = JSON.parse(q.items || "[]"); } catch (e) { its = []; }
+        try { var _qlm = quoteLeft(q); if (_qlm.on.length) its = _qlm.lines; } catch (e) { }   /* 6.9.997 - what is left */
         if (!its.length) return;
-        _mn.push(qNo(q));
+        _mn.push(qNo(q)); _mids.push(q.id);
         if (!_mb) _mb = String(q.brand || "");
         _ml = _ml.concat(qcLines(its));
       });
@@ -69272,7 +69416,7 @@ function viewCatalogue() {
         return !(String(q.status) === "Won" || quoteBrands(q).some(function (b) { return qBrandWon(q, b); }));
       });
       var _mgo = function () {
-        qcBuild(_mn.join(" + "), _ms[0].client, _mb, _mm.lines);
+        qcBuild(_mn.join(" + "), _ms[0].client, _mb, _mm.lines, _mids);
         /* 6.9.981 - the disagreement travels to the challan, where he is about to decide */
         S.ch.quoteClash = _mm.clash;
         S.qSel = {};
@@ -70557,8 +70701,9 @@ function viewCatalogue() {
         _next[f.k] = f.ty === "num" ? Math.round(nAmt(_p2.vals[f.k])) : _p2.vals[f.k];
       });
       S.rePend = null; S.modal = null;
-      /* the row first, then the record of it - a pin: action, so chgNeverFold keeps it whole */
-      save(_d2.tab, _next, true);
+      /* the row first, then the record of it - a pin: action, so chgNeverFold keeps it whole.
+         6.9.997 - an overlay kind (a driver payout) has no row here to write: the record IS the edit. */
+      if (!_d2.overlay) save(_d2.tab, _next, true);
       save("audit", { id: mintId("A"), createdAt: new Date().toISOString(), actor: S.user || "",
         action: "pin:row-edit", target: String(CANCEL_TABS[_p2.kind] || _d2.what) + " / " + cancelLabel(_p2.kind, _row2),
         detail: JSON.stringify({ kind: _p2.kind, recId: _p2.id,
@@ -73406,6 +73551,38 @@ function viewCatalogue() {
       S.modal = modalChallan(); render(); restoreA();
       return;
     }
+    if (act === "ch-qpick" || act === "ch-qpick-off") {   /* 6.9.997 */
+      if (!S.ch) return;
+      if (act === "ch-qpick") {
+        var _qpc = String(val("m_client") || S.ch.client || "").trim();
+        if (!_qpc) { toast("Pick the client first — his quotations are listed under him."); return; }
+        S.ch.qPick = true; S.ch.qPickFor = _qpc;
+      } else { S.ch.qPick = false; }
+      var _qpr = keepFields(CH_FIELDS); keepScroll = true; S.modal = modalChallan(); render(); _qpr();
+      return;
+    }
+    if (act === "ch-qadd") {   /* 6.9.997 */
+      if (!S.ch) return;
+      var _qa = ((S.data && S.data.quotes) || []).filter(function (q) { return q.id === id; })[0];
+      if (!_qa) { toast("That quotation is no longer on the list."); return; }
+      if (dkey(_qa.client) !== dkey(val("m_client") || S.ch.qPickFor || "")) { toast("That quotation is for " + _qa.client + ", not the client on this challan."); return; }
+      var _qal = qcLines(quoteLeft(_qa).lines);
+      if (!_qal.length) { toast("Nothing is left to send on " + qNo(_qa) + "."); return; }
+      S.ch.items = S.ch.items || [];
+      var _qadd = 0, _qfold = 0;
+      _qal.forEach(function (l) {
+        var hit = S.ch.items.filter(function (i) { return qcKey(i) === qcKey(l) && (Number(i.disc) || 0) === (Number(l.disc) || 0) && !isJobLine(i); })[0];
+        if (hit) { hit.qty = Math.round(((Number(hit.qty) || 0) + (Number(l.qty) || 0)) * 1000) / 1000; _qfold++; }
+        else { S.ch.items.push(l); _qadd++; }
+      });
+      S.ch.fromQuoteIds = (S.ch.fromQuoteIds || []).concat([_qa.id]);
+      S.ch.fromQuote = S.ch.fromQuote ? S.ch.fromQuote + " + " + qNo(_qa) : qNo(_qa);
+      if (!S.ch.brand) S.ch.brand = String(_qa.brand || "").split(",")[0].trim();
+      S.ch.client = String(val("m_client") || S.ch.qPickFor || _qa.client);
+      toast(plural(_qadd + _qfold, "line") + " from " + qNo(_qa) + " on this challan" + (_qfold ? " (" + _qfold + " added to a line already here)" : "") + ".");
+      var _qar = keepFields(CH_FIELDS); keepScroll = true; S.modal = modalChallan(); render(); _qar();
+      return;
+    }
     if (act === "ch-qty") {
       var pcode = t.getAttribute("data-code");
       var dd2 = Number(t.getAttribute("data-d")) || 0;
@@ -73761,6 +73938,7 @@ function viewCatalogue() {
         return save("challans", ch).then(function (r) {
           chSaved = true;
           if (!r) return;
+          if (chDraft && chDraft.fromQuoteIds && chDraft.fromQuoteIds.length) quoteSentWrite(chDraft.fromQuoteIds, chDraft.fromQuote, no, r && r.id);   /* 6.9.997 */
           if (_msAsk) {   /* 6.9.863 - the new site, for the office to open */
             try { save("audit", { action: "site:ask", actor: S.user, recId: (r && r.id) || "", detail: JSON.stringify({ master: cn, site: _msAsk, challan: no, from: "crm" }) }, true); } catch (eSa) { }
           } else { try { siteFromChallan(cn, siteName); } catch (eSf) {} }   /* 6.9.669 */
