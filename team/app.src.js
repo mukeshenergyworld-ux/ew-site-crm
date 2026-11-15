@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.986";   /* 6.9.986 (14 Nov 2026) - FIX: the same part-save counted again inflated stock; 16 products were over by 3,027 pieces */   /* 6.9.985 (14 Nov 2026) - Tally match: a line already picked is drawn as picked, and settled lines fold away so only what needs him is on screen */   /* 6.9.984 (14 Nov 2026) - the waiting-bill sheet names the lines that still have no code, with the supplier\u2019s own code and the nearest catalogue ones */   /* 6.9.983 (14 Nov 2026) - the red "not matched" line on Stock to order says what it means and opens: which bill, how many, and how to put it right */   /* 6.9.982 (12 Nov 2026) - the quote tick moved to the quote book he actually looks at; it had been on the List view only */   /* 6.9.981 (12 Nov 2026) - merging quotations: one line per product, and a disagreed discount falls to the client\u2019s preset and is named */   /* 6.9.980 (12 Nov 2026) - tick several quotations and send them out on one challan */   /* 6.9.979 (12 Nov 2026) - Make challan is on every quotation, not only a won one; converting offers to mark it Won */   /* 6.9.978 (12 Nov 2026) - one Change button on a money row: edit it with the PIN asked twice, or cancel it */   /* 6.9.977 (12 Nov 2026) - a partner or driver payout entered wrongly can be set aside, with a reason, and brought back */   /* 6.9.976 (12 Nov 2026) - a brand already set aside stops nagging from the empty-brand card */   /* 6.9.975 (12 Nov 2026) - a finalised return can be opened again, and repriced, with it recorded as after the stamp */   /* 6.9.974 (12 Nov 2026) - Change it reprices this return as well as setting the preset from today */   /* 6.9.973 (12 Nov 2026) - FIX: the Finalise card on a return threw before it drew (6.9.972) */   /* 6.9.972 (12 Nov 2026) - return finalise: try a rate on the lines, and change the preset from today with a PIN */   /* 6.9.971 (12 Nov 2026) - a brand with no preset is set from the return-finalise card itself */   /* 6.9.970 (12 Nov 2026) - quote PDF: a product description is printed whole, not cut at three lines */   /* 6.9.969 (11 Nov 2026) - deliveries with no signed paper split by age: the ones past 30 days get the red number, the fresh ones are stated quietly */   /* 6.9.968 (11 Nov 2026) - a purchase bill already fully in stock is not brought in a second time: Huliot's invoice arrives in three mails, and all three were being uploaded */   /* 6.9.967 (11 Nov 2026) - GHP+ logo in the registered Green Heat+ colours (#00539F / #ED1D24) on PDFs, quotes, challans and QR centres */   /* 6.9.966 (11 Nov 2026) - technical specifications sheet in colour: brand-coloured table heads and code strip, coloured field labels, and the exceptions in an amber panel */   /* 6.9.965 (11 Nov 2026) - old quotes to close: grouped by what the site is doing now, closing windows first, each group carrying that stage's own pitch lines */   /* 6.9.964 (11 Nov 2026) - quote spec table: a value all but a few items share is said once and the few are named, so one tube no longer printed five long columns 25 times */   /* 6.9.963 (11 Nov 2026) - purchase bills: same day + same amount flagged on the Tally screen */   /* 6.9.958 (10 Nov 2026) - a statement attached before the name was kept is told apart by its time, not left as four identical lines */     /* 6.9.957 (10 Nov 2026) - each attached old hisab shows its file name, and a wrong one can be set aside */     /* 6.9.956 (10 Nov 2026) - rebuilt: the GitHub Pages publish of 6.9.955 failed (run #1675), so nothing had changed on the phones */   /* 6.9.955 (10 Nov 2026) - the old hisab takes more than one file at once: photographed pages become one PDF, and every statement on file is listed */     /* 6.9.954 (10 Nov 2026) - the Partner Club: fixed slabs, a bonus on crossing one, the trip and device rewards, every partner's rupees to his next slab, and the quiet-partner watch */     /* 6.9.953 (10 Nov 2026) - Service > Control: cash in each engineer's hand, hand-over recorded, three random customer checks a week */     /* 6.9.952 (10 Nov 2026) - to-bill month by month, screens found from Search, team screen use on Health, a receipt for every incentive payout */     /* 6.9.951 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 6.9.950 (9 Nov 2026) - brand introductions: a fuller paragraph, three stage-wise benefits and one next step, on the quote and the proposal */     /* 6.9.949 (9 Nov 2026) - quote PDF: a product picture stays inside its own row (1.2 mm clear of both lines) */     /* 6.9.948 (9 Nov 2026) - quote PDF: each room heading carries its collection and finish with colour dots; every FIMA code chip has its finish dot */     /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
+  var APP_VERSION = "6.9.987";   /* 6.9.987 (15 Nov 2026) - Call this week: the live sites at a buying stage, by town, with the man to ring and his mobile; a site rests 14 days once it is rung */   /* 6.9.986 (6.9.986 (14 Nov 2026) - FIX: the same part-save counted again inflated stock; 16 products were over by 3,027 pieces */   /* 6.9.985 (14 Nov 2026) - Tally match: a line already picked is drawn as picked, and settled lines fold away so only what needs him is on screen */   /* 6.9.984 (14 Nov 2026) - the waiting-bill sheet names the lines that still have no code, with the supplier\u2019s own code and the nearest catalogue ones */   /* 6.9.983 (14 Nov 2026) - the red "not matched" line on Stock to order says what it means and opens: which bill, how many, and how to put it right */   /* 6.9.982 (12 Nov 2026) - the quote tick moved to the quote book he actually looks at; it had been on the List view only */   /* 6.9.981 (12 Nov 2026) - merging quotations: one line per product, and a disagreed discount falls to the client\u2019s preset and is named */   /* 6.9.980 (12 Nov 2026) - tick several quotations and send them out on one challan */   /* 6.9.979 (12 Nov 2026) - Make challan is on every quotation, not only a won one; converting offers to mark it Won */   /* 6.9.978 (12 Nov 2026) - one Change button on a money row: edit it with the PIN asked twice, or cancel it */   /* 6.9.977 (12 Nov 2026) - a partner or driver payout entered wrongly can be set aside, with a reason, and brought back */   /* 6.9.976 (12 Nov 2026) - a brand already set aside stops nagging from the empty-brand card */   /* 6.9.975 (12 Nov 2026) - a finalised return can be opened again, and repriced, with it recorded as after the stamp */   /* 6.9.974 (12 Nov 2026) - Change it reprices this return as well as setting the preset from today */   /* 6.9.973 (12 Nov 2026) - FIX: the Finalise card on a return threw before it drew (6.9.972) */   /* 6.9.972 (12 Nov 2026) - return finalise: try a rate on the lines, and change the preset from today with a PIN */   /* 6.9.971 (12 Nov 2026) - a brand with no preset is set from the return-finalise card itself */   /* 6.9.970 (12 Nov 2026) - quote PDF: a product description is printed whole, not cut at three lines */   /* 6.9.969 (11 Nov 2026) - deliveries with no signed paper split by age: the ones past 30 days get the red number, the fresh ones are stated quietly */   /* 6.9.968 (11 Nov 2026) - a purchase bill already fully in stock is not brought in a second time: Huliot's invoice arrives in three mails, and all three were being uploaded */   /* 6.9.967 (11 Nov 2026) - GHP+ logo in the registered Green Heat+ colours (#00539F / #ED1D24) on PDFs, quotes, challans and QR centres */   /* 6.9.966 (11 Nov 2026) - technical specifications sheet in colour: brand-coloured table heads and code strip, coloured field labels, and the exceptions in an amber panel */   /* 6.9.965 (11 Nov 2026) - old quotes to close: grouped by what the site is doing now, closing windows first, each group carrying that stage's own pitch lines */   /* 6.9.964 (11 Nov 2026) - quote spec table: a value all but a few items share is said once and the few are named, so one tube no longer printed five long columns 25 times */   /* 6.9.963 (11 Nov 2026) - purchase bills: same day + same amount flagged on the Tally screen */   /* 6.9.958 (10 Nov 2026) - a statement attached before the name was kept is told apart by its time, not left as four identical lines */     /* 6.9.957 (10 Nov 2026) - each attached old hisab shows its file name, and a wrong one can be set aside */     /* 6.9.956 (10 Nov 2026) - rebuilt: the GitHub Pages publish of 6.9.955 failed (run #1675), so nothing had changed on the phones */   /* 6.9.955 (10 Nov 2026) - the old hisab takes more than one file at once: photographed pages become one PDF, and every statement on file is listed */     /* 6.9.954 (10 Nov 2026) - the Partner Club: fixed slabs, a bonus on crossing one, the trip and device rewards, every partner's rupees to his next slab, and the quiet-partner watch */     /* 6.9.953 (10 Nov 2026) - Service > Control: cash in each engineer's hand, hand-over recorded, three random customer checks a week */     /* 6.9.952 (10 Nov 2026) - to-bill month by month, screens found from Search, team screen use on Health, a receipt for every incentive payout */     /* 6.9.951 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 6.9.950 (9 Nov 2026) - brand introductions: a fuller paragraph, three stage-wise benefits and one next step, on the quote and the proposal */     /* 6.9.949 (9 Nov 2026) - quote PDF: a product picture stays inside its own row (1.2 mm clear of both lines) */     /* 6.9.948 (9 Nov 2026) - quote PDF: each room heading carries its collection and finish with colour dots; every FIMA code chip has its finish dot */     /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -3023,7 +3023,7 @@ window.addEventListener("beforeunload", function (ev) {
     _rpgCache = null;      /* v6.9.489 - the preset gap is money; a stale count is the worst of them */
     /* v6.9.373 - the three new per-paint indexes. A cache that is not dropped here shows
        yesterday's money, which is the worst thing this app can do. */
-    _ledCache = null; _cqCache = null; _cwbCache = null; _dscIdx = null; _dscFam = null; _whoIx = null;
+    _ledCache = null; _cqCache = null; _cwbCache = null; _dscIdx = null; _dscFam = null; _whoIx = null; _pbCalled = null;
     /* v6.9.485 - the register's four are per-PAINT indexes, busted here with the ledger's. That
        is the whole job: renderCore runs on every render and every caller of splitCancelled
        renders straight afterwards, so a second bust inside splitCancelled bought nothing - and
@@ -56558,6 +56558,156 @@ function viewCatalogue() {
       '</div>';
   }
 
+
+  /* ===================== CALL THIS WEEK  (6.9.987, 15 Nov 2026) =====================
+     HIS ASK, after the marketing talk: "a screen that lists exactly who to call this week by
+     stage and town". The Pitch board already groups live sites by construction stage and says
+     what to pitch at each - that part is right and is untouched. Three things it could not do:
+
+       1. It never said WHO to ring. The architect, the plumber and the builder are names on the
+          site row; their mobiles are on the partner record, one tap away on another screen.
+       2. It never said WHERE. Six towns are worked - Sonipat, Panipat, Karnal, Rohtak,
+          Saharanpur, Shamli - and a round trip is planned by town, not by stage.
+       3. It had no memory. The same twenty sites sat at the top every morning whether they had
+          been rung yesterday or never, so the board was read once and then ignored.
+
+     MEASURED on his book the morning this was written: 997 sites, 224 carry a stage, 232 carry
+     a town. Of those, the stages that are BUYING NOW - the ones PITCH2 already marks as a window
+     - hold the whole week's work. The other 773 cannot appear here at all, and the card says so
+     in its own line rather than pretending the list is complete.
+
+     "Called" writes one audit row (pitch:call) and the site drops off the list for 14 days. It is
+     a record, not a deletion: nothing is hidden, the site is still on the board below. */
+  var PB_TOWNS = ["Sonipat", "Panipat", "Karnal", "Rohtak", "Saharanpur", "Shamli"];
+  var PB_QUIET = 14;   /* days a site rests after it has been rung */
+  function pbTown(st) {
+    var c = String((st && st.city) || "").trim();
+    if (!c) return "";
+    var l = c.toLowerCase();
+    for (var i = 0; i < PB_TOWNS.length; i++) if (l.indexOf(PB_TOWNS[i].toLowerCase()) > -1) return PB_TOWNS[i];
+    return "Other";
+  }
+  var _pbCalled = null;
+  function pbCalledMap() {
+    if (_pbCalled) return _pbCalled;
+    var m = {};
+    (S.data.audit || []).forEach(function (r) {
+      if (!r || String(r.action || "") !== "pitch:call") return;
+      var d = {};
+      try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
+      if (!d.siteId) return;
+      var at = String(r.createdAt || "");
+      if (!m[d.siteId] || at > m[d.siteId]) m[d.siteId] = at;
+    });
+    return (_pbCalled = m);
+  }
+  /* every man worth ringing about this site, with the mobile off his partner record */
+  function pbWho(st) {
+    var out = [], seen = {};
+    [["Architect", st.architect], ["Plumber", st.plumber], ["Builder", st.builder]].forEach(function (x) {
+      var nm = String(x[1] || "").trim();
+      if (!nm || seen[nm.toLowerCase()]) return;
+      seen[nm.toLowerCase()] = 1;
+      var p = partnerByName(nm);
+      out.push({ role: x[0], name: nm, mobile: String((p && (p.mobile || p.mobile2)) || "").trim() });
+    });
+    var cm = String(st.mobile || "").trim();
+    if (cm && !out.filter(function (o) { return o.mobile === cm; }).length)
+      out.push({ role: "Site", name: String(st.client || st.name || "").trim(), mobile: cm });
+    return out;
+  }
+  /* the week's list: a live site at a buying stage, rested ones left out */
+  function pbWeek() {
+    var called = pbCalledMap(), tod = today(), out = [];
+    (S.data.sites || []).forEach(function (st) {
+      if (!st || isCancelled("sites", st.id)) return;
+      var stage = String(st.stage || "").trim();
+      if (!stage || !PITCH2[stage] || !PITCH2[stage].win) return;
+      var last = called[st.id] || "";
+      var rest = last ? -daysTo(localDay(last)) : 9999;
+      if (rest < PB_QUIET) return;
+      out.push({ st: st, stage: stage, town: pbTown(st), who: pbWho(st),
+                 last: last ? localDay(last) : "", rest: rest,
+                 ord: STAGES2.indexOf(stage) });
+    });
+    /* the latest stage first - a site fitting taps this week is more urgent than one at slab */
+    out.sort(function (a, b) { return b.ord - a.ord || String(a.town).localeCompare(String(b.town)); });
+    return out;
+  }
+  function pbCallCard() {
+    var all = pbWeek();
+    var sites = (S.data.sites || []).filter(function (x) { return x && !isCancelled("sites", x.id); });
+    var noStage = sites.filter(function (x) { return !String(x.stage || "").trim(); }).length;
+    var noTown = sites.filter(function (x) { return !String(x.city || "").trim(); }).length;
+    var pick = String(S.pbTown || "");
+    var shown = pick ? all.filter(function (r) { return r.town === pick || (pick === "Not set" && !r.town); }) : all;
+    var cnt = {};
+    all.forEach(function (r) { var k = r.town || "Not set"; cnt[k] = (cnt[k] || 0) + 1; });
+    var h = '<div class="card" style="border-color:#86efac;background:#f0fdf4">' +
+      '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
+      '<h3 style="margin:0;flex:1">Call this week</h3>' +
+      (all.length ? '<button class="btn sm ghost" data-act="pb-tg">Send the list to the team</button>' : '') + '</div>' +
+      '<div class="meta" style="font-size:12.5px;margin-top:3px">Live sites at a stage that is buying now, newest stage first. A site you ring rests for ' + PB_QUIET + ' days and comes back on its own.</div>';
+    if (!all.length) {
+      return h + '<div class="meta" style="margin-top:8px">Nothing is at a buying stage right now' +
+        (noStage ? ', and ' + plural(noStage, "site") + ' carry no stage at all - set those and this list fills itself' : '') + '.</div></div>';
+    }
+    /* the towns, as a filter row - each says how many are waiting there */
+    var keys = Object.keys(cnt).sort(function (a, b) { return cnt[b] - cnt[a]; });
+    h += '<div class="acts" style="flex-wrap:wrap;gap:6px;margin-top:8px">' +
+      '<button class="btn sm ' + (pick ? 'ghost' : '') + '" data-act="pb-town" data-t="">All ' + all.length + '</button>' +
+      keys.map(function (k) {
+        return '<button class="btn sm ' + (pick === k ? '' : 'ghost') + '" data-act="pb-town" data-t="' + esc(k) + '">' + esc(k) + ' ' + cnt[k] + '</button>';
+      }).join("") + '</div>';
+    /* 126 rows on his book the day this shipped - a phone cannot be handed that. The town
+       buttons above are the real filter; this keeps the page light until one is pressed. */
+    var CAP = 30, over = shown.length - CAP;
+    shown.slice(0, CAP).forEach(function (r) {
+      var st = r.st, def = PITCH2[r.stage] || { lines: [] };
+      var who = r.who.length ? r.who.map(function (w) {
+        return esc(w.role) + ': ' + (w.mobile
+          ? '<a href="tel:' + esc(w.mobile) + '" style="font-weight:700;color:#0f766e">' + esc(w.name) + '</a>'
+          : esc(w.name) + ' <span style="color:#dc2626">no mobile</span>');
+      }).join(' &middot; ') : '<span style="color:#dc2626">nobody named on this site</span>';
+      h += '<div style="border-top:1px solid #bbf7d0;margin-top:8px;padding-top:7px">' +
+        '<div style="font-weight:700;font-size:13.5px">' +
+        '<a href="#" data-act="site-open" data-id="' + esc(st.id) + '" style="color:#0b3b36">' + esc(st.name || "(no name)") + '</a>' +
+        (st.client ? ' <span style="font-weight:400;color:#64748b">' + esc(st.client) + '</span>' : '') +
+        (r.town ? ' <span class="pill teal">' + esc(r.town) + '</span>' : ' <span class="pill soon">town not set</span>') +
+        '</div>' +
+        '<div class="meta" style="font-size:12.5px">' + esc(r.stage) + ' &mdash; ' + esc(def.lines.join(" · ")) + '</div>' +
+        '<div class="meta" style="font-size:12.5px;margin-top:2px">' + who + '</div>' +
+        (r.last ? '<div class="meta" style="font-size:12px;color:#94a3b8">last rung ' + esc(dstr(r.last)) + '</div>' : '') +
+        '<div class="acts" style="margin-top:5px;gap:6px">' +
+        '<button class="btn sm" data-act="pb-called" data-id="' + esc(st.id) + '">Called</button>' +
+        '<button class="btn sm ghost" data-act="matrix" data-id="' + esc(st.id) + '">What to pitch</button>' +
+        '</div></div>';
+    });
+    if (over > 0) h += '<div class="meta" style="font-size:12.5px;margin-top:8px;border-top:1px solid #bbf7d0;padding-top:7px">And ' + over + ' more waiting. Pick a town above to see them.</div>';
+    if (noStage || noTown) {
+      h += '<div class="meta" style="font-size:12.5px;margin-top:10px;border-top:1px solid #bbf7d0;padding-top:7px;color:#92400e">' +
+        'Not on this list, and they cannot be: ' +
+        [noStage ? plural(noStage, "site") + ' with no stage' : "", noTown ? plural(noTown, "site") + ' with no town' : ""].filter(Boolean).join(", ") +
+        '. Every one of those is a site nobody will be reminded to ring.</div>';
+    }
+    return h + '</div>';
+  }
+  /* the week's list as one message, for the group */
+  function pbText() {
+    var rows = pbWeek(), by = {};
+    rows.forEach(function (r) { var k = r.town || "Town not set"; (by[k] = by[k] || []).push(r); });
+    var out = ["ENERGY WORLD - call this week (" + dstr(today()) + ")", ""];
+    Object.keys(by).sort().forEach(function (k) {
+      out.push(k.toUpperCase());
+      by[k].forEach(function (r) {
+        out.push("  " + (r.st.name || "(no name)") + (r.st.client ? " - " + r.st.client : "") + "  [" + r.stage + "]");
+        r.who.forEach(function (w) { out.push("     " + w.role + ": " + w.name + (w.mobile ? " " + w.mobile : " (no mobile)")); });
+      });
+      out.push("");
+    });
+    return out.join("\n");
+  }
+
   /* Pitch board — the daily stage-based playbook, keyed to live SITES.
      Set a site to its construction stage and this tells you what to pitch there, to whom, and
      when the window closes. Works even before per-brand Pitch rules are configured. */
@@ -56570,7 +56720,8 @@ function viewCatalogue() {
     var noStage = [];
     sites.forEach(function (st) { if (st.stage && byStage[st.stage]) byStage[st.stage].push(st); else noStage.push(st); });
 
-    var h = '<div class="empty" style="text-align:left;padding:0 0 12px"><b>Stage-based pitching.</b> ' +
+    var h = pbCallCard();   /* 6.9.987 - who to ring this week, before the reference board */
+    h += '<div class="empty" style="text-align:left;padding:0 0 12px"><b>Stage-based pitching.</b> ' +
       'Set each live site to its construction stage — the board shows exactly what to pitch there, to whom, and which windows close soon. This is the single biggest lever in the app.</div>';
 
     h += '<div class="row"><input class="grow" id="q" placeholder="Search sites, client, plumber, architect..." value="' + esc(S.q) + '"/>' +
@@ -70009,6 +70160,29 @@ function viewCatalogue() {
       if (_cxask) cxAskWrite(_cxt, _cxi, _cxr, _cxask.reason, String(val("cx_note") || "").slice(0, 400), "approved");
       cxWrite(_cxt, _cxi, _cxr, _cxrs, String(val("cx_note") || "").slice(0, 400), false);
       toast(CANCEL_TABS[_cxt] + " cancelled. It waits in the Bin for 30 days if you ever need it back.");
+      return;
+    }
+    if (act === "pb-town") { S.pbTown = t.getAttribute("data-t") || ""; keepScroll = true; render(); return; }
+    if (act === "pb-called") {
+      var _pbi = t.getAttribute("data-id");
+      var _pbs = (S.data.sites || []).filter(function (x) { return x.id === _pbi; })[0];
+      if (!_pbs) { toast("That site is not on the book."); return; }
+      t.disabled = true; t.textContent = "Saving...";   /* one tap, one entry */
+      var _pbn = new Date().toISOString();
+      _pbCalled = null;
+      save("audit", { id: "PC-" + Date.now() + "-" + Math.floor(Math.random() * 1000000),
+        createdAt: _pbn, actor: S.user || "", action: "pitch:call",
+        target: String(_pbs.name || _pbs.id),
+        detail: JSON.stringify({ siteId: _pbs.id, site: _pbs.name || "", client: _pbs.client || "",
+          stage: _pbs.stage || "", town: pbTown(_pbs), by: S.user || "", at: _pbn }), ip: "" }, true);
+      toast(String(_pbs.name || "That site") + " rests for " + PB_QUIET + " days. It comes back on its own.");
+      keepScroll = true; render(); return;
+    }
+    if (act === "pb-tg") {
+      var _pbt = pbText();
+      if (!_pbt.trim()) { toast("Nothing to send."); return; }
+      try { navigator.clipboard.writeText(_pbt); toast("The week's call list is copied - paste it in the group."); }
+      catch (e) { toast("Could not copy it here."); }
       return;
     }
     if (act === "cx-undo") {
