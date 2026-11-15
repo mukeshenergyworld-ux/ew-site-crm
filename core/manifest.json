@@ -165,7 +165,10 @@
       "discFrom",
       "incMap",
       "payAmt",
-      "isJobLine"
+      "isJobLine",
+      "discRowsFor",
+      "discRowOn",
+      "hisabStampMap"
     ],
     "apps": [
       "CRM",

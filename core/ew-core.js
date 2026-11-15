@@ -668,6 +668,119 @@
 
   function isJobLine(l) { return !!(l && (l.job === true || String(l.code || "") === JOB_CODE)); }
 
+
+  /* ===== 15 Nov 2026 - THE ONE THAT COST Rs 2,16,742 =====
+     The Payment app had no family-rate fallback: a client given one rate for Huliot against a
+     line that says "Huliot HT PRO", or Heliroma against "DRP", found no row at all and the line
+     was priced at FULL MRP. Unnat Hotel read Rs 5,45,172 there against the CRM's Rs 3,40,685.
+     The morning fix made it BEHAVE like the CRM's but written differently - which closed the
+     bug and widened the crack it came through. Both are now the CRM's text, byte for byte, and
+     the build will not let them part again.
+     PROVED before promotion: 1,228 client x brand x day combinations off his own book, 560 of
+     them carrying a real discount, and all three apps answer identically on every one. */
+
+  function discRowsFor(client, brand) {
+    if (client && typeof client === "object") client = client.name;   /* 6.9.824 - C1: an object was keyed as "[object Object]" */
+    var b = dkey(brand), ix = dscIndex();
+    var pick = function (nm) {
+      return (ix[dkey(nm) + "||" + b] || []).slice();
+    };
+    var names = [client];
+    /* not one man under two names - there is nothing further to look at. MEASURED on his book
+       on 10 Sep 2026: 167 clients, THREE live aliases, so this is the answer 164 times out of
+       167 and it is the line that must stay cheap */
+    var am = dupAliasMap(), k = dgKey(client);
+    if (am.byName[k] || am.aliasOf[k]) {
+      var fam = dupFamily(client);
+      for (var q = 0; q < fam.length; q++) if (dgKey(fam[q]) !== k) names.push(fam[q]);
+    }
+    var i, r;
+    for (i = 0; i < names.length; i++) { r = pick(names[i]); if (r.length) return r; }
+    /* 17 Oct 2026 - the family rate: head name first, then any sister brand, exact brand excluded */
+    var f = discFam(brand);
+    if (!f) return [];
+    var fx = dscFamIndex();
+    for (i = 0; i < names.length; i++) {
+      var rows = (fx[dkey(names[i]) + "||" + f] || []).filter(function (x) { return dkey(x.brand) !== b; });
+      if (!rows.length) continue;
+      var head = rows.filter(function (x) { return dkey(x.brand) === f; });
+      return (head.length ? head : rows).slice();
+    }
+    return [];
+  }
+
+  /* The rate in force on a given day. Rows that had not started yet are out; among the rest the
+     LATEST start wins, and an undated row - "since the beginning" - loses to any dated one, so
+     the first dated rate he writes takes over cleanly from the row that was there before it. */
+  function discRowOn(client, brand, onYmd) {
+    var rows = discRowsFor(client, brand);
+    if (!rows.length) return null;
+    /* same reason as discFrom: no dstr, and no today() either - the two apps build today's date
+       their own way and this block must mean one thing in both. */
+    var day = String(onYmd || "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+      var _n = new Date();
+      day = _n.getFullYear() + "-" + String(_n.getMonth() + 1).padStart(2, "0") +
+            "-" + String(_n.getDate()).padStart(2, "0");
+    }
+    var dated = [], undated = [];
+    rows.forEach(function (r) { (discFrom(r) ? dated : undated).push(r); });
+    var live = dated.filter(function (r) { return discFrom(r) <= day; });
+    if (live.length) {
+      var best = live[0];
+      for (var i = 1; i < live.length; i++) {
+        var a = discFrom(live[i]), b = discFrom(best);
+        /* two rates starting the same day: the one written later is the correction */
+        if (a > b || (a === b && discStamp(live[i]) > discStamp(best))) best = live[i];
+      }
+      return best;
+    }
+    /* nothing dated has started yet - fall back to whatever was there before dates existed,
+       and never to a rate that has not begun */
+    return undated.length ? discPick(undated) : null;
+  }
+
+  /* ===== 15 Nov 2026 - ONE STAMP READER, THREE APPS =====
+     Three versions of this existed and all three differed. The CRM's wrote nine fields on each
+     stamp, the Challan app's seven, the Payment app's TWO - at and by - so a question the CRM
+     could answer off a stamp (who earns on this delivery, what further discount was given when
+     it was passed, was there no signed paper, was it off-brand) simply could not be asked on a
+     phone. Nothing read those fields wrongly; they were absent, which is how two screens come
+     to give different answers about the same delivery without either being broken.
+     The CRM's is a strict superset of the other two, so it is the one that stays, with the
+     field apps' S.data guard folded in. A field nobody reads yet costs nothing; a field nobody
+     CAN read costs an argument six months from now. */
+  function hisabStampMap() {
+    if (_hsbCache) return _hsbCache;
+    var m = {};
+    /* 15 Nov 2026 - GUARDED, because this is now the one copy and the two field apps paint
+       BEFORE the book has arrived. The CRM never needed it and is not harmed by it. */
+    ((S.data && S.data.audit) || []).forEach(function (r) {
+      if (!r || String(r.action || "") !== "challan:hisab") return;
+      var d = {};
+      try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
+      if (!d.chId) return;
+      var prev = m[d.chId];
+      /* newest row wins, same convention as every other audit-backed fact */
+      if (!prev || String(r.createdAt || "") >= String(prev.at || "")) {
+        /* v6.9.324 - a stamp now also carries WHO earns on this delivery and any further
+           discount given at the moment of passing it. Both are absent from every stamp written
+           before v6.9.324: `inc` reads null and `extra` reads 0, and every reader below treats
+           that as "no answer, behave exactly as you did yesterday". Money must never move
+           because a feature was deployed. */
+        m[d.chId] = { at: r.createdAt || "", by: r.actor || d.by || "",
+                      set: d.set || [], ignored: d.ignored || [],
+                      inc: (d.inc && d.inc.length !== undefined) ? d.inc : null,
+                      extra: Number(d.extra) || 0, extraNote: String(d.extraNote || ""),
+                      /* v6.9.342 - carried out of the audit row so the card can show it. An
+                         old stamp has no such key and reads "", which is exactly right: every
+                         stamp written before today required a receipt to exist. */
+                      noProof: String(d.noProof || ""), offBrand: String(d.offBrand || "") };   /* 6.9.694 */
+      }
+    });
+    _hsbCache = m;
+    return m;
+  }
 /* ==EWCORE:money:END== */
 
 /* ==EWCORE:money_field== The money rules the two FIELD apps share and the CRM states its own way. Kept apart from the section above only because the CRM has no rnLines, dedupe or hisabExtraOf of its own: writing them in would ADD a function to that app, and the build is right to refuse that. */
