@@ -283,7 +283,7 @@ body{background:#F4F6F9}
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.157.4";   /* 1.157.4 (15 Nov 2026) - the discount rule moves to its own shared section, now covering the Visit app too; no figure moves */   /* 1.157.3 (1.157.3 (15 Nov 2026) - the discount rules and the stamp reader come from the shared core; no figure moves */   /* 1.157.2 (1.157.2 (15 Nov 2026) - six money rules now shared with the CRM as well, not just the Payment app */   /* 1.157.1 (1.157.1 (15 Nov 2026) - nine money rules now come from core/ew-core.js, byte-identical with the Payment app; no figure changes */   /* 1.157.0 (1.157.0 (14 Nov 2026) - FIX: a return line frozen at 0%% was credited at full list price; the CRM's rule (6.9.728) is now this app's rule too - Rs 2,12,214 across 5 clients */   /* 1.156.0 (1.156.0 (12 Nov 2026) - the product picker lists a family in catalogue order, like the CRM, not A to Z */   /* 1.155.0 (11 Nov 2026) - a challan carrying freight must name the driver it is paid to */     /* 1.154.1 (10 Nov 2026) - a space can be typed in the client search box again */     /* 1.154.0 (10 Nov 2026) - admin: a client not on the book is added from the challan itself, as a new lead or an old client */     /* 1.153.4 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 1.153.3 (9 Nov 2026) - FIMA finish codes with their own finish photo */     /* 1.153.2 (9 Nov 2026) - a small finish-colour dot on FIMA product pictures */     /* 1.153.1 (9 Nov 2026) - FIMA handles S1-S4 in every finish and the S2 glass handles */     /* 1.153.0 (9 Nov 2026) - FIMA in every finish: any of 14,260 finish codes (F1301WLX9CS ...) can go on a challan at its own MRP */     /* 1.152.0 (8 Nov 2026) - Add to Hisab: who earns, without incentive % or amount */   /* 1.151.0 (8 Nov 2026) - incentive card: any number of discount slabs (shared block) */   /* 1.150.0 (2 Nov 2026) - EW <-> MPS are normal challans again; they add to the other godown after its count */   /* 1.149.0 (1 Nov 2026) - the godown receives a transfer on this phone */   /* 1.148.0 (1 Nov 2026) - a transfer lands only when the other godown receives it */   /* 1.147.0 (1 Nov 2026) - two godowns: MPS Sonipat has its own stock; MPS staff see MPS work only; no challan to MPS (it is a transfer) */   /* 1.146.0 (31 Oct 2026) - one tap, one entry: a second tap on a write button is swallowed */   /* 1.145.0 - vehicle no asked every time a driver is picked (not for Porter / Rapido); 1.144.0 lorry check */
+  var APP_VERSION = "1.158.0";   /* 1.158.0 (15 Nov 2026) - driver payouts are counted the CRM's way: one cancelled or edited in the CRM is cancelled or edited here too, so the godown cannot pay a driver short */   /* 1.157.4 (1.157.4 (15 Nov 2026) - the discount rule moves to its own shared section, now covering the Visit app too; no figure moves */   /* 1.157.3 (1.157.3 (15 Nov 2026) - the discount rules and the stamp reader come from the shared core; no figure moves */   /* 1.157.2 (1.157.2 (15 Nov 2026) - six money rules now shared with the CRM as well, not just the Payment app */   /* 1.157.1 (1.157.1 (15 Nov 2026) - nine money rules now come from core/ew-core.js, byte-identical with the Payment app; no figure changes */   /* 1.157.0 (1.157.0 (14 Nov 2026) - FIX: a return line frozen at 0%% was credited at full list price; the CRM's rule (6.9.728) is now this app's rule too - Rs 2,12,214 across 5 clients */   /* 1.156.0 (1.156.0 (12 Nov 2026) - the product picker lists a family in catalogue order, like the CRM, not A to Z */   /* 1.155.0 (11 Nov 2026) - a challan carrying freight must name the driver it is paid to */     /* 1.154.1 (10 Nov 2026) - a space can be typed in the client search box again */     /* 1.154.0 (10 Nov 2026) - admin: a client not on the book is added from the challan itself, as a new lead or an old client */     /* 1.153.4 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 1.153.3 (9 Nov 2026) - FIMA finish codes with their own finish photo */     /* 1.153.2 (9 Nov 2026) - a small finish-colour dot on FIMA product pictures */     /* 1.153.1 (9 Nov 2026) - FIMA handles S1-S4 in every finish and the S2 glass handles */     /* 1.153.0 (9 Nov 2026) - FIMA in every finish: any of 14,260 finish codes (F1301WLX9CS ...) can go on a challan at its own MRP */     /* 1.152.0 (8 Nov 2026) - Add to Hisab: who earns, without incentive % or amount */   /* 1.151.0 (8 Nov 2026) - incentive card: any number of discount slabs (shared block) */   /* 1.150.0 (2 Nov 2026) - EW <-> MPS are normal challans again; they add to the other godown after its count */   /* 1.149.0 (1 Nov 2026) - the godown receives a transfer on this phone */   /* 1.148.0 (1 Nov 2026) - a transfer lands only when the other godown receives it */   /* 1.147.0 (1 Nov 2026) - two godowns: MPS Sonipat has its own stock; MPS staff see MPS work only; no challan to MPS (it is a transfer) */   /* 1.146.0 (31 Oct 2026) - one tap, one entry: a second tap on a write button is swallowed */   /* 1.145.0 - vehicle no asked every time a driver is picked (not for Porter / Rapido); 1.144.0 lorry check */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -1173,6 +1173,30 @@ function rnLines(r) {
     try { var m = JSON.parse((row && row.notes) || "{}"); return (m && typeof m === "object") ? m : {}; } catch (e) { return {}; }
   }
 /* ==EWCORE:disc:END== */
+/* ==EWCORE:drivers== DRIVER PAYOUTS AS THEY STAND. The server keeps the payout; a cancel and an edit are audit rows laid over it when read. One copy in the CRM and the Challan app, because the godown pays drivers from the Challan app and was still counting payouts the CRM had cancelled. */
+  function dpLive(rows, audit, keepCancelled) {
+    rows = rows || []; audit = audit || [];
+    var slot = keepCancelled ? "k" : "l", c = dpLive.c || (dpLive.c = {}), was = c[slot];
+    var sig = rows.length + "|" + audit.length + "|" + String((audit[audit.length - 1] || {}).id || "");
+    if (was && was.rows === rows && was.audit === audit && was.sig === sig) return was.out;
+    var off = {}, fix = {};
+    audit.filter(function (a) {
+      var x = a && String(a.action || "");
+      return x === "rec:cancel" || x === "pin:row-edit";
+    }).sort(function (a, b) { return String(a.createdAt || "").localeCompare(String(b.createdAt || "")); })
+      .forEach(function (a) {
+        var d = {}; try { d = JSON.parse(a.detail || "{}") || {}; } catch (e) { return; }
+        if (a.action === "rec:cancel") { if (String(d.tab || "") === "driverpay" && d.recId) off[String(d.recId)] = !d.undo; return; }
+        if (String(d.kind || "") !== "driverpay" || !d.recId) return;
+        var f = fix[String(d.recId)] || (fix[String(d.recId)] = {});
+        (d.changed || []).forEach(function (ch) { if (ch && ch.field) f[String(ch.field)] = ch.now; });
+      });
+    var out = rows.filter(function (p) { return keepCancelled || !(p && off[String(p.id || "")]); })
+      .map(function (p) { var f = p && fix[String(p.id || "")]; return f ? Object.assign({}, p, f, { edited: 1 }) : p; });
+    c[slot] = { rows: rows, audit: audit, sig: sig, out: out };
+    return out;
+  }
+/* ==EWCORE:drivers:END== */
   /* ==EW-CORE:END== */
   /* ---- mergeBook is this app's own again (15 Nov 2026) ----
      It sat inside the core block, and it is no longer the same function in both field apps:
@@ -8791,7 +8815,8 @@ function rnLines(r) {
      what the screen SAYS, rather than something a reader has to infer.
      ========================================================================== */
   var _dpTried = false;
-  function payouts() { return (S.dp && S.dp.rows) || []; }
+
+  function payouts() { return dpLive((S.dp && S.dp.rows) || [], (S.data && S.data.audit) || [], false); }   /* 1.158.0 - the CRM's rule: cancels and edits */
   function dpAmt(p) { return num(p && p.amount); }
   function dpKey(p) {
     return drvResolve(drvRawKey(p && p.driverId, p && p.driver));
