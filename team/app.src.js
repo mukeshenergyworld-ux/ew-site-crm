@@ -316,7 +316,7 @@
 /* ==EWCORE:money:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.992";   /* 6.9.992 (15 Nov 2026) - the CRM joins the shared money core: six rules are now one copy across all three apps */   /* 6.9.991 (6.9.991 (15 Nov 2026) - nine money rules moved into the shared core so the Challan and Payment apps can no longer drift apart on them; the core build, broken since minifying began, runs again */   /* 6.9.990 (6.9.990 (15 Nov 2026) - the duplicate radar reads every record tab, not clients alone: a row whose every field matches another, and the same money to the same man on the same day */   /* 6.9.989 (6.9.989 (15 Nov 2026) - FIX: the money check called a settled account\u2019s folded lines missing; it opens the fold while it reads */   /* 6.9.988 (6.9.988 (15 Nov 2026) - one item on a delivery can be given its own discount at finalise, owner only; it beats the brand box and nothing else moves */   /* 6.9.987 (6.9.987 (15 Nov 2026) - Call this week: the live sites at a buying stage, by town, with the man to ring and his mobile; a site rests 14 days once it is rung */   /* 6.9.986 (6.9.986 (14 Nov 2026) - FIX: the same part-save counted again inflated stock; 16 products were over by 3,027 pieces */   /* 6.9.985 (14 Nov 2026) - Tally match: a line already picked is drawn as picked, and settled lines fold away so only what needs him is on screen */   /* 6.9.984 (14 Nov 2026) - the waiting-bill sheet names the lines that still have no code, with the supplier\u2019s own code and the nearest catalogue ones */   /* 6.9.983 (14 Nov 2026) - the red "not matched" line on Stock to order says what it means and opens: which bill, how many, and how to put it right */   /* 6.9.982 (12 Nov 2026) - the quote tick moved to the quote book he actually looks at; it had been on the List view only */   /* 6.9.981 (12 Nov 2026) - merging quotations: one line per product, and a disagreed discount falls to the client\u2019s preset and is named */   /* 6.9.980 (12 Nov 2026) - tick several quotations and send them out on one challan */   /* 6.9.979 (12 Nov 2026) - Make challan is on every quotation, not only a won one; converting offers to mark it Won */   /* 6.9.978 (12 Nov 2026) - one Change button on a money row: edit it with the PIN asked twice, or cancel it */   /* 6.9.977 (12 Nov 2026) - a partner or driver payout entered wrongly can be set aside, with a reason, and brought back */   /* 6.9.976 (12 Nov 2026) - a brand already set aside stops nagging from the empty-brand card */   /* 6.9.975 (12 Nov 2026) - a finalised return can be opened again, and repriced, with it recorded as after the stamp */   /* 6.9.974 (12 Nov 2026) - Change it reprices this return as well as setting the preset from today */   /* 6.9.973 (12 Nov 2026) - FIX: the Finalise card on a return threw before it drew (6.9.972) */   /* 6.9.972 (12 Nov 2026) - return finalise: try a rate on the lines, and change the preset from today with a PIN */   /* 6.9.971 (12 Nov 2026) - a brand with no preset is set from the return-finalise card itself */   /* 6.9.970 (12 Nov 2026) - quote PDF: a product description is printed whole, not cut at three lines */   /* 6.9.969 (11 Nov 2026) - deliveries with no signed paper split by age: the ones past 30 days get the red number, the fresh ones are stated quietly */   /* 6.9.968 (11 Nov 2026) - a purchase bill already fully in stock is not brought in a second time: Huliot's invoice arrives in three mails, and all three were being uploaded */   /* 6.9.967 (11 Nov 2026) - GHP+ logo in the registered Green Heat+ colours (#00539F / #ED1D24) on PDFs, quotes, challans and QR centres */   /* 6.9.966 (11 Nov 2026) - technical specifications sheet in colour: brand-coloured table heads and code strip, coloured field labels, and the exceptions in an amber panel */   /* 6.9.965 (11 Nov 2026) - old quotes to close: grouped by what the site is doing now, closing windows first, each group carrying that stage's own pitch lines */   /* 6.9.964 (11 Nov 2026) - quote spec table: a value all but a few items share is said once and the few are named, so one tube no longer printed five long columns 25 times */   /* 6.9.963 (11 Nov 2026) - purchase bills: same day + same amount flagged on the Tally screen */   /* 6.9.958 (10 Nov 2026) - a statement attached before the name was kept is told apart by its time, not left as four identical lines */     /* 6.9.957 (10 Nov 2026) - each attached old hisab shows its file name, and a wrong one can be set aside */     /* 6.9.956 (10 Nov 2026) - rebuilt: the GitHub Pages publish of 6.9.955 failed (run #1675), so nothing had changed on the phones */   /* 6.9.955 (10 Nov 2026) - the old hisab takes more than one file at once: photographed pages become one PDF, and every statement on file is listed */     /* 6.9.954 (10 Nov 2026) - the Partner Club: fixed slabs, a bonus on crossing one, the trip and device rewards, every partner's rupees to his next slab, and the quiet-partner watch */     /* 6.9.953 (10 Nov 2026) - Service > Control: cash in each engineer's hand, hand-over recorded, three random customer checks a week */     /* 6.9.952 (10 Nov 2026) - to-bill month by month, screens found from Search, team screen use on Health, a receipt for every incentive payout */     /* 6.9.951 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 6.9.950 (9 Nov 2026) - brand introductions: a fuller paragraph, three stage-wise benefits and one next step, on the quote and the proposal */     /* 6.9.949 (9 Nov 2026) - quote PDF: a product picture stays inside its own row (1.2 mm clear of both lines) */     /* 6.9.948 (9 Nov 2026) - quote PDF: each room heading carries its collection and finish with colour dots; every FIMA code chip has its finish dot */     /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
+  var APP_VERSION = "6.9.993";   /* 6.9.993 (15 Nov 2026) - the challan log leaves the screen: an Excel and a PDF of exactly what is filtered, built for the godown to chase the signed paper - oldest first, driver and vehicle on it, no balances */   /* 6.9.992 (6.9.992 (15 Nov 2026) - the CRM joins the shared money core: six rules are now one copy across all three apps */   /* 6.9.991 (6.9.991 (15 Nov 2026) - nine money rules moved into the shared core so the Challan and Payment apps can no longer drift apart on them; the core build, broken since minifying began, runs again */   /* 6.9.990 (6.9.990 (15 Nov 2026) - the duplicate radar reads every record tab, not clients alone: a row whose every field matches another, and the same money to the same man on the same day */   /* 6.9.989 (6.9.989 (15 Nov 2026) - FIX: the money check called a settled account\u2019s folded lines missing; it opens the fold while it reads */   /* 6.9.988 (6.9.988 (15 Nov 2026) - one item on a delivery can be given its own discount at finalise, owner only; it beats the brand box and nothing else moves */   /* 6.9.987 (6.9.987 (15 Nov 2026) - Call this week: the live sites at a buying stage, by town, with the man to ring and his mobile; a site rests 14 days once it is rung */   /* 6.9.986 (6.9.986 (14 Nov 2026) - FIX: the same part-save counted again inflated stock; 16 products were over by 3,027 pieces */   /* 6.9.985 (14 Nov 2026) - Tally match: a line already picked is drawn as picked, and settled lines fold away so only what needs him is on screen */   /* 6.9.984 (14 Nov 2026) - the waiting-bill sheet names the lines that still have no code, with the supplier\u2019s own code and the nearest catalogue ones */   /* 6.9.983 (14 Nov 2026) - the red "not matched" line on Stock to order says what it means and opens: which bill, how many, and how to put it right */   /* 6.9.982 (12 Nov 2026) - the quote tick moved to the quote book he actually looks at; it had been on the List view only */   /* 6.9.981 (12 Nov 2026) - merging quotations: one line per product, and a disagreed discount falls to the client\u2019s preset and is named */   /* 6.9.980 (12 Nov 2026) - tick several quotations and send them out on one challan */   /* 6.9.979 (12 Nov 2026) - Make challan is on every quotation, not only a won one; converting offers to mark it Won */   /* 6.9.978 (12 Nov 2026) - one Change button on a money row: edit it with the PIN asked twice, or cancel it */   /* 6.9.977 (12 Nov 2026) - a partner or driver payout entered wrongly can be set aside, with a reason, and brought back */   /* 6.9.976 (12 Nov 2026) - a brand already set aside stops nagging from the empty-brand card */   /* 6.9.975 (12 Nov 2026) - a finalised return can be opened again, and repriced, with it recorded as after the stamp */   /* 6.9.974 (12 Nov 2026) - Change it reprices this return as well as setting the preset from today */   /* 6.9.973 (12 Nov 2026) - FIX: the Finalise card on a return threw before it drew (6.9.972) */   /* 6.9.972 (12 Nov 2026) - return finalise: try a rate on the lines, and change the preset from today with a PIN */   /* 6.9.971 (12 Nov 2026) - a brand with no preset is set from the return-finalise card itself */   /* 6.9.970 (12 Nov 2026) - quote PDF: a product description is printed whole, not cut at three lines */   /* 6.9.969 (11 Nov 2026) - deliveries with no signed paper split by age: the ones past 30 days get the red number, the fresh ones are stated quietly */   /* 6.9.968 (11 Nov 2026) - a purchase bill already fully in stock is not brought in a second time: Huliot's invoice arrives in three mails, and all three were being uploaded */   /* 6.9.967 (11 Nov 2026) - GHP+ logo in the registered Green Heat+ colours (#00539F / #ED1D24) on PDFs, quotes, challans and QR centres */   /* 6.9.966 (11 Nov 2026) - technical specifications sheet in colour: brand-coloured table heads and code strip, coloured field labels, and the exceptions in an amber panel */   /* 6.9.965 (11 Nov 2026) - old quotes to close: grouped by what the site is doing now, closing windows first, each group carrying that stage's own pitch lines */   /* 6.9.964 (11 Nov 2026) - quote spec table: a value all but a few items share is said once and the few are named, so one tube no longer printed five long columns 25 times */   /* 6.9.963 (11 Nov 2026) - purchase bills: same day + same amount flagged on the Tally screen */   /* 6.9.958 (10 Nov 2026) - a statement attached before the name was kept is told apart by its time, not left as four identical lines */     /* 6.9.957 (10 Nov 2026) - each attached old hisab shows its file name, and a wrong one can be set aside */     /* 6.9.956 (10 Nov 2026) - rebuilt: the GitHub Pages publish of 6.9.955 failed (run #1675), so nothing had changed on the phones */   /* 6.9.955 (10 Nov 2026) - the old hisab takes more than one file at once: photographed pages become one PDF, and every statement on file is listed */     /* 6.9.954 (10 Nov 2026) - the Partner Club: fixed slabs, a bonus on crossing one, the trip and device rewards, every partner's rupees to his next slab, and the quiet-partner watch */     /* 6.9.953 (10 Nov 2026) - Service > Control: cash in each engineer's hand, hand-over recorded, three random customer checks a week */     /* 6.9.952 (10 Nov 2026) - to-bill month by month, screens found from Search, team screen use on Health, a receipt for every incentive payout */     /* 6.9.951 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 6.9.950 (9 Nov 2026) - brand introductions: a fuller paragraph, three stage-wise benefits and one next step, on the quote and the proposal */     /* 6.9.949 (9 Nov 2026) - quote PDF: a product picture stays inside its own row (1.2 mm clear of both lines) */     /* 6.9.948 (9 Nov 2026) - quote PDF: each room heading carries its collection and finish with colour dots; every FIMA code chip has its finish dot */     /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -31258,6 +31258,121 @@ function viewCatalogue() {
     });
     return h + '</table></div></div>';
   }
+
+  /* ================= THE CHASE SHEET FOR THE GODOWN  (6.9.993, 15 Nov 2026) =================
+     HIS ASK: "make provision to generate pdf and excel of this to send to godwan to do followup
+     for pending one specifically."
+
+     The register already knows which deliveries have no signed paper back - 73 of them the day
+     this was written. What it could not do was leave the screen. A man at the godown with a
+     phone cannot work from a table that scrolls sideways; he needs a sheet he can put on the
+     counter, ring down, and write on.
+
+     SO THIS IS NOT THE SCREEN'S COLUMNS. Balance after and credit limit are deliberately absent:
+     the godown chases paper, not money, and what a client owes is not its business. What goes on
+     instead is what a man actually needs to make the call - how many DAYS it has been waiting
+     (oldest first, because that is the order to ring in), the client's mobile, the site, and
+     THE DRIVER AND VEHICLE that carried it, because nine times out of ten the paper is in the
+     driver's bag and not at the client's at all. Two empty columns at the end are for his pen.
+
+     The rows are exactly what the screen is showing, filter and all, so what he sees is what he
+     sends. One set of rows feeds both files: the Excel button is labelled "Excel", so pdfTwins
+     (6.9.897) puts a PDF beside it, and the two can never disagree. */
+  function regExportList() {
+    var R = regBuild(), out = [];
+    (R.line || []).forEach(function (row) {
+      if (!row || row.gap || row.cx) return;
+      (row.chs || []).filter(regMine).filter(regPass).filter(regOnlyPass).forEach(function (c) {
+        out.push({ n: row.n, c: c });
+      });
+    });
+    (R.old || []).filter(regMine).filter(regPass).filter(regOnlyPass).forEach(function (c) {
+      out.push({ n: null, c: c });
+    });
+    return out;
+  }
+  function regDaysOld(c) {
+    var d = regDate(c); if (!d) return null;
+    var n = -daysTo(d);
+    return n > 0 ? n : 0;
+  }
+  function regChaseRows() {
+    var list = regExportList();
+    /* Oldest first - that is the order to ring in, and it is the whole point of the sheet.
+       A delivery with NO DATE goes LAST, not first: an empty string sorts before every date, so
+       the one row nobody can chase by age was heading the chase list. Seen on his own book the
+       day this shipped - JANPAL/190826/001, an old-book number carrying no date at all. */
+    list.sort(function (a, b) {
+      var da = String(regDate(a.c) || ""), db = String(regDate(b.c) || "");
+      if (!da !== !db) return da ? -1 : 1;
+      return da.localeCompare(db) || String(a.c.challanNo || "").localeCompare(String(b.c.challanNo || ""));
+    });
+    var only = S.regOnly || "";
+    var what = only === "rcpt" ? "Signed receipt still to come back"
+             : only === "fin" ? "Delivered, not yet finalised"
+             : "Every delivery on the book";
+    var HEAD = ["S.No", "Challan no", "Date", "Days", "Client", "Mobile", "Site", "Driver", "Vehicle",
+                "Amount", "Made by", "Paper is with", "Promised by"];
+    /* the headline figures are worked out before the rows, so the TOP of page one carries them.
+       On a sheet handed across a counter the last line is the one nobody reads. */
+    var _tot0 = 0, _old0 = 0;
+    list.forEach(function (x) {
+      try { _tot0 += chValue(x.c); } catch (e) { }
+      var _d0 = regDaysOld(x.c); if (_d0 !== null && _d0 > 30) _old0++;
+    });
+    var _note = plural(list.length, "delivery") + " waiting \u00b7 " + money(_tot0) +
+      (_old0 ? " \u00b7 " + _old0 + " of them more than 30 days old" : "") +
+      " \u00b7 oldest first \u00b7 the last two columns are for your pen";
+    var rows = [
+      [{ v: "Energy World · " + what + " · " + fullDate(today()), s: XL.TITLE }],
+      [{ v: _note, s: XL.MID }],
+      HEAD.map(function (t) { return { v: t, s: XL.HEADW }; })
+    ];
+    var tot = 0, old30 = 0;
+    list.forEach(function (x) {
+      var c = x.c, cl = clientByName(c.customerName) || {};
+      var d = regDaysOld(c), v = 0;
+      try { v = chValue(c); } catch (e) { v = 0; }
+      tot += v; if (d !== null && d > 30) old30++;
+      var late = d !== null && d > 30;
+      var M = function (t) { return { v: t, s: late ? XL.MIDB : XL.MID }; };
+      rows.push([
+        M(x.n === null ? "old" : x.n),
+        { v: String(c.challanNo || ""), s: XL.MIDB },
+        M(regDMY(regDate(c))),
+        { v: d === null ? "" : d, s: late ? XL.R : XL.MID },
+        { v: String(c.customerName || ""), s: XL.MIDB },
+        M(String(cl.mobile || "")),
+        M(String(c.site || "")),
+        M(String(c.driver || "")),
+        M(String(c.vehicle || "")),
+        { v: Math.round(v), s: XL.MONEY },
+        M(regFirst(c.createdBy || "")),
+        M(""), M("")
+      ]);
+    });
+    rows.push([]);
+    rows.push([{ v: "Total " + plural(list.length, "delivery") + " · " + money(tot) +
+                    (old30 ? " · " + old30 + " of them more than 30 days old" : ""), s: XL.BOLD }]);
+    return { rows: rows, cols: [6, 18, 11, 6, 26, 14, 20, 14, 12, 12, 12, 18, 16],
+             name: (only === "rcpt" ? "Receipts_to_collect" : only === "fin" ? "To_finalise" : "Challan_log") + "_" + today() + ".xlsx",
+             n: list.length };
+  }
+  function regChaseBar() {
+    var x = regChaseRows();
+    if (!x.n) return "";
+    var only = S.regOnly || "";
+    return '<div class="card" style="padding:9px 11px;border-color:#fed7aa;background:#fff7ed">' +
+      '<div class="acts" style="align-items:center;gap:8px;flex-wrap:wrap;margin:0">' +
+      '<div class="grow" style="min-width:0;font-size:12.5px;color:#7c2d12">' +
+      '<b>' + (only === "rcpt" ? "Send the godown the chase sheet" : only === "fin" ? "Send the list of what is not finalised" : "Take this log away") + '</b> &mdash; ' +
+      plural(x.n, "delivery") + ', oldest first, with the client’s mobile, the site, the driver and the vehicle. ' +
+      'No balances and no limits on it: the godown chases paper, not money. Two blank columns for his pen.' +
+      '</div>' +
+      '<button class="btn sm" data-act="reg-xl" style="min-height:44px">Excel</button>' +
+      '</div></div>';
+  }
+
   function viewRegister() {
     if (!canSeeRegister()) return '<div class="empty">The register is for the owner, accounts and the executive whose clients are on it.</div>';
     var R = regBuild();
@@ -31336,6 +31451,7 @@ function viewCatalogue() {
     _regRcpt = regRcptMap();
     if (S.regOnly) filt = true;   /* a narrowed list hides the gap rows, like any filter */
     h += regByBar();
+    h += regChaseBar();   /* 6.9.993 - the sheet the godown can work from */
     if (regByClient()) return h + regClientCard();
 
     /* ---- the serial line ---- */
@@ -65820,6 +65936,12 @@ function viewCatalogue() {
       return;
     }
     /* 6.9.659 - the client-wise log: which view, which order, which clients are open */
+    if (act === "reg-xl") {   /* 6.9.993 */
+      var _rx = regChaseRows();
+      if (!_rx.n) { toast("Nothing on the list to send."); return; }
+      dlXlsx(_rx.name, "Chase sheet", _rx.rows, _rx.cols, { freeze: { r: 3, c: 2 } });
+      return;
+    }
     if (act === "regx-by") { S.regBy = t.getAttribute("data-v") === "client" ? "client" : "num"; keepScroll = true; render(); return; }
     if (act === "regx-only") { S.regOnly = t.getAttribute("data-v") || ""; keepScroll = true; render(); return; }
     if (act === "regx-sort") { S.regSort = t.getAttribute("data-v") || "last"; keepScroll = true; render(); return; }
