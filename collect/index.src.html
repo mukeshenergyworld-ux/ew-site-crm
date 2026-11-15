@@ -208,7 +208,7 @@ table.ct td.wd{white-space:nowrap}
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.75.3";   /* 1.75.3 (15 Nov 2026) - FIX ON THE FIX: discRowsFor and discRowOn are now the CRM's text byte for byte, not merely the same behaviour; plus the shared stamp reader */   /* 1.75.2 (1.75.2 (15 Nov 2026) - six money rules now shared with the CRM as well, not just the Challan app */   /* 1.75.1 (1.75.1 (15 Nov 2026) - nine money rules now come from core/ew-core.js, byte-identical with the Challan app; no figure changes */   /* 1.75.0 (1.75.0 (14 Nov 2026) - FIX: a return line frozen at 0%% was credited at full list price; the CRM's rule (6.9.728) is now this app's rule too - Rs 2,12,214 across 5 clients */   /* 1.74.1 (1.74.1 (11 Nov 2026) - GHP+ logo in the registered Green Heat+ colours (#00539F / #ED1D24) on PDFs, quotes, challans and QR centres */   /* 1.74.0 (9 Nov 2026) - FIMA in every finish: a return or a hisab line in a finish code (F1301WLX9CS) finds its product, brand and price */     /* 1.73.1 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */   /* 1.73.0 (3 Nov 2026) - the old hisab paper opens from here, for everyone */   /* 1.72.0 (3 Nov 2026) - a return is priced the same on every phone: old product codes found, a stale shelf catalogue refreshed */   /* 1.71.0 (31 Oct 2026) - one tap, one entry */   /* 1.70.1 (27 Oct 2026) - GHp mark in the middle of every QR, level H */   /* 1.67.0 - flush busy flag + B9 owner guard, narrower sign-out, Old book under ☰ */
+  var APP_VERSION = "1.75.4";   /* 1.75.4 (15 Nov 2026) - the discount rule moves to its own shared section, now covering the Visit app too; no figure moves */   /* 1.75.3 (1.75.3 (15 Nov 2026) - FIX ON THE FIX: discRowsFor and discRowOn are now the CRM's text byte for byte, not merely the same behaviour; plus the shared stamp reader */   /* 1.75.2 (1.75.2 (15 Nov 2026) - six money rules now shared with the CRM as well, not just the Challan app */   /* 1.75.1 (1.75.1 (15 Nov 2026) - nine money rules now come from core/ew-core.js, byte-identical with the Challan app; no figure changes */   /* 1.75.0 (1.75.0 (14 Nov 2026) - FIX: a return line frozen at 0%% was credited at full list price; the CRM's rule (6.9.728) is now this app's rule too - Rs 2,12,214 across 5 clients */   /* 1.74.1 (1.74.1 (11 Nov 2026) - GHP+ logo in the registered Green Heat+ colours (#00539F / #ED1D24) on PDFs, quotes, challans and QR centres */   /* 1.74.0 (9 Nov 2026) - FIMA in every finish: a return or a hisab line in a finish code (F1301WLX9CS) finds its product, brand and price */     /* 1.73.1 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */   /* 1.73.0 (3 Nov 2026) - the old hisab paper opens from here, for everyone */   /* 1.72.0 (3 Nov 2026) - a return is priced the same on every phone: old product codes found, a stale shelf catalogue refreshed */   /* 1.71.0 (31 Oct 2026) - one tap, one entry */   /* 1.70.1 (27 Oct 2026) - GHp mark in the middle of every QR, level H */   /* 1.67.0 - flush busy flag + B9 owner guard, narrower sign-out, Old book under ☰ */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -819,22 +819,6 @@ table.ct td.wd{white-space:nowrap}
      chDiscGap compared every challan ever made against today's rate anyway. */
   function clientDiscountOn(client, brand, ymd) { var d = discRow(client, brand, ymd); return d ? Number(d.pct) || 0 : 0; }
 
-  /* NO dstr() IN HERE, AND THAT IS DELIBERATE. This block is shared byte-for-byte with the
-     Challan app, and the two apps have a function called dstr that does OPPOSITE things: in the
-     CRM it truncates to "2026-08-01", in the Challan app it FORMATS to "1 Aug 2026". Calling it
-     here read every dated rate as undated in the Challan app - so a challan would have been
-     priced at the old percent while the CRM used the new one, silently, and nothing on either
-     screen would have said so. Caught by t_apps_agree the moment the port landed, which is what
-     that suite is for. Ten characters of slicing, no shared name, no trap. */
-  function discFrom(row) {
-    var f = String((incMap(row) || {}).from || "").slice(0, 10);
-    return /^\d{4}-\d{2}-\d{2}$/.test(f) ? f : "";
-  }
-
-  function incMap(row) {
-    try { var m = JSON.parse((row && row.notes) || "{}"); return (m && typeof m === "object") ? m : {}; } catch (e) { return {}; }
-  }
-
   /* v6.9.392 - AND ONE READER FOR A PAYMENT AMOUNT, for exactly the reason above.
      Sixteen sites read it with raw Number(). A payment is typed by a man on a phone and lands
      in the sheet as text, so "1,00,000" reads back as NaN, and every `|| 0` beside it turns
@@ -857,7 +841,6 @@ table.ct td.wd{white-space:nowrap}
 
   function isJobLine(l) { return !!(l && (l.job === true || String(l.code || "") === JOB_CODE)); }
 
-
   /* ===== 15 Nov 2026 - THE ONE THAT COST Rs 2,16,742 =====
      The Payment app had no family-rate fallback: a client given one rate for Huliot against a
      line that says "Huliot HT PRO", or Heliroma against "DRP", found no row at all and the line
@@ -868,6 +851,68 @@ table.ct td.wd{white-space:nowrap}
      PROVED before promotion: 1,228 client x brand x day combinations off his own book, 560 of
      them carrying a real discount, and all three apps answer identically on every one. */
 
+  /* ===== 15 Nov 2026 - ONE STAMP READER, THREE APPS =====
+     Three versions of this existed and all three differed. The CRM's wrote nine fields on each
+     stamp, the Challan app's seven, the Payment app's TWO - at and by - so a question the CRM
+     could answer off a stamp (who earns on this delivery, what further discount was given when
+     it was passed, was there no signed paper, was it off-brand) simply could not be asked on a
+     phone. Nothing read those fields wrongly; they were absent, which is how two screens come
+     to give different answers about the same delivery without either being broken.
+     The CRM's is a strict superset of the other two, so it is the one that stays, with the
+     field apps' S.data guard folded in. A field nobody reads yet costs nothing; a field nobody
+     CAN read costs an argument six months from now. */
+  function hisabStampMap() {
+    if (_hsbCache) return _hsbCache;
+    var m = {};
+    /* 15 Nov 2026 - GUARDED, because this is now the one copy and the two field apps paint
+       BEFORE the book has arrived. The CRM never needed it and is not harmed by it. */
+    ((S.data && S.data.audit) || []).forEach(function (r) {
+      if (!r || String(r.action || "") !== "challan:hisab") return;
+      var d = {};
+      try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
+      if (!d.chId) return;
+      var prev = m[d.chId];
+      /* newest row wins, same convention as every other audit-backed fact */
+      if (!prev || String(r.createdAt || "") >= String(prev.at || "")) {
+        /* v6.9.324 - a stamp now also carries WHO earns on this delivery and any further
+           discount given at the moment of passing it. Both are absent from every stamp written
+           before v6.9.324: `inc` reads null and `extra` reads 0, and every reader below treats
+           that as "no answer, behave exactly as you did yesterday". Money must never move
+           because a feature was deployed. */
+        m[d.chId] = { at: r.createdAt || "", by: r.actor || d.by || "",
+                      set: d.set || [], ignored: d.ignored || [],
+                      inc: (d.inc && d.inc.length !== undefined) ? d.inc : null,
+                      extra: Number(d.extra) || 0, extraNote: String(d.extraNote || ""),
+                      /* v6.9.342 - carried out of the audit row so the card can show it. An
+                         old stamp has no such key and reads "", which is exactly right: every
+                         stamp written before today required a receipt to exist. */
+                      noProof: String(d.noProof || ""), offBrand: String(d.offBrand || "") };   /* 6.9.694 */
+      }
+    });
+    _hsbCache = m;
+    return m;
+  }
+
+
+/* ==EWCORE:money:END== */
+/* ==EWCORE:money_field== The money rules the two FIELD apps share and the CRM states its own way. Kept apart from the section above only because the CRM has no rnLines, dedupe or hisabExtraOf of its own: writing them in would ADD a function to that app, and the build is right to refuse that. */
+function rnLines(r) {
+    var items = [];
+    try { items = JSON.parse(r.itemsJson || "[]"); } catch (e) { items = []; }
+    return items.filter(Boolean);
+  }
+
+  function dedupe(list) {
+    var seen = {};
+    (list || []).slice().sort(function (a, b) {
+      return String(a.createdAt || "").localeCompare(String(b.createdAt || ""));
+    }).forEach(function (c) { seen[String(c.challanNo || c.id)] = c; });
+    return Object.keys(seen).map(function (k) { return seen[k]; });
+  }
+
+  function hisabExtraOf(c) { return ((c && c.id) ? (Number(hisabExtraMap()[c.id]) || 0) : 0) + Math.max(0, nAmt(c && c.discAmt)); }
+/* ==EWCORE:money_field:END== */
+/* ==EWCORE:disc== THE DISCOUNT RULE, FOR ALL FOUR APPS. One client rate, asked the same way by the book of record, the two that move money and the one that quotes. The Payment app had no family-rate fallback and chased Rs 2,16,742 nobody owed; the Visit app had none either and quoted nine client-and-brand pairs at FULL MRP - which costs no rupee on the book, it just loses the order. Proved before promotion on 1,228 client x brand x day combinations off his own book, 560 of them carrying a real discount: all four answer identically on every one. */
   function discRowsFor(client, brand) {
     if (client && typeof client === "object") client = client.name;   /* 6.9.824 - C1: an object was keyed as "[object Object]" */
     var b = dkey(brand), ix = dscIndex();
@@ -929,65 +974,22 @@ table.ct td.wd{white-space:nowrap}
     return undated.length ? discPick(undated) : null;
   }
 
-  /* ===== 15 Nov 2026 - ONE STAMP READER, THREE APPS =====
-     Three versions of this existed and all three differed. The CRM's wrote nine fields on each
-     stamp, the Challan app's seven, the Payment app's TWO - at and by - so a question the CRM
-     could answer off a stamp (who earns on this delivery, what further discount was given when
-     it was passed, was there no signed paper, was it off-brand) simply could not be asked on a
-     phone. Nothing read those fields wrongly; they were absent, which is how two screens come
-     to give different answers about the same delivery without either being broken.
-     The CRM's is a strict superset of the other two, so it is the one that stays, with the
-     field apps' S.data guard folded in. A field nobody reads yet costs nothing; a field nobody
-     CAN read costs an argument six months from now. */
-  function hisabStampMap() {
-    if (_hsbCache) return _hsbCache;
-    var m = {};
-    /* 15 Nov 2026 - GUARDED, because this is now the one copy and the two field apps paint
-       BEFORE the book has arrived. The CRM never needed it and is not harmed by it. */
-    ((S.data && S.data.audit) || []).forEach(function (r) {
-      if (!r || String(r.action || "") !== "challan:hisab") return;
-      var d = {};
-      try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
-      if (!d.chId) return;
-      var prev = m[d.chId];
-      /* newest row wins, same convention as every other audit-backed fact */
-      if (!prev || String(r.createdAt || "") >= String(prev.at || "")) {
-        /* v6.9.324 - a stamp now also carries WHO earns on this delivery and any further
-           discount given at the moment of passing it. Both are absent from every stamp written
-           before v6.9.324: `inc` reads null and `extra` reads 0, and every reader below treats
-           that as "no answer, behave exactly as you did yesterday". Money must never move
-           because a feature was deployed. */
-        m[d.chId] = { at: r.createdAt || "", by: r.actor || d.by || "",
-                      set: d.set || [], ignored: d.ignored || [],
-                      inc: (d.inc && d.inc.length !== undefined) ? d.inc : null,
-                      extra: Number(d.extra) || 0, extraNote: String(d.extraNote || ""),
-                      /* v6.9.342 - carried out of the audit row so the card can show it. An
-                         old stamp has no such key and reads "", which is exactly right: every
-                         stamp written before today required a receipt to exist. */
-                      noProof: String(d.noProof || ""), offBrand: String(d.offBrand || "") };   /* 6.9.694 */
-      }
-    });
-    _hsbCache = m;
-    return m;
-  }
-/* ==EWCORE:money:END== */
-/* ==EWCORE:money_field== The money rules the two FIELD apps share and the CRM states its own way. Kept apart from the section above only because the CRM has no rnLines, dedupe or hisabExtraOf of its own: writing them in would ADD a function to that app, and the build is right to refuse that. */
-function rnLines(r) {
-    var items = [];
-    try { items = JSON.parse(r.itemsJson || "[]"); } catch (e) { items = []; }
-    return items.filter(Boolean);
+  /* NO dstr() IN HERE, AND THAT IS DELIBERATE. This block is shared byte-for-byte with the
+     Challan app, and the two apps have a function called dstr that does OPPOSITE things: in the
+     CRM it truncates to "2026-08-01", in the Challan app it FORMATS to "1 Aug 2026". Calling it
+     here read every dated rate as undated in the Challan app - so a challan would have been
+     priced at the old percent while the CRM used the new one, silently, and nothing on either
+     screen would have said so. Caught by t_apps_agree the moment the port landed, which is what
+     that suite is for. Ten characters of slicing, no shared name, no trap. */
+  function discFrom(row) {
+    var f = String((incMap(row) || {}).from || "").slice(0, 10);
+    return /^\d{4}-\d{2}-\d{2}$/.test(f) ? f : "";
   }
 
-  function dedupe(list) {
-    var seen = {};
-    (list || []).slice().sort(function (a, b) {
-      return String(a.createdAt || "").localeCompare(String(b.createdAt || ""));
-    }).forEach(function (c) { seen[String(c.challanNo || c.id)] = c; });
-    return Object.keys(seen).map(function (k) { return seen[k]; });
+  function incMap(row) {
+    try { var m = JSON.parse((row && row.notes) || "{}"); return (m && typeof m === "object") ? m : {}; } catch (e) { return {}; }
   }
-
-  function hisabExtraOf(c) { return ((c && c.id) ? (Number(hisabExtraMap()[c.id]) || 0) : 0) + Math.max(0, nAmt(c && c.discAmt)); }
-/* ==EWCORE:money_field:END== */
+/* ==EWCORE:disc:END== */
   /* ==EW-CORE:END== */
   /* ---- mergeBook is this app's own again (15 Nov 2026) ----
      It sat inside the core block, and it is no longer the same function in both field apps:
