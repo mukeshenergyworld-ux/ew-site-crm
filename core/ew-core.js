@@ -282,6 +282,7 @@
      Say which of the two actually happened. Nothing else changes: an unreachable server still
      raises no banner. */
   function refreshNow(loud) {
+    rawbDropLive();   /* the arrow answers with the truth the FIRST time */
     pull(true);
     liveVersion().then(function (v) {
       if (!v) { if (loud) toast("Could not check for a new version — you are on v" + APP_VERSION + "."); return; }
@@ -382,11 +383,11 @@
   }
   function getBook(only) {
     var want = only || KEEP;
-    return api("teamGet", { only: want }).then(function (r) {
+    return teamGetD({ only: want }).then(function (r) {
       if (askedFor(r, only)) { BOOKSAY = ""; return r; }
       BOOKSAY = bookSay(r);
       /* the narrow ask came back unusable - try it the way the CRM does, which works */
-      return api("teamGet").then(function (r2) {
+      return teamGetD({}).then(function (r2) {
         if (usableBook(r2)) {
           BOOKSAY = "";
           try { toast("The short list did not come back — pulled the whole book instead."); } catch (e) {}
@@ -397,20 +398,7 @@
       }).catch(function () { return r; });
     });
   }
-  /* MERGE, NEVER REPLACE. `S.data = slimBook(r)` threw away every tab the answer did not
-     carry. That is right for one call that asks for everything and catastrophic for two calls
-     that each ask for half. A tab is only ever overwritten when the server actually sent it
-     AS AN ARRAY - so a part that comes back empty, refused or broken leaves what is already on
-     the phone exactly where it was. Nothing in here can empty a tab, which matters most in the
-     Payment app: a due is challans plus freight, less payments, less returns, and a tab
-     silently blanked would show a man as owing more than he does. */
-  function mergeBook(r, tabs) {
-    if (!S.data) S.data = { ok: true };
-    S.data.ok = true;
-    if (r && r.user) S.data.user = r.user;
-    (tabs || []).forEach(function (k) { if (r && Array.isArray(r[k])) S.data[k] = r[k]; });
-    return S.data;
-  }
+
   /* NO LONGER ON THE PULL PATH as of 18 Aug 2026 - mergeBook above replaced it, because this
      one builds a NEW object and so silently drops every tab the answer did not carry. Kept
      because it is still the right shape for a caller that has a whole book in its hand and
@@ -470,3 +458,226 @@
     if ("serviceWorker" in navigator) { try { navigator.serviceWorker.register("sw.js"); } catch (e) {} }
   }
 /* ==EWCORE:sw:END== */
+
+
+/* ==EWCORE:download== Handing a finished file to the man holding the phone. Byte-identical in all three apps. */
+  function canShareFile() {
+    try {
+      if (!navigator.share || !navigator.canShare) return false;
+      return navigator.canShare({ files: [new File(["x"], "x.pdf", { type: "application/pdf" })] });
+    } catch (e) { return false; }
+  }
+
+  function dlBlob(blob, fname) {
+    var u = URL.createObjectURL(blob), a = document.createElement("a");
+    a.href = u; a.download = fname; a.rel = "noopener"; a.style.display = "none";
+    document.body.appendChild(a); a.click();
+    setTimeout(function () { try { document.body.removeChild(a); } catch (e) { } }, 1500);
+    setTimeout(function () { try { URL.revokeObjectURL(u); } catch (e) { } }, 120000);
+  }
+
+  function dlFresh() { return Date.now() - _dlTap < 3500; }
+
+  /* ================= WHERE THE FILE WENT, ON A PHONE  (CRM 6.9.701 / Challan 1.127.0 / Collect 1.63.0, 6 Oct 2026) =================
+     HIS WORDS: "in mobile its not showing where pdf is downloading, can we put a download folder or what
+     alternate we can do?". A web page cannot choose the folder a file lands in - the phone decides
+     (iPhone: Files > Downloads; Android: Downloads). So the file still downloads exactly as before
+     (6.9.664), and on a phone a panel then says where it went and offers the two things a phone CAN
+     do with it: Open it now, or Save / send it - the share sheet, where "Save to Files" lets him
+     pick any folder (iCloud Drive, On My iPhone, Google Drive) and WhatsApp takes the file itself.
+     A laptop is left alone: its browser already shows the download. */
+  function dlIsPhone() {
+    var ua = String((navigator && navigator.userAgent) || "");
+    return /Android|iPhone|iPod/i.test(ua) || (/iPad|Macintosh/.test(ua) && (navigator.maxTouchPoints || 0) > 1);
+  }
+
+  function dlPanel(blob, fname, ready) {
+    try {
+      if (!blob || !dlIsPhone()) return;
+      var old = document.getElementById("ewdl"); if (old && old.parentNode) old.parentNode.removeChild(old);
+      var type = blob.type || (/\.xlsx$/i.test(fname) ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : "application/pdf");
+      var file = null; try { file = new File([blob], fname, { type: type }); } catch (e) { file = null; }
+      var canSh = false; try { canSh = !!(file && navigator.share && navigator.canShare && navigator.canShare({ files: [file] })); } catch (e) { canSh = false; }
+      var url = URL.createObjectURL(blob);
+      var box = document.createElement("div");
+      box.id = "ewdl";
+      box.setAttribute("style", "position:fixed;left:8px;right:8px;top:calc(env(safe-area-inset-top) + 8px);z-index:10000;"   /* at the top: the app's own toasts live at the bottom */ +
+        "background:#0f172a;color:#fff;border-radius:14px;padding:12px 12px 10px;box-shadow:0 6px 24px rgba(15,23,42,.35);" +
+        "font:500 13px/1.4 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:560px;margin:0 auto");
+      var nm = document.createElement("div");
+      nm.setAttribute("style", "font-weight:700;font-size:13.5px;word-break:break-all");
+      nm.textContent = (ready ? "Your file is ready \u2014 " : "\u2713 Downloaded \u2014 ") + fname;
+      var where = document.createElement("div");
+      where.setAttribute("style", "font-size:12.5px;color:#cbd5e1;margin-top:3px");
+      where.innerHTML = (ready ? "It took a moment to build. Tap <b>Download</b> to save it." : dlWhereSay()) + (!canSh ? "" : /Android/i.test(String(navigator.userAgent || ""))
+        ? " To put it in Drive or send it on WhatsApp, tap <b>Save to\u2026 / Send</b>."
+        : " To keep it in a folder of your choice, tap <b>Save to\u2026</b> and pick <b>Save to Files</b>.");
+      var row = document.createElement("div");
+      row.setAttribute("style", "display:flex;gap:8px;margin-top:9px;flex-wrap:wrap");
+      var btn = function (label, main, fn) {
+        var b = document.createElement("button");
+        b.type = "button"; b.textContent = label;
+        b.setAttribute("style", "min-height:44px;padding:0 14px;border-radius:10px;font:700 13px -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;" +
+          "border:1px solid " + (main ? "#14b8a6" : "#475569") + ";background:" + (main ? "#0f766e" : "transparent") + ";color:#fff;cursor:pointer;flex:" + (main ? "1 1 auto" : "0 0 auto"));
+        b.addEventListener("click", function (e) { e.preventDefault(); e.stopPropagation(); fn(); });
+        row.appendChild(b);
+      };
+      var close = function () { if (box.parentNode) box.parentNode.removeChild(box); setTimeout(function () { try { URL.revokeObjectURL(url); } catch (e) { } }, 60000); };
+      if (ready) btn("Download", true, function () { dlBlob(blob, fname); nm.textContent = "\u2713 Downloaded \u2014 " + fname; where.innerHTML = dlWhereSay(); });
+      btn("Open", !canSh && !ready, function () { var w = null; try { w = window.open(url, "_blank"); } catch (e) { w = null; } if (!w) { var a = document.createElement("a"); a.href = url; a.target = "_blank"; a.rel = "noopener"; document.body.appendChild(a); a.click(); a.remove(); } });   /* never navigate the app itself away */
+      if (canSh) btn("Save to… / Send", !ready, function () { navigator.share({ files: [file], title: fname }).then(close, function () { }); });
+      btn("Close", false, close);
+      box.appendChild(nm); box.appendChild(where); box.appendChild(row);
+      document.body.appendChild(box);
+      setTimeout(function () { if (document.getElementById("ewdl") === box) close(); }, 60000);
+    } catch (e) { }
+  }
+
+  function dlWhereSay() {
+    var ua = String((navigator && navigator.userAgent) || "");
+    if (/Android/i.test(ua)) return "It is in your phone’s <b>Downloads</b> folder (also in the notification at the top).";
+    return "It is in the <b>Files</b> app → <b>Downloads</b> (or tap ⬇ in Safari’s address bar).";
+  }
+
+  /* the word on the button: every PDF button downloads now (6.9.664) */
+  function pdfBtnLabel(base) { return base; }
+
+  /* ================= WHO TOOK THIS FILE, AND WHEN  (6.9.578 / 1.86.0 / 1.46.0) =================
+     His words: "mention file download date and time and by whom for every file download, in very
+     small font in any corner of the page, not highlighted". One line, 5 pt, pale grey, bottom
+     right of every page. Once per document. */
+  function pdfDlStamp(doc) {
+    try {
+      if (!doc || doc._dlStamped) return;
+      doc._dlStamped = true;
+      var d = new Date(), p2 = function (n) { return (n < 10 ? "0" : "") + n; };
+      var line = "Downloaded " + p2(d.getDate()) + "/" + p2(d.getMonth() + 1) + "/" + d.getFullYear() + " " +
+        p2(d.getHours()) + ":" + p2(d.getMinutes()) + (S && S.user ? " by " + String(S.user) : "");
+      var n = doc.getNumberOfPages(), cur = doc.internal.getCurrentPageInfo ? doc.internal.getCurrentPageInfo().pageNumber : n;
+      var fs = doc.getFontSize(), tc = doc.getTextColor ? doc.getTextColor() : null;
+      for (var i = 1; i <= n; i++) {
+        doc.setPage(i);
+        var W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight();
+        doc.setFontSize(5); doc.setTextColor(170, 178, 190);
+        doc.text(line, W - 4, H - 2.5, { align: "right" });
+      }
+      doc.setPage(cur); doc.setFontSize(fs);
+      if (tc) { try { doc.setTextColor(tc); } catch (e) { doc.setTextColor(0, 0, 0); } }
+    } catch (e) { }
+  }
+
+  function pdfOut(doc, fname, title) {
+    pdfDlStamp(doc);   /* 6.9.578 - who took it, and when */
+    /* 6.9.664 / 1.118.0 / 1.58.0 - HIS WORDS: "its not downloading pdf, its very time consuming,
+       change everywhere to download pdf". Every PDF downloads at once: no "Your PDF is ready"
+       choice and no share sheet (Safari on a Mac says it can share a file, so "Download" opened
+       the share sheet and no file came). WhatsApp and Telegram keep their own buttons. */
+    var now = Date.now();
+    if (now - _pdfOutAt < 2000) return Promise.resolve(false);   /* the same press twice */
+    _pdfOutAt = now;
+    if (dlIsPhone()) {   /* 6.9.703 - never jsPDF's save on a phone, and only inside a fresh tap */
+      var _fn = String(fname || "document.pdf"), _bl = doc.output("blob");
+      if (dlFresh()) { dlBlob(_bl, _fn); dlPanel(_bl, _fn, false); } else dlPanel(_bl, _fn, true);
+      return Promise.resolve(true);
+    }
+    doc.save(String(fname || "document.pdf"));
+    return Promise.resolve(true);
+  }
+/* ==EWCORE:download:END== */
+
+
+/* ==EWCORE:rawbook== The raw book a phone keeps when the shelf will not hold it, and the version watch. */
+
+  function rawbDropLive() {
+    for (var i = 0; i < LIVE_TABS.length; i++) { delete RAWB.t[LIVE_TABS[i]]; delete RAWB.h[LIVE_TABS[i]]; }
+  }
+
+  function rawbReset() { RAWB = { u: String(S.user || ""), t: {}, h: {} }; }
+
+  function teamGetD(extra, again) {
+    if (RAWB.u !== String(S.user || "")) rawbReset();
+    var ask = Object.assign({}, extra || {}, { have: RAWB.h });
+    return api("teamGet", ask).then(function (r) {
+      if (!r || !r.ok) return r;
+      var dl = r._delta || null, hh = r._h || null, bad = false;
+      delete r._delta; delete r._h;
+      if (dl) Object.keys(dl).forEach(function (k) {
+        if (RAWB.t[k] == null) { bad = true; return; }
+        try { r[k] = JSON.parse(RAWB.t[k]).concat(dl[k] || []); } catch (e) { bad = true; }
+      });
+      if (!bad && hh) Object.keys(hh).forEach(function (k) { if (!Array.isArray(r[k]) || r[k].length !== Number(hh[k][0])) bad = true; });
+      if (bad) { rawbReset(); return again ? r : teamGetD(extra, true); }
+      if (hh) Object.keys(hh).forEach(function (k) { if (Array.isArray(r[k])) { RAWB.t[k] = JSON.stringify(r[k]); RAWB.h[k] = hh[k]; } });
+      return r;
+    });
+  }
+
+/* ==EWCORE:rawbook:END== */
+
+
+/* ==EWCORE:money== THE MONEY RULES THE TWO FIELD APPS SHARE. 15 Nov 2026 - the Payment app and the Challan app spent a month crediting a return and pricing a brand differently from the CRM: Rs 2,12,214 over-credited and Rs 2,16,742 over-chased, both from one rule living in three files. Nineteen money functions live in more than one app and nine have drifted. These are the ones that had NOT drifted between these two; from here they cannot, because the build refuses unless both still read the same.
+     THE CRM IS DELIBERATELY NOT IN THIS LIST, and the reason is worth writing down. Its EW-CORE block sits at a different scope from its own functions - idbOpen, which has been in it since August, is not top-level in the CRM while it is in both field apps. Moving a CRM function in would put it where fn_map cannot see it, and the build would be unable to prove the function had not changed. A proof that cannot see the thing it is proving is worth nothing, so the CRM is held to the same rules by TEST instead, until its block is moved to its own top level. That move is its own job, on its own day. */
+  function hisabOwed(c) { return hisabCounts(c) && (!HISAB_GATE || !hisabBookReady() || inHisab(c)); }
+
+  /* THE RATE THAT WAS IN FORCE ON A GIVEN DAY. clientDiscount() answers "what is this client's
+     discount now", which is the right question when pricing something today and the WRONG one
+     when asking whether a delivery already made was priced correctly. v6.9.350 built dated rates
+     precisely so that "deliveries BEFORE this date keep the rate they were made at" - and then
+     chDiscGap compared every challan ever made against today's rate anyway. */
+  function clientDiscountOn(client, brand, ymd) { var d = discRow(client, brand, ymd); return d ? Number(d.pct) || 0 : 0; }
+
+  /* NO dstr() IN HERE, AND THAT IS DELIBERATE. This block is shared byte-for-byte with the
+     Challan app, and the two apps have a function called dstr that does OPPOSITE things: in the
+     CRM it truncates to "2026-08-01", in the Challan app it FORMATS to "1 Aug 2026". Calling it
+     here read every dated rate as undated in the Challan app - so a challan would have been
+     priced at the old percent while the CRM used the new one, silently, and nothing on either
+     screen would have said so. Caught by t_apps_agree the moment the port landed, which is what
+     that suite is for. Ten characters of slicing, no shared name, no trap. */
+  function discFrom(row) {
+    var f = String((incMap(row) || {}).from || "").slice(0, 10);
+    return /^\d{4}-\d{2}-\d{2}$/.test(f) ? f : "";
+  }
+
+  function incMap(row) {
+    try { var m = JSON.parse((row && row.notes) || "{}"); return (m && typeof m === "object") ? m : {}; } catch (e) { return {}; }
+  }
+
+  /* v6.9.392 - AND ONE READER FOR A PAYMENT AMOUNT, for exactly the reason above.
+     Sixteen sites read it with raw Number(). A payment is typed by a man on a phone and lands
+     in the sheet as text, so "1,00,000" reads back as NaN, and every `|| 0` beside it turns
+     that into ZERO - a payment received, recorded, and then counted as nothing.
+
+     Where that would have shown: the client's HISAB ledger, the dues on the collection round,
+     the incentive ratio (collected / billed), the twice-weekly Telegram digest, the CSV export,
+     the duplicate-payment guard - and the STATEMENT PDF THAT IS SENT TO THE CUSTOMER. Every
+     one of them would have been wrong in the firm's favour, and the customer holding the
+     statement would have been the only person able to see it.
+
+     MEASURED 31 Aug on his own book: 26 payments, 164 openings, 141 freights - ZERO affected
+     today. Latent, not live. It stays latent only until somebody types a comma.
+     (Not re-counted today: his browser is not reachable this session. That measurement's date
+     is stated rather than implied, because a stale count presented as fresh is its own fault.)
+
+     hisabPayable read the same money TWICE, six lines apart - one line nAmt, the next Number.
+     That is what a rule without a single reader looks like after three months. */
+  function payAmt(p) { return nAmt((p || {}).amount); }
+
+  function isJobLine(l) { return !!(l && (l.job === true || String(l.code || "") === JOB_CODE)); }
+function rnLines(r) {
+    var items = [];
+    try { items = JSON.parse(r.itemsJson || "[]"); } catch (e) { items = []; }
+    return items.filter(Boolean);
+  }
+
+  function dedupe(list) {
+    var seen = {};
+    (list || []).slice().sort(function (a, b) {
+      return String(a.createdAt || "").localeCompare(String(b.createdAt || ""));
+    }).forEach(function (c) { seen[String(c.challanNo || c.id)] = c; });
+    return Object.keys(seen).map(function (k) { return seen[k]; });
+  }
+
+  function hisabExtraOf(c) { return ((c && c.id) ? (Number(hisabExtraMap()[c.id]) || 0) : 0) + Math.max(0, nAmt(c && c.discAmt)); }
+/* ==EWCORE:money:END== */
+
+

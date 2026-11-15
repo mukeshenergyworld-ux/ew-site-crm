@@ -80,7 +80,8 @@
       "liveVersion",
       "refreshNow",
       "updateNow",
-      "newVerBar"
+      "newVerBar",
+      "verWatch"
     ],
     "apps": [
       "Challan",
@@ -93,8 +94,8 @@
       "usableBook",
       "bookSay",
       "getBook",
-      "mergeBook",
-      "slimBook"
+      "slimBook",
+      "askedFor"
     ],
     "apps": [
       "Challan",
@@ -119,6 +120,55 @@
     "why": "Registering the service worker.",
     "fns": [
       "regSW"
+    ],
+    "apps": [
+      "Challan",
+      "Payment"
+    ]
+  },
+  "download": {
+    "why": "Handing a finished file to the man holding the phone.",
+    "fns": [
+      "canShareFile",
+      "dlBlob",
+      "dlFresh",
+      "dlIsPhone",
+      "dlPanel",
+      "dlWhereSay",
+      "pdfBtnLabel",
+      "pdfDlStamp",
+      "pdfOut"
+    ],
+    "apps": [
+      "CRM",
+      "Challan",
+      "Payment"
+    ]
+  },
+  "rawbook": {
+    "why": "The raw book a phone keeps when the shelf will not hold it, and the version watch.",
+    "fns": [
+      "rawbDropLive",
+      "rawbReset",
+      "teamGetD"
+    ],
+    "apps": [
+      "Challan",
+      "Payment"
+    ]
+  },
+  "money": {
+    "why": "The money rules the two field apps share, locked against drift.",
+    "fns": [
+      "hisabOwed",
+      "clientDiscountOn",
+      "discFrom",
+      "incMap",
+      "payAmt",
+      "isJobLine",
+      "rnLines",
+      "dedupe",
+      "hisabExtraOf"
     ],
     "apps": [
       "Challan",
