@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.989";   /* 6.9.989 (15 Nov 2026) - FIX: the money check called a settled account\u2019s folded lines missing; it opens the fold while it reads */   /* 6.9.988 (6.9.988 (15 Nov 2026) - one item on a delivery can be given its own discount at finalise, owner only; it beats the brand box and nothing else moves */   /* 6.9.987 (6.9.987 (15 Nov 2026) - Call this week: the live sites at a buying stage, by town, with the man to ring and his mobile; a site rests 14 days once it is rung */   /* 6.9.986 (6.9.986 (14 Nov 2026) - FIX: the same part-save counted again inflated stock; 16 products were over by 3,027 pieces */   /* 6.9.985 (14 Nov 2026) - Tally match: a line already picked is drawn as picked, and settled lines fold away so only what needs him is on screen */   /* 6.9.984 (14 Nov 2026) - the waiting-bill sheet names the lines that still have no code, with the supplier\u2019s own code and the nearest catalogue ones */   /* 6.9.983 (14 Nov 2026) - the red "not matched" line on Stock to order says what it means and opens: which bill, how many, and how to put it right */   /* 6.9.982 (12 Nov 2026) - the quote tick moved to the quote book he actually looks at; it had been on the List view only */   /* 6.9.981 (12 Nov 2026) - merging quotations: one line per product, and a disagreed discount falls to the client\u2019s preset and is named */   /* 6.9.980 (12 Nov 2026) - tick several quotations and send them out on one challan */   /* 6.9.979 (12 Nov 2026) - Make challan is on every quotation, not only a won one; converting offers to mark it Won */   /* 6.9.978 (12 Nov 2026) - one Change button on a money row: edit it with the PIN asked twice, or cancel it */   /* 6.9.977 (12 Nov 2026) - a partner or driver payout entered wrongly can be set aside, with a reason, and brought back */   /* 6.9.976 (12 Nov 2026) - a brand already set aside stops nagging from the empty-brand card */   /* 6.9.975 (12 Nov 2026) - a finalised return can be opened again, and repriced, with it recorded as after the stamp */   /* 6.9.974 (12 Nov 2026) - Change it reprices this return as well as setting the preset from today */   /* 6.9.973 (12 Nov 2026) - FIX: the Finalise card on a return threw before it drew (6.9.972) */   /* 6.9.972 (12 Nov 2026) - return finalise: try a rate on the lines, and change the preset from today with a PIN */   /* 6.9.971 (12 Nov 2026) - a brand with no preset is set from the return-finalise card itself */   /* 6.9.970 (12 Nov 2026) - quote PDF: a product description is printed whole, not cut at three lines */   /* 6.9.969 (11 Nov 2026) - deliveries with no signed paper split by age: the ones past 30 days get the red number, the fresh ones are stated quietly */   /* 6.9.968 (11 Nov 2026) - a purchase bill already fully in stock is not brought in a second time: Huliot's invoice arrives in three mails, and all three were being uploaded */   /* 6.9.967 (11 Nov 2026) - GHP+ logo in the registered Green Heat+ colours (#00539F / #ED1D24) on PDFs, quotes, challans and QR centres */   /* 6.9.966 (11 Nov 2026) - technical specifications sheet in colour: brand-coloured table heads and code strip, coloured field labels, and the exceptions in an amber panel */   /* 6.9.965 (11 Nov 2026) - old quotes to close: grouped by what the site is doing now, closing windows first, each group carrying that stage's own pitch lines */   /* 6.9.964 (11 Nov 2026) - quote spec table: a value all but a few items share is said once and the few are named, so one tube no longer printed five long columns 25 times */   /* 6.9.963 (11 Nov 2026) - purchase bills: same day + same amount flagged on the Tally screen */   /* 6.9.958 (10 Nov 2026) - a statement attached before the name was kept is told apart by its time, not left as four identical lines */     /* 6.9.957 (10 Nov 2026) - each attached old hisab shows its file name, and a wrong one can be set aside */     /* 6.9.956 (10 Nov 2026) - rebuilt: the GitHub Pages publish of 6.9.955 failed (run #1675), so nothing had changed on the phones */   /* 6.9.955 (10 Nov 2026) - the old hisab takes more than one file at once: photographed pages become one PDF, and every statement on file is listed */     /* 6.9.954 (10 Nov 2026) - the Partner Club: fixed slabs, a bonus on crossing one, the trip and device rewards, every partner's rupees to his next slab, and the quiet-partner watch */     /* 6.9.953 (10 Nov 2026) - Service > Control: cash in each engineer's hand, hand-over recorded, three random customer checks a week */     /* 6.9.952 (10 Nov 2026) - to-bill month by month, screens found from Search, team screen use on Health, a receipt for every incentive payout */     /* 6.9.951 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 6.9.950 (9 Nov 2026) - brand introductions: a fuller paragraph, three stage-wise benefits and one next step, on the quote and the proposal */     /* 6.9.949 (9 Nov 2026) - quote PDF: a product picture stays inside its own row (1.2 mm clear of both lines) */     /* 6.9.948 (9 Nov 2026) - quote PDF: each room heading carries its collection and finish with colour dots; every FIMA code chip has its finish dot */     /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
+  var APP_VERSION = "6.9.990";   /* 6.9.990 (15 Nov 2026) - the duplicate radar reads every record tab, not clients alone: a row whose every field matches another, and the same money to the same man on the same day */   /* 6.9.989 (6.9.989 (15 Nov 2026) - FIX: the money check called a settled account\u2019s folded lines missing; it opens the fold while it reads */   /* 6.9.988 (6.9.988 (15 Nov 2026) - one item on a delivery can be given its own discount at finalise, owner only; it beats the brand box and nothing else moves */   /* 6.9.987 (6.9.987 (15 Nov 2026) - Call this week: the live sites at a buying stage, by town, with the man to ring and his mobile; a site rests 14 days once it is rung */   /* 6.9.986 (6.9.986 (14 Nov 2026) - FIX: the same part-save counted again inflated stock; 16 products were over by 3,027 pieces */   /* 6.9.985 (14 Nov 2026) - Tally match: a line already picked is drawn as picked, and settled lines fold away so only what needs him is on screen */   /* 6.9.984 (14 Nov 2026) - the waiting-bill sheet names the lines that still have no code, with the supplier\u2019s own code and the nearest catalogue ones */   /* 6.9.983 (14 Nov 2026) - the red "not matched" line on Stock to order says what it means and opens: which bill, how many, and how to put it right */   /* 6.9.982 (12 Nov 2026) - the quote tick moved to the quote book he actually looks at; it had been on the List view only */   /* 6.9.981 (12 Nov 2026) - merging quotations: one line per product, and a disagreed discount falls to the client\u2019s preset and is named */   /* 6.9.980 (12 Nov 2026) - tick several quotations and send them out on one challan */   /* 6.9.979 (12 Nov 2026) - Make challan is on every quotation, not only a won one; converting offers to mark it Won */   /* 6.9.978 (12 Nov 2026) - one Change button on a money row: edit it with the PIN asked twice, or cancel it */   /* 6.9.977 (12 Nov 2026) - a partner or driver payout entered wrongly can be set aside, with a reason, and brought back */   /* 6.9.976 (12 Nov 2026) - a brand already set aside stops nagging from the empty-brand card */   /* 6.9.975 (12 Nov 2026) - a finalised return can be opened again, and repriced, with it recorded as after the stamp */   /* 6.9.974 (12 Nov 2026) - Change it reprices this return as well as setting the preset from today */   /* 6.9.973 (12 Nov 2026) - FIX: the Finalise card on a return threw before it drew (6.9.972) */   /* 6.9.972 (12 Nov 2026) - return finalise: try a rate on the lines, and change the preset from today with a PIN */   /* 6.9.971 (12 Nov 2026) - a brand with no preset is set from the return-finalise card itself */   /* 6.9.970 (12 Nov 2026) - quote PDF: a product description is printed whole, not cut at three lines */   /* 6.9.969 (11 Nov 2026) - deliveries with no signed paper split by age: the ones past 30 days get the red number, the fresh ones are stated quietly */   /* 6.9.968 (11 Nov 2026) - a purchase bill already fully in stock is not brought in a second time: Huliot's invoice arrives in three mails, and all three were being uploaded */   /* 6.9.967 (11 Nov 2026) - GHP+ logo in the registered Green Heat+ colours (#00539F / #ED1D24) on PDFs, quotes, challans and QR centres */   /* 6.9.966 (11 Nov 2026) - technical specifications sheet in colour: brand-coloured table heads and code strip, coloured field labels, and the exceptions in an amber panel */   /* 6.9.965 (11 Nov 2026) - old quotes to close: grouped by what the site is doing now, closing windows first, each group carrying that stage's own pitch lines */   /* 6.9.964 (11 Nov 2026) - quote spec table: a value all but a few items share is said once and the few are named, so one tube no longer printed five long columns 25 times */   /* 6.9.963 (11 Nov 2026) - purchase bills: same day + same amount flagged on the Tally screen */   /* 6.9.958 (10 Nov 2026) - a statement attached before the name was kept is told apart by its time, not left as four identical lines */     /* 6.9.957 (10 Nov 2026) - each attached old hisab shows its file name, and a wrong one can be set aside */     /* 6.9.956 (10 Nov 2026) - rebuilt: the GitHub Pages publish of 6.9.955 failed (run #1675), so nothing had changed on the phones */   /* 6.9.955 (10 Nov 2026) - the old hisab takes more than one file at once: photographed pages become one PDF, and every statement on file is listed */     /* 6.9.954 (10 Nov 2026) - the Partner Club: fixed slabs, a bonus on crossing one, the trip and device rewards, every partner's rupees to his next slab, and the quiet-partner watch */     /* 6.9.953 (10 Nov 2026) - Service > Control: cash in each engineer's hand, hand-over recorded, three random customer checks a week */     /* 6.9.952 (10 Nov 2026) - to-bill month by month, screens found from Search, team screen use on Health, a receipt for every incentive payout */     /* 6.9.951 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 6.9.950 (9 Nov 2026) - brand introductions: a fuller paragraph, three stage-wise benefits and one next step, on the quote and the proposal */     /* 6.9.949 (9 Nov 2026) - quote PDF: a product picture stays inside its own row (1.2 mm clear of both lines) */     /* 6.9.948 (9 Nov 2026) - quote PDF: each room heading carries its collection and finish with colour dots; every FIMA code chip has its finish dot */     /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -46037,6 +46037,153 @@ function viewCatalogue() {
     return h;
   }
 
+
+  /* ============ THE SAME THING ENTERED TWICE, ON EVERY TAB  (6.9.990, 15 Nov 2026) ============
+     Rule 4 of the write-safety plan. Rules 1 and 3 are already in this file and have been for a
+     while: save() fingerprints every NEW row through rowPrint and refuses a twin within 8 seconds
+     (6.9.124 / NEWROW_SAME_MS), and lockBtn + _tapInflight kill a second tap on any button whose
+     first tap started a save. Between them a fresh double-tap no longer writes twice.
+
+     Neither of those can see what is ALREADY on the book, and every duplicate found this week was
+     written before they existed:
+       Rs 1,00,000 twice      Dr Danish Pritam Arora, 2 Aug, the two rows 0.97 seconds apart,
+                              every single field identical
+       20 partner rows        8 names, "sumit - mahavir" ten times inside 13 seconds on 26 Sep
+       5 site rows, 3 clients  seconds apart, same disease
+     The Duplicate check screen has only ever looked at CLIENTS (dupScan, by name and phone). A
+     payment entered twice, a return entered twice, a partner entered ten times - nothing looked.
+
+     This looks, on every tab that holds a record, with the SAME fingerprint save() uses, so what
+     the write guard would refuse today is what this finds from yesterday. Two passes:
+       exact    every field identical but the id and the timestamps - a row written twice and
+                never touched again, which is what a double tap leaves behind
+       money    payments and payouts only: same man, same day, same amount. A later edit to the
+                note or the mode makes the rows differ in full, and the money is still twice.
+     It only reads. Nothing is set aside unless he presses the button on the row. */
+  var DUP_SCAN_TABS = [["payments", "Payment received"], ["commpay", "Incentive payout"], ["driverpay", "Driver payout"],
+    ["challans", "Delivery"], ["returns", "Material return"], ["quotes", "Quote"],
+    ["clients", "Client / lead"], ["sites", "Site"], ["associates", "Partner"],
+    ["visits", "Service visit"], ["installs", "Installation"]];
+  var DUP_MONEY_TABS = { payments: ["client", "date", "amount"], commpay: ["associate", "date", "amount"], driverpay: ["driver", "date", "amount"] };
+  /* ===== AND THE SAME MAN, NOT JUST THE SAME ROW =====
+     The exact pass found the Rs 1,00,000 payment at once and MISSED "sumit - mahavir" entirely -
+     ten rows of one partner saved inside 13 seconds, every one a duplicate, yet no two of them
+     identical: one carries a mobile, another an area, another a rate, and rowPrint skips a blank
+     field, so ten taps left ten different fingerprints. A person entered twice is not a row
+     repeated, it is a NAME repeated - which is why the client screen below has always keyed on
+     name and phone rather than on content. Partners and sites get that rule here.
+     Clients are deliberately NOT in this list: the look-alike section further down does it
+     properly, following phone numbers across spellings, and two screens saying the same thing
+     about the same man is how a screen stops being read. */
+  var DUP_ID_TABS = { associates: ["name", "mobile"], sites: ["client", "name"] };
+  function twinIdKey(tab, r) {
+    var ks = DUP_ID_TABS[tab]; if (!ks || !r) return "";
+    var parts = ks.map(function (k) {
+      var v = String(r[k] == null ? "" : r[k]).trim().toLowerCase().replace(/\s+/g, " ");
+      if (/mobile|phone/.test(k)) v = v.replace(/[^0-9]/g, "").slice(-10);
+      return v;
+    });
+    return parts[0] ? parts.join("\u0000") : "";
+  }
+  function twinWhen(r) { return String((r && (r.createdAt || r.date)) || ""); }
+  function twinGapSec(g) {
+    var a = Date.parse(twinWhen(g[0])) || 0, b = Date.parse(twinWhen(g[g.length - 1])) || 0;
+    return (a && b) ? Math.round((b - a) / 1000) : null;
+  }
+  function twinScan() {
+    var out = [], seenPair = {};
+    DUP_SCAN_TABS.forEach(function (t) {
+      var tab = t[0], rows = (S.data[tab] || []), exact = {}, money = {}, ident = {};
+      rows.forEach(function (r) {
+        if (!r || !r.id) return;
+        try { if (isCancelled(tab, r.id)) return; } catch (e) { }
+        var fp = ""; try { fp = rowPrint(tab, r); } catch (e) { fp = ""; }
+        if (fp) (exact[fp] = exact[fp] || []).push(r);
+        var mk = DUP_MONEY_TABS[tab];
+        if (mk) {
+          var parts = mk.map(function (k) { return String(r[k] == null ? "" : r[k]).trim().toLowerCase().slice(0, 40); });
+          if (parts[0] && Number(String(parts[2]).replace(/[^0-9.\-]/g, ""))) money[parts.join("\u0000")] = (money[parts.join("\u0000")] || []).concat([r]);
+        }
+        var ik = twinIdKey(tab, r);
+        if (ik) (ident[ik] = ident[ik] || []).push(r);
+      });
+      /* Yogesh Khanna arrived twice on the first run - three site rows by name, and two of those
+         three identical in every field as well. One man, one line: a set every one of whose rows
+         is already inside a set named above it is the same finding said twice, and the wider rule
+         runs first so the line he reads is the one that explains the whole group. */
+      var covered = {};
+      var push = function (g, how) {
+        if (g.length < 2) return;
+        g = g.slice().sort(function (a, b) { return twinWhen(a).localeCompare(twinWhen(b)); });
+        var ids = g.map(function (r) { return String(r.id); });
+        var key = tab + "|" + ids.slice().sort().join(",");
+        if (seenPair[key]) return;
+        if (ids.every(function (i) { return covered[i]; })) return;
+        seenPair[key] = 1;
+        ids.forEach(function (i) { covered[i] = 1; });
+        out.push({ tab: tab, label: t[1], rows: g, how: how, gap: twinGapSec(g) });
+      };
+      /* the widest rule first, so a group is named once by the reason that explains all of it */
+      Object.keys(ident).forEach(function (k) { push(ident[k], "person"); });
+      Object.keys(exact).forEach(function (k) { push(exact[k], "exact"); });
+      Object.keys(money).forEach(function (k) { push(money[k], "money"); });
+    });
+    /* the ones written seconds apart first - those are taps, not decisions */
+    out.sort(function (a, b) {
+      var ga = a.gap == null ? 1e12 : a.gap, gb = b.gap == null ? 1e12 : b.gap;
+      return ga - gb || String(a.tab).localeCompare(String(b.tab));
+    });
+    return out;
+  }
+  function twinGapWord(g) {
+    if (g == null) return "no date on one of them";
+    if (g < 60) return g + (g === 1 ? " second" : " seconds") + " apart";
+    if (g < 3600) return Math.round(g / 60) + " minutes apart";
+    if (g < 86400) return Math.round(g / 3600) + " hours apart";
+    return Math.round(g / 86400) + " days apart";
+  }
+  function twinCard() {
+    if (!roleAny(["admin", "accounts"])) return "";
+    var all = twinScan();
+    var fast = all.filter(function (x) { return x.gap != null && x.gap <= 120; });
+    var h = '<div class="card" style="border-color:' + (all.length ? '#fca5a5' : '#99f6e4') + ';background:' + (all.length ? '#fef2f2' : '#f0fdfa') + '">' +
+      '<h2 style="margin:0">The same thing entered twice</h2>' +
+      '<div class="meta" style="font-size:13px">Every record tab, read with the same fingerprint a Save uses: a row whose every field matches another, and for money a second entry of the same amount to the same man on the same day. <b>Nothing here changes a record</b> &mdash; the button on a row is the ordinary Change / set-aside, and it asks for your PIN.</div>';
+    if (!all.length) {
+      return h + '<div style="margin-top:8px;font-weight:700;color:#0f766e">✓ Nothing on any tab is entered twice.</div></div>';
+    }
+    h += '<div style="margin-top:8px;font-weight:800;color:#b91c1c">' + plural(all.length, "set") + ' to look at</div>' +
+      (fast.length ? '<div class="meta" style="font-size:12.5px;color:#b91c1c">' + plural(fast.length, "set") + ' written within two minutes of each other — those are a finger, not a decision.</div>' : '');
+    var byTab = {};
+    all.forEach(function (x) { (byTab[x.tab] = byTab[x.tab] || []).push(x); });
+    DUP_SCAN_TABS.forEach(function (t) {
+      var g = byTab[t[0]]; if (!g || !g.length) return;
+      h += '<div style="margin-top:10px;border-top:1px solid #fecaca;padding-top:7px">' +
+        '<div style="font-weight:800;font-size:13.5px">' + esc(t[1]) + ' <span class="pill due">' + g.length + '</span></div>';
+      g.slice(0, 12).forEach(function (x) {
+        h += '<div style="margin-top:6px;padding-left:4px;border-left:3px solid #fca5a5">' +
+          '<div style="font-size:13px;font-weight:700">' + esc(cancelLabel(x.tab, x.rows[0]) || "(no number)") +
+          ' <span class="pill" style="background:#fee2e2;color:#b91c1c">' + x.rows.length + ' rows</span>' +
+          ' <span class="meta" style="font-size:12px;font-weight:400">' + esc(twinGapWord(x.gap)) +
+          (x.how === "money" ? ' · same amount, same day'
+            : x.how === "person" ? ' · the same name and number'
+            : ' · every field the same') + '</span></div>';
+        x.rows.forEach(function (r, i) {
+          h += '<div class="acts" style="align-items:center;margin:3px 0 0;gap:6px;flex-wrap:wrap">' +
+            '<span class="meta" style="font-size:12px;min-width:0">' +
+              (i === 0 ? '<b style="color:#0f766e">keep</b>' : '<b style="color:#b91c1c">extra</b>') + ' · ' +
+              esc(dstr(twinWhen(r)) || "no date") + ' · ' + esc(String(r.createdBy || r.actor || "—")) +
+              ' · <span style="color:#94a3b8">' + esc(String(r.id || "")) + '</span></span>' +
+            (i === 0 ? '' : cxCardBtn(x.tab, r.id)) + '</div>';
+        });
+        h += '</div>';
+      });
+      if (g.length > 12) h += '<div class="meta" style="font-size:12.5px;margin-top:4px">and ' + (g.length - 12) + ' more on this tab</div>';
+      h += '</div>';
+    });
+    return h + '</div>';
+  }
+
   function viewDups() {
     var s = dupScan();
     var _catHtml = catCheckHtml();   /* v6.9.306 - the catalogue's own check, same screen */
@@ -46063,6 +46210,7 @@ function viewCatalogue() {
     if (!seesAllClients()) {
       h += '<div class="meta" style="font-size:12.5px;color:#94a3b8;margin:0 0 8px">You are seeing look-alike records inside your own book. A customer entered by two different executives can only be settled by the owner, who can see both sides of it.</div>';
     }
+    h = twinCard() + h;   /* 6.9.990 - every tab, above the look-alike names */
     s.groups.forEach(function (g) { h += dupGroupCard(g, false); });
 
     if (S.dupShowSettled) {
