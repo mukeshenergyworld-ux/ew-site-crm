@@ -283,7 +283,7 @@ body{background:#F4F6F9}
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.156.0";   /* 1.156.0 (12 Nov 2026) - the product picker lists a family in catalogue order, like the CRM, not A to Z */   /* 1.155.0 (11 Nov 2026) - a challan carrying freight must name the driver it is paid to */     /* 1.154.1 (10 Nov 2026) - a space can be typed in the client search box again */     /* 1.154.0 (10 Nov 2026) - admin: a client not on the book is added from the challan itself, as a new lead or an old client */     /* 1.153.4 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 1.153.3 (9 Nov 2026) - FIMA finish codes with their own finish photo */     /* 1.153.2 (9 Nov 2026) - a small finish-colour dot on FIMA product pictures */     /* 1.153.1 (9 Nov 2026) - FIMA handles S1-S4 in every finish and the S2 glass handles */     /* 1.153.0 (9 Nov 2026) - FIMA in every finish: any of 14,260 finish codes (F1301WLX9CS ...) can go on a challan at its own MRP */     /* 1.152.0 (8 Nov 2026) - Add to Hisab: who earns, without incentive % or amount */   /* 1.151.0 (8 Nov 2026) - incentive card: any number of discount slabs (shared block) */   /* 1.150.0 (2 Nov 2026) - EW <-> MPS are normal challans again; they add to the other godown after its count */   /* 1.149.0 (1 Nov 2026) - the godown receives a transfer on this phone */   /* 1.148.0 (1 Nov 2026) - a transfer lands only when the other godown receives it */   /* 1.147.0 (1 Nov 2026) - two godowns: MPS Sonipat has its own stock; MPS staff see MPS work only; no challan to MPS (it is a transfer) */   /* 1.146.0 (31 Oct 2026) - one tap, one entry: a second tap on a write button is swallowed */   /* 1.145.0 - vehicle no asked every time a driver is picked (not for Porter / Rapido); 1.144.0 lorry check */
+  var APP_VERSION = "1.157.0";   /* 1.157.0 (14 Nov 2026) - FIX: a return line frozen at 0%% was credited at full list price; the CRM's rule (6.9.728) is now this app's rule too - Rs 2,12,214 across 5 clients */   /* 1.156.0 (1.156.0 (12 Nov 2026) - the product picker lists a family in catalogue order, like the CRM, not A to Z */   /* 1.155.0 (11 Nov 2026) - a challan carrying freight must name the driver it is paid to */     /* 1.154.1 (10 Nov 2026) - a space can be typed in the client search box again */     /* 1.154.0 (10 Nov 2026) - admin: a client not on the book is added from the challan itself, as a new lead or an old client */     /* 1.153.4 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 1.153.3 (9 Nov 2026) - FIMA finish codes with their own finish photo */     /* 1.153.2 (9 Nov 2026) - a small finish-colour dot on FIMA product pictures */     /* 1.153.1 (9 Nov 2026) - FIMA handles S1-S4 in every finish and the S2 glass handles */     /* 1.153.0 (9 Nov 2026) - FIMA in every finish: any of 14,260 finish codes (F1301WLX9CS ...) can go on a challan at its own MRP */     /* 1.152.0 (8 Nov 2026) - Add to Hisab: who earns, without incentive % or amount */   /* 1.151.0 (8 Nov 2026) - incentive card: any number of discount slabs (shared block) */   /* 1.150.0 (2 Nov 2026) - EW <-> MPS are normal challans again; they add to the other godown after its count */   /* 1.149.0 (1 Nov 2026) - the godown receives a transfer on this phone */   /* 1.148.0 (1 Nov 2026) - a transfer lands only when the other godown receives it */   /* 1.147.0 (1 Nov 2026) - two godowns: MPS Sonipat has its own stock; MPS staff see MPS work only; no challan to MPS (it is a transfer) */   /* 1.146.0 (31 Oct 2026) - one tap, one entry: a second tap on a write button is swallowed */   /* 1.145.0 - vehicle no asked every time a driver is picked (not for Porter / Rapido); 1.144.0 lorry check */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -9141,6 +9141,48 @@ function discRowOn(client, brand, onYmd) {
     }
     return his;
   }
+
+  /* ===== A FROZEN 0% IS NOT A DISCOUNT  (ports the CRM's 6.9.728, 11 Oct 2026) =====
+     HIS WORDS over ARMANISHGU/081026/R01 credited at MRP: "why return not picking preset
+     discount, this is huge loss to me". The CRM was fixed that day; this app was not, so for a
+     month the two have credited the same return differently. MEASURED on his book on 14 Nov
+     2026, by the CRM's own money check: 73 return lines across 5 clients carry a frozen disc
+     of 0, and this app credited every one at FULL LIST PRICE - Rs 2,12,214 more than those
+     clients were ever charged. Four of them showed on the collector's screen owing that much
+     less than they owe.
+     A godown or an accounts phone receives NO discount rows (the server never sends money to
+     those roles), so the Challan app froze 0 onto each line and this reader believed it.
+     The rule below is the CRM's, line for line: a frozen zero is re-derived from the delivery
+     line the goods actually went out on, and failing that from the client's rate on the day of
+     the return. A frozen figure ABOVE zero is kept as typed. Job work, a line typed as a lump
+     total, and an off-catalogue code are left exactly as they are. */
+  function rnSrcLine(r, code, allChallans) {
+    var want = String(code == null ? "" : code).trim();
+    if (!want) return null;
+    var src = rnSourceLines(r, allChallans);
+    for (var i = 0; i < src.length; i++) {
+      var lines = [];
+      try { lines = JSON.parse(src[i].itemsJson || "[]"); } catch (e) { lines = []; }
+      for (var j = 0; j < (lines || []).length; j++) {
+        var L = lines[j];
+        if (L && String(L.code == null ? "" : L.code).trim() === want && L.rate != null && L.rate !== "") return L;
+      }
+    }
+    return null;
+  }
+  function rnDisc(item, r, brand, allChallans) {
+    var raw = (item && item.disc != null && item.disc !== "") ? num(item.disc) : null;
+    var day = d10(r && r.createdAt);
+    var d = (raw != null) ? raw : clientDiscountOn(r && r.customerName, brand || "", day);
+    if (d > 0) return d;
+    if (item && (item.lump || isJobLine(item))) return d;
+    var code = String((item && item.code) == null ? "" : item.code).trim();
+    if (!code || !(PRODUCTS.filter(function (x) { return String(x.code || "").trim() === code; })[0] || fimaFinGet(code))) return d;
+    var s0 = rnSrcLine(r, code, allChallans);
+    var d0 = (s0 && s0.disc != null && s0.disc !== "") ? num(s0.disc) : 0;
+    if (!(d0 > 0)) d0 = clientDiscountOn(r && r.customerName, (s0 && s0.brand) || brand || "", day);
+    return d0 > 0 ? d0 : d;
+  }
   function rnPriceOf(item, r, allChallans) {
     /* v1.51.0 - A BLANK DISCOUNT IS NOT ZERO PERCENT. The Challan app has never written a disc on
        a return line, so every frozen-rate line here was credited at FULL list price while the CRM
@@ -9153,7 +9195,7 @@ function discRowOn(client, brand, onYmd) {
     if (item.rate != null && item.rate !== "" && num(item.rate) > 0) {
       var _fb = String(item.brand || "");
       if (!_fb) { var _fp = PRODUCTS.filter(function (x) { return String(x.code || "").trim() === String(item.code == null ? "" : item.code).trim(); })[0] || fimaFinGet(String(item.code == null ? "" : item.code).trim()); if (_fp) _fb = String(realBrand(_fp) || _fp.brand || ""); }
-      return { amt: rnNet(item.rate, _rd(item.disc, _fb), item.qty), src: "frozen" };
+      return { amt: rnNet(item.rate, rnDisc(item, r, _fb, allChallans), item.qty), src: "frozen" };
     }
     var code = String(item.code == null ? "" : item.code).trim();
     if (code) {
@@ -9165,7 +9207,7 @@ function discRowOn(client, brand, onYmd) {
           var L = lines[j];
           if (!L || String(L.code == null ? "" : L.code).trim() !== code) continue;
           if (!(num(L.rate) > 0)) continue;
-          return { amt: rnNet(L.rate, _rd(L.disc, L.brand || item.brand), item.qty),
+          return { amt: rnNet(L.rate, rnDisc({ code: item.code, qty: item.qty, disc: L.disc, lump: item.lump, job: item.job, brand: L.brand || item.brand }, r, L.brand || item.brand, allChallans), item.qty),
                    src: String(src[i].challanNo || "").trim() === String(r.challanNo || "").trim()
                         ? "against" : "delivered" };
         }
