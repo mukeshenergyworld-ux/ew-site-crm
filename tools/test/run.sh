@@ -1,0 +1,32 @@
+#!/bin/sh
+# Every check this repo can make, in the order that fails fastest.
+# Run before every upload:   sh tools/test/run.sh
+cd "$(dirname "$0")/../.." || exit 1
+fail=0
+
+echo "== 1. the apps build, and nothing changed that should not have =="
+python3 tools/build_core.py --check || fail=1
+
+echo ""
+echo "== 2. the files parse =="
+node --check team/app.js || fail=1
+for a in challan collect visit service; do
+  [ -f "$a/index.html" ] || continue
+  python3 - "$a" <<'PY' || fail=1
+import re, io, sys, subprocess
+a = sys.argv[1]
+h = io.open(a + "/index.html", encoding="utf-8").read()
+b = re.findall(r'<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)</script>', h)
+io.open("/tmp/_chk_" + a + ".js", "w", encoding="utf-8").write("\n;\n".join(b))
+sys.exit(subprocess.call(["node", "--check", "/tmp/_chk_" + a + ".js"]))
+PY
+  echo "   $a parses"
+done
+
+echo ""
+echo "== 3. the apps agree about money =="
+node tools/test/t_money_agrees.js || fail=1
+
+echo ""
+if [ "$fail" = "0" ]; then echo "ALL CLEAR — safe to build and upload"; else echo "SOMETHING FAILED — do not upload"; fi
+exit $fail
