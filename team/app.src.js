@@ -136,9 +136,133 @@
     return "https://lh3.googleusercontent.com/d/" + m[1] + "=w" + (size || 200);
   }
 /* ==EWCORE:drive:END== */
+/* ==EWCORE:download== Handing a finished file to the man holding the phone. Byte-identical in all three apps. */
+  function canShareFile() {
+    try {
+      if (!navigator.share || !navigator.canShare) return false;
+      return navigator.canShare({ files: [new File(["x"], "x.pdf", { type: "application/pdf" })] });
+    } catch (e) { return false; }
+  }
+
+  function dlBlob(blob, fname) {
+    var u = URL.createObjectURL(blob), a = document.createElement("a");
+    a.href = u; a.download = fname; a.rel = "noopener"; a.style.display = "none";
+    document.body.appendChild(a); a.click();
+    setTimeout(function () { try { document.body.removeChild(a); } catch (e) { } }, 1500);
+    setTimeout(function () { try { URL.revokeObjectURL(u); } catch (e) { } }, 120000);
+  }
+
+  function dlFresh() { return Date.now() - _dlTap < 3500; }
+
+  /* ================= WHERE THE FILE WENT, ON A PHONE  (CRM 6.9.701 / Challan 1.127.0 / Collect 1.63.0, 6 Oct 2026) =================
+     HIS WORDS: "in mobile its not showing where pdf is downloading, can we put a download folder or what
+     alternate we can do?". A web page cannot choose the folder a file lands in - the phone decides
+     (iPhone: Files > Downloads; Android: Downloads). So the file still downloads exactly as before
+     (6.9.664), and on a phone a panel then says where it went and offers the two things a phone CAN
+     do with it: Open it now, or Save / send it - the share sheet, where "Save to Files" lets him
+     pick any folder (iCloud Drive, On My iPhone, Google Drive) and WhatsApp takes the file itself.
+     A laptop is left alone: its browser already shows the download. */
+  function dlIsPhone() {
+    var ua = String((navigator && navigator.userAgent) || "");
+    return /Android|iPhone|iPod/i.test(ua) || (/iPad|Macintosh/.test(ua) && (navigator.maxTouchPoints || 0) > 1);
+  }
+
+  function dlPanel(blob, fname, ready) {
+    try {
+      if (!blob || !dlIsPhone()) return;
+      var old = document.getElementById("ewdl"); if (old && old.parentNode) old.parentNode.removeChild(old);
+      var type = blob.type || (/\.xlsx$/i.test(fname) ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : "application/pdf");
+      var file = null; try { file = new File([blob], fname, { type: type }); } catch (e) { file = null; }
+      var canSh = false; try { canSh = !!(file && navigator.share && navigator.canShare && navigator.canShare({ files: [file] })); } catch (e) { canSh = false; }
+      var url = URL.createObjectURL(blob);
+      var box = document.createElement("div");
+      box.id = "ewdl";
+      box.setAttribute("style", "position:fixed;left:8px;right:8px;top:calc(env(safe-area-inset-top) + 8px);z-index:10000;"   /* at the top: the app's own toasts live at the bottom */ +
+        "background:#0f172a;color:#fff;border-radius:14px;padding:12px 12px 10px;box-shadow:0 6px 24px rgba(15,23,42,.35);" +
+        "font:500 13px/1.4 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:560px;margin:0 auto");
+      var nm = document.createElement("div");
+      nm.setAttribute("style", "font-weight:700;font-size:13.5px;word-break:break-all");
+      nm.textContent = (ready ? "Your file is ready \u2014 " : "\u2713 Downloaded \u2014 ") + fname;
+      var where = document.createElement("div");
+      where.setAttribute("style", "font-size:12.5px;color:#cbd5e1;margin-top:3px");
+      where.innerHTML = (ready ? "It took a moment to build. Tap <b>Download</b> to save it." : dlWhereSay()) + (!canSh ? "" : /Android/i.test(String(navigator.userAgent || ""))
+        ? " To put it in Drive or send it on WhatsApp, tap <b>Save to\u2026 / Send</b>."
+        : " To keep it in a folder of your choice, tap <b>Save to\u2026</b> and pick <b>Save to Files</b>.");
+      var row = document.createElement("div");
+      row.setAttribute("style", "display:flex;gap:8px;margin-top:9px;flex-wrap:wrap");
+      var btn = function (label, main, fn) {
+        var b = document.createElement("button");
+        b.type = "button"; b.textContent = label;
+        b.setAttribute("style", "min-height:44px;padding:0 14px;border-radius:10px;font:700 13px -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;" +
+          "border:1px solid " + (main ? "#14b8a6" : "#475569") + ";background:" + (main ? "#0f766e" : "transparent") + ";color:#fff;cursor:pointer;flex:" + (main ? "1 1 auto" : "0 0 auto"));
+        b.addEventListener("click", function (e) { e.preventDefault(); e.stopPropagation(); fn(); });
+        row.appendChild(b);
+      };
+      var close = function () { if (box.parentNode) box.parentNode.removeChild(box); setTimeout(function () { try { URL.revokeObjectURL(url); } catch (e) { } }, 60000); };
+      if (ready) btn("Download", true, function () { dlBlob(blob, fname); nm.textContent = "\u2713 Downloaded \u2014 " + fname; where.innerHTML = dlWhereSay(); });
+      btn("Open", !canSh && !ready, function () { var w = null; try { w = window.open(url, "_blank"); } catch (e) { w = null; } if (!w) { var a = document.createElement("a"); a.href = url; a.target = "_blank"; a.rel = "noopener"; document.body.appendChild(a); a.click(); a.remove(); } });   /* never navigate the app itself away */
+      if (canSh) btn("Save to… / Send", !ready, function () { navigator.share({ files: [file], title: fname }).then(close, function () { }); });
+      btn("Close", false, close);
+      box.appendChild(nm); box.appendChild(where); box.appendChild(row);
+      document.body.appendChild(box);
+      setTimeout(function () { if (document.getElementById("ewdl") === box) close(); }, 60000);
+    } catch (e) { }
+  }
+
+  function dlWhereSay() {
+    var ua = String((navigator && navigator.userAgent) || "");
+    if (/Android/i.test(ua)) return "It is in your phone’s <b>Downloads</b> folder (also in the notification at the top).";
+    return "It is in the <b>Files</b> app → <b>Downloads</b> (or tap ⬇ in Safari’s address bar).";
+  }
+
+  /* the word on the button: every PDF button downloads now (6.9.664) */
+  function pdfBtnLabel(base) { return base; }
+
+  /* ================= WHO TOOK THIS FILE, AND WHEN  (6.9.578 / 1.86.0 / 1.46.0) =================
+     His words: "mention file download date and time and by whom for every file download, in very
+     small font in any corner of the page, not highlighted". One line, 5 pt, pale grey, bottom
+     right of every page. Once per document. */
+  function pdfDlStamp(doc) {
+    try {
+      if (!doc || doc._dlStamped) return;
+      doc._dlStamped = true;
+      var d = new Date(), p2 = function (n) { return (n < 10 ? "0" : "") + n; };
+      var line = "Downloaded " + p2(d.getDate()) + "/" + p2(d.getMonth() + 1) + "/" + d.getFullYear() + " " +
+        p2(d.getHours()) + ":" + p2(d.getMinutes()) + (S && S.user ? " by " + String(S.user) : "");
+      var n = doc.getNumberOfPages(), cur = doc.internal.getCurrentPageInfo ? doc.internal.getCurrentPageInfo().pageNumber : n;
+      var fs = doc.getFontSize(), tc = doc.getTextColor ? doc.getTextColor() : null;
+      for (var i = 1; i <= n; i++) {
+        doc.setPage(i);
+        var W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight();
+        doc.setFontSize(5); doc.setTextColor(170, 178, 190);
+        doc.text(line, W - 4, H - 2.5, { align: "right" });
+      }
+      doc.setPage(cur); doc.setFontSize(fs);
+      if (tc) { try { doc.setTextColor(tc); } catch (e) { doc.setTextColor(0, 0, 0); } }
+    } catch (e) { }
+  }
+
+  function pdfOut(doc, fname, title) {
+    pdfDlStamp(doc);   /* 6.9.578 - who took it, and when */
+    /* 6.9.664 / 1.118.0 / 1.58.0 - HIS WORDS: "its not downloading pdf, its very time consuming,
+       change everywhere to download pdf". Every PDF downloads at once: no "Your PDF is ready"
+       choice and no share sheet (Safari on a Mac says it can share a file, so "Download" opened
+       the share sheet and no file came). WhatsApp and Telegram keep their own buttons. */
+    var now = Date.now();
+    if (now - _pdfOutAt < 2000) return Promise.resolve(false);   /* the same press twice */
+    _pdfOutAt = now;
+    if (dlIsPhone()) {   /* 6.9.703 - never jsPDF's save on a phone, and only inside a fresh tap */
+      var _fn = String(fname || "document.pdf"), _bl = doc.output("blob");
+      if (dlFresh()) { dlBlob(_bl, _fn); dlPanel(_bl, _fn, false); } else dlPanel(_bl, _fn, true);
+      return Promise.resolve(true);
+    }
+    doc.save(String(fname || "document.pdf"));
+    return Promise.resolve(true);
+  }
+/* ==EWCORE:download:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.990";   /* 6.9.990 (15 Nov 2026) - the duplicate radar reads every record tab, not clients alone: a row whose every field matches another, and the same money to the same man on the same day */   /* 6.9.989 (6.9.989 (15 Nov 2026) - FIX: the money check called a settled account\u2019s folded lines missing; it opens the fold while it reads */   /* 6.9.988 (6.9.988 (15 Nov 2026) - one item on a delivery can be given its own discount at finalise, owner only; it beats the brand box and nothing else moves */   /* 6.9.987 (6.9.987 (15 Nov 2026) - Call this week: the live sites at a buying stage, by town, with the man to ring and his mobile; a site rests 14 days once it is rung */   /* 6.9.986 (6.9.986 (14 Nov 2026) - FIX: the same part-save counted again inflated stock; 16 products were over by 3,027 pieces */   /* 6.9.985 (14 Nov 2026) - Tally match: a line already picked is drawn as picked, and settled lines fold away so only what needs him is on screen */   /* 6.9.984 (14 Nov 2026) - the waiting-bill sheet names the lines that still have no code, with the supplier\u2019s own code and the nearest catalogue ones */   /* 6.9.983 (14 Nov 2026) - the red "not matched" line on Stock to order says what it means and opens: which bill, how many, and how to put it right */   /* 6.9.982 (12 Nov 2026) - the quote tick moved to the quote book he actually looks at; it had been on the List view only */   /* 6.9.981 (12 Nov 2026) - merging quotations: one line per product, and a disagreed discount falls to the client\u2019s preset and is named */   /* 6.9.980 (12 Nov 2026) - tick several quotations and send them out on one challan */   /* 6.9.979 (12 Nov 2026) - Make challan is on every quotation, not only a won one; converting offers to mark it Won */   /* 6.9.978 (12 Nov 2026) - one Change button on a money row: edit it with the PIN asked twice, or cancel it */   /* 6.9.977 (12 Nov 2026) - a partner or driver payout entered wrongly can be set aside, with a reason, and brought back */   /* 6.9.976 (12 Nov 2026) - a brand already set aside stops nagging from the empty-brand card */   /* 6.9.975 (12 Nov 2026) - a finalised return can be opened again, and repriced, with it recorded as after the stamp */   /* 6.9.974 (12 Nov 2026) - Change it reprices this return as well as setting the preset from today */   /* 6.9.973 (12 Nov 2026) - FIX: the Finalise card on a return threw before it drew (6.9.972) */   /* 6.9.972 (12 Nov 2026) - return finalise: try a rate on the lines, and change the preset from today with a PIN */   /* 6.9.971 (12 Nov 2026) - a brand with no preset is set from the return-finalise card itself */   /* 6.9.970 (12 Nov 2026) - quote PDF: a product description is printed whole, not cut at three lines */   /* 6.9.969 (11 Nov 2026) - deliveries with no signed paper split by age: the ones past 30 days get the red number, the fresh ones are stated quietly */   /* 6.9.968 (11 Nov 2026) - a purchase bill already fully in stock is not brought in a second time: Huliot's invoice arrives in three mails, and all three were being uploaded */   /* 6.9.967 (11 Nov 2026) - GHP+ logo in the registered Green Heat+ colours (#00539F / #ED1D24) on PDFs, quotes, challans and QR centres */   /* 6.9.966 (11 Nov 2026) - technical specifications sheet in colour: brand-coloured table heads and code strip, coloured field labels, and the exceptions in an amber panel */   /* 6.9.965 (11 Nov 2026) - old quotes to close: grouped by what the site is doing now, closing windows first, each group carrying that stage's own pitch lines */   /* 6.9.964 (11 Nov 2026) - quote spec table: a value all but a few items share is said once and the few are named, so one tube no longer printed five long columns 25 times */   /* 6.9.963 (11 Nov 2026) - purchase bills: same day + same amount flagged on the Tally screen */   /* 6.9.958 (10 Nov 2026) - a statement attached before the name was kept is told apart by its time, not left as four identical lines */     /* 6.9.957 (10 Nov 2026) - each attached old hisab shows its file name, and a wrong one can be set aside */     /* 6.9.956 (10 Nov 2026) - rebuilt: the GitHub Pages publish of 6.9.955 failed (run #1675), so nothing had changed on the phones */   /* 6.9.955 (10 Nov 2026) - the old hisab takes more than one file at once: photographed pages become one PDF, and every statement on file is listed */     /* 6.9.954 (10 Nov 2026) - the Partner Club: fixed slabs, a bonus on crossing one, the trip and device rewards, every partner's rupees to his next slab, and the quiet-partner watch */     /* 6.9.953 (10 Nov 2026) - Service > Control: cash in each engineer's hand, hand-over recorded, three random customer checks a week */     /* 6.9.952 (10 Nov 2026) - to-bill month by month, screens found from Search, team screen use on Health, a receipt for every incentive payout */     /* 6.9.951 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 6.9.950 (9 Nov 2026) - brand introductions: a fuller paragraph, three stage-wise benefits and one next step, on the quote and the proposal */     /* 6.9.949 (9 Nov 2026) - quote PDF: a product picture stays inside its own row (1.2 mm clear of both lines) */     /* 6.9.948 (9 Nov 2026) - quote PDF: each room heading carries its collection and finish with colour dots; every FIMA code chip has its finish dot */     /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
+  var APP_VERSION = "6.9.991";   /* 6.9.991 (15 Nov 2026) - nine money rules moved into the shared core so the Challan and Payment apps can no longer drift apart on them; the core build, broken since minifying began, runs again */   /* 6.9.990 (6.9.990 (15 Nov 2026) - the duplicate radar reads every record tab, not clients alone: a row whose every field matches another, and the same money to the same man on the same day */   /* 6.9.989 (6.9.989 (15 Nov 2026) - FIX: the money check called a settled account\u2019s folded lines missing; it opens the fold while it reads */   /* 6.9.988 (6.9.988 (15 Nov 2026) - one item on a delivery can be given its own discount at finalise, owner only; it beats the brand box and nothing else moves */   /* 6.9.987 (6.9.987 (15 Nov 2026) - Call this week: the live sites at a buying stage, by town, with the man to ring and his mobile; a site rests 14 days once it is rung */   /* 6.9.986 (6.9.986 (14 Nov 2026) - FIX: the same part-save counted again inflated stock; 16 products were over by 3,027 pieces */   /* 6.9.985 (14 Nov 2026) - Tally match: a line already picked is drawn as picked, and settled lines fold away so only what needs him is on screen */   /* 6.9.984 (14 Nov 2026) - the waiting-bill sheet names the lines that still have no code, with the supplier\u2019s own code and the nearest catalogue ones */   /* 6.9.983 (14 Nov 2026) - the red "not matched" line on Stock to order says what it means and opens: which bill, how many, and how to put it right */   /* 6.9.982 (12 Nov 2026) - the quote tick moved to the quote book he actually looks at; it had been on the List view only */   /* 6.9.981 (12 Nov 2026) - merging quotations: one line per product, and a disagreed discount falls to the client\u2019s preset and is named */   /* 6.9.980 (12 Nov 2026) - tick several quotations and send them out on one challan */   /* 6.9.979 (12 Nov 2026) - Make challan is on every quotation, not only a won one; converting offers to mark it Won */   /* 6.9.978 (12 Nov 2026) - one Change button on a money row: edit it with the PIN asked twice, or cancel it */   /* 6.9.977 (12 Nov 2026) - a partner or driver payout entered wrongly can be set aside, with a reason, and brought back */   /* 6.9.976 (12 Nov 2026) - a brand already set aside stops nagging from the empty-brand card */   /* 6.9.975 (12 Nov 2026) - a finalised return can be opened again, and repriced, with it recorded as after the stamp */   /* 6.9.974 (12 Nov 2026) - Change it reprices this return as well as setting the preset from today */   /* 6.9.973 (12 Nov 2026) - FIX: the Finalise card on a return threw before it drew (6.9.972) */   /* 6.9.972 (12 Nov 2026) - return finalise: try a rate on the lines, and change the preset from today with a PIN */   /* 6.9.971 (12 Nov 2026) - a brand with no preset is set from the return-finalise card itself */   /* 6.9.970 (12 Nov 2026) - quote PDF: a product description is printed whole, not cut at three lines */   /* 6.9.969 (11 Nov 2026) - deliveries with no signed paper split by age: the ones past 30 days get the red number, the fresh ones are stated quietly */   /* 6.9.968 (11 Nov 2026) - a purchase bill already fully in stock is not brought in a second time: Huliot's invoice arrives in three mails, and all three were being uploaded */   /* 6.9.967 (11 Nov 2026) - GHP+ logo in the registered Green Heat+ colours (#00539F / #ED1D24) on PDFs, quotes, challans and QR centres */   /* 6.9.966 (11 Nov 2026) - technical specifications sheet in colour: brand-coloured table heads and code strip, coloured field labels, and the exceptions in an amber panel */   /* 6.9.965 (11 Nov 2026) - old quotes to close: grouped by what the site is doing now, closing windows first, each group carrying that stage's own pitch lines */   /* 6.9.964 (11 Nov 2026) - quote spec table: a value all but a few items share is said once and the few are named, so one tube no longer printed five long columns 25 times */   /* 6.9.963 (11 Nov 2026) - purchase bills: same day + same amount flagged on the Tally screen */   /* 6.9.958 (10 Nov 2026) - a statement attached before the name was kept is told apart by its time, not left as four identical lines */     /* 6.9.957 (10 Nov 2026) - each attached old hisab shows its file name, and a wrong one can be set aside */     /* 6.9.956 (10 Nov 2026) - rebuilt: the GitHub Pages publish of 6.9.955 failed (run #1675), so nothing had changed on the phones */   /* 6.9.955 (10 Nov 2026) - the old hisab takes more than one file at once: photographed pages become one PDF, and every statement on file is listed */     /* 6.9.954 (10 Nov 2026) - the Partner Club: fixed slabs, a bonus on crossing one, the trip and device rewards, every partner's rupees to his next slab, and the quiet-partner watch */     /* 6.9.953 (10 Nov 2026) - Service > Control: cash in each engineer's hand, hand-over recorded, three random customer checks a week */     /* 6.9.952 (10 Nov 2026) - to-bill month by month, screens found from Search, team screen use on Health, a receipt for every incentive payout */     /* 6.9.951 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 6.9.950 (9 Nov 2026) - brand introductions: a fuller paragraph, three stage-wise benefits and one next step, on the quote and the proposal */     /* 6.9.949 (9 Nov 2026) - quote PDF: a product picture stays inside its own row (1.2 mm clear of both lines) */     /* 6.9.948 (9 Nov 2026) - quote PDF: each room heading carries its collection and finish with colour dots; every FIMA code chip has its finish dot */     /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -934,35 +1058,8 @@
      ever produce two copies of one document. The WhatsApp-with-link paths keep their own
      fallback download: a wa.me tab is already open there. */
   var _pdfOutAt = 0;
-  function canShareFile() {
-    try {
-      if (!navigator.share || !navigator.canShare) return false;
-      return navigator.canShare({ files: [new File(["x"], "x.pdf", { type: "application/pdf" })] });
-    } catch (e) { return false; }
-  }
-  /* ================= WHO TOOK THIS FILE, AND WHEN  (6.9.578 / 1.86.0 / 1.46.0) =================
-     His words: "mention file download date and time and by whom for every file download, in very
-     small font in any corner of the page, not highlighted". One line, 5 pt, pale grey, bottom
-     right of every page. Once per document. */
-  function pdfDlStamp(doc) {
-    try {
-      if (!doc || doc._dlStamped) return;
-      doc._dlStamped = true;
-      var d = new Date(), p2 = function (n) { return (n < 10 ? "0" : "") + n; };
-      var line = "Downloaded " + p2(d.getDate()) + "/" + p2(d.getMonth() + 1) + "/" + d.getFullYear() + " " +
-        p2(d.getHours()) + ":" + p2(d.getMinutes()) + (S && S.user ? " by " + String(S.user) : "");
-      var n = doc.getNumberOfPages(), cur = doc.internal.getCurrentPageInfo ? doc.internal.getCurrentPageInfo().pageNumber : n;
-      var fs = doc.getFontSize(), tc = doc.getTextColor ? doc.getTextColor() : null;
-      for (var i = 1; i <= n; i++) {
-        doc.setPage(i);
-        var W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight();
-        doc.setFontSize(5); doc.setTextColor(170, 178, 190);
-        doc.text(line, W - 4, H - 2.5, { align: "right" });
-      }
-      doc.setPage(cur); doc.setFontSize(fs);
-      if (tc) { try { doc.setTextColor(tc); } catch (e) { doc.setTextColor(0, 0, 0); } }
-    } catch (e) { }
-  }
+
+
   /* ================= COPY A LINK INSTEAD OF SENDING THE FILE  (v6.9.579) ================= */
   function pdfLinkText(u, fname, title) { return String(title || String(fname || "").replace(/\.pdf$/i, "") || "Document") + "\n" + u; }
   function pdfLinkSheet(txt) {
@@ -1006,23 +1103,8 @@
     });
   }
   window.EW_pdfChoose = pdfOutChoose;
-  /* ================= WHERE THE FILE WENT, ON A PHONE  (CRM 6.9.701 / Challan 1.127.0 / Collect 1.63.0, 6 Oct 2026) =================
-     HIS WORDS: "in mobile its not showing where pdf is downloading, can we put a download folder or what
-     alternate we can do?". A web page cannot choose the folder a file lands in - the phone decides
-     (iPhone: Files > Downloads; Android: Downloads). So the file still downloads exactly as before
-     (6.9.664), and on a phone a panel then says where it went and offers the two things a phone CAN
-     do with it: Open it now, or Save / send it - the share sheet, where "Save to Files" lets him
-     pick any folder (iCloud Drive, On My iPhone, Google Drive) and WhatsApp takes the file itself.
-     A laptop is left alone: its browser already shows the download. */
-  function dlIsPhone() {
-    var ua = String((navigator && navigator.userAgent) || "");
-    return /Android|iPhone|iPod/i.test(ua) || (/iPad|Macintosh/.test(ua) && (navigator.maxTouchPoints || 0) > 1);
-  }
-  function dlWhereSay() {
-    var ua = String((navigator && navigator.userAgent) || "");
-    if (/Android/i.test(ua)) return "It is in your phone’s <b>Downloads</b> folder (also in the notification at the top).";
-    return "It is in the <b>Files</b> app → <b>Downloads</b> (or tap ⬇ in Safari’s address bar).";
-  }
+
+
   /* ===== 6.9.703 / 1.128.0 / 1.64.0 - A PHONE ONLY SAVES A FILE INSIDE A TAP =====
      HIS WORDS, 7 Oct 2026: "in mobile in crm its not downloading full hisab, saying empty file". The full
      hisab fetches every signed receipt before it is drawn - many seconds after his tap. A phone lets a
@@ -1033,74 +1115,8 @@
      next tap - Download, Save to / Send, or Open. A laptop is unchanged. */
   var _dlTap = 0;
   try { ["pointerdown", "touchstart", "click"].forEach(function (ev) { document.addEventListener(ev, function () { _dlTap = Date.now(); }, true); }); } catch (eT) { }
-  function dlFresh() { return Date.now() - _dlTap < 3500; }
-  function dlBlob(blob, fname) {
-    var u = URL.createObjectURL(blob), a = document.createElement("a");
-    a.href = u; a.download = fname; a.rel = "noopener"; a.style.display = "none";
-    document.body.appendChild(a); a.click();
-    setTimeout(function () { try { document.body.removeChild(a); } catch (e) { } }, 1500);
-    setTimeout(function () { try { URL.revokeObjectURL(u); } catch (e) { } }, 120000);
-  }
-  function dlPanel(blob, fname, ready) {
-    try {
-      if (!blob || !dlIsPhone()) return;
-      var old = document.getElementById("ewdl"); if (old && old.parentNode) old.parentNode.removeChild(old);
-      var type = blob.type || (/\.xlsx$/i.test(fname) ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : "application/pdf");
-      var file = null; try { file = new File([blob], fname, { type: type }); } catch (e) { file = null; }
-      var canSh = false; try { canSh = !!(file && navigator.share && navigator.canShare && navigator.canShare({ files: [file] })); } catch (e) { canSh = false; }
-      var url = URL.createObjectURL(blob);
-      var box = document.createElement("div");
-      box.id = "ewdl";
-      box.setAttribute("style", "position:fixed;left:8px;right:8px;top:calc(env(safe-area-inset-top) + 8px);z-index:10000;"   /* at the top: the app's own toasts live at the bottom */ +
-        "background:#0f172a;color:#fff;border-radius:14px;padding:12px 12px 10px;box-shadow:0 6px 24px rgba(15,23,42,.35);" +
-        "font:500 13px/1.4 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:560px;margin:0 auto");
-      var nm = document.createElement("div");
-      nm.setAttribute("style", "font-weight:700;font-size:13.5px;word-break:break-all");
-      nm.textContent = (ready ? "Your file is ready \u2014 " : "\u2713 Downloaded \u2014 ") + fname;
-      var where = document.createElement("div");
-      where.setAttribute("style", "font-size:12.5px;color:#cbd5e1;margin-top:3px");
-      where.innerHTML = (ready ? "It took a moment to build. Tap <b>Download</b> to save it." : dlWhereSay()) + (!canSh ? "" : /Android/i.test(String(navigator.userAgent || ""))
-        ? " To put it in Drive or send it on WhatsApp, tap <b>Save to\u2026 / Send</b>."
-        : " To keep it in a folder of your choice, tap <b>Save to\u2026</b> and pick <b>Save to Files</b>.");
-      var row = document.createElement("div");
-      row.setAttribute("style", "display:flex;gap:8px;margin-top:9px;flex-wrap:wrap");
-      var btn = function (label, main, fn) {
-        var b = document.createElement("button");
-        b.type = "button"; b.textContent = label;
-        b.setAttribute("style", "min-height:44px;padding:0 14px;border-radius:10px;font:700 13px -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;" +
-          "border:1px solid " + (main ? "#14b8a6" : "#475569") + ";background:" + (main ? "#0f766e" : "transparent") + ";color:#fff;cursor:pointer;flex:" + (main ? "1 1 auto" : "0 0 auto"));
-        b.addEventListener("click", function (e) { e.preventDefault(); e.stopPropagation(); fn(); });
-        row.appendChild(b);
-      };
-      var close = function () { if (box.parentNode) box.parentNode.removeChild(box); setTimeout(function () { try { URL.revokeObjectURL(url); } catch (e) { } }, 60000); };
-      if (ready) btn("Download", true, function () { dlBlob(blob, fname); nm.textContent = "\u2713 Downloaded \u2014 " + fname; where.innerHTML = dlWhereSay(); });
-      btn("Open", !canSh && !ready, function () { var w = null; try { w = window.open(url, "_blank"); } catch (e) { w = null; } if (!w) { var a = document.createElement("a"); a.href = url; a.target = "_blank"; a.rel = "noopener"; document.body.appendChild(a); a.click(); a.remove(); } });   /* never navigate the app itself away */
-      if (canSh) btn("Save to… / Send", !ready, function () { navigator.share({ files: [file], title: fname }).then(close, function () { }); });
-      btn("Close", false, close);
-      box.appendChild(nm); box.appendChild(where); box.appendChild(row);
-      document.body.appendChild(box);
-      setTimeout(function () { if (document.getElementById("ewdl") === box) close(); }, 60000);
-    } catch (e) { }
-  }
-  function pdfOut(doc, fname, title) {
-    pdfDlStamp(doc);   /* 6.9.578 - who took it, and when */
-    /* 6.9.664 / 1.118.0 / 1.58.0 - HIS WORDS: "its not downloading pdf, its very time consuming,
-       change everywhere to download pdf". Every PDF downloads at once: no "Your PDF is ready"
-       choice and no share sheet (Safari on a Mac says it can share a file, so "Download" opened
-       the share sheet and no file came). WhatsApp and Telegram keep their own buttons. */
-    var now = Date.now();
-    if (now - _pdfOutAt < 2000) return Promise.resolve(false);   /* the same press twice */
-    _pdfOutAt = now;
-    if (dlIsPhone()) {   /* 6.9.703 - never jsPDF's save on a phone, and only inside a fresh tap */
-      var _fn = String(fname || "document.pdf"), _bl = doc.output("blob");
-      if (dlFresh()) { dlBlob(_bl, _fn); dlPanel(_bl, _fn, false); } else dlPanel(_bl, _fn, true);
-      return Promise.resolve(true);
-    }
-    doc.save(String(fname || "document.pdf"));
-    return Promise.resolve(true);
-  }
-  /* the word on the button: every PDF button downloads now (6.9.664) */
-  function pdfBtnLabel(base) { return base; }
+
+
   var UP_SAY = { pdfHost: "Uploading the document", tgSend: "Sending to Telegram" };
   /* ================= WHOSE TURN ON THE WIRE  (v6.9.557, 20 Sep 2026) =================
      One choked uplink, one rule: a document upload owns the line while it runs, and everything
@@ -41981,7 +41997,6 @@ function viewCatalogue() {
     if (!seesAllClients()) list = list.filter(function (x) { return isMineClient(x.name); });   /* a sales exec sees only the clients assigned to them */
     return list;
   }
-
 
 
   /* ===================== 6.9.822 - MESSAGES & POSTS =====================
