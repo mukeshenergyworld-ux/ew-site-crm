@@ -162,12 +162,8 @@
     "fns": [
       "hisabOwed",
       "clientDiscountOn",
-      "discFrom",
-      "incMap",
       "payAmt",
       "isJobLine",
-      "discRowsFor",
-      "discRowOn",
       "hisabStampMap"
     ],
     "apps": [
@@ -186,6 +182,21 @@
     "apps": [
       "Challan",
       "Payment"
+    ]
+  },
+  "disc": {
+    "why": "The discount rule, for all four apps.",
+    "fns": [
+      "discRowsFor",
+      "discRowOn",
+      "discFrom",
+      "incMap"
+    ],
+    "apps": [
+      "CRM",
+      "Challan",
+      "Payment",
+      "Visit"
     ]
   }
 }
