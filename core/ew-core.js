@@ -805,4 +805,29 @@ function rnLines(r) {
   function hisabExtraOf(c) { return ((c && c.id) ? (Number(hisabExtraMap()[c.id]) || 0) : 0) + Math.max(0, nAmt(c && c.discAmt)); }
 /* ==EWCORE:money_field:END== */
 
+/* ==EWCORE:drivers== DRIVER PAYOUTS AS THEY STAND. The server keeps the payout; a cancel and an edit are audit rows laid over it when read. One copy in the CRM and the Challan app, because the godown pays drivers from the Challan app and was still counting payouts the CRM had cancelled. */
+  function dpLive(rows, audit, keepCancelled) {
+    rows = rows || []; audit = audit || [];
+    var slot = keepCancelled ? "k" : "l", c = dpLive.c || (dpLive.c = {}), was = c[slot];
+    var sig = rows.length + "|" + audit.length + "|" + String((audit[audit.length - 1] || {}).id || "");
+    if (was && was.rows === rows && was.audit === audit && was.sig === sig) return was.out;
+    var off = {}, fix = {};
+    audit.filter(function (a) {
+      var x = a && String(a.action || "");
+      return x === "rec:cancel" || x === "pin:row-edit";
+    }).sort(function (a, b) { return String(a.createdAt || "").localeCompare(String(b.createdAt || "")); })
+      .forEach(function (a) {
+        var d = {}; try { d = JSON.parse(a.detail || "{}") || {}; } catch (e) { return; }
+        if (a.action === "rec:cancel") { if (String(d.tab || "") === "driverpay" && d.recId) off[String(d.recId)] = !d.undo; return; }
+        if (String(d.kind || "") !== "driverpay" || !d.recId) return;
+        var f = fix[String(d.recId)] || (fix[String(d.recId)] = {});
+        (d.changed || []).forEach(function (ch) { if (ch && ch.field) f[String(ch.field)] = ch.now; });
+      });
+    var out = rows.filter(function (p) { return keepCancelled || !(p && off[String(p.id || "")]); })
+      .map(function (p) { var f = p && fix[String(p.id || "")]; return f ? Object.assign({}, p, f, { edited: 1 }) : p; });
+    c[slot] = { rows: rows, audit: audit, sig: sig, out: out };
+    return out;
+  }
+/* ==EWCORE:drivers:END== */
+
 

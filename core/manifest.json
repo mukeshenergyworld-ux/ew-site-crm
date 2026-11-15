@@ -198,5 +198,15 @@
       "Payment",
       "Visit"
     ]
+  },
+  "drivers": {
+    "why": "Driver payouts as they stand: server rows with cancels and PIN edits laid over them. The godown pays from the Challan app, which read the raw list.",
+    "fns": [
+      "dpLive"
+    ],
+    "apps": [
+      "CRM",
+      "Challan"
+    ]
   }
 }
