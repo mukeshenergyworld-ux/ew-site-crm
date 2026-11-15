@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.987";   /* 6.9.987 (15 Nov 2026) - Call this week: the live sites at a buying stage, by town, with the man to ring and his mobile; a site rests 14 days once it is rung */   /* 6.9.986 (6.9.986 (14 Nov 2026) - FIX: the same part-save counted again inflated stock; 16 products were over by 3,027 pieces */   /* 6.9.985 (14 Nov 2026) - Tally match: a line already picked is drawn as picked, and settled lines fold away so only what needs him is on screen */   /* 6.9.984 (14 Nov 2026) - the waiting-bill sheet names the lines that still have no code, with the supplier\u2019s own code and the nearest catalogue ones */   /* 6.9.983 (14 Nov 2026) - the red "not matched" line on Stock to order says what it means and opens: which bill, how many, and how to put it right */   /* 6.9.982 (12 Nov 2026) - the quote tick moved to the quote book he actually looks at; it had been on the List view only */   /* 6.9.981 (12 Nov 2026) - merging quotations: one line per product, and a disagreed discount falls to the client\u2019s preset and is named */   /* 6.9.980 (12 Nov 2026) - tick several quotations and send them out on one challan */   /* 6.9.979 (12 Nov 2026) - Make challan is on every quotation, not only a won one; converting offers to mark it Won */   /* 6.9.978 (12 Nov 2026) - one Change button on a money row: edit it with the PIN asked twice, or cancel it */   /* 6.9.977 (12 Nov 2026) - a partner or driver payout entered wrongly can be set aside, with a reason, and brought back */   /* 6.9.976 (12 Nov 2026) - a brand already set aside stops nagging from the empty-brand card */   /* 6.9.975 (12 Nov 2026) - a finalised return can be opened again, and repriced, with it recorded as after the stamp */   /* 6.9.974 (12 Nov 2026) - Change it reprices this return as well as setting the preset from today */   /* 6.9.973 (12 Nov 2026) - FIX: the Finalise card on a return threw before it drew (6.9.972) */   /* 6.9.972 (12 Nov 2026) - return finalise: try a rate on the lines, and change the preset from today with a PIN */   /* 6.9.971 (12 Nov 2026) - a brand with no preset is set from the return-finalise card itself */   /* 6.9.970 (12 Nov 2026) - quote PDF: a product description is printed whole, not cut at three lines */   /* 6.9.969 (11 Nov 2026) - deliveries with no signed paper split by age: the ones past 30 days get the red number, the fresh ones are stated quietly */   /* 6.9.968 (11 Nov 2026) - a purchase bill already fully in stock is not brought in a second time: Huliot's invoice arrives in three mails, and all three were being uploaded */   /* 6.9.967 (11 Nov 2026) - GHP+ logo in the registered Green Heat+ colours (#00539F / #ED1D24) on PDFs, quotes, challans and QR centres */   /* 6.9.966 (11 Nov 2026) - technical specifications sheet in colour: brand-coloured table heads and code strip, coloured field labels, and the exceptions in an amber panel */   /* 6.9.965 (11 Nov 2026) - old quotes to close: grouped by what the site is doing now, closing windows first, each group carrying that stage's own pitch lines */   /* 6.9.964 (11 Nov 2026) - quote spec table: a value all but a few items share is said once and the few are named, so one tube no longer printed five long columns 25 times */   /* 6.9.963 (11 Nov 2026) - purchase bills: same day + same amount flagged on the Tally screen */   /* 6.9.958 (10 Nov 2026) - a statement attached before the name was kept is told apart by its time, not left as four identical lines */     /* 6.9.957 (10 Nov 2026) - each attached old hisab shows its file name, and a wrong one can be set aside */     /* 6.9.956 (10 Nov 2026) - rebuilt: the GitHub Pages publish of 6.9.955 failed (run #1675), so nothing had changed on the phones */   /* 6.9.955 (10 Nov 2026) - the old hisab takes more than one file at once: photographed pages become one PDF, and every statement on file is listed */     /* 6.9.954 (10 Nov 2026) - the Partner Club: fixed slabs, a bonus on crossing one, the trip and device rewards, every partner's rupees to his next slab, and the quiet-partner watch */     /* 6.9.953 (10 Nov 2026) - Service > Control: cash in each engineer's hand, hand-over recorded, three random customer checks a week */     /* 6.9.952 (10 Nov 2026) - to-bill month by month, screens found from Search, team screen use on Health, a receipt for every incentive payout */     /* 6.9.951 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 6.9.950 (9 Nov 2026) - brand introductions: a fuller paragraph, three stage-wise benefits and one next step, on the quote and the proposal */     /* 6.9.949 (9 Nov 2026) - quote PDF: a product picture stays inside its own row (1.2 mm clear of both lines) */     /* 6.9.948 (9 Nov 2026) - quote PDF: each room heading carries its collection and finish with colour dots; every FIMA code chip has its finish dot */     /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
+  var APP_VERSION = "6.9.988";   /* 6.9.988 (15 Nov 2026) - one item on a delivery can be given its own discount at finalise, owner only; it beats the brand box and nothing else moves */   /* 6.9.987 (6.9.987 (15 Nov 2026) - Call this week: the live sites at a buying stage, by town, with the man to ring and his mobile; a site rests 14 days once it is rung */   /* 6.9.986 (6.9.986 (14 Nov 2026) - FIX: the same part-save counted again inflated stock; 16 products were over by 3,027 pieces */   /* 6.9.985 (14 Nov 2026) - Tally match: a line already picked is drawn as picked, and settled lines fold away so only what needs him is on screen */   /* 6.9.984 (14 Nov 2026) - the waiting-bill sheet names the lines that still have no code, with the supplier\u2019s own code and the nearest catalogue ones */   /* 6.9.983 (14 Nov 2026) - the red "not matched" line on Stock to order says what it means and opens: which bill, how many, and how to put it right */   /* 6.9.982 (12 Nov 2026) - the quote tick moved to the quote book he actually looks at; it had been on the List view only */   /* 6.9.981 (12 Nov 2026) - merging quotations: one line per product, and a disagreed discount falls to the client\u2019s preset and is named */   /* 6.9.980 (12 Nov 2026) - tick several quotations and send them out on one challan */   /* 6.9.979 (12 Nov 2026) - Make challan is on every quotation, not only a won one; converting offers to mark it Won */   /* 6.9.978 (12 Nov 2026) - one Change button on a money row: edit it with the PIN asked twice, or cancel it */   /* 6.9.977 (12 Nov 2026) - a partner or driver payout entered wrongly can be set aside, with a reason, and brought back */   /* 6.9.976 (12 Nov 2026) - a brand already set aside stops nagging from the empty-brand card */   /* 6.9.975 (12 Nov 2026) - a finalised return can be opened again, and repriced, with it recorded as after the stamp */   /* 6.9.974 (12 Nov 2026) - Change it reprices this return as well as setting the preset from today */   /* 6.9.973 (12 Nov 2026) - FIX: the Finalise card on a return threw before it drew (6.9.972) */   /* 6.9.972 (12 Nov 2026) - return finalise: try a rate on the lines, and change the preset from today with a PIN */   /* 6.9.971 (12 Nov 2026) - a brand with no preset is set from the return-finalise card itself */   /* 6.9.970 (12 Nov 2026) - quote PDF: a product description is printed whole, not cut at three lines */   /* 6.9.969 (11 Nov 2026) - deliveries with no signed paper split by age: the ones past 30 days get the red number, the fresh ones are stated quietly */   /* 6.9.968 (11 Nov 2026) - a purchase bill already fully in stock is not brought in a second time: Huliot's invoice arrives in three mails, and all three were being uploaded */   /* 6.9.967 (11 Nov 2026) - GHP+ logo in the registered Green Heat+ colours (#00539F / #ED1D24) on PDFs, quotes, challans and QR centres */   /* 6.9.966 (11 Nov 2026) - technical specifications sheet in colour: brand-coloured table heads and code strip, coloured field labels, and the exceptions in an amber panel */   /* 6.9.965 (11 Nov 2026) - old quotes to close: grouped by what the site is doing now, closing windows first, each group carrying that stage's own pitch lines */   /* 6.9.964 (11 Nov 2026) - quote spec table: a value all but a few items share is said once and the few are named, so one tube no longer printed five long columns 25 times */   /* 6.9.963 (11 Nov 2026) - purchase bills: same day + same amount flagged on the Tally screen */   /* 6.9.958 (10 Nov 2026) - a statement attached before the name was kept is told apart by its time, not left as four identical lines */     /* 6.9.957 (10 Nov 2026) - each attached old hisab shows its file name, and a wrong one can be set aside */     /* 6.9.956 (10 Nov 2026) - rebuilt: the GitHub Pages publish of 6.9.955 failed (run #1675), so nothing had changed on the phones */   /* 6.9.955 (10 Nov 2026) - the old hisab takes more than one file at once: photographed pages become one PDF, and every statement on file is listed */     /* 6.9.954 (10 Nov 2026) - the Partner Club: fixed slabs, a bonus on crossing one, the trip and device rewards, every partner's rupees to his next slab, and the quiet-partner watch */     /* 6.9.953 (10 Nov 2026) - Service > Control: cash in each engineer's hand, hand-over recorded, three random customer checks a week */     /* 6.9.952 (10 Nov 2026) - to-bill month by month, screens found from Search, team screen use on Health, a receipt for every incentive payout */     /* 6.9.951 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 6.9.950 (9 Nov 2026) - brand introductions: a fuller paragraph, three stage-wise benefits and one next step, on the quote and the proposal */     /* 6.9.949 (9 Nov 2026) - quote PDF: a product picture stays inside its own row (1.2 mm clear of both lines) */     /* 6.9.948 (9 Nov 2026) - quote PDF: each room heading carries its collection and finish with colour dots; every FIMA code chip has its finish dot */     /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -3636,13 +3636,26 @@ window.addEventListener("beforeunload", function (ev) {
       if (r.getAttribute("data-job") || !inp) { goods += amt0; bAmt[bn] = (bAmt[bn] || 0) + amt0; return; }
       var was = Number(r.getAttribute("data-was")) || 0;
       var d = hsbDiscVal(inp); if (d == null) d = was;   /* an empty brand box leaves its lines as they were */
+      /* 6.9.988 - and a figure typed on the LINE itself beats the brand box above it */
+      var _lb = document.querySelector('[data-ldisc="' + r.getAttribute("data-hl") + '"]');
+      var _lv = _lb ? hsbDiscVal(_lb) : null;
+      if (_lv != null) d = _lv;
       var rate = Number(r.getAttribute("data-rate")) || 0, qty = Number(r.getAttribute("data-qty")) || 0;
       var dr = Math.round(rate * (1 - d / 100)), amt = qty * dr;
       var ix = r.getAttribute("data-hl");
       var rc = document.getElementById("hsbr_" + ix), ac = document.getElementById("hsba_" + ix), dc = document.getElementById("hsbd_" + ix);
       if (rc) rc.textContent = money(dr);
       if (ac) ac.textContent = money(amt);
-      if (dc) { dc.textContent = d > 0 ? d + "%" : "\u2014"; dc.style.background = d !== was ? "#fef9c3" : ""; }   /* 6.9.700 - no 0% */
+      if (dc) {
+        /* 6.9.988 - when the owner has a box here, the figure lives in its placeholder so the box
+           itself stays blank and means "follow the brand". A typed box is solid, not dashed. */
+        if (dc.tagName === "INPUT") {
+          if (_lv == null) dc.placeholder = d > 0 ? String(d) : "\u2014";
+          dc.style.background = (_lv != null || d !== was) ? "#fef9c3" : "";
+          dc.style.borderStyle = (_lv != null) ? "solid" : "dashed";
+          dc.style.borderColor = (_lv != null) ? "#0f766e" : "#cbd5e1";
+        } else { dc.textContent = d > 0 ? d + "%" : "\u2014"; dc.style.background = d !== was ? "#fef9c3" : ""; }
+      }   /* 6.9.700 - no 0% */
       goods += amt; bAmt[bn] = (bAmt[bn] || 0) + amt;
     });
     Object.keys(bAmt).forEach(function (bn) { var e = document.getElementById("hsbb_" + bn); if (e) e.textContent = money(bAmt[bn]); });
@@ -17365,7 +17378,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       (roleIs("admin") && priced.some(function (x) { return !x.job; })
         ? '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:8px">' +
             '<button class="btn sm" data-act="hsb-disc-save" data-id="' + esc(c.id) + '" style="min-height:36px">Save these discounts</button>' +
-            '<span id="hsb_discnote" class="meta" style="font-size:12px">Change a brand\u2019s discount above; nothing is saved until you press this. A blank box means nothing typed &mdash; the grey figure is the client\u2019s rate on file, which a line with no discount takes when you finalise.</span></div>'
+            '<span id="hsb_discnote" class="meta" style="font-size:12px">Change a brand\u2019s discount above; nothing is saved until you press this. A blank box means nothing typed &mdash; the grey figure is the client\u2019s rate on file, which a line with no discount takes when you finalise. One item agreed at its own rate: type it in that item\u2019s own box below and it beats the brand &mdash; nothing else moves.</span></div>'
         : '') +
       '<div class="meta" style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#475569;margin-top:10px"><b>Item by item</b></div>' +
       '<div style="overflow-x:auto;margin-top:6px"><table style="width:100%;border-collapse:collapse;font-size:12.5px">' +
@@ -17388,8 +17401,24 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
                  : (x.brand ? ' <span style="color:#94a3b8;font-size:12px">' + esc(x.brand) + '</span>' : '')) + '</td>' +
         '<td style="padding:5px 6px">' + esc(String(x.qty)) + '</td>' +
         '<td style="padding:5px 6px;color:' + (x.disc > 0 ? '#94a3b8;text-decoration:line-through' : '#334155') + '">' + money(x.rate) + '</td>' +
-        '<td style="padding:5px 6px;font-weight:700;color:' + (x.disc > 0 ? '#0f766e' : '#94a3b8') + '">' +
-          '<span id="hsbd_' + x.ix + '">' + (x.job ? '&mdash;' : (x.disc > 0 ? x.disc + '%' : '&mdash;')) + '</span></td>' +   /* 6.9.700 */
+        '<td style="padding:5px 6px;font-weight:700;color:' + (x.disc > 0 ? '#0f766e' : '#94a3b8') + ';white-space:nowrap">' +
+          /* ===== 6.9.988 - ONE ITEM, ONE RATE  (15 Nov 2026) =====
+             HIS ASK: "at the time of finalization if any discount to be changed of any specific
+             item, do make provision, for admin only". The brand boxes above move every line of a
+             brand together, which is right nearly always and wrong exactly when one item on the
+             delivery was agreed at its own rate - a single tap sold at cost, one fitting matched
+             to a competitor's quote, a free replacement. Until today the only way to put that on
+             the paper was to change the whole brand and then change it back.
+             The box is BLANK and its placeholder is the rate that applies right now, live: leave
+             it alone and the line follows its brand exactly as before. Type in it and THIS LINE
+             wins over the brand box - nothing else on the delivery moves. Owner only, the same
+             gate the brand boxes carry, and the same journal row names every line that changed. */
+          (_dEd && !x.job
+            ? '<input data-ldisc="' + x.ix + '" data-was="' + x.disc + '" inputmode="decimal" value="" ' +
+              'placeholder="' + (x.disc > 0 ? esc(String(x.disc)) : '\u2014') + '" aria-label="Discount on this item" ' +
+              'style="width:44px;height:26px;min-height:0;padding:1px 5px;margin:0;text-align:right;font-weight:700;font-size:12.5px;' +
+              'color:#0f766e;border:1px dashed #cbd5e1;border-radius:6px;box-sizing:border-box" id="hsbd_' + x.ix + '"/>%'
+            : '<span id="hsbd_' + x.ix + '">' + (x.job ? '&mdash;' : (x.disc > 0 ? x.disc + '%' : '&mdash;')) + '</span>') + '</td>' +   /* 6.9.700 */
         '<td id="hsbr_' + x.ix + '" style="padding:5px 6px">' + money(x.dr) + '</td>' +
         '<td id="hsba_' + x.ix + '" style="padding:5px 0 5px 6px;font-weight:700">' + money(x.amt) + '</td></tr>';
     });
@@ -67992,10 +68021,30 @@ function viewCatalogue() {
         _bTo[inp.getAttribute("data-bdisc")] = { to: d, name: inp.getAttribute("data-bname") || "", was: inp.getAttribute("data-was") };
       });
       if (_bad) { toast("A brand\u2019s discount must be a number from 0 to 100."); return; }
+      /* 6.9.988 - a figure typed on one line, which beats its brand box */
+      var _lTo = {}, _lChg = [];
+      Array.prototype.forEach.call(document.querySelectorAll("[data-ldisc]"), function (inp) {
+        var raw = String(inp.value || "").trim();
+        if (!raw) return;
+        var d = hsbDiscVal(inp);
+        if (d == null || !/^[0-9]+(\.[0-9]+)?$/.test(raw)) { _bad = true; return; }
+        _lTo[inp.getAttribute("data-ldisc")] = d;
+      });
+      if (_bad) { toast("An item\u2019s discount must be a number from 0 to 100."); return; }
       Array.prototype.forEach.call(document.querySelectorAll("tr[data-hl]"), function (r) {
         if (r.getAttribute("data-job")) return;
-        var b = _bTo[r.getAttribute("data-bn")]; if (!b) return;
         var ix = Number(r.getAttribute("data-hl")), was = Number(r.getAttribute("data-was")) || 0;
+        var _lv = _lTo[r.getAttribute("data-hl")];
+        if (_lv !== undefined) {
+          /* the line box wins: this row is settled here and the brand box does not touch it */
+          if (_lv !== was && _its[ix]) {
+            _chg.push({ ix: ix, from: was, to: _lv });
+            _lChg.push({ ix: ix, from: was, to: _lv,
+              desc: String((_its[ix] && (_its[ix].desc || _its[ix].code)) || "this item") });
+          }
+          return;
+        }
+        var b = _bTo[r.getAttribute("data-bn")]; if (!b) return;
         if (b.to !== was && _its[ix]) { _chg.push({ ix: ix, from: was, to: b.to }); b.hit = (b.hit || 0) + 1; }
       });
       Object.keys(_bTo).forEach(function (k) { if (_bTo[k].hit) _bChg.push(_bTo[k]); });
@@ -68012,24 +68061,39 @@ function viewCatalogue() {
       var _keep = {};
       ["hsb_extra", "hsb_extrapc", "hsb_noproof", "hsb_offbrand"].forEach(function (k) { var e = document.getElementById(k); if (e) _keep[k] = e.value; });
       var _keepNx = document.getElementById("hsb_noextra"); _keepNx = _keepNx ? _keepNx.checked : null;
-      var _keepB = {};
+      var _keepB = {}, _keepL = {};
       Array.prototype.forEach.call(document.querySelectorAll("[data-bdisc]"), function (inp) { _keepB[inp.getAttribute("data-bdisc")] = inp.value; });
+      Array.prototype.forEach.call(document.querySelectorAll("[data-ldisc]"), function (inp) { _keepL[inp.getAttribute("data-ldisc")] = inp.value; });   /* 6.9.988 */
       var _back = function (withBoxes) {
         S.modal = modalAddToHisab(_dc.id); render();
         Object.keys(_keep).forEach(function (k) { var e = document.getElementById(k); if (e) e.value = _keep[k]; });
         var nx = document.getElementById("hsb_noextra"); if (nx && _keepNx !== null) nx.checked = _keepNx;
-        if (withBoxes) Array.prototype.forEach.call(document.querySelectorAll("[data-bdisc]"), function (inp) {
-          var v = _keepB[inp.getAttribute("data-bdisc")]; if (v !== undefined) inp.value = v;
-        });
+        if (withBoxes) {
+          Array.prototype.forEach.call(document.querySelectorAll("[data-bdisc]"), function (inp) {
+            var v = _keepB[inp.getAttribute("data-bdisc")]; if (v !== undefined) inp.value = v;
+          });
+          Array.prototype.forEach.call(document.querySelectorAll("[data-ldisc]"), function (inp) {
+            var v = _keepL[inp.getAttribute("data-ldisc")]; if (v !== undefined) inp.value = v;
+          });
+        }
         try { hsbDiscPaint(); } catch (e) { }
         try { if (document.getElementById("hsb_extra")) hsbExtraPaint(); } catch (e) { }
       };
       askSheet({
-        title: "Save " + (_bChg.length === 1 ? _bChg[0].name + "\u2019s discount" : "these " + _bChg.length + " brands\u2019 discounts") + "?",
+        title: (_bChg.length && _lChg.length)
+          ? "Save " + plural(_bChg.length, "brand") + " and " + plural(_lChg.length, "item") + "?"
+          : (_lChg.length
+              ? "Save " + (_lChg.length === 1 ? "this item\u2019s own discount" : "these " + _lChg.length + " item discounts") + "?"
+              : "Save " + (_bChg.length === 1 ? _bChg[0].name + "\u2019s discount" : "these " + _bChg.length + " brands\u2019 discounts") + "?"),
         sub: esc(_dc.challanNo || "") + " \u00b7 " + esc(_cl),
         body: _bChg.map(function (b) {
             return '<div><b>' + esc(b.name) + '</b> &middot; ' + (b.was === "" ? "mixed" : b.was + "%") + ' &rarr; <b>' + b.to + '%</b> &middot; ' + b.hit + ' item' + (b.hit === 1 ? '' : 's') + '</div>';
           }).join("") +
+          /* 6.9.988 - a line given its own rate is named on its own, not folded into its brand */
+          (_lChg.length ? '<div style="margin-top:' + (_bChg.length ? '6' : '0') + 'px">' +
+            _lChg.map(function (z) {
+              return '<div><b>' + esc(z.desc) + '</b> &middot; ' + (z.from > 0 ? z.from + '%' : 'no discount') + ' &rarr; <b>' + z.to + '%</b> &middot; this item only</div>';
+            }).join("") + '</div>' : '') +
           '<div style="margin-top:8px">Goods ' + money(_was) + ' &rarr; <b>' + money(_nowG) + '</b> &middot; ' +
           '<b style="color:' + (_diff < 0 ? '#0f766e' : '#b91c1c') + '">' + moneySgn(_diff) + '</b> on ' + esc(_cl) + '\u2019s bill.</div>' +
           (inHisab(_dc) ? '<div style="margin-top:8px;color:#b45309">\u26a0 This delivery is already finalised \u2014 the client may already hold the bill.</div>' : '') +
@@ -68051,6 +68115,7 @@ function viewCatalogue() {
             target: (_dc.challanNo || "") + " / " + _cl,
             detail: JSON.stringify({ chId: _dc.id, no: _dc.challanNo, was: _was, now: _nowG,
               why: "owner changed the discount on the finalise sheet", brands: _bChg.map(function (b) { return { brand: b.name, from: b.was, to: b.to, items: b.hit }; }),
+              items: _lChg.map(function (z) { return { desc: z.desc, from: z.from, to: z.to }; }),   /* 6.9.988 */
               lines: _chg.map(function (z) { return { code: _its[z.ix].code || "", desc: _its[z.ix].desc || "", from: z.from, to: z.to }; }) }), ip: ""
           }, true);
         }).catch(function () { });   /* a slow or failed send is the journal's: it is kept and retried */
