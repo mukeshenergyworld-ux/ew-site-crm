@@ -11,9 +11,11 @@
 const H = require("./harness.js");
 
 /* ---- 1. the rules that are supposed to be one copy now ---- */
-const SHARED = ["hisabOwed", "clientDiscountOn", "discFrom", "incMap", "payAmt",
-                "isJobLine", "discRowsFor", "discRowOn", "hisabStampMap"];
+const SHARED = ["hisabOwed", "clientDiscountOn", "payAmt", "isJobLine", "hisabStampMap"];
 const FIELD  = ["rnLines", "dedupe", "hisabExtraOf"];
+/* the discount rule reaches one app further: the Visit app prices QUOTATIONS, and a rule that
+   disagrees there costs no rupee on the book - it loses the order, and nobody learns why */
+const DISC   = ["discRowsFor", "discRowOn", "discFrom", "incMap"];
 
 function bodyOf(app, name) {
   const b = H.fnOf(H.read(app), name);
@@ -27,6 +29,16 @@ SHARED.forEach(n => {
        t !== null && t === c && t === p,
        [["CRM", t], ["Challan", c], ["Payment", p]].filter(x => x[1] !== t).map(x => x[0]).join(", ") + " differ");
 });
+console.log("\nThe discount rule — one copy, FOUR apps (the Visit app quotes with it)");
+DISC.forEach(n => {
+  const v = [["CRM","team"],["Challan","challan"],["Payment","collect"],["Visit","visit"]]
+    .map(([label, app]) => [label, bodyOf(app, n)]);
+  const first = v[0][1];
+  H.ok(n + " reads the same in all four apps",
+       first !== null && v.every(x => x[1] === first),
+       v.filter(x => x[1] !== first).map(x => x[0]).join(", ") + " differ");
+});
+
 console.log("\nThe field apps' own shared rules");
 FIELD.forEach(n => {
   const c = bodyOf("challan", n), p = bodyOf("collect", n);
@@ -46,10 +58,10 @@ OPEN.forEach(n => {
 
 /* ---- 3. every app must define each shared rule exactly ONCE ---- */
 console.log("\nNo app defines a shared rule twice");
-["team", "challan", "collect"].forEach(app => {
+["team", "challan", "collect", "visit"].forEach(app => {
   const src = H.read(app);
-  const twice = SHARED.filter(n => (src.match(new RegExp("function " + n + "\\s*\\(", "g")) || []).length > 1);
-  H.ok(app + " defines each of the " + SHARED.length + " once", twice.length === 0, twice.join(", "));
+  const twice = SHARED.concat(DISC).filter(n => (src.match(new RegExp("function " + n + "\\s*\\(", "g")) || []).length > 1);
+  H.ok(app + " defines each of the " + (SHARED.length + DISC.length) + " once", twice.length === 0, twice.join(", "));
 });
 
 H.done();
