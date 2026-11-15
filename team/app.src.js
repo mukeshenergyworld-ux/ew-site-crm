@@ -260,9 +260,63 @@
     return Promise.resolve(true);
   }
 /* ==EWCORE:download:END== */
+/* ==EWCORE:money== THE MONEY RULES THE TWO FIELD APPS SHARE. 15 Nov 2026 - the Payment app and the Challan app spent a month crediting a return and pricing a brand differently from the CRM: Rs 2,12,214 over-credited and Rs 2,16,742 over-chased, both from one rule living in three files. Nineteen money functions live in more than one app and nine have drifted. These are the ones that had NOT drifted between these two; from here they cannot, because the build refuses unless both still read the same.
+     THE CRM IS IN THIS LIST SINCE 15 Nov 2026, and the reason it was not is worth keeping. Its EW-CORE block sits at a different scope from its own functions - idbOpen, which has been in it since August, is not top-level in the CRM while it is in both field apps. Moving a CRM function in would put it where fn_map cannot see it, and the build would be unable to prove the function had not changed. A proof that cannot see the thing it is proving is worth nothing, so the CRM is held to the same rules by TEST instead, until its block is moved to its own top level. IT NEVER WAS AT A DIFFERENT SCOPE. The ruler was wrong: ewbuild's
+     bare() emitted an escaped brace from inside a regex as a real brace, so from one line of
+     ewiShortCrm onward every function in the CRM counted one level deep and top_level picked
+     the wrong depth. Thirteen escaped braces in that file. Fixed in ewbuild.bare(blank=True),
+     and the CRM joined the same day. */
+  function hisabOwed(c) { return hisabCounts(c) && (!HISAB_GATE || !hisabBookReady() || inHisab(c)); }
+
+  /* THE RATE THAT WAS IN FORCE ON A GIVEN DAY. clientDiscount() answers "what is this client's
+     discount now", which is the right question when pricing something today and the WRONG one
+     when asking whether a delivery already made was priced correctly. v6.9.350 built dated rates
+     precisely so that "deliveries BEFORE this date keep the rate they were made at" - and then
+     chDiscGap compared every challan ever made against today's rate anyway. */
+  function clientDiscountOn(client, brand, ymd) { var d = discRow(client, brand, ymd); return d ? Number(d.pct) || 0 : 0; }
+
+  /* NO dstr() IN HERE, AND THAT IS DELIBERATE. This block is shared byte-for-byte with the
+     Challan app, and the two apps have a function called dstr that does OPPOSITE things: in the
+     CRM it truncates to "2026-08-01", in the Challan app it FORMATS to "1 Aug 2026". Calling it
+     here read every dated rate as undated in the Challan app - so a challan would have been
+     priced at the old percent while the CRM used the new one, silently, and nothing on either
+     screen would have said so. Caught by t_apps_agree the moment the port landed, which is what
+     that suite is for. Ten characters of slicing, no shared name, no trap. */
+  function discFrom(row) {
+    var f = String((incMap(row) || {}).from || "").slice(0, 10);
+    return /^\d{4}-\d{2}-\d{2}$/.test(f) ? f : "";
+  }
+
+  function incMap(row) {
+    try { var m = JSON.parse((row && row.notes) || "{}"); return (m && typeof m === "object") ? m : {}; } catch (e) { return {}; }
+  }
+
+  /* v6.9.392 - AND ONE READER FOR A PAYMENT AMOUNT, for exactly the reason above.
+     Sixteen sites read it with raw Number(). A payment is typed by a man on a phone and lands
+     in the sheet as text, so "1,00,000" reads back as NaN, and every `|| 0` beside it turns
+     that into ZERO - a payment received, recorded, and then counted as nothing.
+
+     Where that would have shown: the client's HISAB ledger, the dues on the collection round,
+     the incentive ratio (collected / billed), the twice-weekly Telegram digest, the CSV export,
+     the duplicate-payment guard - and the STATEMENT PDF THAT IS SENT TO THE CUSTOMER. Every
+     one of them would have been wrong in the firm's favour, and the customer holding the
+     statement would have been the only person able to see it.
+
+     MEASURED 31 Aug on his own book: 26 payments, 164 openings, 141 freights - ZERO affected
+     today. Latent, not live. It stays latent only until somebody types a comma.
+     (Not re-counted today: his browser is not reachable this session. That measurement's date
+     is stated rather than implied, because a stale count presented as fresh is its own fault.)
+
+     hisabPayable read the same money TWICE, six lines apart - one line nAmt, the next Number.
+     That is what a rule without a single reader looks like after three months. */
+  function payAmt(p) { return nAmt((p || {}).amount); }
+
+  function isJobLine(l) { return !!(l && (l.job === true || String(l.code || "") === JOB_CODE)); }
+
+/* ==EWCORE:money:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.991";   /* 6.9.991 (15 Nov 2026) - nine money rules moved into the shared core so the Challan and Payment apps can no longer drift apart on them; the core build, broken since minifying began, runs again */   /* 6.9.990 (6.9.990 (15 Nov 2026) - the duplicate radar reads every record tab, not clients alone: a row whose every field matches another, and the same money to the same man on the same day */   /* 6.9.989 (6.9.989 (15 Nov 2026) - FIX: the money check called a settled account\u2019s folded lines missing; it opens the fold while it reads */   /* 6.9.988 (6.9.988 (15 Nov 2026) - one item on a delivery can be given its own discount at finalise, owner only; it beats the brand box and nothing else moves */   /* 6.9.987 (6.9.987 (15 Nov 2026) - Call this week: the live sites at a buying stage, by town, with the man to ring and his mobile; a site rests 14 days once it is rung */   /* 6.9.986 (6.9.986 (14 Nov 2026) - FIX: the same part-save counted again inflated stock; 16 products were over by 3,027 pieces */   /* 6.9.985 (14 Nov 2026) - Tally match: a line already picked is drawn as picked, and settled lines fold away so only what needs him is on screen */   /* 6.9.984 (14 Nov 2026) - the waiting-bill sheet names the lines that still have no code, with the supplier\u2019s own code and the nearest catalogue ones */   /* 6.9.983 (14 Nov 2026) - the red "not matched" line on Stock to order says what it means and opens: which bill, how many, and how to put it right */   /* 6.9.982 (12 Nov 2026) - the quote tick moved to the quote book he actually looks at; it had been on the List view only */   /* 6.9.981 (12 Nov 2026) - merging quotations: one line per product, and a disagreed discount falls to the client\u2019s preset and is named */   /* 6.9.980 (12 Nov 2026) - tick several quotations and send them out on one challan */   /* 6.9.979 (12 Nov 2026) - Make challan is on every quotation, not only a won one; converting offers to mark it Won */   /* 6.9.978 (12 Nov 2026) - one Change button on a money row: edit it with the PIN asked twice, or cancel it */   /* 6.9.977 (12 Nov 2026) - a partner or driver payout entered wrongly can be set aside, with a reason, and brought back */   /* 6.9.976 (12 Nov 2026) - a brand already set aside stops nagging from the empty-brand card */   /* 6.9.975 (12 Nov 2026) - a finalised return can be opened again, and repriced, with it recorded as after the stamp */   /* 6.9.974 (12 Nov 2026) - Change it reprices this return as well as setting the preset from today */   /* 6.9.973 (12 Nov 2026) - FIX: the Finalise card on a return threw before it drew (6.9.972) */   /* 6.9.972 (12 Nov 2026) - return finalise: try a rate on the lines, and change the preset from today with a PIN */   /* 6.9.971 (12 Nov 2026) - a brand with no preset is set from the return-finalise card itself */   /* 6.9.970 (12 Nov 2026) - quote PDF: a product description is printed whole, not cut at three lines */   /* 6.9.969 (11 Nov 2026) - deliveries with no signed paper split by age: the ones past 30 days get the red number, the fresh ones are stated quietly */   /* 6.9.968 (11 Nov 2026) - a purchase bill already fully in stock is not brought in a second time: Huliot's invoice arrives in three mails, and all three were being uploaded */   /* 6.9.967 (11 Nov 2026) - GHP+ logo in the registered Green Heat+ colours (#00539F / #ED1D24) on PDFs, quotes, challans and QR centres */   /* 6.9.966 (11 Nov 2026) - technical specifications sheet in colour: brand-coloured table heads and code strip, coloured field labels, and the exceptions in an amber panel */   /* 6.9.965 (11 Nov 2026) - old quotes to close: grouped by what the site is doing now, closing windows first, each group carrying that stage's own pitch lines */   /* 6.9.964 (11 Nov 2026) - quote spec table: a value all but a few items share is said once and the few are named, so one tube no longer printed five long columns 25 times */   /* 6.9.963 (11 Nov 2026) - purchase bills: same day + same amount flagged on the Tally screen */   /* 6.9.958 (10 Nov 2026) - a statement attached before the name was kept is told apart by its time, not left as four identical lines */     /* 6.9.957 (10 Nov 2026) - each attached old hisab shows its file name, and a wrong one can be set aside */     /* 6.9.956 (10 Nov 2026) - rebuilt: the GitHub Pages publish of 6.9.955 failed (run #1675), so nothing had changed on the phones */   /* 6.9.955 (10 Nov 2026) - the old hisab takes more than one file at once: photographed pages become one PDF, and every statement on file is listed */     /* 6.9.954 (10 Nov 2026) - the Partner Club: fixed slabs, a bonus on crossing one, the trip and device rewards, every partner's rupees to his next slab, and the quiet-partner watch */     /* 6.9.953 (10 Nov 2026) - Service > Control: cash in each engineer's hand, hand-over recorded, three random customer checks a week */     /* 6.9.952 (10 Nov 2026) - to-bill month by month, screens found from Search, team screen use on Health, a receipt for every incentive payout */     /* 6.9.951 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 6.9.950 (9 Nov 2026) - brand introductions: a fuller paragraph, three stage-wise benefits and one next step, on the quote and the proposal */     /* 6.9.949 (9 Nov 2026) - quote PDF: a product picture stays inside its own row (1.2 mm clear of both lines) */     /* 6.9.948 (9 Nov 2026) - quote PDF: each room heading carries its collection and finish with colour dots; every FIMA code chip has its finish dot */     /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
+  var APP_VERSION = "6.9.992";   /* 6.9.992 (15 Nov 2026) - the CRM joins the shared money core: six rules are now one copy across all three apps */   /* 6.9.991 (6.9.991 (15 Nov 2026) - nine money rules moved into the shared core so the Challan and Payment apps can no longer drift apart on them; the core build, broken since minifying began, runs again */   /* 6.9.990 (6.9.990 (15 Nov 2026) - the duplicate radar reads every record tab, not clients alone: a row whose every field matches another, and the same money to the same man on the same day */   /* 6.9.989 (6.9.989 (15 Nov 2026) - FIX: the money check called a settled account\u2019s folded lines missing; it opens the fold while it reads */   /* 6.9.988 (6.9.988 (15 Nov 2026) - one item on a delivery can be given its own discount at finalise, owner only; it beats the brand box and nothing else moves */   /* 6.9.987 (6.9.987 (15 Nov 2026) - Call this week: the live sites at a buying stage, by town, with the man to ring and his mobile; a site rests 14 days once it is rung */   /* 6.9.986 (6.9.986 (14 Nov 2026) - FIX: the same part-save counted again inflated stock; 16 products were over by 3,027 pieces */   /* 6.9.985 (14 Nov 2026) - Tally match: a line already picked is drawn as picked, and settled lines fold away so only what needs him is on screen */   /* 6.9.984 (14 Nov 2026) - the waiting-bill sheet names the lines that still have no code, with the supplier\u2019s own code and the nearest catalogue ones */   /* 6.9.983 (14 Nov 2026) - the red "not matched" line on Stock to order says what it means and opens: which bill, how many, and how to put it right */   /* 6.9.982 (12 Nov 2026) - the quote tick moved to the quote book he actually looks at; it had been on the List view only */   /* 6.9.981 (12 Nov 2026) - merging quotations: one line per product, and a disagreed discount falls to the client\u2019s preset and is named */   /* 6.9.980 (12 Nov 2026) - tick several quotations and send them out on one challan */   /* 6.9.979 (12 Nov 2026) - Make challan is on every quotation, not only a won one; converting offers to mark it Won */   /* 6.9.978 (12 Nov 2026) - one Change button on a money row: edit it with the PIN asked twice, or cancel it */   /* 6.9.977 (12 Nov 2026) - a partner or driver payout entered wrongly can be set aside, with a reason, and brought back */   /* 6.9.976 (12 Nov 2026) - a brand already set aside stops nagging from the empty-brand card */   /* 6.9.975 (12 Nov 2026) - a finalised return can be opened again, and repriced, with it recorded as after the stamp */   /* 6.9.974 (12 Nov 2026) - Change it reprices this return as well as setting the preset from today */   /* 6.9.973 (12 Nov 2026) - FIX: the Finalise card on a return threw before it drew (6.9.972) */   /* 6.9.972 (12 Nov 2026) - return finalise: try a rate on the lines, and change the preset from today with a PIN */   /* 6.9.971 (12 Nov 2026) - a brand with no preset is set from the return-finalise card itself */   /* 6.9.970 (12 Nov 2026) - quote PDF: a product description is printed whole, not cut at three lines */   /* 6.9.969 (11 Nov 2026) - deliveries with no signed paper split by age: the ones past 30 days get the red number, the fresh ones are stated quietly */   /* 6.9.968 (11 Nov 2026) - a purchase bill already fully in stock is not brought in a second time: Huliot's invoice arrives in three mails, and all three were being uploaded */   /* 6.9.967 (11 Nov 2026) - GHP+ logo in the registered Green Heat+ colours (#00539F / #ED1D24) on PDFs, quotes, challans and QR centres */   /* 6.9.966 (11 Nov 2026) - technical specifications sheet in colour: brand-coloured table heads and code strip, coloured field labels, and the exceptions in an amber panel */   /* 6.9.965 (11 Nov 2026) - old quotes to close: grouped by what the site is doing now, closing windows first, each group carrying that stage's own pitch lines */   /* 6.9.964 (11 Nov 2026) - quote spec table: a value all but a few items share is said once and the few are named, so one tube no longer printed five long columns 25 times */   /* 6.9.963 (11 Nov 2026) - purchase bills: same day + same amount flagged on the Tally screen */   /* 6.9.958 (10 Nov 2026) - a statement attached before the name was kept is told apart by its time, not left as four identical lines */     /* 6.9.957 (10 Nov 2026) - each attached old hisab shows its file name, and a wrong one can be set aside */     /* 6.9.956 (10 Nov 2026) - rebuilt: the GitHub Pages publish of 6.9.955 failed (run #1675), so nothing had changed on the phones */   /* 6.9.955 (10 Nov 2026) - the old hisab takes more than one file at once: photographed pages become one PDF, and every statement on file is listed */     /* 6.9.954 (10 Nov 2026) - the Partner Club: fixed slabs, a bonus on crossing one, the trip and device rewards, every partner's rupees to his next slab, and the quiet-partner watch */     /* 6.9.953 (10 Nov 2026) - Service > Control: cash in each engineer's hand, hand-over recorded, three random customer checks a week */     /* 6.9.952 (10 Nov 2026) - to-bill month by month, screens found from Search, team screen use on Health, a receipt for every incentive payout */     /* 6.9.951 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 6.9.950 (9 Nov 2026) - brand introductions: a fuller paragraph, three stage-wise benefits and one next step, on the quote and the proposal */     /* 6.9.949 (9 Nov 2026) - quote PDF: a product picture stays inside its own row (1.2 mm clear of both lines) */     /* 6.9.948 (9 Nov 2026) - quote PDF: each room heading carries its collection and finish with colour dots; every FIMA code chip has its finish dot */     /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -12931,12 +12985,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     return best;
   }
   function clientDiscount(client, brand) { var d = discRow(client, brand); return d ? Number(d.pct) || 0 : 0; }
-  /* THE RATE THAT WAS IN FORCE ON A GIVEN DAY. clientDiscount() answers "what is this client's
-     discount now", which is the right question when pricing something today and the WRONG one
-     when asking whether a delivery already made was priced correctly. v6.9.350 built dated rates
-     precisely so that "deliveries BEFORE this date keep the rate they were made at" - and then
-     chDiscGap compared every challan ever made against today's rate anyway. */
-  function clientDiscountOn(client, brand, ymd) { var d = discRow(client, brand, ymd); return d ? Number(d.pct) || 0 : 0; }
+
   /* ---- per-client, per-brand, per-partner incentive ----
      The incentive a partner earns is set at the SAME place as that client's brand discount
      (admin only). We store it on the very same discount row, in its `notes` column, as a small
@@ -13012,17 +13061,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       return String(Number(was[k]) || 0) !== String(Number(now[k]) || 0);
     });
   }
-  /* NO dstr() IN HERE, AND THAT IS DELIBERATE. This block is shared byte-for-byte with the
-     Challan app, and the two apps have a function called dstr that does OPPOSITE things: in the
-     CRM it truncates to "2026-08-01", in the Challan app it FORMATS to "1 Aug 2026". Calling it
-     here read every dated rate as undated in the Challan app - so a challan would have been
-     priced at the old percent while the CRM used the new one, silently, and nothing on either
-     screen would have said so. Caught by t_apps_agree the moment the port landed, which is what
-     that suite is for. Ten characters of slicing, no shared name, no trap. */
-  function discFrom(row) {
-    var f = String((incMap(row) || {}).from || "").slice(0, 10);
-    return /^\d{4}-\d{2}-\d{2}$/.test(f) ? f : "";
-  }
+
   /* The rate in force on a given day. Rows that had not started yet are out; among the rest the
      LATEST start wins, and an undated row - "since the beginning" - loses to any dated one, so
      the first dated rate he writes takes over cleanly from the row that was there before it. */
@@ -13056,9 +13095,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
   /* Unchanged for every caller that does not know a date: it asks for today's rate, which is
      what asking for "the rate" has always meant. */
   function discRow(client, brand, onYmd) { return discRowOn(client, brand, onYmd); }
-  function incMap(row) {
-    try { var m = JSON.parse((row && row.notes) || "{}"); return (m && typeof m === "object") ? m : {}; } catch (e) { return {}; }
-  }
+
   /* ================= ONE INCENTIVE CARD FOR EVERYONE  (6.9.693 / Challan 1.124.0, 5 Oct 2026) ====
      HIS WORDS: "instead of everytime entering partners and executive incentive for each new site,
      i have preset it for everyone with discount slab, once a partner added its automatically fetch
@@ -16232,7 +16269,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
      An understated due is the worst shape of wrong there is: nobody chases what the screen says
      is not owed. The gate stands down until the stamps are in hand. */
   function hisabBookReady() { return !!(S.data && S.data.audit && S.data.audit.length); }
-  function hisabOwed(c) { return hisabCounts(c) && (!HISAB_GATE || !hisabBookReady() || inHisab(c)); }
+
   /* A stamp on a delivery that is not counted. Nothing is auto-corrected: the fix is to mark
      the delivery received, which is a decision about goods, not about a pill. */
   function hisabStampedNotCounted() {
@@ -35436,7 +35473,7 @@ function viewCatalogue() {
   /* v6.9.323 - JOB WORK / LABOUR CHARGES, from Challan v1.37.0. Lifted whole so the two apps
      cannot disagree about what one of these lines is. */
   var JOB_CODE = "JOBWORK";
-  function isJobLine(l) { return !!(l && (l.job === true || String(l.code || "") === JOB_CODE)); }
+
   /* ================= LABOUR, AND A THING THAT IS NOT IN THE LIST  (v6.9.356, 23 Aug 2026) ====
      HIS WORDS: "what if only to register a job work for any client, or enter a item not in
      price list with description, made arrangemetn for that also".
@@ -36135,25 +36172,7 @@ function viewCatalogue() {
     else p[0] = Object.assign({}, p[0], { gstin: g });
     return save("clients", { id: c.id, name: c.name, billingJson: JSON.stringify(p) }, true);
   }
-  /* v6.9.392 - AND ONE READER FOR A PAYMENT AMOUNT, for exactly the reason above.
-     Sixteen sites read it with raw Number(). A payment is typed by a man on a phone and lands
-     in the sheet as text, so "1,00,000" reads back as NaN, and every `|| 0` beside it turns
-     that into ZERO - a payment received, recorded, and then counted as nothing.
 
-     Where that would have shown: the client's HISAB ledger, the dues on the collection round,
-     the incentive ratio (collected / billed), the twice-weekly Telegram digest, the CSV export,
-     the duplicate-payment guard - and the STATEMENT PDF THAT IS SENT TO THE CUSTOMER. Every
-     one of them would have been wrong in the firm's favour, and the customer holding the
-     statement would have been the only person able to see it.
-
-     MEASURED 31 Aug on his own book: 26 payments, 164 openings, 141 freights - ZERO affected
-     today. Latent, not live. It stays latent only until somebody types a comma.
-     (Not re-counted today: his browser is not reachable this session. That measurement's date
-     is stated rather than implied, because a stale count presented as fresh is its own fault.)
-
-     hisabPayable read the same money TWICE, six lines apart - one line nAmt, the next Number.
-     That is what a rule without a single reader looks like after three months. */
-  function payAmt(p) { return nAmt((p || {}).amount); }
   /* 6.9.860 - his words: "challan entered for billing and bill no entered must auto add 18% gst to freight amount", and
      asked whether the account should carry it too: "ye for all". A delivery with a bill no carries its client-borne freight
      at 118%; who bears it is accounts' choice on the billing sheet (bill:freight), else the challan's own. Without a bill no,
