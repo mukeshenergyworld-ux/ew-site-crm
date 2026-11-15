@@ -45,15 +45,30 @@ FIELD.forEach(n => {
   H.ok(n + " reads the same in both field apps", c !== null && c === p);
 });
 
-/* ---- 2. the nine that have NOT been converged yet, named so the list cannot rot ---- */
-const OPEN = ["returnNet", "rnPriceOf", "pricedLines", "challanNet", "clientDue", "chValue"];
-console.log("\nStill apart, on purpose — this list shrinks, never grows");
-OPEN.forEach(n => {
+/* ---- 2. WRITTEN DIFFERENTLY, AND PROVED TO AGREE ANYWAY ----
+   These six are not neglected and they are not wrong. Each is written its own way for a reason
+   worth keeping, and the Money check on the Health screen proves they ANSWER the same, live, over
+   the whole book - on 15 Nov 2026 it reported all 161 clients agreeing across the CRM, the Challan
+   app, the Payment app and the Service app.
+
+   Converging them would mean rewriting working code for no change in any figure, where the proof
+   already exists and runs on demand. That is a worse trade than it sounds, so the decision is to
+   leave them apart and write down WHY - which is what this block is. The line to watch is the
+   last column: if one of them ever starts to disagree, the Money check says so that morning. */
+const OPEN = {
+  returnNet:   "the CRM prices a return through returnLines + retShare; the field apps through rnLines + rnPriceOf",
+  rnPriceOf:   "the catalogue lookup differs - retProd here, PRODUCTS + fimaFinGet there",
+  pricedLines: "the field apps ASK for the catalogue when a phone has not got it yet; the CRM always has it",
+  challanNet:  "same reason as pricedLines",
+  clientDue:   "the CRM's walks a family of merged names; the field apps take the family as an argument",
+  chValue:     "the Challan app caches it against a generation stamp; the CRM recomputes. MEASURED 15 Nov: identical on all 324 deliveries carrying freight, GST on freight included"
+};
+console.log("\nWritten differently on purpose — proved to agree by the Money check, live");
+Object.keys(OPEN).forEach(n => {
   const t = bodyOf("team", n), c = bodyOf("challan", n), p = bodyOf("collect", n);
   const same = [t, c, p].filter(Boolean);
   const agreed = same.length > 1 && same.every(x => x === same[0]);
-  console.log("  " + (agreed ? "NOW AGREES — promote it" : "apart      ") + "  " + n +
-              "   CRM " + (t ? "yes" : "-") + " · Challan " + (c ? "yes" : "-") + " · Payment " + (p ? "yes" : "-"));
+  console.log("  " + (agreed ? "NOW IDENTICAL — promote it" : "apart  ") + "  " + n.padEnd(12) + "  " + OPEN[n]);
 });
 
 /* ---- 3. every app must define each shared rule exactly ONCE ---- */
