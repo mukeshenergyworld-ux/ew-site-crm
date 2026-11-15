@@ -23,8 +23,12 @@ CHECK = "--check" in sys.argv
 
 APPS = {
   'CRM':     {'file': 'team/app.src.js',          'anchor': '  var STORE = "ew_team_session";'},
-  'Challan': {'file': 'challan/index.html',   'anchor': '  var STORE = "ew_challan_session";'},
-  'Payment': {'file': 'collect/index.html',   'anchor': '  var STORE = "ew_collect_session";'},
+  # 15 Nov 2026 - THE SOURCE FILES, NOT THE BUILT ONES. These two pointed at index.html,
+  # which build_apps.py minifies, so the anchor with its exact two spaces has not existed in
+  # them since the day minifying started: the tool died on an assert before it judged anything.
+  # A proof that cannot run is not a proof, and that is why no money rule ever reached the core.
+  'Challan': {'file': 'challan/index.src.html',   'anchor': '  var STORE = "ew_challan_session";'},
+  'Payment': {'file': 'collect/index.src.html',   'anchor': '  var STORE = "ew_collect_session";'},
 }
 BEGIN = "  /* ==EW-CORE:BEGIN== built by tools/build_core.py — do not edit here, edit core/ew-core.js == */"
 END   = "  /* ==EW-CORE:END== */"
