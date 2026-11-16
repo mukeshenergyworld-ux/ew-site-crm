@@ -31,6 +31,7 @@ node tools/test/t_quote_sent.js || fail=1
 node tools/test/t_driver_payouts.js || fail=1
 node tools/test/t_wa_remind_all.js || fail=1
 node tools/test/t_visit_quote3.js || fail=1
+node tools/test/t_visit_month.js || fail=1
 
 echo ""
 if [ "$fail" = "0" ]; then echo "ALL CLEAR — safe to build and upload"; else echo "SOMETHING FAILED — do not upload"; fi
