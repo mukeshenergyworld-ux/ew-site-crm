@@ -112,7 +112,13 @@
   .card h3{margin:0 0 3px;font-size:15px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
   .card .meta{font-size:13px;color:var(--muted);line-height:1.55}
   .card .acts{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
-  .pill{font-size:12px;font-weight:600;padding:2px 8px;border-radius:999px;background:#f1f5f9;color:var(--muted)}
+  .pill{font-size:12px;font-weight:600;padding:2px 8px;border-radius:999px;background:#f1f5f9;color:var(--muted);display:inline-block;white-space:nowrap;line-height:1.45;vertical-align:middle}
+  /* 16 Nov 2026 - a pill is one word-shape: it never breaks across two lines (it used to split "receipt | pending"
+     with half a background on each line). Two side by side that do not fit now stack, each whole. */
+  .stcell{display:flex;flex-direction:column;align-items:flex-start;gap:3px}
+  .stsub{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;line-height:1.3;white-space:nowrap}
+  .stsub::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor;flex:0 0 7px}
+  .stsub.warn{color:#b45309}.stsub.bad{color:#b91c1c}.stsub.ok{color:#15803d}
   /* THE LOGIN BANNER IS A SENTENCE, NOT A CHIP (17 Aug 2026). It borrowed .pill, sized and
      shaped for a status chip in a list row. Once the login started explaining WHICH fault it
      hit, that shape ran the explanation off the edge of a phone. Its own class. */
