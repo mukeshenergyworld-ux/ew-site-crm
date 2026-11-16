@@ -40,6 +40,7 @@ node tools/test/t_items_supplied.js || fail=1
 node tools/test/t_challan_catalog.js || fail=1
 node tools/test/t_challan_brand_disc.js || fail=1
 node tools/test/t_off_preset.js || fail=1
+node tools/test/t_search_all.js || fail=1
 
 echo ""
 if [ "$fail" = "0" ]; then echo "ALL CLEAR — safe to build and upload"; else echo "SOMETHING FAILED — do not upload"; fi
