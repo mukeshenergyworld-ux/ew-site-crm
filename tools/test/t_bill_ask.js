@@ -18,4 +18,18 @@ var S = H.read("team");   /* raw: these are lines of code, and a stripper can ea
 H.ok("the HISAB row has Send for billing", /data-act="ba-open"[^>]*title="Send this delivery to accounts for billing/.test(S));
 H.ok("the desk lists sent ones after bill-with-material", /billAskOf\(c, _bam\); \}\)\.sort/.test(S) && /billAskBox\(billAskOf\(c, _bam\)\)/.test(S));
 H.ok("the billing sheet opens with the remarks", /billAskBox\(billAskOf\(c\)\) \+/.test(S));
+
+/* 6.9.1004 - once billed, the row shows the bill */
+var ctx2 = { S: { data: { challans: [], audit: [{ action: "bill:ask", target: "C9", actor: "Mukesh", createdAt: "2026-11-16T05:00:00Z", detail: JSON.stringify({ on: 1, note: "Bill to Maa Collection" }) }] } },
+  esc: function (s) { return String(s == null ? "" : s); }, canBill: function () { return true; }, canHisabRole: function () { return true; }, billAskOf: function () { return null; } };
+var G = H.lift("team", ["billAskMap", "miniBillCell"], ctx2);
+var cell = G.miniBillCell({ kind: "ch", id: "C9", bill: { no: "295", at: "15/10/2026", to: "Maa Collection GST 06ABC", by: "Ashish Jha", st: "Billed" } });
+H.ok("billed: the number and date", /Bill 295<\/b>/.test(cell) && /15\/10\/2026/.test(cell));
+H.ok("billed: the name it was billed under", /Maa Collection GST 06ABC/.test(cell));
+H.ok("billed: who billed it", /by Ashish/.test(cell));
+H.ok("billed: the remarks it was sent with", /Bill to Maa Collection/.test(cell));
+ctx2.canBill = function () { return false; };
+var G2 = H.lift("team", ["billAskMap", "miniBillCell"], ctx2);
+var cell2 = G2.miniBillCell({ kind: "ch", id: "C9", bill: { no: "295", at: "15/10/2026", to: "Maa Collection GST 06ABC", by: "Ashish Jha", st: "Billed" } });
+H.ok("someone who does not bill sees the number, not the billing name", /Bill 295/.test(cell2) && !/GST 06ABC/.test(cell2));
 H.done();
