@@ -252,7 +252,7 @@ table.att td.ok,table.att td.no{font-size:16px}
       button: function () { return '<button type="button" class="ewthm" onclick="ewTheme.next(this)">' + ewtLabel() + '</button>'; }
     };
   })();
-  var APP_VERSION = "1.17.7";   /* 1.17.7 (15 Nov 2026) - FIX: no family-rate fallback here, so a quote line reading "Huliot HT PRO" for a client given a Huliot rate was quoted at FULL MRP - 9 client-and-brand pairs on his own book */   /* 1.17.6 (1.17.6 (11 Nov 2026) - GHP+ logo in the registered Green Heat+ colours (#00539F / #ED1D24) on PDFs, quotes, challans and QR centres */   /* 1.17.5 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 1.17.4 (9 Nov 2026) - FIMA finish codes with their own finish photo */     /* 1.17.3 (9 Nov 2026) - a small finish-colour dot on FIMA product pictures */     /* 1.17.2 (9 Nov 2026) - FIMA handles S1-S4 in every finish and the S2 glass handles */     /* 1.17.1 (9 Nov 2026) - brand tiles on the quote line: real logos, compact, on one row with Pending / Won / Lost */     /* 1.17.0 (9 Nov 2026) - brand-wise Won / Lost on a quote line: tap a brand once = Won, twice = Lost, again = open */     /* 1.16.0 (9 Nov 2026) - FIMA in every finish: type F1301WLX9CS (or any of 14,260 finish codes) and it is on the quote at its own MRP */     /* 1.15.0 (9 Nov 2026) - incentive ready (clients paid) and waiting for payment, on the plan header */     /* 1.14.0 (9 Nov 2026) - ask the owner to approve a discount above the brand limit, right on the quote line */     /* 1.13.0 (9 Nov 2026) - target limit shown under each quote discount; plan updates list (slab reached, lines left out, returns, month closed, 20th reminder) */     /* 1.12.0 (9 Nov 2026) - the 2027 plan on top (counted sales, slab ladder, left-out lines, quarter) and daily reports: entered, missed, streak */   /* 1.11.0 (8 Nov 2026) - my month on top: sales, returns, target, incentive, what to dispatch */   /* 1.10.1 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */   /* 1.10.0 (4 Nov 2026) - quote as in the CRM: item-wise discount, option lines, item-wise rates without total, GST */   /* 1.9.1 (31 Oct 2026) - one tap, one entry */   /* 1.9.0 (29 Oct 2026) - Menu -> Online enquiries (FB, IG, Google, Justdial, IndiaMART ... from the OnlineEnquiries tab) */   /* 1.8.4 (27 Oct 2026) - GHp mark in the middle of every QR, level H */   /* 1.6.1 - Huliot Group introduction on quotes; 1.6.0 (17 Oct 2026) - a dropped POST never loses a quote; admin sees every executive; daily report; attendance grid */
+  var APP_VERSION = "1.18.0";   /* 1.18.0 (16 Nov 2026) - a quote in three steps: the discount sits at the top of the check instead of a screen of its own; and the app counts which buttons are tapped, sent weekly to the owner's Health screen */   /* 1.17.7 (1.17.7 (15 Nov 2026) - FIX: no family-rate fallback here, so a quote line reading "Huliot HT PRO" for a client given a Huliot rate was quoted at FULL MRP - 9 client-and-brand pairs on his own book */   /* 1.17.6 (1.17.6 (11 Nov 2026) - GHP+ logo in the registered Green Heat+ colours (#00539F / #ED1D24) on PDFs, quotes, challans and QR centres */   /* 1.17.5 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 1.17.4 (9 Nov 2026) - FIMA finish codes with their own finish photo */     /* 1.17.3 (9 Nov 2026) - a small finish-colour dot on FIMA product pictures */     /* 1.17.2 (9 Nov 2026) - FIMA handles S1-S4 in every finish and the S2 glass handles */     /* 1.17.1 (9 Nov 2026) - brand tiles on the quote line: real logos, compact, on one row with Pending / Won / Lost */     /* 1.17.0 (9 Nov 2026) - brand-wise Won / Lost on a quote line: tap a brand once = Won, twice = Lost, again = open */     /* 1.16.0 (9 Nov 2026) - FIMA in every finish: type F1301WLX9CS (or any of 14,260 finish codes) and it is on the quote at its own MRP */     /* 1.15.0 (9 Nov 2026) - incentive ready (clients paid) and waiting for payment, on the plan header */     /* 1.14.0 (9 Nov 2026) - ask the owner to approve a discount above the brand limit, right on the quote line */     /* 1.13.0 (9 Nov 2026) - target limit shown under each quote discount; plan updates list (slab reached, lines left out, returns, month closed, 20th reminder) */     /* 1.12.0 (9 Nov 2026) - the 2027 plan on top (counted sales, slab ladder, left-out lines, quarter) and daily reports: entered, missed, streak */   /* 1.11.0 (8 Nov 2026) - my month on top: sales, returns, target, incentive, what to dispatch */   /* 1.10.1 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */   /* 1.10.0 (4 Nov 2026) - quote as in the CRM: item-wise discount, option lines, item-wise rates without total, GST */   /* 1.9.1 (31 Oct 2026) - one tap, one entry */   /* 1.9.0 (29 Oct 2026) - Menu -> Online enquiries (FB, IG, Google, Justdial, IndiaMART ... from the OnlineEnquiries tab) */   /* 1.8.4 (27 Oct 2026) - GHp mark in the middle of every QR, level H */   /* 1.6.1 - Huliot Group introduction on quotes; 1.6.0 (17 Oct 2026) - a dropped POST never loses a quote; admin sees every executive; daily report; attendance grid */
   /* 1.6.0 - ONLY THE SERVER'S OWN "NO" SIGNS A MAN OUT. The old test was /pin|locked|not allowed|blocked|removed/:
      any data error that happened to contain "not allowed" or "removed" (a refused row, a removed brand) signed the
      executive out and wiped his snapshot. These are the sign-in answers the server gives (teamAuth: "Wrong name or
@@ -3736,8 +3736,11 @@ table.att td.ok,table.att td.no{font-size:16px}
   function viewQz() {
     var z = S.qz; if (!z) { S.tab = "quotes"; return viewQuotes(); }
     var h = '<div class="row"><h2 class="grow">New quote</h2><button class="btn sm gry" data-act="qz-cancel">Cancel</button></div>' +
-      '<div class="steps">' + [1, 2, 3, 4].map(function (i) { return '<span class="' + (z.step >= i ? 'on' : '') + '"></span>'; }).join("") + '</div>' +
-      '<div class="meta">' + ["", "Step 1 of 4 &middot; the client", "Step 2 of 4 &middot; products", "Step 3 of 4 &middot; discount", "Step 4 of 4 &middot; check and save"][z.step] + '</div>';
+      /* 1.18.0 - HIS WORDS: "making a quote takes too many steps". The discount had a screen of its own between
+         the products and the check, and the check showed every line's discount again. Most quotes go at the
+         client's preset, so the brand boxes now sit at the top of the check: three steps, not four. */
+      '<div class="steps">' + [1, 2, 3].map(function (i) { return '<span class="' + (Math.min(z.step, 3) >= i ? 'on' : '') + '"></span>'; }).join("") + '</div>' +
+      '<div class="meta">' + ["", "Step 1 of 3 &middot; the client", "Step 2 of 3 &middot; products", "Step 3 of 3 &middot; discount, check and save"][Math.min(z.step, 3)] + '</div>';
     if (z.client && z.step > 1) { var _zc = clientByName(z.client) || {};
       h += '<div class="card"><div class="row"><div class="grow"><div class="ttl2">' + codeTag(z.client) + esc(z.client) + (_zc.oldCode ? ' <span class="meta">(was ' + esc(_zc.oldCode) + ')</span>' : '') + '</div><div class="meta">' + esc([_zc.mobile, _zc.area, _zc.location].filter(Boolean).join(" · ")) +
         ([_zc.plumber, _zc.architect].some(Boolean) ? '<br>' + esc([_zc.plumber ? "Plumber " + _zc.plumber : "", _zc.architect ? "Architect " + _zc.architect : ""].filter(Boolean).join(" · ")) : '') +
@@ -3745,8 +3748,7 @@ table.att td.ok,table.att td.no{font-size:16px}
       if (z.step === 2) h += histHtml(z.client); }   /* 1.1.0 - on every step: what he was quoted and bought, by whom */
     if (z.step === 1) h += qzClient();
     if (z.step === 2) h += qzProducts();
-    if (z.step === 3) h += qzDisc();
-    if (z.step === 4) h += qzReview();
+    if (z.step >= 3) h += qzReview();   /* 1.18.0 - the discount is on the check */
     return h;
   }
   function qzClient() {
@@ -3776,7 +3778,7 @@ table.att td.ok,table.att td.no{font-size:16px}
         '<div class="grow"><div class="ttl2" style="font-size:14px">' + esc(i.desc) + '</div><div class="meta">' + esc(i.code) + ' &middot; ' + esc(money(i.price)) + (i.unit ? ' / ' + esc(i.unit) : '') + '</div></div>' +
         '<div class="qty"><button data-act="qz-q" data-i="' + k + '" data-k="-1" aria-label="less">&minus;</button><input class="qz-qty" data-i="' + k + '" inputmode="decimal" value="' + esc(i.qty) + '"/><button data-act="qz-q" data-i="' + k + '" data-k="1" aria-label="more">+</button></div></div>';
     }).join("") + '</div>' : '<div class="empty">Nothing added yet.</div>');
-    h += '<div class="acts"><button class="btn" data-act="qz-step" data-k="3"' + (z.items.length ? '' : ' disabled') + '>Next: discount</button></div>';
+    h += '<div class="acts"><button class="btn" data-act="qz-step" data-k="3"' + (z.items.length ? '' : ' disabled') + '>Next: check and save</button></div>';
     return h;
   }
   function qzProdHits() {
@@ -3820,11 +3822,7 @@ table.att td.ok,table.att td.no{font-size:16px}
         (o.q ? '<div class="meta">Quoted ' + esc(o.q.disc) + '% by <b>' + esc(o.q.by) + '</b> (' + esc(o.q.no) + ', ' + esc(fd(o.q.at)) + ')' + use(o.q.disc, "") + '</div>' : '') + '</div>' +
         '<div style="width:110px"><label for="bd_' + esc(dkey(b).replace(/\W/g, "_")) + '" style="margin:0">Discount %</label><input class="qz-bd" id="bd_' + esc(dkey(b).replace(/\W/g, "_")) + '" data-k="' + esc(b) + '" inputmode="decimal" value="' + esc(z.brandDiscs[b] == null ? pre : z.brandDiscs[b]) + '"' + (can ? '' : ' readonly') + '/></div></div></div>';
     }).join("");
-    var t = qzTot();
-    h += '<div class="card"><div class="row"><span class="grow">After discount</span><b>' + esc(money(t.net)) + '</b></div></div>' +
-      '<div class="meta">On the next step you can change any item&rsquo;s discount, mark an item as an option, show item-wise rates without a total, and add GST.</div>' +
-      '<div class="acts"><button class="btn gry" data-act="qz-step" data-k="2">Back</button><button class="btn" data-act="qz-step" data-k="4">Next: check</button></div>';
-    return h;
+    return h;   /* 1.18.0 - no screen of its own: drawn at the top of the check */
   }
   /* 1.10.0 - the review, as the CRM's: each line's discount can be changed (blank = the brand's), any line can be an
      OPTION (shown on the quote, not added to the total), and the quote can be item-wise rates with no total. One row per
@@ -3849,7 +3847,7 @@ table.att td.ok,table.att td.no{font-size:16px}
   }
   function qzReview() {
     var z = S.qz, t = qzTot(), nOpt = z.items.filter(function (i) { return i.optional; }).length;
-    var h = histHtml(z.client, qzBrandsOf(z)) + qzReviewTable(z) +
+    var h = histHtml(z.client, qzBrandsOf(z)) + '<h3 class="sec">Discount by brand</h3>' + qzDisc() + '<h3 class="sec">The lines</h3>' + qzReviewTable(z) +
       (z.noTotal
         ? '<div class="note warn"><b>Item-wise rates</b> &mdash; the quote shows each item&rsquo;s price and no total.' + (nOpt ? ' ' + nOpt + ' option line' + (nOpt === 1 ? '' : 's') + ' shown apart.' : '') + '</div>'
         : totCard(t, z.gst) + (nOpt ? '<div class="meta">' + nOpt + ' option line' + (nOpt === 1 ? '' : 's') + ' shown on the quote but not added to the total.</div>' : '')) +
@@ -3857,8 +3855,7 @@ table.att td.ok,table.att td.no{font-size:16px}
         '<button class="chip' + (z.gst ? ' on' : '') + '" data-act="qz-gst">' + (z.gst ? '&#10003; GST 18% added' : 'Add GST 18%') + '</button>' +
         '<button class="chip' + (z.noTotal ? ' on' : '') + '" data-act="qz-nototal">' + (z.noTotal ? '&#10003; Item-wise rates, no total' : 'Item-wise rates, no total') + '</button>' +
       '</div>' +
-      '<div class="meta">GST 18%: the quote prints Sub-total, GST and Grand total. Item-wise rates: each item&rsquo;s price, no grand total &mdash; for rates, or options to pick from.</div>' +
-      '<div class="acts"><button class="btn gry" data-act="qz-step" data-k="3">Back</button><button class="btn" data-act="qz-save">Save the quote</button></div>';
+      '<div class="acts"><button class="btn gry" data-act="qz-step" data-k="2">Back</button><button class="btn" data-act="qz-save">Save the quote</button></div>';
     return h;
   }
   function qzSave(btn) {
@@ -4012,9 +4009,42 @@ table.att td.ok,table.att td.no{font-size:16px}
   }
 
   /* ================= TAPS ================= */
+  /* 1.18.0 - WHAT THE EXECUTIVES ACTUALLY TAP. His words: "not sure, measure it". This app has four tabs and
+     eighty-odd buttons, so it counts BUTTONS, not screens: each tap adds one to its button on this phone, with the
+     button's own words kept once so the owner can read the list. Once a week the counts go up as one audit row
+     "vq:use" (button key -> taps, nothing else - no client, no amount); the CRM's Health screen adds them up.
+     A button is retired on this evidence, not on a guess. */
+  var VQUSE_KEY = "ew_vq_use", VQPUB_KEY = "ew_vq_usepub";
+  function vqUse(act, k, t) {
+    if (!act || act === "sheet-bg") return;
+    try {
+      var key = act === "tab" ? "tab:" + String(k || "") : act;
+      var all = JSON.parse(localStorage.getItem(VQUSE_KEY) || "{}") || {};
+      if (!all.since) all.since = today();
+      all.t = all.t || {}; all.l = all.l || {};
+      all.t[key] = (Number(all.t[key]) || 0) + 1;
+      if (!all.l[key] && t) { var lb = String(t.getAttribute("aria-label") || t.textContent || "").replace(/\s+/g, " ").trim().slice(0, 40); if (lb) all.l[key] = lb; }
+      localStorage.setItem(VQUSE_KEY, JSON.stringify(all));
+    } catch (e) { }   /* a full box must never cost a man his tap */
+    vqUsePublish();
+  }
+  function vqUsePublish() {
+    if (!S.user || !S.data) return;
+    try {
+      var all = JSON.parse(localStorage.getItem(VQUSE_KEY) || "{}") || {};
+      if (!all.t || !Object.keys(all.t).length) return;
+      var pub = JSON.parse(localStorage.getItem(VQPUB_KEY) || "{}") || {}, last = String(pub[S.user] || "");
+      if (last && (Date.parse(today()) - Date.parse(last)) / 86400000 < 7) return;
+      pub[S.user] = today(); localStorage.setItem(VQPUB_KEY, JSON.stringify(pub));
+      var dev = localStorage.getItem("ew_vqdev") || ""; if (!dev) { dev = String(Date.now()).slice(-6); localStorage.setItem("ew_vqdev", dev); }
+      saveRow("audit", { id: "", createdAt: iso(), actor: S.user, action: "vq:use", target: S.user,
+        detail: JSON.stringify({ dev: dev, since: all.since || today(), t: all.t, l: all.l || {}, v: APP_VERSION, role: String(S.role || "") }) });
+    } catch (e) { }
+  }
   document.addEventListener("click", function (ev) {
     var t = ev.target.closest ? ev.target.closest("[data-act]") : null; if (!t) return;
     var act = t.getAttribute("data-act"), k = t.getAttribute("data-k"), id = t.getAttribute("data-id");
+    vqUse(act, k, t);   /* 1.18.0 */
     if (act === "sheet-bg") { if (ev.target === t) { S.sheet = null; render(); } return; }
     if (act === "xp-left") { S.xpLeftOpen = !S.xpLeftOpen; render(); return; }   /* 1.12.0 */
     if (act === "xp-ask") {   /* 1.14.0 - one fact; the owner answers in the CRM */
@@ -4124,7 +4154,7 @@ table.att td.ok,table.att td.no{font-size:16px}
     }
     if (act === "qz-step") {
       qzKeep();
-      var n = Number(k);
+      var n = Math.min(Number(k), 3);   /* 1.18.0 - three steps */
       if (n >= 2 && !S.qz.client) { toast("Pick the client first."); return; }
       if (n >= 3 && !S.qz.items.length) { toast("Add at least one product."); return; }
       S.qz.step = n; render(); window.scrollTo(0, 0); return;
@@ -4153,7 +4183,7 @@ table.att td.ok,table.att td.no{font-size:16px}
     if (canQuoteDiscount()) Array.prototype.forEach.call(document.querySelectorAll(".qz-id"), function (e) { var it = z.items[Number(e.getAttribute("data-i"))]; if (!it) return; var v = String(e.value).trim(); if (v === "") delete it.disc; else it.disc = Math.max(0, Math.min(100, Number(v.replace(/[^0-9.]/g, "")) || 0)); });
   }
   /* 1.10.0 - a line discount repaints the amounts when he leaves the box (not on every key, so the keyboard stays up) */
-  document.addEventListener("change", function (ev) { var t = ev.target; if (!t || !t.classList || !t.classList.contains("qz-id") || !S.qz) return; qzKeep(); render(); });
+  document.addEventListener("change", function (ev) { var t = ev.target; if (!t || !t.classList || !(t.classList.contains("qz-id") || t.classList.contains("qz-bd")) || !S.qz) return; qzKeep(); render(); });   /* 1.18.0 - a brand box repaints the lines under it */
   /* live typing repaints only the result box, so the keyboard stays up */
   document.addEventListener("input", function (ev) {
     var t = ev.target; if (!t || !S.data) return;
