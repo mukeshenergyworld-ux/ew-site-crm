@@ -434,7 +434,13 @@ var GAS_URL = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjm
    answered and this one said "no version in the file". Without it nobody can tell whether a
    customer is looking at today's form or one from three weeks ago - and this is the one app
    whose users are customers, who will not be asked to refresh. */
-var BUILD = "2026.10.31-1";   /* the brand picker */
+var BUILD = "2026.11.16-1";   /* 2026.11.16-1: the challan QR fills the challan no in; 2026.10.31-1: the brand picker */
+
+/* 2026.11.16-1 - every delivery challan now carries a QR that opens this form with ?ch=<challan no>. */
+try {
+  var _qp = new URLSearchParams(location.search), _qch = String(_qp.get("ch") || "").trim();
+  if (_qch) { var _oi = document.getElementById("order"); if (_oi && !_oi.value) _oi.value = _qch.slice(0, 40); }
+} catch (e) { }
 
 var state = { category:"", urgency:"normal", brand:"" };
 
