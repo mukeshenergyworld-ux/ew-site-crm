@@ -119,6 +119,14 @@
   .stsub{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;line-height:1.3;white-space:nowrap}
   .stsub::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor;flex:0 0 7px}
   .stsub.warn{color:#b45309}.stsub.bad{color:#b91c1c}.stsub.ok{color:#15803d}
+  /* 16 Nov 2026 - his words: "some tick and cross kind of thing". Two marks a delivery has to earn - the signed
+     receipt and the finalise - each a round mark: a tick when done, a cross when it is owed, a hollow ring when
+     it cannot be done yet. Read down the column in one glance. */
+  .tkset{display:flex;flex-direction:column;gap:4px}
+  .tk{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;line-height:1.2;white-space:nowrap;color:#334155}
+  .tk i{font-style:normal;display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;font-size:12px;font-weight:800;flex:0 0 18px}
+  .tk.y i{background:#16a34a;color:#fff}.tk.n i{background:#dc2626;color:#fff}.tk.w i{background:#f59e0b;color:#fff}.tk.o i{background:#fff;border:2px solid #cbd5e1;width:14px;height:14px;flex-basis:14px}
+  .tk.n{color:#b91c1c}.tk.w{color:#92400e}.tk.o{color:#94a3b8}
   /* THE LOGIN BANNER IS A SENTENCE, NOT A CHIP (17 Aug 2026). It borrowed .pill, sized and
      shaped for a status chip in a list row. Once the login started explaining WHICH fault it
      hit, that shape ran the explanation off the edge of a phone. Its own class. */
