@@ -252,7 +252,7 @@ table.att td.ok,table.att td.no{font-size:16px}
       button: function () { return '<button type="button" class="ewthm" onclick="ewTheme.next(this)">' + ewtLabel() + '</button>'; }
     };
   })();
-  var APP_VERSION = "1.18.0";   /* 1.18.0 (16 Nov 2026) - a quote in three steps: the discount sits at the top of the check instead of a screen of its own; and the app counts which buttons are tapped, sent weekly to the owner's Health screen */   /* 1.17.7 (1.17.7 (15 Nov 2026) - FIX: no family-rate fallback here, so a quote line reading "Huliot HT PRO" for a client given a Huliot rate was quoted at FULL MRP - 9 client-and-brand pairs on his own book */   /* 1.17.6 (1.17.6 (11 Nov 2026) - GHP+ logo in the registered Green Heat+ colours (#00539F / #ED1D24) on PDFs, quotes, challans and QR centres */   /* 1.17.5 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 1.17.4 (9 Nov 2026) - FIMA finish codes with their own finish photo */     /* 1.17.3 (9 Nov 2026) - a small finish-colour dot on FIMA product pictures */     /* 1.17.2 (9 Nov 2026) - FIMA handles S1-S4 in every finish and the S2 glass handles */     /* 1.17.1 (9 Nov 2026) - brand tiles on the quote line: real logos, compact, on one row with Pending / Won / Lost */     /* 1.17.0 (9 Nov 2026) - brand-wise Won / Lost on a quote line: tap a brand once = Won, twice = Lost, again = open */     /* 1.16.0 (9 Nov 2026) - FIMA in every finish: type F1301WLX9CS (or any of 14,260 finish codes) and it is on the quote at its own MRP */     /* 1.15.0 (9 Nov 2026) - incentive ready (clients paid) and waiting for payment, on the plan header */     /* 1.14.0 (9 Nov 2026) - ask the owner to approve a discount above the brand limit, right on the quote line */     /* 1.13.0 (9 Nov 2026) - target limit shown under each quote discount; plan updates list (slab reached, lines left out, returns, month closed, 20th reminder) */     /* 1.12.0 (9 Nov 2026) - the 2027 plan on top (counted sales, slab ladder, left-out lines, quarter) and daily reports: entered, missed, streak */   /* 1.11.0 (8 Nov 2026) - my month on top: sales, returns, target, incentive, what to dispatch */   /* 1.10.1 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */   /* 1.10.0 (4 Nov 2026) - quote as in the CRM: item-wise discount, option lines, item-wise rates without total, GST */   /* 1.9.1 (31 Oct 2026) - one tap, one entry */   /* 1.9.0 (29 Oct 2026) - Menu -> Online enquiries (FB, IG, Google, Justdial, IndiaMART ... from the OnlineEnquiries tab) */   /* 1.8.4 (27 Oct 2026) - GHp mark in the middle of every QR, level H */   /* 1.6.1 - Huliot Group introduction on quotes; 1.6.0 (17 Oct 2026) - a dropped POST never loses a quote; admin sees every executive; daily report; attendance grid */
+  var APP_VERSION = "1.19.0";   /* 1.19.0 (16 Nov 2026) - a visit is logged straight from the site list (the stage starts at the last one); My day shows the month as a calendar, present = a visit marked; the 7-day grid uses the same rule; an executive has his own daily report */   /* 1.18.0 (1.18.0 (16 Nov 2026) - a quote in three steps: the discount sits at the top of the check instead of a screen of its own; and the app counts which buttons are tapped, sent weekly to the owner's Health screen */   /* 1.17.7 (1.17.7 (15 Nov 2026) - FIX: no family-rate fallback here, so a quote line reading "Huliot HT PRO" for a client given a Huliot rate was quoted at FULL MRP - 9 client-and-brand pairs on his own book */   /* 1.17.6 (1.17.6 (11 Nov 2026) - GHP+ logo in the registered Green Heat+ colours (#00539F / #ED1D24) on PDFs, quotes, challans and QR centres */   /* 1.17.5 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 1.17.4 (9 Nov 2026) - FIMA finish codes with their own finish photo */     /* 1.17.3 (9 Nov 2026) - a small finish-colour dot on FIMA product pictures */     /* 1.17.2 (9 Nov 2026) - FIMA handles S1-S4 in every finish and the S2 glass handles */     /* 1.17.1 (9 Nov 2026) - brand tiles on the quote line: real logos, compact, on one row with Pending / Won / Lost */     /* 1.17.0 (9 Nov 2026) - brand-wise Won / Lost on a quote line: tap a brand once = Won, twice = Lost, again = open */     /* 1.16.0 (9 Nov 2026) - FIMA in every finish: type F1301WLX9CS (or any of 14,260 finish codes) and it is on the quote at its own MRP */     /* 1.15.0 (9 Nov 2026) - incentive ready (clients paid) and waiting for payment, on the plan header */     /* 1.14.0 (9 Nov 2026) - ask the owner to approve a discount above the brand limit, right on the quote line */     /* 1.13.0 (9 Nov 2026) - target limit shown under each quote discount; plan updates list (slab reached, lines left out, returns, month closed, 20th reminder) */     /* 1.12.0 (9 Nov 2026) - the 2027 plan on top (counted sales, slab ladder, left-out lines, quarter) and daily reports: entered, missed, streak */   /* 1.11.0 (8 Nov 2026) - my month on top: sales, returns, target, incentive, what to dispatch */   /* 1.10.1 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */   /* 1.10.0 (4 Nov 2026) - quote as in the CRM: item-wise discount, option lines, item-wise rates without total, GST */   /* 1.9.1 (31 Oct 2026) - one tap, one entry */   /* 1.9.0 (29 Oct 2026) - Menu -> Online enquiries (FB, IG, Google, Justdial, IndiaMART ... from the OnlineEnquiries tab) */   /* 1.8.4 (27 Oct 2026) - GHp mark in the middle of every QR, level H */   /* 1.6.1 - Huliot Group introduction on quotes; 1.6.0 (17 Oct 2026) - a dropped POST never loses a quote; admin sees every executive; daily report; attendance grid */
   /* 1.6.0 - ONLY THE SERVER'S OWN "NO" SIGNS A MAN OUT. The old test was /pin|locked|not allowed|blocked|removed/:
      any data error that happened to contain "not allowed" or "removed" (a refused row, a removed brand) signed the
      executive out and wiped his snapshot. These are the sign-in answers the server gives (teamAuth: "Wrong name or
@@ -1786,6 +1786,40 @@ table.att td.ok,table.att td.no{font-size:16px}
     if (a.st === "O" || a.st === "H" || a.st === "L") return '<div class="note" style="margin-top:10px">Today is ' + (a.st === "O" ? "Sunday" : a.st === "H" ? "a holiday" : "marked as leave") + ' &mdash; no attendance is needed.</div>';
     return '<div class="note warn" style="margin-top:10px"><b>Attendance today: not recorded yet.</b> It is recorded with your first visit entry of the day &mdash; site, plumber, architect or showroom.</div>';
   }
+  /* ===== 1.19.0 - THE MONTH ON ONE SCREEN. HIS WORDS: "show to them present and absent on monthly calender, present is
+     visit marked". Each day is read by attDay - the SAME rule the salary report uses (the shared attendance block above):
+     a day with a visit is present, Sunday is off, a holiday or leave marked in the CRM says so, and a day before the
+     counting began is blank. An executive sees his own month; the owner sees the executive picked on the chip row. ===== */
+  var ATT_CAL_C = { P: ["#dcfce7", "#166534"], A: ["#fee2e2", "#b91c1c"], L: ["#e0e7ff", "#3730a3"], H: ["#f1f5f9", "#475569"],
+    O: ["#f8fafc", "#94a3b8"], W: ["#ccfbf1", "#0f766e"], T: ["#fef3c7", "#92400e"] };
+  var ATT_MON = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  function attYmShift(ym, n) { var y = Number(ym.slice(0, 4)), m = Number(ym.slice(5, 7)) - 1 + n; y += Math.floor(m / 12); m = ((m % 12) + 12) % 12; return y + "-" + String(m + 1).padStart(2, "0"); }
+  function attMonthHtml(name, ym) {
+    if (!name) return "";
+    var cur = today().slice(0, 7);
+    ym = /^\d{4}-\d{2}$/.test(ym || "") && ym <= cur ? ym : cur;
+    var y = Number(ym.slice(0, 4)), m = Number(ym.slice(5, 7)), lead = new Date(y, m - 1, 1).getDay(), nd = new Date(y, m, 0).getDate();
+    var vd = attVisitDays(name), mk = attMarks(), cnt = { P: 0, A: 0, L: 0, H: 0, W: 0 }, cells = "", i;
+    for (i = 0; i < lead; i++) cells += '<div></div>';
+    for (i = 1; i <= nd; i++) {
+      var day = ym + "-" + String(i).padStart(2, "0"), st = attDay(name, day, vd, mk), c = ATT_CAL_C[st] || ["#ffffff", "#cbd5e1"], n = (vd[day] || {}).n || 0;
+      if (cnt[st] != null) cnt[st]++;
+      cells += '<div data-act="exl-open" data-n="' + esc(name) + '" title="' + esc(fd(day) + " · " + (ATT_SAY[st] || "not counted") + (n ? " · " + n + " visit" + (n === 1 ? "" : "s") : "")) + '" ' +
+        'style="min-height:44px;border-radius:8px;border:1px solid #e2e8f0;background:' + c[0] + ';color:' + c[1] + ';display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;line-height:1.15">' +
+        '<span style="font-size:13px;font-weight:700">' + i + '</span><span style="font-size:12px;font-weight:800">' + (st === "T" ? "today" : st === "O" ? "Sun" : (st || "")) + '</span></div>';
+    }
+    var nx = attYmShift(ym, 1);
+    var leg = function (k, w) { var c = ATT_CAL_C[k]; return '<span style="display:inline-block;padding:2px 8px;border-radius:999px;background:' + c[0] + ';color:' + c[1] + ';font-weight:700;font-size:12px;margin:2px 4px 2px 0">' + w + ' ' + cnt[k] + '</span>'; };
+    return '<div class="card" id="ew_attmonth"><div class="row" style="align-items:center;gap:6px">' +
+      '<button class="btn sm gry" data-act="att-m" data-k="' + attYmShift(ym, -1) + '" aria-label="Previous month" style="min-width:44px">&lsaquo;</button>' +
+      '<div class="grow" style="text-align:center"><b>' + ATT_MON[m - 1] + ' ' + y + '</b><div class="meta">' + esc(roleIs("admin") ? name : "My attendance") + ' &middot; present = a visit marked</div></div>' +
+      '<button class="btn sm gry" data-act="att-m" data-k="' + nx + '" aria-label="Next month" style="min-width:44px"' + (nx > cur ? ' disabled' : '') + '>&rsaquo;</button></div>' +
+      '<div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;margin-top:8px">' +
+      ["S", "M", "T", "W", "T", "F", "S"].map(function (d) { return '<div class="meta" style="text-align:center;font-weight:700;font-size:12px">' + d + '</div>'; }).join("") + cells + '</div>' +
+      '<div style="margin-top:8px">' + leg("P", "Present") + leg("A", "Absent") + (cnt.L ? leg("L", "Leave") : "") + (cnt.H ? leg("H", "Holiday") : "") + (cnt.W ? leg("W", "Worked on a day off") : "") + '</div>' +
+      (cnt.A && !roleIs("admin") ? '<div class="meta" style="margin-top:4px">A day shows absent when no visit was entered. If you were working, tell the office &mdash; they can mark it in the CRM.</div>' : '') +
+      '</div>';
+  }
   /* the words. Asked for "in a professional way, that would not hurt or pinch" - so they inform and thank, never warn */
   function attSheet(kind, n) {
     var nm = attFirst(), t = "", b = "";
@@ -2477,7 +2511,7 @@ table.att td.ok,table.att td.no{font-size:16px}
     return L.join("\n");
   }
   function dailyReportText(day) {
-    var names = execNames(), L = [], tv = 0, tq = 0, ta = 0;
+    var names = roleIs("admin") ? execNames() : [S.user], L = [], tv = 0, tq = 0, ta = 0;   /* 1.19.0 - an executive's report is his own */
     L.push("Energy World - daily report - " + fd(day)); L.push("");
     names.forEach(function (n) {
       var s = exDayStats(n, day); tv += s.n; tq += s.nq; ta += s.amt;
@@ -2503,16 +2537,21 @@ table.att td.ok,table.att td.no{font-size:16px}
   function attGridSheet() {
     var names = execNames(), days = [], i, d;
     for (i = 6; i >= 0; i--) { d = new Date(); d.setDate(d.getDate() - i); days.push(ymdLocal(d)); }
+    var _mk = attMarks();   /* 1.19.0 */
     var DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-    var h = '<h2>Attendance &mdash; last 7 days</h2><div class="meta">&#10003; a visit or a quote was entered that day &middot; <span style="color:#b91c1c;font-weight:800">&ndash;</span> nothing entered. The grid scrolls inside its box.</div>' +
+    var h = '<h2>Attendance &mdash; last 7 days</h2><div class="meta">&#10003; a visit was entered that day (present) &middot; <span style="color:#b91c1c;font-weight:800">&ndash;</span> no visit (absent) &middot; Sun, L leave, H holiday. The grid scrolls inside its box.</div>' +
       '<div class="attw"><table class="att" id="ew_attgrid"><tr><th>Executive</th>' + days.map(function (dy) { return '<th>' + DOW[attDow(dy)] + '<br/>' + Number(dy.slice(8)) + '</th>'; }).join("") + '</tr>';
     if (!names.length) h += '<tr><td colspan="8" style="text-align:left;font-weight:400">No executive has a visit or a quote in the book yet.</td></tr>';
     names.forEach(function (n) {
       var vd = attVisitDays(n), k = dkey(n), qd = {};
       (S.data.quotes || []).forEach(function (q) { if (q && !isCancelled("quotes", q.id) && dkey(q.createdBy) === k) { var dd = dstr(q.createdAt); if (dd) qd[dd] = (qd[dd] || 0) + 1; } });
       h += '<tr><td data-act="exl-open" data-n="' + esc(n) + '" style="cursor:pointer;color:#1d4ed8;text-decoration:underline">' + esc(String(n).split(" ")[0]) + '</td>' + days.map(function (dy) {   /* 1.7.0 */
-        var on = !!((vd[dy] && vd[dy].n > 0) || qd[dy]);
-        return on ? '<td class="ok" title="' + esc(fd(dy)) + '">&#10003;</td>' : '<td class="no" title="' + esc(fd(dy)) + '">&ndash;</td>';
+        /* 1.19.0 - HIS RULE, said again: "present is visit marked". This grid counted a quote as present too, so it
+           could show a tick on a day the salary report calls absent. It reads attDay now, like the calendar. */
+        var st = attDay(n, dy, vd, _mk), tt = esc(fd(dy) + " \u00b7 " + (ATT_SAY[st] || "not counted") + (qd[dy] ? " \u00b7 " + qd[dy] + " quote" + (qd[dy] === 1 ? "" : "s") : ""));
+        if (st === "P" || st === "W") return '<td class="ok" title="' + tt + '">&#10003;</td>';
+        if (st === "A") return '<td class="no" title="' + tt + '">&ndash;</td>';
+        return '<td title="' + tt + '" style="color:#64748b;font-weight:700">' + (st === "O" ? "Sun" : st === "T" ? "&middot;" : esc(st)) + '</td>';
       }).join("") + '</tr>';
     });
     h += '</table></div><div class="acts"><button class="btn gry full" data-act="close">Close</button></div>';
@@ -2903,6 +2942,8 @@ table.att td.ok,table.att td.no{font-size:16px}
         tile(drafts.length, "Quotes not sent yet", drafts.length ? "warn" : "good", "go-quotes", "Draft") +
         tile(fu.length, "Follow-ups due", fu.length ? "bad" : "good", "", "") +
       '</div>' + attStripHtml() +   /* 1.5.2 */
+      (function () { var _aw = roleIs("admin") ? (S.ex || "") : (S.user || ""); return _aw ? attMonthHtml(_aw, S.attYm) : ""; })() +   /* 1.19.0 - the month */
+      (!roleIs("admin") && S.user ? '<div class="acts" style="margin-top:8px"><button class="btn gry full" data-act="dr-open">My daily report &mdash; today&rsquo;s visits and quotes</button></div>' : '') +   /* 1.19.0 */
       (!roleIs("admin") && S.user ? '<div class="acts" style="margin-top:8px"><button class="btn gry full" data-act="exl-open" data-n="' + esc(S.user) + '">&#128197; My day by day &mdash; attendance, visits, quotes</button></div>' : '');   /* 1.7.1 - his words: "show his log to executive also" */
     h += teamTodayCard();   /* 1.6.0 - admin only */
     if (fu.length) h += '<h3 class="sec">Follow-ups due</h3>' + fu.slice(0, 10).map(function (f) {
@@ -3185,7 +3226,10 @@ table.att td.ok,table.att td.no{font-size:16px}
     return '<div class="card tap ' + (mine ? 'mine' : 'other') + '" data-act="site-open" data-id="' + esc(st.id) + '"><div class="ttl2">' + esc(st.name || st.client || "Site") + '</div>' +
       '<div class="meta">' + (st.client ? codeTag(st.client) : '') + esc([st.client && st.client !== st.name ? st.client : "", st.city || st.location, st.stage].filter(Boolean).join(" · ")) + '</div>' +
       (mine ? '' : '<div class="who">Already visited by ' + esc(o.by) + (o.at ? ' on ' + esc(fd(o.at)) : '') + '</div>') +
-      (lv ? '<div class="meta">Last visit ' + esc(fd(lv.createdAt || lv.date)) + ' by ' + esc(lv.createdBy || "") + '</div>' : '<div class="meta">No visit logged yet</div>') + '</div>';
+      (lv ? '<div class="meta">Last visit ' + esc(fd(lv.createdAt || lv.date)) + ' by ' + esc(lv.createdBy || "") + '</div>' : '<div class="meta">No visit logged yet</div>') +
+      /* 1.19.0 - HIS WORDS: "so that executive can easily and fast mark visit". Straight to the form from the list:
+         the site sheet in between (open it, read it, press Log a visit) was two taps every single time. */
+      '<div class="acts" style="margin-top:6px"><button class="btn sm" data-act="sv-log" data-id="' + esc(st.id) + '" style="min-height:44px">&#10003; Log visit</button></div></div>';
   }
   function nearMe(btn) {
     if (btn) { btn.disabled = true; btn.textContent = "Finding you…"; }
@@ -3315,10 +3359,10 @@ table.att td.ok,table.att td.no{font-size:16px}
       '<label for="sl_note">What happened</label><textarea id="sl_note" placeholder="e.g. slab done, plumbing starts in two weeks, owner wants a CPVC quote">' + esc(L.note || "") + '</textarea>' +
       '<label>Visit for which brand <span class="req">*</span></label>' + brandTiles(L.brands || (L.brands = []), "sl-brand", "sl") +   /* 1.2.0 */
       nextHtml("sl_next", L.next) +
-      '<label>Stage now <span class="req">*</span>' + (st.stage ? ' <span class="meta">(last marked: ' + esc(st.stage) + ')</span>' : '') + '</label><select id="sl_stage"><option value="">&mdash; pick the stage you saw &mdash;</option>' + STAGES.map(function (s) { return '<option' + (L.stage === s ? ' selected' : '') + '>' + esc(s) + '</option>'; }).join("") + '</select>' +   /* 1.5.0 - must be picked */
+      '<label>Stage now <span class="req">*</span>' + (st.stage ? ' <span class="meta">(was ' + esc(st.stage) + ' &mdash; change it only if it moved)</span>' : '') + '</label><select id="sl_stage"><option value="">&mdash; pick the stage you saw &mdash;</option>' + STAGES.map(function (s) { return '<option' + (L.stage === s ? ' selected' : '') + '>' + esc(s) + '</option>'; }).join("") + '</select>' +   /* 1.5.0 - must be picked */
       '<label>Site photos <span class="meta">(as many as you like)</span></label>' + picsHtml("sl") +   /* 1.5.0 */
       '<div class="meta" style="margin-top:6px">Your location is taken with the visit, to show you were at the site.</div>' +
-      '<div class="acts"><button class="btn gry" data-act="site-open" data-id="' + esc(st.id) + '">Back</button><button class="btn" data-act="sl-save">Save the visit</button></div>';
+      '<div class="acts"><button class="btn gry" data-act="close">Cancel</button><button class="btn gry" data-act="site-open" data-id="' + esc(st.id) + '">Site details</button><button class="btn" data-act="sl-save">Save the visit</button></div>';
   }
   function slSave(btn) {
     var L = S.sl || {}, st = siteById(L.id); if (!st) return;
@@ -4076,6 +4120,7 @@ table.att td.ok,table.att td.no{font-size:16px}
     /* 1.6.0 - admin: which executive, the attendance grid, the daily report and its day */
     if (act === "ex") { S.ex = k || ""; render(); return; }
     if (act === "att-grid") { S.sheet = attGridSheet(); render(); return; }
+    if (act === "att-m") { S.attYm = k || ""; render(); return; }   /* 1.19.0 */
     /* 1.7.0 - one executive, day by day */
     if (act === "exl-open") { if (!roleIs("admin") && dkey(t.getAttribute("data-n")) !== dkey(S.user)) return; S.exlN = t.getAttribute("data-n") || ""; S.sheet = exLogSheet(S.exlN, S.exlPer); render(); return; }
     if (act === "exl-per") { if (!roleIs("admin") && dkey(t.getAttribute("data-n")) !== dkey(S.user)) return; S.exlPer = t.getAttribute("data-k") || "7"; S.exlN = t.getAttribute("data-n") || S.exlN; S.sheet = exLogSheet(S.exlN, S.exlPer); render(); return; }
@@ -4125,7 +4170,7 @@ table.att td.ok,table.att td.no{font-size:16px}
       toast(_pc.name + ": " + _pf + " " + _pn + " saved."); pvInfoPaint(); return;
     }
     if (act === "site-open") { var st = siteById(id); if (!st) return; S.sl = null; S.sheet = siteSheet(st); render(); return; }
-    if (act === "sv-log") { var st2 = siteById(id); if (!st2) return; S.sl = { id: st2.id, met: "", stage: "" }; S.vp = S.vp || {}; S.vp.sl = []; S.sheet = svLogSheet(st2); render(); return; }
+    if (act === "sv-log") { var st2 = siteById(id); if (!st2) return; S.sl = { id: st2.id, met: "", stage: String(st2.stage || "") };   /* 1.19.0 - the last stage, ready; change it if it moved */ S.vp = S.vp || {}; S.vp.sl = []; S.sheet = svLogSheet(st2); render(); return; }
     if (act === "sl-brand") { if (!S.sl) return; S.sl.brands = S.sl.brands || []; var _on = togIn(S.sl.brands, k); t.classList.toggle("on", _on); t.setAttribute("aria-pressed", _on); return; }   /* 1.2.0 - in place, nothing typed is lost */
     if (act === "pv-came" || act === "pv-int") { S.pv = S.pv || {}; var _a = act === "pv-came" ? (S.pv.came = S.pv.came || []) : (S.pv.int = S.pv.int || []); var _on2 = togIn(_a, k); t.classList.toggle("on", _on2); t.setAttribute("aria-pressed", _on2); return; }
     if (act === "nd") { var _ni = el(id); if (_ni) { _ni.value = addDays(Number(k) || 1); if (id === "pv_next") { S.pv = S.pv || {}; S.pv.next = _ni.value; } else if (S.sl) S.sl.next = _ni.value; } return; }
