@@ -19,4 +19,9 @@ H.ok("a line typed as a money total is not an item", !R.some(function (r) { retu
 H.ok("a name he was merged under counts too", R.some(function (r) { return r.code === "W9"; }));
 var S = H.read("team");
 H.ok("the HISAB carries the button", /data-act="sup-pdf" data-n="/.test(S) && /act === "sup-pdf"/.test(S));
+var M = H.lift("team", ["modalSupBrands"], { suppliedRows: function () { return [{ brand: "Heliroma" }, { brand: "Heliroma" }, { brand: "" }]; },
+  esc: function (x) { return String(x); }, plural: function (n, w) { return n + " " + w + (n === 1 ? "" : "s"); } });
+var mh = M.modalSupBrands("A");
+H.ok("the brands open first, all ticked, with item counts", /value="Heliroma" checked/.test(mh) && /2 items/.test(mh) && /value="Other" checked/.test(mh) && /data-act="sup-go"/.test(mh));
+H.ok("the PDF is built for the ticked brands only", /suppliedPdf\(_sn, _sb\.length < _st \? _sb : null\)/.test(S));
 H.done();
