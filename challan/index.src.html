@@ -283,7 +283,7 @@ body{background:#F4F6F9}
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.158.0";   /* 1.158.0 (15 Nov 2026) - driver payouts are counted the CRM's way: one cancelled or edited in the CRM is cancelled or edited here too, so the godown cannot pay a driver short */   /* 1.157.4 (1.157.4 (15 Nov 2026) - the discount rule moves to its own shared section, now covering the Visit app too; no figure moves */   /* 1.157.3 (1.157.3 (15 Nov 2026) - the discount rules and the stamp reader come from the shared core; no figure moves */   /* 1.157.2 (1.157.2 (15 Nov 2026) - six money rules now shared with the CRM as well, not just the Payment app */   /* 1.157.1 (1.157.1 (15 Nov 2026) - nine money rules now come from core/ew-core.js, byte-identical with the Payment app; no figure changes */   /* 1.157.0 (1.157.0 (14 Nov 2026) - FIX: a return line frozen at 0%% was credited at full list price; the CRM's rule (6.9.728) is now this app's rule too - Rs 2,12,214 across 5 clients */   /* 1.156.0 (1.156.0 (12 Nov 2026) - the product picker lists a family in catalogue order, like the CRM, not A to Z */   /* 1.155.0 (11 Nov 2026) - a challan carrying freight must name the driver it is paid to */     /* 1.154.1 (10 Nov 2026) - a space can be typed in the client search box again */     /* 1.154.0 (10 Nov 2026) - admin: a client not on the book is added from the challan itself, as a new lead or an old client */     /* 1.153.4 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 1.153.3 (9 Nov 2026) - FIMA finish codes with their own finish photo */     /* 1.153.2 (9 Nov 2026) - a small finish-colour dot on FIMA product pictures */     /* 1.153.1 (9 Nov 2026) - FIMA handles S1-S4 in every finish and the S2 glass handles */     /* 1.153.0 (9 Nov 2026) - FIMA in every finish: any of 14,260 finish codes (F1301WLX9CS ...) can go on a challan at its own MRP */     /* 1.152.0 (8 Nov 2026) - Add to Hisab: who earns, without incentive % or amount */   /* 1.151.0 (8 Nov 2026) - incentive card: any number of discount slabs (shared block) */   /* 1.150.0 (2 Nov 2026) - EW <-> MPS are normal challans again; they add to the other godown after its count */   /* 1.149.0 (1 Nov 2026) - the godown receives a transfer on this phone */   /* 1.148.0 (1 Nov 2026) - a transfer lands only when the other godown receives it */   /* 1.147.0 (1 Nov 2026) - two godowns: MPS Sonipat has its own stock; MPS staff see MPS work only; no challan to MPS (it is a transfer) */   /* 1.146.0 (31 Oct 2026) - one tap, one entry: a second tap on a write button is swallowed */   /* 1.145.0 - vehicle no asked every time a driver is picked (not for Porter / Rapido); 1.144.0 lorry check */
+  var APP_VERSION = "1.159.0";   /* 1.159.0 (16 Nov 2026) - FIX: the product picker said "catalogue has not loaded" and stayed so; the 1.7 MB list now has a time limit, a second try, says why it failed, offers Load now, and the open picker fills itself when it lands */   /* 1.158.0 (1.158.0 (15 Nov 2026) - driver payouts are counted the CRM's way: one cancelled or edited in the CRM is cancelled or edited here too, so the godown cannot pay a driver short */   /* 1.157.4 (1.157.4 (15 Nov 2026) - the discount rule moves to its own shared section, now covering the Visit app too; no figure moves */   /* 1.157.3 (1.157.3 (15 Nov 2026) - the discount rules and the stamp reader come from the shared core; no figure moves */   /* 1.157.2 (1.157.2 (15 Nov 2026) - six money rules now shared with the CRM as well, not just the Payment app */   /* 1.157.1 (1.157.1 (15 Nov 2026) - nine money rules now come from core/ew-core.js, byte-identical with the Payment app; no figure changes */   /* 1.157.0 (1.157.0 (14 Nov 2026) - FIX: a return line frozen at 0%% was credited at full list price; the CRM's rule (6.9.728) is now this app's rule too - Rs 2,12,214 across 5 clients */   /* 1.156.0 (1.156.0 (12 Nov 2026) - the product picker lists a family in catalogue order, like the CRM, not A to Z */   /* 1.155.0 (11 Nov 2026) - a challan carrying freight must name the driver it is paid to */     /* 1.154.1 (10 Nov 2026) - a space can be typed in the client search box again */     /* 1.154.0 (10 Nov 2026) - admin: a client not on the book is added from the challan itself, as a new lead or an old client */     /* 1.153.4 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 1.153.3 (9 Nov 2026) - FIMA finish codes with their own finish photo */     /* 1.153.2 (9 Nov 2026) - a small finish-colour dot on FIMA product pictures */     /* 1.153.1 (9 Nov 2026) - FIMA handles S1-S4 in every finish and the S2 glass handles */     /* 1.153.0 (9 Nov 2026) - FIMA in every finish: any of 14,260 finish codes (F1301WLX9CS ...) can go on a challan at its own MRP */     /* 1.152.0 (8 Nov 2026) - Add to Hisab: who earns, without incentive % or amount */   /* 1.151.0 (8 Nov 2026) - incentive card: any number of discount slabs (shared block) */   /* 1.150.0 (2 Nov 2026) - EW <-> MPS are normal challans again; they add to the other godown after its count */   /* 1.149.0 (1 Nov 2026) - the godown receives a transfer on this phone */   /* 1.148.0 (1 Nov 2026) - a transfer lands only when the other godown receives it */   /* 1.147.0 (1 Nov 2026) - two godowns: MPS Sonipat has its own stock; MPS staff see MPS work only; no challan to MPS (it is a transfer) */   /* 1.146.0 (31 Oct 2026) - one tap, one entry: a second tap on a write button is swallowed */   /* 1.145.0 - vehicle no asked every time a driver is picked (not for Porter / Rapido); 1.144.0 lorry check */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -1229,6 +1229,7 @@ function rnLines(r) {
   var CRM_URL = "../team/";
 
   var PRODUCTS = [];
+  var _catP = null;   /* 1.159.0 - one catalogue fetch at a time */
   var S = { user:"", pin:"", role:"", data:null, tab:"make", q:"", allTime:false, chFilter:"all", sheet:null, busy:false,
             syncAt:0, ch:null, rt:null, pick:null, open:"" };
 
@@ -2441,20 +2442,46 @@ function rnLines(r) {
     /* 1.106.0 - with CRM 6.9.614: a product added to the sheet showed nowhere for up to a day,
        because a copy under 24 hours old was trusted. Over 30 minutes old, it is used at once and
        a fresh one is fetched behind it. */
-    var _pull = fetch(GAS + "?action=catalog", { cache: "no-store" })
-      .then(function (r) { return r.json(); })
+    /* 1.159.0 - HIS WORDS, with the godown's screenshot: "product search and add not working, my godown team facing
+       problem". The picker said "The catalogue has not loaded yet" and could never say anything else. MEASURED: the
+       catalogue is now 1.75 MB (the 558 specifications of 10 Nov are 0.9 MB of it, up from 222 KB), the server answers
+       it in about 5 s on good signal - and on a godown phone it can take far longer or fail. The fetch had no time limit,
+       no second try, recorded no reason, and when it DID land nothing redrew the open picker: a man who opened Add
+       material a second too early looked at an empty list until he closed it, and "Pull the latest" re-pulled the whole
+       book. Now: 90 s, one retry, the reason kept, the picker shows "Loading the product list" while it comes, redraws
+       itself when it lands, and offers "Load the product list now" when it failed. */
+    if (_catP) return PRODUCTS.length ? Promise.resolve(PRODUCTS) : _catP;
+    var _get = function () {
+      var ctl = null; try { ctl = new AbortController(); } catch (e) { ctl = null; }
+      var tm = setTimeout(function () { try { if (ctl) ctl.abort(); } catch (e) { } }, 90000);
+      return fetch(GAS + "?action=catalog", ctl ? { cache: "no-store", signal: ctl.signal } : { cache: "no-store" })
+        .then(function (r) { clearTimeout(tm); if (!r.ok) throw new Error("the server answered " + r.status); return r.text(); },
+              function (e) { clearTimeout(tm); throw new Error(e && e.name === "AbortError" ? "no answer in 90 seconds" : "no signal"); })
+        .then(function (t) {
+          var rows = null; try { rows = JSON.parse(t); } catch (e) { throw new Error(/quota|too many|exceeded/i.test(t) ? "the server is over its limit for now" : "the server sent something that is not the product list"); }
+          if (!Array.isArray(rows)) throw new Error((rows && rows.error) ? String(rows.error) : "the server sent no product list");
+          return rows;
+        });
+    };
+    S.catBusy = true; S.catErr = "";
+    var _pull = _get().catch(function () { return new Promise(function (res) { setTimeout(res, 3000); }).then(_get); })
       .then(function (rows) {
         var items = parseCatalog(rows);
-        if (items.length) {
-          PRODUCTS = items;
-          /* v1.68.0 - chValue asks this catalogue what brand a code is, so a delivery priced
-             before it arrived must be priced again. One integer; the rows recompute on read. */
-          _pcbCache = null; _valGen++;
-          bigSet(CAT_KEY, JSON.stringify({ v: CAT_V, at: Date.now(), items: items }));
-        }
+        if (!items.length) throw new Error("the product list came back empty");
+        PRODUCTS = items;
+        /* v1.68.0 - chValue asks this catalogue what brand a code is, so a delivery priced
+           before it arrived must be priced again. One integer; the rows recompute on read. */
+        _pcbCache = null; _valGen++;
+        bigSet(CAT_KEY, JSON.stringify({ v: CAT_V, at: Date.now(), items: items }));
         return PRODUCTS;
       })
-      .catch(function () { return PRODUCTS; });
+      .catch(function (e) { S.catErr = String((e && e.message) || "no answer"); return PRODUCTS; })
+      .then(function (P) {
+        S.catBusy = false; _catP = null;
+        try { if (S.pick && el("pk_body")) repaintPicker(null); } catch (e) { }   /* the open picker fills itself */
+        return P;
+      });
+    _catP = _pull;
     if (PRODUCTS.length) return Promise.resolve(PRODUCTS);   /* drawn now; the fresh copy lands behind */
     return _pull;
   }
@@ -3954,7 +3981,12 @@ function rnLines(r) {
         '<div class="plist">' + hits.map(pkRow).join("") + '</div>';
     }
     var bl = brandsInStock();
-    if (!bl.length) return box + '<div class="empty">The catalogue has not loaded yet. Pull the latest and try again.</div>';
+    if (!bl.length) {   /* 1.159.0 - say what is happening, and give him the one button that fixes it */
+      if (S.catBusy) return box + '<div class="empty"><b>Loading the product list&hellip;</b><br>It is about 1.7 MB, so on weak signal it can take a minute. This list fills itself when it arrives &mdash; you can stay here.</div>';
+      return box + '<div class="empty" style="color:#b91c1c"><b>The product list did not come down' + (S.catErr ? ' &mdash; ' + esc(S.catErr) : '') + '.</b><br>Move to better signal or Wi-Fi if you can, then tap the button.</div>' +
+        '<div class="acts" style="justify-content:center"><button class="btn" data-act="cat-load" style="min-height:48px">Load the product list now</button></div>' +
+        '<div class="muted" style="text-align:center;margin-top:6px">Meanwhile <b>+ Item not in the price list</b> above still works.</div>';
+    }
     var h = box + '<div class="ew-picklabel"><span class="step">1</span>Brand</div>' +
       '<div class="chips">' + bl.map(function (b) {
         var on = p.brand === b.name;
@@ -10834,6 +10866,7 @@ function rnLines(r) {
       return;
     }
 
+    if (act === "cat-load") { S.catErr = ""; loadCatalog(); repaintPicker(null); return; }   /* 1.159.0 */
     if (act === "pk-open") {
       S.pick = { into: t.getAttribute("data-into"), brand:"", cat:"", q:"" };
       S.sheet = sheetPicker(); render(); return;
