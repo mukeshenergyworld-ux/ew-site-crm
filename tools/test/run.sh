@@ -49,6 +49,8 @@ node tools/test/t_core_vars.js || fail=1
 node tools/test/t_code_tag_joined.js || fail=1
 node tools/test/t_cancel_joined.js || fail=1
 node tools/test/t_attendance_all.js || fail=1
+node tools/test/t_saathi_sites.js || fail=1
+node tools/test/t_partner_picker.js || fail=1
 
 echo ""
 if [ "$fail" = "0" ]; then echo "ALL CLEAR — safe to build and upload"; else echo "SOMETHING FAILED — do not upload"; fi
