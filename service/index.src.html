@@ -460,7 +460,7 @@ function ewmBuild(n, pre) {
    Nothing here deletes anything, ever. A visit is a row added.
    ========================================================================== */
 
-  var APP_VERSION = "4.1.0";   /* 4.1.0 (17 Nov 2026) - one tap "Present" in the header for technicians; it writes the office's attendance row */   /* 4.0.4 (4.0.4 (17 Nov 2026) - the version shows at the top beside the name */   /* 4.0.3 (4.0.3 (11 Nov 2026) - the technician's Finish sheet: which machine asked first with a button, three choices not five, the misuse chip must say why it is charging the customer, the note is taps, and a message to the owner that could not go out is held on the phone */   /* 4.0.2 (11 Nov 2026) - Finish said "mark the product with the problem first" with nothing to press: the reason and the button are on the sheet now */   /* 4.0.1 (10 Nov 2026) - the company UPI QR (the same code as on every quote PDF) with the UPI id in words */     /* 4.0.0 (10 Nov 2026) - the engineer's three screens: Jobs, Install, My money. Start / Finish with GPS; UPI to the company QR first, cash only with a photo; the owner told on Telegram at once; a WhatsApp receipt for the customer; cash in hand to hand over */     /* 3.4.0 (31 Oct 2026) - one tap, one entry */
+  var APP_VERSION = "4.2.0";   /* 4.2.0 (17 Nov 2026) - the Present tap asks where the day is and the plan; one mark shows in every app */   /* 4.1.0 (17 Nov 2026) - one tap "Present" in the header for technicians; it writes the office's attendance row */   /* 4.0.4 (4.0.4 (17 Nov 2026) - the version shows at the top beside the name */   /* 4.0.3 (4.0.3 (11 Nov 2026) - the technician's Finish sheet: which machine asked first with a button, three choices not five, the misuse chip must say why it is charging the customer, the note is taps, and a message to the owner that could not go out is held on the phone */   /* 4.0.2 (11 Nov 2026) - Finish said "mark the product with the problem first" with nothing to press: the reason and the button are on the sheet now */   /* 4.0.1 (10 Nov 2026) - the company UPI QR (the same code as on every quote PDF) with the UPI id in words */     /* 4.0.0 (10 Nov 2026) - the engineer's three screens: Jobs, Install, My money. Start / Finish with GPS; UPI to the company QR first, cash only with a photo; the owner told on Telegram at once; a WhatsApp receipt for the customer; cash in hand to hand over */     /* 3.4.0 (31 Oct 2026) - one tap, one entry */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -2917,6 +2917,12 @@ function ewmBuild(n, pre) {
      he logs a visit; godown, accounts and service have no visit to log. This button writes the same att:mark row the
      office writes (kind "present", today, this person), so the CRM's Attendance screen, the roll-call for the WhatsApp
      group and the monthly report for salary all read it. Once a day; the second tap only says so. */
+  /* ===== ONE TAP: PRESENT, WITH WHERE AND THE PLAN (17 Nov 2026) =====
+     HIS WORDS: "in every app show executive to mark present with current location and schedule for today, like today
+     in which city; once marked in any app should be updated to every app". The tap asks first where the day is (town
+     chips, one line for the plan), then writes ONE att:mark row - the same row the office writes - with the plan, the
+     phone's position when it allows it, and which app it came from. Every app reads the same audit tab, so a mark made
+     here shows in the CRM, Visit, Challan, Service and Payment apps on their next pull. Once a day. */
   function attTodayLocal() { var d = new Date(); return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2); }
   function attMineToday() {
     var who = String(S.user || "").trim().toLowerCase(), d = attTodayLocal(), hit = null;
@@ -2924,17 +2930,25 @@ function ewmBuild(n, pre) {
       if (!r || r.action !== "att:mark") return;
       var x = {}; try { x = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
       if (String(x.day || "") !== d || String(x.who || "").trim().toLowerCase() !== who) return;
-      if (!hit || String(r.createdAt || "") >= hit.at) hit = { kind: String(x.kind || ""), note: String(x.note || ""), at: String(r.createdAt || "") };
+      if (!hit || String(r.createdAt || "") >= hit.at) hit = { kind: String(x.kind || ""), note: String(x.note || ""), plan: String(x.plan || ""), at: String(r.createdAt || "") };
     });
     return hit && hit.kind === "present" ? hit : null;
   }
   function attMeBtn() {
     if (!S.user || !S.data) return "";
     var m = attMineToday();
-    if (m) return '<span class="who" title="Marked present today">✓ Present ' + esc(String(m.note || "").replace(/^self\s*/, "").split(" ")[0]) + '</span>';
-    return '<button class="icon" data-act="att-me" title="Mark yourself present for today" style="background:#15803d;border-color:#15803d;color:#fff">✓ Present</button>';
+    if (m) return '<span class="sync" title="' + esc("Marked present today" + (m.plan ? " - " + m.plan : "")) + '" style="white-space:nowrap">✓ Present ' + esc(String(m.note || "").replace(/^self\s*/, "").split(" ")[0]) + (m.plan ? ' · ' + esc(m.plan.length > 14 ? m.plan.slice(0, 13) + "…" : m.plan) : '') + '</span>';
+    return '<button class="btn sm" data-act="att-me" title="Mark yourself present for today" style="background:#15803d;border-color:#15803d;color:#fff">✓ Present</button>';
   }
-  function attMeMark(t) {
+  var ATT_TOWNS = ["Panipat", "Sonipat", "Karnal", "Rohtak", "Delhi", "Workshop"];
+  function attPlanSheet() {
+    return '<h2>Mark present — where are you today?</h2><p class="meta" style="font-size:13px">Tap the town(s), add the plan in a line. It goes on the roll-call and the report.</p>' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0">' + ATT_TOWNS.map(function (x) { return '<button class="btn sm ghost" data-act="att-town" data-v="' + esc(x) + '" style="min-height:44px">' + esc(x) + '</button>'; }).join("") + '</div>' +
+      '<label>Today’s plan</label><input id="att_plan" placeholder="e.g. Panipat — Model Town, then Samalkha" style="width:100%;box-sizing:border-box;min-height:44px;font-size:16px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px" autocomplete="off"/>' +
+      '<div class="meta" style="font-size:12px;margin-top:4px">Your location is taken from the phone, if it allows it.</div>' +
+      '<div style="display:flex;gap:8px;margin-top:12px"><button class="btn ghost" data-act="close" style="flex:1;min-height:44px">Not now</button><button class="btn" data-act="att-go" style="flex:2;min-height:44px;background:#15803d;border-color:#15803d;color:#fff">✓ Mark present</button></div>';
+  }
+  function attMeMark(t, plan) {
     if (attMineToday()) { toast("Already marked present today."); return; }
     if (t) { t.disabled = true; t.textContent = "Marking…"; }
     var geo = new Promise(function (res) {
@@ -2947,11 +2961,11 @@ function ewmBuild(n, pre) {
     geo.then(function (where) {
       var now = new Date(), hhmm = ("0" + now.getHours()).slice(-2) + ":" + ("0" + now.getMinutes()).slice(-2), who = String(S.user || "").trim();
       var row = { id: "AT-" + Date.now() + "-" + Math.floor(Math.random() * 1000000), createdAt: now.toISOString(), actor: who, action: "att:mark", target: who,
-        detail: JSON.stringify({ day: attTodayLocal(), who: who, kind: "present", note: "self " + hhmm + (where ? " @" + where : ""), self: 1, app: "service" }), ip: "" };
+        detail: JSON.stringify({ day: attTodayLocal(), who: who, kind: "present", note: "self " + hhmm + (where ? " @" + where : "") + (plan ? " · " + plan : ""), self: 1, plan: String(plan || ""), geo: where, app: "service" }), ip: "" };
       S.data.audit = ((S.data && S.data.audit) || []).concat([row]);
-      return saveRow("audit", row).then(function (r) {
+      return Promise.resolve(saveRow("audit", row)).then(function (r) {
         if (r && r.ok === false && !r.held) { S.data.audit = S.data.audit.filter(function (x) { return x !== row; }); toast("Not marked — " + String(r.error || "the server refused it") + ". Show this to the office."); render(); return; }
-        toast(r && r.held ? "Marked present — it goes up when there is signal." : "Marked present. Thank you."); render();
+        toast(r && r.held ? "Marked present — it goes up when there is signal." : "Marked present — " + (plan || "") + ". Thank you."); render();
       });
     }).catch(function () { toast("Could not mark it — try once more."); render(); });
   }
@@ -6341,7 +6355,9 @@ function ewmBuild(n, pre) {
       render(); return;
     }
     if (act === "close")   { S.parts = false; S.sheet = null; S.vis = null; S.q = ""; S.fin = null; S.nc = null; S.cm = null; S.ew = null; S.sv2id = ""; S.tm = null; S.tmOn = false; render(); return; }
-    if (act === "att-me") { attMeMark(t); return; }   /* 4.1.0 */
+    if (act === "att-me") { if (attMineToday()) { toast("Already marked present today."); return; } S.sheet = attPlanSheet(); render(); return; }
+    if (act === "att-town") { var _ap = document.getElementById("att_plan"); if (_ap) { var _v = t.getAttribute("data-v") || ""; _ap.value = _ap.value.trim() ? (_ap.value.indexOf(_v) < 0 ? _ap.value.trim() + ", " + _v : _ap.value) : _v; _ap.focus(); } return; }
+    if (act === "att-go") { var _pl = document.getElementById("att_plan"), _plan = _pl ? String(_pl.value || "").trim() : ""; if (!_plan) { toast("Tap a town or write the plan first."); return; } S.sheet = null; render(); attMeMark(null, _plan); return; }
     if (act === "refresh") { pull(true); return; }
     /* ================= FIVE BUTTONS THAT DID NOTHING  (v1.12.1, 3 Sep 2026) =================
        Found by scanning every data-act this app EMITS against the acts its router HANDLES.
