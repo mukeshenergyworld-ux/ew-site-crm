@@ -20,7 +20,7 @@
 
    SET-UP (once) - see the paste steps.
    ===================================================================================================== */
-var BX_V = "BX1";
+var BX_V = "BX2";
 var BX_CRM_URL = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
 var BX_TABS = {
   BX_People: ["id", "name", "mobile", "brand", "company", "city", "active", "pinHash", "salt", "updatedAt"],
@@ -212,6 +212,15 @@ function bxAdmin_(b) {
         file: x.fileUrl ? { name: x.fileName, url: x.fileUrl } : null };
     });
     return { ok: true, rows: rows };
+  }
+  if (op === "all") {   /* BX2 - the owner's own view in the Brand Followup app: every man, his sites, every follow-up */
+    var people = bxRows_("BX_People").map(function (x) { return { id: String(x.id), name: x.name, mobile: bxMob_(x.mobile), brand: x.brand, company: x.company, city: x.city, active: x.active, hasPin: !!x.pinHash }; });
+    var books = bxRows_("BX_Book").filter(function (x) { return x.bxId; }).map(function (x) { var st = []; try { st = JSON.parse(x.json || "[]") || []; } catch (e) { st = []; } return { bxId: String(x.bxId), sites: st }; });
+    var fus = bxRows_("BX_Fu").slice(-2000).reverse().map(function (x) {
+      return { fid: x.fid, at: x.at, bxId: String(x.bxId), bxName: x.bxName, client: x.client, brand: x.brand, status: x.status, remark: x.remark, next: x.next, file: x.fileUrl ? { name: x.fileName, url: x.fileUrl } : null };
+    });
+    bxLog_(b.crmUser, "admin view", people.length + " people");
+    return { ok: true, people: people, books: books, fus: fus };
   }
   return { ok: false, err: "unknown op" };
 }
