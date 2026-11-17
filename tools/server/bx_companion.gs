@@ -20,13 +20,17 @@
 
    SET-UP (once) - see the paste steps.
    ===================================================================================================== */
-var BX_V = "BX2";
+var BX_V = "BX3";
 var BX_CRM_URL = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
 var BX_TABS = {
   BX_People: ["id", "name", "mobile", "brand", "company", "city", "active", "pinHash", "salt", "updatedAt"],
   BX_Book:   ["bxId", "json", "at"],
   BX_Fu:     ["fid", "at", "bxId", "bxName", "client", "brand", "status", "remark", "next", "fileName", "fileUrl"],
-  BX_Log:    ["at", "who", "what", "detail"]
+  BX_Log:    ["at", "who", "what", "detail"],
+  /* BX3 - sites a brand executive adds himself; the CRM pulls them, the owner decides */
+  BX_Leads:  ["lid", "at", "bxId", "bxName", "brand", "client", "mobile", "city", "area", "address", "type", "stage", "architect", "plumber", "remark", "dup", "dupWhat", "status", "note", "decidedAt"],
+  /* BX3 - the CRM's book, as fingerprints only: never a name or a number in the clear */
+  BX_Dup:    ["json", "at"]
 };
 var BX_STATUS = ["Ongoing", "Won", "Lost", "Not required"];
 var BX_FILE_MAX = 6 * 1024 * 1024;
@@ -37,14 +41,15 @@ function bxTry_(e) {
   var body = null;
   try { body = JSON.parse((e && e.postData && e.postData.contents) || "{}"); } catch (x) { return null; }
   var a = String((body && body.action) || "");
-  if (["bxPing", "bxLogin", "bxBook", "bxSave", "bxAdmin"].indexOf(a) < 0) return null;
+  if (["bxPing", "bxLogin", "bxBook", "bxSave", "bxAdmin", "bxAddSite"].indexOf(a) < 0) return null;
   var lock = LockService.getScriptLock();
   try {
-    if (a === "bxSave" || a === "bxAdmin") lock.waitLock(20000);
+    if (a === "bxSave" || a === "bxAdmin" || a === "bxAddSite") lock.waitLock(20000);
     if (a === "bxPing") return bxOut_({ ok: true, v: BX_V });
     if (a === "bxLogin") return bxOut_(bxLogin_(body));
     if (a === "bxBook") return bxOut_(bxBook_(body));
     if (a === "bxSave") return bxOut_(bxSave_(body));
+    if (a === "bxAddSite") return bxOut_(bxAddSite_(body));
     return bxOut_(bxAdmin_(body));
   } catch (err) {
     return bxOut_({ ok: false, err: "server: " + String((err && err.message) || err).slice(0, 200) });
@@ -73,7 +78,11 @@ function bxSs_() {
   if (!id) throw new Error("run bxSetup once in the editor");
   return SpreadsheetApp.openById(id);
 }
-function bxSh_(n) { return bxSs_().getSheetByName(n); }
+function bxSh_(n) {
+  var ss = bxSs_(), sh = ss.getSheetByName(n);
+  if (!sh && BX_TABS[n]) { sh = ss.insertSheet(n); sh.getRange(1, 1, 1, BX_TABS[n].length).setValues([BX_TABS[n]]).setFontWeight("bold"); sh.setFrozenRows(1); if (n === "BX_Leads") sh.getRange("G:G").setNumberFormat("@"); }   /* BX3 - a tab added later makes itself */
+  return sh;
+}
 function bxRows_(n) {
   var sh = bxSh_(n), v = sh.getDataRange().getValues(); if (v.length < 2) return [];
   var h = v[0];
@@ -131,8 +140,10 @@ function bxBook_(b) {
   var p = bxWho_(b); if (!p) return { ok: false, err: "signed out", out: 1 };
   var fus = bxRows_("BX_Fu").filter(function (x) { return String(x.bxId) === String(p.id); }).slice(-400).reverse()
     .map(function (x) { return { fid: x.fid, at: x.at, client: x.client, brand: x.brand, status: x.status, remark: x.remark, next: x.next, fileName: x.fileName, hasFile: !!x.fileUrl }; });   /* his own file name, never its link */
+  var adds = bxRows_("BX_Leads").filter(function (x) { return String(x.bxId) === String(p.id); }).slice(-200).reverse()
+    .map(function (x) { return { lid: x.lid, at: x.at, client: x.client, city: x.city, area: x.area, stage: x.stage, dup: x.dup, status: x.status || "new", note: x.note }; });   /* BX3 */
   bxLog_(p.name, "open", "");
-  return { ok: true, me: bxMe_(p), sites: bxSites_(p.id), fus: fus, v: BX_V };
+  return { ok: true, me: bxMe_(p), sites: bxSites_(p.id), fus: fus, adds: adds, v: BX_V };
 }
 function bxSave_(b) {
   var p = bxWho_(b); if (!p) return { ok: false, err: "signed out", out: 1 };
@@ -158,6 +169,51 @@ function bxSave_(b) {
   bxWrite_("BX_Fu", 0, row);
   bxLog_(p.name, "follow-up", client + " - " + status);
   return { ok: true, fu: { fid: row.fid, at: row.at, client: row.client, brand: row.brand, status: status, remark: remark, next: next, fileName: fileName, hasFile: !!fileUrl } };
+}
+
+/* ---------- BX3: a site the brand executive adds himself ----------
+   Checked at once against (1) his own sites, (2) Energy World's whole book - by fingerprint of the mobile and of the
+   name, sent by the CRM; never the book itself - and (3) what any brand executive has already sent. A duplicate is
+   said to him in plain words; he may still send it ("confirm"), and the owner links it to the client already there. */
+function bxFp_(kind, v) {   /* the same fingerprint the CRM makes: first 16 hex of SHA-256("ew|" + kind + "|" + value) */
+  var raw = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, "ew|" + kind + "|" + v, Utilities.Charset.UTF_8);
+  return raw.map(function (b) { b = (b + 256) % 256; return (b < 16 ? "0" : "") + b.toString(16); }).join("").slice(0, 16);
+}
+function bxNameKey_(v) { return String(v == null ? "" : v).toLowerCase().replace(/^(mr|mrs|ms|dr|shri|smt|er|ar)\.?\s+/, "").replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim(); }
+function bxDupIx_() {
+  var r = bxRows_("BX_Dup")[0]; if (!r) return { m: {}, n: {} };
+  try { var j = JSON.parse(r.json || "{}") || {}; return { m: j.m || {}, n: j.n || {} }; } catch (e) { return { m: {}, n: {} }; }
+}
+function bxAddSite_(b) {
+  var p = bxWho_(b); if (!p) return { ok: false, err: "signed out", out: 1 };
+  var s = b.site || {}, client = String(s.client || "").replace(/\s+/g, " ").trim().slice(0, 120), mob = bxMob_(s.mobile);
+  if (client.length < 3) return { ok: false, err: "Write the client's name." };
+  if (mob.length !== 10) return { ok: false, err: "The client's 10-digit mobile." };
+  var city = String(s.city || "").trim().slice(0, 40);
+  if (!city) return { ok: false, err: "Pick the district." };
+  var key = bxNameKey_(client), dup = "", what = "";
+  /* 1. already his */
+  if (bxSites_(p.id).some(function (x) { return bxNameKey_(x.client) === key; })) { dup = "yours"; what = "This site is already in your list."; }
+  /* 2. with Energy World */
+  if (!dup) {
+    var ix = bxDupIx_(), fm = bxFp_("m", mob), fn = bxFp_("n", key);
+    if (ix.m[fm]) { dup = "ew"; what = "This mobile is already with Energy World (" + (ix.m[fm] === "CL" ? "a client" : "a lead") + ")."; }
+    else if (ix.n[fn]) { dup = "ew"; what = "A client of this name is already with Energy World."; }
+  }
+  /* 3. already sent by a brand executive */
+  if (!dup) {
+    var prev = bxRows_("BX_Leads").filter(function (x) { return bxMob_(x.mobile) === mob || bxNameKey_(x.client) === key; })[0];
+    if (prev) { dup = "sent"; what = String(prev.bxId) === String(p.id) ? "You sent this site on " + String(prev.at).slice(0, 10) + "." : "Another brand executive has already sent this site."; }
+  }
+  if (dup === "yours") return { ok: false, dup: dup, err: what };
+  if (dup && !b.confirm) return { ok: false, dup: dup, ask: 1, err: what };
+  var row = { lid: "BL-" + Date.now() + "-" + bxRand_(5), at: new Date().toISOString(), bxId: String(p.id), bxName: String(p.name), brand: String(p.brand || ""),
+    client: client, mobile: mob, city: city, area: String(s.area || "").trim().slice(0, 60), address: String(s.address || "").trim().slice(0, 200),
+    type: String(s.type || "").slice(0, 30), stage: String(s.stage || "").slice(0, 40), architect: String(s.architect || "").trim().slice(0, 80),
+    plumber: String(s.plumber || "").trim().slice(0, 80), remark: String(s.remark || "").trim().slice(0, 500), dup: dup, dupWhat: what, status: "new", note: "", decidedAt: "" };
+  bxWrite_("BX_Leads", 0, row);
+  bxLog_(p.name, "site added", client + (dup ? " (" + dup + ")" : ""));
+  return { ok: true, add: { lid: row.lid, at: row.at, client: client, city: city, area: row.area, stage: row.stage, dup: dup, status: "new", note: "" }, dup: dup, msg: what };
 }
 
 /* ---------- the owner, through his CRM sign-in ---------- */
@@ -192,6 +248,10 @@ function bxAdmin_(b) {
     var sh = bxSh_("BX_Book"), books = Array.isArray(b.books) ? b.books : [];
     if (sh.getLastRow() > 1) sh.getRange(2, 1, sh.getLastRow() - 1, BX_TABS.BX_Book.length).clearContent();
     if (books.length) sh.getRange(2, 1, books.length, 3).setValues(books.map(function (x) { return [String(x.bxId || ""), JSON.stringify(x.sites || []).slice(0, 49000), now]; }));
+    if (b.dup && typeof b.dup === "object") {   /* BX3 - fingerprints of the book, replaced whole */
+      var dsh = bxSh_("BX_Dup"); if (dsh.getLastRow() > 1) dsh.getRange(2, 1, dsh.getLastRow() - 1, 2).clearContent();
+      dsh.getRange(2, 1, 1, 2).setValues([[JSON.stringify({ m: b.dup.m || {}, n: b.dup.n || {} }).slice(0, 49500), now]]);
+    }
     bxLog_(b.crmUser, "sync", ppl.length + " people, " + books.length + " books");
     return { ok: true, people: ppl.length, books: books.length };
   }
@@ -221,6 +281,19 @@ function bxAdmin_(b) {
     });
     bxLog_(b.crmUser, "admin view", people.length + " people");
     return { ok: true, people: people, books: books, fus: fus };
+  }
+  if (op === "leads") {   /* BX3 - every site the brand executives added, newest last */
+    return { ok: true, rows: bxRows_("BX_Leads").map(function (x) { var o = {}; BX_TABS.BX_Leads.forEach(function (k) { o[k] = x[k]; }); o.mobile = bxMob_(x.mobile); return o; }) };
+  }
+  if (op === "leadset") {   /* BX3 - the owner's decision, shown to the brand executive in his app */
+    var st = String(b.status || "");
+    if (["accepted", "linked", "rejected", "new"].indexOf(st) < 0) return { ok: false, err: "bad status" };
+    var L = bxRows_("BX_Leads").filter(function (x) { return String(x.lid) === String(b.lid || ""); })[0];
+    if (!L) return { ok: false, err: "no such site" };
+    L.status = st; L.note = String(b.note || "").slice(0, 200); L.decidedAt = new Date().toISOString();
+    bxWrite_("BX_Leads", L._r, L);
+    bxLog_(b.crmUser, "site " + st, L.client);
+    return { ok: true };
   }
   return { ok: false, err: "unknown op" };
 }
