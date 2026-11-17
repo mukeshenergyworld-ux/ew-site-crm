@@ -20,7 +20,7 @@ const call=b=>{const r=ctx.bxTry_({postData:{contents:JSON.stringify(b)}});retur
 let pass=0,fail=0;const ok=(m,c)=>{if(c){pass++;console.log("  ok   ",m)}else{fail++;console.log("  FAIL ",m)}};
 ctx.bxSetup();
 ok("not ours: another action is left to the Companion", call({action:"login"})===null);
-ok("ping", call({action:"bxPing"}).v==="BX3");
+ok("ping", call({action:"bxPing"}).v==="BX4");
 const own={action:"bxAdmin",crmUser:"Mukesh Verma",crmPin:"9999"};
 ok("a non-owner cannot sync", call({action:"bxAdmin",crmUser:"Vivek",crmPin:"1",op:"sync"}).ok===false);
 const site={client:"Nitin Jain",code:"CL010",area:"Model Town",city:"Panipat",stage:"Brickwork",brand:"HULIOT",kind:"Client",ew:"Going on",quotes:2,lastQuote:"2026-11-02",architect:{name:"Roshan Lal - Radiant",code:"AR020",town:"Panipat"},plumber:null,exec:{name:"Mukesh Verma",mobile:"9466600611"}};
@@ -79,4 +79,9 @@ let L=call(Object.assign({op:"leads"},own));
 ok("BX3: the owner pulls both sites with the duplicate flag", L.ok&&L.rows.length===2&&L.rows.find(x=>x.client==="New Name").dup==="ew");
 ok("BX3: a non-owner cannot pull them", call({action:"bxAdmin",crmUser:"Vivek",crmPin:"1",op:"leads"}).ok===false);
 ok("BX3: the owner's decision goes back to his app", call(Object.assign({op:"leadset",lid:L.rows[0].lid,status:"accepted",note:"Added as lead"},own)).ok && call({action:"bxBook",tok:t2}).adds.find(x=>x.lid===L.rows[0].lid).status==="accepted");
+/* BX4 - the book's fingerprints are more than one cell holds */
+{ const big={m:{},n:{}}; for(let i=0;i<3000;i++){ big.m[fp("m","98"+String(10000000+i))]="CL"; big.n[fp("n","name "+i)]="LD"; }
+  call(Object.assign({op:"sync",people:[{id:"BX1",name:"Rahul",mobile:"9812345678",brand:"HULIOT",company:"Huliot India",active:"Y"}],books:[{bxId:"BX1",sites:[site]}],dup:big},own));
+  const r=call({action:"bxAddSite",tok:t2,site:{client:"Big Book Man",mobile:"9810002999",city:"Panipat"}});
+  ok("BX4: with 6,000 fingerprints the last mobile is still found", !r.ok&&r.dup==="ew"); }
 console.log(`\n${pass} passed, ${fail} failed`);process.exit(fail?1:0);
