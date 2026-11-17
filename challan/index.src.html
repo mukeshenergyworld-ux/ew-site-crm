@@ -283,7 +283,7 @@ body{background:#F4F6F9}
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.160.0";   /* 1.160.0 (17 Nov 2026) - one tap "Present" in the header for the godown; it writes the office's attendance row */   /* 1.159.1 (1.159.1 (17 Nov 2026) - FIX: RAWB and LIVE_TABS declared again; every pull had thrown "Can't find variable" since the 15 Nov core build, so the book on the phone stopped updating */   /* 1.159.0 (1.159.0 (16 Nov 2026) - FIX: the product picker said "catalogue has not loaded" and stayed so; the 1.7 MB list now has a time limit, a second try, says why it failed, offers Load now, and the open picker fills itself when it lands */   /* 1.158.0 (1.158.0 (15 Nov 2026) - driver payouts are counted the CRM's way: one cancelled or edited in the CRM is cancelled or edited here too, so the godown cannot pay a driver short */   /* 1.157.4 (1.157.4 (15 Nov 2026) - the discount rule moves to its own shared section, now covering the Visit app too; no figure moves */   /* 1.157.3 (1.157.3 (15 Nov 2026) - the discount rules and the stamp reader come from the shared core; no figure moves */   /* 1.157.2 (1.157.2 (15 Nov 2026) - six money rules now shared with the CRM as well, not just the Payment app */   /* 1.157.1 (1.157.1 (15 Nov 2026) - nine money rules now come from core/ew-core.js, byte-identical with the Payment app; no figure changes */   /* 1.157.0 (1.157.0 (14 Nov 2026) - FIX: a return line frozen at 0%% was credited at full list price; the CRM's rule (6.9.728) is now this app's rule too - Rs 2,12,214 across 5 clients */   /* 1.156.0 (1.156.0 (12 Nov 2026) - the product picker lists a family in catalogue order, like the CRM, not A to Z */   /* 1.155.0 (11 Nov 2026) - a challan carrying freight must name the driver it is paid to */     /* 1.154.1 (10 Nov 2026) - a space can be typed in the client search box again */     /* 1.154.0 (10 Nov 2026) - admin: a client not on the book is added from the challan itself, as a new lead or an old client */     /* 1.153.4 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 1.153.3 (9 Nov 2026) - FIMA finish codes with their own finish photo */     /* 1.153.2 (9 Nov 2026) - a small finish-colour dot on FIMA product pictures */     /* 1.153.1 (9 Nov 2026) - FIMA handles S1-S4 in every finish and the S2 glass handles */     /* 1.153.0 (9 Nov 2026) - FIMA in every finish: any of 14,260 finish codes (F1301WLX9CS ...) can go on a challan at its own MRP */     /* 1.152.0 (8 Nov 2026) - Add to Hisab: who earns, without incentive % or amount */   /* 1.151.0 (8 Nov 2026) - incentive card: any number of discount slabs (shared block) */   /* 1.150.0 (2 Nov 2026) - EW <-> MPS are normal challans again; they add to the other godown after its count */   /* 1.149.0 (1 Nov 2026) - the godown receives a transfer on this phone */   /* 1.148.0 (1 Nov 2026) - a transfer lands only when the other godown receives it */   /* 1.147.0 (1 Nov 2026) - two godowns: MPS Sonipat has its own stock; MPS staff see MPS work only; no challan to MPS (it is a transfer) */   /* 1.146.0 (31 Oct 2026) - one tap, one entry: a second tap on a write button is swallowed */   /* 1.145.0 - vehicle no asked every time a driver is picked (not for Porter / Rapido); 1.144.0 lorry check */
+  var APP_VERSION = "1.161.0";   /* 1.161.0 (17 Nov 2026) - the Present tap asks where the day is and the plan; one mark shows in every app */   /* 1.160.0 (17 Nov 2026) - one tap "Present" in the header for the godown; it writes the office's attendance row */   /* 1.159.1 (1.159.1 (17 Nov 2026) - FIX: RAWB and LIVE_TABS declared again; every pull had thrown "Can't find variable" since the 15 Nov core build, so the book on the phone stopped updating */   /* 1.159.0 (1.159.0 (16 Nov 2026) - FIX: the product picker said "catalogue has not loaded" and stayed so; the 1.7 MB list now has a time limit, a second try, says why it failed, offers Load now, and the open picker fills itself when it lands */   /* 1.158.0 (1.158.0 (15 Nov 2026) - driver payouts are counted the CRM's way: one cancelled or edited in the CRM is cancelled or edited here too, so the godown cannot pay a driver short */   /* 1.157.4 (1.157.4 (15 Nov 2026) - the discount rule moves to its own shared section, now covering the Visit app too; no figure moves */   /* 1.157.3 (1.157.3 (15 Nov 2026) - the discount rules and the stamp reader come from the shared core; no figure moves */   /* 1.157.2 (1.157.2 (15 Nov 2026) - six money rules now shared with the CRM as well, not just the Payment app */   /* 1.157.1 (1.157.1 (15 Nov 2026) - nine money rules now come from core/ew-core.js, byte-identical with the Payment app; no figure changes */   /* 1.157.0 (1.157.0 (14 Nov 2026) - FIX: a return line frozen at 0%% was credited at full list price; the CRM's rule (6.9.728) is now this app's rule too - Rs 2,12,214 across 5 clients */   /* 1.156.0 (1.156.0 (12 Nov 2026) - the product picker lists a family in catalogue order, like the CRM, not A to Z */   /* 1.155.0 (11 Nov 2026) - a challan carrying freight must name the driver it is paid to */     /* 1.154.1 (10 Nov 2026) - a space can be typed in the client search box again */     /* 1.154.0 (10 Nov 2026) - admin: a client not on the book is added from the challan itself, as a new lead or an old client */     /* 1.153.4 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 1.153.3 (9 Nov 2026) - FIMA finish codes with their own finish photo */     /* 1.153.2 (9 Nov 2026) - a small finish-colour dot on FIMA product pictures */     /* 1.153.1 (9 Nov 2026) - FIMA handles S1-S4 in every finish and the S2 glass handles */     /* 1.153.0 (9 Nov 2026) - FIMA in every finish: any of 14,260 finish codes (F1301WLX9CS ...) can go on a challan at its own MRP */     /* 1.152.0 (8 Nov 2026) - Add to Hisab: who earns, without incentive % or amount */   /* 1.151.0 (8 Nov 2026) - incentive card: any number of discount slabs (shared block) */   /* 1.150.0 (2 Nov 2026) - EW <-> MPS are normal challans again; they add to the other godown after its count */   /* 1.149.0 (1 Nov 2026) - the godown receives a transfer on this phone */   /* 1.148.0 (1 Nov 2026) - a transfer lands only when the other godown receives it */   /* 1.147.0 (1 Nov 2026) - two godowns: MPS Sonipat has its own stock; MPS staff see MPS work only; no challan to MPS (it is a transfer) */   /* 1.146.0 (31 Oct 2026) - one tap, one entry: a second tap on a write button is swallowed */   /* 1.145.0 - vehicle no asked every time a driver is picked (not for Porter / Rapido); 1.144.0 lorry check */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -4259,6 +4259,12 @@ function rnLines(r) {
      he logs a visit; godown, accounts and service have no visit to log. This button writes the same att:mark row the
      office writes (kind "present", today, this person), so the CRM's Attendance screen, the roll-call for the WhatsApp
      group and the monthly report for salary all read it. Once a day; the second tap only says so. */
+  /* ===== ONE TAP: PRESENT, WITH WHERE AND THE PLAN (17 Nov 2026) =====
+     HIS WORDS: "in every app show executive to mark present with current location and schedule for today, like today
+     in which city; once marked in any app should be updated to every app". The tap asks first where the day is (town
+     chips, one line for the plan), then writes ONE att:mark row - the same row the office writes - with the plan, the
+     phone's position when it allows it, and which app it came from. Every app reads the same audit tab, so a mark made
+     here shows in the CRM, Visit, Challan, Service and Payment apps on their next pull. Once a day. */
   function attTodayLocal() { var d = new Date(); return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2); }
   function attMineToday() {
     var who = String(S.user || "").trim().toLowerCase(), d = attTodayLocal(), hit = null;
@@ -4266,17 +4272,25 @@ function rnLines(r) {
       if (!r || r.action !== "att:mark") return;
       var x = {}; try { x = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
       if (String(x.day || "") !== d || String(x.who || "").trim().toLowerCase() !== who) return;
-      if (!hit || String(r.createdAt || "") >= hit.at) hit = { kind: String(x.kind || ""), note: String(x.note || ""), at: String(r.createdAt || "") };
+      if (!hit || String(r.createdAt || "") >= hit.at) hit = { kind: String(x.kind || ""), note: String(x.note || ""), plan: String(x.plan || ""), at: String(r.createdAt || "") };
     });
     return hit && hit.kind === "present" ? hit : null;
   }
   function attMeBtn() {
     if (!S.user || !S.data) return "";
     var m = attMineToday();
-    if (m) return '<span class="sync" title="Marked present today">✓ Present ' + esc(String(m.note || "").replace(/^self\s*/, "").split(" ")[0]) + '</span>';
+    if (m) return '<span class="sync" title="' + esc("Marked present today" + (m.plan ? " - " + m.plan : "")) + '" style="white-space:nowrap">✓ Present ' + esc(String(m.note || "").replace(/^self\s*/, "").split(" ")[0]) + (m.plan ? ' · ' + esc(m.plan.length > 14 ? m.plan.slice(0, 13) + "…" : m.plan) : '') + '</span>';
     return '<button class="btn sm" data-act="att-me" title="Mark yourself present for today" style="background:#15803d;border-color:#15803d;color:#fff">✓ Present</button>';
   }
-  function attMeMark(t) {
+  var ATT_TOWNS = ["Godown Panipat", "MPS Sonipat", "Delivery round", "Panipat", "Sonipat", "Karnal", "Rohtak", "Delhi"];
+  function attPlanSheet() {
+    return '<h2>Mark present — where are you today?</h2><p class="meta" style="font-size:13px">Tap the town(s), add the plan in a line. It goes on the roll-call and the report.</p>' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0">' + ATT_TOWNS.map(function (x) { return '<button class="btn sm ghost" data-act="att-town" data-v="' + esc(x) + '" style="min-height:44px">' + esc(x) + '</button>'; }).join("") + '</div>' +
+      '<label>Today’s plan</label><input id="att_plan" placeholder="e.g. Panipat — Model Town, then Samalkha" style="width:100%;box-sizing:border-box;min-height:44px;font-size:16px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px" autocomplete="off"/>' +
+      '<div class="meta" style="font-size:12px;margin-top:4px">Your location is taken from the phone, if it allows it.</div>' +
+      '<div style="display:flex;gap:8px;margin-top:12px"><button class="btn ghost" data-act="close" style="flex:1;min-height:44px">Not now</button><button class="btn" data-act="att-go" style="flex:2;min-height:44px;background:#15803d;border-color:#15803d;color:#fff">✓ Mark present</button></div>';
+  }
+  function attMeMark(t, plan) {
     if (attMineToday()) { toast("Already marked present today."); return; }
     if (t) { t.disabled = true; t.textContent = "Marking…"; }
     var geo = new Promise(function (res) {
@@ -4289,11 +4303,11 @@ function rnLines(r) {
     geo.then(function (where) {
       var now = new Date(), hhmm = ("0" + now.getHours()).slice(-2) + ":" + ("0" + now.getMinutes()).slice(-2), who = String(S.user || "").trim();
       var row = { id: "AT-" + Date.now() + "-" + Math.floor(Math.random() * 1000000), createdAt: now.toISOString(), actor: who, action: "att:mark", target: who,
-        detail: JSON.stringify({ day: attTodayLocal(), who: who, kind: "present", note: "self " + hhmm + (where ? " @" + where : ""), self: 1, app: "challan" }), ip: "" };
+        detail: JSON.stringify({ day: attTodayLocal(), who: who, kind: "present", note: "self " + hhmm + (where ? " @" + where : "") + (plan ? " · " + plan : ""), self: 1, plan: String(plan || ""), geo: where, app: "challan" }), ip: "" };
       S.data.audit = ((S.data && S.data.audit) || []).concat([row]);
-      return saveRow("audit", row).then(function (r) {
+      return Promise.resolve(saveRow("audit", row)).then(function (r) {
         if (r && r.ok === false && !r.held) { S.data.audit = S.data.audit.filter(function (x) { return x !== row; }); toast("Not marked — " + String(r.error || "the server refused it") + ". Show this to the office."); render(); return; }
-        toast(r && r.held ? "Marked present — it goes up when there is signal." : "Marked present. Thank you."); render();
+        toast(r && r.held ? "Marked present — it goes up when there is signal." : "Marked present — " + (plan || "") + ". Thank you."); render();
       });
     }).catch(function () { toast("Could not mark it — try once more."); render(); });
   }
@@ -10290,7 +10304,9 @@ function rnLines(r) {
     if (act === "close-bg" && ev.target.closest("[data-stop]")) return;
 
     if (act === "login")   { doLogin(); return; }
-    if (act === "att-me") { attMeMark(t); return; }   /* 1.160.0 */
+    if (act === "att-me") { if (attMineToday()) { toast("Already marked present today."); return; } S.sheet = attPlanSheet(); render(); return; }
+    if (act === "att-town") { var _ap = document.getElementById("att_plan"); if (_ap) { var _v = t.getAttribute("data-v") || ""; _ap.value = _ap.value.trim() ? (_ap.value.indexOf(_v) < 0 ? _ap.value.trim() + ", " + _v : _ap.value) : _v; _ap.focus(); } return; }
+    if (act === "att-go") { var _pl = document.getElementById("att_plan"), _plan = _pl ? String(_pl.value || "").trim() : ""; if (!_plan) { toast("Tap a town or write the plan first."); return; } S.sheet = null; render(); attMeMark(null, _plan); return; }
     if (act === "refresh") {
       /* v1.15.0 - Collection has guarded this since v1.9.1 and this app never did. pull()
          calls render(), which rewrites the open sheet from scratch, so the arrow above a
