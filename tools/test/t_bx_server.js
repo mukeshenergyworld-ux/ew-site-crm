@@ -20,7 +20,7 @@ const call=b=>{const r=ctx.bxTry_({postData:{contents:JSON.stringify(b)}});retur
 let pass=0,fail=0;const ok=(m,c)=>{if(c){pass++;console.log("  ok   ",m)}else{fail++;console.log("  FAIL ",m)}};
 ctx.bxSetup();
 ok("not ours: another action is left to the Companion", call({action:"login"})===null);
-ok("ping", call({action:"bxPing"}).v==="BX2");
+ok("ping", call({action:"bxPing"}).v==="BX3");
 const own={action:"bxAdmin",crmUser:"Mukesh Verma",crmPin:"9999"};
 ok("a non-owner cannot sync", call({action:"bxAdmin",crmUser:"Vivek",crmPin:"1",op:"sync"}).ok===false);
 const site={client:"Nitin Jain",code:"CL010",area:"Model Town",city:"Panipat",stage:"Brickwork",brand:"HULIOT",kind:"Client",ew:"Going on",quotes:2,lastQuote:"2026-11-02",architect:{name:"Roshan Lal - Radiant",code:"AR020",town:"Panipat"},plumber:null,exec:{name:"Mukesh Verma",mobile:"9466600611"}};
@@ -57,4 +57,26 @@ ok("a man left out of the sync is no longer active", SS.sheets.BX_People.v.find(
 ok("the PIN survives a re-sync", SS.sheets.BX_People.v.find(x=>x[0]==="BX1")[7].length===64);
 for(let i=0;i<5;i++)call({action:"bxLogin",mobile:"9812345679",pin:"0000"});
 ok("five wrong tries lock that mobile", /Too many/.test(call({action:"bxLogin",mobile:"9812345679",pin:"0000"}).err));
+/* ---- BX3: a site he adds himself ---- */
+const fp=(k,v)=>crypto.createHash('sha256').update("ew|"+k+"|"+v).digest('hex').slice(0,16);
+call(Object.assign({op:"sync",people:[{id:"BX1",name:"Rahul",mobile:"9812345678",brand:"HULIOT",company:"Huliot India",active:"Y"}],books:[{bxId:"BX1",sites:[site]}],dup:{m:{[fp("m","9466600611")]:"CL"},n:{[fp("n","vinay gupta")]:"CL"}}},own));
+const t2=call({action:"bxLogin",mobile:"9812345678",pin:"4821"}).tok;
+let a=call({action:"bxAddSite",tok:t2,site:{client:"Ramesh Kumar",mobile:"9811111111",city:"Panipat",area:"Sector 13",stage:"Brickwork / Masonry",architect:"Somebody"}});
+ok("BX3: a new site is taken, no duplicate", a.ok&&a.add.status==="new"&&!a.dup);
+a=call({action:"bxAddSite",tok:t2,site:{client:"Mr. Vinay  Gupta",mobile:"9822222222",city:"Panipat"}});
+ok("BX3: a name already with Energy World is said, and asked before sending", !a.ok&&a.dup==="ew"&&a.ask&&/already with Energy World/.test(a.err));
+a=call({action:"bxAddSite",tok:t2,site:{client:"New Name",mobile:"94666 00611",city:"Panipat"}});
+ok("BX3: a mobile already with Energy World says client, never whose", !a.ok&&a.dup==="ew"&&/a client/.test(a.err)&&!/Mukesh|Vinay/.test(a.err));
+a=call({action:"bxAddSite",tok:t2,confirm:1,site:{client:"New Name",mobile:"9466600611",city:"Panipat"}});
+ok("BX3: he can still send it; it is marked as a duplicate for the owner", a.ok&&a.dup==="ew");
+a=call({action:"bxAddSite",tok:t2,site:{client:"nitin jain",mobile:"9833333333",city:"Panipat"}});
+ok("BX3: a site already in his list is refused outright", !a.ok&&a.dup==="yours"&&!a.ask);
+a=call({action:"bxAddSite",tok:t2,site:{client:"Ramesh Kumar",mobile:"9811111111",city:"Panipat"}});
+ok("BX3: the same site sent again is caught", !a.ok&&a.dup==="sent"&&/You sent this site/.test(a.err));
+ok("BX3: name, mobile and district are needed", /name/.test(call({action:"bxAddSite",tok:t2,site:{client:"",mobile:"9811111112",city:"Panipat"}}).err)&&/mobile/.test(call({action:"bxAddSite",tok:t2,site:{client:"Abc Def",mobile:"123",city:"Panipat"}}).err)&&/district/.test(call({action:"bxAddSite",tok:t2,site:{client:"Abc Def",mobile:"9811111113"}}).err));
+ok("BX3: the book does not hold the CRM's numbers in the clear", !JSON.stringify(SS.sheets.BX_Dup.v).includes("9466600611")&&!/vinay/i.test(JSON.stringify(SS.sheets.BX_Dup.v)));
+let L=call(Object.assign({op:"leads"},own));
+ok("BX3: the owner pulls both sites with the duplicate flag", L.ok&&L.rows.length===2&&L.rows.find(x=>x.client==="New Name").dup==="ew");
+ok("BX3: a non-owner cannot pull them", call({action:"bxAdmin",crmUser:"Vivek",crmPin:"1",op:"leads"}).ok===false);
+ok("BX3: the owner's decision goes back to his app", call(Object.assign({op:"leadset",lid:L.rows[0].lid,status:"accepted",note:"Added as lead"},own)).ok && call({action:"bxBook",tok:t2}).adds.find(x=>x.lid===L.rows[0].lid).status==="accepted");
 console.log(`\n${pass} passed, ${fail} failed`);process.exit(fail?1:0);

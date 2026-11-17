@@ -49,4 +49,8 @@ H.ok("CRM 6.9.1030: Saathi is sent the book every 2 hours and 15 s after any par
 H.ok("CRM 6.9.1030: a return naming no challan reverses at most what the client's deliveries earned", /if \(!rCh\) rInc = Math\.max\(0, Math\.min\(rInc, clIncLeft\)\);/.test(c) && /clIncLeft \+= inc;/.test(c));
 H.ok("Brand app 1.1.0: an admin sign-in with the CRM name and PIN, kept in memory only", /data-act="adm-show"/.test(b) && /op: op, crmUser: S\.adm\.user, crmPin: S\.adm\.pin/.test(b) && !/store\([^)]*adm/i.test(b));
 H.ok("Brand app 1.1.0: the admin sees everyone, opens the quote, downloads; the guards let him be", /admCall\("all"\)/.test(b) && /target="_blank" rel="noopener">' \+ esc\(f\.file\.name/.test(b) && /function admCsv\(\)/.test(b) && /function isField\(t\) \{ return !!S\.adm \|\|/.test(b));
+H.ok("Brand app 1.2.0: he can add a site; a duplicate is asked before it goes", /data-act="add-open"/.test(b) && /call\("bxAddSite", \{ site:/.test(b) && /Send anyway/.test(b));
+H.ok("CRM 6.9.1031: brand-executive sites come in to link, add as lead or turn down", /function bxLeadsCard\(/.test(c) && /function bxLeadDecide\(/.test(c) && /function bxDupIx\(/.test(c) && /return bxDupIx\(\)\.catch/.test(c));
+var sa = R("saathi/index.html");
+H.ok("Saathi -3: the staff view of a partner refetches on refresh and on return", /function staffReload\(/.test(sa) && /if \(ST\.view\) \{ REFBUSY = true; staffReload\(false\)/.test(sa) && /visibilitychange/.test(sa));
 H.done();
