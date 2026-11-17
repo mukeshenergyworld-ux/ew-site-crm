@@ -7,16 +7,19 @@ var sites = [
 var ctx = { S: { user: "Mukesh Verma", data: { sites: sites, clients: [] } },
   dkey: function (x) { return String(x || "").trim().toLowerCase(); },
   siteFoldFam: function (l) { return l; },
+  dupFamily: function (n) { return [n]; }, clientByName: function () { return null; }, isCancelled: function () { return false; },   /* 6.9.1029 - saathiSiteKind */
   pevSupport: function () { return []; },
   assocLive: function () { return [{ id: "AS-1", name: "Roshan Lal - Radiant", role: "Architect", ownedBy: "Mukesh Verma", location: "Panipat" }]; },
   partnerBook: function () { return { rows: [{ client: "Sachin", site: "", inc: 500, rel: 0, ymd: "2026-11-01" }], earned: 500, payable: 0, paid: 0, pending: 0 }; } };
-var F = H.lift("team", ["partnerSiteIdx", "partnerSiteRows", "partnerOngoing", "saathiBooks"], ctx, ["PS_DONE", "_psIdx", "_psKey"]);
+ctx.S.data.challans = [{ customerName: "Sachin" }]; ctx.S.data.pitch = []; ctx.S.data.quotes = [];
+var F = H.lift("team", ["partnerSiteIdx", "partnerSiteRows", "partnerOngoing", "saathiSiteKind", "saathiBooks"], ctx, ["PS_DONE", "_psIdx", "_psKey"]);
 var b = F.saathiBooks()[0];
 var on = b.sites.filter(function (x) { return x.on; });
 H.eq("the two ongoing sites the CRM counts are on the book; the handed-over one is not", on.map(function (x) { return x.n; }).sort().join(","), "Amrik,Sachin");
 H.ok("Amrik has no material yet: carried with 0 points and its stage", on.some(function (x) { return x.n === "Amrik" && x.e === 0 && /Fitout/.test(x.stage); }));
 H.ok("Sachin keeps its incentive and is marked ongoing", on.some(function (x) { return x.n === "Sachin" && x.e === 500; }));
-H.ok("the handed-over site with no incentive is left off", !b.sites.some(function (x) { return x.n === "Gopal — Old Villa"; }));
+H.ok("6.9.1029: the handed-over site with no delivery goes as a Lead, not ongoing", b.sites.some(function (x) { return x.n === "Gopal — Old Villa" && x.k === "lead" && !x.on; }));
+H.ok("6.9.1029: Sachin has a delivery, so he is a Client; Amrik has none, so he is a Lead", b.sites.filter(function (x) { return x.n === "Sachin"; })[0].k === "client" && b.sites.filter(function (x) { return x.n === "Amrik"; })[0].k === "lead");
 var sa = fs.readFileSync(path.join(__dirname, "..", "..", "saathi", "index.html"), "utf8");
 H.ok("Saathi: a site the CRM says is on is Ongoing, and says No material yet", /if \(x\.on\) return true;/.test(sa) && /No material yet/.test(sa));
 H.done();
