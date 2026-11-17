@@ -455,7 +455,7 @@
 /* ==EWCORE:drivers:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.1029";   /* 6.9.1029 (17 Nov 2026) - the Saathi book carries every site a partner is named on, as Client (a delivery went), Lead (yet to convert) or Lost */   /* 6.9.1028 (17 Nov 2026) - Change partner on the challan card, owner only with PIN: from the start (every challan of the client re-lined) or from a day */   /* 6.9.1027 (17 Nov 2026) - attendance as one system: the Present tap in every app asks where the day is and the plan; the Attendance screen shows, per person per day, the status with that day\u2019s visits / service visits / challans / payments by role, and a tap on the day opens the detail (time, place on the map, plan, the list) */   /* 6.9.1026 (17 Nov 2026) - a partner changed on a client asks: from the start (every finalised delivery re-lined to him, nothing deleted) or from a day; a trade slot offers its own trade only - no plumber in the architect column */   /* 6.9.1025 (17 Nov 2026) - a name\u2019s number tag is coloured by its category (AR / PL / BL / PMC / EX / CL / LD), executives wear EX + their user number; every partner picker has one search box over name, number, mobile and town, and each option reads number \u00b7 name \u00b7 town */   /* 6.9.1024 (17 Nov 2026) - Saathi gets the same ongoing sites the CRM counts (named on the site or its client, not handed over), a site with no material yet carried with 0 points; Roshan Lal - Radiant saw 0 where the CRM said 2 */   /* 6.9.1023 (17 Nov 2026) - attendance for everyone on the team: one-tap Present in the header for those who do not log visits, a month grid per person, a Copy roll-call button for the WhatsApp group, and the roll-call to the reports bot after 10:30 and 18:00 */   /* 6.9.1022 (6.9.1022 (17 Nov 2026) - a spare client row joined to a live main row can be set aside; its records stay with the main through the join */   /* 6.9.1021 (6.9.1021 (17 Nov 2026) - a client whose duplicate row was joined to him keeps his code chip everywhere (Vinay Gupta CL072 was tagged nothing) */   /* 6.9.1020 (6.9.1020 (17 Nov 2026) - sync watchdog: an open CRM whose book is 5 min old pulls again on its own and writes what blocked it to the crash log; the header goes amber at 10 min, red at 30 */   /* 6.9.1019 (6.9.1019 (16 Nov 2026) - one "what needs me today" screen: Today carries My day\u2019s five sections; the My day chip is folded into it */   /* 6.9.1018 (6.9.1018 (16 Nov 2026) - a save button says "Saved" before it takes its label back; inside a group, the screens this person has never opened fold behind one More chip */   /* 6.9.1017 (6.9.1017 (16 Nov 2026) - the top search looks everywhere: the name a bill was raised under (with the bill\u2019s details), challan items and remarks, billing remarks, quote items, returns, service jobs, visits, follow-ups and leads; every hit says why it matched */   /* 6.9.1016 (6.9.1016 (16 Nov 2026) - a line on today\u2019s preset is not flagged, even if the preset on its delivery day was different; each challan row says \u201c\u2713 At preset\u201d or \u201cNot at preset \u00b7 N lines\u201d, and the account says which */   /* 6.9.1015 (6.9.1015 (16 Nov 2026) - owner only, in a client\u2019s HISAB: a delivery or a line whose discount is not the client\u2019s preset is flagged - a banner, a \u2260 preset tag on the row, the line drawn amber */   /* 6.9.1014 (6.9.1014 (16 Nov 2026) - the brand discount box made small: one line, shut until opened, tight rows */   /* 6.9.1013 (6.9.1013 (16 Nov 2026) - on a challan\u2019s card, owner only: each brand\u2019s discount, a box that works out the amount as you type, Apply and Set to preset with the PIN every time, and a log of every discount change on that challan */   /* 6.9.1012 (6.9.1012 (16 Nov 2026) - Items supplied asks which brands first: tick the ones wanted, and the PDF carries only those */   /* 6.9.1011 (6.9.1011 (16 Nov 2026) - Items supplied counts finalised deliveries only */   /* 6.9.1010 (6.9.1010 (16 Nov 2026) - Items supplied: a PDF of every item that went to a client, with its picture, sent / returned / at site and the challans, from his HISAB */   /* 6.9.1009 (6.9.1009 (16 Nov 2026) - FIX: the reminder\u2019s PDF link was kept for the day by name only, so the wrong statement made earlier was handed out again under the new wording; the link now belongs to the paper it is */   /* 6.9.1008 (6.9.1008 (16 Nov 2026) - FIX: a client joined under two names (Jatin / Jitin Gupta) showed twice on the reminders and the money-to-collect list, each with his whole due, and the total counted him twice */   /* 6.9.1007 (6.9.1007 (16 Nov 2026) - the bill takes the vehicle no from the delivery (the challan, the driver\u2019s register, or his nearest other challan) without asking; only when none is known is accounts asked for it */   /* 6.9.1006 (6.9.1006 (16 Nov 2026) - FIX: a master account\u2019s WhatsApp reminder carried his own (empty) hisab and said settled in full; it carries the combined statement of all his sites now */   /* 6.9.1005 (6.9.1005 (16 Nov 2026) - the WhatsApp reminder states the pending amount on a line of its own, in bold, with how many days */   /* 6.9.1004 (6.9.1004 (16 Nov 2026) - once billed, the HISAB row shows the bill: number, date, the name billed under, who billed it and the remarks it was sent with */   /* 6.9.1003 (6.9.1003 (16 Nov 2026) - Send for billing from the client\u2019s HISAB, with the billing details as remarks; accounts sees it near the top of the Billing desk and on the billing sheet */   /* 6.9.1002 (6.9.1002 (16 Nov 2026) - the Challans sheet shows a delivered challan as two marks: Receipt and Finalised, a tick when done, a cross when owed */   /* 6.9.1001 (6.9.1001 (16 Nov 2026) - a status reads as one: a pill never breaks across two lines, and on the Challans sheet a finalised delivery with no signed paper is Finalised with "Receipt to attach" under it, not two pills side by side */   /* 6.9.1000 (6.9.1000 (16 Nov 2026) - in every search box a builder or dealer with sites under him is tagged Master account and how many sites, instead of his code */   /* 6.9.999 (6.9.999 (16 Nov 2026) - FIX: tapping a challan number on the Challans sheet opened its card (Finalise, Attach receipt) above the sheet while the page stayed put, so from a row lower down nothing seemed to happen; it now scrolls to the card */   /* 6.9.998 (6.9.998 (16 Nov 2026) - one click: Remind all on WhatsApp starts the walk-through of every client 30+ days due, from the reminders screen any day and from Today on reminder days */   /* 6.9.997 (6.9.997 (15 Nov 2026) - a driver payout can be edited (PIN twice, the paid date kept), and the Challan app now counts cancelled and edited payouts the same way; a quotation remembers what has gone: Make challan offers only what is left, the quote says how many lines went and on which challan, and a challan can pull a client\u2019s quotation in from its own side */   /* 6.9.996 (6.9.996 (15 Nov 2026) - the screens inside a nav group sit most-opened first, from the team\u2019s own published counts, instead of alphabetically; and the second tab called \u201cPayments\u201d is named for what it is */   /* 6.9.995 (6.9.995 (15 Nov 2026) - the discount rule is one copy across FOUR apps now: the Visit app, which quotes with it, had no family-rate fallback and was quoting nine client-and-brand pairs at full MRP */   /* 6.9.994 (6.9.994 (15 Nov 2026) - money core phase 2b: the discount rules and the stamp reader are one copy across all three apps, proved on 1,228 client-brand-day combinations; and tools/test, so the next one is checked by a command and not by memory */   /* 6.9.993 (6.9.993 (15 Nov 2026) - the challan log leaves the screen: an Excel and a PDF of exactly what is filtered, built for the godown to chase the signed paper - oldest first, driver and vehicle on it, no balances */   /* 6.9.992 (6.9.992 (15 Nov 2026) - the CRM joins the shared money core: six rules are now one copy across all three apps */   /* 6.9.991 (6.9.991 (15 Nov 2026) - nine money rules moved into the shared core so the Challan and Payment apps can no longer drift apart on them; the core build, broken since minifying began, runs again */   /* 6.9.990 (6.9.990 (15 Nov 2026) - the duplicate radar reads every record tab, not clients alone: a row whose every field matches another, and the same money to the same man on the same day */   /* 6.9.989 (6.9.989 (15 Nov 2026) - FIX: the money check called a settled account\u2019s folded lines missing; it opens the fold while it reads */   /* 6.9.988 (6.9.988 (15 Nov 2026) - one item on a delivery can be given its own discount at finalise, owner only; it beats the brand box and nothing else moves */   /* 6.9.987 (6.9.987 (15 Nov 2026) - Call this week: the live sites at a buying stage, by town, with the man to ring and his mobile; a site rests 14 days once it is rung */   /* 6.9.986 (6.9.986 (14 Nov 2026) - FIX: the same part-save counted again inflated stock; 16 products were over by 3,027 pieces */   /* 6.9.985 (14 Nov 2026) - Tally match: a line already picked is drawn as picked, and settled lines fold away so only what needs him is on screen */   /* 6.9.984 (14 Nov 2026) - the waiting-bill sheet names the lines that still have no code, with the supplier\u2019s own code and the nearest catalogue ones */   /* 6.9.983 (14 Nov 2026) - the red "not matched" line on Stock to order says what it means and opens: which bill, how many, and how to put it right */   /* 6.9.982 (12 Nov 2026) - the quote tick moved to the quote book he actually looks at; it had been on the List view only */   /* 6.9.981 (12 Nov 2026) - merging quotations: one line per product, and a disagreed discount falls to the client\u2019s preset and is named */   /* 6.9.980 (12 Nov 2026) - tick several quotations and send them out on one challan */   /* 6.9.979 (12 Nov 2026) - Make challan is on every quotation, not only a won one; converting offers to mark it Won */   /* 6.9.978 (12 Nov 2026) - one Change button on a money row: edit it with the PIN asked twice, or cancel it */   /* 6.9.977 (12 Nov 2026) - a partner or driver payout entered wrongly can be set aside, with a reason, and brought back */   /* 6.9.976 (12 Nov 2026) - a brand already set aside stops nagging from the empty-brand card */   /* 6.9.975 (12 Nov 2026) - a finalised return can be opened again, and repriced, with it recorded as after the stamp */   /* 6.9.974 (12 Nov 2026) - Change it reprices this return as well as setting the preset from today */   /* 6.9.973 (12 Nov 2026) - FIX: the Finalise card on a return threw before it drew (6.9.972) */   /* 6.9.972 (12 Nov 2026) - return finalise: try a rate on the lines, and change the preset from today with a PIN */   /* 6.9.971 (12 Nov 2026) - a brand with no preset is set from the return-finalise card itself */   /* 6.9.970 (12 Nov 2026) - quote PDF: a product description is printed whole, not cut at three lines */   /* 6.9.969 (11 Nov 2026) - deliveries with no signed paper split by age: the ones past 30 days get the red number, the fresh ones are stated quietly */   /* 6.9.968 (11 Nov 2026) - a purchase bill already fully in stock is not brought in a second time: Huliot's invoice arrives in three mails, and all three were being uploaded */   /* 6.9.967 (11 Nov 2026) - GHP+ logo in the registered Green Heat+ colours (#00539F / #ED1D24) on PDFs, quotes, challans and QR centres */   /* 6.9.966 (11 Nov 2026) - technical specifications sheet in colour: brand-coloured table heads and code strip, coloured field labels, and the exceptions in an amber panel */   /* 6.9.965 (11 Nov 2026) - old quotes to close: grouped by what the site is doing now, closing windows first, each group carrying that stage's own pitch lines */   /* 6.9.964 (11 Nov 2026) - quote spec table: a value all but a few items share is said once and the few are named, so one tube no longer printed five long columns 25 times */   /* 6.9.963 (11 Nov 2026) - purchase bills: same day + same amount flagged on the Tally screen */   /* 6.9.958 (10 Nov 2026) - a statement attached before the name was kept is told apart by its time, not left as four identical lines */     /* 6.9.957 (10 Nov 2026) - each attached old hisab shows its file name, and a wrong one can be set aside */     /* 6.9.956 (10 Nov 2026) - rebuilt: the GitHub Pages publish of 6.9.955 failed (run #1675), so nothing had changed on the phones */   /* 6.9.955 (10 Nov 2026) - the old hisab takes more than one file at once: photographed pages become one PDF, and every statement on file is listed */     /* 6.9.954 (10 Nov 2026) - the Partner Club: fixed slabs, a bonus on crossing one, the trip and device rewards, every partner's rupees to his next slab, and the quiet-partner watch */     /* 6.9.953 (10 Nov 2026) - Service > Control: cash in each engineer's hand, hand-over recorded, three random customer checks a week */     /* 6.9.952 (10 Nov 2026) - to-bill month by month, screens found from Search, team screen use on Health, a receipt for every incentive payout */     /* 6.9.951 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 6.9.950 (9 Nov 2026) - brand introductions: a fuller paragraph, three stage-wise benefits and one next step, on the quote and the proposal */     /* 6.9.949 (9 Nov 2026) - quote PDF: a product picture stays inside its own row (1.2 mm clear of both lines) */     /* 6.9.948 (9 Nov 2026) - quote PDF: each room heading carries its collection and finish with colour dots; every FIMA code chip has its finish dot */     /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
+  var APP_VERSION = "6.9.1030";   /* 6.9.1030 (17 Nov 2026) - Brand executives (owner): add, edit, block, remove, PIN, put on sites, send their book to the Brand Followup app and pull their follow-ups; the brand follow-up board says which brand executive is on each of your sites */   /* 6.9.1029 (17 Nov 2026) - the Saathi book carries every site a partner is named on, as Client (a delivery went), Lead (yet to convert) or Lost */   /* 6.9.1028 (17 Nov 2026) - Change partner on the challan card, owner only with PIN: from the start (every challan of the client re-lined) or from a day */   /* 6.9.1027 (17 Nov 2026) - attendance as one system: the Present tap in every app asks where the day is and the plan; the Attendance screen shows, per person per day, the status with that day\u2019s visits / service visits / challans / payments by role, and a tap on the day opens the detail (time, place on the map, plan, the list) */   /* 6.9.1026 (17 Nov 2026) - a partner changed on a client asks: from the start (every finalised delivery re-lined to him, nothing deleted) or from a day; a trade slot offers its own trade only - no plumber in the architect column */   /* 6.9.1025 (17 Nov 2026) - a name\u2019s number tag is coloured by its category (AR / PL / BL / PMC / EX / CL / LD), executives wear EX + their user number; every partner picker has one search box over name, number, mobile and town, and each option reads number \u00b7 name \u00b7 town */   /* 6.9.1024 (17 Nov 2026) - Saathi gets the same ongoing sites the CRM counts (named on the site or its client, not handed over), a site with no material yet carried with 0 points; Roshan Lal - Radiant saw 0 where the CRM said 2 */   /* 6.9.1023 (17 Nov 2026) - attendance for everyone on the team: one-tap Present in the header for those who do not log visits, a month grid per person, a Copy roll-call button for the WhatsApp group, and the roll-call to the reports bot after 10:30 and 18:00 */   /* 6.9.1022 (6.9.1022 (17 Nov 2026) - a spare client row joined to a live main row can be set aside; its records stay with the main through the join */   /* 6.9.1021 (6.9.1021 (17 Nov 2026) - a client whose duplicate row was joined to him keeps his code chip everywhere (Vinay Gupta CL072 was tagged nothing) */   /* 6.9.1020 (6.9.1020 (17 Nov 2026) - sync watchdog: an open CRM whose book is 5 min old pulls again on its own and writes what blocked it to the crash log; the header goes amber at 10 min, red at 30 */   /* 6.9.1019 (6.9.1019 (16 Nov 2026) - one "what needs me today" screen: Today carries My day\u2019s five sections; the My day chip is folded into it */   /* 6.9.1018 (6.9.1018 (16 Nov 2026) - a save button says "Saved" before it takes its label back; inside a group, the screens this person has never opened fold behind one More chip */   /* 6.9.1017 (6.9.1017 (16 Nov 2026) - the top search looks everywhere: the name a bill was raised under (with the bill\u2019s details), challan items and remarks, billing remarks, quote items, returns, service jobs, visits, follow-ups and leads; every hit says why it matched */   /* 6.9.1016 (6.9.1016 (16 Nov 2026) - a line on today\u2019s preset is not flagged, even if the preset on its delivery day was different; each challan row says \u201c\u2713 At preset\u201d or \u201cNot at preset \u00b7 N lines\u201d, and the account says which */   /* 6.9.1015 (6.9.1015 (16 Nov 2026) - owner only, in a client\u2019s HISAB: a delivery or a line whose discount is not the client\u2019s preset is flagged - a banner, a \u2260 preset tag on the row, the line drawn amber */   /* 6.9.1014 (6.9.1014 (16 Nov 2026) - the brand discount box made small: one line, shut until opened, tight rows */   /* 6.9.1013 (6.9.1013 (16 Nov 2026) - on a challan\u2019s card, owner only: each brand\u2019s discount, a box that works out the amount as you type, Apply and Set to preset with the PIN every time, and a log of every discount change on that challan */   /* 6.9.1012 (6.9.1012 (16 Nov 2026) - Items supplied asks which brands first: tick the ones wanted, and the PDF carries only those */   /* 6.9.1011 (6.9.1011 (16 Nov 2026) - Items supplied counts finalised deliveries only */   /* 6.9.1010 (6.9.1010 (16 Nov 2026) - Items supplied: a PDF of every item that went to a client, with its picture, sent / returned / at site and the challans, from his HISAB */   /* 6.9.1009 (6.9.1009 (16 Nov 2026) - FIX: the reminder\u2019s PDF link was kept for the day by name only, so the wrong statement made earlier was handed out again under the new wording; the link now belongs to the paper it is */   /* 6.9.1008 (6.9.1008 (16 Nov 2026) - FIX: a client joined under two names (Jatin / Jitin Gupta) showed twice on the reminders and the money-to-collect list, each with his whole due, and the total counted him twice */   /* 6.9.1007 (6.9.1007 (16 Nov 2026) - the bill takes the vehicle no from the delivery (the challan, the driver\u2019s register, or his nearest other challan) without asking; only when none is known is accounts asked for it */   /* 6.9.1006 (6.9.1006 (16 Nov 2026) - FIX: a master account\u2019s WhatsApp reminder carried his own (empty) hisab and said settled in full; it carries the combined statement of all his sites now */   /* 6.9.1005 (6.9.1005 (16 Nov 2026) - the WhatsApp reminder states the pending amount on a line of its own, in bold, with how many days */   /* 6.9.1004 (6.9.1004 (16 Nov 2026) - once billed, the HISAB row shows the bill: number, date, the name billed under, who billed it and the remarks it was sent with */   /* 6.9.1003 (6.9.1003 (16 Nov 2026) - Send for billing from the client\u2019s HISAB, with the billing details as remarks; accounts sees it near the top of the Billing desk and on the billing sheet */   /* 6.9.1002 (6.9.1002 (16 Nov 2026) - the Challans sheet shows a delivered challan as two marks: Receipt and Finalised, a tick when done, a cross when owed */   /* 6.9.1001 (6.9.1001 (16 Nov 2026) - a status reads as one: a pill never breaks across two lines, and on the Challans sheet a finalised delivery with no signed paper is Finalised with "Receipt to attach" under it, not two pills side by side */   /* 6.9.1000 (6.9.1000 (16 Nov 2026) - in every search box a builder or dealer with sites under him is tagged Master account and how many sites, instead of his code */   /* 6.9.999 (6.9.999 (16 Nov 2026) - FIX: tapping a challan number on the Challans sheet opened its card (Finalise, Attach receipt) above the sheet while the page stayed put, so from a row lower down nothing seemed to happen; it now scrolls to the card */   /* 6.9.998 (6.9.998 (16 Nov 2026) - one click: Remind all on WhatsApp starts the walk-through of every client 30+ days due, from the reminders screen any day and from Today on reminder days */   /* 6.9.997 (6.9.997 (15 Nov 2026) - a driver payout can be edited (PIN twice, the paid date kept), and the Challan app now counts cancelled and edited payouts the same way; a quotation remembers what has gone: Make challan offers only what is left, the quote says how many lines went and on which challan, and a challan can pull a client\u2019s quotation in from its own side */   /* 6.9.996 (6.9.996 (15 Nov 2026) - the screens inside a nav group sit most-opened first, from the team\u2019s own published counts, instead of alphabetically; and the second tab called \u201cPayments\u201d is named for what it is */   /* 6.9.995 (6.9.995 (15 Nov 2026) - the discount rule is one copy across FOUR apps now: the Visit app, which quotes with it, had no family-rate fallback and was quoting nine client-and-brand pairs at full MRP */   /* 6.9.994 (6.9.994 (15 Nov 2026) - money core phase 2b: the discount rules and the stamp reader are one copy across all three apps, proved on 1,228 client-brand-day combinations; and tools/test, so the next one is checked by a command and not by memory */   /* 6.9.993 (6.9.993 (15 Nov 2026) - the challan log leaves the screen: an Excel and a PDF of exactly what is filtered, built for the godown to chase the signed paper - oldest first, driver and vehicle on it, no balances */   /* 6.9.992 (6.9.992 (15 Nov 2026) - the CRM joins the shared money core: six rules are now one copy across all three apps */   /* 6.9.991 (6.9.991 (15 Nov 2026) - nine money rules moved into the shared core so the Challan and Payment apps can no longer drift apart on them; the core build, broken since minifying began, runs again */   /* 6.9.990 (6.9.990 (15 Nov 2026) - the duplicate radar reads every record tab, not clients alone: a row whose every field matches another, and the same money to the same man on the same day */   /* 6.9.989 (6.9.989 (15 Nov 2026) - FIX: the money check called a settled account\u2019s folded lines missing; it opens the fold while it reads */   /* 6.9.988 (6.9.988 (15 Nov 2026) - one item on a delivery can be given its own discount at finalise, owner only; it beats the brand box and nothing else moves */   /* 6.9.987 (6.9.987 (15 Nov 2026) - Call this week: the live sites at a buying stage, by town, with the man to ring and his mobile; a site rests 14 days once it is rung */   /* 6.9.986 (6.9.986 (14 Nov 2026) - FIX: the same part-save counted again inflated stock; 16 products were over by 3,027 pieces */   /* 6.9.985 (14 Nov 2026) - Tally match: a line already picked is drawn as picked, and settled lines fold away so only what needs him is on screen */   /* 6.9.984 (14 Nov 2026) - the waiting-bill sheet names the lines that still have no code, with the supplier\u2019s own code and the nearest catalogue ones */   /* 6.9.983 (14 Nov 2026) - the red "not matched" line on Stock to order says what it means and opens: which bill, how many, and how to put it right */   /* 6.9.982 (12 Nov 2026) - the quote tick moved to the quote book he actually looks at; it had been on the List view only */   /* 6.9.981 (12 Nov 2026) - merging quotations: one line per product, and a disagreed discount falls to the client\u2019s preset and is named */   /* 6.9.980 (12 Nov 2026) - tick several quotations and send them out on one challan */   /* 6.9.979 (12 Nov 2026) - Make challan is on every quotation, not only a won one; converting offers to mark it Won */   /* 6.9.978 (12 Nov 2026) - one Change button on a money row: edit it with the PIN asked twice, or cancel it */   /* 6.9.977 (12 Nov 2026) - a partner or driver payout entered wrongly can be set aside, with a reason, and brought back */   /* 6.9.976 (12 Nov 2026) - a brand already set aside stops nagging from the empty-brand card */   /* 6.9.975 (12 Nov 2026) - a finalised return can be opened again, and repriced, with it recorded as after the stamp */   /* 6.9.974 (12 Nov 2026) - Change it reprices this return as well as setting the preset from today */   /* 6.9.973 (12 Nov 2026) - FIX: the Finalise card on a return threw before it drew (6.9.972) */   /* 6.9.972 (12 Nov 2026) - return finalise: try a rate on the lines, and change the preset from today with a PIN */   /* 6.9.971 (12 Nov 2026) - a brand with no preset is set from the return-finalise card itself */   /* 6.9.970 (12 Nov 2026) - quote PDF: a product description is printed whole, not cut at three lines */   /* 6.9.969 (11 Nov 2026) - deliveries with no signed paper split by age: the ones past 30 days get the red number, the fresh ones are stated quietly */   /* 6.9.968 (11 Nov 2026) - a purchase bill already fully in stock is not brought in a second time: Huliot's invoice arrives in three mails, and all three were being uploaded */   /* 6.9.967 (11 Nov 2026) - GHP+ logo in the registered Green Heat+ colours (#00539F / #ED1D24) on PDFs, quotes, challans and QR centres */   /* 6.9.966 (11 Nov 2026) - technical specifications sheet in colour: brand-coloured table heads and code strip, coloured field labels, and the exceptions in an amber panel */   /* 6.9.965 (11 Nov 2026) - old quotes to close: grouped by what the site is doing now, closing windows first, each group carrying that stage's own pitch lines */   /* 6.9.964 (11 Nov 2026) - quote spec table: a value all but a few items share is said once and the few are named, so one tube no longer printed five long columns 25 times */   /* 6.9.963 (11 Nov 2026) - purchase bills: same day + same amount flagged on the Tally screen */   /* 6.9.958 (10 Nov 2026) - a statement attached before the name was kept is told apart by its time, not left as four identical lines */     /* 6.9.957 (10 Nov 2026) - each attached old hisab shows its file name, and a wrong one can be set aside */     /* 6.9.956 (10 Nov 2026) - rebuilt: the GitHub Pages publish of 6.9.955 failed (run #1675), so nothing had changed on the phones */   /* 6.9.955 (10 Nov 2026) - the old hisab takes more than one file at once: photographed pages become one PDF, and every statement on file is listed */     /* 6.9.954 (10 Nov 2026) - the Partner Club: fixed slabs, a bonus on crossing one, the trip and device rewards, every partner's rupees to his next slab, and the quiet-partner watch */     /* 6.9.953 (10 Nov 2026) - Service > Control: cash in each engineer's hand, hand-over recorded, three random customer checks a week */     /* 6.9.952 (10 Nov 2026) - to-bill month by month, screens found from Search, team screen use on Health, a receipt for every incentive payout */     /* 6.9.951 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 6.9.950 (9 Nov 2026) - brand introductions: a fuller paragraph, three stage-wise benefits and one next step, on the quote and the proposal */     /* 6.9.949 (9 Nov 2026) - quote PDF: a product picture stays inside its own row (1.2 mm clear of both lines) */     /* 6.9.948 (9 Nov 2026) - quote PDF: each room heading carries its collection and finish with colour dots; every FIMA code chip has its finish dot */     /* 6.9.947 (9 Nov 2026) - 77 FIMA finish codes carry a photo in their own finish (FIMA catalogue 2026 + the dealer's studio renders) */     /* 6.9.946 (9 Nov 2026) - a small finish-colour dot on every FIMA product picture */     /* 6.9.945 (9 Nov 2026) - FIMA handles S1-S4 in every finish, the S2 glass handles, and the concrete / wood finishes (CE, LC, LS) */     /* 6.9.944 (9 Nov 2026) - a brand answer set back to open on Visit & Quote ("quote:brand" Open) clears it here too */     /* 6.9.943 (9 Nov 2026) - FIMA in every finish (14,260 codes from the 2026 price list), room collection and finish filled from the codes */     /* 6.9.942 (9 Nov 2026) - quarter extra split the same way: ready (clients paid) / waiting / lapsed */     /* 6.9.941 (9 Nov 2026) - plan 2027: the 20th reminder and month statement texts stored on the server (V178) for the automatic Telegram send */     /* 6.9.940 (9 Nov 2026) - plan 2027 phase 4: incentive ready as clients pay, 180-day lapse, statement PDF, WhatsApp, card executive column ends 31 Dec 2026 */     /* 6.9.939 (9 Nov 2026) - plan 2027 phase 3: owner approval for a discount above the brand limit (client + brand, 90 days) */     /* 6.9.938 (9 Nov 2026) - plan 2027 phase 2b: brand limits published for the phones (xp:rules), daily-report column */   /* 6.9.937 (9 Nov 2026) - executive incentive plan 2027, phase 1: rules, salaries, brand limits, counted sales, admin month */   /* 6.9.936 (9 Nov 2026) - Huliot also out of the client rate table */   /* 6.9.935 (9 Nov 2026) - Huliot retired as a brand: tools to Accessory, off the card, hidden from client brand lists */   /* 6.9.934 (8 Nov 2026) - incentive card header row frozen while scrolling */   /* 6.9.933 (8 Nov 2026) - incentive card ordered by dispatch, no-discount brands last */   /* 6.9.932 (8 Nov 2026) - incentive card: simple coloured grid */   /* 6.9.931 (8 Nov 2026) - executives month published on app start and background sync too */   /* 6.9.930 (8 Nov 2026) - incentive card with any number of slabs; executive targets and monthly tracking (Visit header) */   /* 6.9.929 (7 Nov 2026) - incentive on a merged client's old-spelling deliveries; merged sites fold into one */   /* 6.9.928 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -846,7 +846,7 @@
      the same name as plumber Rohit (PL075) / Satish (PL183), and lead Seva singh (LD014), so the tagger put their
      numbers on the drivers. A driver's name is marked ewcdata-nocode wherever it is drawn as a driver. */
   (function () {
-    var MAP = null, KEY = "", pend = [], sched = false, SHORT = {};
+    var MAP = null, KEY = "", pend = [], sched = false, SHORT = {}, OWN = {};   /* 6.9.1030 - OWN: client code -> his executive */
     var SKIP = { SCRIPT: 1, STYLE: 1, TEXTAREA: 1, OPTION: 1, SELECT: 1, INPUT: 1, TITLE: 1, NOSCRIPT: 1, DATALIST: 1 };
     function ewcLow(s) { return String(s == null ? "" : s).replace(/\s+/g, " ").trim().toLowerCase(); }
     function ewcData() { try { return window.__ewCodeSrc ? window.__ewCodeSrc() : null; } catch (e) { return null; } }
@@ -855,7 +855,8 @@
       var cl = d.clients || [], as = d.associates || [];
       var k = cl.length + ":" + as.length + ":" + cl.filter(function (c) { return c && c.code; }).length + ":" + as.filter(function (a) { return a && a.code; }).length + ":" + (d.team || []).length;
       if (k === KEY && MAP) return MAP;
-      KEY = k; var m = {}, bad = {}; SHORT = {};
+      KEY = k; var m = {}, bad = {}; SHORT = {}; OWN = {};
+      cl.forEach(function (c) { if (c && c.code) OWN[String(c.code).trim()] = String(c.ownedBy || c.createdBy || "").trim(); });
       function ewcPut(name, code) {
         var n = ewcLow(name), c = String(code || "").trim(); if (!n || !c) return;
         if (n.length < 5 && n.indexOf(" ") < 0) { if (SHORT[n] && SHORT[n] !== c) SHORT[n] = "\u0000"; else SHORT[n] = c; return; }   /* 6.9.754 - kept apart, used only on a marked name */
@@ -927,6 +928,9 @@
       if (prev && prev.nodeType === 1 && prev.classList && (prev.classList.contains("ewc") || prev.classList.contains("code"))) return;
       if (p.textContent.indexOf(code) >= 0) return;   /* the screen already says it */
       var s = document.createElement("span"); s.className = "ewc ewc-" + (String(code).match(/^[A-Z]+/) || [""])[0]; s.textContent = code;   /* 6.9.1025 - coloured by category */
+      /* 6.9.1030 - HIS WORDS: "client code should be of same color as of executive name". A client or lead number wears his
+         executive's own ink (whoInk - the same palette as the executive's name pill), so whose client it is reads at a glance. */
+      if (/^(CL|LD)/.test(code) && OWN[code]) { try { var _ik = whoInk(OWN[code]); if (_ik) { s.style.color = _ik[0]; s.style.background = _ik[1]; } } catch (eIk) { } }
       p.insertBefore(s, t);
     }
     function ewcFlush() {
@@ -1075,7 +1079,7 @@
   }
 
   var ROLE_TABS = {
-    admin:    ["codes","profit","salary","dash","wareminder","msgs","clientlist","myday","statements","review","agent","report","scorecard","returns","tools","rates","clients","crlog","partners","pevents","club","quotes","leads","brandfollow","winloss","visits","followups","challans","register","paylog","freight","payments","paidout","billing","discounts","commission","complaints","service","spares","dues","payroll","products","catalogs","brandstory","pricelist","catalogue","rules","teampins","tally","plcheck","health","trouble","changelog","booksweep","dups","stock","brief","attendance"],
+    admin:    ["codes","profit","salary","dash","wareminder","msgs","clientlist","myday","statements","review","agent","report","scorecard","returns","tools","rates","clients","crlog","partners","pevents","club","quotes","leads","brandfollow","winloss","visits","followups","challans","register","paylog","freight","payments","paidout","billing","discounts","commission","complaints","service","spares","dues","payroll","products","catalogs","brandstory","pricelist","catalogue","rules","teampins","tally","plcheck","health","trouble","changelog","booksweep","dups","stock","brief","attendance","brandexec"],
     accounts: ["codes","salary","dash","wareminder","clientlist","statements","review","agent","returns","tools","clients","crlog","partners","followups","challans","register","paylog","freight","payments","billing","complaints","service","spares","dues","products","catalogs","rates","pricelist","dups","stock","tally","trouble","attendance"],
     godown:   ["dash","agent","returns","tools","challans","freight","products","stock","trouble"],
     sales:    ["myday","msgs","clientlist","dash","review","agent","report","returns","tools","clients","crlog","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","register","paylog","freight","billing","payments","complaints","products","catalogs","dups","brief","trouble"],
@@ -4018,6 +4022,7 @@ window.addEventListener("beforeunload", function (ev) {
 
   document.addEventListener("change", function (ev) {   /* 6.9.724 */
     var t = ev && ev.target;
+    if (t && t.id === "bx_fx") { S.bxFx = t.value || ""; render(); return; }   /* 6.9.1030 */
     if (t && t.id === "pe_addrole") { S.pevRole = String(t.value || ""); keepScroll = true; render(); return; }   /* 6.9.832 */
     if (!t || !t.classList || !(t.classList.contains("hsb-pick") || t.classList.contains("ppk-d"))) return;
     setTimeout(function () { try { hsbPickShow(); } catch (e) { } }, 0);
@@ -4027,6 +4032,13 @@ window.addEventListener("beforeunload", function (ev) {
     var t = ev && ev.target;
     if (!t || !t.classList || !(t.classList.contains("so-pc") || t.classList.contains("so-bx"))) return;
     stkOrdTyping(t);
+  });
+  /* 6.9.1030 - the brand executive's site search */
+  document.addEventListener("input", function (ev) {
+    var t = ev && ev.target;
+    if (!t || t.id !== "bx_q" || !S.bxAsg) return;
+    S.bxQ = t.value; clearTimeout(S._bxQT);
+    S._bxQT = setTimeout(function () { var b = el("bx_rest"); if (!b) return; var tmp = document.createElement("div"); tmp.innerHTML = bxAsgSheet(S.bxAsg); var nb = tmp.querySelector("#bx_rest"); if (nb) b.innerHTML = nb.innerHTML; }, 200);
   });
   /* 6.9.1025 - typing in a partner picker's search box refills its partner list */
   document.addEventListener("input", function (ev) {
@@ -15159,7 +15171,226 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       return doc;
     });
   }
-  function viewBrandFollow() {
+  /* ===== BRAND EXECUTIVES - THE SHARED READER (CRM 6.9.1030 / Visit 1.21.0, 17 Nov 2026) =====
+     HIS WORDS: "make a dedicated Brand Followup app that i want to give access to brand executive, so once assigned a
+     site for brand followup, brand executive can view and do followup for assigned one only ... admin can add / remove /
+     edit / block any brand executives, energy world executive can also see in their section that which brand executive
+     is working on their site".
+     Three audit facts, nothing deleted, the newest row wins:
+       bx:exec   {id, name, brand, company, mobile, city, status: active | blocked | removed}
+       bx:assign {bxId, client, brand, on: 1 | 0}           - this man follows this brand on this client
+       bx:fu     {fid, bxId, bxName, client, brand, status, remark, next, file: {name, url}, at}
+                 - his follow-ups, pulled from the Brand Followup app's own server by the CRM.
+     THIS BLOCK IS THE SAME, BYTE FOR BYTE, IN THE CRM AND THE VISIT APP. */
+  var BX_ST = ["Ongoing", "Won", "Lost", "Not required"];
+  var _bxIx = null, _bxN = -1;
+  function bxIndex() {
+    var a = (S.data && S.data.audit) || [];
+    if (_bxIx && _bxN === a.length) return _bxIx;
+    var ex = {}, asg = {}, fu = {};
+    a.forEach(function (r) {
+      if (!r) return;
+      var act = String(r.action || ""); if (act.indexOf("bx:") !== 0) return;
+      var d = {}; try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
+      var at = String(r.createdAt || "");
+      if (act === "bx:exec" && d.id) { if (!ex[d.id] || at >= ex[d.id]._at) { d._at = at; ex[d.id] = d; } }
+      else if (act === "bx:assign" && d.bxId && d.client) {
+        var k = d.bxId + "|" + dkey(d.client) + "|" + String(d.brand || "").toUpperCase();
+        if (!asg[k] || at >= asg[k]._at) { d._at = at; asg[k] = d; }
+      }
+      else if (act === "bx:fu" && d.fid) { if (!fu[d.fid]) fu[d.fid] = d; }
+    });
+    var fus = Object.keys(fu).map(function (k) { return fu[k]; }).sort(function (x, y) { return String(y.at || "").localeCompare(String(x.at || "")); });
+    _bxN = a.length;
+    return (_bxIx = { ex: ex, asg: asg, fus: fus });
+  }
+  function bxExecs(all) {   /* active and blocked by default; "removed" only when asked */
+    var ex = bxIndex().ex;
+    return Object.keys(ex).map(function (k) { return ex[k]; }).filter(function (x) { return all || x.status !== "removed"; })
+      .sort(function (a, b) { return String(a.name || "").localeCompare(String(b.name || "")); });
+  }
+  function bxAssigned(bxId) {   /* [{client, brand}] live assignments of one man */
+    var A = bxIndex().asg;
+    return Object.keys(A).map(function (k) { return A[k]; }).filter(function (x) { return x.bxId === bxId && Number(x.on) === 1; });
+  }
+  function bxLastFu(bxId, client, brand) {
+    var c = dkey(client), b = String(brand || "").toUpperCase();
+    return bxIndex().fus.filter(function (f) { return f.bxId === bxId && dkey(f.client) === c && (!b || String(f.brand || "").toUpperCase() === b); })[0] || null;
+  }
+  function bxOnClient(client, brand) {   /* who is following this client (for this brand), with his last word */
+    var ix = bxIndex(), c = dkey(client), b = String(brand || "").toUpperCase(), out = [];
+    Object.keys(ix.asg).forEach(function (k) {
+      var x = ix.asg[k]; if (Number(x.on) !== 1 || dkey(x.client) !== c) return;
+      if (b && String(x.brand || "").toUpperCase() !== b) return;
+      var e = ix.ex[x.bxId]; if (!e || e.status === "removed") return;
+      out.push({ ex: e, brand: x.brand, last: bxLastFu(e.id, client, x.brand) });
+    });
+    return out;
+  }
+  function bxChip(o) {   /* "BX Rahul (Huliot India) - Ongoing 12 Nov" */
+    var e = o.ex, l = o.last;
+    return '<span class="bxchip" title="' + esc("Brand executive " + e.name + (e.company ? " - " + e.company : "") + (l && l.remark ? " - " + l.remark : "")) + '">' +
+      '<b>BX</b> ' + esc(e.name) + (e.company ? ' &middot; ' + esc(e.company) : '') + (e.status === "blocked" ? ' &middot; blocked' : '') +
+      (l ? ' &middot; ' + esc(l.status || "") + ' ' + esc(String(l.at || "").slice(8, 10) + "/" + String(l.at || "").slice(5, 7)) : ' &middot; no follow-up yet') + '</span>';
+  }
+  /* ================= END OF THE BRAND EXECUTIVE READER ================= */
+
+  /* ===== 6.9.1030 - BRAND EXECUTIVES: THE OWNER'S DESK =====
+     Add, edit, block, remove (set aside - nothing deleted), set his PIN, put him on sites, and read his follow-ups.
+     The Brand Followup app never talks to this server: it signs in to the Companion (Saathi's server), which holds only
+     what "Send to brand app" puts there - per man, the sites he is on and nothing else. The client's own mobile, our
+     prices and every quote's value stay here; he gets the client's name, area, stage, how many quotes went for HIS brand
+     and when, the architect / plumber by name, number and town (no phone), and our executive's name and mobile. */
+  var BX_LS = "ew_bx_sync";
+  function bxRole(st) { return st === "won" ? "Won" : st === "lost" ? "Lost" : st === "nr" ? "Not required" : st === "live" ? "Going on" : "Not quoted yet"; }
+  function bxPartnerCard(nm) {
+    nm = String(nm || "").trim(); if (!nm) return null;
+    var a = (S.data.associates || []).filter(function (x) { return dkey(x.name) === dkey(nm); })[0] || {};
+    return { name: nm, code: String(a.code || ""), town: String(a.location || a.area || "") };   /* never a phone */
+  }
+  function bxBookFor(e) {
+    var mob = function (n) { var u = (S.data.team || []).filter(function (t) { return dkey(t.name) === dkey(n); })[0]; return u ? String(u.mobile || "").replace(/\D/g, "").slice(-10) : ""; };
+    return bxAssigned(e.id).map(function (x) {
+      var c = clientByName(x.client) || { name: x.client }, st = null; try { st = siteForClient(c.name); } catch (eS) { st = null; }
+      var g = String(x.brand || e.brand || "").toUpperCase(), mem = groupMembers(g);
+      var qs = clientQuotes(c.name).filter(function (q) { return !isCancelled("quotes", q.id) && quoteBrands(q).some(function (b) { return mem.indexOf(b) >= 0 || brandGroup(b) === g; }); })
+        .map(function (q) { return String(q.createdAt || "").slice(0, 10); }).sort().reverse();
+      var own = String(c.ownedBy || c.createdBy || "");
+      return { client: c.name, code: String(c.code || ""), area: String(c.area || ""), city: String(c.location || (st && st.city) || ""),
+        stage: String((st && st.stage) || c.stage || ""), brand: g, kind: isClient(c.name) ? "Client" : "Lead", ew: bxRole(clientGroupState(c.name, g)),
+        quotes: qs.length, lastQuote: qs[0] || "", architect: bxPartnerCard(c.architect || (st && st.architect)), plumber: bxPartnerCard(c.plumber || (st && st.plumber)),
+        exec: { name: own, mobile: mob(own) } };
+    });
+  }
+  function bxCall(op, extra) {
+    if (!roleIs("admin")) return Promise.reject(new Error("owner only"));
+    return fetch(CO_GAS, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(Object.assign({ action: "bxAdmin", op: op, crmUser: S.user, crmPin: S.pin || "", crmTok: S.tok || "" }, extra || {})) })
+      .then(function (r) { return r.json(); }).then(function (r) {
+        if (r && r.ok) return r;
+        var why = String((r && (r.err || r.error)) || "no answer");
+        if (/unknown|not.*(found|support)|action/i.test(why) || !r) why = "the brand app server is not updated yet (paste the Companion block and Deploy)";
+        throw new Error(why);
+      });
+  }
+  function bxSyncRun(quiet) {
+    var all = bxExecs(true);
+    var people = all.map(function (e) { return { id: e.id, name: e.name, mobile: String(e.mobile || "").replace(/\D/g, "").slice(-10), brand: e.brand || "", company: e.company || "", city: e.city || "", active: e.status === "active" ? "Y" : "N" }; });
+    var books = all.filter(function (e) { return e.status === "active"; }).map(function (e) { return { bxId: e.id, sites: bxBookFor(e) }; });
+    if (!quiet) toast("Sending " + plural(books.length, "brand executive") + " to the brand app…");
+    return bxCall("sync", { people: people, books: books }).then(function () {
+      try { localStorage.setItem(BX_LS, JSON.stringify(Object.assign(bxLs(), { sync: new Date().toISOString() }))); } catch (e) { }
+      if (!quiet) toast("Brand app updated: " + plural(books.length, "brand executive") + ", " + plural(books.reduce(function (a, b) { return a + b.sites.length; }, 0), "site") + ".");
+      render(); return true;
+    }, function (e) { if (!quiet) toast("Not sent — " + e.message + "."); return false; });
+  }
+  function bxLs() { try { return JSON.parse(localStorage.getItem(BX_LS) || "{}") || {}; } catch (e) { return {}; } }
+  function bxPullRun(quiet) {
+    var since = bxLs().pull || "";
+    return bxCall("pull", { since: since }).then(function (r) {
+      var have = {}; bxIndex().fus.forEach(function (f) { have[f.fid] = 1; });
+      var fresh = (r.rows || []).filter(function (f) { return f && f.fid && !have[f.fid]; }), last = since;
+      fresh.forEach(function (f) { auditFact("bx:fu", String(f.client || ""), f, f.at); if (String(f.at || "") > last) last = String(f.at || ""); });
+      (r.rows || []).forEach(function (f) { if (String(f.at || "") > last) last = String(f.at || ""); });
+      try { localStorage.setItem(BX_LS, JSON.stringify(Object.assign(bxLs(), { pull: last, pulledAt: new Date().toISOString() }))); } catch (e) { }
+      _bxIx = null;
+      if (!quiet || fresh.length) toast(fresh.length ? plural(fresh.length, "new follow-up") + " from the brand app." : "No new follow-up from the brand app.");
+      render(); return fresh.length;
+    }, function (e) { if (!quiet) toast("Not pulled — " + e.message + "."); return 0; });
+  }
+  function bxDaily() {   /* the owner's CRM pulls their follow-ups every 30 minutes it is open, and re-sends the book once a day */
+    if (!roleIs("admin") || !bxExecs().length) return;
+    var L = bxLs(), now = Date.now();
+    if (!L.pulledAt || now - Date.parse(L.pulledAt) > 30 * 60000) setTimeout(function () { bxPullRun(true); }, 12000);
+    if (!L.sync || String(L.sync).slice(0, 10) !== today()) setTimeout(function () { bxSyncRun(true); }, 20000);
+  }
+  function viewBrandExecs() {
+    if (!roleIs("admin")) return '<div class="empty">This screen is the owner’s.</div>';
+    try { bxCss(); } catch (e) { }
+    var L = bxLs(), list = bxExecs(!!S.bxAll), fus = bxIndex().fus, fx = S.bxFx || "";
+    var stPill = function (st) { return st === "active" ? '<span class="pill teal">Active</span>' : st === "blocked" ? '<span class="pill due">Blocked</span>' : '<span class="pill">Removed</span>'; };
+    var h = '<div class="card" style="padding:10px 12px"><h2 style="margin:0 0 4px;font-size:17px">Brand executives</h2>' +
+      '<div class="meta" style="font-size:13px">People from the brands who follow up the sites you give them, in the <b>Brand Followup</b> app. They see only their sites — client name, area, stage, how many quotes went for their brand, the architect and plumber by name and number (no phone), and your executive. No copy, print, download or share there; every screen carries their name.</div>' +
+      '<div class="acts" style="margin-top:8px;flex-wrap:wrap"><button class="btn" data-act="bx-new">+ Add brand executive</button>' +
+      '<button class="btn ghost" data-act="bx-sync">Send to brand app</button><button class="btn ghost" data-act="bx-pull">Pull follow-ups</button>' +
+      '<a class="btn ghost" href="../brand/" target="_blank" rel="noopener">Open the app ↗</a></div>' +
+      '<div class="meta" style="font-size:12px;margin-top:4px">Sent ' + (L.sync ? esc(dmy(L.sync.slice(0, 10))) + ' ' + esc(L.sync.slice(11, 16)) + ' UTC' : 'never') + ' &middot; pulled ' + (L.pulledAt ? esc(dmy(L.pulledAt.slice(0, 10))) + ' ' + esc(L.pulledAt.slice(11, 16)) + ' UTC' : 'never') + ' &middot; app link: <b>mukeshenergyworld-ux.github.io/ew-site-crm/brand/</b></div></div>';
+    h += '<div class="card" style="padding:10px 12px"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><h3 style="margin:0;font-size:15px">' + plural(list.length, "brand executive") + '</h3>' +
+      '<label class="meta" style="display:flex;gap:6px;align-items:center;min-height:44px"><input type="checkbox" data-act="bx-all"' + (S.bxAll ? ' checked' : '') + ' style="width:20px;height:20px"/> Show removed</label></div>';
+    if (!list.length) h += '<div class="empty">Nobody yet. Add the first one.</div>';
+    else h += pevTable([["Name"], ["Brand"], ["Mobile"], ["Status"], ["Sites", "right"], ["Follow-ups", "right"], [""]], list.map(function (e) {
+      var n = bxAssigned(e.id).length, f = fus.filter(function (x) { return x.bxId === e.id; });
+      return ['<b>' + esc(e.name) + '</b>' + (e.company ? '<div class="meta" style="font-size:12px">' + esc(e.company) + (e.city ? ' &middot; ' + esc(e.city) : '') + '</div>' : ''),
+        esc(e.brand || ""), esc(e.mobile || ""), stPill(e.status), String(n),
+        f.length ? f.length + '<div class="meta" style="font-size:12px">last ' + esc(dmy(String(f[0].at || "").slice(0, 10))) + '</div>' : '0',
+        e.status === "removed" ? '<button class="btn sm ghost" data-act="bx-st" data-id="' + esc(e.id) + '" data-k="active">Bring back</button>' :
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"><button class="btn sm" data-act="bx-asg" data-id="' + esc(e.id) + '">Sites</button>' +
+        '<button class="btn sm ghost" data-act="bx-edit" data-id="' + esc(e.id) + '">Edit</button><button class="btn sm ghost" data-act="bx-pin" data-id="' + esc(e.id) + '">PIN</button>' +
+        '<button class="btn sm ghost" data-act="bx-st" data-id="' + esc(e.id) + '" data-k="' + (e.status === "blocked" ? "active" : "blocked") + '">' + (e.status === "blocked" ? "Unblock" : "Block") + '</button>' +
+        '<button class="btn sm ghost" data-act="bx-st" data-id="' + esc(e.id) + '" data-k="removed" style="color:#b91c1c">Remove</button></div>'];
+    }));
+    h += '</div>';
+    var shown = fus.filter(function (f) { return !fx || f.bxId === fx; }).slice(0, 80);
+    h += '<div class="card" style="padding:10px 12px"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><h3 style="margin:0;font-size:15px">Their follow-ups</h3>' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap"><select data-act="bx-fx" id="bx_fx" style="min-height:44px"><option value="">Everyone</option>' + bxExecs(true).map(function (e) { return '<option value="' + esc(e.id) + '"' + (fx === e.id ? ' selected' : '') + '>' + esc(e.name) + '</option>'; }).join("") + '</select>' +
+      '<button class="btn sm ghost" data-act="bx-xl">Excel</button></div></div>' +
+      (shown.length ? pevTable([["When"], ["Who"], ["Client"], ["Brand"], ["Status"], ["Remark"], ["Next"], ["Quote"]], shown.map(function (f) {
+        return [esc(dmy(String(f.at || "").slice(0, 10))), esc(f.bxName || ""), esc(f.client || ""), esc(f.brand || ""), '<b>' + esc(f.status || "") + '</b>', esc(f.remark || ""), esc(f.next ? dmy(String(f.next).slice(0, 10)) : ""),
+          f.file && f.file.url ? '<a href="' + esc(f.file.url) + '" target="_blank" rel="noopener">' + esc(f.file.name || "open") + ' ↗</a>' : ''];
+      })) : '<div class="empty">No follow-up pulled yet.</div>') + '</div>';
+    return h;
+  }
+  function bxForm(e) {
+    e = e || {};
+    var bs = brandGroupList().filter(function (g) { return isRealBrandName(g); });
+    var inp = function (id, lab, v, ph, im) { return '<label>' + lab + '</label><input id="' + id + '" value="' + esc(v || "") + '" placeholder="' + esc(ph || "") + '"' + (im ? ' inputmode="' + im + '"' : '') + ' autocomplete="off"/>'; };
+    return '<h2>' + (e.id ? 'Edit ' + esc(e.name) : 'Add a brand executive') + '</h2>' +
+      inp("bx_name", "Name", e.name, "e.g. Rahul Sharma") + inp("bx_co", "Company", e.company, "e.g. Huliot India Pvt Ltd") +
+      '<label>Brand he follows</label><select id="bx_brand">' + bs.map(function (b) { return '<option' + (b === e.brand ? ' selected' : '') + '>' + esc(b) + '</option>'; }).join("") + '</select>' +
+      inp("bx_mob", "Mobile (10 digits) — his sign-in", e.mobile, "98xxxxxxxx", "numeric") +
+      '<label>Town</label><select id="bx_city"><option value=""></option>' + locations().map(function (l) { return '<option' + (l === e.city ? ' selected' : '') + '>' + esc(l) + '</option>'; }).join("") + '</select>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button><button class="btn" data-act="bx-save" data-id="' + esc(e.id || "") + '">Save</button></div>';
+  }
+  function bxAsgSheet(id) {
+    var e = bxIndex().ex[id]; if (!e) return '<h2>Not found</h2>';
+    var on = {}; bxAssigned(id).forEach(function (x) { on[dkey(x.client)] = 1; });
+    var q = lower(S.bxQ || ""), cl = (S.data.clients || []).filter(function (c) { return c && c.name && !isCancelled("clients", c.id); });
+    var mine = cl.filter(function (c) { return on[dkey(c.name)]; }), rest = cl.filter(function (c) { return !on[dkey(c.name)] && (!q || lower([c.name, c.code, c.area, c.location, c.ownedBy].join(" ")).indexOf(q) >= 0); }).slice(0, q ? 60 : 25);
+    var row = function (c) {
+      var st = clientGroupState(c.name, e.brand);
+      return '<label style="display:flex;gap:10px;align-items:center;min-height:48px;border-top:1px solid #eef2f7;margin:0;font-weight:500"><input type="checkbox" data-act="bx-tick" data-id="' + esc(id) + '" data-n="' + esc(c.name) + '"' + (on[dkey(c.name)] ? ' checked' : '') + ' style="width:22px;height:22px;flex:none"/>' +
+        '<span style="flex:1;min-width:0"><b>' + esc(c.name) + '</b><span class="meta" style="font-size:12px;display:block">' + esc([c.area, c.location, c.ownedBy || c.createdBy].filter(Boolean).join(" · ")) + ' · ' + esc(e.brand) + ': ' + esc(bxRole(st)) + '</span></span></label>';
+    };
+    return '<h2>Sites for ' + esc(e.name) + '</h2><p class="sub">' + esc(e.brand) + (e.company ? ' &middot; ' + esc(e.company) : '') + ' &middot; ' + mine.length + ' on now. A tick saves at once; Done sends it to his app.</p>' +
+      '<input id="bx_q" placeholder="Search client, code, area or executive" value="' + esc(S.bxQ || "") + '" autocomplete="off" style="min-height:44px;font-size:15px;width:100%;box-sizing:border-box"/>' +
+      (mine.length ? '<div class="meta" style="margin-top:8px;font-weight:700">His sites</div>' + mine.map(row).join("") : '') +
+      '<div class="meta" style="margin-top:8px;font-weight:700">' + (q ? 'Matching' : 'Add more — type to search') + '</div><div id="bx_rest">' + rest.map(row).join("") + '</div>' +
+      '<div class="foot"><button class="btn" data-act="bx-asg-done">Done — send to his app</button></div>';
+  }
+  function bxPinSheet(id) {
+    var e = bxIndex().ex[id] || {};
+    return '<h2>PIN for ' + esc(e.name || "") + '</h2><p class="sub">He signs in with ' + esc(e.mobile || "his mobile") + ' and this PIN. 4 to 6 digits. Tell it to him yourself; it is not shown again.</p>' +
+      '<input id="bx_p1" type="password" inputmode="numeric" maxlength="6" autocomplete="off" placeholder="PIN" style="font-size:18px;letter-spacing:.3em;text-align:center"/>' +
+      '<input id="bx_p2" type="password" inputmode="numeric" maxlength="6" autocomplete="off" placeholder="Same PIN again" style="font-size:18px;letter-spacing:.3em;text-align:center;margin-top:8px"/>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button><button class="btn" data-act="bx-pin-go" data-id="' + esc(id) + '">Set PIN</button></div>';
+  }
+  function bxSiteCard() {   /* for the brand follow-up board: who from the brands is on this man's clients */
+    var ix = bxIndex(), rows = [];
+    Object.keys(ix.asg).forEach(function (k) {
+      var x = ix.asg[k]; if (Number(x.on) !== 1) return;
+      var e = ix.ex[x.bxId]; if (!e || e.status === "removed") return;
+      if (!seesAllClients() && !isMineClient(x.client)) return;
+      rows.push({ c: x.client, o: { ex: e, brand: x.brand, last: bxLastFu(e.id, x.client, x.brand) } });
+    });
+    if (!rows.length) return "";
+    rows.sort(function (a, b) { return alpha(a.c, b.c); });
+    return '<div class="card" style="padding:8px 12px;border-color:#ddd6fe;background:#faf5ff"><b style="font-size:13px;color:#5b21b6">Brand executives on your sites</b>' +
+      rows.slice(0, 40).map(function (r) { return '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:4px 0;border-top:1px solid #ede9fe;font-size:13px"><b>' + esc(r.c) + '</b> ' + bxChip(r.o) + '</div>'; }).join("") +
+      (rows.length > 40 ? '<div class="meta">and ' + (rows.length - 40) + ' more</div>' : '') + '</div>';
+  }
+  function bxCss() { if (document.getElementById("ew_bx_css")) return; var st = document.createElement("style"); st.id = "ew_bx_css"; st.textContent = ".bxchip{display:inline-block;font-size:12px;padding:3px 8px;border-radius:8px;background:#f5f3ff;color:#5b21b6;border:1px solid #ddd6fe}.bxchip b{font-weight:800}"; document.head.appendChild(st); }
+  function viewBrandFollow() { var _bxc = ""; try { bxCss(); _bxc = bxSiteCard(); } catch (eBx) { } return _bxc + viewBrandFollowBody(); }   /* 6.9.1030 */
+  function viewBrandFollowBody() {
     var brands = brandGroupList().filter(function (g) { return isRealBrandName(g); });
     if (!brands.length) return '<div class="empty">No brands set up yet.</div>';
     if (!S.bf || brands.indexOf(S.bf) < 0) S.bf = brands[0];
@@ -33331,7 +33562,7 @@ function viewCatalogue() {
         detail: JSON.stringify({ client: cn, role: role, was: String(was || ""), now: now, from: ptnStartDay(cn), challans: moved }), ip: "" }, true); } catch (e) { }
     }
     _hsbCache = null; try { bustCaches(); } catch (e) { }
-    return Promise.all(jobs).then(function () { return moved.length; });
+    return Promise.all(jobs).then(function () { try { saathiSyncSoon(); } catch (e) { } return moved.length; });   /* 6.9.1030 */
   }
   /* the question, asked wherever the owner changes a partner on a client that already has deliveries:
      resolves "start" / "today" / null (closed - the caller writes nothing) */
@@ -33358,6 +33589,7 @@ function viewCatalogue() {
       if (!was && !incChanges(cn, role).length) return;
       save("audit", { id: "", createdAt: new Date().toISOString(), actor: S.user || "", action: "ptn:change", target: cn,
         detail: JSON.stringify({ client: cn, role: role, was: was, now: now, on: _ptnOn || today() }), ip: "" }, true);
+      try { saathiSyncSoon(); } catch (e) { }   /* 6.9.1030 */
     });
   }
   /* every client this man appears on in a change, as the old or the new holder */
@@ -34237,7 +34469,7 @@ function viewCatalogue() {
         return inFam(c.customerName) &&
                String(c.receiptReceived).toUpperCase() === "Y";
       }));
-      var clBilled = 0, clFreight = 0, clReturned = 0;
+      var clBilled = 0, clFreight = 0, clReturned = 0, clIncLeft = 0;   /* 6.9.1030 - what this client's deliveries earned him, still not taken back */
       chs.forEach(function (c) {
         var base = 0, inc = 0, _gf = incBasicF(rateDayOf(c));   /* 6.9.799 - Basic Amt from the card's first day */
         var _lines = pricedLines(c, c.customerName);   /* 6.9.694 - the extra discount, put onto a brand */
@@ -34282,7 +34514,7 @@ function viewCatalogue() {
         var _dsc = 0; if (_sr && _sr.from) _sr.from.forEach(function (f) { if (f && f.disc) _dsc += Number(f.amt) || 0; });
         var _kf = (_dsc > 0.4 && _sr.amt > 0.4) ? Math.max(0, 1 - _dsc / _sr.amt) : 1;
         if (_kf < 1) { inc = inc * _kf; net = net * _kf; }
-        billed += net; earned += inc; clientNames[cl.name] = 1;
+        billed += net; earned += inc; clientNames[cl.name] = 1; clIncLeft += inc;
         var _paid = _sr && _sr.amt > 0.4 ? Math.max(0, Math.min(1, (_sr.amt - _dsc) > 0.4 ? (_sr.paid - _dsc) / (_sr.amt - _dsc) : 0)) : 0;
         released += inc * _paid;
         rows.push({ no: c.challanNo, client: cl.name, site: c.site, brand: c.brand,   /* 6.9.929 - filed under his main name */
@@ -34325,6 +34557,13 @@ function viewCatalogue() {
            does (returnNet, v6.9.599), so it reverses incentive on the net too */
         var rf = retShare(r).factor;
         if (rf !== 1) { rBase = Math.round(rBase * rf); if (!_rsh) rInc = rInc * rf; }   /* 6.9.694 */
+        /* 6.9.1030 - A RETURN NAMING NO CHALLAN CANNOT TAKE BACK WHAT WAS NEVER EARNED. MEASURED on Manish Gupta (AR111): six
+           deliveries of 12 Sep - 3 Oct earned him 0 (before the card, no rate on the client), but three returns of October named
+           no challan, so they were read at the card's rate on the RETURN's day and took back Rs 2,025 he was never paid - his
+           book stood at minus 2,025. Such a return now reverses at most what this client's deliveries earned this man and
+           have not already given back. A return that names its challan is unchanged: it reads that delivery's own line-up. */
+        if (!rCh) rInc = Math.max(0, Math.min(rInc, clIncLeft));
+        clIncLeft = Math.max(0, clIncLeft - rInc);
         returned += rBase; reversed += rInc; earned -= rInc; released -= rInc;   /* 6.9.699 */
         clReturned += rBase;
         if (rBase > 0 || rInc !== 0) {
@@ -47520,7 +47759,7 @@ function viewCatalogue() {
      nothing else could reach it - so the usage counter would have had to keep a second copy
      of the same forty-two names, and a second copy is how the two quietly stop agreeing.
      Hoisted, not duplicated. render() still reads exactly this. */
-  var TAB_TABS = [["search", "Search"], ["myday", "My day"], ["dash", "Today"], ["statements", "Statements"], ["review", "Twice-weekly review"], ["wareminder", "WhatsApp reminders"], ["msgs", "Messages & posts"], ["clientlist", "Client list"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits & quotes"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["register", "Challan log"], ["paylog", "Payment log"], ["freight", "Drivers & freight"], ["deliveries", "Deliveries"], ["collections", "Money in & out"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["crlog", "Client & lead log"], ["partners", "Partners"], ["pevents", "Partner events"], ["club", "Partner Club"], ["quotes", "Quotes"], ["commission", "Incentives"], ["complaints", "Complaints"], ["service", "Service"], ["spares", "Spares"], ["dues", "Service dues"], ["payroll", "Payroll"], ["salary", "Salary & staff"], ["profit", "Profit"], ["codes", "Codes & costs"], ["attendance", "Attendance"], ["products", "Products"], ["payments", "Payments"], ["paidout", "Paid out"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["catalogs", "Brand catalogues"], ["brandstory", "Brand stories"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["trouble", "Troubleshoot"], ["changelog", "Change log"], ["booksweep", "Book numbers"], ["dups", "Duplicate check"], ["stock", "Stock"], ["tally", "Tally"], ["plcheck", "Supplier price list"], ["brief", "The brief"]];
+  var TAB_TABS = [["search", "Search"], ["myday", "My day"], ["dash", "Today"], ["statements", "Statements"], ["review", "Twice-weekly review"], ["wareminder", "WhatsApp reminders"], ["msgs", "Messages & posts"], ["clientlist", "Client list"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["brandexec", "Brand executives"], ["visits", "Site visits & quotes"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["register", "Challan log"], ["paylog", "Payment log"], ["freight", "Drivers & freight"], ["deliveries", "Deliveries"], ["collections", "Money in & out"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["crlog", "Client & lead log"], ["partners", "Partners"], ["pevents", "Partner events"], ["club", "Partner Club"], ["quotes", "Quotes"], ["commission", "Incentives"], ["complaints", "Complaints"], ["service", "Service"], ["spares", "Spares"], ["dues", "Service dues"], ["payroll", "Payroll"], ["salary", "Salary & staff"], ["profit", "Profit"], ["codes", "Codes & costs"], ["attendance", "Attendance"], ["products", "Products"], ["payments", "Payments"], ["paidout", "Paid out"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["catalogs", "Brand catalogues"], ["brandstory", "Brand stories"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["trouble", "Troubleshoot"], ["changelog", "Change log"], ["booksweep", "Book numbers"], ["dups", "Duplicate check"], ["stock", "Stock"], ["tally", "Tally"], ["plcheck", "Supplier price list"], ["brief", "The brief"]];
   var TAB_LABEL = (function () {
     var m = {}; TAB_TABS.forEach(function (t) { m[t[0]] = t[1]; }); return m;
   })();
@@ -49147,6 +49386,7 @@ function viewCatalogue() {
     try { h += unsentDashCard(); } catch (e) { console.warn("[unsent] card:", e); }
     try { h += stkTruthCard(); } catch (e) { console.warn("[stock truth]", e); }   /* 6.9.893 - the owner's Today */
     try { saathiSyncDaily(); } catch (e) { }   /* 6.9.903 */
+    try { bxDaily(); } catch (e) { }   /* 6.9.1030 */
     if (one) {
       h += '<div class="card" style="border-color:#99f6e4;background:#f0fdfa">' +
         '<div class="meta" style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#0f766e"><b>Today</b></div>' +
@@ -50063,6 +50303,7 @@ function viewCatalogue() {
          It goes here rather than in team_main.html so there is one file to deploy. */
       ".pill.Lost{background:#fee2e2;color:#b91c1c}" +
         ".pill.cx{background:#e2e8f0;color:#475569;white-space:nowrap}" +
+        ".bxchip{display:inline-block;font-size:12px;padding:3px 8px;border-radius:8px;background:#f5f3ff;color:#5b21b6;border:1px solid #ddd6fe}.bxchip b{font-weight:800}" +
       "@media(max-width:560px){" +
       ".qv-cli{padding:8px 9px}" +
       ".qv-nm{flex-basis:100%}" +
@@ -52821,11 +53062,23 @@ function viewCatalogue() {
       return sent;
     });
   }
+  /* 6.9.1030 - HIS WORDS: "in crm hisab amrik site showing incentive to radiant but not showing in saathi app? fix such issues
+     for all partners". MEASURED: the money was right everywhere - 419 partner lines on finalised challans checked against each
+     partner's own book, every one equal (the only two gaps are names not on the partner list). Saathi was simply BEHIND: its
+     book went once a day, so a partner changed at 1 pm reached Saathi the next morning. Now it goes every 2 hours the owner's
+     CRM is open, and 15 seconds after any partner change (the client form, the who-earns panel, Change partner, from the
+     start), so Saathi says what the HISAB says. */
   function saathiSyncDaily() {
     if (!roleIs("admin")) return;
-    var d = ""; try { d = localStorage.getItem("ew_saathi_sync_day") || ""; } catch (e) { }
-    if (d === today()) return;
-    setTimeout(function () { saathiSyncRun(true); }, 8000);
+    var d = ""; try { d = localStorage.getItem("ew_saathi_sync_at") || ""; } catch (e) { }
+    if (d && Date.now() - Date.parse(d) < 2 * 3600000) return;
+    setTimeout(function () { saathiSyncRun(true).then(function (n) { if (n) { try { localStorage.setItem("ew_saathi_sync_at", new Date().toISOString()); } catch (e) { } } }); }, 8000);
+  }
+  var _ssSoon = null;
+  function saathiSyncSoon() {
+    if (!roleIs("admin")) return;
+    clearTimeout(_ssSoon);
+    _ssSoon = setTimeout(function () { saathiSyncRun(true).then(function (n) { if (n) { try { localStorage.setItem("ew_saathi_sync_at", new Date().toISOString()); } catch (e) { } } }); }, 15000);
   }
   function saathiPushRun() {
     var list = assocLive().slice();   /* 6.9.730 - a man is sent once */
@@ -64329,7 +64582,7 @@ function viewCatalogue() {
   var NAV_GROUPS = [
     ["Agent",      ["agent"]],
     ["Today",      ["dash", "followups", "pending"]],   /* 6.9.1019 - My day lives inside Today now */
-    ["Clients",    ["clients", "clientlist", "leads", "quotes", "visits", "pitch", "winloss", "brandfollow", "crlog", "msgs"]],
+    ["Clients",    ["clients", "clientlist", "leads", "quotes", "visits", "pitch", "winloss", "brandfollow", "brandexec", "crlog", "msgs"]],
     ["Deliveries", ["challans", "register", "returns", "freight", "stock"]],
     ["HISAB",      ["billing", "profit", "payments", "paylog", "paidout", "statements", "wareminder", "dues", "review", "discounts"]],
     ["Partners",   ["partners", "club", "pevents", "commission"]],
@@ -64800,7 +65053,7 @@ function viewCatalogue() {
       return;
     }
     if (S.tab === "myday") S.tab = "dash";   /* 6.9.1019 - the old key, the one screen */
-    var views = { attendance: viewAttendance, statements: viewStatements, agent: viewAgent, search: viewSearch, dossier: viewDossier, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, complaints: viewComplaints, payments: viewPayments, paidout: viewPaidOut, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, catalogs: viewCatalogues, brandstory: viewBrandStories, clients: viewClients, crlog: viewCrLog, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, salary: viewSalary, profit: viewProfit, codes: viewCodes, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, register: viewRegister, paylog: viewPayLog, freight: viewFreight, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, trouble: viewTrouble, changelog: viewChangeLog, booksweep: viewBookSweep, dups: viewDups, stock: viewStock, tally: viewTally, plcheck: viewPlCheck, pevents: viewPev, club: viewClub, brief: viewBrief, review: viewReview, myday: viewMyDay, wareminder: viewWaRem, msgs: viewMsgs, clientlist: viewClientList };   /* 6.9.739 - myday */
+    var views = { attendance: viewAttendance, statements: viewStatements, agent: viewAgent, search: viewSearch, dossier: viewDossier, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, brandexec: viewBrandExecs, visits: viewVisits, commission: viewIncentives, complaints: viewComplaints, payments: viewPayments, paidout: viewPaidOut, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, catalogs: viewCatalogues, brandstory: viewBrandStories, clients: viewClients, crlog: viewCrLog, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, salary: viewSalary, profit: viewProfit, codes: viewCodes, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, register: viewRegister, paylog: viewPayLog, freight: viewFreight, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, trouble: viewTrouble, changelog: viewChangeLog, booksweep: viewBookSweep, dups: viewDups, stock: viewStock, tally: viewTally, plcheck: viewPlCheck, pevents: viewPev, club: viewClub, brief: viewBrief, review: viewReview, myday: viewMyDay, wareminder: viewWaRem, msgs: viewMsgs, clientlist: viewClientList };   /* 6.9.739 - myday */
     var tabs = TAB_TABS;
 
     var h = '<div class="top">' +
@@ -68950,6 +69203,58 @@ function viewCatalogue() {
         return;
       }
       anWrite(false);
+      return;
+    }
+    /* ---- 6.9.1030 - brand executives ---- */
+    if (act === "bx-new" || act === "bx-edit") { if (!roleIs("admin")) return; S.modal = bxForm(act === "bx-edit" ? bxIndex().ex[t.getAttribute("data-id")] : null); render(); return; }
+    if (act === "bx-save") {
+      if (!roleIs("admin")) return;
+      var _bid = t.getAttribute("data-id") || "", _was = _bid ? (bxIndex().ex[_bid] || {}) : {};
+      var _bn = nmTitle(val("bx_name")), _bm = String(val("bx_mob") || "").replace(/\D/g, "").slice(-10);
+      if (!_bn) { toast("His name first."); return; }
+      if (_bm.length !== 10) { toast("A 10-digit mobile \u2014 it is his sign-in."); return; }
+      var _dup = bxExecs().filter(function (x) { return x.id !== _bid && String(x.mobile || "").replace(/\D/g, "").slice(-10) === _bm; })[0];
+      if (_dup) { toast("That mobile is already " + _dup.name + "\u2019s."); return; }
+      var _row = { id: _bid || mintId("BX"), name: _bn, company: String(val("bx_co") || "").trim(), brand: val("bx_brand"), mobile: _bm, city: val("bx_city"), status: _was.status || "active" };
+      auditFact("bx:exec", _bn, _row).then(function () { _bxIx = null; S.modal = null; render(); toast("Saved " + _bn + "."); bxSyncRun(true); });
+      return;
+    }
+    if (act === "bx-st") {
+      if (!roleIs("admin")) return;
+      var _e = Object.assign({}, bxIndex().ex[t.getAttribute("data-id")] || {}), _to = t.getAttribute("data-k");
+      if (!_e.id) return;
+      var _go = function () { delete _e._at; delete _e.at; _e.status = _to; auditFact("bx:exec", _e.name, _e).then(function () { _bxIx = null; render(); toast(_e.name + ": " + (_to === "active" ? "active again" : _to) + "."); bxSyncRun(true); }); };
+      if (_to === "removed") { askSheet({ title: "Remove " + esc(_e.name) + "?", sub: "He can no longer sign in. His follow-ups stay on the book, and he can be brought back.", yes: "Remove", no: "Keep" }).then(function (y) { if (y) _go(); }); return; }
+      _go(); return;
+    }
+    if (act === "bx-all") { S.bxAll = !S.bxAll; render(); return; }
+    if (act === "bx-asg") { S.bxQ = ""; S.bxAsg = t.getAttribute("data-id"); S.modal = bxAsgSheet(S.bxAsg); render(); return; }
+    if (act === "bx-tick") {
+      var _x = bxIndex().ex[t.getAttribute("data-id")]; if (!_x) return;
+      auditFact("bx:assign", t.getAttribute("data-n"), { bxId: _x.id, client: t.getAttribute("data-n"), brand: _x.brand, on: t.checked ? 1 : 0 }).then(function () { _bxIx = null; });
+      return;
+    }
+    if (act === "bx-asg-done") { S.modal = null; _bxIx = null; render(); bxSyncRun(false); return; }
+    if (act === "bx-pin") { S.modal = bxPinSheet(t.getAttribute("data-id")); render(); return; }
+    if (act === "bx-pin-go") {
+      var _p1 = String(val("bx_p1") || "").trim(), _p2 = String(val("bx_p2") || "").trim(), _pid = t.getAttribute("data-id");
+      if (!/^\d{4,6}$/.test(_p1)) { toast("4 to 6 digits."); return; }
+      if (_p1 !== _p2) { toast("The two do not match."); return; }
+      var _pe = bxIndex().ex[_pid] || {};
+      if (/^(\d)\1+$/.test(_p1) || String(_pe.mobile || "").slice(-_p1.length) === _p1) { toast("Too easy to guess \u2014 not the same digit, not the end of his mobile."); return; }
+      t.disabled = true; t.textContent = "Setting\u2026";
+      bxSyncRun(true).then(function () { return bxCall("pin", { id: _pid, pin: _p1 }); }).then(function () {
+        S.modal = null; render(); toast("PIN set for " + (_pe.name || "him") + ". Tell it to him yourself.");
+        auditFact("bx:pin", _pe.name || _pid, { id: _pid });   /* the fact that it was set, never the PIN */
+      }, function (e) { t.disabled = false; t.textContent = "Set PIN"; toast("Not set \u2014 " + e.message + "."); });
+      return;
+    }
+    if (act === "bx-sync") { bxSyncRun(false); return; }
+    if (act === "bx-pull") { bxPullRun(false); return; }
+    if (act === "bx-xl") {
+      var _rows = [["When", "Brand executive", "Company", "Client", "Brand", "Status", "Remark", "Next follow-up", "Quote file"].map(function (x) { return { v: x, s: XL.HEAD }; })];
+      bxIndex().fus.filter(function (f) { return !S.bxFx || f.bxId === S.bxFx; }).forEach(function (f) { var e = bxIndex().ex[f.bxId] || {}; _rows.push([String(f.at || "").slice(0, 16).replace("T", " "), f.bxName || e.name || "", e.company || "", f.client || "", f.brand || "", f.status || "", f.remark || "", f.next || "", (f.file && f.file.url) || ""]); });
+      dlXlsx("Brand_followups_" + today() + ".xlsx", "Follow-ups", _rows, [16, 20, 22, 30, 12, 13, 40, 13, 40]);
       return;
     }
     if (act === "adm-ptn") {   /* 6.9.1028 - from the challan card: which role, then the Client & lead log's own change sheet */
