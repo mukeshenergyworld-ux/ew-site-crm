@@ -81,6 +81,10 @@ table.t td.pic{width:48px}
 .note.warn{background:#fffbeb;border-color:#fde68a}
 .note.bad{background:#fef2f2;border-color:#fecaca}
 .empty{color:#64748b;text-align:center;padding:24px 8px;font-size:14px}
+.fut{width:100%;border-collapse:collapse;font-size:14px}.fut th{text-align:left;font-size:12px;color:#64748b;padding:8px 10px;border-bottom:1px solid #e2e8f0;white-space:nowrap}
+.fut td{padding:11px 10px;border-bottom:1px solid #f1f5f9;cursor:pointer}.fut td.n{text-align:center;font-weight:800;font-variant-numeric:tabular-nums}
+.fut td.blu{color:#1d4ed8}.fut td.grn{color:#166534}.fut td.red{color:#b91c1c}.fut tr:active td{background:#f8fafc}
+.bxchip{display:inline-block;font-size:12px;padding:3px 8px;border-radius:8px;background:#f5f3ff;color:#5b21b6;border:1px solid #ddd6fe}.bxchip b{font-weight:800}
 .sheet{position:fixed;inset:0;z-index:50;background:rgba(15,23,42,.45);display:flex;align-items:flex-end;justify-content:center}
 .sheet .inner{background:#f8fafc;width:100%;max-width:720px;max-height:94vh;overflow-y:auto;border-radius:18px 18px 0 0;padding:14px 14px calc(18px + env(safe-area-inset-bottom))}
 .sheet h2{margin-top:4px}
@@ -252,7 +256,7 @@ table.att td.ok,table.att td.no{font-size:16px}
       button: function () { return '<button type="button" class="ewthm" onclick="ewTheme.next(this)">' + ewtLabel() + '</button>'; }
     };
   })();
-  var APP_VERSION = "1.20.0";   /* 1.20.0 (17 Nov 2026) - one tap Present with where the day is and the plan; a visit still counts; one mark shows in every app */   /* 1.19.1 (17 Nov 2026) - FIX: a quote stamped with a plain date threw "Can't find variable: d10" on the quote list; the version is in the header */   /* 1.19.0 (1.19.0 (16 Nov 2026) - a visit is logged straight from the site list (the stage starts at the last one); My day shows the month as a calendar, present = a visit marked; the 7-day grid uses the same rule; an executive has his own daily report */   /* 1.18.0 (1.18.0 (16 Nov 2026) - a quote in three steps: the discount sits at the top of the check instead of a screen of its own; and the app counts which buttons are tapped, sent weekly to the owner's Health screen */   /* 1.17.7 (1.17.7 (15 Nov 2026) - FIX: no family-rate fallback here, so a quote line reading "Huliot HT PRO" for a client given a Huliot rate was quoted at FULL MRP - 9 client-and-brand pairs on his own book */   /* 1.17.6 (1.17.6 (11 Nov 2026) - GHP+ logo in the registered Green Heat+ colours (#00539F / #ED1D24) on PDFs, quotes, challans and QR centres */   /* 1.17.5 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 1.17.4 (9 Nov 2026) - FIMA finish codes with their own finish photo */     /* 1.17.3 (9 Nov 2026) - a small finish-colour dot on FIMA product pictures */     /* 1.17.2 (9 Nov 2026) - FIMA handles S1-S4 in every finish and the S2 glass handles */     /* 1.17.1 (9 Nov 2026) - brand tiles on the quote line: real logos, compact, on one row with Pending / Won / Lost */     /* 1.17.0 (9 Nov 2026) - brand-wise Won / Lost on a quote line: tap a brand once = Won, twice = Lost, again = open */     /* 1.16.0 (9 Nov 2026) - FIMA in every finish: type F1301WLX9CS (or any of 14,260 finish codes) and it is on the quote at its own MRP */     /* 1.15.0 (9 Nov 2026) - incentive ready (clients paid) and waiting for payment, on the plan header */     /* 1.14.0 (9 Nov 2026) - ask the owner to approve a discount above the brand limit, right on the quote line */     /* 1.13.0 (9 Nov 2026) - target limit shown under each quote discount; plan updates list (slab reached, lines left out, returns, month closed, 20th reminder) */     /* 1.12.0 (9 Nov 2026) - the 2027 plan on top (counted sales, slab ladder, left-out lines, quarter) and daily reports: entered, missed, streak */   /* 1.11.0 (8 Nov 2026) - my month on top: sales, returns, target, incentive, what to dispatch */   /* 1.10.1 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */   /* 1.10.0 (4 Nov 2026) - quote as in the CRM: item-wise discount, option lines, item-wise rates without total, GST */   /* 1.9.1 (31 Oct 2026) - one tap, one entry */   /* 1.9.0 (29 Oct 2026) - Menu -> Online enquiries (FB, IG, Google, Justdial, IndiaMART ... from the OnlineEnquiries tab) */   /* 1.8.4 (27 Oct 2026) - GHp mark in the middle of every QR, level H */   /* 1.6.1 - Huliot Group introduction on quotes; 1.6.0 (17 Oct 2026) - a dropped POST never loses a quote; admin sees every executive; daily report; attendance grid */
+  var APP_VERSION = "1.21.0";   /* 1.21.0 (17 Nov 2026) - Follow-up tab: brand by brand, his clients - going on / won / lost, quotes given, and the brand executive on the site */   /* 1.20.0 (17 Nov 2026) - one tap Present with where the day is and the plan; a visit still counts; one mark shows in every app */   /* 1.19.1 (17 Nov 2026) - FIX: a quote stamped with a plain date threw "Can't find variable: d10" on the quote list; the version is in the header */   /* 1.19.0 (1.19.0 (16 Nov 2026) - a visit is logged straight from the site list (the stage starts at the last one); My day shows the month as a calendar, present = a visit marked; the 7-day grid uses the same rule; an executive has his own daily report */   /* 1.18.0 (1.18.0 (16 Nov 2026) - a quote in three steps: the discount sits at the top of the check instead of a screen of its own; and the app counts which buttons are tapped, sent weekly to the owner's Health screen */   /* 1.17.7 (1.17.7 (15 Nov 2026) - FIX: no family-rate fallback here, so a quote line reading "Huliot HT PRO" for a client given a Huliot rate was quoted at FULL MRP - 9 client-and-brand pairs on his own book */   /* 1.17.6 (1.17.6 (11 Nov 2026) - GHP+ logo in the registered Green Heat+ colours (#00539F / #ED1D24) on PDFs, quotes, challans and QR centres */   /* 1.17.5 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 1.17.4 (9 Nov 2026) - FIMA finish codes with their own finish photo */     /* 1.17.3 (9 Nov 2026) - a small finish-colour dot on FIMA product pictures */     /* 1.17.2 (9 Nov 2026) - FIMA handles S1-S4 in every finish and the S2 glass handles */     /* 1.17.1 (9 Nov 2026) - brand tiles on the quote line: real logos, compact, on one row with Pending / Won / Lost */     /* 1.17.0 (9 Nov 2026) - brand-wise Won / Lost on a quote line: tap a brand once = Won, twice = Lost, again = open */     /* 1.16.0 (9 Nov 2026) - FIMA in every finish: type F1301WLX9CS (or any of 14,260 finish codes) and it is on the quote at its own MRP */     /* 1.15.0 (9 Nov 2026) - incentive ready (clients paid) and waiting for payment, on the plan header */     /* 1.14.0 (9 Nov 2026) - ask the owner to approve a discount above the brand limit, right on the quote line */     /* 1.13.0 (9 Nov 2026) - target limit shown under each quote discount; plan updates list (slab reached, lines left out, returns, month closed, 20th reminder) */     /* 1.12.0 (9 Nov 2026) - the 2027 plan on top (counted sales, slab ladder, left-out lines, quarter) and daily reports: entered, missed, streak */   /* 1.11.0 (8 Nov 2026) - my month on top: sales, returns, target, incentive, what to dispatch */   /* 1.10.1 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */   /* 1.10.0 (4 Nov 2026) - quote as in the CRM: item-wise discount, option lines, item-wise rates without total, GST */   /* 1.9.1 (31 Oct 2026) - one tap, one entry */   /* 1.9.0 (29 Oct 2026) - Menu -> Online enquiries (FB, IG, Google, Justdial, IndiaMART ... from the OnlineEnquiries tab) */   /* 1.8.4 (27 Oct 2026) - GHp mark in the middle of every QR, level H */   /* 1.6.1 - Huliot Group introduction on quotes; 1.6.0 (17 Oct 2026) - a dropped POST never loses a quote; admin sees every executive; daily report; attendance grid */
   /* 1.6.0 - ONLY THE SERVER'S OWN "NO" SIGNS A MAN OUT. The old test was /pin|locked|not allowed|blocked|removed/:
      any data error that happened to contain "not allowed" or "removed" (a refused row, a removed brand) signed the
      executive out and wiped his snapshot. These are the sign-in answers the server gives (teamAuth: "Wrong name or
@@ -2013,6 +2017,240 @@ table.att td.ok,table.att td.no{font-size:16px}
   function dgKey(s) {
     return String(s == null ? "" : s).toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
   }
+
+  /* ===== 1.21.0 - THE BRAND FOLLOW-UP RULE, LIFTED FROM THE CRM UNCHANGED (17 Nov 2026) =====
+     So the Visit app's Follow-up tab and the CRM's brand follow-up board give the same answer for the same client and
+     brand: won (a delivery or a Won answer), live (an open quote, or pitched / quoted), lost, none, not required. */
+  var _qbCache = null;
+  var QB_STATES = ["Won", "Later", "Lost"];
+  var _cqCache = null;
+  var _cwbCache = null;
+  var BRAND_GROUP_ORDER = ["HULIOT", "HELIROMA", "FIMA", "TOTO", "STELLAR", "GRUNDFOS",
+    "PENTAIR", "GREEN HEAT", "GEBERIT", "INAIR", "OYSTER", "MEA", "IONCARE", "ADANI"];
+  var BRAND_GROUP_RULES = [
+    ["HULIOT", ["huliot", "ht pro", "htpro", "ultra silent", "ultrasilent"]],
+    ["HELIROMA", ["heliroma", "drp", "ppr"]],
+    ["STELLAR", ["stellar", "sanitaar", "sanitar"]],
+    ["INAIR", ["inair", "lunos"]],
+    ["GREEN HEAT", ["green heat", "greenheat"]],
+    ["FIMA", ["fima"]],
+    ["TOTO", ["toto"]],
+    ["GRUNDFOS", ["grundfos"]],
+    ["PENTAIR", ["pentair"]],
+    ["GEBERIT", ["geberit"]],
+    ["OYSTER", ["oyster"]],
+    ["MEA", ["mea"]],
+    ["IONCARE", ["ioncare", "ion care"]],
+    ["ADANI", ["adani"]]
+  ];
+  var _bgCache = null;
+  var GROUP_RANK = { won: 5, live: 4, lost: 3, none: 2, nr: 1 };
+  function qBrandMap() {
+    if (_qbCache) return _qbCache;
+    var m = {};
+    (S.data.audit || []).forEach(function (r) {
+      if (!r || String(r.action || "") !== "quote:brand") return;
+      var d = {};
+      try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
+      var qid = String(d.qId || ""), br = String(d.brand || "");
+      if (!qid || !br || (QB_STATES.indexOf(String(d.state)) < 0 && String(d.state) !== "Open")) return;   /* 6.9.944 - "Open" = answer taken back (Visit 1.17.0) */
+      var k = qid + "|" + dkey(br);
+      var prev = m[k];
+      if (!prev || String(r.createdAt || "") >= String(prev.at || "")) {
+        m[k] = { state: String(d.state), brand: br, till: dstr(d.till), why: String(d.why || ""),
+                 at: r.createdAt || "", by: r.actor || d.by || "" };
+      }
+    });
+    Object.keys(m).forEach(function (k) { if (m[k].state === "Open") delete m[k]; });   /* 6.9.944 */
+    _qbCache = m;
+    return m;
+  }
+  function qBrandOf(qid, brand) { return qBrandMap()[String(qid || "") + "|" + dkey(brand)] || null; }
+  function qBrandWon(q, brand) {
+    var d = qBrandOf(q.id, brand);
+    if (d) return d.state === "Won";
+    return q.status === "Won";
+  }
+  function clientQuotes(name) {
+    var t = String(name || "").trim().toLowerCase();
+    if (!_cqCache) {
+      _cqCache = {};
+      (S.data.quotes || []).forEach(function (q) {
+        var k = "|" + String(q.client || "").trim().toLowerCase();
+        (_cqCache[k] || (_cqCache[k] = [])).push(q);
+      });
+    }
+    return _cqCache["|" + t] || [];
+  }
+  function quoteBrands(q) {
+    return String(q.brand || "").split(/,\s*/).map(function (s) { return s.trim(); }).filter(Boolean);
+  }
+  function challanWonBrands(name) {
+    var set = {}, t = String(name || "").trim().toLowerCase();
+    (S.data.challans || []).forEach(function (c) {
+      if (String(c.customerName || "").trim().toLowerCase() !== t) return;
+      /* 6.9.670 - any delivery on the book (cancelled ones are held out of S.data), not only one
+         with the signed paper in: his first challan marks its brands Won, as he asked */
+      if (c.brand) String(c.brand).split(/,\s*/).forEach(function (b) { b = b.trim(); if (b) set[b] = 1; });
+      var lines = []; try { lines = JSON.parse(c.itemsJson || "[]"); } catch (e) { lines = []; }
+      (lines || []).forEach(function (i) {
+        if (!i) return;
+        var b2 = String(i.brand || productBrandByCode(i.code) || "").trim();
+        if (b2) set[b2] = 1;
+      });
+    });
+    return set;
+  }
+  function clientDelivered(name) {
+    var t = String(name || "").trim().toLowerCase();
+    return (S.data.challans || []).some(function (c) {
+      return String(c.customerName || "").trim().toLowerCase() === t;   /* 6.9.670 - his first challan makes him a client */
+    });
+  }
+  function clientWonBrands(name) {
+    var _wk = "|" + String(name || "").trim().toLowerCase();
+    if (!_cwbCache) _cwbCache = {};
+    if (_cwbCache[_wk]) return _cwbCache[_wk];
+    return (_cwbCache[_wk] = clientWonBrandsCalc(name));
+  }
+  function clientWonBrandsCalc(name) {
+    var set = challanWonBrands(name);
+    clientQuotes(name).forEach(function (q) {
+      /* v6.9.343 - was: q.status === "Won" marking EVERY brand on the quote. On a two-brand
+         quote that made the brand he did NOT sell read as sold. Each brand now answers for
+         itself, and a brand with no answer of its own still follows the quote. */
+      quoteBrands(q).forEach(function (b) { if (qBrandWon(q, b)) set[b] = 1; });
+    });
+    /* manual per-brand wins (for old clients entered without a quote)
+       v6.9.216 - matched on a trimmed lowercased name, and also by the site join, so a win
+       recorded from the site side counts on the client side and the other way round. */
+    var wt = String(name || "").trim().toLowerCase();
+    var wsite = siteForClient(name);
+    (S.data.pitch || []).forEach(function (p) {
+      if (p.status !== "Won" || !p.brand) return;
+      var mine = String(p.clientName || "").trim().toLowerCase() === wt ||
+        (wsite && p.siteId && p.siteId === wsite.id);
+      if (mine) set[p.brand] = 1;
+    });
+    return Object.keys(set);
+  }
+  function isClient(name) { return clientWonBrands(name).length > 0 || clientDelivered(name); }
+  function brandGroup(b) {
+    var raw = String(b == null ? "" : b).replace(/^\s+|\s+$/g, "");
+    var s = " " + raw.toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/^\s+|\s+$/g, "") + " ";
+    if (s === " " || s === "  ") return raw;
+    for (var i = 0; i < BRAND_GROUP_RULES.length; i++) {
+      var keys = BRAND_GROUP_RULES[i][1];
+      for (var j = 0; j < keys.length; j++) {
+        if (s.indexOf(" " + keys[j] + " ") > -1) return BRAND_GROUP_RULES[i][0];
+      }
+    }
+    return raw;
+  }
+  function brandGroupIndex() {
+    if (_bgCache) return _bgCache;
+    var byGroup = {}, order = [];
+    brandList().forEach(function (b) {
+      var g = brandGroup(b);
+      if (!g) return;
+      if (!byGroup[g]) byGroup[g] = [];
+      if (byGroup[g].indexOf(b) < 0) byGroup[g].push(b);
+    });
+    BRAND_GROUP_ORDER.forEach(function (g) { if (byGroup[g]) order.push(g); });
+    Object.keys(byGroup).forEach(function (g) { if (order.indexOf(g) < 0) order.push(g); });
+    _bgCache = { order: order, byGroup: byGroup };
+    return _bgCache;
+  }
+  function brandGroupList() { return brandGroupIndex().order.filter(isMainBrand).sort(alpha); }
+  function groupMembers(g) { return brandGroupIndex().byGroup[g] || []; }
+  function clientBrandState(name, brand) {
+    if (clientWonBrands(name).indexOf(brand) >= 0) return "won";
+    var ps = (clientPitch(name, brand) || {}).status || "";
+    if (ps === "Not required") return "nr";
+    var qs = clientQuotes(name).filter(function (q) { return quoteBrands(q).indexOf(brand) >= 0; });
+    /* v6.9.343 - "will install another after some time" is NOT a loss and must not read as one.
+       A brand answered Later is live: the client has said yes in principle and named no date to
+       walk away. Checked BEFORE the open-quote test, because by then the quote it sits on has
+       usually been marked Won for the OTHER brand and would fall straight through to "lost". */
+    if (qs.some(function (q) { var d = qBrandOf(q.id, brand); return d && d.state === "Later"; })) return "live";
+    var hasOpen = qs.some(function (q) { return ["Draft", "Sent", "Negotiating", "Revised"].indexOf(q.status) >= 0; });
+    if (hasOpen || ["Pitched", "Quoted", "Negotiating", "Ongoing"].indexOf(ps) >= 0) return "live";
+    if (ps === "Lost" || qs.length) return "lost";
+    return "none";
+  }
+  function clientGroupState(name, g) {
+    var members = groupMembers(g);
+    if (!members.length) return clientBrandState(name, g);
+    var best = clientBrandState(name, members[0]);
+    for (var i = 1; i < members.length; i++) {
+      var st = clientBrandState(name, members[i]);
+      if ((GROUP_RANK[st] || 0) > (GROUP_RANK[best] || 0)) best = st;
+    }
+    return best;
+  }
+  /* ===== BRAND EXECUTIVES - THE SHARED READER (CRM 6.9.1030 / Visit 1.21.0, 17 Nov 2026) =====
+     HIS WORDS: "make a dedicated Brand Followup app that i want to give access to brand executive, so once assigned a
+     site for brand followup, brand executive can view and do followup for assigned one only ... admin can add / remove /
+     edit / block any brand executives, energy world executive can also see in their section that which brand executive
+     is working on their site".
+     Three audit facts, nothing deleted, the newest row wins:
+       bx:exec   {id, name, brand, company, mobile, city, status: active | blocked | removed}
+       bx:assign {bxId, client, brand, on: 1 | 0}           - this man follows this brand on this client
+       bx:fu     {fid, bxId, bxName, client, brand, status, remark, next, file: {name, url}, at}
+                 - his follow-ups, pulled from the Brand Followup app's own server by the CRM.
+     THIS BLOCK IS THE SAME, BYTE FOR BYTE, IN THE CRM AND THE VISIT APP. */
+  var BX_ST = ["Ongoing", "Won", "Lost", "Not required"];
+  var _bxIx = null, _bxN = -1;
+  function bxIndex() {
+    var a = (S.data && S.data.audit) || [];
+    if (_bxIx && _bxN === a.length) return _bxIx;
+    var ex = {}, asg = {}, fu = {};
+    a.forEach(function (r) {
+      if (!r) return;
+      var act = String(r.action || ""); if (act.indexOf("bx:") !== 0) return;
+      var d = {}; try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
+      var at = String(r.createdAt || "");
+      if (act === "bx:exec" && d.id) { if (!ex[d.id] || at >= ex[d.id]._at) { d._at = at; ex[d.id] = d; } }
+      else if (act === "bx:assign" && d.bxId && d.client) {
+        var k = d.bxId + "|" + dkey(d.client) + "|" + String(d.brand || "").toUpperCase();
+        if (!asg[k] || at >= asg[k]._at) { d._at = at; asg[k] = d; }
+      }
+      else if (act === "bx:fu" && d.fid) { if (!fu[d.fid]) fu[d.fid] = d; }
+    });
+    var fus = Object.keys(fu).map(function (k) { return fu[k]; }).sort(function (x, y) { return String(y.at || "").localeCompare(String(x.at || "")); });
+    _bxN = a.length;
+    return (_bxIx = { ex: ex, asg: asg, fus: fus });
+  }
+  function bxExecs(all) {   /* active and blocked by default; "removed" only when asked */
+    var ex = bxIndex().ex;
+    return Object.keys(ex).map(function (k) { return ex[k]; }).filter(function (x) { return all || x.status !== "removed"; })
+      .sort(function (a, b) { return String(a.name || "").localeCompare(String(b.name || "")); });
+  }
+  function bxAssigned(bxId) {   /* [{client, brand}] live assignments of one man */
+    var A = bxIndex().asg;
+    return Object.keys(A).map(function (k) { return A[k]; }).filter(function (x) { return x.bxId === bxId && Number(x.on) === 1; });
+  }
+  function bxLastFu(bxId, client, brand) {
+    var c = dkey(client), b = String(brand || "").toUpperCase();
+    return bxIndex().fus.filter(function (f) { return f.bxId === bxId && dkey(f.client) === c && (!b || String(f.brand || "").toUpperCase() === b); })[0] || null;
+  }
+  function bxOnClient(client, brand) {   /* who is following this client (for this brand), with his last word */
+    var ix = bxIndex(), c = dkey(client), b = String(brand || "").toUpperCase(), out = [];
+    Object.keys(ix.asg).forEach(function (k) {
+      var x = ix.asg[k]; if (Number(x.on) !== 1 || dkey(x.client) !== c) return;
+      if (b && String(x.brand || "").toUpperCase() !== b) return;
+      var e = ix.ex[x.bxId]; if (!e || e.status === "removed") return;
+      out.push({ ex: e, brand: x.brand, last: bxLastFu(e.id, client, x.brand) });
+    });
+    return out;
+  }
+  function bxChip(o) {   /* "BX Rahul (Huliot India) - Ongoing 12 Nov" */
+    var e = o.ex, l = o.last;
+    return '<span class="bxchip" title="' + esc("Brand executive " + e.name + (e.company ? " - " + e.company : "") + (l && l.remark ? " - " + l.remark : "")) + '">' +
+      '<b>BX</b> ' + esc(e.name) + (e.company ? ' &middot; ' + esc(e.company) : '') + (e.status === "blocked" ? ' &middot; blocked' : '') +
+      (l ? ' &middot; ' + esc(l.status || "") + ' ' + esc(String(l.at || "").slice(8, 10) + "/" + String(l.at || "").slice(5, 7)) : ' &middot; no follow-up yet') + '</span>';
+  }
+  /* ================= END OF THE BRAND EXECUTIVE READER ================= */
   /* ===== END OF THE LIFT ===== */
 
   /* ---------------- small helpers ---------------- */
@@ -3743,6 +3981,66 @@ table.att td.ok,table.att td.no{font-size:16px}
       return x.status !== "Won" && x.status !== "Lost" && qSilentDays(x) >= 45 && !quoteSnoozed(x) && !fresh[lower(x.client || "")];
     });
   }
+  /* ===== 1.21.0 - FOLLOW-UP, BRAND BY BRAND, HIS CLIENTS ONLY (17 Nov 2026) =====
+     HIS WORDS: "add followup tab in visit and quote app, brand wise follow up of his client only, client name Going On |
+     WON | Lose, show how many quote given". Every brand on one table first (how many of his clients are going on, won,
+     lost, and how many quotes he gave for it); a tap opens that brand: his clients with where each stands, the quotes
+     given for that brand, the last one, and - where the office has put a brand executive on the site - who he is and his
+     last word. The state is the CRM's own rule (lifted above), so this tab and the CRM board never disagree. */
+  var FU_LBL = { live: "Going on", won: "Won", lost: "Lost", nr: "Not required", none: "Not quoted yet" };
+  var FU_PILL = { live: "blu", won: "grn", lost: "red", nr: "", none: "amb" };
+  function fuClients() { return myClients().filter(function (c) { return !roleIs("admin") || exOk(c.ownedBy || c.createdBy); }); }
+  function fuBrandQuotes(name, g) {
+    var mem = groupMembers(g);
+    return clientQuotes(name).filter(function (q) { return !isCancelled("quotes", q.id) && quoteBrands(q).some(function (b) { return mem.indexOf(b) >= 0 || brandGroup(b) === g; }); })
+      .sort(function (a, b) { return String(b.createdAt || "").localeCompare(String(a.createdAt || "")); });
+  }
+  function fuFresh() { _qbCache = null; _cqCache = null; _cwbCache = null; _bgCache = null; }
+  function fuRows(g) {
+    return fuClients().map(function (c) {
+      var qs = fuBrandQuotes(c.name, g);
+      return { c: c, st: clientGroupState(c.name, g), qn: qs.length, last: qs[0] || null, bx: bxOnClient(c.name, g) };
+    });
+  }
+  function viewFu() {
+    fuFresh();
+    var g = S.fuB || "", h = '<h2>Follow-up</h2>' + exChips();
+    if (!g) {
+      var bs = brandGroupList(), cl = fuClients();
+      var rows = bs.map(function (b) {
+        var n = { live: 0, won: 0, lost: 0, nr: 0 }, qn = 0;
+        cl.forEach(function (c) { var st = clientGroupState(c.name, b); if (n[st] != null) n[st]++; qn += fuBrandQuotes(c.name, b).length; });
+        return { b: b, n: n, qn: qn };
+      }).filter(function (r) { return r.qn || r.n.live || r.n.won || r.n.lost; });
+      h += '<div class="meta" style="margin-bottom:6px">Your clients, brand by brand. Tap a brand for the names.</div>';
+      if (!rows.length) return h + '<div class="empty">No brand quoted or pitched to your clients yet.</div>';
+      h += '<div class="card" style="padding:0;overflow-x:auto"><table class="fut"><thead><tr><th>Brand</th><th>Going on</th><th>Won</th><th>Lost</th><th>Quotes given</th></tr></thead><tbody>' +
+        rows.map(function (r) {
+          return '<tr data-act="fu-b" data-k="' + esc(r.b) + '"><td><b>' + esc(r.b) + '</b></td><td class="n blu">' + r.n.live + '</td><td class="n grn">' + r.n.won + '</td><td class="n red">' + r.n.lost + '</td><td class="n">' + r.qn + '</td></tr>';
+        }).join("") + '</tbody></table></div>';
+      return h;
+    }
+    var all = fuRows(g), f = S.fuF || "live", q = lower(S.fuQ || "");
+    var cnt = function (k) { return all.filter(function (r) { return r.st === k; }).length; };
+    var list = all.filter(function (r) { return r.st === f; }).filter(function (r) { return !q || lower([r.c.name, r.c.code, r.c.area, r.c.location].join(" ")).indexOf(q) >= 0; })
+      .sort(function (a, b) { return String((b.last || {}).createdAt || "").localeCompare(String((a.last || {}).createdAt || "")) || alpha(a.c.name, b.c.name); });
+    h += '<div class="acts"><button class="btn sm gry" data-act="fu-b" data-k="" style="min-height:44px">&larr; All brands</button><b style="font-size:17px;align-self:center">' + esc(g) + '</b></div>' +
+      '<div class="chips">' + ["live", "won", "lost", "nr", "none"].map(function (k) { return '<button class="chip' + (f === k ? ' on' : '') + '" data-act="fu-f" data-k="' + k + '">' + FU_LBL[k] + ' <b>' + cnt(k) + '</b></button>'; }).join("") + '</div>' +
+      '<div class="bar"><input id="fuq" placeholder="Client, code or area" value="' + esc(S.fuQ || "") + '" autocomplete="off"/></div><div id="fures">' + fuList(list, g) + '</div>';
+    return h;
+  }
+  function fuList(list, g) {
+    if (!list.length) return '<div class="empty">Nobody here.</div>';
+    return list.slice(0, 150).map(function (r) {
+      var c = r.c, l = r.last;
+      return '<div class="card fuc"><div style="display:flex;gap:8px;align-items:flex-start"><div style="flex:1;min-width:0"><b>' + esc(c.name) + '</b>' +
+        '<div class="meta">' + esc([c.area, c.location].filter(Boolean).join(", ")) + (roleIs("admin") ? ' &middot; ' + esc(c.ownedBy || c.createdBy || "") : '') + '</div></div>' +
+        '<span class="pill ' + (FU_PILL[r.st] || "") + '">' + esc(FU_LBL[r.st] || r.st) + '</span></div>' +
+        '<div class="meta" style="margin-top:4px"><b>' + r.qn + '</b> quote' + (r.qn === 1 ? '' : 's') + ' for ' + esc(g) + (l ? ' &middot; last ' + esc(qNo(l) || "") + ' on ' + esc(String(l.createdAt || "").slice(8, 10) + "/" + String(l.createdAt || "").slice(5, 7)) + (Number(l.total) ? ' &middot; &#8377;' + Math.round(Number(l.total)).toLocaleString("en-IN") : '') : '') + '</div>' +
+        (r.bx.length ? '<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px">' + r.bx.map(bxChip).join("") + '</div>' : '') +
+        (r.bx.length && r.bx[0].last && r.bx[0].last.remark ? '<div class="meta" style="margin-top:4px">&ldquo;' + esc(r.bx[0].last.remark) + '&rdquo;' + (r.bx[0].last.next ? ' &middot; next ' + esc(String(r.bx[0].last.next).slice(8, 10) + "/" + String(r.bx[0].last.next).slice(5, 7)) : '') + '</div>' : '') + '</div>';
+    }).join("") + (list.length > 150 ? '<div class="meta">Type to find the rest.</div>' : '');
+  }
   function viewQuotes() {
     var f = S.fq || "all", all = myQuotes(), q = lower(S.q);
     var _st = []; try { _st = vStaleQ(all); } catch (eS) { _st = []; }
@@ -4008,14 +4306,14 @@ table.att td.ok,table.att td.no{font-size:16px}
   /* ================= PAINT ================= */
   function render() {
     if (!S.user || !S.data) return;
-    var t = S.tab, body = t === "day" ? viewDay() : t === "visit" ? viewVisit() : t === "quote" ? viewQz() : viewQuotes();
+    var t = S.tab, body = t === "day" ? viewDay() : t === "visit" ? viewVisit() : t === "quote" ? viewQz() : t === "fu" ? viewFu() : viewQuotes();   /* 1.21.0 - fu */
     var ae = document.activeElement, aid = ae && ae.id, ss = null;
     try { if (ae && ae.selectionStart != null) ss = [ae.selectionStart, ae.selectionEnd]; } catch (e) { ss = null; }
     el("root").innerHTML = '<div class="top"><div class="ttl"><b>Visit &amp; Quote</b><span class="sub">' + esc(S.user) + ' &middot; v' + APP_VERSION + '</span></div>' +
       (function () { try { return attMeBtn(); } catch (e) { return ""; } })() + '<button data-act="refresh" aria-label="Update">&#8635;</button><button data-act="menu">Menu</button></div>' +
       (S.newVer ? '<div class="note warn" style="margin-top:10px"><b>Version ' + esc(S.newVer) + ' is ready.</b> You are on ' + APP_VERSION + '. <button class="btn sm" data-act="vq-upd">Update now</button></div>' : '') +   /* 1.4.0 */
       body + '<div class="sync" id="ew_sync">' + syncLine() + '</div>' +
-      '<div class="nav">' + [["day", "&#9728;", "My day"], ["visit", "&#128205;", "Visit"], ["quotes", "&#8377;", "Quotes"]].map(function (x) {
+      '<div class="nav">' + [["day", "&#9728;", "My day"], ["visit", "&#128205;", "Visit"], ["quotes", "&#8377;", "Quotes"], ["fu", "&#9989;", "Follow-up"]].map(function (x) {
         return '<button class="' + (t === x[0] || (t === "quote" && x[0] === "quotes") ? 'on' : '') + '" data-act="tab" data-k="' + x[0] + '"><span class="i">' + x[1] + '</span>' + x[2] + '</button>'; }).join("") + '</div>' +
       (S.sheet ? '<div class="sheet" data-act="sheet-bg"><div class="inner">' + S.sheet + '</div></div>' : '');
     if (aid && el(aid)) { var e2 = el(aid); try { e2.focus(); if (ss) e2.setSelectionRange(ss[0], ss[1]); } catch (e) { } }
@@ -4159,6 +4457,8 @@ table.att td.ok,table.att td.no{font-size:16px}
     if (act === "login") { doLogin(t); return; }
     if (!S.data) return;
     if (act === "tab") { S.tab = k; S.q = ""; S.near = null; S.sheet = null; render(); window.scrollTo(0, 0); return; }
+    if (act === "fu-b") { S.fuB = k || ""; S.fuF = "live"; S.fuQ = ""; render(); window.scrollTo(0, 0); return; }   /* 1.21.0 */
+    if (act === "fu-f") { S.fuF = k || "live"; render(); return; }
     if (act === "refresh") { S.sheet = null; pull(true); loadCat(true); return; }
     if (act === "menu") { S.sheet = menuSheet(); render(); return; }
     /* 1.9.0 - online enquiries */
@@ -4319,6 +4619,7 @@ table.att td.ok,table.att td.no{font-size:16px}
     if (t.id === "sn_dist") { var _sd = el("sn_cdl"); if (_sd) _sd.innerHTML = dl("sn_cities", areasFor(t.value)); return; }
     if (t.id === "cn_dist") { var _cd = el("cn_adl"); if (_cd) _cd.innerHTML = dl("cn_areas", areasFor(t.value)); return; }
     if (t.id === "sq") { S.q = t.value; S.near = null; var r = el("sres"); if (r) r.innerHTML = siteResults(); return; }
+    if (t.id === "fuq") { S.fuQ = t.value; var _fr = el("fures"); if (_fr && S.fuB) { var _q = lower(S.fuQ), _f = S.fuF || "live"; _fr.innerHTML = fuList(fuRows(S.fuB).filter(function (r) { return r.st === _f && (!_q || lower([r.c.name, r.c.code, r.c.area, r.c.location].join(" ")).indexOf(_q) >= 0); }), S.fuB); } return; }   /* 1.21.0 */
     if (t.id === "qq") { S.q = t.value; var r2 = el("qres"); if (r2) { var f = S.fq || "all", q = lower(S.q); var list = myQuotes().filter(function (x) { return fqOk(x, f); }).filter(function (x) { return !q || lower([x.client, x.quoteNo, x.code, x.brand, x.siteName].join(" ")).indexOf(q) >= 0; }); r2.innerHTML = list.length ? qTable(list.slice(0, 120)) : '<div class="empty">No quote here.</div>'; } return; }   /* 1.6.0 - the same table as the list it filters (it switched to cards while typing) */
     if (t.id === "qz_cq") { S.qz.cq = t.value; var q3 = lower(t.value), cl = myClients(); var hits = q3.length >= 2 ? cl.filter(function (c) { return lower([c.code, c.oldCode, c.name, c.area, c.location, c.mobile].join(" ")).indexOf(q3) >= 0; }) : []; el("qz_hits").innerHTML = qzHits(hits, q3); return; }
     if (t.id === "qz_pq") { S.qz.pq = t.value; el("qz_pres").innerHTML = qzProdHits(); return; }
