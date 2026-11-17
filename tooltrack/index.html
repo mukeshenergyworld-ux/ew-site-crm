@@ -79,14 +79,13 @@ nav.tabs button.on{color:var(--navy);box-shadow:inset 0 3px 0 var(--navy)}
 <script>
 (function () {
   "use strict";
-  var APP_VERSION = "1.0.0";   /* 1.0.0 (17 Nov 2026) - first: the tool list, where each tool is, hand-over, back to godown, damage / loss with recovery, who has what, the log */
-  var CRM_GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
+  var APP_VERSION = "1.1.0";   /* 1.1.0 (17 Nov 2026) - signs in on the tool server itself with the CRM name + PIN, once, and keeps that server's token (60 days). 1.0.0 passed the CRM's saved token on, and the tool server's check of it against the CRM hung for 6 minutes, three times in three. The pick lists come from the tool server only (the owner's CRM sends them every 2 hours). */     /* 1.0.0 (17 Nov 2026) - first: the tool list, where each tool is, hand-over, back to godown, damage / loss with recovery, who has what, the log */
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var STORE = "ew_tools_session", BOOK = "ew_tools_book", DIRK = "ew_tools_dir";
-  /* the other Energy World apps on this phone: a man signed in to one is offered one tap here */
-  var SIBS = [["ew_team_session", "CRM"], ["ew_challan_session", "Challan app"], ["ew_vq_session", "Visit app"], ["ew_service_session", "Service app"], ["ew_collect_session", "Payment app"]];
+  /* the other Energy World apps on this phone: the name signed in there is filled in, so only the PIN is typed */
+  var SIBS = ["ew_team_session", "ew_challan_session", "ew_vq_session", "ew_service_session", "ew_collect_session"];
   var TYPES = { godown: "Godown", partner: "Plumber / contractor", site: "Site", staff: "Staff", unknown: "Not traced" };
-  var S = { user: "", pin: "", tok: "", own: false, me: null, tools: [], moves: [], events: [], dir: { partners: [], sites: [], staff: [] },
+  var S = { user: "", tok: "", me: null, tools: [], moves: [], events: [], dir: { partners: [], sites: [], staff: [] },
     tab: "tools", f: "all", q: "", open: null, sheet: null, sel: {}, selMode: false, busy: false, grp: null, logQ: "", msg: "" };
 
   function $(id) { return document.getElementById(id); }
@@ -108,7 +107,7 @@ nav.tabs button.on{color:var(--navy);box-shadow:inset 0 3px 0 var(--navy)}
     return fetch(url, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(body), signal: ctrl ? ctrl.signal : undefined })
       .then(function (r) { return r.json(); }).finally(function () { clearTimeout(timer); });
   }
-  function cred() { var o = { crmUser: S.user }; if (S.tok) o.crmTok = S.tok; else o.crmPin = S.pin; return o; }
+  function cred() { return { tkTok: S.tok }; }
   function tk(op, extra) {
     return post(CO_GAS, Object.assign({ action: "tkStaff", op: op, app: "Tools " + APP_VERSION }, cred(), extra || {})).then(function (r) {
       if (r && r.out) { signOut(true); throw new Error("Sign in again."); }
@@ -117,24 +116,24 @@ nav.tabs button.on{color:var(--navy);box-shadow:inset 0 3px 0 var(--navy)}
     });
   }
 
-  /* ---------- sign in: the CRM's own name + PIN. The PIN is never written down; the server's token is. ---------- */
+  /* ---------- sign in: the CRM's own name + PIN, checked by the CRM through the tool server, once. The PIN is never
+     written down; the tool server's own token is, and it runs out after 60 days. ---------- */
   function signIn(user, pin) {
-    return post(CRM_GAS, { action: "teamAuth", user: user, pin: pin, keep: 1, app: "Tools " + APP_VERSION, ua: navigator.userAgent }).then(function (r) {
-      if (!r || !r.ok) throw new Error(String((r && r.error) || "Name or PIN not right."));
-      S.user = String((r.user && r.user.name) || user); S.pin = pin; S.tok = String(r.tok || ""); S.own = true;
-      if (S.tok) lsPut(STORE, { user: S.user, tok: S.tok, own: 1 });
+    return post(CO_GAS, { action: "tkLogin", user: user, pin: pin, app: "Tools " + APP_VERSION }, 60000).then(function (r) {
+      if (!r || !r.ok) throw new Error(String((r && (r.err || r.error)) || "Name or PIN not right."));
+      S.me = r.me || null; S.user = String((r.me && r.me.name) || user); S.tok = String(r.tok || "");
+      lsPut(STORE, { user: S.user, tok: S.tok });
     });
   }
   function signOut(quiet) {
-    try { if (S.own && S.tok) post(CRM_GAS, { action: "teamLogout", user: S.user, tok: S.tok }).catch(function () { }); } catch (e) { }
+    try { if (!quiet && S.tok) post(CO_GAS, { action: "tkLogout", tkTok: S.tok }).catch(function () { }); } catch (e) { }
     try { localStorage.removeItem(STORE); localStorage.removeItem(BOOK); } catch (e) { }
-    S.user = ""; S.pin = ""; S.tok = ""; S.me = null; S.tools = []; S.moves = []; S.events = []; S.sheet = null; S.open = null;
+    S.user = ""; S.tok = ""; S.me = null; S.tools = []; S.moves = []; S.events = []; S.sheet = null; S.open = null;
     S.msg = quiet ? "Sign in again." : ""; render();
   }
-  function siblings() {
-    var out = [], seen = {};
-    SIBS.forEach(function (k) { var o = lsGet(k[0]); if (o && o.user && o.tok && !seen[o.user]) { seen[o.user] = 1; out.push({ user: String(o.user), tok: String(o.tok), from: k[1] }); } });
-    return out;
+  function sibName() {
+    for (var i = 0; i < SIBS.length; i++) { var o = lsGet(SIBS[i]); if (o && o.user) return String(o.user); }
+    return "";
   }
 
   /* ---------- the book ---------- */
@@ -146,30 +145,22 @@ nav.tabs button.on{color:var(--navy);box-shadow:inset 0 3px 0 var(--navy)}
     S.busy = true; render();
     return tk("book", wantDir ? { wantDir: 1 } : null).then(function (r) {
       takeBook(r); S.busy = false;
-      if (r.dir) dirMerge(r.dir, null);
+      if (r.dir) dirMerge(r.dir);
       render(); return r;
     }).catch(function (e) { S.busy = false; render(); if (S.user) toast(e.message || "No signal."); });
   }
-  /* the pick lists: partners, sites, staff. Live from the CRM for this login; the Companion's copy (sent by the
-     owner's CRM, set-aside and merged partners already left out) is the base when it is there. */
-  function dirMerge(base, live) {
-    var d = lsGet(DIRK) || { partners: [], sites: [], staff: [], at: 0 };
-    if (base) { d.partners = base.partners || []; d.sites = base.sites || []; d.staff = base.staff || []; d.base = 1; }
-    if (live) {
-      var add = function (arr, list, idOf) { var have = {}; arr.forEach(function (x) { have[key(x.n) + "|" + key(x.cl || "")] = 1; if (x.i) have["#" + x.i] = 1; });
-        list.forEach(function (x) { if (!x.n || have["#" + x.i] || have[key(x.n) + "|" + key(x.cl || "")]) return; if (d.base && !x.fresh) return; arr.push(x); }); };
-      var recent = function (r) { return Date.now() - (Date.parse(r.createdAt || "") || 0) < 3 * 86400000; };
-      add(d.partners, (live.associates || []).filter(function (a) { return a && String(a.name || "").trim(); }).map(function (a) { return { n: String(a.name).trim(), c: String(a.code || ""), r: String(a.role || ""), t: String(a.location || ""), i: String(a.id || ""), fresh: recent(a) }; }));
-      add(d.sites, (live.sites || []).filter(function (s) { return s && String(s.name || "").trim(); }).map(function (s) { return { n: String(s.name).trim(), cl: String(s.client || ""), i: String(s.id || ""), fresh: recent(s) }; }));
-      if (!d.staff.length) d.staff = (live.team || []).filter(function (t) { return t && t.name && String(t.active || "Y").toUpperCase() !== "N"; }).map(function (t) { return { n: String(t.name), r: String(t.role || "") }; });
-    }
-    d.at = Date.now(); S.dir = d; lsPut(DIRK, d);
+  /* the pick lists: partners, sites, staff - the tool server's copy, sent by the owner's CRM (set-aside and merged
+     partners already left out, never a phone). Asked for again when this phone's copy is over two hours old. */
+  function dirMerge(base) {
+    if (!base) return;
+    var d = { partners: base.partners || [], sites: base.sites || [], staff: base.staff || [], at: Date.now(), base: 1 };
+    S.dir = d; lsPut(DIRK, d);
   }
+  function dirStale() { var d = lsGet(DIRK); return !d || !d.base || !(d.partners || []).length || Date.now() - (d.at || 0) > 2 * 3600000; }
   function dirLoad(force) {
     var d = lsGet(DIRK); if (d) S.dir = d;
-    if (!force && d && Date.now() - (d.at || 0) < 6 * 3600000 && (d.partners || []).length) return;
-    var b = { action: "teamGet", user: S.user, only: ["associates", "sites", "team"], app: "Tools " + APP_VERSION }; if (S.tok) b.tok = S.tok; else b.pin = S.pin;
-    post(CRM_GAS, b, 60000).then(function (r) { if (r && r.ok) { dirMerge(null, r); if (S.sheet) render(); } }).catch(function () { });
+    if (!force && !dirStale()) return;
+    tk("book", { wantDir: 1 }).then(function (r) { takeBook(r); if (r.dir) dirMerge(r.dir); if (S.sheet) render(); }).catch(function () { });
   }
 
   /* ---------- reading the book ---------- */
@@ -192,15 +183,14 @@ nav.tabs button.on{color:var(--navy);box-shadow:inset 0 3px 0 var(--navy)}
 
   /* ---------- screens ---------- */
   function viewLogin() {
-    var sib = siblings();
-    return '<header><div class="row"><div class="t"><b>Tool Tracking</b><small>Energy World · v' + APP_VERSION + '</small></div></div></header><div class="wrap">' +
+    var pre = S.loginName || sibName();
+    return '<header><div class="row"><div class="t"><b>Tool Tracking</b><small>Energy World \u00b7 v' + APP_VERSION + '</small></div></div></header><div class="wrap">' +
       (S.msg ? '<div class="card" style="border-color:#fca5a5;color:#b91c1c">' + esc(S.msg) + '</div>' : '') +
-      (sib.length ? '<div class="card"><h3 style="margin-top:0">Already signed in on this phone</h3>' + sib.map(function (s, i) {
-        return '<button class="btn full" style="margin-top:8px" data-act="sib" data-i="' + i + '">Continue as ' + esc(s.user) + '</button><div class="meta" style="margin-top:2px">from the ' + esc(s.from) + '</div>'; }).join("") + '</div>' : '') +
       '<div class="card"><h3 style="margin-top:0">Sign in</h3><div class="meta">The same name and PIN as the CRM or the Challan app.</div>' +
-      '<label for="l_user">Your name</label><input id="l_user" type="text" autocomplete="username" autocapitalize="words"/>' +
+      '<label for="l_user">Your name</label><input id="l_user" type="text" autocomplete="username" autocapitalize="words" value="' + esc(pre) + '"/>' +
       '<label for="l_pin">PIN</label><input id="l_pin" type="password" inputmode="numeric" autocomplete="current-password"/>' +
-      '<button class="btn full" style="margin-top:14px" data-act="login">Sign in</button></div></div>';
+      '<button class="btn full" style="margin-top:14px" data-act="login">Sign in</button>' +
+      '<div class="meta" style="margin-top:8px">You stay signed in on this phone for 60 days. The PIN is not kept.</div></div></div>';
   }
   function statTile(k, n, lbl, alert) { return '<button class="stat' + (S.f === k ? ' on' : '') + (alert && n ? ' alert' : '') + '" data-act="f" data-k="' + k + '"><b>' + n + '</b><span>' + lbl + '</span></button>'; }
   function toolRow(t) {
@@ -390,12 +380,12 @@ nav.tabs button.on{color:var(--navy);box-shadow:inset 0 3px 0 var(--navy)}
     if (act === "login") {
       var u = val("l_user"), p = val("l_pin"); if (!u || !p) { toast("Type your name and PIN."); return; }
       busyBtn(t, "Signing in…");
-      signIn(u, p).then(function () { S.msg = ""; render(); return pull(true); }).then(function () { dirLoad(true); }).catch(function (e) { S.msg = e.message || "Could not sign in."; S.user = ""; render(); });
+      S.loginName = u;
+      signIn(u, p).then(function () { S.msg = ""; render(); return pull(true); }).catch(function (e) { S.msg = e.message || "Could not sign in."; S.user = ""; render(); });
       return;
     }
-    if (act === "sib") { var sb = siblings()[Number(t.getAttribute("data-i"))]; if (!sb) return; S.user = sb.user; S.tok = sb.tok; S.pin = ""; S.own = false; lsPut(STORE, { user: S.user, tok: S.tok }); S.msg = ""; render(); pull(true).then(function () { dirLoad(false); }); return; }
     if (act === "out") { signOut(false); return; }
-    if (act === "refresh") { pull(true).then(function () { dirLoad(true); toast("Up to date."); }); return; }
+    if (act === "refresh") { pull(true).then(function () { toast("Up to date."); }); return; }
     if (act === "tab") { S.tab = t.getAttribute("data-k"); S.selMode = false; S.sel = {}; window.scrollTo(0, 0); render(); return; }
     if (act === "f") { S.f = t.getAttribute("data-k"); render(); return; }
     if (act === "selmode") { S.selMode = !S.selMode; S.sel = {}; render(); return; }
@@ -483,12 +473,11 @@ nav.tabs button.on{color:var(--navy);box-shadow:inset 0 3px 0 var(--navy)}
   /* ---------- start ---------- */
   var ses = lsGet(STORE);
   if (ses && ses.user && ses.tok) {
-    S.user = String(ses.user); S.tok = String(ses.tok); S.own = !!ses.own;
+    S.user = String(ses.user); S.tok = String(ses.tok);
     var bk = lsGet(BOOK); if (bk && bk.user === S.user) { S.me = bk.me; S.tools = bk.tools || []; S.moves = bk.moves || []; S.events = bk.events || []; }
     var d0 = lsGet(DIRK); if (d0) S.dir = d0;
     render();
-    pull(!d0 || !d0.base).then(function () {
-      dirLoad(false);
+    pull(dirStale()).then(function () {
       var m = /[?&]t=([^&]+)/.exec(location.search);   /* a sticker's link opens its tool: ?t=EWT-001 */
       if (m) { var c = decodeURIComponent(m[1]).toUpperCase(), tt = S.tools.filter(function (x) { return String(x.code).toUpperCase() === c; })[0]; if (tt) { S.open = tt.tid; render(); } }
     });
