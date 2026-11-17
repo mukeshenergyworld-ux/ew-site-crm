@@ -64,6 +64,7 @@ textarea{min-height:96px;resize:vertical}
 #wm{position:fixed;inset:0;z-index:60;pointer-events:none;opacity:.10;background-repeat:repeat}
 /* away: the moment the app is not in front, nothing on it can be read */
 body.away #app,body.away .sheet{filter:blur(18px)}
+body.adm{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
 body.away::after{content:"Hidden while you are away";position:fixed;inset:0;display:grid;place-items:center;z-index:70;font-weight:800;color:#0D2340;background:rgba(244,246,249,.6)}
 @media print{body *{display:none!important}body::before{content:"Printing is not allowed in Brand Followup.";display:block;padding:40px;font:20px sans-serif}}
 </style>
@@ -74,10 +75,11 @@ body.away::after{content:"Hidden while you are away";position:fixed;inset:0;disp
 <script>
 (function () {
   "use strict";
-  var APP_VERSION = "1.0.0";   /* 1.0.0 (17 Nov 2026) - first release */
+  var APP_VERSION = "1.1.0";   /* 1.1.0 (17 Nov 2026) - Energy World admin sign-in: every brand executive, his sites, every follow-up and quote, a download; none of the guards */   /* 1.0.0 (17 Nov 2026) - first release */
   var SERVER = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var IDLE_MS = 15 * 60000, TOK = "ew_bx_tok", ST = ["Ongoing", "Won", "Lost", "Not required"];
-  var S = { tok: "", me: null, sites: [], fus: [], f: "all", q: "", open: null, form: null, busy: false };
+  var S = { tok: "", me: null, sites: [], fus: [], f: "all", q: "", open: null, form: null, busy: false,
+    adm: null, all: null, ax: "", admLogin: false };   /* 1.1.0 - adm: {user, pin} in memory only, never stored */
 
   function el(id) { return document.getElementById(id); }
   function esc(v) { return String(v == null ? "" : v).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
@@ -104,13 +106,14 @@ body.away::after{content:"Hidden while you are away";position:fixed;inset:0;disp
     var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180"><text x="10" y="100" transform="rotate(-24 160 90)" font-family="Arial" font-size="15" font-weight="700" fill="#0D2340">' + line + '</text></svg>';
     w.style.backgroundImage = "url(\"data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg) + "\")";
   }
-  function isField(t) { return t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA"); }
+  function isField(t) { return !!S.adm || (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")); }   /* 1.1.0 - the owner is not held by any guard */
   ["copy", "cut"].forEach(function (k) { document.addEventListener(k, function (e) { if (!isField(e.target)) { e.preventDefault(); toast("Copying is not allowed here."); } }); });
   document.addEventListener("contextmenu", function (e) { if (!isField(e.target)) e.preventDefault(); });
   document.addEventListener("selectstart", function (e) { if (!isField(e.target)) e.preventDefault(); });
   document.addEventListener("dragstart", function (e) { e.preventDefault(); });
   document.addEventListener("keydown", function (e) {
     var k = low(e.key);
+    if (S.adm) return;
     if ((e.ctrlKey || e.metaKey) && ["p", "s", "c", "a", "u"].indexOf(k) >= 0 && !(isField(e.target) && ["c", "a"].indexOf(k) >= 0)) { e.preventDefault(); toast("Not allowed in Brand Followup."); }
     if (k === "printscreen") { document.body.classList.add("away"); setTimeout(function () { document.body.classList.remove("away"); }, 2500); toast("Screenshots carry your name and are logged."); try { navigator.clipboard.writeText(""); } catch (x) { } }
   });
@@ -122,18 +125,116 @@ body.away::after{content:"Hidden while you are away";position:fixed;inset:0;disp
   window.addEventListener("focus", function () { away(false); });
   var _last = Date.now();
   ["pointerdown", "keydown", "scroll"].forEach(function (k) { document.addEventListener(k, function () { _last = Date.now(); }, { passive: true }); });
-  function idleCheck() { if (S.me && Date.now() - _last > IDLE_MS) signOut("Signed out after 15 minutes without use."); }
+  function idleCheck() { if ((S.me || S.adm) && Date.now() - _last > IDLE_MS) signOut("Signed out after 15 minutes without use."); }
   setInterval(function () { idleCheck(); wmPaint(); }, 30000);
 
   /* ---------------- sign-in ---------------- */
-  function signOut(msg) { S.tok = ""; S.me = null; S.sites = []; S.fus = []; S.open = null; store(TOK, null); document.body.classList.remove("away"); render(); wmPaint(); if (msg) toast(msg); }
+  function signOut(msg) { S.adm = null; S.all = null; S.ax = ""; document.body.classList.remove("adm"); S.tok = ""; S.me = null; S.sites = []; S.fus = []; S.open = null; store(TOK, null); document.body.classList.remove("away"); render(); wmPaint(); if (msg) toast(msg); }
   function viewLogin() {
     return '<div class="login"><div class="brandmark">EW</div><h2 style="text-align:center;margin:0">Brand Followup</h2>' +
       '<div class="meta" style="text-align:center">For brand executives working with Energy World · v' + APP_VERSION + '</div>' +
       '<div class="card" style="margin-top:18px"><label for="lm">Mobile</label><input id="lm" type="tel" inputmode="numeric" autocomplete="username" maxlength="14" placeholder="10-digit mobile">' +
       '<label for="lp">PIN</label><input id="lp" type="password" inputmode="numeric" autocomplete="current-password" maxlength="6" placeholder="PIN from Energy World">' +
       '<button class="btn full" style="margin-top:16px" data-act="login">Sign in</button></div>' +
-      '<div class="meta" style="text-align:center;margin-top:8px">You see only the sites Energy World has given you. Every screen carries your name; your sign-ins are recorded.</div></div>';
+      '<div class="meta" style="text-align:center;margin-top:8px">You see only the sites Energy World has given you. Every screen carries your name; your sign-ins are recorded.</div>' +
+      '<div style="text-align:center;margin-top:18px"><button class="btn ghost" data-act="adm-show" style="min-height:44px">Energy World admin sign-in</button></div></div>';
+  }
+  /* ===== 1.1.0 - THE OWNER'S OWN VIEW. HIS WORDS: "admin login option". He signs in with his CRM name and PIN; the
+     server checks them against the CRM (teamAuth, admin only) on every call, and the PIN stays in this tab's memory -
+     never stored. He sees every brand executive, all their sites and follow-ups, opens the quotes they attached, and can
+     download the lot. None of the brand executive's guards apply to him. */
+  function viewAdmLogin() {
+    return '<div class="login"><div class="brandmark">EW</div><h2 style="text-align:center;margin:0">Admin sign-in</h2>' +
+      '<div class="meta" style="text-align:center">Energy World owner \u00b7 your CRM name and PIN \u00b7 v' + APP_VERSION + '</div>' +
+      '<div class="card" style="margin-top:18px"><label for="an">CRM name</label><input id="an" type="text" autocomplete="username" placeholder="e.g. Mukesh Verma" value="' + esc(S.admName || "") + '" style="width:100%;min-height:48px;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px">' +
+      '<label for="ap">CRM PIN</label><input id="ap" type="password" inputmode="numeric" autocomplete="current-password" maxlength="8" placeholder="Your CRM PIN">' +
+      '<button class="btn full" style="margin-top:16px" data-act="adm-login">Sign in as admin</button></div>' +
+      '<div style="text-align:center;margin-top:12px"><button class="btn ghost" data-act="adm-back" style="min-height:44px">Back to brand executive sign-in</button></div></div>';
+  }
+  function admCall(op, extra) {
+    return fetch(SERVER, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(Object.assign({ action: "bxAdmin", op: op, crmUser: S.adm.user, crmPin: S.adm.pin, app: "brand " + APP_VERSION }, extra || {})) })
+      .then(function (r) { return r.text(); }).then(function (t) { try { return JSON.parse(t); } catch (e) { throw new Error("The server did not answer properly."); } });
+  }
+  function admPull() {
+    S.busy = true; render();
+    return admCall("all").then(function (r) {
+      S.busy = false;
+      if (!r || !r.ok) { var why = (r && r.err) || "not accepted"; if (/owner/.test(why)) { S.adm = null; S.admLogin = true; toast("CRM name or PIN not accepted, or not an admin."); } else toast(/unknown op/.test(why) ? "The brand app server needs the BX2 update (Save + Deploy)." : why); render(); return false; }
+      S.all = r; render(); return true;
+    }, function (e) { S.busy = false; toast(e.message || "No signal."); render(); return false; });
+  }
+  function doAdmLogin(b) {
+    var u = String((el("an") || {}).value || "").trim(), p = String((el("ap") || {}).value || "").trim();
+    S.admName = u;   /* kept for the form if the PIN is refused */
+    if (!u || !p) { toast("Your CRM name and PIN."); return; }
+    b.disabled = true; b.textContent = "Checking\u2026";
+    S.adm = { user: u, pin: p }; _last = Date.now();
+    admPull().then(function (ok) { if (ok) { S.admLogin = false; document.body.classList.add("adm"); render(); } else { b.disabled = false; b.textContent = "Sign in as admin"; } });
+  }
+  function admPeople() { return ((S.all && S.all.people) || []).slice().sort(function (a, b) { return String(a.name).localeCompare(String(b.name)); }); }
+  function admRows() {   /* every assigned site, with its man and his last word */
+    var P = {}; admPeople().forEach(function (p) { P[p.id] = p; });
+    var out = [];
+    ((S.all && S.all.books) || []).forEach(function (bk) {
+      var p = P[bk.bxId]; if (!p) return;
+      (bk.sites || []).forEach(function (s) {
+        var f = ((S.all && S.all.fus) || []).filter(function (x) { return x.bxId === bk.bxId && low(x.client) === low(s.client); })[0] || null;
+        out.push({ p: p, s: s, f: f, st: f ? f.status : "new" });
+      });
+    });
+    return out;
+  }
+  function viewAdmin() {
+    var ppl = admPeople(), rows = admRows(), fus = (S.all && S.all.fus) || [], ax = S.ax;
+    var mine = rows.filter(function (r) { return !ax || r.p.id === ax; });
+    var cnt = function (k) { return mine.filter(function (r) { return k === "all" || r.st === k; }).length; };
+    var q = low(S.q), list = mine.filter(function (r) { return (S.f === "all" || r.st === S.f) && (!q || low([r.s.client, r.s.code, r.s.area, r.s.city, r.p.name, r.p.company].join(" ")).indexOf(q) >= 0); })
+      .sort(function (a, b) { var an = (a.f && a.f.next) || "9999", bn = (b.f && b.f.next) || "9999"; return an < bn ? -1 : an > bn ? 1 : String(a.s.client).localeCompare(String(b.s.client)); });
+    var h = '<div class="chips" style="margin-top:12px"><button class="chip' + (!ax ? ' on' : '') + '" data-act="ax" data-k="">Everyone <b>' + rows.length + '</b></button>' +
+      ppl.map(function (p) { var n = rows.filter(function (r) { return r.p.id === p.id; }).length; return '<button class="chip' + (ax === p.id ? ' on' : '') + '" data-act="ax" data-k="' + esc(p.id) + '">' + esc(p.name) + ' \u00b7 ' + esc(p.brand || "") + (String(p.active).toUpperCase() !== "Y" ? ' \u00b7 off' : '') + ' <b>' + n + '</b></button>'; }).join("") + '</div>';
+    if (ax) { var p0 = ppl.filter(function (p) { return p.id === ax; })[0] || {}; h += '<div class="card"><b>' + esc(p0.name) + '</b> <span class="meta">' + esc([p0.company, p0.brand, p0.city, p0.mobile].filter(Boolean).join(" \u00b7 ")) + '</span><div class="meta">' + (String(p0.active).toUpperCase() === "Y" ? "Active" : "Not active (blocked or removed)") + ' \u00b7 ' + (p0.hasPin ? "PIN set" : "no PIN yet") + ' \u00b7 ' + fus.filter(function (f) { return f.bxId === ax; }).length + ' follow-ups</div></div>'; }
+    h += '<div class="chips">' + [["all", "All"], ["new", "No follow-up yet"], ["Ongoing", "Ongoing"], ["Won", "Won"], ["Lost", "Lost"], ["Not required", "Not required"]].map(function (x) {
+      return '<button class="chip' + (S.f === x[0] ? ' on' : '') + '" data-act="f" data-k="' + esc(x[0]) + '">' + x[1] + ' <b>' + cnt(x[0]) + '</b></button>'; }).join("") + '</div>' +
+      '<div style="display:flex;gap:8px"><input id="aq" type="search" placeholder="Search client, area or brand executive" value="' + esc(S.q) + '" autocomplete="off" style="flex:1">' +
+      '<button class="btn ghost" data-act="adm-csv" style="flex:none">Download</button></div>';
+    if (S.busy && !S.all) return h + '<div class="empty">Loading\u2026</div>';
+    if (!ppl.length) return h + '<div class="empty">No brand executive yet. Add one in the CRM: Clients \u2192 Brand executives.</div>';
+    return h + '<div id="alist">' + admList(list) + '</div>';
+  }
+  function admList(list) {
+    if (!list.length) return '<div class="empty">Nothing here.</div>';
+    var td = today();
+    return list.map(function (r) {
+      var s = r.s, f = r.f, due = f && f.next && f.next <= td && r.st === "Ongoing";
+      return '<div class="card site" data-act="aopen" data-k="' + esc(r.p.id + "|" + s.client) + '"><div class="top"><div class="nm">' + (s.code ? '<span class="code">' + esc(s.code) + '</span>' : '') + esc(s.client) + '</div>' + pillFor(r.st) + '</div>' +
+        '<div class="meta">' + esc(r.p.name) + ' \u00b7 ' + esc(s.brand || r.p.brand || "") + ' \u00b7 ' + esc([s.area, s.city].filter(Boolean).join(", ")) + (s.stage ? ' \u00b7 ' + esc(s.stage) : '') + '</div>' +
+        (f ? '<div class="meta" style="margin-top:4px">' + esc(dm(f.at)) + ': \u201c' + esc(String(f.remark || "").slice(0, 90)) + '\u201d' + (f.next ? ' \u00b7 <span class="' + (due ? 'due' : '') + '">next ' + esc(dm(f.next)) + '</span>' : '') + (f.file ? ' \u00b7 quote attached' : '') + '</div>' : '') + '</div>';
+    }).join("");
+  }
+  function viewAdmSite() {
+    var k = String(S.open || ""), i = k.indexOf("|"), id = k.slice(0, i), cl = k.slice(i + 1);
+    var r = admRows().filter(function (x) { return x.p.id === id && low(x.s.client) === low(cl); })[0]; if (!r) { S.open = null; return ""; }
+    var s = r.s, ex = s.exec || {}, hist = ((S.all && S.all.fus) || []).filter(function (f) { return f.bxId === id && low(f.client) === low(cl); });
+    var pc = function (p) { return p && p.name ? '<dd>' + (p.code ? '<span class="code">' + esc(p.code) + '</span>' : '') + esc(p.name) + (p.town ? ' <span class="meta">\u00b7 ' + esc(p.town) + '</span>' : '') + '</dd>' : '<dd class="meta">not named</dd>'; };
+    return '<div class="sheet" data-act="bg"><div class="in" data-stop="1">' +
+      '<div style="display:flex;gap:10px;align-items:flex-start"><div style="flex:1;min-width:0"><h2 style="margin:4px 0 2px">' + (s.code ? '<span class="code">' + esc(s.code) + '</span>' : '') + esc(s.client) + '</h2>' +
+      '<div class="meta">' + esc([s.area, s.city].filter(Boolean).join(", ")) + ' \u00b7 ' + esc(s.kind || "") + '</div></div><button class="btn ghost" data-act="close" style="min-height:44px;padding:0 14px">Close</button></div>' +
+      '<div class="card"><dl class="kv"><dt>Brand executive</dt><dd><b>' + esc(r.p.name) + '</b> <span class="meta">' + esc([r.p.company, r.p.mobile].filter(Boolean).join(" \u00b7 ")) + '</span></dd>' +
+      '<dt>Brand</dt><dd>' + esc(s.brand || "") + '</dd><dt>Stage</dt><dd>' + esc(s.stage || "not set") + '</dd><dt>With Energy World</dt><dd>' + esc(s.ew || "") + (s.quotes ? ' \u00b7 ' + s.quotes + ' quote(s)' : '') + '</dd>' +
+      '<dt>Architect</dt>' + pc(s.architect) + '<dt>Plumber</dt>' + pc(s.plumber) + '<dt>EW executive</dt><dd>' + esc(ex.name || "") + '</dd></dl></div>' +
+      '<h2>His follow-ups here</h2>' + (hist.length ? hist.map(function (f) {
+        return '<div class="hist"><div>' + pillFor(f.status) + ' <span class="meta">' + esc(dm(f.at)) + ' ' + esc(String(f.at || "").slice(11, 16)) + ' UTC</span></div><div style="margin-top:2px">' + esc(f.remark || "") + '</div>' +
+          '<div class="meta">' + (f.next ? 'next ' + esc(dm(f.next)) : '') + (f.file && f.file.url ? (f.next ? ' \u00b7 ' : '') + '<a href="' + esc(f.file.url) + '" target="_blank" rel="noopener">' + esc(f.file.name || "quote") + ' \u2197</a>' : '') + '</div></div>';
+      }).join("") : '<div class="meta">None yet.</div>') + '</div></div>';
+  }
+  function admCsv() {
+    var P = {}; admPeople().forEach(function (p) { P[p.id] = p; });
+    var q = function (v) { v = String(v == null ? "" : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+    var lines = [["When", "Brand executive", "Company", "Brand", "Client", "Status", "Remark", "Next follow-up", "Quote file", "Quote link"].join(",")];
+    ((S.all && S.all.fus) || []).filter(function (f) { return !S.ax || f.bxId === S.ax; }).forEach(function (f) { var p = P[f.bxId] || {}; lines.push([String(f.at || "").slice(0, 16).replace("T", " "), f.bxName || p.name, p.company, f.brand, f.client, f.status, f.remark, f.next, f.file ? f.file.name : "", f.file ? f.file.url : ""].map(q).join(",")); });
+    var a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(["\ufeff" + lines.join("\n")], { type: "text/csv;charset=utf-8" }));
+    a.download = "Brand_followups_" + today() + ".csv"; document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
   }
   function doLogin(b) {
     var m = String((el("lm") || {}).value || "").replace(/\D/g, "").slice(-10), p = String((el("lp") || {}).value || "").trim();
@@ -252,6 +353,14 @@ body.away::after{content:"Hidden while you are away";position:fixed;inset:0;disp
   /* ---------------- paint ---------------- */
   function render() {
     var app = el("app"), ae = document.activeElement, aid = ae && ae.id;
+    if (S.adm && S.all) {
+      app.innerHTML = '<header><div class="row"><div class="t"><b>Energy World \u00b7 Admin</b><small>' + esc(S.adm.user) + ' \u00b7 every brand executive \u00b7 Brand Followup v' + APP_VERSION + '</small></div>' +
+        '<button class="hb" data-act="adm-refresh" aria-label="Refresh">&#8635;</button><button class="hb" data-act="out">Sign out</button></div></header>' +
+        '<div class="wrap">' + viewAdmin() + '</div>' + (S.open ? viewAdmSite() : '');
+      if (aid && el(aid)) { try { el(aid).focus(); } catch (e) { } }
+      return;
+    }
+    if (S.admLogin) { app.innerHTML = viewAdmLogin(); return; }
     if (!S.me) { app.innerHTML = viewLogin(); return; }
     var m = S.me;
     app.innerHTML = '<header><div class="row"><div class="t"><b>' + esc(m.name) + '</b><small>' + esc([m.company, m.brand].filter(Boolean).join(" · ")) + ' · Brand Followup v' + APP_VERSION + '</small></div>' +
@@ -264,6 +373,13 @@ body.away::after{content:"Hidden while you are away";position:fixed;inset:0;disp
     var act = t.getAttribute("data-act"), k = t.getAttribute("data-k");
     if (act === "bg" && ev.target.closest("[data-stop]")) return;
     if (act === "login") { doLogin(t); return; }
+    if (act === "adm-show") { S.admLogin = true; render(); return; }   /* 1.1.0 */
+    if (act === "adm-back") { S.admLogin = false; render(); return; }
+    if (act === "adm-login") { doAdmLogin(t); return; }
+    if (act === "adm-refresh") { admPull(); return; }
+    if (act === "adm-csv") { admCsv(); return; }
+    if (act === "ax") { S.ax = k || ""; render(); return; }
+    if (act === "aopen") { S.open = k; render(); return; }
     if (act === "out") { signOut(""); return; }
     if (act === "refresh") { pull(); return; }
     if (act === "f") { S.f = k; render(); return; }
@@ -276,12 +392,13 @@ body.away::after{content:"Hidden while you are away";position:fixed;inset:0;disp
     var t = ev.target;
     if (t.id === "q") { S.q = t.value; var L = el("list"); if (L) { var q = low(S.q); L.innerHTML = listHtml(S.sites.map(function (s) { return { s: s, st: myState(s), f: lastFu(s.client) }; }).filter(function (x) { return (S.f === "all" || x.st === S.f) && (!q || low([x.s.client, x.s.code, x.s.area, x.s.city, x.s.stage, x.s.architect && x.s.architect.name, x.s.plumber && x.s.plumber.name].join(" ")).indexOf(q) >= 0); })); } }
   });
-  document.addEventListener("keydown", function (ev) { if (ev.key === "Enter" && (ev.target.id === "lp" || ev.target.id === "lm")) { var b = document.querySelector('[data-act="login"]'); if (b) doLogin(b); } });
+  document.addEventListener("keydown", function (ev) { if (ev.key === "Enter" && (ev.target.id === "lp" || ev.target.id === "lm")) { var b = document.querySelector('[data-act="login"]'); if (b) doLogin(b); } if (ev.key === "Enter" && (ev.target.id === "ap" || ev.target.id === "an")) { var b2 = document.querySelector('[data-act="adm-login"]'); if (b2) doAdmLogin(b2); } });
+  document.addEventListener("input", function (ev) { if (ev.target.id === "aq") { S.q = ev.target.value; var L = el("alist"); if (L) { var q = low(S.q); L.innerHTML = admList(admRows().filter(function (r) { return (!S.ax || r.p.id === S.ax) && (S.f === "all" || r.st === S.f) && (!q || low([r.s.client, r.s.code, r.s.area, r.s.city, r.p.name, r.p.company].join(" ")).indexOf(q) >= 0); })); } } });
 
   S.tok = load(TOK);
   render();
   if (S.tok) { S.me = { name: "", mobile: "", company: "", brand: "" }; render(); pull().then(function () { if (!S.me || !S.me.name) signOut(""); }); }
-  try { if ("serviceWorker" in navigator) navigator.serviceWorker.getRegistrations().then(function (rs) { rs.forEach(function (r) { if (/\/brand\//.test(r.scope)) r.unregister(); }); }); } catch (e) { }
+  try { if ("serviceWorker" in navigator) navigator.serviceWorker.getRegistrations().then(function (rs) { rs.forEach(function (r) { if (/\/brand\//.test(r.scope)) r.unregister(); }); }).catch(function () { }); } catch (e) { }
 })();
 </script>
 </body>
