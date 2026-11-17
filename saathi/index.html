@@ -121,6 +121,12 @@ body[data-lv] header{border-bottom:4px solid var(--lvc)}
 .site .bar{height:8px;border-radius:999px;background:#E6EBF0;overflow:hidden;margin:10px 0 6px}
 .site .bar i{display:block;height:100%;background:#1F8A5B}
 .site .meta{display:flex;justify-content:space-between;font-size:12px;color:var(--muted)}
+.site .stg{font-size:12px;font-weight:500;color:var(--muted);margin-top:2px}
+.site .sfs{display:flex;gap:6px;margin-top:8px}
+.site .sf{flex:1;min-width:0;background:#F6F8FA;border-radius:10px;padding:7px 8px}
+.site .sf .v{font-family:var(--data);font-weight:700;font-size:17px;line-height:1.1}
+.site .sf .r{font-size:12px;color:var(--muted);font-family:var(--data)}
+.site .sf .k{font-size:12px;color:var(--muted);margin-top:2px;line-height:1.2}
 header .tier:empty{display:none}
 body[data-lv] header .tier{background:var(--lvc);border-color:var(--lvc);color:#fff;font-weight:700}
 .lvcard{background:var(--lvg,#1F3A5F);color:#fff;border:0}
@@ -716,9 +722,18 @@ function siteOngoing(x){
 }
 function siteDay(v){ var d = new Date(String(v || '').slice(0, 10)); if (isNaN(d)) return ''; return d.getDate() + ' ' + ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()]; }
 function siteCard(x){
-  var e = Number(x.e) || 0, r = Math.min(e, Number(x.r) || 0), pc = e > 0 ? Math.round(r / e * 100) : 0;
-  var st = e <= 0 ? '<span class="pill p-hold">No material yet' + (x.stage ? ' · ' + esc(x.stage) : '') + '</span>' : pc >= 100 ? '<span class="pill p-clear">Client paid in full</span>' : pc > 0 ? '<span class="pill p-back">Client paid ' + pc + '%</span>' : '<span class="pill p-hold">Client not paid yet</span>';   /* 17 Nov 2026 - a running site the CRM knows, before any delivery */
-  return '<div class="site"><div class="top"><div class="nm">' + esc(x.n) + '</div><div class="pt">' + bP(e) + '<small>points</small></div></div>' +
+  /* 17 Nov 2026 - HIS WORDS: "show detail like total earned for site - Amt, pending due to payment not received, released
+     as payment received, a clear view". Three figures on every site, the same three the hero uses: EARNED on what went
+     there, READY because the client has paid for it, WAITING because he has not. Rupees under the points when the
+     owner allows it. The stage pill reads the site's own state: no material yet, material gone but no points set,
+     client paid in part / in full. */
+  var e = Number(x.e) || 0, r = Math.min(e, Number(x.r) || 0), w = Math.max(0, e - r), pc = e > 0 ? Math.round(r / e * 100) : 0;
+  var rs = (D.cfg || {}).showRupees !== false;
+  var st = e <= 0 ? (x.last ? '<span class="pill p-hold">Material gone · points not set yet</span>' : '<span class="pill p-hold">No material yet</span>')
+         : pc >= 100 ? '<span class="pill p-clear">Client paid in full</span>' : pc > 0 ? '<span class="pill p-back">Client paid ' + pc + '%</span>' : '<span class="pill p-hold">Client not paid yet</span>';
+  var fig = function(v, k, c){ return '<div class="sf"><div class="v" style="color:' + c + '">' + bP(v) + '</div>' + (rs ? '<div class="r">' + inr(v) + '</div>' : '') + '<div class="k">' + k + '</div></div>'; };
+  return '<div class="site"><div class="top"><div class="nm">' + esc(x.n) + (x.stage ? '<div class="stg">' + esc(x.stage) + '</div>' : '') + '</div></div>' +
+    '<div class="sfs">' + fig(e, 'Earned', 'var(--ink)') + fig(r, 'Ready · client paid', '#1F8A5B') + fig(w, 'Waiting · client to pay', '#B45309') + '</div>' +
     '<div class="bar"><i style="width:' + pc + '%"></i></div>' +
     '<div class="meta"><span>' + st + '</span><span>' + (x.last ? 'Last material ' + esc(siteDay(x.last)) : '') + '</span></div></div>';
 }
@@ -1263,7 +1278,7 @@ function ewRefresh(){
    Nothing you have typed or queued is touched. The sign-in and the
    offline queue live in localStorage and this never goes near them.
 --------------------------------------------------------------------- */
-var BUILD  = '2026.11.17-1';   /* 17 Nov 2026 - ongoing sites come from the CRM's own count, a site with no material yet shown with 0 points */
+var BUILD  = '2026.11.17-2';   /* 17 Nov 2026 - ongoing sites come from the CRM's own count, a site with no material yet shown with 0 points */
 var DROPS = '<svg viewBox="0 0 130 120" width="100%" height="100%" aria-hidden="true"><path d="M48 6C48 6 12 52 12 76a36 36 0 0 0 72 0C84 52 48 6 48 6Z" fill="#0A4F94"/><path d="M82 6C82 6 46 52 46 76a36 36 0 0 0 72 0C118 52 82 6 82 6Z" fill="#F28C28" fill-opacity=".88"/></svg>';   /* the Saathi mark */        /* which build of this file is running */
 var APPKEY = 'SAATHI';
 var VKEY   = 'ew_saathi_ver_v1';
