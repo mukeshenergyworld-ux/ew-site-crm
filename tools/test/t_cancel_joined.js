@@ -8,7 +8,7 @@ var ctx = { S: { data: D }, cxRows: function (t) { return D[t]; }, money: functi
 var F = H.lift("team", ["cancelBlockers"], ctx);
 H.eq("the main row with challans is still stopped", F.cancelBlockers("clients", "A").stop.length > 0, true);
 var b = F.cancelBlockers("clients", "B");
-H.ok("the joined spare row is not stopped, and the note says its records stay with the main", !b.stop.length && b.warn[0].indexOf("joined to Vinay Gupta (CL072); 3 records under this name stay with him") > -1);
+H.ok("the joined spare row is not stopped, and the note says its records stay with the main", !b.stop.length && b.warn[0].indexOf("joined to Vinay Gupta (CL072) as a duplicate; 3 records under this name stay with him") > -1);
 var c = F.cancelBlockers("clients", "C");
 H.ok("Mr Vinay Gupta too", !c.stop.length && /1 record under this name/.test(c.warn[0] || ""));
 ctx.dupDecisions = function () { return []; };
