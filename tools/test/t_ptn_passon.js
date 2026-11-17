@@ -1,5 +1,5 @@
 /* 6.9.1026 - a partner changed from the start: every finalised delivery of the client is re-lined to him, nothing deleted. */
-var H = require("./harness.js");
+var H = require("./harness.js"), fs = require("fs"), path = require("path");
 var stamps = {
   c1: { set: ["Heliroma"], ignored: [], inc: [{ role: "architect", name: "Roshan Lal" }, { role: "exec", name: "Mukesh Verma" }], extra: 0, extraNote: "", noProof: "", offBrand: "" },
   c2: { set: [], ignored: [], inc: [{ role: "exec", name: "Mukesh Verma" }], extra: 500, extraNote: "cash", noProof: "lost", offBrand: "" },
@@ -31,3 +31,8 @@ F.ptnPassOn("Nitin Jain", "architect", "Roshan Lal", "Roshan Lal - Radiant").the
   H.ok("one ptn:passon row names the deliveries moved and the start day", d && d.challans.join(",") === "N/001,N/002" && d.from === "2026-08-03" && d.was === "Roshan Lal");
   H.done();
 });
+/* 6.9.1028 - Change partner from the challan card, owner only */
+(function () {
+  var s = fs.readFileSync(path.join(__dirname, "..", "..", "team", "app.src.js"), "utf8");
+  H.ok("the owner's strip on a challan carries Change partner, which opens the role chooser and then the Client & lead log sheet", /data-act="adm-ptn"/.test(s) && /act === "adm-ptn"/.test(s) && /S\.modal = sheetCrlEdit\(_pc, role\)/.test(s));
+})();
