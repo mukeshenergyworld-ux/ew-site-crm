@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#1F3A5F">
+<title>Brand Followup · Energy World</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="../icons/ew-192.png">
+<link rel="apple-touch-icon" href="../icons/ew-180.png">
+<style>
+/* Brand Followup - for brand executives working Energy World sites. 17 Nov 2026.
+   HIS WORDS: "a dedicated Brand Followup app ... brand executive can view and do followup for assigned one only, can
+   attach quote, can give remarks, proper WIN | LOSE | ONGOING | NOT REQUIRED ... can see related architect and plumber
+   data, have to put some safety on that they can not take screenshot, not able to generate pdf or excel, not able to
+   share, but admin can do all".
+   WHAT THE SAFETY IS, HONESTLY: no web page can stop a phone's own screenshot. So every screen carries his name, mobile
+   and the time (a leaked picture names him); nothing can be selected, copied, printed, downloaded or shared from here;
+   the screen blurs the moment he leaves the app; and every sign-in and open is logged for the owner. The data itself is
+   cut on the server: he receives only his sites, never phone numbers of partners, never prices. */
+:root{--ink:#0D2340;--navy:#1F3A5F;--paper:#F4F6F9;--card:#fff;--line:#DCE3EA;--muted:#5E6875;--org:#E8762C;
+  --on:#1d4ed8;--won:#166534;--lost:#b91c1c;--nr:#64748b}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
+body{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;padding-bottom:env(safe-area-inset-bottom)}
+input,textarea,select{-webkit-user-select:text;user-select:text;font:inherit;font-size:16px}
+img{-webkit-user-drag:none;pointer-events:none}
+.wrap{max-width:720px;margin:0 auto;padding:0 16px 40px}
+header{position:sticky;top:0;z-index:20;background:var(--navy);color:#fff;padding:calc(10px + env(safe-area-inset-top)) 16px 10px}
+header .row{max-width:720px;margin:0 auto;display:flex;align-items:center;gap:10px}
+header .t{flex:1;min-width:0}header b{display:block;font-size:16px}header small{display:block;font-size:12px;opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hb{min-height:44px;min-width:44px;border:1px solid rgba(255,255,255,.35);background:transparent;color:#fff;border-radius:10px;font-weight:700;padding:0 12px}
+h2{font-size:18px;margin:16px 0 6px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin:10px 0}
+.meta{font-size:13px;color:var(--muted)}
+.btn{display:inline-flex;align-items:center;justify-content:center;min-height:48px;padding:0 18px;border:0;border-radius:12px;background:var(--navy);color:#fff;font-weight:700;font-size:15px;cursor:pointer}
+.btn.full{width:100%}.btn.ghost{background:#fff;color:var(--navy);border:1px solid var(--line)}
+.btn:disabled{opacity:.6}
+label{display:block;font-size:13px;font-weight:700;color:var(--muted);margin:12px 0 4px}
+input[type=tel],input[type=password],input[type=date],input[type=search],textarea{width:100%;min-height:48px;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;background:#fff}
+textarea{min-height:96px;resize:vertical}
+.chips{display:flex;gap:6px;overflow-x:auto;padding:4px 0 8px;scrollbar-width:none}.chips::-webkit-scrollbar{display:none}
+.chip{flex:none;min-height:44px;padding:0 14px;border:1px solid var(--line);border-radius:999px;background:#fff;font-weight:700;font-size:14px;color:var(--ink)}
+.chip.on{background:var(--navy);color:#fff;border-color:var(--navy)}.chip b{font-variant-numeric:tabular-nums}
+.pill{display:inline-block;border-radius:999px;padding:2px 9px;font-size:12px;font-weight:800;background:#e2e8f0;color:#334155;white-space:nowrap}
+.p-Ongoing{background:#dbeafe;color:var(--on)}.p-Won{background:#dcfce7;color:var(--won)}.p-Lost{background:#fee2e2;color:var(--lost)}.p-Not{background:#f1f5f9;color:var(--nr)}.p-new{background:#fef3c7;color:#92400e}
+.site{cursor:pointer}.site .top{display:flex;gap:10px;align-items:flex-start}.site .nm{flex:1;min-width:0;font-weight:800;font-size:16px}
+.due{color:var(--lost);font-weight:800}
+.st4{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.st4 button{min-height:52px;border-radius:12px;border:2px solid var(--line);background:#fff;font-weight:800;font-size:15px;color:var(--ink)}
+.st4 button.on[data-k=Ongoing]{border-color:var(--on);background:#eff6ff;color:var(--on)}.st4 button.on[data-k=Won]{border-color:var(--won);background:#f0fdf4;color:var(--won)}
+.st4 button.on[data-k=Lost]{border-color:var(--lost);background:#fef2f2;color:var(--lost)}.st4 button.on[data-k="Not required"]{border-color:var(--nr);background:#f8fafc;color:var(--nr)}
+.kv{display:grid;grid-template-columns:110px 1fr;gap:6px 10px;font-size:14px}.kv dt{color:var(--muted);font-weight:700}.kv dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.code{display:inline-block;font-size:12px;font-weight:800;color:#1F3A5F;background:#E8EEF5;border-radius:6px;padding:0 6px;margin-right:4px}
+.hist{border-left:3px solid var(--line);padding:2px 0 2px 10px;margin:8px 0}
+.empty{color:var(--muted);text-align:center;padding:28px 8px}
+.toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#0D2340;color:#fff;padding:12px 16px;border-radius:12px;font-size:14px;z-index:90;max-width:90vw;box-shadow:0 6px 20px rgba(0,0,0,.25)}
+.sheet{position:fixed;inset:0;z-index:40;background:rgba(13,35,64,.45);display:flex;align-items:flex-end;justify-content:center}
+.sheet .in{background:var(--paper);width:100%;max-width:720px;max-height:92vh;overflow-y:auto;border-radius:18px 18px 0 0;padding:14px 16px calc(20px + env(safe-area-inset-bottom))}
+.login{max-width:420px;margin:0 auto;padding:calc(40px + env(safe-area-inset-top)) 16px 40px}
+.brandmark{width:64px;height:64px;border-radius:16px;background:var(--navy);display:grid;place-items:center;color:#fff;font-weight:900;font-size:22px;margin:0 auto 12px}
+/* the watermark: his name, mobile and the time, over everything, never in the way of a tap */
+#wm{position:fixed;inset:0;z-index:60;pointer-events:none;opacity:.10;background-repeat:repeat}
+/* away: the moment the app is not in front, nothing on it can be read */
+body.away #app,body.away .sheet{filter:blur(18px)}
+body.away::after{content:"Hidden while you are away";position:fixed;inset:0;display:grid;place-items:center;z-index:70;font-weight:800;color:#0D2340;background:rgba(244,246,249,.6)}
+@media print{body *{display:none!important}body::before{content:"Printing is not allowed in Brand Followup.";display:block;padding:40px;font:20px sans-serif}}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="wm" aria-hidden="true"></div>
+<script>
+(function () {
+  "use strict";
+  var APP_VERSION = "1.0.0";   /* 1.0.0 (17 Nov 2026) - first release */
+  var SERVER = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
+  var IDLE_MS = 15 * 60000, TOK = "ew_bx_tok", ST = ["Ongoing", "Won", "Lost", "Not required"];
+  var S = { tok: "", me: null, sites: [], fus: [], f: "all", q: "", open: null, form: null, busy: false };
+
+  function el(id) { return document.getElementById(id); }
+  function esc(v) { return String(v == null ? "" : v).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+  function low(v) { return String(v == null ? "" : v).toLowerCase(); }
+  function today() { var d = new Date(); return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2); }
+  function dm(v) { v = String(v || ""); return v.length >= 10 ? v.slice(8, 10) + "/" + v.slice(5, 7) + "/" + v.slice(0, 4) : ""; }
+  function store(k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) { } }
+  function load(k) { try { return localStorage.getItem(k) || ""; } catch (e) { return ""; } }
+  var _tt = null;
+  function toast(m) { var t = el("toast"); if (!t) { t = document.createElement("div"); t.id = "toast"; t.className = "toast"; document.body.appendChild(t); } t.textContent = m; t.style.display = "block"; clearTimeout(_tt); _tt = setTimeout(function () { t.style.display = "none"; }, 3800); }
+
+  function call(action, extra) {
+    return fetch(SERVER, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(Object.assign({ action: action, tok: S.tok, app: "brand " + APP_VERSION }, extra || {})) })
+      .then(function (r) { return r.text(); })
+      .then(function (t) { var j = null; try { j = JSON.parse(t); } catch (e) { throw new Error("The server did not answer properly. Try again."); } if (j && j.out) { signOut("Signed out — please sign in again."); throw new Error("signed out"); } return j; });
+  }
+
+  /* ---------------- safety ---------------- */
+  function wmPaint() {
+    var w = el("wm"); if (!w) return;
+    if (!S.me) { w.style.backgroundImage = "none"; return; }
+    var d = new Date(), t = dm(today()) + " " + ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2);
+    var line = (S.me.name + " · " + S.me.mobile + " · " + t).replace(/[<&>]/g, "");
+    var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180"><text x="10" y="100" transform="rotate(-24 160 90)" font-family="Arial" font-size="15" font-weight="700" fill="#0D2340">' + line + '</text></svg>';
+    w.style.backgroundImage = "url(\"data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg) + "\")";
+  }
+  function isField(t) { return t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA"); }
+  ["copy", "cut"].forEach(function (k) { document.addEventListener(k, function (e) { if (!isField(e.target)) { e.preventDefault(); toast("Copying is not allowed here."); } }); });
+  document.addEventListener("contextmenu", function (e) { if (!isField(e.target)) e.preventDefault(); });
+  document.addEventListener("selectstart", function (e) { if (!isField(e.target)) e.preventDefault(); });
+  document.addEventListener("dragstart", function (e) { e.preventDefault(); });
+  document.addEventListener("keydown", function (e) {
+    var k = low(e.key);
+    if ((e.ctrlKey || e.metaKey) && ["p", "s", "c", "a", "u"].indexOf(k) >= 0 && !(isField(e.target) && ["c", "a"].indexOf(k) >= 0)) { e.preventDefault(); toast("Not allowed in Brand Followup."); }
+    if (k === "printscreen") { document.body.classList.add("away"); setTimeout(function () { document.body.classList.remove("away"); }, 2500); toast("Screenshots carry your name and are logged."); try { navigator.clipboard.writeText(""); } catch (x) { } }
+  });
+  window.addEventListener("beforeprint", function () { document.body.classList.add("away"); });
+  window.addEventListener("afterprint", function () { document.body.classList.remove("away"); });
+  function away(on) { if (S.me) document.body.classList.toggle("away", !!on); }
+  document.addEventListener("visibilitychange", function () { away(document.visibilityState !== "visible"); if (document.visibilityState === "visible" && S.me) idleCheck(); });
+  window.addEventListener("blur", function () { away(true); });
+  window.addEventListener("focus", function () { away(false); });
+  var _last = Date.now();
+  ["pointerdown", "keydown", "scroll"].forEach(function (k) { document.addEventListener(k, function () { _last = Date.now(); }, { passive: true }); });
+  function idleCheck() { if (S.me && Date.now() - _last > IDLE_MS) signOut("Signed out after 15 minutes without use."); }
+  setInterval(function () { idleCheck(); wmPaint(); }, 30000);
+
+  /* ---------------- sign-in ---------------- */
+  function signOut(msg) { S.tok = ""; S.me = null; S.sites = []; S.fus = []; S.open = null; store(TOK, null); document.body.classList.remove("away"); render(); wmPaint(); if (msg) toast(msg); }
+  function viewLogin() {
+    return '<div class="login"><div class="brandmark">EW</div><h2 style="text-align:center;margin:0">Brand Followup</h2>' +
+      '<div class="meta" style="text-align:center">For brand executives working with Energy World · v' + APP_VERSION + '</div>' +
+      '<div class="card" style="margin-top:18px"><label for="lm">Mobile</label><input id="lm" type="tel" inputmode="numeric" autocomplete="username" maxlength="14" placeholder="10-digit mobile">' +
+      '<label for="lp">PIN</label><input id="lp" type="password" inputmode="numeric" autocomplete="current-password" maxlength="6" placeholder="PIN from Energy World">' +
+      '<button class="btn full" style="margin-top:16px" data-act="login">Sign in</button></div>' +
+      '<div class="meta" style="text-align:center;margin-top:8px">You see only the sites Energy World has given you. Every screen carries your name; your sign-ins are recorded.</div></div>';
+  }
+  function doLogin(b) {
+    var m = String((el("lm") || {}).value || "").replace(/\D/g, "").slice(-10), p = String((el("lp") || {}).value || "").trim();
+    if (m.length !== 10) { toast("Your 10-digit mobile."); return; }
+    if (!/^\d{4,6}$/.test(p)) { toast("Your PIN, 4 to 6 digits."); return; }
+    b.disabled = true; b.textContent = "Signing in…";
+    call("bxLogin", { mobile: m, pin: p }).then(function (r) {
+      if (!r || !r.ok) { b.disabled = false; b.textContent = "Sign in"; toast((r && r.err) || "Could not sign in."); return; }
+      S.tok = r.tok; S.me = r.me; store(TOK, r.tok); _last = Date.now(); wmPaint(); pull();
+    }, function (e) { b.disabled = false; b.textContent = "Sign in"; toast(e.message === "signed out" ? "Could not sign in." : "No signal, or the server is busy. Try again."); });
+  }
+  function pull() {
+    S.busy = true; render();
+    return call("bxBook").then(function (r) {
+      S.busy = false;
+      if (!r || !r.ok) { toast((r && r.err) || "Could not load your sites."); render(); return; }
+      S.me = r.me; S.sites = r.sites || []; S.fus = r.fus || []; wmPaint(); render();
+    }, function (e) { S.busy = false; if (e.message !== "signed out") toast("No signal — pull down or tap Refresh."); render(); });
+  }
+
+  /* ---------------- his sites ---------------- */
+  function lastFu(client) { var c = low(client); return S.fus.filter(function (f) { return low(f.client) === c; })[0] || null; }
+  function myState(s) { var f = lastFu(s.client); return f ? f.status : "new"; }
+  function pillFor(st) { return st === "new" ? '<span class="pill p-new">No follow-up yet</span>' : '<span class="pill p-' + esc(String(st).split(" ")[0]) + '">' + esc(st) + '</span>'; }
+  function viewHome() {
+    var all = S.sites.map(function (s) { return { s: s, st: myState(s), f: lastFu(s.client) }; });
+    var cnt = function (k) { return all.filter(function (x) { return k === "all" || x.st === k; }).length; };
+    var td = today(), dueN = all.filter(function (x) { return x.f && x.f.next && x.f.next <= td && x.st === "Ongoing"; }).length;
+    var q = low(S.q), list = all.filter(function (x) { return (S.f === "all" || x.st === S.f) && (!q || low([x.s.client, x.s.code, x.s.area, x.s.city, x.s.stage, x.s.architect && x.s.architect.name, x.s.plumber && x.s.plumber.name].join(" ")).indexOf(q) >= 0); })
+      .sort(function (a, b) { var an = (a.f && a.f.next) || "9999", bn = (b.f && b.f.next) || "9999"; return an < bn ? -1 : an > bn ? 1 : String(a.s.client).localeCompare(String(b.s.client)); });
+    var h = '';
+    if (dueN) h += '<div class="card" style="border-color:#fecaca;background:#fef2f2;margin-top:14px"><b class="due">' + dueN + ' follow-up' + (dueN === 1 ? '' : 's') + ' due today or earlier</b><div class="meta">They are at the top of the list.</div></div>';
+    h += '<div class="chips" style="margin-top:10px">' + [["all", "All"], ["new", "No follow-up yet"], ["Ongoing", "Ongoing"], ["Won", "Won"], ["Lost", "Lost"], ["Not required", "Not required"]].map(function (x) {
+      return '<button class="chip' + (S.f === x[0] ? ' on' : '') + '" data-act="f" data-k="' + esc(x[0]) + '">' + x[1] + ' <b>' + cnt(x[0]) + '</b></button>'; }).join("") + '</div>' +
+      '<input id="q" type="search" placeholder="Search client, area, architect or plumber" value="' + esc(S.q) + '" autocomplete="off">';
+    if (S.busy && !S.sites.length) return h + '<div class="empty">Loading your sites…</div>';
+    if (!S.sites.length) return h + '<div class="empty">No site has been given to you yet.<br>Energy World will add them.</div>';
+    h += '<div id="list">' + listHtml(list) + '</div>';
+    return h;
+  }
+  function listHtml(list) {
+    if (!list.length) return '<div class="empty">Nothing here.</div>';
+    var td = today();
+    return list.map(function (x) {
+      var s = x.s, f = x.f, due = f && f.next && f.next <= td && x.st === "Ongoing";
+      return '<div class="card site" data-act="open" data-k="' + esc(s.client) + '"><div class="top"><div class="nm">' + (s.code ? '<span class="code">' + esc(s.code) + '</span>' : '') + esc(s.client) + '</div>' + pillFor(x.st) + '</div>' +
+        '<div class="meta">' + esc([s.area, s.city].filter(Boolean).join(", ")) + (s.stage ? ' · ' + esc(s.stage) : '') + ' · ' + esc(s.brand || "") + '</div>' +
+        (f ? '<div class="meta" style="margin-top:4px">' + esc(dm(f.at)) + ': “' + esc(String(f.remark || "").slice(0, 90)) + '”' + (f.next ? ' · <span class="' + (due ? 'due' : '') + '">next ' + esc(dm(f.next)) + '</span>' : '') + '</div>' : '') + '</div>';
+    }).join("");
+  }
+  function siteOf(client) { var c = low(client); return S.sites.filter(function (s) { return low(s.client) === c; })[0] || null; }
+  function pcard(p, role) { if (!p || !p.name) return '<dd class="meta">not named</dd>'; return '<dd>' + (p.code ? '<span class="code">' + esc(p.code) + '</span>' : '') + esc(p.name) + (p.town ? ' <span class="meta">· ' + esc(p.town) + '</span>' : '') + '</dd>'; }
+  function viewSite() {
+    var s = siteOf(S.open); if (!s) { S.open = null; return ""; }
+    var mine = S.fus.filter(function (f) { return low(f.client) === low(s.client); }), F = S.form || {};
+    var ex = s.exec || {};
+    return '<div class="sheet" data-act="bg"><div class="in" data-stop="1">' +
+      '<div style="display:flex;gap:10px;align-items:flex-start"><div style="flex:1;min-width:0"><h2 style="margin:4px 0 2px">' + (s.code ? '<span class="code">' + esc(s.code) + '</span>' : '') + esc(s.client) + '</h2>' +
+      '<div class="meta">' + esc([s.area, s.city].filter(Boolean).join(", ")) + ' · ' + esc(s.kind || "") + '</div></div><button class="btn ghost" data-act="close" style="min-height:44px;padding:0 14px">Close</button></div>' +
+      '<div class="card"><dl class="kv"><dt>Brand</dt><dd><b>' + esc(s.brand || "") + '</b></dd><dt>Stage</dt><dd>' + esc(s.stage || "not set") + '</dd>' +
+      '<dt>With Energy World</dt><dd>' + esc(s.ew || "") + (s.quotes ? ' · ' + s.quotes + ' quote' + (s.quotes === 1 ? '' : 's') + ' for ' + esc(s.brand) + (s.lastQuote ? ', last ' + esc(dm(s.lastQuote)) : '') : ' · no quote yet') + '</dd>' +
+      '<dt>Architect</dt>' + pcard(s.architect) + '<dt>Plumber</dt>' + pcard(s.plumber) +
+      '<dt>EW executive</dt><dd>' + esc(ex.name || "") + (ex.mobile ? ' <a class="btn ghost" style="min-height:40px;padding:0 12px;margin-left:6px;text-decoration:none" href="tel:' + esc(ex.mobile) + '">Call</a>' : '') + '</dd></dl>' +
+      '<div class="meta" style="margin-top:8px">Talk to the architect and plumber through the Energy World executive.</div></div>' +
+      '<div class="card"><b>New follow-up</b><label>Where does it stand?</label><div class="st4">' + ST.map(function (k) { return '<button data-act="st" data-k="' + esc(k) + '" class="' + (F.status === k ? 'on' : '') + '">' + esc(k) + '</button>'; }).join("") + '</div>' +
+      '<label for="rm">Remark</label><textarea id="rm" maxlength="1000" placeholder="What happened, what was agreed">' + esc(F.remark || "") + '</textarea>' +
+      '<label for="nx">Next follow-up</label><input id="nx" type="date" min="' + today() + '" value="' + esc(F.next || "") + '">' +
+      '<label for="qf">Attach your quote (PDF or photo, up to 6 MB)</label><input id="qf" type="file" accept="application/pdf,image/*" style="min-height:48px">' +
+      (F.fileName ? '<div class="meta">Attached: ' + esc(F.fileName) + '</div>' : '') +
+      '<button class="btn full" style="margin-top:14px" data-act="save">Save follow-up</button></div>' +
+      '<h2>Your follow-ups here</h2>' + (mine.length ? mine.map(function (f) {
+        return '<div class="hist"><div>' + pillFor(f.status) + ' <span class="meta">' + esc(dm(f.at)) + '</span></div><div style="margin-top:2px">' + esc(f.remark || "") + '</div>' +
+          '<div class="meta">' + (f.next ? 'next ' + esc(dm(f.next)) : '') + (f.fileName ? (f.next ? ' · ' : '') + 'quote attached: ' + esc(f.fileName) : '') + '</div></div>';
+      }).join("") : '<div class="meta">None yet.</div>') + '</div></div>';
+  }
+  /* a photo is made small before it goes; a PDF goes as it is */
+  function readFile(file) {
+    return new Promise(function (res, rej) {
+      if (!file) return res(null);
+      if (file.size > 12 * 1024 * 1024) return rej(new Error("That file is too big."));
+      var fr = new FileReader();
+      fr.onerror = function () { rej(new Error("Could not read the file.")); };
+      if (/^image\//.test(file.type)) {
+        fr.onload = function () {
+          var im = new Image(); im.onload = function () {
+            var k = Math.min(1, 1600 / Math.max(im.width, im.height)), c = document.createElement("canvas");
+            c.width = Math.round(im.width * k); c.height = Math.round(im.height * k); c.getContext("2d").drawImage(im, 0, 0, c.width, c.height);
+            res({ name: file.name.replace(/\.[^.]+$/, "") + ".jpg", type: "image/jpeg", b64: c.toDataURL("image/jpeg", 0.8).split(",")[1] });
+          }; im.onerror = function () { rej(new Error("That picture could not be opened.")); }; im.src = fr.result;
+        };
+        fr.readAsDataURL(file);
+      } else if (file.type === "application/pdf") {
+        if (file.size > 6 * 1024 * 1024) return rej(new Error("The PDF is over 6 MB."));
+        fr.onload = function () { res({ name: file.name, type: "application/pdf", b64: String(fr.result).split(",")[1] }); };
+        fr.readAsDataURL(file);
+      } else rej(new Error("Attach a PDF or a photo."));
+    });
+  }
+  function keepForm() { S.form = S.form || {}; var r = el("rm"), n = el("nx"); if (r) S.form.remark = r.value; if (n) S.form.next = n.value; }
+  function doSave(b) {
+    keepForm(); var F = S.form || {}, s = siteOf(S.open);
+    if (!s) return;
+    if (!F.status) { toast("Tap where it stands: Ongoing, Won, Lost or Not required."); return; }
+    if (!String(F.remark || "").trim()) { toast("Write a remark."); return; }
+    if (F.status === "Ongoing" && !F.next) { toast("When is the next follow-up?"); return; }
+    var fi = el("qf"), file = fi && fi.files && fi.files[0];
+    b.disabled = true; b.textContent = "Saving…";
+    readFile(file).then(function (fl) {
+      return call("bxSave", { fu: { client: s.client, status: F.status, remark: String(F.remark).trim(), next: F.status === "Ongoing" ? F.next : "" }, file: fl });
+    }).then(function (r) {
+      if (!r || !r.ok) { b.disabled = false; b.textContent = "Save follow-up"; toast((r && r.err) || "Not saved."); return; }
+      S.fus.unshift(r.fu); S.form = null; render(); toast("Saved. Energy World sees it.");
+    }, function (e) { b.disabled = false; b.textContent = "Save follow-up"; if (e.message !== "signed out") toast(e.message || "Not saved — try again."); });
+  }
+
+  /* ---------------- paint ---------------- */
+  function render() {
+    var app = el("app"), ae = document.activeElement, aid = ae && ae.id;
+    if (!S.me) { app.innerHTML = viewLogin(); return; }
+    var m = S.me;
+    app.innerHTML = '<header><div class="row"><div class="t"><b>' + esc(m.name) + '</b><small>' + esc([m.company, m.brand].filter(Boolean).join(" · ")) + ' · Brand Followup v' + APP_VERSION + '</small></div>' +
+      '<button class="hb" data-act="refresh" aria-label="Refresh">&#8635;</button><button class="hb" data-act="out">Sign out</button></div></header>' +
+      '<div class="wrap">' + viewHome() + '</div>' + (S.open ? viewSite() : '');
+    if (aid && el(aid) && aid !== "qf") { try { el(aid).focus(); } catch (e) { } }
+  }
+  document.addEventListener("click", function (ev) {
+    var t = ev.target.closest ? ev.target.closest("[data-act]") : null; if (!t) return;
+    var act = t.getAttribute("data-act"), k = t.getAttribute("data-k");
+    if (act === "bg" && ev.target.closest("[data-stop]")) return;
+    if (act === "login") { doLogin(t); return; }
+    if (act === "out") { signOut(""); return; }
+    if (act === "refresh") { pull(); return; }
+    if (act === "f") { S.f = k; render(); return; }
+    if (act === "open") { S.open = k; S.form = null; render(); return; }
+    if (act === "close" || act === "bg") { keepForm(); S.open = null; S.form = null; render(); return; }
+    if (act === "st") { keepForm(); S.form.status = k; render(); return; }
+    if (act === "save") { doSave(t); return; }
+  });
+  document.addEventListener("input", function (ev) {
+    var t = ev.target;
+    if (t.id === "q") { S.q = t.value; var L = el("list"); if (L) { var q = low(S.q); L.innerHTML = listHtml(S.sites.map(function (s) { return { s: s, st: myState(s), f: lastFu(s.client) }; }).filter(function (x) { return (S.f === "all" || x.st === S.f) && (!q || low([x.s.client, x.s.code, x.s.area, x.s.city, x.s.stage, x.s.architect && x.s.architect.name, x.s.plumber && x.s.plumber.name].join(" ")).indexOf(q) >= 0); })); } }
+  });
+  document.addEventListener("keydown", function (ev) { if (ev.key === "Enter" && (ev.target.id === "lp" || ev.target.id === "lm")) { var b = document.querySelector('[data-act="login"]'); if (b) doLogin(b); } });
+
+  S.tok = load(TOK);
+  render();
+  if (S.tok) { S.me = { name: "", mobile: "", company: "", brand: "" }; render(); pull().then(function () { if (!S.me || !S.me.name) signOut(""); }); }
+  try { if ("serviceWorker" in navigator) navigator.serviceWorker.getRegistrations().then(function (rs) { rs.forEach(function (r) { if (/\/brand\//.test(r.scope)) r.unregister(); }); }); } catch (e) { }
+})();
+</script>
+</body>
+</html>
