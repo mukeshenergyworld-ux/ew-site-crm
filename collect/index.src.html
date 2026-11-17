@@ -208,7 +208,7 @@ table.ct td.wd{white-space:nowrap}
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.75.5";   /* 1.75.5 (17 Nov 2026) - FIX: RAWB and LIVE_TABS declared again; every pull had thrown "Can't find variable" since the 15 Nov core build, so the book on the phone stopped updating */   /* 1.75.4 (1.75.4 (15 Nov 2026) - the discount rule moves to its own shared section, now covering the Visit app too; no figure moves */   /* 1.75.3 (1.75.3 (15 Nov 2026) - FIX ON THE FIX: discRowsFor and discRowOn are now the CRM's text byte for byte, not merely the same behaviour; plus the shared stamp reader */   /* 1.75.2 (1.75.2 (15 Nov 2026) - six money rules now shared with the CRM as well, not just the Challan app */   /* 1.75.1 (1.75.1 (15 Nov 2026) - nine money rules now come from core/ew-core.js, byte-identical with the Challan app; no figure changes */   /* 1.75.0 (1.75.0 (14 Nov 2026) - FIX: a return line frozen at 0%% was credited at full list price; the CRM's rule (6.9.728) is now this app's rule too - Rs 2,12,214 across 5 clients */   /* 1.74.1 (1.74.1 (11 Nov 2026) - GHP+ logo in the registered Green Heat+ colours (#00539F / #ED1D24) on PDFs, quotes, challans and QR centres */   /* 1.74.0 (9 Nov 2026) - FIMA in every finish: a return or a hisab line in a finish code (F1301WLX9CS) finds its product, brand and price */     /* 1.73.1 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */   /* 1.73.0 (3 Nov 2026) - the old hisab paper opens from here, for everyone */   /* 1.72.0 (3 Nov 2026) - a return is priced the same on every phone: old product codes found, a stale shelf catalogue refreshed */   /* 1.71.0 (31 Oct 2026) - one tap, one entry */   /* 1.70.1 (27 Oct 2026) - GHp mark in the middle of every QR, level H */   /* 1.67.0 - flush busy flag + B9 owner guard, narrower sign-out, Old book under ☰ */
+  var APP_VERSION = "1.76.0";   /* 1.76.0 (17 Nov 2026) - one tap Present in the header, asks where the day is and the plan; one mark shows in every app */   /* 1.75.5 (17 Nov 2026) - FIX: RAWB and LIVE_TABS declared again; every pull had thrown "Can't find variable" since the 15 Nov core build, so the book on the phone stopped updating */   /* 1.75.4 (1.75.4 (15 Nov 2026) - the discount rule moves to its own shared section, now covering the Visit app too; no figure moves */   /* 1.75.3 (1.75.3 (15 Nov 2026) - FIX ON THE FIX: discRowsFor and discRowOn are now the CRM's text byte for byte, not merely the same behaviour; plus the shared stamp reader */   /* 1.75.2 (1.75.2 (15 Nov 2026) - six money rules now shared with the CRM as well, not just the Challan app */   /* 1.75.1 (1.75.1 (15 Nov 2026) - nine money rules now come from core/ew-core.js, byte-identical with the Challan app; no figure changes */   /* 1.75.0 (1.75.0 (14 Nov 2026) - FIX: a return line frozen at 0%% was credited at full list price; the CRM's rule (6.9.728) is now this app's rule too - Rs 2,12,214 across 5 clients */   /* 1.74.1 (1.74.1 (11 Nov 2026) - GHP+ logo in the registered Green Heat+ colours (#00539F / #ED1D24) on PDFs, quotes, challans and QR centres */   /* 1.74.0 (9 Nov 2026) - FIMA in every finish: a return or a hisab line in a finish code (F1301WLX9CS) finds its product, brand and price */     /* 1.73.1 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */   /* 1.73.0 (3 Nov 2026) - the old hisab paper opens from here, for everyone */   /* 1.72.0 (3 Nov 2026) - a return is priced the same on every phone: old product codes found, a stale shelf catalogue refreshed */   /* 1.71.0 (31 Oct 2026) - one tap, one entry */   /* 1.70.1 (27 Oct 2026) - GHp mark in the middle of every QR, level H */   /* 1.67.0 - flush busy flag + B9 owner guard, narrower sign-out, Old book under ☰ */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -3658,6 +3658,59 @@ function cancelMap() {
   var HELP_AT = { today: 1, list: 1, oldbook: 1, score: 1 };
   function helpHref() { var t = S.tab || "today"; return "../help/payment.html#t-" + (HELP_AT[t] ? t : "start"); }
 
+
+  /* ===== ONE TAP: PRESENT, WITH WHERE AND THE PLAN (17 Nov 2026) =====
+     HIS WORDS: "in every app show executive to mark present with current location and schedule for today, like today
+     in which city; once marked in any app should be updated to every app". The tap asks first where the day is (town
+     chips, one line for the plan), then writes ONE att:mark row - the same row the office writes - with the plan, the
+     phone's position when it allows it, and which app it came from. Every app reads the same audit tab, so a mark made
+     here shows in the CRM, Visit, Challan, Service and Payment apps on their next pull. Once a day. */
+  function attTodayLocal() { var d = new Date(); return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2); }
+  function attMineToday() {
+    var who = String(S.user || "").trim().toLowerCase(), d = attTodayLocal(), hit = null;
+    ((S.data && S.data.audit) || []).forEach(function (r) {
+      if (!r || r.action !== "att:mark") return;
+      var x = {}; try { x = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
+      if (String(x.day || "") !== d || String(x.who || "").trim().toLowerCase() !== who) return;
+      if (!hit || String(r.createdAt || "") >= hit.at) hit = { kind: String(x.kind || ""), note: String(x.note || ""), plan: String(x.plan || ""), at: String(r.createdAt || "") };
+    });
+    return hit && hit.kind === "present" ? hit : null;
+  }
+  function attMeBtn() {
+    if (!S.user || !S.data) return "";
+    var m = attMineToday();
+    if (m) return '<span class="sync" title="' + esc("Marked present today" + (m.plan ? " - " + m.plan : "")) + '" style="white-space:nowrap">✓ Present ' + esc(String(m.note || "").replace(/^self\s*/, "").split(" ")[0]) + (m.plan ? ' · ' + esc(m.plan.length > 14 ? m.plan.slice(0, 13) + "…" : m.plan) : '') + '</span>';
+    return '<button class="btn sm" data-act="att-me" title="Mark yourself present for today" style="background:#15803d;border-color:#15803d;color:#fff">✓ Present</button>';
+  }
+  var ATT_TOWNS = ["Office Panipat", "Office Sonipat", "Collection round", "Panipat", "Sonipat", "Karnal", "Rohtak", "Delhi"];
+  function attPlanSheet() {
+    return '<h2>Mark present — where are you today?</h2><p class="meta" style="font-size:13px">Tap the town(s), add the plan in a line. It goes on the roll-call and the report.</p>' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0">' + ATT_TOWNS.map(function (x) { return '<button class="btn sm ghost" data-act="att-town" data-v="' + esc(x) + '" style="min-height:44px">' + esc(x) + '</button>'; }).join("") + '</div>' +
+      '<label>Today’s plan</label><input id="att_plan" placeholder="e.g. Panipat — Model Town, then Samalkha" style="width:100%;box-sizing:border-box;min-height:44px;font-size:16px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px" autocomplete="off"/>' +
+      '<div class="meta" style="font-size:12px;margin-top:4px">Your location is taken from the phone, if it allows it.</div>' +
+      '<div style="display:flex;gap:8px;margin-top:12px"><button class="btn ghost" data-act="close" style="flex:1;min-height:44px">Not now</button><button class="btn" data-act="att-go" style="flex:2;min-height:44px;background:#15803d;border-color:#15803d;color:#fff">✓ Mark present</button></div>';
+  }
+  function attMeMark(t, plan) {
+    if (attMineToday()) { toast("Already marked present today."); return; }
+    if (t) { t.disabled = true; t.textContent = "Marking…"; }
+    var geo = new Promise(function (res) {
+      var done = false, fin = function (v) { if (!done) { done = true; res(v); } };
+      try { if (!navigator.geolocation) return fin("");
+        navigator.geolocation.getCurrentPosition(function (p) { fin(p.coords.latitude.toFixed(5) + "," + p.coords.longitude.toFixed(5)); }, function () { fin(""); }, { timeout: 4000, maximumAge: 300000 });
+      } catch (e) { fin(""); }
+      setTimeout(function () { fin(""); }, 4500);
+    });
+    geo.then(function (where) {
+      var now = new Date(), hhmm = ("0" + now.getHours()).slice(-2) + ":" + ("0" + now.getMinutes()).slice(-2), who = String(S.user || "").trim();
+      var row = { id: "AT-" + Date.now() + "-" + Math.floor(Math.random() * 1000000), createdAt: now.toISOString(), actor: who, action: "att:mark", target: who,
+        detail: JSON.stringify({ day: attTodayLocal(), who: who, kind: "present", note: "self " + hhmm + (where ? " @" + where : "") + (plan ? " · " + plan : ""), self: 1, plan: String(plan || ""), geo: where, app: "payment" }), ip: "" };
+      S.data.audit = ((S.data && S.data.audit) || []).concat([row]);
+      return Promise.resolve(saveRow("audit", row)).then(function (r) {
+        if (r && r.ok === false && !r.held) { S.data.audit = S.data.audit.filter(function (x) { return x !== row; }); toast("Not marked — " + String(r.error || "the server refused it") + ". Show this to the office."); render(); return; }
+        toast(r && r.held ? "Marked present — it goes up when there is signal." : "Marked present — " + (plan || "") + ". Thank you."); render();
+      });
+    }).catch(function () { toast("Could not mark it — try once more."); render(); });
+  }
   function header() {
     /* 18 Aug: was toTimeString() with no date - see bookAge(). */
     return '<div class="top">' + newVerBar() + '<div class="t1">' +
@@ -3666,6 +3719,7 @@ function cancelMap() {
         (canWrite() ? '' : (canPay() ? ' · records payments' : ' · view only')) +
         ' · <span title="App version">v' + APP_VERSION + '</span></div>' +   /* 1.59.0; 1.75.5 - the version at the top */
       '<div>' + bookAgeHtml(S.syncAt, S.busy) + '</div></div>' +
+      (function () { try { return attMeBtn(); } catch (e) { return ""; } })() +   /* 1.76.0 */
       '<a class="btn sm ghost" href="' + helpHref() + '" target="_blank" rel="noopener" title="How to use this screen" aria-label="How to use this screen" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;font-weight:800">?</a>' +   /* 1.57.0 */
       '<button class="btn sm ghost" data-act="refresh" title="Pull the latest, and get the new version if one is up">&#8635;</button>' +
       '<button class="btn sm ghost" data-act="account" title="This phone, and signing out">&#9776;</button>' +
@@ -5703,6 +5757,9 @@ function cancelMap() {
       repaintList(); return;
     }
     if (act === "close" || act === "close-bg") { S.sheet = null; render(); return; }
+    if (act === "att-me") { if (attMineToday()) { toast("Already marked present today."); return; } S.sheet = attPlanSheet(); render(); return; }
+    if (act === "att-town") { var _ap = document.getElementById("att_plan"); if (_ap) { var _v = t.getAttribute("data-v") || ""; _ap.value = _ap.value.trim() ? (_ap.value.indexOf(_v) < 0 ? _ap.value.trim() + ", " + _v : _ap.value) : _v; _ap.focus(); } return; }
+    if (act === "att-go") { var _pl = document.getElementById("att_plan"), _plan = _pl ? String(_pl.value || "").trim() : ""; if (!_plan) { toast("Tap a town or write the plan first."); return; } S.sheet = null; render(); attMeMark(null, _plan); return; }
     if (act === "ob-open") {
       var on = "OB:" + t.getAttribute("data-n");
       S.open = (S.open === on) ? "" : on;
