@@ -20,7 +20,7 @@ const call=b=>{const r=ctx.bxTry_({postData:{contents:JSON.stringify(b)}});retur
 let pass=0,fail=0;const ok=(m,c)=>{if(c){pass++;console.log("  ok   ",m)}else{fail++;console.log("  FAIL ",m)}};
 ctx.bxSetup();
 ok("not ours: another action is left to the Companion", call({action:"login"})===null);
-ok("ping", call({action:"bxPing"}).v==="BX1");
+ok("ping", call({action:"bxPing"}).v==="BX2");
 const own={action:"bxAdmin",crmUser:"Mukesh Verma",crmPin:"9999"};
 ok("a non-owner cannot sync", call({action:"bxAdmin",crmUser:"Vivek",crmPin:"1",op:"sync"}).ok===false);
 const site={client:"Nitin Jain",code:"CL010",area:"Model Town",city:"Panipat",stage:"Brickwork",brand:"HULIOT",kind:"Client",ew:"Going on",quotes:2,lastQuote:"2026-11-02",architect:{name:"Roshan Lal - Radiant",code:"AR020",town:"Panipat"},plumber:null,exec:{name:"Mukesh Verma",mobile:"9466600611"}};
@@ -46,6 +46,9 @@ r=call({action:"bxBook",tok});
 ok("his list shows it, with the file's name but never its link", r.fus.length===1&&r.fus[0].fileName&&!JSON.stringify(r.fus).includes("https://drive"));
 r=call(Object.assign({op:"pull",since:""},own));
 ok("the owner pulls it, with the link", r.ok&&r.rows.length===1&&r.rows[0].file.url.startsWith("https://drive")&&r.rows[0].bxName==="Rahul");
+const ra=call(Object.assign({op:"all"},own));
+ok("BX2: the owner sees every man (no PIN hash), every book and every follow-up with its link", ra.ok&&ra.people.length===2&&ra.people.every(x=>!("pinHash" in x))&&ra.people.find(x=>x.id==="BX1").hasPin===true&&ra.books.length===2&&ra.fus.length===1&&ra.fus[0].file.url.startsWith("https://drive"));
+ok("BX2: a non-owner cannot have the whole view", call({action:"bxAdmin",crmUser:"Vivek",crmPin:"1",op:"all"}).ok===false);
 ok("pull after its time returns nothing new", call(Object.assign({op:"pull",since:r.rows[0].at},own)).rows.length===0);
 call(Object.assign({op:"sync",people:[{id:"BX1",name:"Rahul",mobile:"9812345678",brand:"HULIOT",company:"Huliot India",active:"N"}],books:[]},own));
 ok("blocked: the open session stops on the next tap", call({action:"bxBook",tok}).out===1);
