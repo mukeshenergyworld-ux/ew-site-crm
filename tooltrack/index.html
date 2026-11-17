@@ -1,0 +1,501 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#1F3A5F">
+<title>Tool Tracking · Energy World</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="../icons/ew-192.png">
+<link rel="apple-touch-icon" href="../icons/ew-180.png">
+<style>
+/* Tool Tracking - who is holding which tool. 17 Nov 2026.
+   HIS WORDS: "we will register manually which tool is with whom, contractor or at godown ... I will make a tool list
+   manually, assigning tool will be picked from that list only ... everyone can login with their CRM or Challan app
+   login ... tools transferred from one site to other will be marked at the time of transferring, like debit credit ...
+   linked to CRM, Visit, Service and Challan app ... in Saathi it will show the plumbing contractor which tool he has."
+   HIS ANSWERS: any staff transfers; the giver's entry is enough; every piece separately; damage is logged with the
+   site, the man and what is to be recovered; numbering starts fresh.
+   ONE RULE: a tool has one holder at a time. A movement is a line (from -> to) that is never edited. */
+:root{--ink:#0D2340;--navy:#1F3A5F;--paper:#F4F6F9;--card:#fff;--line:#DCE3EA;--muted:#5E6875;--org:#E8762C;--ok:#166534;--bad:#b91c1c;--amb:#b45309}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;overflow-x:hidden}
+body{padding-bottom:calc(76px + env(safe-area-inset-bottom))}
+input,textarea,select{font:inherit;font-size:16px}
+.wrap{max-width:760px;margin:0 auto;padding:0 14px 30px}
+header{position:sticky;top:0;z-index:20;background:var(--navy);color:#fff;padding:calc(10px + env(safe-area-inset-top)) 14px 10px}
+header .row{max-width:760px;margin:0 auto;display:flex;align-items:center;gap:8px}
+header .t{flex:1;min-width:0}header b{display:block;font-size:16px}header small{display:block;font-size:12px;opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hb{min-height:44px;min-width:44px;border:1px solid rgba(255,255,255,.35);background:transparent;color:#fff;border-radius:10px;font-weight:700;padding:0 12px;font-size:14px}
+h2{font-size:18px;margin:14px 0 6px}h3{font-size:15px;margin:12px 0 4px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin:10px 0}
+.meta{font-size:13px;color:var(--muted)}
+.btn{display:inline-flex;align-items:center;justify-content:center;min-height:48px;padding:0 16px;border:0;border-radius:12px;background:var(--navy);color:#fff;font-weight:700;font-size:15px;cursor:pointer}
+.btn.full{width:100%}.btn.ghost{background:#fff;color:var(--navy);border:1px solid var(--line)}.btn.warn{background:#fff;color:var(--bad);border:1px solid #fca5a5}
+.btn.sm{min-height:44px;font-size:14px;padding:0 12px}.btn:disabled{opacity:.6}
+label{display:block;font-size:13px;font-weight:700;color:var(--muted);margin:12px 0 4px}
+input[type=text],input[type=password],input[type=search],input[type=number],textarea,select{width:100%;min-height:48px;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:var(--ink)}
+textarea{min-height:80px;resize:vertical}
+.chips{display:flex;gap:6px;overflow-x:auto;padding:4px 0 8px;scrollbar-width:none}.chips::-webkit-scrollbar{display:none}
+.chip{flex:none;min-height:44px;padding:0 14px;border:1px solid var(--line);border-radius:999px;background:#fff;font-weight:700;font-size:14px;color:var(--ink)}
+.chip.on{background:var(--navy);color:#fff;border-color:var(--navy)}
+.pill{display:inline-block;border-radius:999px;padding:2px 9px;font-size:12px;font-weight:800;background:#e2e8f0;color:#334155;white-space:nowrap}
+.p-godown{background:#dcfce7;color:var(--ok)}.p-partner{background:#dbeafe;color:#1d4ed8}.p-site{background:#ede9fe;color:#6d28d9}.p-staff{background:#e0f2fe;color:#0369a1}.p-unknown{background:#fef3c7;color:#92400e}
+.p-Damaged,.p-Lost{background:#fee2e2;color:var(--bad)}.p-Scrapped,.p-off{background:#f1f5f9;color:#64748b}
+.code{display:inline-block;font-size:12px;font-weight:800;color:#1F3A5F;background:#E8EEF5;border-radius:6px;padding:1px 7px;margin-right:6px;font-variant-numeric:tabular-nums}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
+.stat{background:#fff;border:1px solid var(--line);border-radius:12px;padding:8px 10px;min-height:64px;text-align:left;color:var(--ink)}
+.stat b{display:block;font-size:20px;font-variant-numeric:tabular-nums}.stat span{display:block;font-size:12px;color:var(--muted);font-weight:700}
+.stat.on{border-color:var(--navy);box-shadow:inset 0 0 0 1px var(--navy)}.stat.alert b{color:var(--bad)}
+.tool{display:flex;gap:10px;align-items:flex-start;cursor:pointer}
+.tool .bx{flex:none;width:26px;height:26px;border:2px solid #94a3b8;border-radius:7px;margin-top:2px;display:flex;align-items:center;justify-content:center;font-weight:900;color:#fff}
+.tool.sel .bx{background:var(--navy);border-color:var(--navy)}.tool.sel{border-color:var(--navy);background:#f1f5fb}
+.tool .mid{flex:1;min-width:0}.tool .nm{font-weight:800;font-size:15px;overflow-wrap:anywhere}
+.kv{display:grid;grid-template-columns:104px 1fr;gap:6px 10px;font-size:14px}.kv dt{color:var(--muted);font-weight:700}.kv dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.hist{border-left:3px solid var(--line);padding:2px 0 2px 10px;margin:8px 0;font-size:14px}.hist.ev{border-color:#fca5a5}
+.empty{color:var(--muted);text-align:center;padding:26px 8px}
+.toast{position:fixed;left:50%;bottom:calc(92px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#0D2340;color:#fff;padding:12px 16px;border-radius:12px;font-size:14px;z-index:90;max-width:90vw;box-shadow:0 6px 20px rgba(0,0,0,.25)}
+.sheet{position:fixed;inset:0;z-index:40;background:rgba(13,35,64,.45);display:flex;align-items:flex-end;justify-content:center}
+.sheet .in{background:var(--paper);width:100%;max-width:760px;max-height:92vh;overflow-y:auto;border-radius:18px 18px 0 0;padding:14px 14px calc(20px + env(safe-area-inset-bottom))}
+.sheet .hd{display:flex;gap:10px;align-items:center}.sheet .hd h2{flex:1;margin:0;min-width:0}
+nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:30;background:#fff;border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
+nav.tabs .row{max-width:760px;margin:0 auto;display:flex}
+nav.tabs button{flex:1;min-height:56px;border:0;background:transparent;font-weight:800;font-size:13px;color:var(--muted)}
+nav.tabs button.on{color:var(--navy);box-shadow:inset 0 3px 0 var(--navy)}
+.bar{position:fixed;left:0;right:0;bottom:calc(57px + env(safe-area-inset-bottom));z-index:31;padding:8px 14px;background:#fff;border-top:1px solid var(--line)}
+.bar .row{max-width:760px;margin:0 auto;display:flex;gap:8px}
+.pick{max-height:260px;overflow-y:auto;border:1px solid var(--line);border-radius:10px;background:#fff;margin-top:6px}
+.pick button{display:block;width:100%;text-align:left;min-height:48px;padding:6px 12px;border:0;border-bottom:1px solid #eef2f6;background:#fff;font-size:15px;color:var(--ink)}
+.pick button.on{background:#e8eef6;font-weight:800}.pick button small{display:block;font-size:12px;color:var(--muted)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.grp{cursor:pointer}.grp .top{display:flex;gap:8px;align-items:center}.grp .nm{flex:1;min-width:0;font-weight:800;overflow-wrap:anywhere}
+.rec{color:var(--bad);font-weight:800}
+@media (min-width:560px){.stats{grid-template-columns:repeat(6,1fr)}}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+(function () {
+  "use strict";
+  var APP_VERSION = "1.0.0";   /* 1.0.0 (17 Nov 2026) - first: the tool list, where each tool is, hand-over, back to godown, damage / loss with recovery, who has what, the log */
+  var CRM_GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
+  var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
+  var STORE = "ew_tools_session", BOOK = "ew_tools_book", DIRK = "ew_tools_dir";
+  /* the other Energy World apps on this phone: a man signed in to one is offered one tap here */
+  var SIBS = [["ew_team_session", "CRM"], ["ew_challan_session", "Challan app"], ["ew_vq_session", "Visit app"], ["ew_service_session", "Service app"], ["ew_collect_session", "Payment app"]];
+  var TYPES = { godown: "Godown", partner: "Plumber / contractor", site: "Site", staff: "Staff", unknown: "Not traced" };
+  var S = { user: "", pin: "", tok: "", own: false, me: null, tools: [], moves: [], events: [], dir: { partners: [], sites: [], staff: [] },
+    tab: "tools", f: "all", q: "", open: null, sheet: null, sel: {}, selMode: false, busy: false, grp: null, logQ: "", msg: "" };
+
+  function $(id) { return document.getElementById(id); }
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+  function lsGet(k) { try { return JSON.parse(localStorage.getItem(k) || "null"); } catch (e) { return null; } }
+  function lsPut(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { } }
+  function money(n) { return "₹" + Math.round(Number(n) || 0).toLocaleString("en-IN"); }
+  function dmy(iso) { var d = new Date(iso); if (isNaN(d)) return ""; return ("0" + d.getDate()).slice(-2) + "/" + ("0" + (d.getMonth() + 1)).slice(-2) + "/" + d.getFullYear(); }
+  function hm(iso) { var d = new Date(iso); if (isNaN(d)) return ""; return ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2); }
+  function days(iso) { var t = Date.parse(iso); return isNaN(t) ? 0 : Math.max(0, Math.floor((Date.now() - t) / 86400000)); }
+  function key(s) { return String(s || "").toLowerCase().replace(/[^a-z0-9]/g, ""); }
+  function boss() { return S.me && (S.me.role === "admin" || S.me.role === "accounts"); }
+  var _tt = null;
+  function toast(m) { var o = document.querySelector(".toast"); if (o) o.remove(); var d = document.createElement("div"); d.className = "toast"; d.textContent = m; document.body.appendChild(d); clearTimeout(_tt); _tt = setTimeout(function () { d.remove(); }, 3600); }
+
+  /* ---------- the two servers ---------- */
+  function post(url, body, ms) {
+    var ctrl = window.AbortController ? new AbortController() : null, timer = setTimeout(function () { if (ctrl) ctrl.abort(); }, ms || 45000);
+    return fetch(url, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(body), signal: ctrl ? ctrl.signal : undefined })
+      .then(function (r) { return r.json(); }).finally(function () { clearTimeout(timer); });
+  }
+  function cred() { var o = { crmUser: S.user }; if (S.tok) o.crmTok = S.tok; else o.crmPin = S.pin; return o; }
+  function tk(op, extra) {
+    return post(CO_GAS, Object.assign({ action: "tkStaff", op: op, app: "Tools " + APP_VERSION }, cred(), extra || {})).then(function (r) {
+      if (r && r.out) { signOut(true); throw new Error("Sign in again."); }
+      if (!r || !r.ok) throw new Error(String((r && (r.err || r.error)) || "The server did not answer."));
+      return r;
+    });
+  }
+
+  /* ---------- sign in: the CRM's own name + PIN. The PIN is never written down; the server's token is. ---------- */
+  function signIn(user, pin) {
+    return post(CRM_GAS, { action: "teamAuth", user: user, pin: pin, keep: 1, app: "Tools " + APP_VERSION, ua: navigator.userAgent }).then(function (r) {
+      if (!r || !r.ok) throw new Error(String((r && r.error) || "Name or PIN not right."));
+      S.user = String((r.user && r.user.name) || user); S.pin = pin; S.tok = String(r.tok || ""); S.own = true;
+      if (S.tok) lsPut(STORE, { user: S.user, tok: S.tok, own: 1 });
+    });
+  }
+  function signOut(quiet) {
+    try { if (S.own && S.tok) post(CRM_GAS, { action: "teamLogout", user: S.user, tok: S.tok }).catch(function () { }); } catch (e) { }
+    try { localStorage.removeItem(STORE); localStorage.removeItem(BOOK); } catch (e) { }
+    S.user = ""; S.pin = ""; S.tok = ""; S.me = null; S.tools = []; S.moves = []; S.events = []; S.sheet = null; S.open = null;
+    S.msg = quiet ? "Sign in again." : ""; render();
+  }
+  function siblings() {
+    var out = [], seen = {};
+    SIBS.forEach(function (k) { var o = lsGet(k[0]); if (o && o.user && o.tok && !seen[o.user]) { seen[o.user] = 1; out.push({ user: String(o.user), tok: String(o.tok), from: k[1] }); } });
+    return out;
+  }
+
+  /* ---------- the book ---------- */
+  function takeBook(r) {
+    S.me = r.me || S.me; S.tools = r.tools || []; S.moves = r.moves || []; S.events = r.events || [];
+    lsPut(BOOK, { user: S.user, me: S.me, tools: S.tools, moves: S.moves, events: S.events, at: Date.now() });
+  }
+  function pull(wantDir) {
+    S.busy = true; render();
+    return tk("book", wantDir ? { wantDir: 1 } : null).then(function (r) {
+      takeBook(r); S.busy = false;
+      if (r.dir) dirMerge(r.dir, null);
+      render(); return r;
+    }).catch(function (e) { S.busy = false; render(); if (S.user) toast(e.message || "No signal."); });
+  }
+  /* the pick lists: partners, sites, staff. Live from the CRM for this login; the Companion's copy (sent by the
+     owner's CRM, set-aside and merged partners already left out) is the base when it is there. */
+  function dirMerge(base, live) {
+    var d = lsGet(DIRK) || { partners: [], sites: [], staff: [], at: 0 };
+    if (base) { d.partners = base.partners || []; d.sites = base.sites || []; d.staff = base.staff || []; d.base = 1; }
+    if (live) {
+      var add = function (arr, list, idOf) { var have = {}; arr.forEach(function (x) { have[key(x.n) + "|" + key(x.cl || "")] = 1; if (x.i) have["#" + x.i] = 1; });
+        list.forEach(function (x) { if (!x.n || have["#" + x.i] || have[key(x.n) + "|" + key(x.cl || "")]) return; if (d.base && !x.fresh) return; arr.push(x); }); };
+      var recent = function (r) { return Date.now() - (Date.parse(r.createdAt || "") || 0) < 3 * 86400000; };
+      add(d.partners, (live.associates || []).filter(function (a) { return a && String(a.name || "").trim(); }).map(function (a) { return { n: String(a.name).trim(), c: String(a.code || ""), r: String(a.role || ""), t: String(a.location || ""), i: String(a.id || ""), fresh: recent(a) }; }));
+      add(d.sites, (live.sites || []).filter(function (s) { return s && String(s.name || "").trim(); }).map(function (s) { return { n: String(s.name).trim(), cl: String(s.client || ""), i: String(s.id || ""), fresh: recent(s) }; }));
+      if (!d.staff.length) d.staff = (live.team || []).filter(function (t) { return t && t.name && String(t.active || "Y").toUpperCase() !== "N"; }).map(function (t) { return { n: String(t.name), r: String(t.role || "") }; });
+    }
+    d.at = Date.now(); S.dir = d; lsPut(DIRK, d);
+  }
+  function dirLoad(force) {
+    var d = lsGet(DIRK); if (d) S.dir = d;
+    if (!force && d && Date.now() - (d.at || 0) < 6 * 3600000 && (d.partners || []).length) return;
+    var b = { action: "teamGet", user: S.user, only: ["associates", "sites", "team"], app: "Tools " + APP_VERSION }; if (S.tok) b.tok = S.tok; else b.pin = S.pin;
+    post(CRM_GAS, b, 60000).then(function (r) { if (r && r.ok) { dirMerge(null, r); if (S.sheet) render(); } }).catch(function () { });
+  }
+
+  /* ---------- reading the book ---------- */
+  function live() { return S.tools.filter(function (t) { return !t.off; }); }
+  function toolOf(tid) { return S.tools.filter(function (t) { return t.tid === tid; })[0] || null; }
+  function holderTxt(t) {
+    if (t.hType === "godown") return "In the godown";
+    if (t.hType === "unknown" || !t.hType) return "Not traced yet";
+    if (t.hType === "site") return "At site: " + t.hName;
+    return (t.hCode ? t.hCode + " " : "") + t.hName + (t.site ? " · at " + t.site : "");
+  }
+  function dues() { return S.events.filter(function (e) { return Number(e.amount) > 0 && String(e.recovered || "") !== "Y"; }); }
+  function matchQ(t, q) { return !q || key([t.code, t.name, t.make, t.model, t.serial, t.hName, t.hCode, t.site].join(" ")).indexOf(key(q)) >= 0; }
+  function inF(t, f) {
+    if (f === "all") return true;
+    if (f === "bad") return t.cond === "Damaged" || t.cond === "Lost";
+    if (f === "out") return t.hType === "partner" || t.hType === "site" || t.hType === "staff";
+    return (t.hType || "unknown") === f;
+  }
+
+  /* ---------- screens ---------- */
+  function viewLogin() {
+    var sib = siblings();
+    return '<header><div class="row"><div class="t"><b>Tool Tracking</b><small>Energy World · v' + APP_VERSION + '</small></div></div></header><div class="wrap">' +
+      (S.msg ? '<div class="card" style="border-color:#fca5a5;color:#b91c1c">' + esc(S.msg) + '</div>' : '') +
+      (sib.length ? '<div class="card"><h3 style="margin-top:0">Already signed in on this phone</h3>' + sib.map(function (s, i) {
+        return '<button class="btn full" style="margin-top:8px" data-act="sib" data-i="' + i + '">Continue as ' + esc(s.user) + '</button><div class="meta" style="margin-top:2px">from the ' + esc(s.from) + '</div>'; }).join("") + '</div>' : '') +
+      '<div class="card"><h3 style="margin-top:0">Sign in</h3><div class="meta">The same name and PIN as the CRM or the Challan app.</div>' +
+      '<label for="l_user">Your name</label><input id="l_user" type="text" autocomplete="username" autocapitalize="words"/>' +
+      '<label for="l_pin">PIN</label><input id="l_pin" type="password" inputmode="numeric" autocomplete="current-password"/>' +
+      '<button class="btn full" style="margin-top:14px" data-act="login">Sign in</button></div></div>';
+  }
+  function statTile(k, n, lbl, alert) { return '<button class="stat' + (S.f === k ? ' on' : '') + (alert && n ? ' alert' : '') + '" data-act="f" data-k="' + k + '"><b>' + n + '</b><span>' + lbl + '</span></button>'; }
+  function toolRow(t) {
+    var sel = !!S.sel[t.tid];
+    return '<div class="card tool' + (sel ? ' sel' : '') + '" data-act="' + (S.selMode ? 'tsel' : 'open') + '" data-id="' + esc(t.tid) + '">' +
+      (S.selMode ? '<div class="bx">' + (sel ? '&#10003;' : '') + '</div>' : '') +
+      '<div class="mid"><div class="nm"><span class="code">' + esc(t.code) + '</span>' + esc(t.name) + '</div>' +
+      '<div class="meta">' + esc([t.make, t.model, t.serial ? "S/N " + t.serial : ""].filter(Boolean).join(" · ")) + '</div>' +
+      '<div style="margin-top:4px"><span class="pill p-' + esc(t.hType || "unknown") + '">' + esc(holderTxt(t)) + '</span> ' +
+      (t.cond && t.cond !== "OK" ? '<span class="pill p-' + esc(t.cond) + '">' + esc(t.cond) + '</span> ' : '') +
+      (t.hType !== "godown" && t.hType !== "unknown" && t.since ? '<span class="meta">' + days(t.since) + ' days</span>' : '') + '</div></div></div>';
+  }
+  function viewTools() {
+    var L = live(), n = function (f) { return L.filter(function (t) { return inF(t, f); }).length; };
+    var due = dues().reduce(function (a, e) { return a + Number(e.amount); }, 0);
+    var show = L.filter(function (t) { return inF(t, S.f) && matchQ(t, S.q); }).sort(function (a, b) { return String(a.code).localeCompare(String(b.code)); });
+    var h = '<div class="stats">' + statTile("all", L.length, "All tools") + statTile("godown", n("godown"), "In godown") + statTile("out", n("out"), "Out") +
+      statTile("unknown", n("unknown"), "Not traced", 1) + statTile("bad", n("bad"), "Damaged / lost", 1) +
+      '<button class="stat' + (due ? ' alert' : '') + '" data-act="tab" data-k="people"><b>' + money(due) + '</b><span>To recover</span></button></div>' +
+      '<div class="chips" style="margin-top:8px">' + [["all", "All"], ["partner", "With plumbers"], ["site", "At sites"], ["staff", "With staff"], ["godown", "Godown"], ["unknown", "Not traced"]].map(function (c) {
+        return '<button class="chip' + (S.f === c[0] ? ' on' : '') + '" data-act="f" data-k="' + c[0] + '">' + c[1] + '</button>'; }).join("") + '</div>' +
+      '<input id="q" type="search" placeholder="Search tool, code, plumber or site" value="' + esc(S.q) + '"/>' +
+      '<div style="display:flex;gap:8px;margin-top:8px;align-items:center"><div class="meta" style="flex:1">' + show.length + ' tool' + (show.length === 1 ? '' : 's') + '</div>' +
+      '<button class="btn sm ghost" data-act="selmode">' + (S.selMode ? 'Done selecting' : 'Select several') + '</button></div>';
+    if (!L.length) h += '<div class="card empty">No tool on the list yet.' + (boss() ? '<br><button class="btn" style="margin-top:10px" data-act="tab" data-k="list">Make the tool list</button>' : '<br>The owner or accounts makes the tool list first.') + '</div>';
+    else if (!show.length) h += '<div class="card empty">Nothing matches.</div>';
+    else h += '<div id="rows">' + show.slice(0, 300).map(toolRow).join("") + '</div>';
+    var ns = Object.keys(S.sel).length;
+    if (S.selMode && ns) h += '<div class="bar"><div class="row"><button class="btn full" data-act="move-open">Hand over ' + ns + ' tool' + (ns === 1 ? '' : 's') + '</button></div></div>';
+    return h;
+  }
+  function viewPeople() {
+    var g = {}, L = live();
+    L.forEach(function (t) { var ty = t.hType || "unknown", k = ty + "|" + key(ty === "godown" || ty === "unknown" ? ty : t.hName);
+      var o = g[k] || (g[k] = { k: k, ty: ty, name: ty === "godown" ? "Godown" : ty === "unknown" ? "Not traced yet" : t.hName, code: t.hCode || "", tools: [], val: 0, due: 0 });
+      o.tools.push(t); o.val += Number(t.value) || 0; });
+    var du = dues();
+    du.forEach(function (e) { var k = Object.keys(g).filter(function (x) { return key(g[x].name) === key(e.who); })[0];
+      if (!k) { k = "due|" + key(e.who); g[k] = g[k] || { k: k, ty: "partner", name: e.who, code: "", tools: [], val: 0, due: 0 }; } g[k].due += Number(e.amount) || 0; });
+    var order = { partner: 0, site: 1, staff: 2, unknown: 3, godown: 4 };
+    var rows = Object.keys(g).map(function (k) { return g[k]; }).sort(function (a, b) { return (order[a.ty] - order[b.ty]) || (b.tools.length - a.tools.length) || a.name.localeCompare(b.name); });
+    if (!rows.length) return '<div class="card empty">No tool on the list yet.</div>';
+    var tot = du.reduce(function (a, e) { return a + Number(e.amount); }, 0);
+    return '<h2>Who has what</h2><div class="meta">' + L.length + ' tools · worth ' + money(L.reduce(function (a, t) { return a + (Number(t.value) || 0); }, 0)) + (tot ? ' · <span class="rec">' + money(tot) + ' to recover</span>' : '') + '</div>' +
+      rows.map(function (o) {
+        var open = S.grp === o.k;
+        return '<div class="card grp" data-act="grp" data-k="' + esc(o.k) + '"><div class="top"><div class="nm">' + (o.code ? '<span class="code">' + esc(o.code) + '</span>' : '') + esc(o.name) + '</div>' +
+          '<span class="pill p-' + o.ty + '">' + esc(TYPES[o.ty] || o.ty) + '</span></div>' +
+          '<div class="meta">' + o.tools.length + ' tool' + (o.tools.length === 1 ? '' : 's') + (o.val ? ' · worth ' + money(o.val) : '') + (o.due ? ' · <span class="rec">' + money(o.due) + ' to recover</span>' : '') + '</div>' +
+          (open ? '<div style="margin-top:8px">' + o.tools.map(function (t) {
+            return '<div class="hist" data-act="open" data-id="' + esc(t.tid) + '"><span class="code">' + esc(t.code) + '</span><b>' + esc(t.name) + '</b>' + (t.site && o.ty !== "site" ? ' · at ' + esc(t.site) : '') +
+              (t.since && o.ty !== "godown" && o.ty !== "unknown" ? ' · ' + days(t.since) + ' days' : '') + (t.cond !== "OK" ? ' <span class="pill p-' + esc(t.cond) + '">' + esc(t.cond) + '</span>' : '') + '</div>'; }).join("") +
+            du.filter(function (e) { return key(e.who) === key(o.name); }).map(function (e) { return evLine(e, true); }).join("") + '</div>' : '') + '</div>';
+      }).join("");
+  }
+  function mvLine(m, withTool) {
+    var side = function (ty, nm, site) { return ty === "godown" ? "Godown" : (ty === "unknown" || !ty) ? "Not traced" : ty === "site" ? "Site " + nm : nm + (site ? " (at " + site + ")" : ""); };
+    return '<div class="hist"' + (withTool ? ' data-act="open" data-id="' + esc(m.tid) + '"' : '') + '>' + (withTool ? '<span class="code">' + esc(m.code) + '</span><b>' + esc(m.tool) + '</b><br>' : '') +
+      '<b>' + esc(m.kind) + '</b> · ' + esc(side(m.fType, m.fName, m.fSite)) + ' &rarr; ' + esc(side(m.tType, (m.tCode ? m.tCode + " " : "") + m.tName, m.tSite)) +
+      '<div class="meta">by ' + esc(m.by) + ' · ' + dmy(m.at) + ' ' + hm(m.at) + (m.note ? ' · ' + esc(m.note) : '') + '</div></div>';
+  }
+  function evLine(e, withTool) {
+    var due = Number(e.amount) > 0;
+    return '<div class="hist ev">' + (withTool ? '<span class="code">' + esc(e.code) + '</span><b>' + esc(e.tool) + '</b><br>' : '') +
+      '<b>' + esc(e.kind) + '</b>' + (e.site ? ' · at ' + esc(e.site) : '') + (e.who ? ' · ' + esc(e.who) : '') +
+      (e.note ? '<div>' + esc(e.note) + '</div>' : '') +
+      (due ? '<div class="' + (e.recovered === "Y" ? 'meta' : 'rec') + '">' + money(e.amount) + (e.recovered === "Y" ? ' recovered ' + dmy(e.recAt) + ' (' + esc(e.recBy) + ')' : ' to recover from ' + esc(e.who)) + '</div>' : '') +
+      '<div class="meta">by ' + esc(e.by) + ' · ' + dmy(e.at) + ' ' + hm(e.at) + '</div>' +
+      (due && boss() ? '<button class="btn sm ghost" style="margin-top:4px" data-act="rec" data-id="' + esc(e.eid) + '" data-u="' + (e.recovered === "Y" ? 1 : 0) + '">' + (e.recovered === "Y" ? 'Undo recovered' : 'Mark recovered') + '</button>' : '') + '</div>';
+  }
+  function viewLog() {
+    var all = S.moves.map(function (m) { return { at: m.at, m: m }; }).concat(S.events.map(function (e) { return { at: e.at, e: e }; }))
+      .filter(function (x) { var r = x.m || x.e; return !S.logQ || key([r.code, r.tool, r.fName, r.tName, r.fSite, r.tSite, r.who, r.site, r.by, r.kind, r.note].join(" ")).indexOf(key(S.logQ)) >= 0; })
+      .sort(function (a, b) { return String(b.at).localeCompare(String(a.at)); });
+    return '<h2>Log</h2><input id="lq" type="search" placeholder="Search the log" value="' + esc(S.logQ) + '"/><div class="meta" style="margin-top:6px">Every hand-over and every damage, newest first. Nothing is edited or removed.</div>' +
+      '<div id="logrows">' + (all.length ? all.slice(0, 200).map(function (x) { return '<div class="card" style="padding:6px 12px">' + (x.m ? mvLine(x.m, true) : evLine(x.e, true)) + '</div>'; }).join("") : '<div class="card empty">Nothing yet.</div>') + '</div>';
+  }
+  function viewList() {
+    if (!boss()) return '<div class="card empty">The owner and accounts keep the tool list.</div>';
+    var L = S.tools.slice().sort(function (a, b) { return String(a.code).localeCompare(String(b.code)); });
+    return '<h2>Tool list</h2><div class="card"><h3 style="margin-top:0">Add a tool</h3>' +
+      '<label for="a_name">Tool name *</label><input id="a_name" type="text" placeholder="e.g. Pipe punching machine"/>' +
+      '<div class="two"><div><label for="a_make">Make</label><input id="a_make" type="text"/></div><div><label for="a_model">Model</label><input id="a_model" type="text"/></div></div>' +
+      '<div class="two"><div><label for="a_value">Value of one (Rs)</label><input id="a_value" type="text" inputmode="numeric"/></div><div><label for="a_count">How many pieces</label><input id="a_count" type="text" inputmode="numeric" value="1"/></div></div>' +
+      '<label for="a_serial">Serial no (only when adding one piece)</label><input id="a_serial" type="text"/>' +
+      '<label for="a_where">Where are they now?</label><select id="a_where"><option value="">Not traced yet &mdash; will be marked one by one</option><option value="g">All in the godown</option></select>' +
+      '<div class="meta" style="margin-top:6px">Each piece gets its own number (EWT-001, EWT-002 &hellip;), so each one can be given to a different man.</div>' +
+      '<button class="btn full" style="margin-top:12px" data-act="add">Add to the list</button></div>' +
+      '<div class="meta">' + L.length + ' on the list</div>' + L.map(function (t) {
+        return '<div class="card" style="padding:8px 12px" data-act="open" data-id="' + esc(t.tid) + '"><span class="code">' + esc(t.code) + '</span><b>' + esc(t.name) + '</b> ' + (t.off ? '<span class="pill p-off">off the list</span>' : '') +
+          '<div class="meta">' + esc([t.make, t.model, t.serial ? "S/N " + t.serial : "", t.value ? money(t.value) : ""].filter(Boolean).join(" · ")) + '</div></div>'; }).join("");
+  }
+
+  /* ---------- sheets ---------- */
+  function dirList(ty) {
+    var d = S.dir || {};
+    if (ty === "partner") return (d.partners || []).map(function (x) { return { n: x.n, sub: [x.c, x.r, x.t].filter(Boolean).join(" · "), ref: x.i || "", code: x.c || "" }; });
+    if (ty === "site") return (d.sites || []).map(function (x) { return { n: x.n, sub: x.cl && key(x.cl) !== key(x.n) ? "Client: " + x.cl : "", ref: x.i || "", code: "" }; });
+    if (ty === "staff") return (d.staff || []).map(function (x) { return { n: x.n, sub: x.r || "", ref: "", code: "" }; });
+    return [];
+  }
+  function pickHtml(ty, q, cur) {
+    var L = dirList(ty).filter(function (x) { return !q || key(x.n + " " + x.sub).indexOf(key(q)) >= 0; }).sort(function (a, b) { return a.n.localeCompare(b.n); });
+    if (!L.length) return '<div class="meta" style="padding:10px">' + (dirList(ty).length ? 'No name matches.' : 'The list is loading &mdash; wait a moment, then tap the type again.') + '</div>';
+    return L.slice(0, 40).map(function (x) { return '<button type="button" class="' + (cur && key(cur) === key(x.n) ? 'on' : '') + '" data-act="pk" data-n="' + esc(x.n) + '" data-r="' + esc(x.ref) + '" data-c="' + esc(x.code) + '">' + esc(x.n) + (x.sub ? '<small>' + esc(x.sub) + '</small>' : '') + '</button>'; }).join("") +
+      (L.length > 40 ? '<div class="meta" style="padding:8px 12px">' + (L.length - 40) + ' more &mdash; type to narrow.</div>' : '');
+  }
+  function sitesDl() { return '<datalist id="dl_sites">' + ((S.dir && S.dir.sites) || []).slice(0, 600).map(function (x) { return '<option value="' + esc(x.n) + '">'; }).join("") + '</datalist>'; }
+  function sheetMove() {
+    var m = S.sheet, tools = m.tids.map(toolOf).filter(Boolean);
+    return '<div class="hd"><h2>Hand over</h2><button class="btn sm ghost" data-act="sh-close">Close</button></div>' +
+      '<div class="meta">' + tools.slice(0, 6).map(function (t) { return '<span class="code">' + esc(t.code) + '</span>' + esc(t.name); }).join(", ") + (tools.length > 6 ? ' and ' + (tools.length - 6) + ' more' : '') + '</div>' +
+      (tools.length === 1 ? '<div class="meta">Now: ' + esc(holderTxt(tools[0])) + '</div>' : '') +
+      '<label>Goes to</label><div class="chips">' + ["partner", "site", "staff", "godown"].map(function (k) { return '<button class="chip' + (m.ty === k ? ' on' : '') + '" data-act="mty" data-k="' + k + '">' + TYPES[k] + '</button>'; }).join("") + '</div>' +
+      (m.ty && m.ty !== "godown" ? '<input id="m_q" type="search" placeholder="Search the ' + (m.ty === "site" ? "site" : "name") + '" value="' + esc(m.q || "") + '"/><div class="pick" id="m_pick">' + pickHtml(m.ty, m.q, m.name) + '</div>' +
+        (m.name ? '<div class="meta" style="margin-top:6px">Picked: <b>' + esc(m.name) + '</b></div>' : '') : '') +
+      (m.ty === "partner" || m.ty === "staff" ? '<label for="m_site">Working at site (optional)</label><input id="m_site" type="text" list="dl_sites" placeholder="Type to pick the site" value="' + esc(m.site || "") + '"/>' + sitesDl() : '') +
+      (m.ty ? '<label for="m_note">Note (optional)</label><input id="m_note" type="text" value="' + esc(m.note || "") + '" placeholder="e.g. with blades and case"/>' +
+        '<button class="btn full" style="margin-top:14px" data-act="move-go">' + (m.ty === "godown" ? "Take back into the godown" : "Hand over") + '</button>' : '');
+  }
+  function sheetEvent() {
+    var v = S.sheet, t = toolOf(v.tid) || {};
+    var kinds = ["Damaged", "Lost", "Repaired", "Found"].concat(boss() ? ["Scrapped"] : []);
+    var ppl = '<datalist id="dl_ppl">' + dirList("partner").concat(dirList("staff")).slice(0, 800).map(function (x) { return '<option value="' + esc(x.n) + '">'; }).join("") + '</datalist>';
+    var bad = v.kindSel === "Damaged" || v.kindSel === "Lost";
+    return '<div class="hd"><h2>Damage / loss</h2><button class="btn sm ghost" data-act="sh-close">Close</button></div>' +
+      '<div class="meta"><span class="code">' + esc(t.code) + '</span>' + esc(t.name) + ' · ' + esc(holderTxt(t)) + '</div>' +
+      '<label>What happened</label><div class="chips">' + kinds.map(function (k) { return '<button class="chip' + (v.kindSel === k ? ' on' : '') + '" data-act="ekind" data-k="' + k + '">' + k + '</button>'; }).join("") + '</div>' +
+      (v.kindSel ? '<label for="e_site">At which site</label><input id="e_site" type="text" list="dl_sites" value="' + esc(v.site != null ? v.site : (t.site || "")) + '" placeholder="Type to pick the site"/>' + sitesDl() +
+        (bad ? '<label for="e_who">By whom / who was holding it</label><input id="e_who" type="text" list="dl_ppl" value="' + esc(v.who != null ? v.who : (t.hType === "partner" || t.hType === "staff" ? t.hName : "")) + '" placeholder="Type to pick the name"/>' + ppl : '') +
+        '<label for="e_note">What happened' + (bad ? ' *' : ' (optional)') + '</label><textarea id="e_note" placeholder="e.g. motor burnt, dropped from the first floor">' + esc(v.note || "") + '</textarea>' +
+        (bad ? '<label for="e_amt">Amount to recover from him (Rs) &mdash; leave blank if none</label><input id="e_amt" type="text" inputmode="numeric" value="' + esc(v.amt || "") + '"/>' : '') +
+        '<button class="btn full" style="margin-top:14px" data-act="ev-go">Save to the log</button>' : '');
+  }
+  function sheetEdit() {
+    var t = toolOf(S.sheet.tid) || {};
+    return '<div class="hd"><h2>Edit ' + esc(t.code) + '</h2><button class="btn sm ghost" data-act="sh-close">Close</button></div>' +
+      '<label for="x_name">Tool name *</label><input id="x_name" type="text" value="' + esc(t.name) + '"/>' +
+      '<div class="two"><div><label for="x_make">Make</label><input id="x_make" type="text" value="' + esc(t.make) + '"/></div><div><label for="x_model">Model</label><input id="x_model" type="text" value="' + esc(t.model) + '"/></div></div>' +
+      '<div class="two"><div><label for="x_serial">Serial no</label><input id="x_serial" type="text" value="' + esc(t.serial) + '"/></div><div><label for="x_value">Value (Rs)</label><input id="x_value" type="text" inputmode="numeric" value="' + esc(t.value || "") + '"/></div></div>' +
+      '<label for="x_notes">Notes</label><input id="x_notes" type="text" value="' + esc(t.notes) + '"/>' +
+      '<button class="btn full" style="margin-top:14px" data-act="edit-go">Save</button>' +
+      (S.me && S.me.role === "admin" ? '<button class="btn full warn" style="margin-top:8px" data-act="off" data-b="' + (t.off ? 1 : 0) + '">' + (t.off ? 'Put it back on the list' : 'Take it off the list (kept in the record)') + '</button>' : '');
+  }
+  function sheetTool() {
+    var t = toolOf(S.open); if (!t) return '';
+    var hist = S.moves.filter(function (m) { return m.tid === t.tid; }).map(function (m) { return { at: m.at, h: mvLine(m) }; })
+      .concat(S.events.filter(function (e) { return e.tid === t.tid; }).map(function (e) { return { at: e.at, h: evLine(e) }; }))
+      .sort(function (a, b) { return String(b.at).localeCompare(String(a.at)); });
+    return '<div class="hd"><h2><span class="code">' + esc(t.code) + '</span>' + esc(t.name) + '</h2><button class="btn sm ghost" data-act="close">Close</button></div>' +
+      '<div class="card"><dl class="kv"><dt>Now with</dt><dd><b>' + esc(holderTxt(t)) + '</b>' + (t.hType !== "godown" && t.hType !== "unknown" && t.since ? '<div class="meta">since ' + dmy(t.since) + ' · ' + days(t.since) + ' days</div>' : '') + '</dd>' +
+        '<dt>Condition</dt><dd>' + (t.cond === "OK" || !t.cond ? 'OK' : '<span class="pill p-' + esc(t.cond) + '">' + esc(t.cond) + '</span>') + (t.off ? ' <span class="pill p-off">off the list</span>' : '') + '</dd>' +
+        (t.make || t.model ? '<dt>Make</dt><dd>' + esc([t.make, t.model].filter(Boolean).join(" · ")) + '</dd>' : '') +
+        (t.serial ? '<dt>Serial no</dt><dd>' + esc(t.serial) + '</dd>' : '') + (t.value ? '<dt>Value</dt><dd>' + money(t.value) + '</dd>' : '') + (t.notes ? '<dt>Notes</dt><dd>' + esc(t.notes) + '</dd>' : '') + '</dl></div>' +
+      (t.off ? '' : '<button class="btn full" data-act="move-one" data-id="' + esc(t.tid) + '">' + (t.hType === "unknown" || !t.hType ? "Mark where it is now" : "Hand over to someone else") + '</button>' +
+        '<div class="two" style="margin-top:8px">' + (t.hType !== "godown" ? '<button class="btn ghost" data-act="back" data-id="' + esc(t.tid) + '">Back to godown</button>' : '<span></span>') +
+        '<button class="btn warn" data-act="ev-open" data-id="' + esc(t.tid) + '">Damage / loss</button></div>') +
+      (boss() ? '<button class="btn full ghost" style="margin-top:8px" data-act="edit-open" data-id="' + esc(t.tid) + '">Edit details</button>' : '') +
+      '<h3>History</h3>' + (hist.length ? hist.map(function (x) { return x.h; }).join("") : '<div class="meta">No movement recorded yet.</div>');
+  }
+
+  function render() {
+    var app = $("app");
+    if (!S.user) { app.innerHTML = viewLogin(); return; }
+    var y = window.scrollY, sh = document.querySelector(".sheet .in"), sy = sh ? sh.scrollTop : 0;
+    var body = S.tab === "people" ? viewPeople() : S.tab === "log" ? viewLog() : S.tab === "list" ? viewList() : viewTools();
+    var sheet = S.sheet ? (S.sheet.kind === "move" ? sheetMove() : S.sheet.kind === "event" ? sheetEvent() : sheetEdit()) : (S.open ? sheetTool() : "");
+    var tabs = [["tools", "Tools"], ["people", "Who has what"], ["log", "Log"]].concat(boss() ? [["list", "Tool list"]] : []);
+    app.innerHTML = '<header><div class="row"><div class="t"><b>Tool Tracking</b><small>' + esc(S.user) + (S.me && S.me.role ? ' · ' + esc(S.me.role) : '') + ' · v' + APP_VERSION + (S.busy ? ' · updating…' : '') + '</small></div>' +
+      '<button class="hb" data-act="refresh" aria-label="Refresh">&#8635;</button><button class="hb" data-act="out">Sign out</button></div></header>' +
+      '<div class="wrap">' + body + '</div>' +
+      '<nav class="tabs"><div class="row">' + tabs.map(function (t) { return '<button class="' + (S.tab === t[0] ? 'on' : '') + '" data-act="tab" data-k="' + t[0] + '">' + t[1] + '</button>'; }).join("") + '</div></nav>' +
+      (sheet ? '<div class="sheet" data-act="sh-bg"><div class="in">' + sheet + '</div></div>' : '');
+    window.scrollTo(0, y); var sh2 = document.querySelector(".sheet .in"); if (sh2 && sy) sh2.scrollTop = sy;
+  }
+  function busyBtn(b, txt) { if (b) { b.disabled = true; b.textContent = txt || "Saving…"; } }
+  function mergeTools(list) { (list || []).forEach(function (t) { var i = -1; S.tools.forEach(function (x, k) { if (x.tid === t.tid) i = k; }); if (i >= 0) S.tools[i] = t; else S.tools.push(t); }); }
+  function val(id) { var e = $(id); return e ? String(e.value || "").trim() : ""; }
+  function inSites(n) { return !n || ((S.dir && S.dir.sites) || []).some(function (x) { return key(x.n) === key(n); }); }
+  function keepSheet() { var m = S.sheet; if (!m) return; if (m.kind === "move") { if ($("m_site")) m.site = val("m_site"); if ($("m_note")) m.note = val("m_note"); }
+    if (m.kind === "event") { if ($("e_site")) m.site = val("e_site"); if ($("e_who")) m.who = val("e_who"); if ($("e_note")) m.note = val("e_note"); if ($("e_amt")) m.amt = val("e_amt"); } }
+
+  document.addEventListener("click", function (ev) {
+    var t = ev.target.closest("[data-act]"); if (!t) return;
+    var act = t.getAttribute("data-act"), id = t.getAttribute("data-id");
+    if (act === "sh-bg") { if (ev.target === t) { S.sheet ? (S.sheet = null) : (S.open = null); render(); } return; }
+    if (act === "login") {
+      var u = val("l_user"), p = val("l_pin"); if (!u || !p) { toast("Type your name and PIN."); return; }
+      busyBtn(t, "Signing in…");
+      signIn(u, p).then(function () { S.msg = ""; render(); return pull(true); }).then(function () { dirLoad(true); }).catch(function (e) { S.msg = e.message || "Could not sign in."; S.user = ""; render(); });
+      return;
+    }
+    if (act === "sib") { var sb = siblings()[Number(t.getAttribute("data-i"))]; if (!sb) return; S.user = sb.user; S.tok = sb.tok; S.pin = ""; S.own = false; lsPut(STORE, { user: S.user, tok: S.tok }); S.msg = ""; render(); pull(true).then(function () { dirLoad(false); }); return; }
+    if (act === "out") { signOut(false); return; }
+    if (act === "refresh") { pull(true).then(function () { dirLoad(true); toast("Up to date."); }); return; }
+    if (act === "tab") { S.tab = t.getAttribute("data-k"); S.selMode = false; S.sel = {}; window.scrollTo(0, 0); render(); return; }
+    if (act === "f") { S.f = t.getAttribute("data-k"); render(); return; }
+    if (act === "selmode") { S.selMode = !S.selMode; S.sel = {}; render(); return; }
+    if (act === "tsel") { if (S.sel[id]) delete S.sel[id]; else S.sel[id] = 1; render(); return; }
+    if (act === "grp") { var gk = t.getAttribute("data-k"); S.grp = S.grp === gk ? null : gk; render(); return; }
+    if (act === "open") { ev.stopPropagation(); S.open = id; S.sheet = null; render(); return; }
+    if (act === "close") { S.open = null; render(); return; }
+    if (act === "sh-close") { S.sheet = null; render(); return; }
+    if (act === "move-open") { S.sheet = { kind: "move", tids: Object.keys(S.sel), ty: "", q: "", name: "" }; dirLoad(false); render(); return; }
+    if (act === "move-one") { S.sheet = { kind: "move", tids: [id], ty: "", q: "", name: "" }; dirLoad(false); render(); return; }
+    if (act === "mty") { keepSheet(); S.sheet.ty = t.getAttribute("data-k"); S.sheet.q = ""; S.sheet.name = ""; S.sheet.ref = ""; S.sheet.code = ""; render(); return; }
+    if (act === "pk") { keepSheet(); S.sheet.name = t.getAttribute("data-n"); S.sheet.ref = t.getAttribute("data-r") || ""; S.sheet.code = t.getAttribute("data-c") || ""; render(); return; }
+    if (act === "back" || act === "move-go") {
+      var m = S.sheet || {}, body;
+      if (act === "back") body = { tids: [id], tType: "godown" };
+      else {
+        keepSheet();
+        if (!m.ty) { toast("Pick who it goes to."); return; }
+        if (m.ty !== "godown" && !m.name) { toast("Pick the name from the list."); return; }
+        if (!inSites(m.site)) { toast("Pick the site from the list, or leave it blank."); return; }
+        body = { tids: m.tids, tType: m.ty, tName: m.name, tRef: m.ref || "", tCode: m.code || "", tSite: m.site || "", note: m.note || "" };
+      }
+      busyBtn(t);
+      tk("move", body).then(function (r) {
+        mergeTools(r.tools); S.sheet = null; S.sel = {}; S.selMode = false; render();
+        toast(r.tools.length + " tool" + (r.tools.length === 1 ? "" : "s") + (body.tType === "godown" ? " back in the godown." : " handed over to " + body.tName + ".") + (r.skipped && r.skipped.length ? " " + r.skipped.length + " already there." : ""));
+        pull(false);
+      }).catch(function (e) { toast(e.message); render(); });
+      return;
+    }
+    if (act === "ev-open") { S.sheet = { kind: "event", tid: id, kindSel: "" }; dirLoad(false); render(); return; }
+    if (act === "ekind") { keepSheet(); S.sheet.kindSel = t.getAttribute("data-k"); render(); return; }
+    if (act === "ev-go") {
+      keepSheet(); var v = S.sheet, kd = v.kindSel, bad = kd === "Damaged" || kd === "Lost";
+      if (!kd) { toast("Pick what happened."); return; }
+      if (bad && String(v.note || "").length < 4) { toast("Write what happened, in a line."); return; }
+      if (!inSites(v.site)) { toast("Pick the site from the list, or leave it blank."); return; }
+      var amt = Math.round(Number(String(v.amt || "").replace(/[^0-9.]/g, "")) || 0);
+      var who = bad ? String(v.who || "") : "", ppl = dirList("partner").concat(dirList("staff")), hit = ppl.filter(function (x) { return key(x.n) === key(who); })[0];
+      if (bad && who && !hit) { toast("Pick the name from the list."); return; }
+      if (amt > 0 && !who) { toast("Pick who it is to be recovered from."); return; }
+      busyBtn(t);
+      tk("event", { tid: v.tid, kind: kd, site: v.site || "", who: hit ? hit.n : "", whoRef: hit ? hit.ref : "", note: v.note || "", amount: amt }).then(function (r) {
+        mergeTools([r.tool]); S.events.push(r.event); S.sheet = null; render(); toast(kd + " — saved to the log.");
+      }).catch(function (e) { toast(e.message); render(); });
+      return;
+    }
+    if (act === "rec") {
+      ev.stopPropagation(); busyBtn(t);
+      tk("recover", { eid: id, undo: t.getAttribute("data-u") === "1" ? 1 : 0 }).then(function () { return pull(false); }).catch(function (e) { toast(e.message); render(); });
+      return;
+    }
+    if (act === "add") {
+      var nm = val("a_name"), cnt = Math.round(Number(val("a_count")) || 1);
+      if (nm.length < 2) { toast("Write the tool's name."); return; }
+      if (cnt < 1 || cnt > 50) { toast("1 to 50 pieces at a time."); return; }
+      busyBtn(t, "Adding…");
+      tk("toolAdd", { name: nm, make: val("a_make"), model: val("a_model"), value: Number(String(val("a_value")).replace(/[^0-9.]/g, "")) || 0, count: cnt, serial: val("a_serial"), inGodown: val("a_where") === "g" ? 1 : 0 }).then(function (r) {
+        mergeTools(r.tools); render(); toast(r.tools.length + " added: " + r.tools[0].code + (r.tools.length > 1 ? " to " + r.tools[r.tools.length - 1].code : "") + ".");
+      }).catch(function (e) { toast(e.message); render(); });
+      return;
+    }
+    if (act === "edit-open") { S.sheet = { kind: "edit", tid: id }; render(); return; }
+    if (act === "edit-go") {
+      if (val("x_name").length < 2) { toast("Write the tool's name."); return; }
+      busyBtn(t);
+      tk("toolEdit", { tid: S.sheet.tid, name: val("x_name"), make: val("x_make"), model: val("x_model"), serial: val("x_serial"), value: Number(String(val("x_value")).replace(/[^0-9.]/g, "")) || 0, notes: val("x_notes") }).then(function (r) {
+        mergeTools([r.tool]); S.sheet = null; render(); toast("Saved.");
+      }).catch(function (e) { toast(e.message); render(); });
+      return;
+    }
+    if (act === "off") {
+      busyBtn(t);
+      tk("toolOff", { tid: S.sheet.tid, back: t.getAttribute("data-b") === "1" ? 1 : 0 }).then(function (r) { mergeTools([r.tool]); S.sheet = null; render(); toast(r.tool.off ? "Taken off the list. It stays in the record." : "Back on the list."); return pull(false); }).catch(function (e) { toast(e.message); render(); });
+      return;
+    }
+  });
+  document.addEventListener("input", function (ev) {
+    var t = ev.target;
+    if (t.id === "q") { S.q = t.value; var L = live().filter(function (x) { return inF(x, S.f) && matchQ(x, S.q); }).sort(function (a, b) { return String(a.code).localeCompare(String(b.code)); }); var r = $("rows"); if (r) r.innerHTML = L.slice(0, 300).map(toolRow).join(""); else render(); return; }
+    if (t.id === "lq") { S.logQ = t.value; clearTimeout(t._t); t._t = setTimeout(function () { var had = document.activeElement === $("lq"); render(); var n = $("lq"); if (n && had) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } }, 250); return; }
+    if (t.id === "m_q" && S.sheet) { S.sheet.q = t.value; var p = $("m_pick"); if (p) p.innerHTML = pickHtml(S.sheet.ty, S.sheet.q, S.sheet.name); return; }
+  });
+
+  /* ---------- start ---------- */
+  var ses = lsGet(STORE);
+  if (ses && ses.user && ses.tok) {
+    S.user = String(ses.user); S.tok = String(ses.tok); S.own = !!ses.own;
+    var bk = lsGet(BOOK); if (bk && bk.user === S.user) { S.me = bk.me; S.tools = bk.tools || []; S.moves = bk.moves || []; S.events = bk.events || []; }
+    var d0 = lsGet(DIRK); if (d0) S.dir = d0;
+    render();
+    pull(!d0 || !d0.base).then(function () {
+      dirLoad(false);
+      var m = /[?&]t=([^&]+)/.exec(location.search);   /* a sticker's link opens its tool: ?t=EWT-001 */
+      if (m) { var c = decodeURIComponent(m[1]).toUpperCase(), tt = S.tools.filter(function (x) { return String(x.code).toUpperCase() === c; })[0]; if (tt) { S.open = tt.tid; render(); } }
+    });
+  } else render();
+  document.addEventListener("visibilitychange", function () { if (!document.hidden && S.user && !S.busy && !S.sheet) pull(false); });
+  try { if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) navigator.serviceWorker.getRegistrations().then(function () { }).catch(function () { }); } catch (e) { }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+{
+  "name": "Tool Tracking - Energy World",
+  "short_name": "Tools",
+  "description": "Who is holding which Energy World tool",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F4F6F9",
+  "theme_color": "#1F3A5F",
+  "icons": [
+    { "src": "../icons/ew-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "../icons/ew-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "../icons/ew-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
