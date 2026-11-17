@@ -20,7 +20,7 @@
 
    SET-UP (once) - see the paste steps.
    ===================================================================================================== */
-var BX_V = "BX3";
+var BX_V = "BX4";   /* BX4 (17 Nov 2026) - the owner check is made BEFORE the lock, read-only ops take no lock, and the book's fingerprints are kept over as many cells as they need. MEASURED: one owner call sat 177 s inside the lock waiting on the CRM server's teamAuth, and every call after it failed "Lock timeout"; the fingerprints were 2,400+ keys, more than one cell holds, so the cut JSON would not read. */
 var BX_CRM_URL = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
 var BX_TABS = {
   BX_People: ["id", "name", "mobile", "brand", "company", "city", "active", "pinHash", "salt", "updatedAt"],
@@ -44,7 +44,12 @@ function bxTry_(e) {
   if (["bxPing", "bxLogin", "bxBook", "bxSave", "bxAdmin", "bxAddSite"].indexOf(a) < 0) return null;
   var lock = LockService.getScriptLock();
   try {
-    if (a === "bxSave" || a === "bxAdmin" || a === "bxAddSite") lock.waitLock(20000);
+    if (a === "bxAdmin") {   /* BX4 - who he is is asked first, outside the lock */
+      if (!bxOwner_(body)) { bxLog_(body.crmUser, "admin refused", String(body.op || "")); return bxOut_({ ok: false, err: "owner sign-in not accepted" }); }
+      body._owned = 1;
+      if (["sync", "pin", "leadset"].indexOf(String(body.op || "")) >= 0) lock.waitLock(20000);
+    }
+    if (a === "bxSave" || a === "bxAddSite") lock.waitLock(20000);
     if (a === "bxPing") return bxOut_({ ok: true, v: BX_V });
     if (a === "bxLogin") return bxOut_(bxLogin_(body));
     if (a === "bxBook") return bxOut_(bxBook_(body));
@@ -181,8 +186,8 @@ function bxFp_(kind, v) {   /* the same fingerprint the CRM makes: first 16 hex 
 }
 function bxNameKey_(v) { return String(v == null ? "" : v).toLowerCase().replace(/^(mr|mrs|ms|dr|shri|smt|er|ar)\.?\s+/, "").replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim(); }
 function bxDupIx_() {
-  var r = bxRows_("BX_Dup")[0]; if (!r) return { m: {}, n: {} };
-  try { var j = JSON.parse(r.json || "{}") || {}; return { m: j.m || {}, n: j.n || {} }; } catch (e) { return { m: {}, n: {} }; }
+  var rs = bxRows_("BX_Dup"); if (!rs.length) return { m: {}, n: {} };
+  try { var j = JSON.parse(rs.map(function (r) { return String(r.json || ""); }).join("") || "{}") || {}; return { m: j.m || {}, n: j.n || {} }; } catch (e) { return { m: {}, n: {} }; }   /* BX4 - read over every row */
 }
 function bxAddSite_(b) {
   var p = bxWho_(b); if (!p) return { ok: false, err: "signed out", out: 1 };
@@ -232,7 +237,7 @@ function bxOwner_(b) {
   return ok;
 }
 function bxAdmin_(b) {
-  if (!bxOwner_(b)) { bxLog_(b.crmUser, "admin refused", String(b.op || "")); return { ok: false, err: "owner sign-in not accepted" }; }
+  if (!b._owned && !bxOwner_(b)) { bxLog_(b.crmUser, "admin refused", String(b.op || "")); return { ok: false, err: "owner sign-in not accepted" }; }
   var op = String(b.op || "");
   if (op === "sync") {
     var ppl = Array.isArray(b.people) ? b.people : [], have = {};
@@ -250,7 +255,9 @@ function bxAdmin_(b) {
     if (books.length) sh.getRange(2, 1, books.length, 3).setValues(books.map(function (x) { return [String(x.bxId || ""), JSON.stringify(x.sites || []).slice(0, 49000), now]; }));
     if (b.dup && typeof b.dup === "object") {   /* BX3 - fingerprints of the book, replaced whole */
       var dsh = bxSh_("BX_Dup"); if (dsh.getLastRow() > 1) dsh.getRange(2, 1, dsh.getLastRow() - 1, 2).clearContent();
-      dsh.getRange(2, 1, 1, 2).setValues([[JSON.stringify({ m: b.dup.m || {}, n: b.dup.n || {} }).slice(0, 49500), now]]);
+      var dj = JSON.stringify({ m: b.dup.m || {}, n: b.dup.n || {} }), dparts = [];   /* BX4 - as many cells as it needs */
+      for (var di = 0; di < dj.length; di += 45000) dparts.push([dj.slice(di, di + 45000), now]);
+      if (dparts.length) dsh.getRange(2, 1, dparts.length, 2).setValues(dparts);
     }
     bxLog_(b.crmUser, "sync", ppl.length + " people, " + books.length + " books");
     return { ok: true, people: ppl.length, books: books.length };
