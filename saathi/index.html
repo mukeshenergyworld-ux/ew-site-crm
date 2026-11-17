@@ -657,7 +657,7 @@ function viewHome(){
   var m = D.me || {}, cfg = D.cfg || {};
   var unread = D.feed.filter(function(f){ return !f.seen; });
   var need = Math.max(0, (m.nextThresholdPts||0) - (m.clearPts||0));
-  var h = '';
+  var h = toolsCard();
 
   if (unread.length){
     h += '<div class="card" style="border-color:var(--brass);padding:12px 14px">' +
@@ -755,7 +755,7 @@ function bookHome(){
   var S = b.sites || [], on = S.filter(siteOngoing).length;
   var ready = Number(b.pending) || 0, wait = Number(b.wait) || 0, paid = Number(b.paid) || 0, tot = Math.max(1, ready + wait + paid);
   var first = String((D.me && D.me.name) || b.name || '').split(' ')[0];
-  var h = '';
+  var h = toolsCard();
   if (unread.length) h += '<div class="card" style="border-color:var(--brass);padding:12px 14px"><div style="display:flex;gap:9px;align-items:center"><span class="dot"></span><div class="sm" style="flex:1"><b>' + unread.length + ' new from Energy World</b></div><button class="brass" onclick="go(\'feed\')">See them</button></div></div>';
   h += '<div class="hero"><div class="hi"><span>Namaste' + (first ? ', <b>' + esc(first) + '</b>' : '') + '</span><span class="chip">' + esc(t) + '</span></div>' +
     '<div class="lab">Ready to be paid now</div><div class="num">' + bP(ready) + '<small>points</small></div>' +
@@ -1279,7 +1279,7 @@ function ewRefresh(){
    Nothing you have typed or queued is touched. The sign-in and the
    offline queue live in localStorage and this never goes near them.
 --------------------------------------------------------------------- */
-var BUILD  = '2026.11.17-3';   /* 17 Nov 2026 - ongoing sites come from the CRM's own count, a site with no material yet shown with 0 points */
+var BUILD  = '2026.11.17-4';   /* 17 Nov 2026 - the Energy World tools a partner is holding, from the Tool Tracking app */   /* 17 Nov 2026 - ongoing sites come from the CRM's own count, a site with no material yet shown with 0 points */
 var DROPS = '<svg viewBox="0 0 130 120" width="100%" height="100%" aria-hidden="true"><path d="M48 6C48 6 12 52 12 76a36 36 0 0 0 72 0C84 52 48 6 48 6Z" fill="#0A4F94"/><path d="M82 6C82 6 46 52 46 76a36 36 0 0 0 72 0C118 52 82 6 82 6Z" fill="#F28C28" fill-opacity=".88"/></svg>';   /* the Saathi mark */        /* which build of this file is running */
 var APPKEY = 'SAATHI';
 var VKEY   = 'ew_saathi_ver_v1';
@@ -1394,7 +1394,27 @@ function setLv(t){
   if (t) document.body.setAttribute('data-lv', t); else document.body.removeAttribute('data-lv');
   document.getElementById('hTier').textContent = t;
 }
+/* 17 Nov 2026 (-4) - HIS WORDS: "in Saathi app it will also show the plumbing contractor which tool he is having".
+   The Tool Tracking app keeps who holds which tool on this same server; this asks for the ones in his name. */
+function toolsLoad(ref, name){
+  D.tools = null;
+  call('tkMine', ref ? { refId: ref, refName: name || '' } : null, 30000).then(function(r){
+    if (r && r.ok){ D.tools = r.tools || []; if (TAB === 'home') render(); }
+  }).catch(function(){});
+}
+function toolsCard(){
+  var L = D.tools || []; if (!L.length) return '';
+  var dd = function(iso){ var t = Date.parse(iso); return isNaN(t) ? 0 : Math.max(0, Math.floor((Date.now() - t) / 86400000)); };
+  return '<div class="card" style="padding:12px 14px"><p class="eyebrow" style="margin:0 0 6px">Energy World ke tools aapke paas &middot; ' + L.length + '</p>' +
+    L.map(function(t){
+      return '<div style="padding:7px 0;border-top:1px solid rgba(0,0,0,.08)"><div class="sm"><b>' + esc(t.name) + '</b> <span class="xs mut">' + esc(t.code) + '</span>' +
+        (t.cond && t.cond !== 'OK' ? ' <span class="xs" style="color:#b91c1c;font-weight:700">' + esc(t.cond) + '</span>' : '') + '</div>' +
+        '<div class="xs mut">' + esc([t.make, t.site ? 'Site: ' + t.site : '', dd(t.since) + ' din se'].filter(Boolean).join(' \u00b7 ')) + '</div></div>';
+    }).join('') +
+    '<div class="xs mut" style="margin-top:6px">Kaam poora hone par tool godown mein wapas karein, ya Energy World ko batayein kisko diya.</div></div>';
+}
 function bookLoad(){
+  if (!ST) toolsLoad();
   D.bookWait = true;
   call('myBook', null, 30000).then(function(r){
     D.bookWait = false;
@@ -1577,7 +1597,7 @@ function staffReload(quiet){
     if (!r || r.ok === false || !ST.view || ST.view.refId !== ref) return false;
     D.me = r.me || null; D.ledger = r.ledger || []; D.catalog = r.catalog || []; D.feed = r.feed || []; D.stages = r.stages || []; D.cfg = r.cfg || D.cfg || {};
     D.book = r.book || null; D.ppr = Number(r.ppr) || ST.ppr || 2; setLv(D.book ? (D.book.tier || 'Base') : '');
-    STV_AT = Date.now(); TAB = keepTab; render();
+    STV_AT = Date.now(); TAB = keepTab; render(); toolsLoad(ref, ST.view.name);
     if (!quiet) toast('Up to date: ' + ST.view.name + '.');
     return true;
   }).catch(function(){ if (!quiet) toast('No signal. Try again.'); return false; });
@@ -1591,10 +1611,10 @@ function staffOpen(ref){
     STV_AT = Date.now();
     D.me = r.me || null; D.ledger = r.ledger || []; D.catalog = r.catalog || []; D.feed = r.feed || []; D.stages = r.stages || []; D.cfg = r.cfg || D.cfg || {};
     D.book = r.book || null; D.ppr = Number(r.ppr) || ST.ppr || 2; setLv(D.book ? (D.book.tier || 'Base') : '');
-    ST.view = { refId: ref, name: p.name }; TAB = 'home'; FILTER = 'all'; render();
+    ST.view = { refId: ref, name: p.name }; TAB = 'home'; FILTER = 'all'; render(); toolsLoad(ref, p.name);
   }).catch(function(){ toast('No signal. Try again.'); });
 }
-function staffBack(){ setLv(''); ST.view = null; D.me = null; D.ledger = []; D.feed = []; D.book = null; render(); }
+function staffBack(){ D.tools = null; setLv(''); ST.view = null; D.me = null; D.ledger = []; D.feed = []; D.book = null; render(); }
 function staffPinView(){
   var p = (ST.people || []).filter(function(x){ return x.refId === ST.pin; })[0] || { name: '' };
   return '<div class="card"><div class="eyebrow">Set the PIN</div><h2 class="sec" style="margin:4px 0 6px">' + esc(p.name) + '</h2>' +
