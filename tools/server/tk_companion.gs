@@ -16,29 +16,43 @@
    It lives in the Brand block's spreadsheet (BX_SHEET_ID) and uses its plumbing (bxSh_, bxRows_, bxWrite_).
    PASTE this AFTER the Brand block. The second line doPost needs, after the bx one:
        var _tk = tkTry_(e); if (_tk) return _tk;
-   Staff are checked against the CRM's own sign-in (teamAuth), before any lock is taken.
+   Staff sign in once with the CRM's name + PIN (teamAuth, checked by the CRM); after that this server's own token.
    ===================================================================================================== */
-var TK_V = "TK1";
+var TK_V = "TK2";   /* TK2 (17 Nov 2026) - staff sign in HERE once with the CRM name + PIN and get this server's own tool token; the CRM's saved token is no longer passed on.
+   MEASURED on TK1, live: a call carrying "Mukesh Verma" + his saved CRM token made this server's sign-in check to the CRM hang until Apps Script killed it at 360 s
+   ("Timeout: .../exec"), three times in three; the same call with the PIN, or the Brand block's owner check, answers in 5-7 s. So: the PIN is checked once (the path the
+   Saathi staff sign-in has used since October), a token of our own is kept (only its fingerprint, 60 days), and the owner's CRM sends the pick lists through the Brand
+   block's owner check. A staff member no longer on the CRM's team list (sent with the pick lists) is signed out. */
+BX_TABS.TK_Sess = ["th", "name", "role", "at"];
 BX_TABS.TK_Tools  = ["tid", "code", "name", "make", "model", "serial", "value", "notes", "cond", "hType", "hName", "hRef", "hCode", "site", "since", "addedAt", "addedBy", "updatedAt", "off"];
 BX_TABS.TK_Moves  = ["mid", "at", "tid", "code", "tool", "kind", "fType", "fName", "fRef", "fSite", "tType", "tName", "tRef", "tCode", "tSite", "note", "by"];
 BX_TABS.TK_Events = ["eid", "at", "tid", "code", "tool", "kind", "hType", "hName", "hRef", "site", "who", "whoRef", "note", "amount", "recovered", "recAt", "recBy", "by"];
 BX_TABS.TK_Dir    = ["json", "at"];
 var TK_HTYPES = ["godown", "site", "partner", "staff", "unknown"];
 var TK_EVENTS = { "Damaged": "Damaged", "Lost": "Lost", "Repaired": "OK", "Found": "OK", "Scrapped": "Scrapped" };
-var TK_WRITES = ["toolAdd", "toolEdit", "toolOff", "move", "event", "recover", "dirSync"];
+var TK_WRITES = ["toolAdd", "toolEdit", "toolOff", "move", "event", "recover"];
 
 function tkTry_(e) {
   var body = null;
   try { body = JSON.parse((e && e.postData && e.postData.contents) || "{}"); } catch (x) { return null; }
   var a = String((body && body.action) || "");
-  if (a !== "tkPing" && a !== "tkStaff" && a !== "tkMine") return null;
+  if (["tkPing", "tkLogin", "tkLogout", "tkStaff", "tkAdmin", "tkMine"].indexOf(a) < 0) return null;
   if (a === "tkPing") return bxOut_({ ok: true, v: TK_V });
   var lock = LockService.getScriptLock(), locked = false;
   try {
     if (a === "tkMine") return bxOut_(tkMine_(body));
+    if (a === "tkLogin") return bxOut_(tkLogin_(body));
+    if (a === "tkLogout") return bxOut_(tkLogout_(body));
+    if (a === "tkAdmin") {                                      /* the owner's CRM: the Brand block's own owner check */
+      if (!bxOwner_(body)) return bxOut_({ ok: false, err: "owner sign-in not accepted" });
+      if (String(body.op || "") !== "dirSync") return bxOut_({ ok: false, err: "unknown op" });
+      lock.waitLock(20000); locked = true;
+      return bxOut_(tkOp_("dirSync", body, { name: String(body.crmUser || ""), role: "admin" }));
+    }
     var me = tkStaff_(body);                                   /* who he is: asked first, outside the lock */
     if (!me) return bxOut_({ ok: false, out: 1, err: "Sign in again." });
     var op = String(body.op || "book");
+    if (op === "dirSync") return bxOut_({ ok: false, err: "owner only" });   /* the pick lists come through tkAdmin */
     if (TK_WRITES.indexOf(op) >= 0) { lock.waitLock(20000); locked = true; }
     return bxOut_(tkOp_(op, body, me));
   } catch (err) {
@@ -46,22 +60,46 @@ function tkTry_(e) {
   } finally { if (locked) { try { lock.releaseLock(); } catch (x2) { } } }
 }
 
-/* ---------- who is asking: the CRM's own sign-in, name + PIN or the saved token ---------- */
-function tkStaff_(b) {
-  var user = String(b.crmUser || "").trim(), pin = String(b.crmPin || "").trim(), tok = String(b.crmTok || "").trim();
-  if (!user || (!pin && !tok)) return null;
-  var cache = CacheService.getScriptCache();
-  var key = "tk_st_" + Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, user + "|" + pin + "|" + tok));
-  var hit = cache.get(key);
-  if (hit) { try { return JSON.parse(hit); } catch (e) { } }
+/* ---------- sign-in: the CRM's name + PIN, checked by the CRM once; after that, this server's own token ---------- */
+function tkHashTok_(tok) {
+  var raw = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, "ewtk|" + String(tok), Utilities.Charset.UTF_8);
+  return raw.map(function (b) { b = (b + 256) % 256; return (b < 16 ? "0" : "") + b.toString(16); }).join("");
+}
+function tkLogin_(b) {
+  var user = String(b.user || "").trim(), pin = String(b.pin || "").trim();
+  if (!user || !pin) return { ok: false, err: "Type your name and PIN." };
   var url = PropertiesService.getScriptProperties().getProperty("BX_CRM_URL") || BX_CRM_URL;
-  var payload = { action: "teamAuth", user: user, pin: pin, app: "Tools " + TK_V };
-  if (tok) payload.tok = tok;
-  var res = UrlFetchApp.fetch(url, { method: "post", contentType: "text/plain;charset=utf-8", muteHttpExceptions: true, followRedirects: true, payload: JSON.stringify(payload) });
-  var r = {}; try { r = JSON.parse(res.getContentText() || "{}"); } catch (e2) { r = {}; }
-  if (!(r && r.ok)) return null;
+  var res = UrlFetchApp.fetch(url, { method: "post", contentType: "text/plain;charset=utf-8", muteHttpExceptions: true, followRedirects: true,
+    payload: JSON.stringify({ action: "teamAuth", user: user, pin: pin, app: "Companion " + TK_V }) });
+  var r = {}; try { r = JSON.parse(res.getContentText() || "{}"); } catch (e) { r = {}; }
+  if (!(r && r.ok)) return { ok: false, err: String((r && r.error) || "Name or PIN not right.").slice(0, 200) };
   var me = { name: String((r.user && r.user.name) || user), role: String((r.user && r.user.role) || r.role || "").toLowerCase() };
-  cache.put(key, JSON.stringify(me), 600);
+  var tok = bxRand_(40), now = new Date().toISOString();
+  bxWrite_("TK_Sess", 0, { th: tkHashTok_(tok), name: me.name, role: me.role, at: now });
+  bxLog_(me.name, "tools sign-in", me.role);
+  return { ok: true, tok: tok, me: me, v: TK_V };
+}
+function tkLogout_(b) {
+  var th = tkHashTok_(String(b.tkTok || ""));
+  bxRows_("TK_Sess").forEach(function (x) { if (String(x.th) === th) bxWrite_("TK_Sess", x._r, { th: "", name: x.name, role: "signed out", at: x.at }); });
+  try { CacheService.getScriptCache().remove("tk_s_" + th); } catch (e) { }
+  return { ok: true };
+}
+function tkStaff_(b) {
+  var tok = String(b.tkTok || "").trim(); if (tok.length < 30) return null;
+  var th = tkHashTok_(tok), cache = CacheService.getScriptCache(), hit = cache.get("tk_s_" + th);
+  if (hit) { try { return JSON.parse(hit); } catch (e) { } }
+  var row = bxRows_("TK_Sess").filter(function (x) { return String(x.th) === th; })[0];
+  if (!row) return null;
+  if (Date.now() - (Date.parse(row.at) || 0) > 60 * 86400000) return null;          /* 60 days, then the PIN again */
+  var me = { name: String(row.name), role: String(row.role || "").toLowerCase() };
+  var dir = tkDir_();                                                                 /* the CRM's team list, when it has been sent */
+  if (dir && dir.staff && dir.staff.length) {
+    var st = dir.staff.filter(function (x) { return tkKey_(x.n) === tkKey_(me.name); })[0];
+    if (!st) return null;                                                             /* no longer on the team */
+    if (st.r) me.role = String(st.r).toLowerCase();
+  }
+  cache.put("tk_s_" + th, JSON.stringify(me), 600);
   return me;
 }
 function tkBoss_(me) { return me && (me.role === "admin" || me.role === "accounts"); }
