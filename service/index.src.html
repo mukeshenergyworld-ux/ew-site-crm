@@ -460,7 +460,7 @@ function ewmBuild(n, pre) {
    Nothing here deletes anything, ever. A visit is a row added.
    ========================================================================== */
 
-  var APP_VERSION = "4.0.3";   /* 4.0.3 (11 Nov 2026) - the technician's Finish sheet: which machine asked first with a button, three choices not five, the misuse chip must say why it is charging the customer, the note is taps, and a message to the owner that could not go out is held on the phone */   /* 4.0.2 (11 Nov 2026) - Finish said "mark the product with the problem first" with nothing to press: the reason and the button are on the sheet now */   /* 4.0.1 (10 Nov 2026) - the company UPI QR (the same code as on every quote PDF) with the UPI id in words */     /* 4.0.0 (10 Nov 2026) - the engineer's three screens: Jobs, Install, My money. Start / Finish with GPS; UPI to the company QR first, cash only with a photo; the owner told on Telegram at once; a WhatsApp receipt for the customer; cash in hand to hand over */     /* 3.4.0 (31 Oct 2026) - one tap, one entry */
+  var APP_VERSION = "4.0.4";   /* 4.0.4 (17 Nov 2026) - the version shows at the top beside the name */   /* 4.0.3 (4.0.3 (11 Nov 2026) - the technician's Finish sheet: which machine asked first with a button, three choices not five, the misuse chip must say why it is charging the customer, the note is taps, and a message to the owner that could not go out is held on the phone */   /* 4.0.2 (11 Nov 2026) - Finish said "mark the product with the problem first" with nothing to press: the reason and the button are on the sheet now */   /* 4.0.1 (10 Nov 2026) - the company UPI QR (the same code as on every quote PDF) with the UPI id in words */     /* 4.0.0 (10 Nov 2026) - the engineer's three screens: Jobs, Install, My money. Start / Finish with GPS; UPI to the company QR first, cash only with a photo; the owner told on Telegram at once; a WhatsApp receipt for the customer; cash in hand to hand over */     /* 3.4.0 (31 Oct 2026) - one tap, one entry */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -2917,7 +2917,7 @@ function ewmBuild(n, pre) {
       '<div class="row" style="align-items:flex-start">' +
         '<div class="grow">' +
           '<div class="brand">Service</div>' +
-          '<div class="who">' + esc(S.user) + ' &middot; ' + esc(S.role) + '</div>' +   /* 1.18.0 - the wire note is on the age line already */
+          '<div class="who">' + esc(S.user) + ' &middot; ' + esc(S.role) + ' &middot; <span title="App version">v' + APP_VERSION + '</span></div>' +   /* 1.18.0; 4.0.4 - the version at the top */
           '<div class="who">' + age + '</div>' +
         '</div>' +
         '<a class="icon" href="' + helpHref() + '" target="_blank" rel="noopener" title="How to use this screen" aria-label="How to use this screen" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;font-weight:800;min-height:44px;min-width:44px;color:inherit">?</a>' +   /* 1.17.0 */
