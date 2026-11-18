@@ -6,7 +6,8 @@
 <meta name="theme-color" content="#1F3A5F"/>
 <title>Service &mdash; Energy World</title>
 <link rel="manifest" href="manifest.webmanifest"/>
-<link rel="apple-touch-icon" href="icon-180.png"/>
+<link rel="icon" href="icon-192.png?v=3"/>
+<link rel="apple-touch-icon" href="icon-180.png?v=3"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <script src="../ew-config.js"></script>
 <style>
@@ -460,7 +461,7 @@ function ewmBuild(n, pre) {
    Nothing here deletes anything, ever. A visit is a row added.
    ========================================================================== */
 
-  var APP_VERSION = "4.3.0";   /* 4.3.0 (17 Nov 2026) - the menu opens the Tool Tracking app */   /* 4.2.0 (17 Nov 2026) - the Present tap asks where the day is and the plan; one mark shows in every app */   /* 4.1.0 (17 Nov 2026) - one tap "Present" in the header for technicians; it writes the office's attendance row */   /* 4.0.4 (4.0.4 (17 Nov 2026) - the version shows at the top beside the name */   /* 4.0.3 (4.0.3 (11 Nov 2026) - the technician's Finish sheet: which machine asked first with a button, three choices not five, the misuse chip must say why it is charging the customer, the note is taps, and a message to the owner that could not go out is held on the phone */   /* 4.0.2 (11 Nov 2026) - Finish said "mark the product with the problem first" with nothing to press: the reason and the button are on the sheet now */   /* 4.0.1 (10 Nov 2026) - the company UPI QR (the same code as on every quote PDF) with the UPI id in words */     /* 4.0.0 (10 Nov 2026) - the engineer's three screens: Jobs, Install, My money. Start / Finish with GPS; UPI to the company QR first, cash only with a photo; the owner told on Telegram at once; a WhatsApp receipt for the customer; cash in hand to hand over */     /* 3.4.0 (31 Oct 2026) - one tap, one entry */
+  var APP_VERSION = "4.5.0";   /* 4.5.0 (18 Nov 2026) - "Mark your attendance", with the location taken now and shown before it is saved */   /* 4.4.0 (18 Nov 2026) - new app icon */   /* 4.3.0 (17 Nov 2026) - the menu opens the Tool Tracking app */   /* 4.2.0 (17 Nov 2026) - the Present tap asks where the day is and the plan; one mark shows in every app */   /* 4.1.0 (17 Nov 2026) - one tap "Present" in the header for technicians; it writes the office's attendance row */   /* 4.0.4 (4.0.4 (17 Nov 2026) - the version shows at the top beside the name */   /* 4.0.3 (4.0.3 (11 Nov 2026) - the technician's Finish sheet: which machine asked first with a button, three choices not five, the misuse chip must say why it is charging the customer, the note is taps, and a message to the owner that could not go out is held on the phone */   /* 4.0.2 (11 Nov 2026) - Finish said "mark the product with the problem first" with nothing to press: the reason and the button are on the sheet now */   /* 4.0.1 (10 Nov 2026) - the company UPI QR (the same code as on every quote PDF) with the UPI id in words */     /* 4.0.0 (10 Nov 2026) - the engineer's three screens: Jobs, Install, My money. Start / Finish with GPS; UPI to the company QR first, cash only with a photo; the owner told on Telegram at once; a WhatsApp receipt for the customer; cash in hand to hand over */     /* 3.4.0 (31 Oct 2026) - one tap, one entry */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
      phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
@@ -1274,6 +1275,14 @@ function ewmBuild(n, pre) {
      listens, and confirms with liveVersion() before it says anything - the message is a hint,
      the version string is the proof, so a changed icon can never raise a false banner.
      It costs no extra network: that revalidation was happening anyway. */
+  /* 18 Nov 2026 - HIS SCREENSHOT: "Version 1.159.1 is ready. You are on 1.163.0." The check took ANY different version
+     string as new, so an old copy of the file - served by a stale cache somewhere between his desktop and GitHub - was
+     offered as an update, and Update would have taken him BACK. Only a higher version is ever offered now. */
+  function ewNewer(a, b) {
+    var x = String(a || "").split("."), y = String(b || "").split(".");
+    for (var i = 0; i < Math.max(x.length, y.length); i++) { var d = (Number(x[i]) || 0) - (Number(y[i]) || 0); if (d) return d > 0; }
+    return false;
+  }
   function verWatch() {
     try {
       if (!navigator.serviceWorker || !navigator.serviceWorker.addEventListener) return;
@@ -1281,7 +1290,7 @@ function ewmBuild(n, pre) {
         if (!e || !e.data || e.data.ew !== "new-build") return;
         if (String(e.data.url || "").indexOf("app.js") >= 0) return;   /* that one is the CRM's */
         liveVersion().then(function (v) {
-          if (!v || v === APP_VERSION || v === S.newVer) return;
+          if (!v || v === APP_VERSION || v === S.newVer || !ewNewer(v, APP_VERSION)) return;
           S.newVer = v;
           try { render(); } catch (x) {}
           try { toast("Version " + v + " is ready - tap Update above."); } catch (x) {}
@@ -1293,7 +1302,7 @@ function ewmBuild(n, pre) {
       rawbDropLive();   /* the arrow answers with the truth the FIRST time */
       pull(true);
       liveVersion().then(function (v) {
-        if (!v || v === APP_VERSION) { if (loud) toast("This is the latest version (v" + APP_VERSION + ")."); return; }
+        if (!v || v === APP_VERSION || !ewNewer(v, APP_VERSION)) { if (loud) toast("This is the latest version (v" + APP_VERSION + ")."); return; }
         S.newVer = v;
         try { render(); } catch (e) {}
         toast("Version " + v + " is ready — tap Update above.");
@@ -2938,21 +2947,57 @@ function ewmBuild(n, pre) {
     if (!S.user || !S.data) return "";
     var m = attMineToday();
     if (m) return '<span class="sync" title="' + esc("Marked present today" + (m.plan ? " - " + m.plan : "")) + '" style="white-space:nowrap">✓ Present ' + esc(String(m.note || "").replace(/^self\s*/, "").split(" ")[0]) + (m.plan ? ' · ' + esc(m.plan.length > 14 ? m.plan.slice(0, 13) + "…" : m.plan) : '') + '</span>';
-    return '<button class="btn sm" data-act="att-me" title="Mark yourself present for today" style="background:#15803d;border-color:#15803d;color:#fff">✓ Present</button>';
+    return '<button class="btn sm" data-act="att-me" title="Mark your attendance for today, with where you are" style="background:#15803d;border-color:#15803d;color:#fff">Mark your attendance</button>';
   }
   var ATT_TOWNS = ["Panipat", "Sonipat", "Karnal", "Rohtak", "Delhi", "Workshop"];
+  /* 18 Nov 2026 - HIS WORDS: "show mark your attendance instead of only present" and "attendance with current location".
+     The button says what it does. The sheet asks the phone for where he is NOW (no remembered fix: maximumAge 0, the
+     precise reading, up to 15 s) the moment it opens, shows it with its accuracy and a map link, and the attendance is
+     saved only with it. Before this, a location was taken quietly if the phone answered within 4 s - and a remembered
+     one up to 5 minutes old was accepted - and the mark went in without one when it did not. */
+  var _attGeo = null;
+  function attGeoHtml() {
+    var g = _attGeo || { st: "wait" };
+    if (g.st === "ok") return '<div style="margin-top:8px;padding:9px 11px;border:1px solid #86efac;background:#f0fdf4;border-radius:10px;font-size:13.5px">&#128205; <b>Your location now:</b> ' + esc(g.v) + ' <span style="color:#64748b">(within ' + g.acc + ' m)</span> &middot; <a href="https://www.google.com/maps?q=' + esc(g.v) + '" target="_blank" rel="noopener">See on the map</a></div>';
+    if (g.st === "no") return '<div style="margin-top:8px;padding:9px 11px;border:1px solid #fca5a5;background:#fef2f2;border-radius:10px;font-size:13.5px;color:#991b1b"><b>Location is needed to mark attendance.</b> ' + esc(g.why) + '<div style="margin-top:6px"><button class="btn sm" data-act="att-geo" style="min-height:44px">Try again</button></div></div>';
+    return '<div style="margin-top:8px;padding:9px 11px;border:1px solid #cbd5e1;background:#f8fafc;border-radius:10px;font-size:13.5px;color:#475569">&#128205; Finding where you are now&hellip;</div>';
+  }
+  function attGeoPaint() { var b = document.getElementById("att_geo"); if (b) b.innerHTML = attGeoHtml(); }
+  function attGeoStart(force) {
+    if (!force && _attGeo && (_attGeo.st === "wait" || (_attGeo.st === "ok" && Date.now() - _attGeo.t < 120000))) { attGeoPaint(); return; }
+    _attGeo = { st: "wait", t: Date.now() }; attGeoPaint();
+    var mine = _attGeo;
+    if (!navigator.geolocation) { _attGeo = { st: "no", why: "This phone or browser cannot give a location.", t: Date.now() }; attGeoPaint(); return; }
+    try {
+      navigator.geolocation.getCurrentPosition(function (p) {
+        if (_attGeo !== mine) return;
+        _attGeo = { st: "ok", v: p.coords.latitude.toFixed(5) + "," + p.coords.longitude.toFixed(5), acc: Math.round(p.coords.accuracy || 0), t: Date.now() }; attGeoPaint();
+      }, function (e) {
+        if (_attGeo !== mine) return;
+        _attGeo = { st: "no", t: Date.now(), why: e && e.code === 1 ? "Location is blocked for this app. Allow it (the lock or \u24D8 beside the address, or the phone\u2019s Settings \u2192 Location), then tap Try again." : "The phone could not find where you are. Step near a window or outside, then tap Try again." };
+        attGeoPaint();
+      }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+    } catch (e) { _attGeo = { st: "no", why: "This phone or browser cannot give a location.", t: Date.now() }; attGeoPaint(); }
+  }
+  function attGeoOk() {
+    if (_attGeo && _attGeo.st === "ok") return true;
+    toast(_attGeo && _attGeo.st === "no" ? "Location is needed to mark attendance \u2014 allow it, then tap Try again." : "Still finding your location \u2014 a few seconds.");
+    return false;
+  }
   function attPlanSheet() {
-    return '<h2>Mark present — where are you today?</h2><p class="meta" style="font-size:13px">Tap the town(s), add the plan in a line. It goes on the roll-call and the report.</p>' +
+    setTimeout(function () { attGeoStart(false); }, 0);
+    return '<h2>Mark your attendance — where are you today?</h2><p class="meta" style="font-size:13px">Tap the town(s), add the plan in a line. It goes on the roll-call and the report.</p>' +
       '<div style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0">' + ATT_TOWNS.map(function (x) { return '<button class="btn sm ghost" data-act="att-town" data-v="' + esc(x) + '" style="min-height:44px">' + esc(x) + '</button>'; }).join("") + '</div>' +
       '<label>Today’s plan</label><input id="att_plan" placeholder="e.g. Panipat — Model Town, then Samalkha" style="width:100%;box-sizing:border-box;min-height:44px;font-size:16px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px" autocomplete="off"/>' +
-      '<div class="meta" style="font-size:12px;margin-top:4px">Your location is taken from the phone, if it allows it.</div>' +
-      '<div style="display:flex;gap:8px;margin-top:12px"><button class="btn ghost" data-act="close" style="flex:1;min-height:44px">Not now</button><button class="btn" data-act="att-go" style="flex:2;min-height:44px;background:#15803d;border-color:#15803d;color:#fff">✓ Mark present</button></div>';
+      '<div id="att_geo">' + attGeoHtml() + '</div>' +
+      '<div style="display:flex;gap:8px;margin-top:12px"><button class="btn ghost" data-act="close" style="flex:1;min-height:44px">Not now</button><button class="btn" data-act="att-go" style="flex:2;min-height:44px;background:#15803d;border-color:#15803d;color:#fff">Mark attendance</button></div>';
   }
   function attMeMark(t, plan) {
     if (attMineToday()) { toast("Already marked present today."); return; }
     if (t) { t.disabled = true; t.textContent = "Marking…"; }
     var geo = new Promise(function (res) {
       var done = false, fin = function (v) { if (!done) { done = true; res(v); } };
+      if (_attGeo && _attGeo.st === "ok") return fin(_attGeo.v);   /* 18 Nov 2026 - the location shown on the sheet */
       try { if (!navigator.geolocation) return fin("");
         navigator.geolocation.getCurrentPosition(function (p) { fin(p.coords.latitude.toFixed(5) + "," + p.coords.longitude.toFixed(5)); }, function () { fin(""); }, { timeout: 4000, maximumAge: 300000 });
       } catch (e) { fin(""); }
@@ -6355,9 +6400,10 @@ function ewmBuild(n, pre) {
       render(); return;
     }
     if (act === "close")   { S.parts = false; S.sheet = null; S.vis = null; S.q = ""; S.fin = null; S.nc = null; S.cm = null; S.ew = null; S.sv2id = ""; S.tm = null; S.tmOn = false; render(); return; }
+    if (act === "att-geo") { attGeoStart(true); return; }   /* 18 Nov 2026 */
     if (act === "att-me") { if (attMineToday()) { toast("Already marked present today."); return; } S.sheet = attPlanSheet(); render(); return; }
     if (act === "att-town") { var _ap = document.getElementById("att_plan"); if (_ap) { var _v = t.getAttribute("data-v") || ""; _ap.value = _ap.value.trim() ? (_ap.value.indexOf(_v) < 0 ? _ap.value.trim() + ", " + _v : _ap.value) : _v; _ap.focus(); } return; }
-    if (act === "att-go") { var _pl = document.getElementById("att_plan"), _plan = _pl ? String(_pl.value || "").trim() : ""; if (!_plan) { toast("Tap a town or write the plan first."); return; } S.sheet = null; render(); attMeMark(null, _plan); return; }
+    if (act === "att-go") { var _pl = document.getElementById("att_plan"), _plan = _pl ? String(_pl.value || "").trim() : ""; if (!_plan) { toast("Tap a town or write the plan first."); return; } if (!attGeoOk()) return; S.sheet = null; render(); attMeMark(null, _plan); return; }
     if (act === "refresh") { pull(true); return; }
     /* ================= FIVE BUTTONS THAT DID NOTHING  (v1.12.1, 3 Sep 2026) =================
        Found by scanning every data-act this app EMITS against the acts its router HANDLES.
