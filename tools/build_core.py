@@ -113,6 +113,10 @@ for app, cfg in APPS.items():
     gained = sorted(set(after) - set(before[app]))
     changed = sorted(n for n in set(before[app]) & set(after) if before[app][n] != after[n])
     if lost:    bad.append("%s LOST: %s" % (app, ", ".join(lost[:8])))
+    # 18 Nov 2026 - a function the CORE adds (listed in its manifest section, reading exactly as the core) is a gain
+    #    the core asked for; anything else gained is still refused.
+    _cf = B.fn_map(core); _ok = set(n for k2, m2 in man.items() if app in m2['apps'] for n in m2['fns'])
+    gained = [n for n in gained if not (n in _ok and n in _cf and _cf[n] == after[n])]
     if gained:  bad.append("%s GAINED: %s" % (app, ", ".join(gained[:8])))
     # A CHANGED function is not automatically a fault. Changing the core is the whole point
     # of having one, and when it changes, every app that carries it MUST change with it. What
