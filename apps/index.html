@@ -5,235 +5,83 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
 <meta name="theme-color" content="#1F3A5F"/>
 <meta name="robots" content="noindex,nofollow"/>
-<title>Energy World — all the apps</title>
+<title>Energy World Apps</title>
+<link rel="icon" href="../team/icon-192.png?v=3"/>
+<link rel="apple-touch-icon" href="../team/icon-180.png?v=3"/>
 <style>
+/* 18 Nov 2026 - HIS WORDS: "also show me a webapp that have link to all our apps". One page with every Energy World app,
+   each with the same icon it carries on the phone's home screen (the real file, so the two can never disagree), who it
+   is for, and a search. Nothing here signs in or holds data; each tile opens the app itself. */
+:root{--ink:#0D2340;--navy:#1F3A5F;--paper:#F4F6F9;--line:#DCE3EA;--muted:#5E6875;--org:#E8762C}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;padding:0}
-body{font:15.5px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-  background:#f1f5f9;color:#0f172a}
-.wrap{max-width:660px;margin:0 auto;padding:0 14px 60px}
-.top{background:#1F3A5F;color:#fff;padding:calc(env(safe-area-inset-top) + 22px) 16px 20px}
-.top .in{max-width:660px;margin:0 auto}
-.top h1{margin:0;font-size:20px;font-weight:800}
-.top p{margin:6px 0 0;font-size:13px;opacity:.92}
-h2{font-size:11.5px;text-transform:uppercase;letter-spacing:.09em;color:#64748b;margin:24px 2px 8px;font-weight:800}
-.app{display:flex;align-items:center;gap:14px;background:#fff;border:1px solid #e2e8f0;border-radius:14px;
-  padding:12px 14px;margin-bottom:10px;text-decoration:none;color:inherit;box-shadow:0 1px 2px rgba(15,23,42,.05)}
-.app:active{transform:translateY(1px)}
-/* the REAL icon file, so this page can never disagree with what lands on the home screen */
-.app img{width:54px;height:54px;border-radius:13px;flex:0 0 auto;display:block;background:#f1f5f9}
-.txt{flex:1;min-width:0}
-.nm{display:block;font-weight:800;font-size:16px;line-height:1.25}
-.who{display:block;font-size:12.5px;color:#64748b;margin-top:2px}
-.go{font-size:22px;color:#cbd5e1;flex:0 0 auto}
-.note{background:#fff7ed;border:1px solid #fed7aa;color:#7c2d12;border-radius:13px;padding:13px 15px;
-  font-size:13px;margin:24px 0 0}
-.note b{display:block;margin-bottom:3px}
-.foot{color:#94a3b8;font-size:11.5px;text-align:center;margin-top:26px}
-/* ---- THE VERSION EACH APP IS ACTUALLY SERVING (17 Aug 2026) ----
-   "show version of each app so that we can match with updated". Every row now carries the
-   number the SERVER is serving right now, read from the app's own file past every cache. It
-   is deliberately not the number the phone is running - this page is the noticeboard, and a
-   man compares what it says against what his own app's header says. If they differ, his app
-   needs its refresh arrow. */
-.ver{display:inline-block;background:#f1f5f9;border:1px solid #e2e8f0;color:#475569;border-radius:6px;
-  padding:1px 7px;font-size:10.5px;font-weight:800;margin-left:6px;vertical-align:middle;letter-spacing:.01em}
-.ver.on{background:#E8EEF5;border-color:#5eead4;color:#1F3A5F}
-.ver.no{background:#fef2f2;border-color:#fecaca;color:#b91c1c}
-.top{border-bottom:3px solid #C9A24A}
+html,body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;overflow-x:hidden}
+header{background:linear-gradient(160deg,#1F3A5F,#132640);color:#fff;padding:calc(18px + env(safe-area-inset-top)) 16px 22px}
+header .in{max-width:880px;margin:0 auto}
+header h1{margin:0;font-size:22px;font-weight:800;letter-spacing:.2px}
+header p{margin:4px 0 14px;font-size:13.5px;opacity:.88}
+#q{width:100%;min-height:48px;border:0;border-radius:12px;padding:0 14px;font:inherit;font-size:16px;color:var(--ink)}
+.wrap{max-width:880px;margin:0 auto;padding:4px 16px 40px}
+h2{font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);margin:22px 2px 10px;font-weight:800}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+.app{display:flex;flex-direction:column;gap:8px;background:#fff;border:1px solid var(--line);border-radius:16px;padding:14px;text-decoration:none;color:inherit;min-height:44px;transition:transform .08s,box-shadow .15s}
+.app:hover{box-shadow:0 6px 18px rgba(13,35,64,.10)}.app:active{transform:scale(.98)}
+.app img{width:60px;height:60px;border-radius:15px;box-shadow:0 2px 6px rgba(13,35,64,.18)}
+.app b{font-size:15.5px;line-height:1.25}
+.app span{font-size:13px;color:var(--muted);line-height:1.4}
+.app em{font-style:normal;font-size:12px;font-weight:800;color:var(--navy);background:#E8EEF5;border-radius:999px;padding:2px 8px;align-self:flex-start}
+.empty{display:none;color:var(--muted);text-align:center;padding:30px 0}
+.tip{margin-top:26px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 14px;font-size:13.5px;color:var(--muted)}
+.tip b{color:var(--ink)}
+footer{text-align:center;font-size:12px;color:var(--muted);margin-top:22px}
+@media (max-width:380px){.grid{grid-template-columns:1fr 1fr}}
 </style>
 </head>
 <body>
+<header><div class="in">
+  <h1>Energy World Apps</h1>
+  <p>Every app in one place. Tap one to open it.</p>
+  <input id="q" type="search" placeholder="Search: challan, payment, tools, partner…" autocomplete="off"/>
+</div></header>
+<div class="wrap" id="list"></div>
 <script>
-  /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
-     HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
-     phone's own setting), Light, Dark. Dark is drawn by turning the finished page over (invert + hue turn) and
-     turning pictures, logos and PDFs back, so every screen - including the thousands of colours written inline
-     over the years - changes at once and nothing can be left white-on-white. Red stays red, green stays green.
-     Changing it touches no data. */
-  (function () {
-    var K = "ewTheme";
-    function ewtGet() { try { var v = localStorage.getItem(K); return v === "light" || v === "dark" ? v : "auto"; } catch (e) { return "auto"; } }
-    function ewtOs() { try { return !!(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches); } catch (e) { return false; } }
-    function ewtDark() { return false; } /* p746 12 Oct 2026: light only - his call, the inverted dark looked muddy */
-    function ewtApply() {
-      var r = document.documentElement; if (!r) return;
-      r.setAttribute("data-ewdark", ewtDark() ? "1" : "0");
-      try { var mt = document.querySelector('meta[name="theme-color"]'); if (mt) { if (!mt.getAttribute("data-light")) mt.setAttribute("data-light", mt.getAttribute("content") || ""); mt.setAttribute("content", ewtDark() ? "#11161D" : mt.getAttribute("data-light")); } } catch (e) { }
-    }
-    try {
-      var st = document.createElement("style");
-      st.textContent = 'html{background:#fff}.ewthm{display:none!important}' +
-        'html[data-ewdark="1"]{filter:invert(.92) hue-rotate(180deg)}' +
-        'html[data-ewdark="1"] .top{filter:invert(1) hue-rotate(180deg)}' +   /* the navy bar stays navy, as on the card */
-        'html[data-ewdark="1"] img,html[data-ewdark="1"] video,html[data-ewdark="1"] canvas,html[data-ewdark="1"] iframe,html[data-ewdark="1"] embed,html[data-ewdark="1"] object,html[data-ewdark="1"] [data-noinvert]{filter:invert(1) hue-rotate(180deg)}' +
-        '.ewthm{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:44px;min-width:44px;padding:0 14px;border:1px solid #DCE3EA;border-radius:10px;background:#fff;color:#1F3A5F;font:inherit;font-size:14px;font-weight:700;cursor:pointer}';
-      (document.head || document.documentElement).appendChild(st);
-    } catch (e) { }
-    ewtApply();
-    try { var mq = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)"); if (mq) { if (mq.addEventListener) mq.addEventListener("change", ewtApply); else if (mq.addListener) mq.addListener(ewtApply); } } catch (e) { }
-    function ewtLabel() { var m = ewtGet(); return "&#9681; Theme: " + (m === "auto" ? "Auto (as the phone)" : m === "dark" ? "Dark" : "Light"); }
-    window.ewTheme = {
-      get: ewtGet, isDark: ewtDark, label: ewtLabel,
-      set: function (m) { try { localStorage.setItem(K, m); } catch (e) { } ewtApply(); },
-      next: function (btn) {
-        var m = ewtGet(), n = m === "auto" ? "light" : m === "light" ? "dark" : "auto";
-        window.ewTheme.set(n);
-        if (btn) btn.innerHTML = ewtLabel();
-      },
-      button: function () { return '<button type="button" class="ewthm" onclick="ewTheme.next(this)">' + ewtLabel() + '</button>'; }
-    };
-  })();
-</script>
-
-<div class="top"><div class="in">
-  <h1>Energy World — all the apps<button id="hRef" title="Load this page fresh"
-    style="float:right;background:rgba(255,255,255,.18);color:inherit;border:0;border-radius:10px;
-           width:34px;height:34px;font-size:16px;line-height:1;cursor:pointer">&#8635;</button></h1>
-  <p>Open this page on the phone, tap an app, then use the browser's <b>Add to Home Screen</b>.
-</p>
-</div></div>
-<div class="wrap">
-
-  <h2>Every day</h2>
-  <a class="app" href="../team/" data-app="team"><img src="../team/icon-192.png" alt=""/>
-    <span class="txt"><span class="nm">EW CRM</span>
-    <span class="who">The whole book — clients, quotes, sites, hisab, service, incentives</span></span>
-    <span class="go">&#8250;</span></a>
-
-  <a class="app" href="../challan/" data-app="challan"><img src="../challan/icon-192.png" alt=""/>
-    <span class="txt"><span class="nm">EW Challan</span>
-    <span class="who">Godown &amp; accounts — material out, material back, the signed receipt</span></span>
-    <span class="go">&#8250;</span></a>
-
-  <a class="app" href="../collect/" data-app="collect"><img src="../collect/icon-192.png" alt=""/>
-    <span class="txt"><span class="nm">EW Payment</span>
-    <span class="who">Admin &amp; accounts — who to ring today, and the money as it comes in</span></span>
-    <span class="go">&#8250;</span></a>
-
-  <a class="app" href="../service/" data-app="service"><img src="../service/icon-192.png" alt=""/>
-    <span class="txt"><span class="nm">EW Service</span>
-    <span class="who">Engineers — what is due today, the machine's history, the visit and what was taken</span></span>
-    <span class="go">&#8250;</span></a>
-
-  <h2>On the road</h2>
-  <a class="app" href="../visit/" data-app="visit"><img src="../visit/icon-192.png" alt=""/>
-    <span class="txt"><span class="nm">EW Visit &amp; Quote</span>
-    <span class="who">Sales executives in the field — mark visits, log site visits, make and send quotes</span></span>
-    <span class="go">&#8250;</span></a>
-
-  <a class="app" href="../saathi/" data-app="saathi"><img src="../saathi/icon-192.png" alt=""/>
-    <span class="txt"><span class="nm">EW Saathi</span>
-    <span class="who">Plumbers &amp; architects — the partner app</span></span>
-    <span class="go">&#8250;</span></a>
-
-  <h2>Office</h2>
-  <a class="app" href="../console/" data-app="console"><img src="../console/icon-192.png" alt=""/>
-    <span class="txt"><span class="nm">EW Console</span>
-    <span class="who">Admin — the back office</span></span>
-    <span class="go">&#8250;</span></a>
-
-  <h2>For customers</h2>
-  <a class="app" href="../complaint/" data-app="complaint"><img src="../complaint/icon-192.png" alt=""/>
-    <span class="txt"><span class="nm">EW Service</span>
-    <span class="who">Register a complaint — send this one to customers</span></span>
-    <span class="go">&#8250;</span></a>
-
-  <div style="margin:14px 0"><button type="button" class="ewthm" onclick="ewTheme.next(this)">&#9681; Theme</button></div>
-<h2>Not sure how one works?</h2>
-  <a class="app" href="../help/" data-app="help" style="background:#F4F6F9;border-color:#E9D9AE">
-    <span class="txt"><span class="nm" style="color:#1F3A5F">How to use the apps</span>
-    <span class="who">One page for each &mdash; who it is for, and the job step by step. Made to print.</span></span>
-    <span class="go">&#8250;</span></a>
-
-  <div class="note" style="background:#F4F6F9;border-color:#E9D9AE;color:#1F3A5F">
-    <b>The number beside each app is what the server is serving now.</b>
-    Open the app and look at its own header. If the two do not match, that phone is running an
-    old copy &mdash; tap the refresh arrow inside that app and it will offer the update.
-  </div>
-
-  <div class="note">
-    <b>The icon on a phone never updates by itself.</b>
-    When you tap Add to Home Screen the phone copies the picture and the name at that moment and
-    never looks again. If an app is already on a home screen with the old picture: press and hold it,
-    remove it, then add it again from here. You stay signed in.
-  </div>
-  <!-- 19 Sep 2026 - THE DOOR TO THE FIXER.
-       A service worker controls only its own folder, so when one goes bad the app it belongs to
-       cannot open AND cannot report it. This hub has no worker of its own, which is exactly why
-       the way out belongs here: this page opens when the apps will not. -->
-  <div class="note">
-    <b>An app will not open at all?</b>
-    <a href="../fix/" style="color:#1F3A5F;font-weight:700">Open the fixer</a> &mdash; it clears the
-    copy of the app files kept on this phone and makes it fetch them again. It never touches
-    anything you have typed, and it says first how much is still waiting to reach the sheet.
-  </div>
-  <div class="foot">Energy World · Sonipat · Panipat · Karnal · Rohtak</div>
-</div>
-<script>
-/* ---- REFRESH (17 Aug 2026) ----
-   "Give refresh button to all apps." This page is the one a man is sent to when his phone is
-   showing something stale, so it is the last place that should serve a stale copy of itself.
-   There is nothing to lose here - no form, no session, no queue - so it simply comes back
-   fresh past every cache. It clears NOTHING: the seven apps' own shells are theirs, and
-   wiping them from here would take every one of them offline in a basement. */
-document.getElementById('hRef').addEventListener('click', function () {
-  location.replace(location.pathname + '?u=' + (new Date()).getTime());
-});
-</script>
-<script>
-/* ---- "show version of each app so that we can match with updated" (17 Aug 2026) ----
-
-   Read from each app's OWN FILE, past every cache, exactly the way each app reads its own
-   liveVersion(). Not from the backend: that costs Apps Script quota on every visit, and the
-   backend is often the very thing that is down when a man comes here to check.
-
-   Every app declares APP_VERSION in its own source, so this number cannot disagree with what
-   is served - there is no second place for it to be written down and go stale. The CRM keeps
-   it in app.js; the rest keep it inline in index.html. Saathi, Visit and the Console use a
-   dated build number rather than a dotted one, so the pattern accepts both.
-
-   One request per app, in parallel, no blocking: the page is usable before any of them land,
-   and an app that does not answer says so rather than showing nothing. */
 (function () {
-  var APPS = [
-    { k: "team",      url: "../team/app.js" },
-    { k: "challan",   url: "../challan/index.html" },
-    { k: "collect",   url: "../collect/index.html" },
-    { k: "visit",     url: "../visit/index.html" },
-    { k: "saathi",    url: "../saathi/index.html" },
-    { k: "console",   url: "../console/index.html" },
-    { k: "complaint", url: "../complaint/index.html" },
-    { k: "service",   url: "../service/index.html" }
+  var GROUPS = [
+    ["Office", [
+      ["team", "CRM", "The whole book: clients, quotes, sites, hisab, billing, incentives, salary", "Owner · accounts · sales", "crm clients quotes hisab billing salary incentive dashboard"],
+      ["challan", "Challan", "Material out and back, the signed receipt, drivers and freight", "Godown · accounts", "challan delivery godown dispatch receipt driver freight stock"],
+      ["collect", "Payment", "Who to ring today, and the money as it comes in", "Owner · accounts", "payment collection money due reminder"],
+      ["console", "Console", "The back office", "Owner", "console admin points broadcast saathi settings"]
+    ]],
+    ["In the field", [
+      ["visit", "Visit & Quote", "Mark visits, log site visits, make and send quotes", "Sales executives", "visit quote site executive field lead"],
+      ["service", "Service", "What is due today, the machine's history, the visit and what was taken", "Service engineers", "service engineer complaint machine amc visit spares"],
+      ["tooltrack", "Tool Tracking", "Which tool is with which plumber, at which site, or in the godown", "Every staff member", "tool tools toolbox machine handover damage recovery"]
+    ]],
+    ["Partners & brands", [
+      ["saathi", "Saathi", "Plumbers and architects: points, sites, the tools they hold", "Partners", "saathi partner plumber architect points rewards"],
+      ["brand", "Brand Followup", "Brand executives follow up the sites they are put on", "Brand executives", "brand executive followup huliot fima oyster"],
+      ["social", "Social & Partners", "Posts, the gallery and the partner listings", "Owner · office", "social posts instagram facebook gallery listing"]
+    ]],
+    ["For customers", [
+      ["complaint", "Register a Complaint", "A customer registers a service complaint. Send this link to customers", "Customers", "complaint customer service register"]
+    ]]
   ];
-  /* two spellings in the estate: the CRM, Challan and Payment call it APP_VERSION; Saathi,
-     Visit and the Console call it BUILD and use a dated number (2026.08.17-1) rather than a
-     dotted one. Both are read, and the pattern takes either quote style. */
-  var RX = /(?:APP_VERSION|BUILD)\s*=\s*["']([0-9][0-9A-Za-z.\-]*)["']/;
-  function chip(row, text, cls) {
-    var nm = row.querySelector(".nm");
-    if (!nm) return;
-    var old = nm.querySelector(".ver");
-    if (old) old.parentNode.removeChild(old);
-    var s = document.createElement("span");
-    s.className = "ver" + (cls ? " " + cls : "");
-    s.textContent = text;
-    nm.appendChild(s);
-  }
-  APPS.forEach(function (a) {
-    var row = document.querySelector('[data-app="' + a.k + '"]');
-    if (!row) return;
-    chip(row, "checking\u2026");
-    fetch(a.url + "?v=" + Date.now(), { cache: "reload" })
-      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.text(); })
-      .then(function (t) {
-        var m = t.match(RX);
-        /* a file that loads but carries no version is a real finding, not a blank chip -
-           it means someone shipped a build without bumping it. */
-        if (m) chip(row, "v" + m[1], "on");
-        else chip(row, "no version in the file", "no");
-      })
-      .catch(function () { chip(row, "could not be read", "no"); });
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  var list = document.getElementById("list");
+  list.innerHTML = GROUPS.map(function (g) {
+    return '<section><h2>' + esc(g[0]) + '</h2><div class="grid">' + g[1].map(function (a) {
+      return '<a class="app" href="../' + a[0] + '/" data-k="' + esc((a[1] + " " + a[2] + " " + a[3] + " " + a[4]).toLowerCase()) + '">' +
+        '<img src="../' + a[0] + '/icon-192.png?v=3" alt="" width="60" height="60"/><b>' + esc(a[1]) + '</b><span>' + esc(a[2]) + '</span><em>' + esc(a[3]) + '</em></a>';
+    }).join("") + '</div></section>';
+  }).join("") + '<div class="empty" id="none">No app matches.</div>' +
+    '<div class="tip"><b>Put an app on your phone’s home screen:</b> open it, then Share → Add to Home Screen on iPhone, or the ⋮ menu → Add to Home screen / Install app on Android. ' +
+    'Need help with one? <a href="../help/">How to use the apps</a>.</div>' +
+    '<footer>Energy World · Panipat</footer>';
+  document.getElementById("q").addEventListener("input", function () {
+    var q = this.value.trim().toLowerCase(), any = false;
+    Array.prototype.forEach.call(document.querySelectorAll(".app"), function (a) { var on = !q || q.split(/\s+/).every(function (w) { return a.getAttribute("data-k").indexOf(w) >= 0; }); a.style.display = on ? "" : "none"; if (on) any = true; });
+    Array.prototype.forEach.call(document.querySelectorAll("section"), function (s) { s.style.display = [].some.call(s.querySelectorAll(".app"), function (a) { return a.style.display !== "none"; }) ? "" : "none"; });
+    document.getElementById("none").style.display = any ? "none" : "block";
   });
 })();
 </script>
