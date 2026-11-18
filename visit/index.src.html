@@ -6,7 +6,8 @@
 <title>EW Visit &amp; Quote</title>
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#1F3A5F">
-<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png?v=3"/>
+<link rel="apple-touch-icon" href="icon-180.png?v=3">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <script src="../assets/jspdf/jspdf.umd.min.js"></script>
 <script>if (!window.jspdf) document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"><\/script>');</script>
@@ -256,7 +257,7 @@ table.att td.ok,table.att td.no{font-size:16px}
       button: function () { return '<button type="button" class="ewthm" onclick="ewTheme.next(this)">' + ewtLabel() + '</button>'; }
     };
   })();
-  var APP_VERSION = "1.22.0";   /* 1.22.0 (17 Nov 2026) - the menu opens the Tool Tracking app */   /* 1.21.0 (17 Nov 2026) - Follow-up tab: brand by brand, his clients - going on / won / lost, quotes given, and the brand executive on the site */   /* 1.20.0 (17 Nov 2026) - one tap Present with where the day is and the plan; a visit still counts; one mark shows in every app */   /* 1.19.1 (17 Nov 2026) - FIX: a quote stamped with a plain date threw "Can't find variable: d10" on the quote list; the version is in the header */   /* 1.19.0 (1.19.0 (16 Nov 2026) - a visit is logged straight from the site list (the stage starts at the last one); My day shows the month as a calendar, present = a visit marked; the 7-day grid uses the same rule; an executive has his own daily report */   /* 1.18.0 (1.18.0 (16 Nov 2026) - a quote in three steps: the discount sits at the top of the check instead of a screen of its own; and the app counts which buttons are tapped, sent weekly to the owner's Health screen */   /* 1.17.7 (1.17.7 (15 Nov 2026) - FIX: no family-rate fallback here, so a quote line reading "Huliot HT PRO" for a client given a Huliot rate was quoted at FULL MRP - 9 client-and-brand pairs on his own book */   /* 1.17.6 (1.17.6 (11 Nov 2026) - GHP+ logo in the registered Green Heat+ colours (#00539F / #ED1D24) on PDFs, quotes, challans and QR centres */   /* 1.17.5 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 1.17.4 (9 Nov 2026) - FIMA finish codes with their own finish photo */     /* 1.17.3 (9 Nov 2026) - a small finish-colour dot on FIMA product pictures */     /* 1.17.2 (9 Nov 2026) - FIMA handles S1-S4 in every finish and the S2 glass handles */     /* 1.17.1 (9 Nov 2026) - brand tiles on the quote line: real logos, compact, on one row with Pending / Won / Lost */     /* 1.17.0 (9 Nov 2026) - brand-wise Won / Lost on a quote line: tap a brand once = Won, twice = Lost, again = open */     /* 1.16.0 (9 Nov 2026) - FIMA in every finish: type F1301WLX9CS (or any of 14,260 finish codes) and it is on the quote at its own MRP */     /* 1.15.0 (9 Nov 2026) - incentive ready (clients paid) and waiting for payment, on the plan header */     /* 1.14.0 (9 Nov 2026) - ask the owner to approve a discount above the brand limit, right on the quote line */     /* 1.13.0 (9 Nov 2026) - target limit shown under each quote discount; plan updates list (slab reached, lines left out, returns, month closed, 20th reminder) */     /* 1.12.0 (9 Nov 2026) - the 2027 plan on top (counted sales, slab ladder, left-out lines, quarter) and daily reports: entered, missed, streak */   /* 1.11.0 (8 Nov 2026) - my month on top: sales, returns, target, incentive, what to dispatch */   /* 1.10.1 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */   /* 1.10.0 (4 Nov 2026) - quote as in the CRM: item-wise discount, option lines, item-wise rates without total, GST */   /* 1.9.1 (31 Oct 2026) - one tap, one entry */   /* 1.9.0 (29 Oct 2026) - Menu -> Online enquiries (FB, IG, Google, Justdial, IndiaMART ... from the OnlineEnquiries tab) */   /* 1.8.4 (27 Oct 2026) - GHp mark in the middle of every QR, level H */   /* 1.6.1 - Huliot Group introduction on quotes; 1.6.0 (17 Oct 2026) - a dropped POST never loses a quote; admin sees every executive; daily report; attendance grid */
+  var APP_VERSION = "1.24.0";   /* 1.24.0 (18 Nov 2026) - "Mark your attendance", with the location taken now and shown before it is saved */   /* 1.23.0 (18 Nov 2026) - a partner holding Energy World tools says so in the plumber / architect pick lists; new app icon */   /* 1.22.0 (17 Nov 2026) - the menu opens the Tool Tracking app */   /* 1.21.0 (17 Nov 2026) - Follow-up tab: brand by brand, his clients - going on / won / lost, quotes given, and the brand executive on the site */   /* 1.20.0 (17 Nov 2026) - one tap Present with where the day is and the plan; a visit still counts; one mark shows in every app */   /* 1.19.1 (17 Nov 2026) - FIX: a quote stamped with a plain date threw "Can't find variable: d10" on the quote list; the version is in the header */   /* 1.19.0 (1.19.0 (16 Nov 2026) - a visit is logged straight from the site list (the stage starts at the last one); My day shows the month as a calendar, present = a visit marked; the 7-day grid uses the same rule; an executive has his own daily report */   /* 1.18.0 (1.18.0 (16 Nov 2026) - a quote in three steps: the discount sits at the top of the check instead of a screen of its own; and the app counts which buttons are tapped, sent weekly to the owner's Health screen */   /* 1.17.7 (1.17.7 (15 Nov 2026) - FIX: no family-rate fallback here, so a quote line reading "Huliot HT PRO" for a client given a Huliot rate was quoted at FULL MRP - 9 client-and-brand pairs on his own book */   /* 1.17.6 (1.17.6 (11 Nov 2026) - GHP+ logo in the registered Green Heat+ colours (#00539F / #ED1D24) on PDFs, quotes, challans and QR centres */   /* 1.17.5 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 1.17.4 (9 Nov 2026) - FIMA finish codes with their own finish photo */     /* 1.17.3 (9 Nov 2026) - a small finish-colour dot on FIMA product pictures */     /* 1.17.2 (9 Nov 2026) - FIMA handles S1-S4 in every finish and the S2 glass handles */     /* 1.17.1 (9 Nov 2026) - brand tiles on the quote line: real logos, compact, on one row with Pending / Won / Lost */     /* 1.17.0 (9 Nov 2026) - brand-wise Won / Lost on a quote line: tap a brand once = Won, twice = Lost, again = open */     /* 1.16.0 (9 Nov 2026) - FIMA in every finish: type F1301WLX9CS (or any of 14,260 finish codes) and it is on the quote at its own MRP */     /* 1.15.0 (9 Nov 2026) - incentive ready (clients paid) and waiting for payment, on the plan header */     /* 1.14.0 (9 Nov 2026) - ask the owner to approve a discount above the brand limit, right on the quote line */     /* 1.13.0 (9 Nov 2026) - target limit shown under each quote discount; plan updates list (slab reached, lines left out, returns, month closed, 20th reminder) */     /* 1.12.0 (9 Nov 2026) - the 2027 plan on top (counted sales, slab ladder, left-out lines, quarter) and daily reports: entered, missed, streak */   /* 1.11.0 (8 Nov 2026) - my month on top: sales, returns, target, incentive, what to dispatch */   /* 1.10.1 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */   /* 1.10.0 (4 Nov 2026) - quote as in the CRM: item-wise discount, option lines, item-wise rates without total, GST */   /* 1.9.1 (31 Oct 2026) - one tap, one entry */   /* 1.9.0 (29 Oct 2026) - Menu -> Online enquiries (FB, IG, Google, Justdial, IndiaMART ... from the OnlineEnquiries tab) */   /* 1.8.4 (27 Oct 2026) - GHp mark in the middle of every QR, level H */   /* 1.6.1 - Huliot Group introduction on quotes; 1.6.0 (17 Oct 2026) - a dropped POST never loses a quote; admin sees every executive; daily report; attendance grid */
   /* 1.6.0 - ONLY THE SERVER'S OWN "NO" SIGNS A MAN OUT. The old test was /pin|locked|not allowed|blocked|removed/:
      any data error that happened to contain "not allowed" or "removed" (a refused row, a removed brand) signed the
      executive out and wiped his snapshot. These are the sign-in answers the server gives (teamAuth: "Wrong name or
@@ -1802,21 +1803,57 @@ table.att td.ok,table.att td.no{font-size:16px}
     if (!S.user || !S.data) return "";
     var m = attMineToday();
     if (m) return '<span style="font-size:12px;color:#166534;font-weight:700" title="' + esc("Marked present today" + (m.plan ? " - " + m.plan : "")) + '" style="white-space:nowrap">✓ Present ' + esc(String(m.note || "").replace(/^self\s*/, "").split(" ")[0]) + (m.plan ? ' · ' + esc(m.plan.length > 14 ? m.plan.slice(0, 13) + "…" : m.plan) : '') + '</span>';
-    return '<button class="btn sm" data-act="att-me" title="Mark yourself present for today" style="background:#15803d;border-color:#15803d;color:#fff">✓ Present</button>';
+    return '<button class="btn sm" data-act="att-me" title="Mark your attendance for today, with where you are" style="background:#15803d;border-color:#15803d;color:#fff">Mark your attendance</button>';
   }
   var ATT_TOWNS = ["Panipat", "Sonipat", "Karnal", "Rohtak", "Delhi", "Office"];
+  /* 18 Nov 2026 - HIS WORDS: "show mark your attendance instead of only present" and "attendance with current location".
+     The button says what it does. The sheet asks the phone for where he is NOW (no remembered fix: maximumAge 0, the
+     precise reading, up to 15 s) the moment it opens, shows it with its accuracy and a map link, and the attendance is
+     saved only with it. Before this, a location was taken quietly if the phone answered within 4 s - and a remembered
+     one up to 5 minutes old was accepted - and the mark went in without one when it did not. */
+  var _attGeo = null;
+  function attGeoHtml() {
+    var g = _attGeo || { st: "wait" };
+    if (g.st === "ok") return '<div style="margin-top:8px;padding:9px 11px;border:1px solid #86efac;background:#f0fdf4;border-radius:10px;font-size:13.5px">&#128205; <b>Your location now:</b> ' + esc(g.v) + ' <span style="color:#64748b">(within ' + g.acc + ' m)</span> &middot; <a href="https://www.google.com/maps?q=' + esc(g.v) + '" target="_blank" rel="noopener">See on the map</a></div>';
+    if (g.st === "no") return '<div style="margin-top:8px;padding:9px 11px;border:1px solid #fca5a5;background:#fef2f2;border-radius:10px;font-size:13.5px;color:#991b1b"><b>Location is needed to mark attendance.</b> ' + esc(g.why) + '<div style="margin-top:6px"><button class="btn sm" data-act="att-geo" style="min-height:44px">Try again</button></div></div>';
+    return '<div style="margin-top:8px;padding:9px 11px;border:1px solid #cbd5e1;background:#f8fafc;border-radius:10px;font-size:13.5px;color:#475569">&#128205; Finding where you are now&hellip;</div>';
+  }
+  function attGeoPaint() { var b = document.getElementById("att_geo"); if (b) b.innerHTML = attGeoHtml(); }
+  function attGeoStart(force) {
+    if (!force && _attGeo && (_attGeo.st === "wait" || (_attGeo.st === "ok" && Date.now() - _attGeo.t < 120000))) { attGeoPaint(); return; }
+    _attGeo = { st: "wait", t: Date.now() }; attGeoPaint();
+    var mine = _attGeo;
+    if (!navigator.geolocation) { _attGeo = { st: "no", why: "This phone or browser cannot give a location.", t: Date.now() }; attGeoPaint(); return; }
+    try {
+      navigator.geolocation.getCurrentPosition(function (p) {
+        if (_attGeo !== mine) return;
+        _attGeo = { st: "ok", v: p.coords.latitude.toFixed(5) + "," + p.coords.longitude.toFixed(5), acc: Math.round(p.coords.accuracy || 0), t: Date.now() }; attGeoPaint();
+      }, function (e) {
+        if (_attGeo !== mine) return;
+        _attGeo = { st: "no", t: Date.now(), why: e && e.code === 1 ? "Location is blocked for this app. Allow it (the lock or \u24D8 beside the address, or the phone\u2019s Settings \u2192 Location), then tap Try again." : "The phone could not find where you are. Step near a window or outside, then tap Try again." };
+        attGeoPaint();
+      }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+    } catch (e) { _attGeo = { st: "no", why: "This phone or browser cannot give a location.", t: Date.now() }; attGeoPaint(); }
+  }
+  function attGeoOk() {
+    if (_attGeo && _attGeo.st === "ok") return true;
+    toast(_attGeo && _attGeo.st === "no" ? "Location is needed to mark attendance \u2014 allow it, then tap Try again." : "Still finding your location \u2014 a few seconds.");
+    return false;
+  }
   function attPlanSheet() {
-    return '<h2>Mark present — where are you today?</h2><p class="meta" style="font-size:13px">Tap the town(s), add the plan in a line. It goes on the roll-call and the report.</p>' +
+    setTimeout(function () { attGeoStart(false); }, 0);
+    return '<h2>Mark your attendance — where are you today?</h2><p class="meta" style="font-size:13px">Tap the town(s), add the plan in a line. It goes on the roll-call and the report.</p>' +
       '<div style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0">' + ATT_TOWNS.map(function (x) { return '<button class="chip" data-act="att-town" data-v="' + esc(x) + '" style="min-height:44px">' + esc(x) + '</button>'; }).join("") + '</div>' +
       '<label>Today’s plan</label><input id="att_plan" placeholder="e.g. Panipat — Model Town, then Samalkha" style="width:100%;box-sizing:border-box;min-height:44px;font-size:16px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px" autocomplete="off"/>' +
-      '<div class="meta" style="font-size:12px;margin-top:4px">Your location is taken from the phone, if it allows it.</div>' +
-      '<div style="display:flex;gap:8px;margin-top:12px"><button class="chip" data-act="close" style="flex:1;min-height:44px">Not now</button><button class="btn" data-act="att-go" style="flex:2;min-height:44px;background:#15803d;border-color:#15803d;color:#fff">✓ Mark present</button></div>';
+      '<div id="att_geo">' + attGeoHtml() + '</div>' +
+      '<div style="display:flex;gap:8px;margin-top:12px"><button class="chip" data-act="close" style="flex:1;min-height:44px">Not now</button><button class="btn" data-act="att-go" style="flex:2;min-height:44px;background:#15803d;border-color:#15803d;color:#fff">Mark attendance</button></div>';
   }
   function attMeMark(t, plan) {
     if (attMineToday()) { toast("Already marked present today."); return; }
     if (t) { t.disabled = true; t.textContent = "Marking…"; }
     var geo = new Promise(function (res) {
       var done = false, fin = function (v) { if (!done) { done = true; res(v); } };
+      if (_attGeo && _attGeo.st === "ok") return fin(_attGeo.v);   /* 18 Nov 2026 - the location shown on the sheet */
       try { if (!navigator.geolocation) return fin("");
         navigator.geolocation.getCurrentPosition(function (p) { fin(p.coords.latitude.toFixed(5) + "," + p.coords.longitude.toFixed(5)); }, function () { fin(""); }, { timeout: 4000, maximumAge: 300000 });
       } catch (e) { fin(""); }
@@ -2859,7 +2896,19 @@ table.att td.ok,table.att td.no{font-size:16px}
      full details, who is plumber, architect, he is our client of which brand ... selecting a plumber show how many ongoing sites."
      Everything here is read from the book; the only writes are the client's plumber / architect when he fills a gap, and one
      audit row (dup:mobile) when a mobile already on the book is entered for another site - the CRM shows those to the admin. */
-  function dl(id, arr) { return '<datalist id="' + id + '">' + (arr || []).map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join("") + '</datalist>'; }
+  /* 1.23.0 - HIS WORDS: "tool with a partner will be shown everywhere when searching partner". The owner's CRM files
+     who holds which Energy World tool as a "tool:held" audit row; a partner's name in a pick list says how many he has. */
+  var _tkH = null, _tkHK = "";
+  function tkHeldN(n) {
+    var A = (S.data && S.data.audit) || [], best = null;
+    if (_tkHK !== String(A.length)) {
+      A.forEach(function (a) { if (a && a.action === "tool:held" && (!best || String(a.createdAt) > String(best.createdAt))) best = a; });
+      _tkH = {}; _tkHK = String(A.length);
+      if (best) { try { (JSON.parse(best.detail || "{}").tools || []).forEach(function (t) { var k = String(t.hName || "").trim().toLowerCase(); if (k) _tkH[k] = (_tkH[k] || 0) + 1; }); } catch (e) { } }
+    }
+    return (_tkH && _tkH[String(n || "").trim().toLowerCase()]) || 0;
+  }
+  function dl(id, arr) { return '<datalist id="' + id + '">' + (arr || []).map(function (n) { var k = tkHeldN(n); return '<option value="' + esc(n) + '"' + (k ? ' label="' + esc(n + " \u00b7 " + k + " tool" + (k === 1 ? "" : "s") + " with him") + '"' : '') + '></option>'; }).join("") + '</datalist>'; }
   function areasFor(dist) {
     var m = {};
     (S.data.clients || []).concat(S.data.sites || []).forEach(function (x) {
@@ -4490,9 +4539,10 @@ table.att td.ok,table.att td.no{font-size:16px}
     if (act === "dr-copy") { var _dt = el("dr_txt"); var _tx = _dt ? _dt.textContent : ""; try { navigator.clipboard.writeText(_tx).then(function () { toast("Copied."); }, function () { toast("Could not copy - select the text and copy it."); }); } catch (eC) { toast("Could not copy - select the text and copy it."); } return; }
     if (act === "signout") { if (pendingN()) toast("Kept on this phone: " + pendingN() + "."); signOut(""); return; }
     if (act === "close") { S.sheet = null; S.sl = null; render(); return; }
+    if (act === "att-geo") { attGeoStart(true); return; }   /* 18 Nov 2026 */
     if (act === "att-me") { if (attMineToday()) { toast("Already marked present today."); return; } S.sheet = attPlanSheet(); render(); return; }
     if (act === "att-town") { var _ap = document.getElementById("att_plan"); if (_ap) { var _v = t.getAttribute("data-v") || ""; _ap.value = _ap.value.trim() ? (_ap.value.indexOf(_v) < 0 ? _ap.value.trim() + ", " + _v : _ap.value) : _v; _ap.focus(); } return; }
-    if (act === "att-go") { var _pl = document.getElementById("att_plan"), _plan = _pl ? String(_pl.value || "").trim() : ""; if (!_plan) { toast("Tap a town or write the plan first."); return; } S.sheet = null; render(); attMeMark(null, _plan); return; }
+    if (act === "att-go") { var _pl = document.getElementById("att_plan"), _plan = _pl ? String(_pl.value || "").trim() : ""; if (!_plan) { toast("Tap a town or write the plan first."); return; } if (!attGeoOk()) return; S.sheet = null; render(); attMeMark(null, _plan); return; }
     if (act === "att-notif") {   /* 1.5.2 - only when he presses it */
       try { Notification.requestPermission().then(function (p) { toast(p === "granted" ? "Done - the reminders will also come as notifications while the app is open in the background." : "Notifications stay off. The reminders will show when you open the app."); }); } catch (e) { }
       S.sheet = null; render(); return;
