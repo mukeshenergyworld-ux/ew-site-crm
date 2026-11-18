@@ -5,7 +5,7 @@ var assoc = [
   { id: "a2", name: "Roshan Lal", role: "Plumber", code: "PL002", mobile: "8053141561", location: "Sonipat" },
   { id: "a3", name: "Suresh - Snp", role: "Builder", code: "BL014", mobile: "9000000001", location: "Sonipat" },
   { id: "a4", name: "Sachin - Snp", role: "PMC", code: "PMC001", mobile: "9000000002", location: "Sonipat" }];
-var ctx = { S: { data: { associates: assoc, clients: [], sites: [] } }, esc: function (x) { return String(x); }, alpha: function (a, b) { return a < b ? -1 : a > b ? 1 : 0; },
+var ctx = { tkHeldTag: function (a) { return a && a.name === "Ramesh Plumber" ? "2 tools with him" : ""; }, S: { data: { associates: assoc, clients: [], sites: [] } }, esc: function (x) { return String(x); }, alpha: function (a, b) { return a < b ? -1 : a > b ? 1 : 0; },
   partnerLabel: function (r) { return r === "architect" ? "Architects" : r === "plumber" ? "Plumbers" : r === "builder" ? "Builders" : "PMCs"; },
   partnerNames: function () { return { named: [], unknown: [] }; }, ppkLoc: function (a) { return String(a.location || ""); } };
 var F = H.lift("team", ["ppkLabel", "ppkHit", "ppkOptions", "partnerAnyOptions"], ctx);

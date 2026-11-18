@@ -12,7 +12,7 @@ var ctx = { S: { user: "Vivek Verma", data: { team: team,
   isCancelled: function () { return false; }, payAmt: function (p) { return Number(p.amount) || 0; }, esc: function (x) { return String(x); }, locations: function () { return ["Panipat", "Sonipat"]; },
   pevTable: function (cols, rows) { return "<table>" + rows.map(function (r) { return "<tr>" + r.join("|") + "</tr>"; }).join("") + "</table>"; },
   attDayLabel: function (d) { return d; }, ATT_FROM: "2026-10-16", attDow: function (d) { return new Date(d + "T12:00:00").getDay(); } };
-var F = H.lift("team", ["attRoleOf", "attWorkLabel", "attWork", "attMarks", "attVisitDays", "attDay", "attSelfMark", "attPlanSheet", "modalAttDay"], ctx, ["ATT_WORK"]);
+var F = H.lift("team", ["attRoleOf", "attWorkLabel", "attWork", "attMarks", "attVisitDays", "attDay", "attSelfMark", "attGeoHtml", "attGeoPaint", "attGeoStart", "attGeoOk", "attPlanSheet", "modalAttDay"], ctx, ["ATT_WORK", "_attGeo"]);
 H.eq("roles read from the team", [F.attRoleOf("Vivek Verma"), F.attRoleOf("Ashish Jha"), F.attRoleOf("Ramesh"), F.attRoleOf("Gautam")].join(","), "sales,godown,service,accounts");
 H.eq("sales: that day's site visits, not yesterday's", F.attWork("Vivek Verma", day).n, 2);
 H.eq("service: his service visits that day", F.attWork("Ramesh", day).n, 1);

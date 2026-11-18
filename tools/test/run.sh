@@ -40,6 +40,7 @@ node tools/test/t_salary_history.js || fail=1
 node tools/test/t_cancel_driverpay.js || fail=1
 node tools/test/t_tk_server.js || fail=1
 node tools/test/t_tooltrack.js || fail=1
+node tools/test/t_tools_held_mps.js || fail=1
 node tools/test/t_alias_once.js || fail=1
 node tools/test/t_items_supplied.js || fail=1
 node tools/test/t_challan_catalog.js || fail=1
