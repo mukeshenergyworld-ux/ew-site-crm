@@ -257,6 +257,14 @@
      listens, and confirms with liveVersion() before it says anything - the message is a hint,
      the version string is the proof, so a changed icon can never raise a false banner.
      It costs no extra network: that revalidation was happening anyway. */
+  /* 18 Nov 2026 - HIS SCREENSHOT: "Version 1.159.1 is ready. You are on 1.163.0." The check took ANY different version
+     string as new, so an old copy of the file - served by a stale cache somewhere between his desktop and GitHub - was
+     offered as an update, and Update would have taken him BACK. Only a higher version is ever offered now. */
+  function ewNewer(a, b) {
+    var x = String(a || "").split("."), y = String(b || "").split(".");
+    for (var i = 0; i < Math.max(x.length, y.length); i++) { var d = (Number(x[i]) || 0) - (Number(y[i]) || 0); if (d) return d > 0; }
+    return false;
+  }
   function verWatch() {
     try {
       if (!navigator.serviceWorker || !navigator.serviceWorker.addEventListener) return;
@@ -264,7 +272,7 @@
         if (!e || !e.data || e.data.ew !== "new-build") return;
         if (String(e.data.url || "").indexOf("app.js") >= 0) return;   /* that one is the CRM's */
         liveVersion().then(function (v) {
-          if (!v || v === APP_VERSION || v === S.newVer) return;
+          if (!v || v === APP_VERSION || v === S.newVer || !ewNewer(v, APP_VERSION)) return;
           S.newVer = v;
           try { render(); } catch (x) {}
           try { toast("Version " + v + " is ready - tap Update above."); } catch (x) {}
@@ -286,7 +294,7 @@
     pull(true);
     liveVersion().then(function (v) {
       if (!v) { if (loud) toast("Could not check for a new version — you are on v" + APP_VERSION + "."); return; }
-      if (v === APP_VERSION) { if (loud) toast("This is the latest version (v" + APP_VERSION + ")."); return; }
+      if (v === APP_VERSION || !ewNewer(v, APP_VERSION)) { if (loud) toast("This is the latest version (v" + APP_VERSION + ")."); return; }
       S.newVer = v;
       try { render(); } catch (e) {}
       toast("Version " + v + " is ready — tap Update above.");

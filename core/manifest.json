@@ -78,6 +78,7 @@
     "why": "One tap: the latest book AND the latest build.",
     "fns": [
       "liveVersion",
+      "ewNewer",
       "refreshNow",
       "updateNow",
       "newVerBar",
