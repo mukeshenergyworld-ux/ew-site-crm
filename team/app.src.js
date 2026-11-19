@@ -455,7 +455,13 @@
 /* ==EWCORE:drivers:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.1042";   /* 6.9.1042 (18 Nov 2026) - HIS WORDS: "do all" -> the tool tracking extras. A tool damaged or lost by a partner, with an
+  var APP_VERSION = "6.9.1043";   /* 6.9.1043 (19 Nov 2026) - HIS WORDS: "any payment marked as extra discount will be considered cash discount and will
+     effect incentive of all ... beside payment also provide extra discount, in case any client at the time of giving payment bargains and leads to some
+     extra discount for payment settlement". (1) A payment whose narration or reference says "extra discount" / "extra dist" IS a discount, whatever
+     mode it was filed under: it clears the bill but is not money, so the partner's and executive's incentive comes down by the share it cleared.
+     MEASURED on the live book: 18 such rows, Rs 83,749, filed as Cash / Bank (Deepak Jain 14,755 ... Himanshu Kumawat 6,686 on 19 Nov). (2) The
+     "Payment received" form has an "Extra discount at settlement" box: the money and the discount are saved as two lines, the discount as Discount. */
+  /* before: */   /* 6.9.1042 (18 Nov 2026) - HIS WORDS: "do all" -> the tool tracking extras. A tool damaged or lost by a partner, with an
      amount to recover, is CUT FROM HIS INCENTIVE: a ledger line "Tool damage recovery" that counts like a payout (his balance and what is due to him
      drop by it), for as long as the tool app has it unrecovered. Marked "recovered in cash" or "waived" there, the line goes. The owner's CRM files
      the unrecovered amounts in the audit tab with the held tools ("tool:held"), so every phone cuts the same. A tool held past its "return within"
@@ -44455,7 +44461,7 @@ function viewCatalogue() {
      Everything about a payment entry now goes through readPayIn -> payTwin -> payWrite.  The
      ordinary Save and the "yes, this really is a second payment" path share the same code, so
      they can never read the form differently or write a different row. */
-  var _payPend = null, _poPend = null;
+  var _payPend = null, _poPend = null, _payPendX = null;
 
   /* Every site this client is known at, so the receipt carries the RIGHT site instead of
      whichever challan happened to sort first. */
@@ -44514,7 +44520,8 @@ function viewCatalogue() {
        that share and releases only on the money, and it is never counted as money collected. */
     "discount": { label: "Discount allowed \u2014 not money", sign: 1, note: "Discount allowed" }
   };
-  function payIsDisc(p) { return String((p && p.mode) || "").trim().toLowerCase() === "discount" || /^discount allowed/i.test(String((p && p.notes) || "")); }
+  function payIsDisc(p) { return String((p && p.mode) || "").trim().toLowerCase() === "discount" || /^discount allowed/i.test(String((p && p.notes) || "")) ||
+    /\bextra\s*-?\s*dis(c|t)/i.test(String((p && p.notes) || "") + " " + String((p && p.ref) || "")); }   /* 6.9.1043 - "extra discount" in the narration is a discount, filed under any mode */
   /* a payment row whose narration says it was a discount, still filed as money - for the owner to correct */
   function payLooksDisc(p) {
     if (!p || payIsDisc(p) || payAmt(p) <= 0) return false;
@@ -44539,7 +44546,13 @@ function viewCatalogue() {
     if (d > today()) return { err: "That date has not arrived yet \u2014 check it once." };
     var sid = String(val("pi_site") || "");
     var st = sid ? clientSiteList(client).filter(function (x) { return x.id === sid; })[0] : null;
+    /* 6.9.1043 - the extra discount he settled for, with this payment: its own line, filed as a discount */
+    var xd = String(kind || "in") === "in" ? Math.round(nAmt(val("pi_xdisc"))) : 0, xrow = null;
+    if (xd < 0) return { err: "The extra discount cannot be a minus." };
+    if (xd > 0) xrow = { id: mintId("P"), createdBy: S.user, siteId: st ? st.id : "", siteName: st ? st.name : "", client: client, date: d, amount: xd, mode: "Discount", ref: "",
+      notes: ("Discount allowed — extra discount at settlement, with the payment of " + money(amt) + " on " + dmy(d) + (val("pi_why") ? " (" + val("pi_why") + ")" : "")).slice(0, 300) };
     return {
+      xrow: xrow,
       row: {
         id: mintId("P"), createdBy: S.user,
         siteId: st ? st.id : "", siteName: st ? st.name : "",
@@ -44881,6 +44894,11 @@ function viewCatalogue() {
         (_pk === "in" ? Math.round(_piDue > 0 ? _piDue : 0) : (K.sign < 0 && l.due < -0.5 ? Math.round(-l.due) : "")) + '"/></div></div>';
     if (_pk === "discount") h = h.replace('<label style="color:#1d4ed8">Date</label>', '<label style="color:#1d4ed8">Date given</label>');
     if (_mstN) h += mstPayCard(client, _piDue);   /* 6.9.686 */
+    if (_pk === "in" && !_mstN) h += '<div class="card" style="border-color:#fde68a;background:#fffbeb;padding:9px 12px;margin-top:8px">' +   /* 6.9.1043 */
+      '<label for="pi_xdisc" style="margin-top:0;color:#92400e">Extra discount at settlement (optional)</label>' +
+      '<input id="pi_xdisc" inputmode="numeric" placeholder="0" style="font-size:16px;font-weight:700;min-height:44px;background:#fff;border-color:#fcd34d;color:#78350f"/>' +
+      '<div class="meta" style="font-size:12.5px;color:#92400e;margin-top:4px">If he bargained while paying, write the discount here and only the money above. It is saved as its own line, <b>Discount</b> &mdash; ' +
+      'it clears that much of his bill, is not cash collected, and the partner\u2019s and executive\u2019s incentive comes down by it.</div></div>';
     /* Only asked when there is a real choice to make - one site needs no question. */
     if (sites.length > 1) {
       h += '<label>Against which site</label><select id="pi_site"><option value="">Not tied to one site</option>' +
@@ -72856,14 +72874,15 @@ function viewCatalogue() {
       /* 6.9.686 - a builder's payment, spread over his sites oldest-first */
       if (act === "pi-save" && (t.getAttribute("data-k") || "in") === "in" && el("pi_mst") && el("pi_mst").checked) { mstPaySave(t); return; }
       var piRow;
-      if (act === "pi-force") { piRow = _payPend; _payPend = null; }
+      var piX = null;
+      if (act === "pi-force") { piRow = _payPend; _payPend = null; piX = _payPendX; _payPendX = null; }
       else {
         var pRead = readPayIn(t.getAttribute("data-n"), t.getAttribute("data-k") || "in");
         if (pRead.err) { unlockBtn(t); toast(pRead.err); return; }
-        piRow = pRead.row;
+        piRow = pRead.row; piX = pRead.xrow || null;
         var twin = payTwin(piRow);
         if (twin) {
-          unlockBtn(t); _payPend = piRow;
+          unlockBtn(t); _payPend = piRow; _payPendX = piX;
           S.modal = modalDupStop("This looks like the same payment again", piRow.client,
             [money(twin.amount) + " by " + esc(String(twin.mode || "")) + " on " + esc(fullDate(twin.date)),
              /* v6.9.466 - one still on its way has no receipt number yet, and saying "Receipt
@@ -72878,6 +72897,11 @@ function viewCatalogue() {
       }
       if (!piRow) { unlockBtn(t); toast("That entry has gone stale \u2014 open it again."); return; }
       payWrite(piRow, _gClick, t);
+      if (piX) {   /* 6.9.1043 - the extra discount, its own line */
+        payFlightSet(piX);
+        save("payments", piX).then(function (r) { payFlightDone(piX); toast("Extra discount " + money(piX.amount) + (r && r !== piX ? " recorded as a discount." : " held on this phone \u2014 it goes up by itself.")); renderBg(); })
+          .catch(function () { payFlightDone(piX); toast("Extra discount held on this phone."); });
+      }
       return;
     }
 
