@@ -455,7 +455,10 @@
 /* ==EWCORE:drivers:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.1045";   /* 6.9.1045 (19 Nov 2026) - HIS WORD: "approve". Partner Club v3: 3% of what his clients paid in the year, before GST; each bar
+  var APP_VERSION = "6.9.1046";   /* 6.9.1046 (19 Nov 2026) - HIS WORDS: "fima going to fund 50% only"; his answers: international trip only, keep the bars, we
+     save. Platinum's international trip is now 50% Energy World (Rs 55,250) and 50% FIMA (Rs 55,250) instead of 80/20. The bar stays Rs 30 L, so a
+     Platinum partner's 3% (Rs 90,000 at the bar) now buys the trip and leaves Rs 34,750 more as his coin. Goa stays 80/20 with a brand still to name. */
+  /* before: */   /* 6.9.1045 (19 Nov 2026) - HIS WORD: "approve". Partner Club v3: 3% of what his clients paid in the year, before GST; each bar
      set where Energy World's share of the prize is 3% of it (Member 1 L, Bronze 3 L, Silver 8 L, Gold 15 L, Platinum 30 L); above a bar the prize and the
      balance as a coin; trips 80% EW / 20% a brand seat; Goa is the plumbers' Gold; Partner of the Year inside his own 3%; earned -> chosen -> given kept
      as audit rows with EW's and the brand's cost. Replaces the 6.9.954 slab bonus (no scheme had been saved). */
@@ -55319,7 +55322,7 @@ function viewCatalogue() {
     { k: "Singapore", all: 133380, note: "Rs 22,880 over the allowance - the partner adds the difference" }
   ];
   var CLUB_TIERS = [
-    { k: "Platinum", cut: 3000000, menu: "International trip (Dubai / Baku / Vietnam / Almaty / Singapore)", ew: 88400, brand: 22100 },
+    { k: "Platinum", cut: 3000000, menu: "International trip (Dubai / Baku / Vietnam / Almaty / Singapore)", ew: 55250, brand: 55250, brandName: "FIMA" },   /* 6.9.1046 - FIMA funds 50% */
     { k: "Gold",     cut: 1500000, menu: "Goa trip, 4N/5D (plumbers) / 3.2 g gold coin / a machine for his trade / an appliance", ew: 42640, brand: 10660 },
     { k: "Silver",   cut: 800000,  menu: "1.7 g gold coin / a cordless press tool / something for the house", ew: 24000, brand: 0 },
     { k: "Bronze",   cut: 300000,  menu: "41 g silver coin / a power tool / a fuel card", ew: 9000, brand: 0 },
@@ -55331,7 +55334,7 @@ function viewCatalogue() {
     var d = best ? cmpJ(best.detail) : null;
     var ok = d && Number(d.v) === 3 && Array.isArray(d.tiers) && d.tiers.length;   /* a v1 slab scheme is not read as v3 */
     var T = ok ? d.tiers.map(function (x) {
-      return { k: String(x.k || ""), cut: Math.round(nAmt(x.cut)), menu: String(x.menu || ""), ew: Math.round(nAmt(x.ew)), brand: Math.round(nAmt(x.brand)) };
+      return { k: String(x.k || ""), cut: Math.round(nAmt(x.cut)), menu: String(x.menu || ""), ew: Math.round(nAmt(x.ew)), brand: Math.round(nAmt(x.brand)), brandName: String(x.brandName || "") };
     }).filter(function (x) { return x.k && x.cut > 0; }) : CLUB_TIERS.slice();
     T.sort(function (a, b) { return b.cut - a.cut; });
     return { tiers: T, at: ok ? best.createdAt : "", by: ok ? best.actor : "" };
@@ -55428,13 +55431,13 @@ function viewCatalogue() {
     h += '<div class="card"><h3 style="margin:0">The ladder</h3>' +
       pevTable([["Tier"], ["Bar (paid, pre-GST)", "right"], ["Prize"], ["EW pays", "right"], ["Brand seat", "right"], ["Partners", "right"], ["Collected", "right"], ["Their 3%", "right"]],
         band.map(function (x) { return [clubPill(x.t.k), money(x.t.cut), '<span style="font-size:12.5px">' + esc(x.t.menu) + '</span>', money(x.t.ew), x.t.brand ? money(x.t.brand) : '—',
-          '<b>' + x.b.length + '</b>', money(x.coll), money(x.earned)]; })
+          '<b>' + x.b.length + '</b>', money(x.coll), money(x.earned)]; }).map(function (row, i) { var bn = band[i].t.brandName; if (bn && band[i].t.brand) row[4] = money(band[i].t.brand) + ' <span style="font-size:11px;color:#64748b">' + esc(bn) + '</span>'; return row; })
         .concat([['<b>Total</b>', "", "", "", "", '<b>' + tot.n + '</b>', '<b>' + money(tot.coll) + '</b>', '<b>' + money(tot.earned) + '</b>']])) +
       '<div class="meta" style="font-size:12.5px;margin-top:6px;line-height:1.55">Energy World’s whole outlay this year: <b>' + money(tot.earned) + '</b> (prizes ' + money(tot.ew) + ' + coins ' + money(tot.coin) + ')' +
         ' — the 3% ceiling on all partner business (' + money(allColl) + ') is <b>' + money(cap) + '</b>' + (allColl > 0 ? ', so ' + (Math.round(tot.earned / allColl * 1000) / 10) + '% is spent' : '') + '.' +
         (tot.brand ? ' Brands carry ' + money(tot.brand) + ' in trip seats, outside the 3%.' : '') +
         (poty ? '<br><b>Partner of the Year so far: ' + esc(poty.name) + '</b> (' + money(poty.coll) + ') — title and trophy, out of his own 3%.' : '') + '</div>' +
-      '<details style="margin-top:8px"><summary style="cursor:pointer;font-weight:700;min-height:44px;display:flex;align-items:center">The international trip — one allowance, ' + money(110500) + ' all in</summary>' +
+      '<details style="margin-top:8px"><summary style="cursor:pointer;font-weight:700;min-height:44px;display:flex;align-items:center">The international trip — one allowance, ' + money(110500) + ' all in, half paid by FIMA</summary>' +
       pevTable([["Destination"], ["All in", "right"], ["Note"]], CLUB_TRIPS.map(function (d) { return ['<b>' + esc(d.k) + '</b>', money(d.all), '<span style="font-size:12.5px">' + esc(d.note) + '</span>']; })) +
       '<div class="meta" style="font-size:12px;margin-top:4px">4 nights / 5 days, twin sharing, by air, plus 30% cash in hand. Get one written group quote per destination before it is announced. A brand that funds a seat may want the partner’s number — ask the partner first, every time.</div></details></div>';
     /* ---- who to call ---- */
@@ -55493,7 +55496,7 @@ function viewCatalogue() {
       '<div class="grid2"><div><label>Energy World pays (₹)</label><input id="cr_ew" inputmode="numeric" value="' + esc(String(d.ew != null ? d.ew : (t.ew || 0))) + '"/></div>' +
       '<div><label>Coin, balance of his 3% (₹)</label><input id="cr_coin" inputmode="numeric" value="' + esc(String(d.coin != null ? d.coin : r.coin)) + '"/></div></div>' +
       '<div class="grid2"><div><label>Brand seat (₹)</label><input id="cr_brand" inputmode="numeric" value="' + esc(String(d.brand != null ? d.brand : (t.brand || 0))) + '"/></div>' +
-      '<div><label>Which brand funds it</label><input id="cr_brandn" value="' + esc(d.brandName || "") + '" placeholder="e.g. Huliot"/></div></div>' +
+      '<div><label>Which brand funds it</label><input id="cr_brandn" value="' + esc(d.brandName || t.brandName || "") + '" placeholder="e.g. Huliot"/></div></div>' +
       '<label>Note</label><input id="cr_note" value="' + esc(d.note || "") + '"/>' +
       '<div class="meta" style="font-size:12px;margin-top:6px">Each press is kept as its own dated record; the newest is what counts.</div>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
@@ -67342,7 +67345,7 @@ function viewCatalogue() {
       return;
     }
     if (act === "club-save") {   /* 6.9.1045 - the v3 scheme: bar, prize menu, EW cost, brand seat */
-      var _ct = clubScheme().tiers.map(function (x) { return { k: x.k, cut: x.cut, menu: x.menu, ew: x.ew, brand: x.brand }; });
+      var _ct = clubScheme().tiers.map(function (x) { return { k: x.k, cut: x.cut, menu: x.menu, ew: x.ew, brand: x.brand, brandName: x.brandName || "" }; });
       Array.prototype.forEach.call(document.querySelectorAll(".club-in"), function (i2) {
         var r2 = _ct[Number(i2.getAttribute("data-i"))]; if (!r2) return;
         var f = i2.getAttribute("data-f");
