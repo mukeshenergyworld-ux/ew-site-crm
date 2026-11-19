@@ -455,7 +455,8 @@
 /* ==EWCORE:drivers:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.1047";   /* 6.9.1047 (19 Nov 2026) - HIS WORD: "Oyster" - the brand that funds the Goa seat (Gold, 20%, Rs 10,660). */
+  var APP_VERSION = "6.9.1048";   /* 6.9.1048 (19 Nov 2026) - HIS WORDS: "assume visa free". Almaty is listed as visa-free on an Indian passport; the "confirm at the embassy" warning is gone. */
+  /* before: */   /* 6.9.1047 (19 Nov 2026) - HIS WORD: "Oyster" - the brand that funds the Goa seat (Gold, 20%, Rs 10,660). */
   /* before: */   /* 6.9.1046 (19 Nov 2026) - HIS WORDS: "fima going to fund 50% only"; his answers: international trip only, keep the bars, we
      save. Platinum's international trip is now 50% Energy World (Rs 55,250) and 50% FIMA (Rs 55,250) instead of 80/20. The bar stays Rs 30 L, so a
      Platinum partner's 3% (Rs 90,000 at the bar) now buys the trip and leaves Rs 34,750 more as his coin. Goa stays 80/20 with a brand still to name. */
@@ -55319,7 +55320,7 @@ function viewCatalogue() {
   var CLUB_TRIPS = [
     { k: "Dubai", all: 80210, note: "Rs 30,290 under the allowance - a better hotel or a longer stay" },
     { k: "Baku", all: 110500, note: "e-visa" }, { k: "Vietnam", all: 109200, note: "e-visa" },
-    { k: "Almaty", all: 109850, note: "visa-free on an Indian passport - confirm at the Kazakhstan embassy before printing" },
+    { k: "Almaty", all: 109850, note: "visa-free on an Indian passport (14 days) - nothing to apply for" },   /* 6.9.1048 - his word: assume visa free */
     { k: "Singapore", all: 133380, note: "Rs 22,880 over the allowance - the partner adds the difference" }
   ];
   var CLUB_TIERS = [
