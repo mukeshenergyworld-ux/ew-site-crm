@@ -15,33 +15,25 @@ def row(icon, html):
     return f'<tr><td style="padding:2px 8px 2px 0;vertical-align:middle;width:18px">{ic(icon)}</td><td style="padding:2px 0;font-size:12.5px;color:#1f2a44;vertical-align:middle">{html}</td></tr>'
 A = 'style="color:#1f2a44;text-decoration:none"'
 def sig(name, title, phone, email):
-    soc = ''.join(f'<a href="{u}" title="{t}" style="text-decoration:none;display:inline-block;margin:0 6px 0 0">{ic(k, 26)}</a>' for k, u, t in SOC)
-    rows = (row('phone', f'<b style="color:#13294b">Panipat</b> <a href="tel:+919466600611" {A}>94666 00611</a> · <a href="tel:+919466701242" {A}>94667 01242</a>')
-            + row('phone', f'<b style="color:#13294b">Sonipat</b> <a href="tel:+919050444139" {A}>90504 44139</a> · <a href="tel:+919466701242" {A}>94667 01242</a>')
-            + row('mail', f'<a href="mailto:{email}" style="color:#1d5fbf;text-decoration:none">{email}</a>')
-            + row('web', '<a href="https://www.energyworld.co.in" style="color:#1d5fbf;text-decoration:none;font-weight:bold">www.energyworld.co.in</a>')
-            + row('pin', '<span style="font-size:11.5px;color:#5a6478">SCO 132, TDI Town Centre, TDI City, Panipat 132103 &nbsp;|&nbsp; 117, Rajiv Colony, Sec. 15, Sonipat</span>'))
-    return f'''<table cellpadding="0" cellspacing="0" border="0" width="560" style="{F}width:560px;border-collapse:collapse;color:#1f2a44">
-<tr><td colspan="2" style="height:4px;line-height:4px;font-size:0;background:#13294b">&nbsp;</td></tr>
+    soc = ''.join(f'<a href="{u}" title="{t}" style="text-decoration:none;display:inline-block;margin:0 5px 0 0">{ic(k, 20)}</a>' for k, u, t in SOC)
+    L = 'style="color:#1d5fbf;text-decoration:none"'
+    return f'''<table cellpadding="0" cellspacing="0" border="0" width="544" style="{F}width:544px;border-collapse:collapse;color:#1f2a44">
 <tr>
-<td width="200" style="width:200px;padding:16px 16px 12px 0;vertical-align:middle;border-right:3px solid #1b8a3c">
-<a href="https://www.energyworld.co.in" style="text-decoration:none"><img src="{B}ew_ghp_sig.png" width="190" height="53" alt="Energy World and GHP+" style="display:block;border:0;width:190px;height:53px"></a>
-<div style="font-size:10.5px;color:#1b8a3c;font-weight:bold;letter-spacing:.3px;padding-top:10px">SINCE 2009</div>
-<div style="font-size:10.5px;color:#5a6478">Sonipat · Panipat · Karnal · Rohtak</div>
+<td width="150" style="width:150px;padding:4px 14px 8px 0;vertical-align:middle;border-right:3px solid #1b8a3c">
+<a href="https://www.energyworld.co.in" style="text-decoration:none"><img src="{B}ew_ghp_sig.png" width="150" height="42" alt="Energy World and GHP+" style="display:block;border:0;width:150px;height:42px"></a>
+<div style="font-size:9.5px;color:#1b8a3c;font-weight:bold;padding-top:6px;letter-spacing:.3px">SINCE 2009</div>
 </td>
-<td style="padding:14px 0 10px 18px;vertical-align:top">
-<div style="font-size:19px;font-weight:bold;color:#13294b;line-height:1.2">{name}</div>
-<div style="font-size:12.5px;color:#5a6478;padding:2px 0 8px">{title} &nbsp;|&nbsp; <b style="color:#1b8a3c">Energy World</b></div>
-<table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse">{rows}</table>
+<td style="padding:2px 0 8px 14px;vertical-align:top;font-size:12px;line-height:1.55">
+<span style="font-size:16px;font-weight:bold;color:#13294b">{name}</span> <span style="color:#5a6478">&nbsp;{title}, <b style="color:#1b8a3c">Energy World</b></span><br>
+{ic('phone', 13)} <a href="tel:+919466600611" {A}>94666 00611</a> · <a href="tel:+919466701242" {A}>94667 01242</a> <span style="color:#5a6478">(Panipat)</span> · <a href="tel:+919050444139" {A}>90504 44139</a> <span style="color:#5a6478">(Sonipat)</span><br>
+{ic('mail', 13)} <a href="mailto:{email}" {L}>{email}</a> &nbsp;{ic('web', 13)} <a href="https://www.energyworld.co.in" {L}><b>energyworld.co.in</b></a><br>
+{ic('pin', 13)} <span style="font-size:11px;color:#5a6478">SCO 132, TDI Town Centre, TDI City, Panipat · Sec. 15, Sonipat</span><br>
+<div style="padding-top:4px">{soc}</div>
 </td></tr>
-<tr><td colspan="2" style="padding:10px 0 8px;border-top:1px solid #e3e9f0">
-<table cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
-<td style="font-size:12px;color:#13294b;font-weight:bold;vertical-align:middle">Plumbing, Solar &amp; Air Solutions — all under one roof</td>
-<td align="right" style="vertical-align:middle;white-space:nowrap">{soc}</td></tr></table>
+<tr><td colspan="2" style="padding:6px 0 0;border-top:1px solid #e3e9f0">
+<div style="font-size:9.5px;letter-spacing:.8px;color:#5a6478;font-weight:bold;padding-bottom:4px">PLUMBING · SOLAR · AIR SOLUTIONS — ALL UNDER ONE ROOF</div>
+<a href="https://www.energyworld.co.in" style="text-decoration:none"><img src="{B}brands_compact.png" width="544" height="68" alt="Huliot, FIMA, Oyster, Heliroma, TOTO, Green Heat+, Pentair, Grundfos, MEA, InAir, Leo, Stellar Sanitär, Geberit, Adani, Eureka Forbes" style="display:block;border:0;width:544px;height:68px"></a>
 </td></tr>
-<tr><td colspan="2" style="padding:4px 0 6px;font-size:10px;letter-spacing:1px;color:#5a6478;font-weight:bold">OUR PARTNER BRANDS</td></tr>
-<tr><td colspan="2" style="padding:0 0 8px"><a href="https://www.energyworld.co.in" style="text-decoration:none"><img src="{B}brands.png" width="544" height="150" alt="Huliot, FIMA, Oyster, Heliroma, TOTO, Green Heat+, Pentair, Grundfos, MEA, InAir, Leo, Stellar Sanitär, Geberit, Adani, Eureka Forbes" style="display:block;border:0;width:544px;height:150px"></a></td></tr>
-<tr><td colspan="2" style="background:#13294b;padding:7px 12px;font-size:11px;color:#ffffff">Visit our Experience Centre at TDI City, Panipat &nbsp;·&nbsp; <a href="https://g.page/r/CQ6kBwH01QxFEBE/review" style="color:#9fe3b4;text-decoration:none;font-weight:bold">Rate us on Google ★</a></td></tr>
 </table>'''
 cards = ''
 for k, n, t, p, e in PEOPLE:
