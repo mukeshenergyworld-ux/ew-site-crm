@@ -71,7 +71,26 @@ nav.tabs button.on{color:var(--navy);box-shadow:inset 0 3px 0 var(--navy)}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .grp{cursor:pointer}.grp .top{display:flex;gap:8px;align-items:center}.grp .nm{flex:1;min-width:0;font-weight:800;overflow-wrap:anywhere}
 .rec{color:var(--bad);font-weight:800}
-@media (min-width:560px){.stats{grid-template-columns:repeat(6,1fr)}}
+@media (min-width:560px){.stats{grid-template-columns:repeat(4,1fr)}}
+.p-late{background:#fee2e2;color:var(--bad)}
+.ph{display:block;margin-top:6px;max-width:220px}.ph img{width:100%;max-height:200px;object-fit:cover;border-radius:10px;border:1px solid var(--line)}
+.phprev{display:flex;gap:10px;align-items:center;margin-top:6px}.phprev img{width:84px;height:84px;object-fit:cover;border-radius:10px;border:1px solid var(--line)}
+.filebtn{position:relative;overflow:hidden}.filebtn input{position:absolute;inset:0;opacity:0;width:100%;cursor:pointer}
+#scanv{width:100%;max-height:60vh;border-radius:12px;background:#000}
+#print{display:none}
+@media print{
+  body{padding:0;background:#fff}
+  body>*:not(#print){display:none!important}
+  #print{display:block;color:#000;font:11pt/1.35 Arial,sans-serif}
+  @page{size:A4;margin:10mm}
+}
+.stk{display:grid;grid-template-columns:repeat(3,1fr);gap:4mm}
+.sk{border:0.3mm dashed #888;border-radius:2mm;padding:2.5mm;display:flex;gap:2.5mm;align-items:center;break-inside:avoid;height:34mm}
+.sk svg{width:29mm;height:29mm;flex:none}.sk .r{min-width:0}.sk .e{font-size:7pt;letter-spacing:.08em;font-weight:700}.sk .c{font-size:15pt;font-weight:900;line-height:1.1}
+.sk .n{font-size:8.5pt;line-height:1.2;max-height:21pt;overflow:hidden}.sk .f{font-size:6.5pt;color:#444;margin-top:1mm}
+.stm h1{font-size:16pt;margin:0}.stm .sub{font-size:10pt;color:#333;margin:2mm 0 4mm}
+.stm table{width:100%;border-collapse:collapse;font-size:9.5pt}.stm th,.stm td{border:0.3mm solid #999;padding:1.5mm 2mm;text-align:left;vertical-align:top}
+.stm th{background:#eee}.stm td.r,.stm th.r{text-align:right}.stm .sig{display:flex;gap:20mm;margin-top:18mm}.stm .sig div{flex:1;border-top:0.3mm solid #000;padding-top:1.5mm;font-size:9pt}
 </style>
 </head>
 <body>
@@ -79,13 +98,13 @@ nav.tabs button.on{color:var(--navy);box-shadow:inset 0 3px 0 var(--navy)}
 <script>
 (function () {
   "use strict";
-  var APP_VERSION = "1.1.1";   /* 1.1.1 (18 Nov 2026) - its own icon (a toolbox) */   /* 1.1.0 (17 Nov 2026) - signs in on the tool server itself with the CRM name + PIN, once, and keeps that server's token (60 days). 1.0.0 passed the CRM's saved token on, and the tool server's check of it against the CRM hung for 6 minutes, three times in three. The pick lists come from the tool server only (the owner's CRM sends them every 2 hours). */     /* 1.0.0 (17 Nov 2026) - first: the tool list, where each tool is, hand-over, back to godown, damage / loss with recovery, who has what, the log */
+  var APP_VERSION = "1.2.0";   /* 1.2.0 (18 Nov 2026) - HIS WORDS: "do all" (the extras): a photo with a damage / loss line (or added afterwards); a "return within" number of days per tool, and a "Held too long" tile; QR stickers to print, and a Scan button that opens the tool; a printable tool statement for each holder; an amount due from a plumber is cut from his incentive in the CRM, and the owner or accounts mark one recovered in cash (or the owner waives it). Needs the tool server TK3. */   /* 1.1.1 (18 Nov 2026) - its own icon (a toolbox) */   /* 1.1.0 (17 Nov 2026) - signs in on the tool server itself with the CRM name + PIN, once, and keeps that server's token (60 days). 1.0.0 passed the CRM's saved token on, and the tool server's check of it against the CRM hung for 6 minutes, three times in three. The pick lists come from the tool server only (the owner's CRM sends them every 2 hours). */     /* 1.0.0 (17 Nov 2026) - first: the tool list, where each tool is, hand-over, back to godown, damage / loss with recovery, who has what, the log */
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var STORE = "ew_tools_session", BOOK = "ew_tools_book", DIRK = "ew_tools_dir";
   /* the other Energy World apps on this phone: the name signed in there is filled in, so only the PIN is typed */
   var SIBS = ["ew_team_session", "ew_challan_session", "ew_vq_session", "ew_service_session", "ew_collect_session"];
   var TYPES = { godown: "Godown", partner: "Plumber / contractor", site: "Site", staff: "Staff", unknown: "Not traced" };
-  var S = { user: "", tok: "", me: null, tools: [], moves: [], events: [], dir: { partners: [], sites: [], staff: [] },
+  var S = { user: "", tok: "", me: null, tools: [], moves: [], events: [], dues: null, dir: { partners: [], sites: [], staff: [] },
     tab: "tools", f: "all", q: "", open: null, sheet: null, sel: {}, selMode: false, busy: false, grp: null, logQ: "", msg: "" };
 
   function $(id) { return document.getElementById(id); }
@@ -98,6 +117,187 @@ nav.tabs button.on{color:var(--navy);box-shadow:inset 0 3px 0 var(--navy)}
   function days(iso) { var t = Date.parse(iso); return isNaN(t) ? 0 : Math.max(0, Math.floor((Date.now() - t) / 86400000)); }
   function key(s) { return String(s || "").toLowerCase().replace(/[^a-z0-9]/g, ""); }
   function boss() { return S.me && (S.me.role === "admin" || S.me.role === "accounts"); }
+  var LATE = 30;   /* a tool out longer than this (or its own "return within" days) is held too long */
+  var APP_URL = "https://mukeshenergyworld-ux.github.io/ew-site-crm/tooltrack/";
+  function dueOf(t) { return Number(t.dueDays) > 0 ? Number(t.dueDays) : LATE; }
+  function isOut(t) { return t.hType === "partner" || t.hType === "site" || t.hType === "staff"; }
+  function lateBy(t) { if (!isOut(t) || !t.since || t.off) return 0; var d = days(t.since) - dueOf(t); return d > 0 ? d : 0; }
+  function phThumb(id) { return "https://drive.google.com/thumbnail?id=" + encodeURIComponent(id) + "&sz=w600"; }
+  function phOpen(id) { return "https://drive.google.com/file/d/" + encodeURIComponent(id) + "/view"; }
+  /* a partner the amount is due from: his incentive in the CRM carries the cut */
+  function isPartnerDue(e) { var ps = (S.dir && S.dir.partners) || []; return ps.some(function (p) { return (e.whoRef && p.i === e.whoRef) || key(p.n) === key(e.who); }); }
+  /* the phone's photo, made small here (longest side 1280, JPEG): a 4 MB camera shot goes up as about 200 KB */
+  function shrink(file) {
+    return new Promise(function (ok, no) {
+      if (!file || !/^image\//.test(file.type || "image/")) { no(new Error("Pick a photo.")); return; }
+      var fr = new FileReader();
+      fr.onerror = function () { no(new Error("That photo could not be read.")); };
+      fr.onload = function () {
+        var im = new Image();
+        im.onerror = function () { no(new Error("That photo could not be read.")); };
+        im.onload = function () {
+          var m = 1280, w = im.naturalWidth || im.width, h = im.naturalHeight || im.height, k = Math.min(1, m / Math.max(w, h));
+          var c = document.createElement("canvas"); c.width = Math.round(w * k); c.height = Math.round(h * k);
+          c.getContext("2d").drawImage(im, 0, 0, c.width, c.height);
+          ok(c.toDataURL("image/jpeg", 0.72));
+        };
+        im.src = fr.result;
+      };
+      fr.readAsDataURL(file);
+    });
+  }
+  function qrMatrix(text, lvl) {
+    var H = lvl === "H";   /* 27 Oct 2026 - level H for codes that carry the GHp mark in the middle */
+    var ECC = H ? [-1, 17, 28, 22, 16, 22, 28, 26, 26, 24, 28, 24, 28, 22, 24, 24, 30, 28, 28, 26, 28]
+                : [-1, 10, 16, 26, 18, 24, 16, 18, 22, 22, 26, 30, 22, 22, 24, 24, 28, 28, 26, 26, 26];
+    var NB  = H ? [-1, 1, 1, 2, 4, 4, 4, 5, 6, 8, 8, 11, 11, 16, 16, 18, 16, 19, 21, 25, 25]
+                : [-1, 1, 1, 1, 2, 2, 4, 4, 4, 5, 5, 5, 8, 9, 9, 10, 10, 11, 13, 14, 16];
+    var bytes = [], s = unescape(encodeURIComponent(String(text || ""))), i, j, k, x, y;
+    for (i = 0; i < s.length; i++) bytes.push(s.charCodeAt(i) & 255);
+    var rawMods = function (v) { var r = (16 * v + 128) * v + 64; if (v >= 2) { var na = Math.floor(v / 7) + 2; r -= (25 * na - 10) * na - 55; if (v >= 7) r -= 36; } return r; };
+    var dataCw = function (v) { return Math.floor(rawMods(v) / 8) - ECC[v] * NB[v]; };
+    var ver = 0;
+    for (var v = 1; v <= 20; v++) { if (4 + (v < 10 ? 8 : 16) + bytes.length * 8 <= dataCw(v) * 8) { ver = v; break; } }
+    if (!ver) return null;
+    var bb = [];
+    var app = function (val, len) { for (var q = len - 1; q >= 0; q--) bb.push((val >>> q) & 1); };
+    app(4, 4); app(bytes.length, ver < 10 ? 8 : 16);
+    bytes.forEach(function (b) { app(b, 8); });
+    var cap = dataCw(ver) * 8;
+    app(0, Math.min(4, cap - bb.length));
+    app(0, (8 - bb.length % 8) % 8);
+    for (var pad = 0xEC; bb.length < cap; pad ^= 0xEC ^ 0x11) app(pad, 8);
+    var data = [];
+    for (i = 0; i < bb.length; i += 8) { x = 0; for (j = 0; j < 8; j++) x = (x << 1) | bb[i + j]; data.push(x); }
+    var mul = function (a, b) { var z = 0; for (var q = 7; q >= 0; q--) { z = (z << 1) ^ ((z >>> 7) * 0x11D); z ^= ((b >>> q) & 1) * a; } return z & 255; };
+    var ecl = ECC[ver], nb = NB[ver], raw = Math.floor(rawMods(ver) / 8), nShort = nb - raw % nb, shortLen = Math.floor(raw / nb);
+    var dv = []; for (i = 0; i < ecl - 1; i++) dv.push(0); dv.push(1);
+    var root = 1;
+    for (i = 0; i < ecl; i++) { for (j = 0; j < dv.length; j++) { dv[j] = mul(dv[j], root); if (j + 1 < dv.length) dv[j] ^= dv[j + 1]; } root = mul(root, 2); }
+    var blocks = [];
+    for (i = 0, k = 0; i < nb; i++) {
+      var dat = data.slice(k, k + shortLen - ecl + (i < nShort ? 0 : 1)); k += dat.length;
+      var rem = dv.map(function () { return 0; });
+      dat.forEach(function (b) { var f = b ^ rem.shift(); rem.push(0); dv.forEach(function (c, t) { rem[t] ^= mul(c, f); }); });
+      if (i < nShort) dat.push(0);
+      blocks.push(dat.concat(rem));
+    }
+    var all = [];
+    for (i = 0; i < blocks[0].length; i++) for (j = 0; j < blocks.length; j++) if (i !== shortLen - ecl || j >= nShort) all.push(blocks[j][i]);
+    var n = ver * 4 + 17, M = [], F = [];
+    for (y = 0; y < n; y++) { M.push([]); F.push([]); for (x = 0; x < n; x++) { M[y].push(false); F[y].push(false); } }
+    var set = function (xx, yy, d) { M[yy][xx] = !!d; F[yy][xx] = true; };
+    for (i = 0; i < n; i++) { set(6, i, i % 2 === 0); set(i, 6, i % 2 === 0); }
+    var finder = function (cx, cy) {
+      for (var dy = -4; dy <= 4; dy++) for (var dx = -4; dx <= 4; dx++) {
+        var d = Math.max(Math.abs(dx), Math.abs(dy)), xx = cx + dx, yy = cy + dy;
+        if (xx >= 0 && xx < n && yy >= 0 && yy < n) set(xx, yy, d !== 2 && d !== 4);
+      }
+    };
+    finder(3, 3); finder(n - 4, 3); finder(3, n - 4);
+    var pos = [];
+    if (ver > 1) {
+      var na = Math.floor(ver / 7) + 2, step = Math.ceil((ver * 4 + 4) / (na * 2 - 2)) * 2;
+      pos = [6]; for (var p = n - 7; pos.length < na; p -= step) pos.splice(1, 0, p);
+    }
+    for (i = 0; i < pos.length; i++) for (j = 0; j < pos.length; j++) {
+      if ((i === 0 && j === 0) || (i === 0 && j === pos.length - 1) || (i === pos.length - 1 && j === 0)) continue;
+      for (var ay = -2; ay <= 2; ay++) for (var ax = -2; ax <= 2; ax++) set(pos[i] + ax, pos[j] + ay, Math.max(Math.abs(ax), Math.abs(ay)) !== 1);
+    }
+    var fmt = function (mask) {
+      var d = (H ? 16 : 0) | mask, r = d;      /* level bits: M 00, H 10 */
+      for (var q = 0; q < 10; q++) r = (r << 1) ^ ((r >>> 9) * 0x537);
+      var bits = ((d << 10) | r) ^ 0x5412, b = function (t) { return ((bits >>> t) & 1) !== 0; };
+      for (var t = 0; t <= 5; t++) set(8, t, b(t));
+      set(8, 7, b(6)); set(8, 8, b(7)); set(7, 8, b(8));
+      for (t = 9; t < 15; t++) set(14 - t, 8, b(t));
+      for (t = 0; t < 8; t++) set(n - 1 - t, 8, b(t));
+      for (t = 8; t < 15; t++) set(8, n - 15 + t, b(t));
+      set(8, n - 8, true);
+    };
+    fmt(0);
+    if (ver >= 7) {
+      var vr = ver; for (i = 0; i < 12; i++) vr = (vr << 1) ^ ((vr >>> 11) * 0x1F25);
+      var vb = (ver << 12) | vr;
+      for (i = 0; i < 18; i++) { var bt = ((vb >>> i) & 1) !== 0, a1 = n - 11 + i % 3, b1 = Math.floor(i / 3); set(a1, b1, bt); set(b1, a1, bt); }
+    }
+    var idx = 0;
+    for (var right = n - 1; right >= 1; right -= 2) {
+      if (right === 6) right = 5;
+      for (var vert = 0; vert < n; vert++) for (j = 0; j < 2; j++) {
+        x = right - j; var upward = ((right + 1) & 2) === 0; y = upward ? n - 1 - vert : vert;
+        if (!F[y][x] && idx < all.length * 8) { M[y][x] = ((all[idx >>> 3] >>> (7 - (idx & 7))) & 1) !== 0; idx++; }
+      }
+    }
+    var cond = [
+      function (a, b) { return (a + b) % 2 === 0; }, function (a, b) { return b % 2 === 0; },
+      function (a) { return a % 3 === 0; }, function (a, b) { return (a + b) % 3 === 0; },
+      function (a, b) { return (Math.floor(a / 3) + Math.floor(b / 2)) % 2 === 0; },
+      function (a, b) { return a * b % 2 + a * b % 3 === 0; },
+      function (a, b) { return (a * b % 2 + a * b % 3) % 2 === 0; },
+      function (a, b) { return ((a + b) % 2 + a * b % 3) % 2 === 0; }];
+    var applyMask = function (m) { for (var yy = 0; yy < n; yy++) for (var xx = 0; xx < n; xx++) if (!F[yy][xx] && cond[m](xx, yy)) M[yy][xx] = !M[yy][xx]; };
+    var penalty = function () {            /* runs, 2x2 blocks and balance - enough to avoid the worst mask */
+      var pen = 0, dark = 0, yy, xx, run;
+      for (yy = 0; yy < n; yy++) {
+        run = 1;
+        for (xx = 1; xx < n; xx++) { if (M[yy][xx] === M[yy][xx - 1]) { run++; if (run === 5) pen += 3; else if (run > 5) pen++; } else run = 1; }
+      }
+      for (xx = 0; xx < n; xx++) {
+        run = 1;
+        for (yy = 1; yy < n; yy++) { if (M[yy][xx] === M[yy - 1][xx]) { run++; if (run === 5) pen += 3; else if (run > 5) pen++; } else run = 1; }
+      }
+      for (yy = 0; yy < n - 1; yy++) for (xx = 0; xx < n - 1; xx++) { var c = M[yy][xx]; if (c === M[yy][xx + 1] && c === M[yy + 1][xx] && c === M[yy + 1][xx + 1]) pen += 3; }
+      /* finder-like runs (1:1:3:1:1 with four light either side) - what makes a reader lock onto the wrong place */
+      var P1 = [1, 0, 1, 1, 1, 0, 1, 0, 0, 0, 0], P2 = [0, 0, 0, 0, 1, 0, 1, 1, 1, 0, 1];
+      var hit = function (get) { for (var t = 0; t <= n - 11; t++) { var a = true, b = true; for (var u = 0; u < 11; u++) { var c2 = get(t + u) ? 1 : 0; if (c2 !== P1[u]) a = false; if (c2 !== P2[u]) b = false; } if (a) pen += 40; if (b) pen += 40; } };
+      for (yy = 0; yy < n; yy++) (function (r) { hit(function (t) { return M[r][t]; }); })(yy);
+      for (xx = 0; xx < n; xx++) (function (c3) { hit(function (t) { return M[t][c3]; }); })(xx);
+      for (yy = 0; yy < n; yy++) for (xx = 0; xx < n; xx++) if (M[yy][xx]) dark++;
+      return pen + Math.floor(Math.abs(dark * 20 - n * n * 10) / (n * n)) * 10;
+    };
+    var best = 0, bestPen = 1e9;
+    for (var m = 0; m < 8; m++) { applyMask(m); fmt(m); var pp = penalty(); if (pp < bestPen) { bestPen = pp; best = m; } applyMask(m); }
+    applyMask(best); fmt(best);
+    return { n: n, ver: ver, dark: function (a, b) { return M[b][a]; } };
+  }
+  function qrSvg(text) {
+    var m = qrMatrix(text, "M"); if (!m) return "";
+    var p = "";
+    for (var y = 0; y < m.n; y++) for (var x = 0; x < m.n; x++) if (m.dark(x, y)) p += "M" + (x + 4) + " " + (y + 4) + "h1v1h-1z";
+    return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + (m.n + 8) + ' ' + (m.n + 8) + '" shape-rendering="crispEdges"><rect width="100%" height="100%" fill="#fff"/><path d="' + p + '" fill="#000"/></svg>';
+  }
+  function stickerUrl(t) { return APP_URL + "?t=" + encodeURIComponent(t.code); }
+  /* ---------- printing: a page made for paper, the app hidden while it prints ---------- */
+  function printNow(html) {
+    var o = document.getElementById("print"); if (o) o.remove();
+    var d = document.createElement("div"); d.id = "print"; d.innerHTML = html; document.body.appendChild(d);
+    setTimeout(function () { try { window.print(); } catch (e) { toast("Printing is not open on this phone."); } }, 120);
+  }
+  function stickersHtml(list) {
+    return '<div class="stk">' + list.map(function (t) {
+      return '<div class="sk">' + qrSvg(stickerUrl(t)) + '<div class="r"><div class="e">ENERGY WORLD TOOL</div><div class="c">' + esc(t.code) + '</div><div class="n">' + esc(t.name) + '</div><div class="f">Scan to see who holds it</div></div></div>';
+    }).join("") + '</div>';
+  }
+  function statementHtml(o, du) {
+    var today = new Date().toISOString(), tot = 0, dtot = 0;
+    var rows = o.tools.slice().sort(function (a, b) { return String(a.code).localeCompare(String(b.code)); }).map(function (t, i) {
+      tot += Number(t.value) || 0;
+      return '<tr><td>' + (i + 1) + '</td><td><b>' + esc(t.code) + '</b></td><td>' + esc(t.name) + (t.make || t.model ? '<br><small>' + esc([t.make, t.model].filter(Boolean).join(" ")) + '</small>' : '') + (t.serial ? '<br><small>S/N ' + esc(t.serial) + '</small>' : '') + '</td>' +
+        '<td>' + esc(t.site || (o.ty === "site" ? o.name : "")) + '</td><td>' + (t.since ? dmy(t.since) + '<br><small>' + days(t.since) + ' days</small>' : '') + '</td>' +
+        '<td>' + esc(t.cond || "OK") + (lateBy(t) ? '<br><small>over by ' + lateBy(t) + ' days</small>' : '') + '</td><td class="r">' + (t.value ? money(t.value) : '') + '</td></tr>';
+    }).join("");
+    var drows = du.map(function (e) { dtot += Number(e.amount) || 0;
+      return '<tr><td>' + dmy(e.at) + '</td><td><b>' + esc(e.code) + '</b> ' + esc(e.tool) + '</td><td>' + esc(e.kind) + (e.site ? ' at ' + esc(e.site) : '') + (e.note ? '<br><small>' + esc(e.note) + '</small>' : '') + '</td><td class="r">' + money(e.amount) + '</td></tr>'; }).join("");
+    return '<div class="stm"><h1>Energy World &mdash; tool statement</h1>' +
+      '<div class="sub"><b>' + esc((o.code ? o.code + " " : "") + o.name) + '</b> (' + esc(TYPES[o.ty] || o.ty) + ') &middot; as on ' + dmy(today) + ' &middot; ' + o.tools.length + ' tool' + (o.tools.length === 1 ? '' : 's') + (tot ? ' worth ' + money(tot) : '') + '</div>' +
+      (o.tools.length ? '<table><thead><tr><th>#</th><th>Code</th><th>Tool</th><th>Site</th><th>Since</th><th>Condition</th><th class="r">Value</th></tr></thead><tbody>' + rows +
+        (tot ? '<tr><td colspan="6"><b>Total</b></td><td class="r"><b>' + money(tot) + '</b></td></tr>' : '') + '</tbody></table>' : '<p>No tool with him today.</p>') +
+      (du.length ? '<h3 style="margin:6mm 0 2mm;font-size:11pt">Damage / loss to recover</h3><table><thead><tr><th>Date</th><th>Tool</th><th>What happened</th><th class="r">Amount</th></tr></thead><tbody>' + drows +
+        '<tr><td colspan="3"><b>Total to recover</b>' + (o.ty === "partner" ? ' (cut from the incentive)' : '') + '</td><td class="r"><b>' + money(dtot) + '</b></td></tr></tbody></table>' : '') +
+      '<p style="font-size:9pt;margin-top:5mm">The tools above are the property of Energy World, Panipat, given for use at the site named. They are to be returned on asking, in the condition they were given. A tool damaged or lost is recovered.</p>' +
+      '<div class="sig"><div>Received by (' + esc(o.name) + ')</div><div>For Energy World</div></div></div>';
+  }
   var _tt = null;
   function toast(m) { var o = document.querySelector(".toast"); if (o) o.remove(); var d = document.createElement("div"); d.className = "toast"; d.textContent = m; document.body.appendChild(d); clearTimeout(_tt); _tt = setTimeout(function () { d.remove(); }, 3600); }
 
@@ -138,8 +338,8 @@ nav.tabs button.on{color:var(--navy);box-shadow:inset 0 3px 0 var(--navy)}
 
   /* ---------- the book ---------- */
   function takeBook(r) {
-    S.me = r.me || S.me; S.tools = r.tools || []; S.moves = r.moves || []; S.events = r.events || [];
-    lsPut(BOOK, { user: S.user, me: S.me, tools: S.tools, moves: S.moves, events: S.events, at: Date.now() });
+    S.me = r.me || S.me; S.tools = r.tools || []; S.moves = r.moves || []; S.events = r.events || []; S.dues = r.dues || null;
+    lsPut(BOOK, { user: S.user, me: S.me, tools: S.tools, moves: S.moves, events: S.events, dues: S.dues, at: Date.now() });
   }
   function pull(wantDir) {
     S.busy = true; render();
@@ -172,12 +372,13 @@ nav.tabs button.on{color:var(--navy);box-shadow:inset 0 3px 0 var(--navy)}
     if (t.hType === "site") return "At site: " + t.hName;
     return (t.hCode ? t.hCode + " " : "") + t.hName + (t.site ? " · at " + t.site : "");
   }
-  function dues() { return S.events.filter(function (e) { return Number(e.amount) > 0 && String(e.recovered || "") !== "Y"; }); }
+  function dues() { return S.dues ? S.dues.slice() : S.events.filter(function (e) { return Number(e.amount) > 0 && String(e.recovered || "") !== "Y"; }); }   /* TK3 sends every one */
   function matchQ(t, q) { return !q || key([t.code, t.name, t.make, t.model, t.serial, t.hName, t.hCode, t.site].join(" ")).indexOf(key(q)) >= 0; }
   function inF(t, f) {
     if (f === "all") return true;
     if (f === "bad") return t.cond === "Damaged" || t.cond === "Lost";
-    if (f === "out") return t.hType === "partner" || t.hType === "site" || t.hType === "staff";
+    if (f === "out") return isOut(t);
+    if (f === "late") return lateBy(t) > 0;
     return (t.hType || "unknown") === f;
   }
 
@@ -201,25 +402,28 @@ nav.tabs button.on{color:var(--navy);box-shadow:inset 0 3px 0 var(--navy)}
       '<div class="meta">' + esc([t.make, t.model, t.serial ? "S/N " + t.serial : ""].filter(Boolean).join(" · ")) + '</div>' +
       '<div style="margin-top:4px"><span class="pill p-' + esc(t.hType || "unknown") + '">' + esc(holderTxt(t)) + '</span> ' +
       (t.cond && t.cond !== "OK" ? '<span class="pill p-' + esc(t.cond) + '">' + esc(t.cond) + '</span> ' : '') +
-      (t.hType !== "godown" && t.hType !== "unknown" && t.since ? '<span class="meta">' + days(t.since) + ' days</span>' : '') + '</div></div></div>';
+      (lateBy(t) ? '<span class="pill p-late">' + days(t.since) + ' days &middot; over by ' + lateBy(t) + '</span>' : (t.hType !== "godown" && t.hType !== "unknown" && t.since ? '<span class="meta">' + days(t.since) + ' days</span>' : '')) + '</div></div></div>';
   }
   function viewTools() {
     var L = live(), n = function (f) { return L.filter(function (t) { return inF(t, f); }).length; };
     var due = dues().reduce(function (a, e) { return a + Number(e.amount); }, 0);
-    var show = L.filter(function (t) { return inF(t, S.f) && matchQ(t, S.q); }).sort(function (a, b) { return String(a.code).localeCompare(String(b.code)); });
+    var show = L.filter(function (t) { return inF(t, S.f) && matchQ(t, S.q); }).sort(S.f === "late" ? function (a, b) { return lateBy(b) - lateBy(a); } : function (a, b) { return String(a.code).localeCompare(String(b.code)); });
     var h = '<div class="stats">' + statTile("all", L.length, "All tools") + statTile("godown", n("godown"), "In godown") + statTile("out", n("out"), "Out") +
-      statTile("unknown", n("unknown"), "Not traced", 1) + statTile("bad", n("bad"), "Damaged / lost", 1) +
+      statTile("unknown", n("unknown"), "Not traced", 1) + statTile("late", n("late"), "Held too long", 1) + statTile("bad", n("bad"), "Damaged / lost", 1) +
       '<button class="stat' + (due ? ' alert' : '') + '" data-act="tab" data-k="people"><b>' + money(due) + '</b><span>To recover</span></button></div>' +
       '<div class="chips" style="margin-top:8px">' + [["all", "All"], ["partner", "With plumbers"], ["site", "At sites"], ["staff", "With staff"], ["godown", "Godown"], ["unknown", "Not traced"]].map(function (c) {
         return '<button class="chip' + (S.f === c[0] ? ' on' : '') + '" data-act="f" data-k="' + c[0] + '">' + c[1] + '</button>'; }).join("") + '</div>' +
-      '<input id="q" type="search" placeholder="Search tool, code, plumber or site" value="' + esc(S.q) + '"/>' +
+      (S.f === "late" ? '<div class="meta" style="margin-bottom:6px">Out longer than its "return within" days (' + LATE + ' unless set on the tool). Oldest first.</div>' : '') +
+      '<div style="display:flex;gap:8px"><input id="q" type="search" placeholder="Search tool, code, plumber or site" value="' + esc(S.q) + '" style="flex:1"/>' +
+      '<button class="btn ghost" data-act="scan" style="flex:none">Scan</button></div>' +
       '<div style="display:flex;gap:8px;margin-top:8px;align-items:center"><div class="meta" style="flex:1">' + show.length + ' tool' + (show.length === 1 ? '' : 's') + '</div>' +
       '<button class="btn sm ghost" data-act="selmode">' + (S.selMode ? 'Done selecting' : 'Select several') + '</button></div>';
     if (!L.length) h += '<div class="card empty">No tool on the list yet.' + (boss() ? '<br><button class="btn" style="margin-top:10px" data-act="tab" data-k="list">Make the tool list</button>' : '<br>The owner or accounts makes the tool list first.') + '</div>';
     else if (!show.length) h += '<div class="card empty">Nothing matches.</div>';
     else h += '<div id="rows">' + show.slice(0, 300).map(toolRow).join("") + '</div>';
     var ns = Object.keys(S.sel).length;
-    if (S.selMode && ns) h += '<div class="bar"><div class="row"><button class="btn full" data-act="move-open">Hand over ' + ns + ' tool' + (ns === 1 ? '' : 's') + '</button></div></div>';
+    if (S.selMode && ns) h += '<div class="bar"><div class="row"><button class="btn" style="flex:2" data-act="move-open">Hand over ' + ns + ' tool' + (ns === 1 ? '' : 's') + '</button>' +
+      '<button class="btn ghost" style="flex:1" data-act="stk-sel">Stickers</button></div></div>';
     return h;
   }
   function viewPeople() {
@@ -230,6 +434,7 @@ nav.tabs button.on{color:var(--navy);box-shadow:inset 0 3px 0 var(--navy)}
     var du = dues();
     du.forEach(function (e) { var k = Object.keys(g).filter(function (x) { return key(g[x].name) === key(e.who); })[0];
       if (!k) { k = "due|" + key(e.who); g[k] = g[k] || { k: k, ty: "partner", name: e.who, code: "", tools: [], val: 0, due: 0 }; } g[k].due += Number(e.amount) || 0; });
+    S._grps = g;
     var order = { partner: 0, site: 1, staff: 2, unknown: 3, godown: 4 };
     var rows = Object.keys(g).map(function (k) { return g[k]; }).sort(function (a, b) { return (order[a.ty] - order[b.ty]) || (b.tools.length - a.tools.length) || a.name.localeCompare(b.name); });
     if (!rows.length) return '<div class="card empty">No tool on the list yet.</div>';
@@ -239,11 +444,13 @@ nav.tabs button.on{color:var(--navy);box-shadow:inset 0 3px 0 var(--navy)}
         var open = S.grp === o.k;
         return '<div class="card grp" data-act="grp" data-k="' + esc(o.k) + '"><div class="top"><div class="nm">' + (o.code ? '<span class="code">' + esc(o.code) + '</span>' : '') + esc(o.name) + '</div>' +
           '<span class="pill p-' + o.ty + '">' + esc(TYPES[o.ty] || o.ty) + '</span></div>' +
-          '<div class="meta">' + o.tools.length + ' tool' + (o.tools.length === 1 ? '' : 's') + (o.val ? ' · worth ' + money(o.val) : '') + (o.due ? ' · <span class="rec">' + money(o.due) + ' to recover</span>' : '') + '</div>' +
+          '<div class="meta">' + o.tools.length + ' tool' + (o.tools.length === 1 ? '' : 's') + (o.val ? ' · worth ' + money(o.val) : '') + (o.due ? ' · <span class="rec">' + money(o.due) + ' to recover</span>' : '') +
+            (function () { var nl = o.tools.filter(function (t) { return lateBy(t) > 0; }).length; return nl ? ' · <span class="rec">' + nl + ' held too long</span>' : ''; })() + '</div>' +
           (open ? '<div style="margin-top:8px">' + o.tools.map(function (t) {
             return '<div class="hist" data-act="open" data-id="' + esc(t.tid) + '"><span class="code">' + esc(t.code) + '</span><b>' + esc(t.name) + '</b>' + (t.site && o.ty !== "site" ? ' · at ' + esc(t.site) : '') +
               (t.since && o.ty !== "godown" && o.ty !== "unknown" ? ' · ' + days(t.since) + ' days' : '') + (t.cond !== "OK" ? ' <span class="pill p-' + esc(t.cond) + '">' + esc(t.cond) + '</span>' : '') + '</div>'; }).join("") +
-            du.filter(function (e) { return key(e.who) === key(o.name); }).map(function (e) { return evLine(e, true); }).join("") + '</div>' : '') + '</div>';
+            du.filter(function (e) { return key(e.who) === key(o.name); }).map(function (e) { return evLine(e, true); }).join("") +
+            (o.ty !== "godown" && o.ty !== "unknown" ? '<button class="btn sm ghost" style="margin-top:8px" data-act="stmt" data-k="' + esc(o.k) + '">Print tool statement</button>' : '') + '</div>' : '') + '</div>';
       }).join("");
   }
   function mvLine(m, withTool) {
@@ -257,9 +464,15 @@ nav.tabs button.on{color:var(--navy);box-shadow:inset 0 3px 0 var(--navy)}
     return '<div class="hist ev">' + (withTool ? '<span class="code">' + esc(e.code) + '</span><b>' + esc(e.tool) + '</b><br>' : '') +
       '<b>' + esc(e.kind) + '</b>' + (e.site ? ' · at ' + esc(e.site) : '') + (e.who ? ' · ' + esc(e.who) : '') +
       (e.note ? '<div>' + esc(e.note) + '</div>' : '') +
-      (due ? '<div class="' + (e.recovered === "Y" ? 'meta' : 'rec') + '">' + money(e.amount) + (e.recovered === "Y" ? ' recovered ' + dmy(e.recAt) + ' (' + esc(e.recBy) + ')' : ' to recover from ' + esc(e.who)) + '</div>' : '') +
+      (due ? '<div class="' + (e.recovered === "Y" ? 'meta' : 'rec') + '">' + money(e.amount) + (e.recovered === "Y" ? (e.recVia === "waived" ? ' waived ' : ' recovered in cash ') + dmy(e.recAt) + ' (' + esc(e.recBy) + ')' :
+        (isPartnerDue(e) ? ' from ' + esc(e.who) + ' &mdash; cut from his incentive in the CRM' : ' to recover from ' + esc(e.who))) + '</div>' : '') +
+      (e.photo ? '<a class="ph" href="' + phOpen(e.photo) + '" target="_blank" rel="noopener"><img src="' + phThumb(e.photo) + '" alt="Photo" loading="lazy"/></a>' : '') +
       '<div class="meta">by ' + esc(e.by) + ' · ' + dmy(e.at) + ' ' + hm(e.at) + '</div>' +
-      (due && boss() ? '<button class="btn sm ghost" style="margin-top:4px" data-act="rec" data-id="' + esc(e.eid) + '" data-u="' + (e.recovered === "Y" ? 1 : 0) + '">' + (e.recovered === "Y" ? 'Undo recovered' : 'Mark recovered') + '</button>' : '') + '</div>';
+      '<div style="display:flex;gap:6px;flex-wrap:wrap">' +
+      (due && boss() ? (e.recovered === "Y" ? '<button class="btn sm ghost" style="margin-top:4px" data-act="rec" data-id="' + esc(e.eid) + '" data-u="1">Undo</button>' :
+        '<button class="btn sm ghost" style="margin-top:4px" data-act="rec" data-id="' + esc(e.eid) + '" data-v="cash">Recovered in cash</button>' +
+        (S.me && S.me.role === "admin" ? '<button class="btn sm ghost" style="margin-top:4px" data-act="rec" data-id="' + esc(e.eid) + '" data-v="waived">Waive</button>' : '')) : '') +
+      (!e.photo && (e.kind === "Damaged" || e.kind === "Lost") && e.eid ? '<label class="btn sm ghost filebtn" style="margin:4px 0 0">Add photo<input type="file" accept="image/*" capture="environment" data-ph="' + esc(e.eid) + '"/></label>' : '') + '</div></div>';
   }
   function viewLog() {
     var all = S.moves.map(function (m) { return { at: m.at, m: m }; }).concat(S.events.map(function (e) { return { at: e.at, e: e }; }))
@@ -275,13 +488,14 @@ nav.tabs button.on{color:var(--navy);box-shadow:inset 0 3px 0 var(--navy)}
       '<label for="a_name">Tool name *</label><input id="a_name" type="text" placeholder="e.g. Pipe punching machine"/>' +
       '<div class="two"><div><label for="a_make">Make</label><input id="a_make" type="text"/></div><div><label for="a_model">Model</label><input id="a_model" type="text"/></div></div>' +
       '<div class="two"><div><label for="a_value">Value of one (Rs)</label><input id="a_value" type="text" inputmode="numeric"/></div><div><label for="a_count">How many pieces</label><input id="a_count" type="text" inputmode="numeric" value="1"/></div></div>' +
-      '<label for="a_serial">Serial no (only when adding one piece)</label><input id="a_serial" type="text"/>' +
+      '<div class="two"><div><label for="a_serial">Serial no (one piece only)</label><input id="a_serial" type="text"/></div><div><label for="a_due">Return within (days)</label><input id="a_due" type="text" inputmode="numeric" placeholder="' + LATE + '"/></div></div>' +
       '<label for="a_where">Where are they now?</label><select id="a_where"><option value="">Not traced yet &mdash; will be marked one by one</option><option value="g">All in the godown</option></select>' +
       '<div class="meta" style="margin-top:6px">Each piece gets its own number (EWT-001, EWT-002 &hellip;), so each one can be given to a different man.</div>' +
       '<button class="btn full" style="margin-top:12px" data-act="add">Add to the list</button></div>' +
-      '<div class="meta">' + L.length + ' on the list</div>' + L.map(function (t) {
+      '<div style="display:flex;gap:8px;align-items:center;margin-top:6px"><div class="meta" style="flex:1">' + L.length + ' on the list</div>' +
+      (L.length ? '<button class="btn sm ghost" data-act="stk-all">Print stickers</button>' : '') + '</div>' + L.map(function (t) {
         return '<div class="card" style="padding:8px 12px" data-act="open" data-id="' + esc(t.tid) + '"><span class="code">' + esc(t.code) + '</span><b>' + esc(t.name) + '</b> ' + (t.off ? '<span class="pill p-off">off the list</span>' : '') +
-          '<div class="meta">' + esc([t.make, t.model, t.serial ? "S/N " + t.serial : "", t.value ? money(t.value) : ""].filter(Boolean).join(" · ")) + '</div></div>'; }).join("");
+          '<div class="meta">' + esc([t.make, t.model, t.serial ? "S/N " + t.serial : "", t.value ? money(t.value) : "", t.dueDays ? "return within " + t.dueDays + " days" : ""].filter(Boolean).join(" · ")) + '</div></div>'; }).join("");
   }
 
   /* ---------- sheets ---------- */
@@ -322,7 +536,10 @@ nav.tabs button.on{color:var(--navy);box-shadow:inset 0 3px 0 var(--navy)}
       (v.kindSel ? '<label for="e_site">At which site</label><input id="e_site" type="text" list="dl_sites" value="' + esc(v.site != null ? v.site : (t.site || "")) + '" placeholder="Type to pick the site"/>' + sitesDl() +
         (bad ? '<label for="e_who">By whom / who was holding it</label><input id="e_who" type="text" list="dl_ppl" value="' + esc(v.who != null ? v.who : (t.hType === "partner" || t.hType === "staff" ? t.hName : "")) + '" placeholder="Type to pick the name"/>' + ppl : '') +
         '<label for="e_note">What happened' + (bad ? ' *' : ' (optional)') + '</label><textarea id="e_note" placeholder="e.g. motor burnt, dropped from the first floor">' + esc(v.note || "") + '</textarea>' +
-        (bad ? '<label for="e_amt">Amount to recover from him (Rs) &mdash; leave blank if none</label><input id="e_amt" type="text" inputmode="numeric" value="' + esc(v.amt || "") + '"/>' : '') +
+        (bad ? '<label for="e_amt">Amount to recover from him (Rs) &mdash; leave blank if none</label><input id="e_amt" type="text" inputmode="numeric" value="' + esc(v.amt || "") + '"/>' +
+          '<div class="meta" style="margin-top:4px">From a plumber, it is cut from his incentive in the CRM.</div>' +
+          '<label>Photo of the tool</label>' + (v.photo ? '<div class="phprev"><img src="' + v.photo + '" alt=""/><button class="btn sm ghost" data-act="ph-x">Remove</button></div>' :
+            '<label class="btn ghost filebtn full" style="margin:0">Take / pick a photo<input type="file" accept="image/*" capture="environment" id="e_ph"/></label>') : '') +
         '<button class="btn full" style="margin-top:14px" data-act="ev-go">Save to the log</button>' : '');
   }
   function sheetEdit() {
@@ -331,6 +548,7 @@ nav.tabs button.on{color:var(--navy);box-shadow:inset 0 3px 0 var(--navy)}
       '<label for="x_name">Tool name *</label><input id="x_name" type="text" value="' + esc(t.name) + '"/>' +
       '<div class="two"><div><label for="x_make">Make</label><input id="x_make" type="text" value="' + esc(t.make) + '"/></div><div><label for="x_model">Model</label><input id="x_model" type="text" value="' + esc(t.model) + '"/></div></div>' +
       '<div class="two"><div><label for="x_serial">Serial no</label><input id="x_serial" type="text" value="' + esc(t.serial) + '"/></div><div><label for="x_value">Value (Rs)</label><input id="x_value" type="text" inputmode="numeric" value="' + esc(t.value || "") + '"/></div></div>' +
+      '<div class="two"><div><label for="x_due">Return within (days)</label><input id="x_due" type="text" inputmode="numeric" placeholder="' + LATE + '" value="' + esc(t.dueDays || "") + '"/></div><div></div></div>' +
       '<label for="x_notes">Notes</label><input id="x_notes" type="text" value="' + esc(t.notes) + '"/>' +
       '<button class="btn full" style="margin-top:14px" data-act="edit-go">Save</button>' +
       (S.me && S.me.role === "admin" ? '<button class="btn full warn" style="margin-top:8px" data-act="off" data-b="' + (t.off ? 1 : 0) + '">' + (t.off ? 'Put it back on the list' : 'Take it off the list (kept in the record)') + '</button>' : '');
@@ -341,23 +559,60 @@ nav.tabs button.on{color:var(--navy);box-shadow:inset 0 3px 0 var(--navy)}
       .concat(S.events.filter(function (e) { return e.tid === t.tid; }).map(function (e) { return { at: e.at, h: evLine(e) }; }))
       .sort(function (a, b) { return String(b.at).localeCompare(String(a.at)); });
     return '<div class="hd"><h2><span class="code">' + esc(t.code) + '</span>' + esc(t.name) + '</h2><button class="btn sm ghost" data-act="close">Close</button></div>' +
-      '<div class="card"><dl class="kv"><dt>Now with</dt><dd><b>' + esc(holderTxt(t)) + '</b>' + (t.hType !== "godown" && t.hType !== "unknown" && t.since ? '<div class="meta">since ' + dmy(t.since) + ' · ' + days(t.since) + ' days</div>' : '') + '</dd>' +
+      '<div class="card"><dl class="kv"><dt>Now with</dt><dd><b>' + esc(holderTxt(t)) + '</b>' + (t.hType !== "godown" && t.hType !== "unknown" && t.since ? '<div class="meta">since ' + dmy(t.since) + ' · ' + days(t.since) + ' days</div>' : '') +
+        (lateBy(t) ? '<div><span class="pill p-late">Held too long &middot; over by ' + lateBy(t) + ' days</span></div>' : '') + '</dd>' +
+        '<dt>Return within</dt><dd>' + dueOf(t) + ' days' + (t.dueDays ? '' : ' <span class="meta">(the usual)</span>') + '</dd>' +
         '<dt>Condition</dt><dd>' + (t.cond === "OK" || !t.cond ? 'OK' : '<span class="pill p-' + esc(t.cond) + '">' + esc(t.cond) + '</span>') + (t.off ? ' <span class="pill p-off">off the list</span>' : '') + '</dd>' +
         (t.make || t.model ? '<dt>Make</dt><dd>' + esc([t.make, t.model].filter(Boolean).join(" · ")) + '</dd>' : '') +
         (t.serial ? '<dt>Serial no</dt><dd>' + esc(t.serial) + '</dd>' : '') + (t.value ? '<dt>Value</dt><dd>' + money(t.value) + '</dd>' : '') + (t.notes ? '<dt>Notes</dt><dd>' + esc(t.notes) + '</dd>' : '') + '</dl></div>' +
       (t.off ? '' : '<button class="btn full" data-act="move-one" data-id="' + esc(t.tid) + '">' + (t.hType === "unknown" || !t.hType ? "Mark where it is now" : "Hand over to someone else") + '</button>' +
         '<div class="two" style="margin-top:8px">' + (t.hType !== "godown" ? '<button class="btn ghost" data-act="back" data-id="' + esc(t.tid) + '">Back to godown</button>' : '<span></span>') +
         '<button class="btn warn" data-act="ev-open" data-id="' + esc(t.tid) + '">Damage / loss</button></div>') +
-      (boss() ? '<button class="btn full ghost" style="margin-top:8px" data-act="edit-open" data-id="' + esc(t.tid) + '">Edit details</button>' : '') +
+      '<div class="two" style="margin-top:8px">' + (boss() ? '<button class="btn ghost" data-act="edit-open" data-id="' + esc(t.tid) + '">Edit details</button>' : '<span></span>') +
+        '<button class="btn ghost" data-act="stk-one" data-id="' + esc(t.tid) + '">Print sticker</button></div>' +
       '<h3>History</h3>' + (hist.length ? hist.map(function (x) { return x.h; }).join("") : '<div class="meta">No movement recorded yet.</div>');
   }
 
+  /* ---------- Scan: the phone's camera reads a sticker and opens its tool. Where the browser has no reader (iPhone),
+     the phone's own camera opens the sticker's link, which opens the same tool here. ---------- */
+  function sheetScan() {
+    return '<div class="hd"><h2>Scan a sticker</h2><button class="btn sm ghost" data-act="scan-x">Close</button></div>' +
+      '<video id="scanv" playsinline muted autoplay></video><div class="meta" style="margin-top:6px">Hold the sticker inside the picture.</div>';
+  }
+  function codeFrom(txt) { var m = /[?&]t=([^&#\s]+)/.exec(String(txt || "")) || /\b(EWT-\d{3,})\b/i.exec(String(txt || "")); return m ? decodeURIComponent(m[1]).toUpperCase() : ""; }
+  function openCode(c) {
+    var tt = S.tools.filter(function (x) { return String(x.code).toUpperCase() === c; })[0];
+    if (tt) { S.open = tt.tid; S.sheet = null; S.tab = "tools"; render(); return true; }
+    toast(c ? c + " is not on the list." : "That is not an Energy World tool sticker."); return false;
+  }
+  function scanStop() { try { if (S._scanStream) S._scanStream.getTracks().forEach(function (x) { x.stop(); }); } catch (e) { } S._scanStream = null; clearTimeout(S._scanT); }
+  function scanAttach() { var v = $("scanv"); if (v && S._scanStream && v.srcObject !== S._scanStream) { v.srcObject = S._scanStream; try { v.play(); } catch (e) { } } }
+  function scanStart() {
+    if (!("BarcodeDetector" in window) || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      toast("Open the phone's camera and point it at the sticker - it opens the tool here."); return;
+    }
+    var det; try { det = new window.BarcodeDetector({ formats: ["qr_code"] }); } catch (e) { toast("Open the phone's camera and point it at the sticker."); return; }
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false }).then(function (st) {
+      S._scanStream = st; S.sheet = { kind: "scan" }; render();
+      var tick = function () {
+        var v = $("scanv"); if (!S._scanStream) return;
+        if (!v || v.readyState < 2) { S._scanT = setTimeout(tick, 250); return; }
+        det.detect(v).then(function (r) {
+          var c = r && r[0] ? codeFrom(r[0].rawValue) : "";
+          if (c) { scanStop(); S.sheet = null; if (!openCode(c)) render(); return; }
+          S._scanT = setTimeout(tick, 300);
+        }).catch(function () { S._scanT = setTimeout(tick, 400); });
+      };
+      tick();
+    }).catch(function () { toast("The camera was not allowed."); });
+  }
   function render() {
     var app = $("app");
     if (!S.user) { app.innerHTML = viewLogin(); return; }
     var y = window.scrollY, sh = document.querySelector(".sheet .in"), sy = sh ? sh.scrollTop : 0;
     var body = S.tab === "people" ? viewPeople() : S.tab === "log" ? viewLog() : S.tab === "list" ? viewList() : viewTools();
-    var sheet = S.sheet ? (S.sheet.kind === "move" ? sheetMove() : S.sheet.kind === "event" ? sheetEvent() : sheetEdit()) : (S.open ? sheetTool() : "");
+    var sheet = S.sheet ? (S.sheet.kind === "move" ? sheetMove() : S.sheet.kind === "event" ? sheetEvent() : S.sheet.kind === "scan" ? sheetScan() : sheetEdit()) : (S.open ? sheetTool() : "");
+    if (S.sheet && S.sheet.kind === "scan" && S._scanStream) { setTimeout(scanAttach, 0); }
     var tabs = [["tools", "Tools"], ["people", "Who has what"], ["log", "Log"]].concat(boss() ? [["list", "Tool list"]] : []);
     app.innerHTML = '<header><div class="row"><div class="t"><b>Tool Tracking</b><small>' + esc(S.user) + (S.me && S.me.role ? ' · ' + esc(S.me.role) : '') + ' · v' + APP_VERSION + (S.busy ? ' · updating…' : '') + '</small></div>' +
       '<button class="hb" data-act="refresh" aria-label="Refresh">&#8635;</button><button class="hb" data-act="out">Sign out</button></div></header>' +
@@ -376,12 +631,19 @@ nav.tabs button.on{color:var(--navy);box-shadow:inset 0 3px 0 var(--navy)}
   document.addEventListener("click", function (ev) {
     var t = ev.target.closest("[data-act]"); if (!t) return;
     var act = t.getAttribute("data-act"), id = t.getAttribute("data-id");
-    if (act === "sh-bg") { if (ev.target === t) { S.sheet ? (S.sheet = null) : (S.open = null); render(); } return; }
+    if (act === "sh-bg") { if (ev.target === t) { if (S.sheet && S.sheet.kind === "scan") scanStop(); S.sheet ? (S.sheet = null) : (S.open = null); render(); } return; }
+    if (act === "scan") { scanStart(); return; }
+    if (act === "scan-x") { scanStop(); S.sheet = null; render(); return; }
+    if (act === "stk-one") { var t1 = toolOf(id); if (t1) printNow(stickersHtml([t1])); return; }
+    if (act === "stk-sel") { var ls = Object.keys(S.sel).map(toolOf).filter(Boolean); if (ls.length) printNow(stickersHtml(ls)); return; }
+    if (act === "stk-all") { printNow(stickersHtml(S.tools.filter(function (x) { return !x.off; }).sort(function (a, b) { return String(a.code).localeCompare(String(b.code)); }))); return; }
+    if (act === "stmt") { ev.stopPropagation(); var g0 = (S._grps || {})[t.getAttribute("data-k")]; if (g0) printNow(statementHtml(g0, dues().filter(function (e) { return key(e.who) === key(g0.name); }))); return; }
+    if (act === "ph-x") { keepSheet(); if (S.sheet) S.sheet.photo = ""; render(); return; }
     if (act === "login") {
       var u = val("l_user"), p = val("l_pin"); if (!u || !p) { toast("Type your name and PIN."); return; }
       busyBtn(t, "Signing in…");
       S.loginName = u;
-      signIn(u, p).then(function () { S.msg = ""; render(); return pull(true); }).catch(function (e) { S.msg = e.message || "Could not sign in."; S.user = ""; render(); });
+      signIn(u, p).then(function () { S.msg = ""; render(); return pull(true); }).then(function () { var c = codeFrom(location.search); if (c) openCode(c); }).catch(function (e) { S.msg = e.message || "Could not sign in."; S.user = ""; render(); });
       return;
     }
     if (act === "out") { signOut(false); return; }
@@ -428,14 +690,15 @@ nav.tabs button.on{color:var(--navy);box-shadow:inset 0 3px 0 var(--navy)}
       if (bad && who && !hit) { toast("Pick the name from the list."); return; }
       if (amt > 0 && !who) { toast("Pick who it is to be recovered from."); return; }
       busyBtn(t);
-      tk("event", { tid: v.tid, kind: kd, site: v.site || "", who: hit ? hit.n : "", whoRef: hit ? hit.ref : "", note: v.note || "", amount: amt }).then(function (r) {
-        mergeTools([r.tool]); S.events.push(r.event); S.sheet = null; render(); toast(kd + " — saved to the log.");
+      var t5 = toolOf(v.tid) || {};
+      tk("event", { tid: v.tid, code: t5.code || "", kind: kd, site: v.site || "", who: hit ? hit.n : "", whoRef: hit ? hit.ref : "", note: v.note || "", amount: amt, photo: bad && v.photo ? v.photo : undefined }).then(function (r) {
+        mergeTools([r.tool]); S.events.push(r.event); if (S.dues && Number(r.event.amount) > 0) S.dues.push(r.event); S.sheet = null; render(); toast(kd + " — saved to the log.");
       }).catch(function (e) { toast(e.message); render(); });
       return;
     }
     if (act === "rec") {
       ev.stopPropagation(); busyBtn(t);
-      tk("recover", { eid: id, undo: t.getAttribute("data-u") === "1" ? 1 : 0 }).then(function () { return pull(false); }).catch(function (e) { toast(e.message); render(); });
+      tk("recover", { eid: id, undo: t.getAttribute("data-u") === "1" ? 1 : 0, via: t.getAttribute("data-v") || "cash" }).then(function () { return pull(false); }).catch(function (e) { toast(e.message); render(); });
       return;
     }
     if (act === "add") {
@@ -443,7 +706,7 @@ nav.tabs button.on{color:var(--navy);box-shadow:inset 0 3px 0 var(--navy)}
       if (nm.length < 2) { toast("Write the tool's name."); return; }
       if (cnt < 1 || cnt > 50) { toast("1 to 50 pieces at a time."); return; }
       busyBtn(t, "Adding…");
-      tk("toolAdd", { name: nm, make: val("a_make"), model: val("a_model"), value: Number(String(val("a_value")).replace(/[^0-9.]/g, "")) || 0, count: cnt, serial: val("a_serial"), inGodown: val("a_where") === "g" ? 1 : 0 }).then(function (r) {
+      tk("toolAdd", { name: nm, make: val("a_make"), model: val("a_model"), value: Number(String(val("a_value")).replace(/[^0-9.]/g, "")) || 0, count: cnt, serial: val("a_serial"), dueDays: Math.round(Number(val("a_due")) || 0), inGodown: val("a_where") === "g" ? 1 : 0 }).then(function (r) {
         mergeTools(r.tools); render(); toast(r.tools.length + " added: " + r.tools[0].code + (r.tools.length > 1 ? " to " + r.tools[r.tools.length - 1].code : "") + ".");
       }).catch(function (e) { toast(e.message); render(); });
       return;
@@ -452,7 +715,7 @@ nav.tabs button.on{color:var(--navy);box-shadow:inset 0 3px 0 var(--navy)}
     if (act === "edit-go") {
       if (val("x_name").length < 2) { toast("Write the tool's name."); return; }
       busyBtn(t);
-      tk("toolEdit", { tid: S.sheet.tid, name: val("x_name"), make: val("x_make"), model: val("x_model"), serial: val("x_serial"), value: Number(String(val("x_value")).replace(/[^0-9.]/g, "")) || 0, notes: val("x_notes") }).then(function (r) {
+      tk("toolEdit", { tid: S.sheet.tid, name: val("x_name"), make: val("x_make"), model: val("x_model"), serial: val("x_serial"), value: Number(String(val("x_value")).replace(/[^0-9.]/g, "")) || 0, dueDays: Math.round(Number(val("x_due")) || 0), notes: val("x_notes") }).then(function (r) {
         mergeTools([r.tool]); S.sheet = null; render(); toast("Saved.");
       }).catch(function (e) { toast(e.message); render(); });
       return;
@@ -461,6 +724,24 @@ nav.tabs button.on{color:var(--navy);box-shadow:inset 0 3px 0 var(--navy)}
       busyBtn(t);
       tk("toolOff", { tid: S.sheet.tid, back: t.getAttribute("data-b") === "1" ? 1 : 0 }).then(function (r) { mergeTools([r.tool]); S.sheet = null; render(); toast(r.tool.off ? "Taken off the list. It stays in the record." : "Back on the list."); return pull(false); }).catch(function (e) { toast(e.message); render(); });
       return;
+    }
+  });
+  document.addEventListener("change", function (ev) {
+    var t = ev.target; if (!t || t.type !== "file" || !t.files || !t.files[0]) return;
+    var f = t.files[0];
+    if (t.id === "e_ph" && S.sheet && S.sheet.kind === "event") {
+      keepSheet(); toast("Getting the photo ready…");
+      shrink(f).then(function (d) { if (S.sheet) { S.sheet.photo = d; render(); } }).catch(function (e) { toast(e.message); });
+      return;
+    }
+    var eid = t.getAttribute("data-ph");
+    if (eid) {
+      toast("Sending the photo…");
+      shrink(f).then(function (d) { return tk("photo", { eid: eid, photo: d }); }).then(function (r) {
+        S.events = S.events.map(function (e) { return e.eid === eid ? Object.assign({}, e, { photo: r.event.photo }) : e; });
+        if (S.dues) S.dues = S.dues.map(function (e) { return e.eid === eid ? Object.assign({}, e, { photo: r.event.photo }) : e; });
+        render(); toast("Photo added.");
+      }).catch(function (e) { toast(e.message); });
     }
   });
   document.addEventListener("input", function (ev) {
@@ -474,12 +755,12 @@ nav.tabs button.on{color:var(--navy);box-shadow:inset 0 3px 0 var(--navy)}
   var ses = lsGet(STORE);
   if (ses && ses.user && ses.tok) {
     S.user = String(ses.user); S.tok = String(ses.tok);
-    var bk = lsGet(BOOK); if (bk && bk.user === S.user) { S.me = bk.me; S.tools = bk.tools || []; S.moves = bk.moves || []; S.events = bk.events || []; }
+    var bk = lsGet(BOOK); if (bk && bk.user === S.user) { S.me = bk.me; S.tools = bk.tools || []; S.moves = bk.moves || []; S.events = bk.events || []; S.dues = bk.dues || null; }
     var d0 = lsGet(DIRK); if (d0) S.dir = d0;
     render();
     pull(dirStale()).then(function () {
-      var m = /[?&]t=([^&]+)/.exec(location.search);   /* a sticker's link opens its tool: ?t=EWT-001 */
-      if (m) { var c = decodeURIComponent(m[1]).toUpperCase(), tt = S.tools.filter(function (x) { return String(x.code).toUpperCase() === c; })[0]; if (tt) { S.open = tt.tid; render(); } }
+      var c = codeFrom(location.search);   /* a sticker's link opens its tool: ?t=EWT-001 */
+      if (c) openCode(c);
     });
   } else render();
   document.addEventListener("visibilitychange", function () { if (!document.hidden && S.user && !S.busy && !S.sheet) pull(false); });
