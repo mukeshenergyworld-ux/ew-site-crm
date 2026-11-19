@@ -17,4 +17,4 @@ window.EW_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSk
 /* 16 Nov 2026 - the Google review link. Paste the "Ask for reviews" link from the Google Business
    Profile (it looks like https://g.page/r/..../review). While it is blank, the CRM draws no
    "Ask for a Google review" button. Not a secret. */
-window.EW_REVIEW_URL = "https://search.google.com/local/writereview?placeid=ChIJH5mGNAjZDTkRDqQHAfTVDEU";   /* Energy World, SCO 132 TDI City Panipat - pasted 16 Nov 2026 */
+window.EW_REVIEW_URL = "https://g.page/r/CQ6kBwH01QxFEBE/review";   /* Energy World, SCO 132 TDI City Panipat - the Business Profile's own review link (Get more reviews), 19 Nov 2026; it carries the same place (CID 0x450cd5f40107a40e) as the placeid link it replaces */
