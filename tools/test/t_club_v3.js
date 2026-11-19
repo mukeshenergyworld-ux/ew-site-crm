@@ -33,4 +33,5 @@ var P = F.clubRows("2026").filter(function (r) { return r.name === "Plat"; })[0]
 H.ok("6.9.1046 - FIMA funds half the international trip: EW pays 55,250, FIMA 55,250, the bar stays 30 L", P.tierK === "Platinum" && P.prize === 55250 && P.tier.brand === 55250 && P.tier.brandName === "FIMA");
 H.eq("...so a Platinum partner at the bar gets 34,750 as his coin", P.coin, 34750);
 H.ok("Goa stays 80/20, and Oyster funds the seat (6.9.1047)", (function (g) { return g.ew === 42640 && g.brand === 10660 && g.brandName === "Oyster"; })(F.clubScheme().tiers.filter(function (t) { return t.k === "Gold"; })[0]));
+H.ok("6.9.1048 - Almaty listed as visa-free, no embassy warning", /k: "Almaty", all: 109850, note: "visa-free on an Indian passport \(14 days\)/.test(H.read("team")) && !/confirm at the Kazakhstan embassy before printing/.test(H.read("team").replace(/\/\*[\s\S]*?\*\//g, " ")));
 H.done();
