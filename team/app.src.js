@@ -455,7 +455,12 @@
 /* ==EWCORE:drivers:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.1043";   /* 6.9.1043 (19 Nov 2026) - HIS WORDS: "any payment marked as extra discount will be considered cash discount and will
+  var APP_VERSION = "6.9.1044";   /* 6.9.1044 (19 Nov 2026) - HIS WORDS (Rates on 26/09/2026/171, Sanjeev Aggarwal): "rates already preset and above challan
+     saying rates not set, also not able to edit rates?" The 3% / 1% on that screen were the incentive CARD's rates, and the card pays from its first day
+     (5 Oct 2026); a delivery before it pays the client's own rate, and he had none - so "no rate", and the boxes were locked because the card decides now.
+     MEASURED: 292 of the 304 deliveries before the card have someone with no rate. HIS ANSWER: "Unlock old challans only". On a delivery from before the
+     card, Set rates now shows the rates in force on ITS day, open to type, and saves them on the client's rate row of that day - nothing from 5 Oct moves. */
+  /* before: */   /* 6.9.1043 (19 Nov 2026) - HIS WORDS: "any payment marked as extra discount will be considered cash discount and will
      effect incentive of all ... beside payment also provide extra discount, in case any client at the time of giving payment bargains and leads to some
      extra discount for payment settlement". (1) A payment whose narration or reference says "extra discount" / "extra dist" IS a discount, whatever
      mode it was filed under: it clears the bill but is not money, so the partner's and executive's incentive comes down by the share it cleared.
@@ -34155,8 +34160,8 @@ function viewCatalogue() {
     }
     return '<input ' + attrs + ' inputmode="decimal" value="' + (miss ? "" : esc(v)) + '" placeholder="\u2014" style="' + st + '"/>';
   }
-  function admCell(cl, brand, role, v, ro) {
-    if (role !== "disc" && incCardLive("")) ro = true;   /* 6.9.693 - set on the incentive card now */
+  function admCell(cl, brand, role, v, ro, oldDay) {
+    if (role !== "disc" && incCardLive("") && !oldDay) ro = true;   /* 6.9.693 - set on the incentive card now; 6.9.1044 - not for a delivery from before it */
     return gridBox('class="admr" data-cl="' + esc(cl) + '" data-b="' + esc(brand) + '" data-role="' + esc(role) + '"', v, ro);
   }
   /* v6.9.350 - a rate with a start date says so, and one that replaced an earlier rate says
@@ -34757,6 +34762,9 @@ function viewCatalogue() {
     if (!c || !roleIs("admin")) return '<h2>Not found</h2><div class="foot"><button class="btn" data-act="close">Close</button></div>';
     var cl = c.customerName || "";
     var brands = hisabBrandsOf(c), line = admLineup(cl);
+    /* 6.9.1044 - a delivery from before the incentive card pays the client's own rate of ITS day: shown and set here */
+    var _oDay = rateDayOf(c), _old = incCard().start && !incCardLive(_oDay) ? _oDay : "";
+    if (_old) return modalAdmChallanOld(c, cl, brands, line, _old);
     var h = '<h2>Rates on ' + esc(c.challanNo || "") + '</h2>' +
       '<p class="sub">' + esc(cl) + (c.site ? ' &middot; ' + esc(c.site) : "") + '</p>' + admSeal() +
       '<div class="meta" style="font-size:12.5px;margin-bottom:8px">Only the brands on this ' +
@@ -34785,6 +34793,50 @@ function viewCatalogue() {
       '<button class="btn" data-act="adm-save" data-cl="' + esc(cl) + '">Save rates</button></div>';
   }
 
+  function modalAdmChallanOld(c, cl, brands, line, day) {
+    var st = incCard().start;
+    var h = '<h2>Rates on ' + esc(c.challanNo || "") + '</h2>' +
+      '<p class="sub">' + esc(cl) + (c.site ? ' &middot; ' + esc(c.site) : "") + '</p>' + admSeal() +
+      '<div class="card" style="border-color:#fde68a;background:#fffbeb;padding:9px 12px;margin:0 0 8px"><div class="meta" style="font-size:12.5px;color:#92400e">' +
+      'This delivery is from <b>' + esc(dmy(day)) + '</b>, before the incentive card started on <b>' + esc(dmy(st)) + '</b>. Before the card, a delivery pays the ' +
+      '<b>client&rsquo;s own rate</b> of that day &mdash; set it here. It counts for his deliveries of that brand from before ' + esc(dmy(st)) + '; from ' + esc(dmy(st)) + ' the card decides, and nothing there changes.</div></div>' +
+      '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12.5px">' +
+      '<tr style="color:#475569;text-align:center"><th style="text-align:left;font-weight:600;padding:2px 6px 5px 0">Brand</th><th style="font-weight:600;padding:2px 5px 5px">Disc %</th>' +
+      line.map(function (m) { return '<th style="font-weight:600;padding:2px 5px 5px;white-space:nowrap">' + esc(incRoleLabel(m.role)) + '<br><span style="font-weight:500;color:#94a3b8;font-size:12px">' + esc(m.name) + '</span></th>'; }).join("") + '</tr>';
+    var none = 0;
+    brands.forEach(function (b) {
+      var d = discRowOn(cl, b, day);
+      if (!d) none++;
+      h += '<tr style="border-top:1px solid #e2e8f0;text-align:center"><td style="text-align:left;padding:5px 6px 5px 0;font-weight:600">' + esc(b) + '</td>' +
+        '<td style="padding:4px 5px">' + admCell(cl, b, "disc", d ? (Number(d.pct) || 0) : 0, true) + '</td>' +
+        line.map(function (m) {
+          var v = m.role === "exec" ? execRateFor(cl, b, day) : incRate(cl, b, m.role, day);
+          return '<td style="padding:4px 5px">' + (d ? admCell(cl, b, m.role, v, false, day) : '<span class="meta" style="font-size:12px">&mdash;</span>') + '</td>';
+        }).join("") + '</tr>';
+    });
+    h += '</table></div>' + (none ? '<div class="meta" style="font-size:12.5px;color:#b45309;margin-top:6px">' + none + ' brand' + (none === 1 ? ' has' : 's have') + ' no discount set for this client on ' + esc(dmy(day)) + ' &mdash; set his discount for it on the client first.</div>' : '');
+    return h + admEarnRows(cl) +
+      '<div class="foot"><button class="btn ghost" data-act="close">Close</button>' +
+      '<button class="btn" data-act="adm-save-old" data-cl="' + esc(cl) + '" data-day="' + esc(day) + '">Save rates for ' + esc(dmy(day)) + '</button></div>';
+  }
+  /* 6.9.1044 - the rates typed on a delivery from before the card: onto the client's rate row in force on that day, in place (its start
+     date and discount kept). Only the role rates move. Returns the rows to write; the caller writes them. */
+  function admOldRows(cl, day, vals) {
+    var out = [], bad = [];
+    Object.keys(vals).forEach(function (k) {
+      var g = vals[k], row = discRowOn(cl, g.brand, day); if (!row) return;
+      var notes = incMap(row), was = JSON.stringify(notes);
+      Object.keys(g.vals).forEach(function (role) {
+        if (role === "disc") return;
+        var raw = g.vals[role], n = raw === "" ? 0 : Number(raw);
+        if (!isFinite(n) || n < 0 || n > 100) { bad.push(g.brand + " " + incRoleLabel(role)); return; }
+        if (role === "exec") { if (n > 0) { notes.exec = n; notes.execOn = 1; } else { delete notes.exec; delete notes.execOn; } }
+        else if (n > 0) notes[role] = n; else delete notes[role];
+      });
+      if (JSON.stringify(notes) !== was) out.push({ id: row.id, client: row.client, brand: row.brand, pct: row.pct, notes: JSON.stringify(notes) });
+    });
+    return { rows: out, bad: bad };
+  }
   function incentiveBook(myClients, rateFor, payeeLower, deductFor) {
     var billed = 0, earned = 0, returned = 0, reversed = 0, rows = [], clientNames = {};
     /* v6.9.266 - ONE CLIENT, ONE PASS.
@@ -69468,6 +69520,22 @@ function viewCatalogue() {
         if (v < _IC.start) { toast("The card started on " + fullDate(_IC.start) + " — a change cannot start before it."); return; }
         _go(v);
       });
+      return;
+    }
+    if (act === "adm-save-old") {   /* 6.9.1044 */
+      if (!roleIs("admin")) { toast("The discount and incentive card is the owner\u2019s."); return; }
+      var aoCl = t.getAttribute("data-cl") || "", aoDay = t.getAttribute("data-day") || "", aoG = {};
+      document.querySelectorAll(".admr").forEach(function (elx) {
+        var b = elx.getAttribute("data-b") || "", role = String(elx.getAttribute("data-role") || "").toLowerCase(), k = dkey(b); if (!k || elx.readOnly || elx.disabled) return;
+        aoG[k] = aoG[k] || { brand: b, vals: {} }; aoG[k].vals[role] = String(elx.value || "").trim();
+      });
+      var ao = admOldRows(aoCl, aoDay, aoG);
+      if (ao.bad.length) { toast("A percent must be between 0 and 100: " + ao.bad.slice(0, 3).join(", ") + ". Nothing was saved."); return; }
+      if (!ao.rows.length) { S.modal = null; render(); toast("Nothing changed."); return; }
+      ao.rows.forEach(function (r) { save("discounts", r, true); });
+      auditFact("rate:before-card", aoCl, { day: aoDay, rows: ao.rows.map(function (r) { return { brand: r.brand, notes: r.notes }; }) }).catch(function () { });
+      S.modal = null; render();
+      toast("Saved " + aoCl + "\u2019s rate for deliveries before the card (" + ao.rows.length + " brand" + (ao.rows.length === 1 ? "" : "s") + ").");
       return;
     }
     if (act === "adm-save") {
