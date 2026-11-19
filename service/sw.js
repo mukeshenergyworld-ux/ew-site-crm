@@ -200,6 +200,7 @@ self.addEventListener("fetch", function (e) {
   if (req.method !== "GET") return;
   var url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
+  if (/\/ew-config\.js$/.test(url.pathname)) return;   /* 19 Nov 2026 - the shared address file is never served stale (as Saathi's worker) */
   /* v17aug: the shelf first, unless the request is deliberately asking the server */
   e.respondWith(ewWantsNetwork(req) ? ewFresh(req, "./index.html") : ewShelf(req, "./index.html", e));
 });
