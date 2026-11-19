@@ -32,5 +32,5 @@ BOOKS["Plat"] = [{ ymd: "2026-04-01", amount: 3000000 * 1.18, paidShare: 1 }]; A
 var P = F.clubRows("2026").filter(function (r) { return r.name === "Plat"; })[0];
 H.ok("6.9.1046 - FIMA funds half the international trip: EW pays 55,250, FIMA 55,250, the bar stays 30 L", P.tierK === "Platinum" && P.prize === 55250 && P.tier.brand === 55250 && P.tier.brandName === "FIMA");
 H.eq("...so a Platinum partner at the bar gets 34,750 as his coin", P.coin, 34750);
-H.ok("Goa stays 80/20", F.clubScheme().tiers.filter(function (t) { return t.k === "Gold"; })[0].ew === 42640);
+H.ok("Goa stays 80/20, and Oyster funds the seat (6.9.1047)", (function (g) { return g.ew === 42640 && g.brand === 10660 && g.brandName === "Oyster"; })(F.clubScheme().tiers.filter(function (t) { return t.k === "Gold"; })[0]));
 H.done();
