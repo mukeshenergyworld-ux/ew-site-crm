@@ -18,19 +18,45 @@
        var _tk = tkTry_(e); if (_tk) return _tk;
    Staff sign in once with the CRM's name + PIN (teamAuth, checked by the CRM); after that this server's own token.
    ===================================================================================================== */
-var TK_V = "TK2";   /* TK2 (17 Nov 2026) - staff sign in HERE once with the CRM name + PIN and get this server's own tool token; the CRM's saved token is no longer passed on.
+var TK_V = "TK3";   /* TK3 (18 Nov 2026) - HIS WORDS: "do all" (the tool tracking extras). (1) a photo with a damage / loss entry, kept in Drive
+   ("EW Tool Photos"), and a photo can be added to an entry later; (2) each tool has a "return within" number of days, so a tool held too long is
+   flagged; (3) the book carries every unrecovered amount (not only the last 600 lines), which the owner's CRM files and cuts from the partner's
+   incentive; (4) a recovery says how: "cash" or "waived" (an unrecovered amount on a partner is cut from his incentive by the CRM).
+   New columns go at the END of the tabs (dueDays; photo, recVia) and tkHdr_ writes the new header names onto the live tabs once. */   /* TK2 (17 Nov 2026) - staff sign in HERE once with the CRM name + PIN and get this server's own tool token; the CRM's saved token is no longer passed on.
    MEASURED on TK1, live: a call carrying "Mukesh Verma" + his saved CRM token made this server's sign-in check to the CRM hang until Apps Script killed it at 360 s
    ("Timeout: .../exec"), three times in three; the same call with the PIN, or the Brand block's owner check, answers in 5-7 s. So: the PIN is checked once (the path the
    Saathi staff sign-in has used since October), a token of our own is kept (only its fingerprint, 60 days), and the owner's CRM sends the pick lists through the Brand
    block's owner check. A staff member no longer on the CRM's team list (sent with the pick lists) is signed out. */
 BX_TABS.TK_Sess = ["th", "name", "role", "at"];
-BX_TABS.TK_Tools  = ["tid", "code", "name", "make", "model", "serial", "value", "notes", "cond", "hType", "hName", "hRef", "hCode", "site", "since", "addedAt", "addedBy", "updatedAt", "off"];
+BX_TABS.TK_Tools  = ["tid", "code", "name", "make", "model", "serial", "value", "notes", "cond", "hType", "hName", "hRef", "hCode", "site", "since", "addedAt", "addedBy", "updatedAt", "off", "dueDays"];
 BX_TABS.TK_Moves  = ["mid", "at", "tid", "code", "tool", "kind", "fType", "fName", "fRef", "fSite", "tType", "tName", "tRef", "tCode", "tSite", "note", "by"];
-BX_TABS.TK_Events = ["eid", "at", "tid", "code", "tool", "kind", "hType", "hName", "hRef", "site", "who", "whoRef", "note", "amount", "recovered", "recAt", "recBy", "by"];
+BX_TABS.TK_Events = ["eid", "at", "tid", "code", "tool", "kind", "hType", "hName", "hRef", "site", "who", "whoRef", "note", "amount", "recovered", "recAt", "recBy", "by", "photo", "recVia"];
 BX_TABS.TK_Dir    = ["json", "at"];
 var TK_HTYPES = ["godown", "site", "partner", "staff", "unknown"];
 var TK_EVENTS = { "Damaged": "Damaged", "Lost": "Lost", "Repaired": "OK", "Found": "OK", "Scrapped": "Scrapped" };
-var TK_WRITES = ["toolAdd", "toolEdit", "toolOff", "move", "event", "recover"];
+var TK_WRITES = ["toolAdd", "toolEdit", "toolOff", "move", "event", "recover", "photo"];
+var TK_PHOTO_MAX = 3 * 1024 * 1024;
+/* bxSh_ writes the header row only when it makes a tab, and bxRows_ reads by that row: a column added later must be named on it */
+function tkHdr_() {
+  var c = CacheService.getScriptCache(); if (c.get("tk_hdr_" + TK_V)) return;
+  ["TK_Tools", "TK_Events"].forEach(function (n) {
+    var sh = bxSh_(n), want = BX_TABS[n], have = sh.getRange(1, 1, 1, want.length).getValues()[0];
+    if (want.some(function (k, i) { return String(have[i] || "") !== k; })) sh.getRange(1, 1, 1, want.length).setValues([want]).setFontWeight("bold");
+  });
+  c.put("tk_hdr_" + TK_V, "1", 21600);
+}
+function tkDueDays_(v) { var n = Math.round(Number(v) || 0); return n > 0 ? Math.min(365, n) : ""; }
+/* a photo: a JPEG / PNG data URL from the phone (made small there), kept in Drive, readable by its link. Returns the file id or "" */
+function tkPhoto_(data, label) {
+  var m = /^data:image\/(jpeg|png);base64,([A-Za-z0-9+\/=]+)$/.exec(String(data || ""));
+  if (!m) return { err: "That photo could not be read. Take it again." };
+  var bytes = Utilities.base64Decode(m[2]);
+  if (bytes.length > TK_PHOTO_MAX) return { err: "The photo is too big." };
+  var it = DriveApp.getFoldersByName("EW Tool Photos"), fo = it.hasNext() ? it.next() : DriveApp.createFolder("EW Tool Photos");
+  var f = fo.createFile(Utilities.newBlob(bytes, "image/" + m[1], String(label || "tool").replace(/[^A-Za-z0-9-]+/g, "_").slice(0, 60) + "_" + Date.now() + "." + (m[1] === "png" ? "png" : "jpg")));
+  try { f.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (e) { }
+  return { id: f.getId() };
+}
 
 function tkTry_(e) {
   var body = null;
@@ -53,6 +79,11 @@ function tkTry_(e) {
     if (!me) return bxOut_({ ok: false, out: 1, err: "Sign in again." });
     var op = String(body.op || "book");
     if (op === "dirSync") return bxOut_({ ok: false, err: "owner only" });   /* the pick lists come through tkAdmin */
+    tkHdr_();
+    if ((op === "event" || op === "photo") && body.photo) {   /* TK3 - the photo goes to Drive before the lock is taken */
+      var ph = tkPhoto_(body.photo, body.code || op); if (ph.err) return bxOut_({ ok: false, err: ph.err });
+      body.photoId = ph.id; delete body.photo;
+    }
     if (TK_WRITES.indexOf(op) >= 0) { lock.waitLock(20000); locked = true; }
     return bxOut_(tkOp_(op, body, me));
   } catch (err) {
@@ -107,7 +138,7 @@ function tkKey_(s) { return String(s || "").toLowerCase().replace(/[^a-z0-9]/g, 
 function tkClean_(s, n) { return String(s == null ? "" : s).replace(/\s+/g, " ").trim().slice(0, n || 120); }
 function tkPub_(t) {
   return { tid: t.tid, code: t.code, name: t.name, make: t.make, model: t.model, serial: t.serial, value: Number(t.value) || 0, notes: t.notes, cond: t.cond || "OK",
-    hType: t.hType || "unknown", hName: t.hName, hRef: t.hRef, hCode: t.hCode, site: t.site, since: t.since, off: String(t.off || "") === "1" ? 1 : 0 };
+    hType: t.hType || "unknown", hName: t.hName, hRef: t.hRef, hCode: t.hCode, site: t.site, since: t.since, off: String(t.off || "") === "1" ? 1 : 0, dueDays: Number(t.dueDays) || 0 };
 }
 function tkDir_() {
   var rs = bxRows_("TK_Dir"); if (!rs.length) return null;
@@ -120,7 +151,8 @@ function tkOp_(op, b, me) {
     var tools = bxRows_("TK_Tools").map(tkPub_);
     var mv = bxRows_("TK_Moves"), ev = bxRows_("TK_Events");
     var strip = function (x) { var o = {}; Object.keys(x).forEach(function (k) { if (k !== "_r") o[k] = x[k]; }); return o; };
-    return { ok: true, v: TK_V, me: me, tools: tools, moves: mv.slice(-600).map(strip), events: ev.slice(-600).map(strip), dir: b.wantDir ? tkDir_() : undefined };
+    var dues = ev.filter(function (x) { return Number(x.amount) > 0 && String(x.recovered || "") !== "Y"; }).map(strip);   /* TK3 - every one, however old */
+    return { ok: true, v: TK_V, me: me, tools: tools, moves: mv.slice(-600).map(strip), events: ev.slice(-600).map(strip), dues: dues, dir: b.wantDir ? tkDir_() : undefined };
   }
   if (op === "dirSync") {
     if (me.role !== "admin") return { ok: false, err: "owner only" };
@@ -140,7 +172,7 @@ function tkOp_(op, b, me) {
     for (var k = 1; k <= n; k++) {
       var num = max + k, row = { tid: "TL" + Date.now().toString(36) + bxRand_(4), code: "EWT-" + (num < 1000 ? ("000" + num).slice(-3) : String(num)), name: nm,
         make: tkClean_(b.make, 60), model: tkClean_(b.model, 60), serial: n === 1 ? tkClean_(b.serial, 60) : "", value: Math.max(0, Math.round(Number(b.value) || 0)), notes: tkClean_(b.notes, 300),
-        cond: "OK", hType: b.inGodown ? "godown" : "unknown", hName: b.inGodown ? "Godown" : "", hRef: "", hCode: "", site: "", since: now, addedAt: now, addedBy: me.name, updatedAt: now, off: "" };
+        cond: "OK", hType: b.inGodown ? "godown" : "unknown", hName: b.inGodown ? "Godown" : "", hRef: "", hCode: "", site: "", since: now, addedAt: now, addedBy: me.name, updatedAt: now, off: "", dueDays: tkDueDays_(b.dueDays) };
       bxWrite_("TK_Tools", 0, row); made.push(tkPub_(row));
     }
     bxLog_(me.name, "tool added", nm + " x" + n);
@@ -154,6 +186,7 @@ function tkOp_(op, b, me) {
     var nm2 = tkClean_(b.name, 80); if (nm2.length < 2) return { ok: false, err: "Write the tool's name." };
     t.name = nm2; t.make = tkClean_(b.make, 60); t.model = tkClean_(b.model, 60); t.serial = tkClean_(b.serial, 60);
     t.value = Math.max(0, Math.round(Number(b.value) || 0)); t.notes = tkClean_(b.notes, 300); t.updatedAt = now;
+    if (b.dueDays !== undefined) t.dueDays = tkDueDays_(b.dueDays);
     bxWrite_("TK_Tools", t._r, t); bxLog_(me.name, "tool edited", t.code);
     return { ok: true, tool: tkPub_(t) };
   }
@@ -195,7 +228,8 @@ function tkOp_(op, b, me) {
     var who = tkClean_(b.who, 120) || (t4.hType === "partner" || t4.hType === "staff" ? t4.hName : "");
     if (amt > 0 && !who) return { ok: false, err: "Pick who it is to be recovered from." };
     var ev2 = { eid: "TE" + Date.now().toString(36) + bxRand_(4), at: now, tid: t4.tid, code: t4.code, tool: t4.name, kind: kindE, hType: t4.hType, hName: t4.hName, hRef: t4.hRef,
-      site: tkClean_(b.site, 120) || t4.site, who: who, whoRef: tkClean_(b.whoRef, 60) || (who === t4.hName ? t4.hRef : ""), note: note, amount: amt, recovered: "", recAt: "", recBy: "", by: me.name };
+      site: tkClean_(b.site, 120) || t4.site, who: who, whoRef: tkClean_(b.whoRef, 60) || (who === t4.hName ? t4.hRef : ""), note: note, amount: amt, recovered: "", recAt: "", recBy: "", by: me.name,
+      photo: tkClean_(b.photoId, 120), recVia: "" };
     bxWrite_("TK_Events", 0, ev2);
     t4.cond = TK_EVENTS[kindE]; t4.updatedAt = now; bxWrite_("TK_Tools", t4._r, t4);
     delete ev2._r;
@@ -205,9 +239,19 @@ function tkOp_(op, b, me) {
     if (!tkBoss_(me)) return { ok: false, err: "Only the owner and accounts mark a recovery." };
     var e5 = bxRows_("TK_Events").filter(function (x) { return String(x.eid) === String(b.eid); })[0];
     if (!e5 || !(Number(e5.amount) > 0)) return { ok: false, err: "Nothing to recover on that line." };
-    e5.recovered = b.undo ? "" : "Y"; e5.recAt = b.undo ? "" : now; e5.recBy = b.undo ? "" : me.name;
-    bxWrite_("TK_Events", e5._r, e5);
-    return { ok: true, eid: e5.eid, recovered: e5.recovered };
+    var via = String(b.via || "cash"); if (["cash", "waived"].indexOf(via) < 0) return { ok: false, err: "Say how: cash or waived." };
+    if (via === "waived" && me.role !== "admin") return { ok: false, err: "Only the owner waives a recovery." };
+    e5.recovered = b.undo ? "" : "Y"; e5.recAt = b.undo ? "" : now; e5.recBy = b.undo ? "" : me.name; e5.recVia = b.undo ? "" : via;
+    bxWrite_("TK_Events", e5._r, e5); bxLog_(me.name, b.undo ? "tool recovery undone" : "tool recovered (" + via + ")", e5.code + " " + e5.amount);
+    return { ok: true, eid: e5.eid, recovered: e5.recovered, recVia: e5.recVia };
+  }
+  if (op === "photo") {   /* TK3 - a photo added to a damage / loss line afterwards (no signal at the site, say). Anyone on the team; the line is kept as it was */
+    if (!b.photoId) return { ok: false, err: "Take the photo." };
+    var e6 = bxRows_("TK_Events").filter(function (x) { return String(x.eid) === String(b.eid); })[0];
+    if (!e6) return { ok: false, err: "That line is not in the log." };
+    if (String(e6.photo || "")) return { ok: false, err: "That line already has a photo." };
+    e6.photo = tkClean_(b.photoId, 120); bxWrite_("TK_Events", e6._r, e6); delete e6._r;
+    return { ok: true, event: e6 };
   }
   return { ok: false, err: "unknown op" };
 }
