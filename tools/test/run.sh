@@ -43,6 +43,7 @@ node tools/test/t_tooltrack.js || fail=1
 node tools/test/t_tools_held_mps.js || fail=1
 node tools/test/t_tool_extras.js || fail=1
 node tools/test/t_extra_disc.js || fail=1
+node tools/test/t_rates_before_card.js || fail=1
 node tools/test/t_alias_once.js || fail=1
 node tools/test/t_items_supplied.js || fail=1
 node tools/test/t_challan_catalog.js || fail=1
