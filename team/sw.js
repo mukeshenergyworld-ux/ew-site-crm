@@ -247,6 +247,10 @@ self.addEventListener("fetch", function (e) {
   var url = e.request.url;
   if (e.request.method !== "GET") return;
   if (url.indexOf("script.google.com") >= 0 || url.indexOf("api.github.com") >= 0) return;
+  /* 19 Nov 2026 - ew-config.js straight from the network, never from the shelf. MEASURED: the CRM had served the copy it
+     cached weeks ago (transfer 0 bytes), so the Google review link pasted into it on 16 Nov never reached the CRM and the
+     "Ask for a Google review" button never drew. The Saathi worker has always let it through; now this one does too. */
+  if (/\/ew-config\.js(\?|$)/.test(url)) return;
 
   // v17aug: the app code comes off the shelf first. app.js is 1.6 MB - it was never going to
   // win a 2.5-second race on a phone, so the race only ever cost him the 2.5 seconds.

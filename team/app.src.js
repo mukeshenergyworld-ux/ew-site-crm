@@ -455,7 +455,11 @@
 /* ==EWCORE:drivers:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.1044";   /* 6.9.1044 (19 Nov 2026) - HIS WORDS (Rates on 26/09/2026/171, Sanjeev Aggarwal): "rates already preset and above challan
+  var APP_VERSION = "6.9.1045";   /* 6.9.1045 (19 Nov 2026) - HIS WORD: "approve". Partner Club v3: 3% of what his clients paid in the year, before GST; each bar
+     set where Energy World's share of the prize is 3% of it (Member 1 L, Bronze 3 L, Silver 8 L, Gold 15 L, Platinum 30 L); above a bar the prize and the
+     balance as a coin; trips 80% EW / 20% a brand seat; Goa is the plumbers' Gold; Partner of the Year inside his own 3%; earned -> chosen -> given kept
+     as audit rows with EW's and the brand's cost. Replaces the 6.9.954 slab bonus (no scheme had been saved). */
+  /* before: */   /* 6.9.1044 (19 Nov 2026) - HIS WORDS (Rates on 26/09/2026/171, Sanjeev Aggarwal): "rates already preset and above challan
      saying rates not set, also not able to edit rates?" The 3% / 1% on that screen were the incentive CARD's rates, and the card pays from its first day
      (5 Oct 2026); a delivery before it pays the client's own rate, and he had none - so "no rate", and the boxes were locked because the card decides now.
      MEASURED: 292 of the 304 deliveries before the card have someone with no rate. HIS ANSWER: "Unlock old challans only". On a delivery from before the
@@ -55292,21 +55296,51 @@ function viewCatalogue() {
 
      HIS APPROVED SLABS (10 Nov), costed against the 12 months to that date: Platinum 5 men, Gold 4, Silver 10,
      Starter 13 - bonus Rs 89,574 + rewards Rs 2,25,600 = Rs 3,15,174, which is 1.8% of the Rs 1.71 Cr collected. */
+  /* ===== 6.9.1045 - PARTNER CLUB v3: THREE PERCENT OF COLLECTED, THE BAR SET BY THE PRIZE  (19 Nov 2026) =====
+     HIS WORD: "approve" (the v3 design of 12 Nov, costed on the live book 17 Nov). Replaces the 6.9.954 slab bonus.
+     THE RULE. A partner earns 3% of what his clients PAID in the year (Jan-Dec), counted before GST (amount / 1.18, and
+     the screen says so, so nobody compares it with the incentive card). Each bar is set where Energy World's own share of
+     that tier's prize is 3% of the bar - so no partner, and so no year, can cost more than 3%. Above a bar the rate stays
+     3%: he takes the tier's prize and the balance of his 3% comes as a coin. Nothing is lost by climbing and nothing is
+     gained by stopping just over a bar.
+     TRIPS are 80% Energy World, 20% a brand (a named seat, not a cheque). Goa is the plumbers' Gold prize; anyone else
+     at Gold takes the Rs 45,000 choice. International (Platinum) is one allowance, Rs 1,10,500 all in: Dubai, Baku,
+     Vietnam, Almaty or Singapore (Singapore is Rs 22,880 over - the partner adds it; Almaty is visa-free, to be confirmed
+     at the embassy before it is printed).
+     PARTNER OF THE YEAR is the year's highest collector: title and trophy, paid out of his own 3%, never on top.
+     EARNED -> CHOSEN -> GIVEN. Each step is an audit row "club:reward" (the newest per partner and year counts), carrying
+     the item, Energy World's cost and the brand's share and name, so a trip handed over lives in the CRM and the 3% cap
+     can be checked. Nothing is deleted. */
+  var CLUB_GST = 1.18, CLUB_PCT = 3;
+  var CLUB_TRIPS = [
+    { k: "Dubai", all: 80210, note: "Rs 30,290 under the allowance - a better hotel or a longer stay" },
+    { k: "Baku", all: 110500, note: "e-visa" }, { k: "Vietnam", all: 109200, note: "e-visa" },
+    { k: "Almaty", all: 109850, note: "visa-free on an Indian passport - confirm at the Kazakhstan embassy before printing" },
+    { k: "Singapore", all: 133380, note: "Rs 22,880 over the allowance - the partner adds the difference" }
+  ];
   var CLUB_TIERS = [
-    { k: "Platinum", cut: 1000000, bonus: 0.75, rew: "Foreign trip", cost: 30000 },
-    { k: "Gold",     cut: 600000,  bonus: 0.5,  rew: "Device", cost: 15000 },
-    { k: "Silver",   cut: 200000,  bonus: 0.25, rew: "", cost: 0 },
-    { k: "Starter",  cut: 50000,   bonus: 0,    rew: "Tool kit", cost: 1200 }
+    { k: "Platinum", cut: 3000000, menu: "International trip (Dubai / Baku / Vietnam / Almaty / Singapore)", ew: 88400, brand: 22100 },
+    { k: "Gold",     cut: 1500000, menu: "Goa trip, 4N/5D (plumbers) / 3.2 g gold coin / a machine for his trade / an appliance", ew: 42640, brand: 10660 },
+    { k: "Silver",   cut: 800000,  menu: "1.7 g gold coin / a cordless press tool / something for the house", ew: 24000, brand: 0 },
+    { k: "Bronze",   cut: 300000,  menu: "41 g silver coin / a power tool / a fuel card", ew: 9000, brand: 0 },
+    { k: "Member",   cut: 100000,  menu: "Energy World tool kit and a 14 g silver coin", ew: 3000, brand: 0 }
   ];
   function clubScheme() {
     var best = null;
     (S.data.audit || []).forEach(function (a) { if (String(a.action || "") === "club:set" && (!best || String(a.createdAt) > String(best.createdAt))) best = a; });
     var d = best ? cmpJ(best.detail) : null;
-    var T = (d && Array.isArray(d.tiers) && d.tiers.length) ? d.tiers.map(function (x) {
-      return { k: String(x.k || ""), cut: Math.round(nAmt(x.cut)), bonus: nAmt(x.bonus), rew: String(x.rew || ""), cost: Math.round(nAmt(x.cost)) };
-    }).filter(function (x) { return x.k; }) : CLUB_TIERS.slice();
+    var ok = d && Number(d.v) === 3 && Array.isArray(d.tiers) && d.tiers.length;   /* a v1 slab scheme is not read as v3 */
+    var T = ok ? d.tiers.map(function (x) {
+      return { k: String(x.k || ""), cut: Math.round(nAmt(x.cut)), menu: String(x.menu || ""), ew: Math.round(nAmt(x.ew)), brand: Math.round(nAmt(x.brand)) };
+    }).filter(function (x) { return x.k && x.cut > 0; }) : CLUB_TIERS.slice();
     T.sort(function (a, b) { return b.cut - a.cut; });
-    return { tiers: T, at: best ? best.createdAt : "", by: best ? best.actor : "" };
+    return { tiers: T, at: ok ? best.createdAt : "", by: ok ? best.actor : "" };
+  }
+  function clubMenu(t, role) {
+    var L = String((t && t.menu) || "").split("/").map(function (s) { return s.trim(); }).filter(Boolean);
+    if (t && t.k === "Platinum") return [t.menu];
+    if (!/plumb/i.test(String(role || ""))) L = L.filter(function (s) { return !/goa/i.test(s); });   /* Goa is the plumbers' Gold prize */
+    return L;
   }
   function clubYears() {
     var y = Number(today().slice(0, 4)) || 2026, out = [];
@@ -55314,9 +55348,20 @@ function viewCatalogue() {
     return out;
   }
   function clubYear() { var y = String(S.clubY || ""); return clubYears().indexOf(y) >= 0 ? y : today().slice(0, 4); }
-  /* collected inside the scheme year, per partner - the same arithmetic pevSupport uses, with a year window */
+  /* the newest club:reward row per partner for a year */
+  function clubRewards(ym) {
+    var m = {};
+    (S.data.audit || []).forEach(function (a) {
+      if (String(a.action || "") !== "club:reward") return;
+      var d = cmpJ(a.detail) || {}; if (String(d.year || "") !== String(ym)) return;
+      var k = dkey(d.partner || a.target); if (!k) return;
+      if (!m[k] || String(a.createdAt) > String(m[k].at)) m[k] = { at: String(a.createdAt), by: String(a.actor || ""), d: d };
+    });
+    return m;
+  }
+  /* collected inside the scheme year, per partner, BEFORE GST - the same arithmetic pevSupport uses, with a year window */
   function clubRows(ym) {
-    var y0 = ym + "-01-01", y1 = ym + "-12-31", T = clubScheme().tiers;
+    var y0 = ym + "-01-01", y1 = ym + "-12-31", T = clubScheme().tiers, RW = clubRewards(ym);
     var out = assocLive().map(function (a) {
       var bk = null; try { bk = partnerBook(a.name); } catch (e) { bk = null; }
       var rows = (bk && bk.rows) || [], coll = 0, deliv = 0, last = "";
@@ -55325,29 +55370,40 @@ function viewCatalogue() {
         if (r.ymd && r.ymd >= y0 && r.ymd <= y1) { deliv += amt; if (!r.ret) coll += amt * (Number(r.paidShare) || 0); }
         if (!r.ret && r.ymd > last) last = r.ymd;
       });
-      coll = Math.round(coll);
+      coll = Math.round(coll / CLUB_GST); deliv = Math.round(deliv / CLUB_GST);
       var tier = null, ti = -1;
       for (var i = 0; i < T.length; i++) { if (coll >= T[i].cut) { tier = T[i]; ti = i; break; } }
       var nextT = ti < 0 ? T[T.length - 1] : (ti > 0 ? T[ti - 1] : null);
+      var earned = tier ? Math.round(coll * CLUB_PCT / 100) : 0, prize = tier ? tier.ew : 0;
+      var rw = RW[dkey(a.name)] || null;
       return { a: a, name: a.name, role: String(a.role || ""), loc: a.location || "", mob: String(a.mobile || "").replace(/\D/g, "").slice(-10),
-        coll: coll, deliv: Math.round(deliv), last: last, tier: tier, tierK: tier ? tier.k : "",
+        coll: coll, deliv: deliv, last: last, tier: tier, tierK: tier ? tier.k : "",
         next: nextT, gap: nextT ? Math.max(0, nextT.cut - coll) : 0,
-        bonus: tier ? Math.round(coll * tier.bonus / 100) : 0,
-        rew: tier ? tier.rew : "", rcost: tier ? tier.cost : 0 };
+        earned: earned, prize: prize, coin: Math.max(0, earned - prize),
+        menu: tier ? clubMenu(tier, a.role) : [], rw: rw, state: rw ? String(rw.d.state || "") : (tier ? "earned" : "") };
     });
     out.sort(function (x, y2) { return y2.coll - x.coll; });
+    if (out.length && out[0].tierK) out[0].poty = true;   /* Partner of the Year: the highest collector, inside his own 3% */
     return out;
   }
   function clubPill(k) {
-    if (!k) return '<span style="color:#94a3b8">\u2014</span>';
-    var c = { Platinum: ["#1e293b", "#e2e8f0"], Gold: ["#92400e", "#fde68a"], Silver: ["#334155", "#e5e7eb"], Starter: ["#0f766e", "#ccfbf1"] }[k] || ["#64748b", "#f1f5f9"];
+    if (!k) return '<span style="color:#94a3b8">—</span>';
+    var c = { Platinum: ["#1e293b", "#e2e8f0"], Gold: ["#92400e", "#fde68a"], Silver: ["#334155", "#e5e7eb"], Bronze: ["#7c2d12", "#fed7aa"], Member: ["#0f766e", "#ccfbf1"] }[k] || ["#64748b", "#f1f5f9"];
     return '<span style="display:inline-block;font-size:12px;font-weight:800;color:' + c[0] + ';background:' + c[1] + ';border-radius:6px;padding:1px 7px;white-space:nowrap">' + esc(k) + '</span>';
+  }
+  function clubStatePill(r) {
+    if (!r.tierK && !r.rw) return '—';
+    var s = r.state || "earned", d = r.rw ? r.rw.d : {};
+    var c = { earned: ["#92400e", "#fef3c7", "Earned"], chosen: ["#1d4ed8", "#dbeafe", "Chosen"], given: ["#166534", "#dcfce7", "Given"] }[s] || ["#64748b", "#f1f5f9", s];
+    return '<span style="display:inline-block;font-size:12px;font-weight:800;color:' + c[0] + ';background:' + c[1] + ';border-radius:6px;padding:1px 7px;white-space:nowrap">' + c[2] + '</span>' +
+      (d.item ? '<div style="font-size:12px;color:#475569">' + esc(d.item) + '</div>' : '');
   }
   function clubWaText(r) {
     var L = ["Namaste " + r.name + " ji,", "Energy World Partner Club " + clubYear() + "."];
-    L.push(r.tierK ? "Aapka business is saal: " + money(r.coll) + ". Aap abhi " + r.tierK + " hain." : "Aapka business is saal: " + money(r.coll) + ".");
-    if (r.next) L.push(money(r.gap) + " aur, aur aap " + r.next.k + " ban jaate hain" + (r.next.rew ? " \u2014 " + r.next.rew : "") + ".");
-    L.push("Business wahi gina jaata hai jiska payment aa chuka hai.");
+    L.push("Aapke clients ka is saal ka payment (GST se pehle): " + money(r.coll) + ".");
+    if (r.tierK) L.push("Aap " + r.tierK + " hain — aapka 3% = " + money(r.earned) + ". Inaam: " + r.menu.join(" ya ") + (r.coin ? ", baaki " + money(r.coin) + " ka sikka" : "") + ".");
+    if (r.next) L.push(money(r.gap) + " aur, aur aap " + r.next.k + " ban jaate hain.");
+    L.push("Sirf woh business gina jaata hai jiska payment aa chuka hai.");
     L.push("Dhanyavaad, Energy World, Panipat.");
     return L.join("\n");
   }
@@ -55355,65 +55411,94 @@ function viewCatalogue() {
     if (!roleIs("admin")) return '<div class="empty">The Partner Club is the owner\'s.</div>';
     var ym = clubYear(), SC = clubScheme(), T = SC.tiers, rows = clubRows(ym);
     var inClub = rows.filter(function (r) { return r.tierK; });
-    /* ---- 1. the ladder ---- */
-    var tot = { n: 0, coll: 0, bonus: 0, rcost: 0 };
+    var allColl = rows.reduce(function (n, r) { return n + Math.max(0, r.coll); }, 0), cap = Math.round(allColl * CLUB_PCT / 100);
+    var tot = { n: 0, coll: 0, earned: 0, ew: 0, coin: 0, brand: 0 };
     var band = T.map(function (t) {
       var b = inClub.filter(function (r) { return r.tierK === t.k; });
-      var coll = b.reduce(function (n, r) { return n + r.coll; }, 0), bon = b.reduce(function (n, r) { return n + r.bonus; }, 0), rc = b.length * t.cost;
-      tot.n += b.length; tot.coll += coll; tot.bonus += bon; tot.rcost += rc;
-      return { t: t, b: b, coll: coll, bon: bon, rc: rc };
+      var x = { t: t, b: b, coll: 0, earned: 0, coin: 0 };
+      b.forEach(function (r) { x.coll += r.coll; x.earned += r.earned; x.coin += r.coin; });
+      tot.n += b.length; tot.coll += x.coll; tot.earned += x.earned; tot.ew += b.length * t.ew; tot.coin += x.coin; tot.brand += b.length * t.brand;
+      return x;
     });
+    var poty = rows.filter(function (r) { return r.poty; })[0];
     var h = '<div class="card"><h2 style="margin:0">Partner Club ' + esc(ym) + '</h2>' +
-      '<div class="meta" style="font-size:13px">The incentive card is unchanged \u2014 the brand-wise % keeps paying exactly as it does. This sits on top: cross a slab in the year and you earn the bonus on your whole year, plus the tier\'s reward. <b>Counted on money collected, never on material delivered.</b></div>' +
+      '<div class="meta" style="font-size:13px;line-height:1.55">Three percent of what his clients <b>paid</b> in the year, counted <b>before GST</b>. Each bar is where Energy World’s share of the prize is exactly 3% of the bar, so the club can never cost more than 3%. Above a bar he takes the prize and the rest of his 3% comes as a coin. The incentive card is untouched.</div>' +
       '<div class="acts" style="margin-top:8px;gap:6px;flex-wrap:wrap">' + clubYears().map(function (y) {
         return '<button class="btn sm' + (y === ym ? '' : ' ghost') + '" style="min-height:44px" data-act="club-y" data-v="' + y + '">' + y + '</button>'; }).join("") + '</div></div>';
     h += '<div class="card"><h3 style="margin:0">The ladder</h3>' +
-      pevTable([["Tier"], ["Reaches it at", "right"], ["Bonus", "right"], ["Reward"], ["Partners", "right"], ["Collected", "right"], ["Bonus \u20b9", "right"], ["Reward \u20b9", "right"]],
-        band.map(function (x) { return [clubPill(x.t.k), money(x.t.cut), x.t.bonus ? x.t.bonus + "%" : "\u2014", esc(x.t.rew || "\u2014"),
-          '<b>' + x.b.length + '</b>', money(x.coll), money(x.bon), money(x.rc)]; })
-        .concat([['<b>Total</b>', "", "", "", '<b>' + tot.n + '</b>', '<b>' + money(tot.coll) + '</b>', '<b>' + money(tot.bonus) + '</b>', '<b>' + money(tot.rcost) + '</b>']])) +
-      '<div class="meta" style="font-size:12.5px;margin-top:6px">Cost of the club this year: <b>' + money(tot.bonus + tot.rcost) + '</b>' +
-        (tot.coll > 0 ? ' \u2014 ' + (Math.round((tot.bonus + tot.rcost) / tot.coll * 1000) / 10) + '% of what these partners collected' : '') + '. The trip is normally brand-funded.</div></div>';
-    /* ---- 2. who to call ---- */
-    var near = inClub.concat(rows.filter(function (r) { return !r.tierK && r.coll > 0; }))
-      .filter(function (r) { return r.next && r.gap > 0 && r.gap <= Math.max(50000, (r.next.cut - (r.tier ? r.tier.cut : 0)) * 0.35); })
+      pevTable([["Tier"], ["Bar (paid, pre-GST)", "right"], ["Prize"], ["EW pays", "right"], ["Brand seat", "right"], ["Partners", "right"], ["Collected", "right"], ["Their 3%", "right"]],
+        band.map(function (x) { return [clubPill(x.t.k), money(x.t.cut), '<span style="font-size:12.5px">' + esc(x.t.menu) + '</span>', money(x.t.ew), x.t.brand ? money(x.t.brand) : '—',
+          '<b>' + x.b.length + '</b>', money(x.coll), money(x.earned)]; })
+        .concat([['<b>Total</b>', "", "", "", "", '<b>' + tot.n + '</b>', '<b>' + money(tot.coll) + '</b>', '<b>' + money(tot.earned) + '</b>']])) +
+      '<div class="meta" style="font-size:12.5px;margin-top:6px;line-height:1.55">Energy World’s whole outlay this year: <b>' + money(tot.earned) + '</b> (prizes ' + money(tot.ew) + ' + coins ' + money(tot.coin) + ')' +
+        ' — the 3% ceiling on all partner business (' + money(allColl) + ') is <b>' + money(cap) + '</b>' + (allColl > 0 ? ', so ' + (Math.round(tot.earned / allColl * 1000) / 10) + '% is spent' : '') + '.' +
+        (tot.brand ? ' Brands carry ' + money(tot.brand) + ' in trip seats, outside the 3%.' : '') +
+        (poty ? '<br><b>Partner of the Year so far: ' + esc(poty.name) + '</b> (' + money(poty.coll) + ') — title and trophy, out of his own 3%.' : '') + '</div>' +
+      '<details style="margin-top:8px"><summary style="cursor:pointer;font-weight:700;min-height:44px;display:flex;align-items:center">The international trip — one allowance, ' + money(110500) + ' all in</summary>' +
+      pevTable([["Destination"], ["All in", "right"], ["Note"]], CLUB_TRIPS.map(function (d) { return ['<b>' + esc(d.k) + '</b>', money(d.all), '<span style="font-size:12.5px">' + esc(d.note) + '</span>']; })) +
+      '<div class="meta" style="font-size:12px;margin-top:4px">4 nights / 5 days, twin sharing, by air, plus 30% cash in hand. Get one written group quote per destination before it is announced. A brand that funds a seat may want the partner’s number — ask the partner first, every time.</div></details></div>';
+    /* ---- who to call ---- */
+    var near = rows.filter(function (r) { return r.coll > 0 && r.next && r.gap > 0 && r.gap <= Math.max(50000, (r.next.cut - (r.tier ? r.tier.cut : 0)) * 0.35); })
       .sort(function (a, b) { return a.gap - b.gap; });
-    var quiet = inClub.filter(function (r) { return (r.tierK === "Platinum" || r.tierK === "Gold") && r.last && daysTo(r.last) < -60; })
+    var quiet = inClub.filter(function (r) { return (r.tierK === "Platinum" || r.tierK === "Gold" || r.tierK === "Silver") && r.last && daysTo(r.last) < -60; })
       .sort(function (a, b) { return String(a.last).localeCompare(String(b.last)); });
     h += '<div class="card"><h3 style="margin:0">Who to call</h3>';
-    h += '<div style="margin-top:6px;font-weight:700;color:#0f766e">Within reach of the next slab \u2014 ' + near.length + '</div>';
+    h += '<div style="margin-top:6px;font-weight:700;color:#0f766e">Within reach of the next bar — ' + near.length + '</div>';
     h += near.length ? pevTable([["Partner"], ["Now", "right"], ["Needs", "right"], ["To become"], [""]],
-        near.slice(0, 25).map(function (r) { return ['<b>' + esc(r.name) + '</b><div style="font-size:12px;color:#64748b">' + esc([r.role, r.loc].filter(Boolean).join(" \u00b7 ")) + '</div>',
-          money(r.coll), '<b style="color:#b45309">' + money(r.gap) + '</b>', clubPill(r.next.k) + (r.next.rew ? ' <span style="font-size:12px;color:#64748b">' + esc(r.next.rew) + '</span>' : ''),
+        near.slice(0, 25).map(function (r) { return ['<b>' + esc(r.name) + '</b><div style="font-size:12px;color:#64748b">' + esc([r.role, r.loc].filter(Boolean).join(" · ")) + '</div>',
+          money(r.coll), '<b style="color:#b45309">' + money(r.gap) + '</b>', clubPill(r.next.k),
           r.mob.length === 10 ? '<a class="btn sm ghost" style="min-height:44px;display:inline-flex;align-items:center" href="tel:' + r.mob + '">Call</a> <button class="btn sm" style="min-height:44px" data-act="club-wa" data-n="' + esc(r.name) + '">WhatsApp</button>' : '<span class="meta">no mobile</span>']; }), true)
-      : '<div class="meta" style="font-size:12.5px">Nobody is close to a slab yet this year.</div>';
-    h += '<div style="margin-top:12px;font-weight:700;color:' + (quiet.length ? '#b91c1c' : '#166534') + '">Gold or Platinum, gone quiet over 60 days \u2014 ' + quiet.length + '</div>';
+      : '<div class="meta" style="font-size:12.5px">Nobody is close to a bar yet this year.</div>';
+    h += '<div style="margin-top:12px;font-weight:700;color:' + (quiet.length ? '#b91c1c' : '#166534') + '">Silver and above, gone quiet over 60 days — ' + quiet.length + '</div>';
     h += quiet.length ? pevTable([["Partner"], ["Tier"], ["Collected", "right"], ["Last delivery"], [""]],
         quiet.map(function (r) { return ['<b>' + esc(r.name) + '</b>', clubPill(r.tierK), money(r.coll), esc(dmy(r.last)) + ' <span style="color:#b91c1c">(' + Math.abs(daysTo(r.last)) + ' days)</span>',
           r.mob.length === 10 ? '<a class="btn sm" style="min-height:44px;display:inline-flex;align-items:center" href="tel:' + r.mob + '">Call</a>' : '<span class="meta">no mobile</span>']; }), true)
-      : '<div class="meta" style="font-size:12.5px">None \u2014 every Gold and Platinum partner has sent business in the last 60 days.</div>';
+      : '<div class="meta" style="font-size:12.5px">None.</div>';
     h += '</div>';
-    /* ---- 3. every partner ---- */
+    /* ---- every partner ---- */
     h += '<div class="card"><h3 style="margin:0">Every partner, ' + esc(ym) + '</h3>' +
-      '<div class="meta" style="font-size:12.5px">Sorted by what has been collected from his clients this year.</div>' +
-      pevTable([["#", "right"], ["Partner"], ["Tier"], ["Collected", "right"], ["Delivered", "right"], ["\u20b9 to next slab", "right"], ["Bonus so far", "right"], ["Reward"], ["Last delivery"]],
-        rows.filter(function (r) { return r.deliv > 0 || r.coll > 0; }).slice(0, 200).map(function (r, i) {
-          return [i + 1, '<b>' + esc(r.name) + '</b><div style="font-size:12px;color:#64748b">' + esc([r.role, r.loc].filter(Boolean).join(" \u00b7 ")) + '</div>', clubPill(r.tierK),
-            '<b>' + money(r.coll) + '</b>', money(r.deliv), r.next ? money(r.gap) + ' <span style="font-size:11px;color:#64748b">to ' + esc(r.next.k) + '</span>' : '\u2014',
-            r.bonus ? money(r.bonus) : '\u2014', esc(r.rew || "\u2014"), r.last ? esc(dmy(r.last)) : '\u2014']; })) + '</div>';
-    /* ---- 4. the scheme itself ---- */
+      '<div class="meta" style="font-size:12.5px">Sorted by what his clients paid this year, before GST. Reward: earned → chosen → given, each step kept.</div>' +
+      pevTable([["#", "right"], ["Partner"], ["Tier"], ["Paid, pre-GST", "right"], ["His 3%", "right"], ["Prize (EW)", "right"], ["Coin", "right"], ["Reward"], ["To next bar", "right"], ["Last delivery"], [""]],
+        rows.filter(function (r) { return r.deliv > 0 || r.coll > 0 || r.rw; }).slice(0, 200).map(function (r, i) {
+          return [i + 1, '<b>' + esc(r.name) + '</b>' + (r.poty ? ' <span style="font-size:11px;font-weight:800;color:#92400e">★ Partner of the Year</span>' : '') + '<div style="font-size:12px;color:#64748b">' + esc([r.role, r.loc].filter(Boolean).join(" · ")) + '</div>', clubPill(r.tierK),
+            '<b>' + money(r.coll) + '</b>', r.earned ? money(r.earned) : '—', r.prize ? money(r.prize) : '—', r.coin ? money(r.coin) : '—', clubStatePill(r),
+            r.next ? money(r.gap) + ' <span style="font-size:11px;color:#64748b">to ' + esc(r.next.k) + '</span>' : '—', r.last ? esc(dmy(r.last)) : '—',
+            (r.tierK || r.rw) ? '<button class="btn sm ghost" style="min-height:44px" data-act="club-rew" data-n="' + esc(r.name) + '">Reward</button>' : '']; })) + '</div>';
+    /* ---- the scheme itself ---- */
     h += '<div class="card"><h3 style="margin:0">The scheme</h3>' +
-      '<div class="meta" style="font-size:12.5px">Change a figure and press Save. Nothing is overwritten \u2014 each save is a new dated record.' + (SC.at ? ' Last set ' + esc(dmy(localDay(SC.at))) + (SC.by ? ' by ' + esc(SC.by) : '') + '.' : ' These are the figures agreed on 10 Nov 2026; nothing has been saved yet.') + '</div>' +
-      '<div style="overflow-x:auto"><table style="border-collapse:collapse;min-width:620px;font-size:13px;margin-top:8px">' +
-      '<tr style="background:#0b3b36;color:#fff;font-size:12px"><th style="padding:6px;text-align:left">Tier</th><th style="padding:6px">Reaches it at \u20b9</th><th style="padding:6px">Bonus %</th><th style="padding:6px;text-align:left">Reward</th><th style="padding:6px">Reward costs us \u20b9</th></tr>' +
+      '<div class="meta" style="font-size:12.5px">Change a figure and press Save. Nothing is overwritten — each save is a new dated record.' + (SC.at ? ' Last set ' + esc(dmy(localDay(SC.at))) + (SC.by ? ' by ' + esc(SC.by) : '') + '.' : ' These are the approved v3 figures (19 Nov 2026).') +
+      ' Keep each tier’s EW cost within 3% of its bar, or the cap no longer holds.</div>' +
+      '<div style="overflow-x:auto"><table style="border-collapse:collapse;min-width:720px;font-size:13px;margin-top:8px">' +
+      '<tr style="background:#0b3b36;color:#fff;font-size:12px"><th style="padding:6px;text-align:left">Tier</th><th style="padding:6px">Bar ₹ (pre-GST)</th><th style="padding:6px;text-align:left">Prize menu (separate with /)</th><th style="padding:6px">EW pays ₹</th><th style="padding:6px">Brand seat ₹</th><th style="padding:6px">3% of bar</th></tr>' +
       T.map(function (t, i) {
-        var inp = function (f, v, w) { return '<input class="club-in" data-i="' + i + '" data-f="' + f + '" value="' + esc(v == null ? "" : String(v)) + '" style="width:' + w + 'px;min-height:44px;text-align:center"/>'; };
+        var inp = function (f, v, w) { return '<input class="club-in" data-i="' + i + '" data-f="' + f + '" value="' + esc(v == null ? "" : String(v)) + '" style="width:' + w + 'px;min-height:44px;text-align:' + (f === "menu" ? 'left' : 'center') + '"/>'; };
+        var over = t.ew > t.cut * CLUB_PCT / 100 + 0.5;
         return '<tr style="border-top:1px solid #e2e8f0"><td style="padding:4px 6px">' + clubPill(t.k) + '</td>' +
-          '<td style="text-align:center">' + inp("cut", t.cut, 110) + '</td><td style="text-align:center">' + inp("bonus", t.bonus, 60) + '</td>' +
-          '<td style="padding:4px 6px">' + inp("rew", t.rew, 150) + '</td><td style="text-align:center">' + inp("cost", t.cost, 90) + '</td></tr>';
+          '<td style="text-align:center">' + inp("cut", t.cut, 110) + '</td><td style="padding:4px 6px">' + inp("menu", t.menu, 300) + '</td>' +
+          '<td style="text-align:center">' + inp("ew", t.ew, 90) + '</td><td style="text-align:center">' + inp("brand", t.brand, 90) + '</td>' +
+          '<td style="text-align:center;font-weight:700;color:' + (over ? '#b91c1c' : '#166534') + '">' + money(Math.round(t.cut * CLUB_PCT / 100)) + (over ? ' — over' : '') + '</td></tr>';
       }).join("") + '</table></div>' +
       '<div class="acts" style="margin-top:8px"><button class="btn" style="min-height:44px" data-act="club-save">Save the scheme</button></div></div>';
     return h;
+  }
+  function modalClubReward(name) {
+    var r = clubRows(clubYear()).filter(function (x) { return dkey(x.name) === dkey(name); })[0];
+    if (!r) return '<h2>Not found</h2><div class="foot"><button class="btn" data-act="close">Close</button></div>';
+    var d = r.rw ? r.rw.d : {}, t = r.tier || {};
+    var items = r.menu.slice(); if (d.item && items.indexOf(d.item) < 0) items.unshift(d.item);
+    return '<h2>Reward — ' + esc(r.name) + '</h2><p class="sub">' + esc(clubYear()) + ' · ' + (r.tierK ? esc(r.tierK) + ' · ' : '') + 'paid ' + money(r.coll) + ' pre-GST · his 3% ' + money(r.earned) + '</p>' +
+      (r.rw ? '<div class="meta" style="font-size:12.5px">Now: <b>' + esc(d.state || "") + '</b>' + (d.item ? ' — ' + esc(d.item) : '') + ' (' + esc(dmy(localDay(r.rw.at))) + (r.rw.by ? ', ' + esc(r.rw.by) : '') + ')</div>' : '') +
+      '<label>What he chose</label><select id="cr_item" style="min-height:44px">' + items.map(function (s) { return '<option' + (s === d.item ? ' selected' : '') + '>' + esc(s) + '</option>'; }).join("") + '</select>' +
+      (t.k === "Platinum" ? '<label>Destination</label><select id="cr_dest" style="min-height:44px">' + CLUB_TRIPS.map(function (x) { return '<option' + (x.k === d.dest ? ' selected' : '') + '>' + esc(x.k) + '</option>'; }).join("") + '</select>' : '') +
+      '<div class="grid2"><div><label>Energy World pays (₹)</label><input id="cr_ew" inputmode="numeric" value="' + esc(String(d.ew != null ? d.ew : (t.ew || 0))) + '"/></div>' +
+      '<div><label>Coin, balance of his 3% (₹)</label><input id="cr_coin" inputmode="numeric" value="' + esc(String(d.coin != null ? d.coin : r.coin)) + '"/></div></div>' +
+      '<div class="grid2"><div><label>Brand seat (₹)</label><input id="cr_brand" inputmode="numeric" value="' + esc(String(d.brand != null ? d.brand : (t.brand || 0))) + '"/></div>' +
+      '<div><label>Which brand funds it</label><input id="cr_brandn" value="' + esc(d.brandName || "") + '" placeholder="e.g. Huliot"/></div></div>' +
+      '<label>Note</label><input id="cr_note" value="' + esc(d.note || "") + '"/>' +
+      '<div class="meta" style="font-size:12px;margin-top:6px">Each press is kept as its own dated record; the newest is what counts.</div>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
+      '<button class="btn ghost" data-act="club-rew-save" data-n="' + esc(r.name) + '" data-s="chosen">He chose this</button>' +
+      '<button class="btn" data-act="club-rew-save" data-n="' + esc(r.name) + '" data-s="given">Given to him</button></div>';
   }
   function modalPevNew(e) {
     e = e || {};
@@ -67256,16 +67341,29 @@ function viewCatalogue() {
       window.open("https://wa.me/91" + _cr.mob + "?text=" + encodeURIComponent(clubWaText(_cr)), "_blank");
       return;
     }
-    if (act === "club-save") {
-      var _ct = clubScheme().tiers.map(function (x) { return { k: x.k, cut: x.cut, bonus: x.bonus, rew: x.rew, cost: x.cost }; });
+    if (act === "club-save") {   /* 6.9.1045 - the v3 scheme: bar, prize menu, EW cost, brand seat */
+      var _ct = clubScheme().tiers.map(function (x) { return { k: x.k, cut: x.cut, menu: x.menu, ew: x.ew, brand: x.brand }; });
       Array.prototype.forEach.call(document.querySelectorAll(".club-in"), function (i2) {
         var r2 = _ct[Number(i2.getAttribute("data-i"))]; if (!r2) return;
         var f = i2.getAttribute("data-f");
-        if (f === "rew") r2.rew = String(i2.value || "").trim(); else r2[f] = nAmt(i2.value);
+        if (f === "menu") r2.menu = String(i2.value || "").trim(); else r2[f] = Math.round(nAmt(i2.value));
       });
-      if (!_ct.every(function (x) { return x.cut > 0; })) { toast("Every tier needs the amount it is reached at."); return; }
+      if (!_ct.every(function (x) { return x.cut > 0; })) { toast("Every tier needs its bar."); return; }
+      var _over = _ct.filter(function (x) { return x.ew > x.cut * CLUB_PCT / 100 + 0.5; });
+      if (_over.length) { toast(_over[0].k + ": Energy World's cost is over 3% of its bar - raise the bar or lower the cost. Nothing was saved."); return; }
       t.disabled = true;
-      auditFact("club:set", "all", { tiers: _ct, year: clubYear() }).then(function () { toast("The scheme is saved."); keepScroll = true; render(); });
+      auditFact("club:set", "all", { v: 3, tiers: _ct, year: clubYear() }).then(function () { toast("The scheme is saved."); keepScroll = true; render(); });
+      return;
+    }
+    if (act === "club-rew") { S.modal = modalClubReward(t.getAttribute("data-n") || ""); render(); return; }
+    if (act === "club-rew-save") {
+      var _rn = t.getAttribute("data-n") || "", _rs = t.getAttribute("data-s") || "chosen";
+      var _rd = { year: clubYear(), partner: _rn, state: _rs, item: val("cr_item"), dest: val("cr_dest") || "",
+        ew: Math.round(nAmt(val("cr_ew"))), coin: Math.round(nAmt(val("cr_coin"))), brand: Math.round(nAmt(val("cr_brand"))), brandName: val("cr_brandn"), note: val("cr_note") };
+      if (!_rd.item) { toast("Pick what he chose."); unlockBtn(t); return; }
+      t.disabled = true;
+      auditFact("club:reward", _rn, _rd).then(function () { S.modal = null; toast(_rn + ": " + (_rs === "given" ? "given" : "chosen") + " \u2014 " + _rd.item + "."); keepScroll = true; render(); })
+        .catch(function () { unlockBtn(t); toast("Not saved - try again."); });
       return;
     }
     if (act === "pev-open") { S.pevOpen = t.getAttribute("data-id"); if (S.tab !== "pevents" && canSee("pevents")) S.tab = "pevents"; render(); window.scrollTo(0, 0); return; }   /* 6.9.734 - also from a partner's page */
