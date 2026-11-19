@@ -455,7 +455,8 @@
 /* ==EWCORE:drivers:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.1046";   /* 6.9.1046 (19 Nov 2026) - HIS WORDS: "fima going to fund 50% only"; his answers: international trip only, keep the bars, we
+  var APP_VERSION = "6.9.1047";   /* 6.9.1047 (19 Nov 2026) - HIS WORD: "Oyster" - the brand that funds the Goa seat (Gold, 20%, Rs 10,660). */
+  /* before: */   /* 6.9.1046 (19 Nov 2026) - HIS WORDS: "fima going to fund 50% only"; his answers: international trip only, keep the bars, we
      save. Platinum's international trip is now 50% Energy World (Rs 55,250) and 50% FIMA (Rs 55,250) instead of 80/20. The bar stays Rs 30 L, so a
      Platinum partner's 3% (Rs 90,000 at the bar) now buys the trip and leaves Rs 34,750 more as his coin. Goa stays 80/20 with a brand still to name. */
   /* before: */   /* 6.9.1045 (19 Nov 2026) - HIS WORD: "approve". Partner Club v3: 3% of what his clients paid in the year, before GST; each bar
@@ -55323,7 +55324,7 @@ function viewCatalogue() {
   ];
   var CLUB_TIERS = [
     { k: "Platinum", cut: 3000000, menu: "International trip (Dubai / Baku / Vietnam / Almaty / Singapore)", ew: 55250, brand: 55250, brandName: "FIMA" },   /* 6.9.1046 - FIMA funds 50% */
-    { k: "Gold",     cut: 1500000, menu: "Goa trip, 4N/5D (plumbers) / 3.2 g gold coin / a machine for his trade / an appliance", ew: 42640, brand: 10660 },
+    { k: "Gold",     cut: 1500000, menu: "Goa trip, 4N/5D (plumbers) / 3.2 g gold coin / a machine for his trade / an appliance", ew: 42640, brand: 10660, brandName: "Oyster" },   /* 6.9.1047 - Oyster funds the Goa seat */
     { k: "Silver",   cut: 800000,  menu: "1.7 g gold coin / a cordless press tool / something for the house", ew: 24000, brand: 0 },
     { k: "Bronze",   cut: 300000,  menu: "41 g silver coin / a power tool / a fuel card", ew: 9000, brand: 0 },
     { k: "Member",   cut: 100000,  menu: "Energy World tool kit and a 14 g silver coin", ew: 3000, brand: 0 }
