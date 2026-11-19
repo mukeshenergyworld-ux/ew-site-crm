@@ -17,7 +17,7 @@ A = 'style="color:#1f2a44;text-decoration:none"'
 def sig(name, title, phone, email):
     soc = ''.join(f'<a href="{u}" title="{t}" style="text-decoration:none;display:inline-block;margin:0 5px 0 0">{ic(k, 20)}</a>' for k, u, t in SOC)
     L = 'style="color:#1d5fbf;text-decoration:none"'
-    return f'''<table cellpadding="0" cellspacing="0" border="0" width="544" style="{F}width:544px;border-collapse:collapse;color:#1f2a44">
+    return f'''<table cellpadding="0" cellspacing="0" border="0" width="560" bgcolor="#ffffff" style="{F}width:560px;background:#ffffff;border-collapse:collapse;color:#1f2a44"><tr><td style="padding:8px;background:#ffffff"><table cellpadding="0" cellspacing="0" border="0" width="544" style="{F}width:544px;border-collapse:collapse;color:#1f2a44">
 <tr>
 <td width="150" style="width:150px;padding:4px 14px 8px 0;vertical-align:middle;border-right:3px solid #1b8a3c">
 <a href="https://www.energyworld.co.in" style="text-decoration:none"><img src="{B}ew_ghp_sig.png" width="150" height="42" alt="Energy World and GHP+" style="display:block;border:0;width:150px;height:42px"></a>
@@ -34,7 +34,7 @@ def sig(name, title, phone, email):
 <div style="font-size:9.5px;letter-spacing:.8px;color:#5a6478;font-weight:bold;padding-bottom:4px">PLUMBING · SOLAR · AIR SOLUTIONS — ALL UNDER ONE ROOF</div>
 <a href="https://www.energyworld.co.in" style="text-decoration:none"><img src="{B}brands_compact.png" width="544" height="68" alt="Huliot, FIMA, Oyster, Heliroma, TOTO, Green Heat+, Pentair, Grundfos, MEA, InAir, Leo, Stellar Sanitär, Geberit, Adani, Eureka Forbes" style="display:block;border:0;width:544px;height:68px"></a>
 </td></tr>
-</table>'''
+</table></td></tr></table>'''
 cards = ''
 for k, n, t, p, e in PEOPLE:
     cards += f'''<section class="card"><h2>{n}</h2><div class="sig" id="sig-{k}">{sig(n, t, p, e)}</div>
