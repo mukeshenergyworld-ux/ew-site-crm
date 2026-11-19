@@ -6,8 +6,8 @@ var A = [{ action: "tool:held", createdAt: "2026-11-18T05:00:00Z", detail: JSON.
   { code: "EWT-003", name: "Drill", hName: "Sunil", hRef: "", site: "", since: "", cond: "OK" }] }) },
   { action: "tool:held", createdAt: "2026-11-01T05:00:00Z", detail: JSON.stringify({ tools: [] }) }];
 var ctx = { S: { data: { audit: A }, user: "Vivek" }, dkey: function (s) { return String(s || "").trim().toLowerCase(); }, esc: function (s) { return String(s); },
-  localStorage: { getItem: function () { return null; } }, roleIs: function () { return false; }, CO_GAS: "", APP_VERSION: "t" };
-var F = H.lift("team", ["tkTok", "tkSnap", "tkHeldIdx", "tkHeldBy", "tkHeldTag", "tkHeldCard", "tkPull", "tkHeldPub"], ctx, ["_tkLive", "_tkAt", "_tkBusy", "_tkIdx", "_tkIdxK"]);
+  localStorage: { getItem: function () { return null; } }, roleIs: function () { return false; }, CO_GAS: "", APP_VERSION: "t", assocLive: function () { return []; }, money: function (n) { return "Rs " + n; } };
+var F = H.lift("team", ["tkTok", "tkSnap", "tkHeldIdx", "tkHeldBy", "tkHeldTag", "tkHeldCard", "tkPull", "tkHeldPub", "tkCutsFor"], ctx, ["_tkLive", "_tkAt", "_tkBusy", "_tkIdx", "_tkIdxK"]);
 H.eq("the newest copy is read: Ramesh (by his id) has two tools", F.tkHeldBy({ id: "AS-7", name: "Ramesh Plumber" }).length, 2);
 H.eq("a partner matched by name when no id was kept", F.tkHeldBy({ id: "AS-9", name: "sunil" }).length, 1);
 H.eq("the tag in a search or a picker", F.tkHeldTag({ id: "AS-7", name: "Ramesh Plumber" }), "2 tools with him");

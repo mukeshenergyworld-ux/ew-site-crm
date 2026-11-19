@@ -1,11 +1,11 @@
 /* TK1 - the tool tracking block on the Companion, run against a mock Apps Script */
 const crypto=require('crypto'),fs=require('fs'),vm=require('vm'),path=require('path');
 function Sheet(name){this.name=name;this.v=[];}
-Sheet.prototype.getRange=function(r,c,nr,nc){const sh=this;if(typeof r==="string")return{setNumberFormat(){}};return{setValues(vals){for(let i=0;i<vals.length;i++){while(sh.v.length<r+i)sh.v.push([]);sh.v[r-1+i]=vals[i].slice();}return this},setFontWeight(){return this},clearContent(){for(let i=0;i<nr;i++)sh.v[r-1+i]=[];}}};
+Sheet.prototype.getRange=function(r,c,nr,nc){const sh=this;if(typeof r==="string")return{setNumberFormat(){}};return{getValues(){const out=[];for(let i=0;i<(nr||1);i++){const row=(sh.v[r-1+i]||[]).slice(c-1);while(row.length<(nc||1))row.push("");out.push(row.slice(0,nc||1));}return out},setValues(vals){for(let i=0;i<vals.length;i++){while(sh.v.length<r+i)sh.v.push([]);sh.v[r-1+i]=vals[i].slice();}return this},setFontWeight(){return this},clearContent(){for(let i=0;i<nr;i++)sh.v[r-1+i]=[];}}};
 Sheet.prototype.getDataRange=function(){const sh=this;return{getValues(){return sh.v.filter((row,i)=>i===0||row.some(x=>x!==""&&x!=null)).map(r=>r.slice());}}};
 Sheet.prototype.appendRow=function(a){this.v=this.v.filter((row,i)=>i===0||row.some(x=>x!==""&&x!=null));this.v.push(a.slice());};Sheet.prototype.setFrozenRows=function(){};Sheet.prototype.getLastRow=function(){return this.v.length;};
 const SS={sheets:{},getSheetByName(n){return this.sheets[n]||null},insertSheet(n){return this.sheets[n]=new Sheet(n)},getSheets(){return Object.values(this.sheets)},deleteSheet(){},getId(){return "SSID"},getUrl(){return "u"}};
-const props={},cache={};let fetches=0;
+const props={},cache={},DRIVE=[];let fetches=0;
 const STAFF={"Mukesh Verma":["9999","admin"],"Gautam":["1111","accounts"],"Jaiprakash":["2222","godown"],"Vivek":["3333","sales"]};
 const ctx={JSON,Math,Date,String,Number,Array,Object,Error,
  SpreadsheetApp:{create(){return SS},openById(){return SS}},
@@ -14,7 +14,7 @@ const ctx={JSON,Math,Date,String,Number,Array,Object,Error,
  LockService:{getScriptLock(){return{waitLock(){},releaseLock(){}}}},
  Utilities:{DigestAlgorithm:{SHA_256:1},Charset:{UTF_8:1},computeDigest(a,s){return [...crypto.createHash('sha256').update(s).digest()].map(b=>b>127?b-256:b)},
    base64Decode(s){return [...Buffer.from(s,'base64')]},base64EncodeWebSafe(a){return Buffer.from(a.map(b=>(b+256)%256)).toString('base64url')},newBlob(b,t,n){return{b,t,n}},formatDate(){return "x"}},
- DriveApp:{getFoldersByName(){return{hasNext(){return false}}},createFolder(){return{createFile(){return{setDescription(){},getUrl(){return "u"}}}}}},
+ DriveApp:{Access:{ANYONE_WITH_LINK:1},Permission:{VIEW:1},getFoldersByName(){return{hasNext(){return false}}},createFolder(){return{createFile(bl){DRIVE.push(bl);return{setDescription(){},setSharing(){},getId(){return "FILE"+DRIVE.length},getUrl(){return "u"}}}}}},
  UrlFetchApp:{fetch(url,o){fetches++;const p=JSON.parse(o.payload);const s=STAFF[p.user];const ok=s&&(p.pin===s[0]||p.tok==="tok-"+p.user);return{getContentText(){return JSON.stringify(ok?{ok:true,user:{name:p.user,role:s[1]}}:{ok:false})}}}},
  ContentService:{MimeType:{JSON:1},createTextOutput(s){return{s,setMimeType(){return this}}}},
  coCrmStaff_(b){const s=STAFF[b.crmUser];return s&&b.crmPin===s[0]?{ok:true,name:b.crmUser}:{ok:false}},
@@ -32,7 +32,7 @@ ok("a wrong PIN is refused", call({action:"tkLogin",user:"Vivek",pin:"0000"}).ok
 const as=(u,extra)=>Object.assign({action:"tkStaff",tkTok:TOK[u]},extra);
 const own={action:"tkAdmin",crmUser:"Mukesh Verma",crmPin:"9999"};
 ok("not ours: another action is left to the Companion", call({action:"login"})===null && call({action:"bxPing"})===null);
-ok("ping", call({action:"tkPing"}).v==="TK2");
+ok("ping", call({action:"tkPing"}).v==="TK3");
 ok("a made-up token is signed out", call({action:"tkStaff",tkTok:"x".repeat(40),op:"book"}).out===1);
 ok("a CRM name + token passed on is not a sign-in here any more", call({action:"tkStaff",crmUser:"Vivek",crmTok:"tok-Vivek",op:"book"}).out===1);
 ok("godown cannot add to the tool list", call(as("Jaiprakash",{op:"toolAdd",name:"Punching machine"})).ok===false);
@@ -75,4 +75,28 @@ ok("after the sign-in the CRM is not asked again", fetches===f0);
 Object.keys(cache).forEach(k=>delete cache[k]);
 ok("a man left off the CRM's team list is signed out (Jaiprakash is not in the list sent)", call(as("Jaiprakash",{op:"book"})).out===1);
 ok("sign out kills the token", call({action:"tkLogout",tkTok:TOK.Vivek}).ok&&(Object.keys(cache).forEach(k=>delete cache[k]),call(as("Vivek",{op:"book"})).out===1));
+/* ---- TK3: the extras ---- */
+SS.sheets.TK_Events.v[0]=SS.sheets.TK_Events.v[0].slice(0,18);SS.sheets.TK_Tools.v[0]=SS.sheets.TK_Tools.v[0].slice(0,19);Object.keys(cache).forEach(k=>delete cache[k]);
+r=call(as("Gautam",{op:"toolAdd",name:"Drill machine",count:1,inGodown:1,dueDays:15}));
+ok("TK3: a tab made before TK3 gets the new column names on its header row", SS.sheets.TK_Events.v[0].slice(-2).join()==="photo,recVia"&&SS.sheets.TK_Tools.v[0].slice(-1)[0]==="dueDays");
+ok("TK3: a tool carries its return-within days", r.ok&&r.tools[0].dueDays===15);
+const E=r.tools[0];
+ok("TK3: edit caps it at a year, and 0 means the usual", call(as("Gautam",{op:"toolEdit",tid:E.tid,name:"Drill machine",dueDays:900})).tool.dueDays===365&&call(as("Gautam",{op:"toolEdit",tid:E.tid,name:"Drill machine",dueDays:0})).tool.dueDays===0);
+ok("TK3: edit without the field leaves it", (call(as("Gautam",{op:"toolEdit",tid:E.tid,name:"Drill machine",dueDays:20})),call(as("Gautam",{op:"toolEdit",tid:E.tid,name:"Drill machine 2"})).tool.dueDays===20));
+call(as("Mukesh Verma",{op:"move",tids:[E.tid],tType:"partner",tName:"Ramesh Plumber",tRef:"AS-7",tSite:"Green Valley Villa"}));
+ok("TK3: a photo that is not an image is refused", call(as("Mukesh Verma",{op:"event",tid:E.tid,kind:"Damaged",note:"chuck broken",photo:"data:text/html;base64,PGI+"})).ok===false);
+const JPG="data:image/jpeg;base64,"+Buffer.from([255,216,255,224,1,2,3]).toString("base64");
+r=call(as("Mukesh Verma",{op:"event",tid:E.tid,code:E.code,kind:"Damaged",note:"chuck broken",amount:1200,photo:JPG}));
+ok("TK3: damage with a photo: the photo is in Drive and its id on the line", r.ok&&/^FILE\d+$/.test(r.event.photo)&&DRIVE.length===1&&DRIVE[0].t==="image/jpeg"&&String(DRIVE[0].n).startsWith(E.code));
+const eid2=r.event.eid;
+ok("TK3: ...and the photo's data is not written to the sheet", !JSON.stringify(SS.sheets.TK_Events.v).includes("base64"));
+r=call(as("Gautam",{op:"event",tid:E.tid,kind:"Lost",note:"left at site",amount:300,who:"Ramesh Plumber",whoRef:"AS-7"}));
+const eid3=r.event.eid;
+ok("TK3: a photo added afterwards to a line without one", call(as("Gautam",{op:"photo",eid:eid3,photo:JPG})).event.photo.startsWith("FILE"));
+ok("TK3: ...but not twice", call(as("Gautam",{op:"photo",eid:eid3,photo:JPG})).ok===false);
+r=call(as("Gautam",{op:"book"}));
+ok("TK3: the book carries every amount not yet recovered", r.dues.length===2&&r.dues.every(x=>x.whoRef==="AS-7")&&r.dues.map(x=>x.amount).sort().join()==="1200,300");
+ok("TK3: accounts cannot waive, the owner can", call(as("Gautam",{op:"recover",eid:eid3,via:"waived"})).ok===false&&call(as("Mukesh Verma",{op:"recover",eid:eid3,via:"waived"})).recVia==="waived");
+ok("TK3: recovered in cash says so; neither is still due", call(as("Gautam",{op:"recover",eid:eid2,via:"cash"})).recVia==="cash"&&call(as("Gautam",{op:"book"})).dues.length===0);
+ok("TK3: undo puts it back as due", call(as("Gautam",{op:"recover",eid:eid2,undo:1})).recovered===""&&call(as("Gautam",{op:"book"})).dues.length===1);
 console.log(`\n${pass} passed, ${fail} failed`);process.exit(fail?1:0);

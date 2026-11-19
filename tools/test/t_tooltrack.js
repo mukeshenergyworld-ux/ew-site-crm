@@ -6,7 +6,7 @@ H.ok("Tool app 1.1.0: signs in on the tool server with the CRM name + PIN, and k
 H.ok("Tool app: the name signed in to another Energy World app on the phone is filled in", /ew_team_session/.test(t) && /ew_challan_session/.test(t) && /function sibName\(\)/.test(t));
 H.ok("Tool app: a holder is picked from the list, never typed", /Pick the name from the list/.test(t) && /data-act="pk"/.test(t) && /Pick the site from the list, or leave it blank/.test(t));
 H.ok("Tool app: several tools can go in one hand-over", /Select several/.test(t) && /tids: m\.tids/.test(t));
-H.ok("Tool app: damage carries the site, the man and the amount to recover", /At which site/.test(t) && /By whom \/ who was holding it/.test(t) && /Amount to recover/.test(t) && /Mark recovered/.test(t));
+H.ok("Tool app: damage carries the site, the man and the amount to recover", /At which site/.test(t) && /By whom \/ who was holding it/.test(t) && /Amount to recover/.test(t) && /Recovered in cash/.test(t));
 H.ok("Tool app: only the owner and accounts see the Tool list tab", /concat\(boss\(\) \? \[\["list", "Tool list"\]\] : \[\]\)/.test(t));
 H.ok("Tool app: a sticker's link opens its tool later (?t=EWT-001)", /\[\?&\]t=/.test(t));
 H.ok("Tool app: the version is at the top", /v' \+ APP_VERSION \+ \(S\.busy/.test(t));
