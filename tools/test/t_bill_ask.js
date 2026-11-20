@@ -1,8 +1,10 @@
 /* 6.9.1003 - Send for billing, with remarks: lifts the real billAskMap / billAskOf / billAskBox / modalBillAsk. */
 var H = require("./harness.js");
 var ctx = { S: { data: { challans: [{ id: "C1", challanNo: "14/11/2026/408", customerName: "Sanjay Ji", billNo: "" }, { id: "C2", challanNo: "X", customerName: "Y", billNo: "323" }], audit: [] } },
-  esc: function (s) { return String(s == null ? "" : s); }, dmy: function (s) { return s; }, money: function (n) { return "Rs " + n; }, chValue: function () { return 1000; } };
-var F = H.lift("team", ["billAskMap", "billAskOf", "billAskBox", "modalBillAsk"], ctx);
+  esc: function (s) { return String(s == null ? "" : s); }, dmy: function (s) { return s; }, money: function (n) { return "Rs " + n; }, chValue: function () { return 1000; },
+  /* 6.9.1052 - the sheet now carries the name picker and the fetched delivery */
+  billProfiles: function () { return []; }, billVehSrc: function () { return { v: "", from: "" }; }, billVehNeed: function () { return true; } };
+var F = H.lift("team", ["billAskMap", "billAskOf", "billAskBox", "billPick", "billAskDrv", "billAskDrvLine", "modalBillAsk"], ctx);
 var c1 = ctx.S.data.challans[0], c2 = ctx.S.data.challans[1];
 H.ok("nothing sent: nothing shown", !F.billAskOf(c1));
 ctx.S.data.audit.push({ action: "bill:ask", target: "C1", actor: "Mukesh", createdAt: "2026-11-16T05:00:00Z", detail: JSON.stringify({ on: 1, note: "Bill to Maa Collection, GSTIN 06ABC" }) });
