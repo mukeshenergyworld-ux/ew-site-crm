@@ -455,7 +455,10 @@
 /* ==EWCORE:drivers:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.1049";   /* 6.9.1049 (20 Nov 2026) - HIS WORDS: "after receipt of 2 lac again its showing same amt in receipt pdf, it must show balance amt
+  var APP_VERSION = "6.9.1050";   /* 6.9.1050 (20 Nov 2026) - ALSO: a new lead asks the MOBILE FIRST and shows, as it is typed, who already has it - name, entered by which executive, when - across clients, sites, partners and staff (his words: "first we have to enter mobile no, if its duplicate it will show its already registered with such name and by this executive"). HIS WORDS (the Non-moving stock list): "this is also to be shown as table like format, with item pic,
+     colorful". The list is now a table: picture (tap to open the product), product and code, the brand in its own colour, on hand, rate, the value with a bar
+     against the biggest, and how long it has sat (never out = red). Same rows, same order, same Excel. */
+  /* before: */   /* 6.9.1049 (20 Nov 2026) - HIS WORDS: "after receipt of 2 lac again its showing same amt in receipt pdf, it must show balance amt
      after receipt". MEASURED on Pawan Narang's receipt RC-261120-262668 (Rs 2,00,000, 20 Nov): the account block read "Received in all 2,66,151 /
      Balance 2,66,596" - his account BEFORE this payment. The receipt is made the moment the payment is saved, from a ledger worked out (and kept)
      before the new row was in it. Now receiptAccount() counts this receipt's own payment once, whatever the ledger held: received 4,59,000,
@@ -4067,6 +4070,13 @@ window.addEventListener("beforeunload", function (ev) {
     var t = ev && ev.target;
     if (!t || !t.classList || !(t.classList.contains("so-pc") || t.classList.contains("so-bx"))) return;
     stkOrdTyping(t);
+  });
+  /* 6.9.1050 - the new lead's mobile is checked as it is typed */
+  document.addEventListener("input", function (ev) {
+    var t = ev && ev.target;
+    if (!t || t.id !== "c_mob") return;
+    var b = el("c_mobchk"); if (!b) return;
+    b.innerHTML = mobChkHtml(t.value, "");
   });
   /* 6.9.1030 - the brand executive's site search */
   document.addEventListener("input", function (ev) {
@@ -21463,6 +21473,41 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     } catch (e) { }
   }
 
+  /* 6.9.1050 - who already has this mobile: every client, site, partner and staff member, with who entered it and when */
+  function mobHits(m, exceptName) {
+    m = String(m || "").replace(/\D/g, ""); if (m.length > 10) m = m.slice(-10);
+    if (m.length !== 10) return [];
+    var k = function (x) { var d = String(x || "").replace(/\D/g, ""); return d.length > 10 ? d.slice(-10) : d; };
+    var ex = String(exceptName || "").trim().toLowerCase(), out = [];
+    (S.data.clients || []).forEach(function (c) {
+      if (!c || (k(c.mobile) !== m && k(c.mobile2) !== m) || (ex && String(c.name || "").trim().toLowerCase() === ex) || isCancelled("clients", c.id)) return;
+      out.push({ kind: "client", what: c.name, code: c.code || "", by: c.ownedBy || c.createdBy || "", at: c.createdAt || "", stage: c.stage || "" });
+    });
+    (S.data.sites || []).forEach(function (st) {
+      if (!st || k(st.mobile) !== m || (ex && String(st.client || "").trim().toLowerCase() === ex) || isCancelled("sites", st.id)) return;
+      out.push({ kind: "site", what: st.name || st.client || "", client: st.client || "", by: st.createdBy || "", at: st.createdAt || "", stage: st.stage || "" });
+    });
+    (S.data.associates || []).forEach(function (a) { if (a && (k(a.mobile) === m || k(a.mobile2) === m)) out.push({ kind: "partner", what: a.name, code: a.code || "", role: a.role || "" }); });
+    (S.data.team || S.data.users || []).forEach(function (u) { if (u && (k(u.mobile) === m || k(u.phone) === m)) out.push({ kind: "staff", what: u.name, role: u.role || "" }); });
+    return out;
+  }
+  function mobChkHtml(m, exceptName) {
+    var d = String(m || "").replace(/\D/g, "");
+    if (d.length < 10) return d ? '<div class="sub" style="font-size:12px">' + d.length + ' of 10 digits</div>' : '';
+    var L = mobHits(d, exceptName);
+    if (!L.length) return '<div style="font-size:13px;color:#047857;padding:6px 0">&#10003; New mobile - not on the book.</div>';
+    var bad = L.filter(function (x) { return x.kind === "partner" || x.kind === "staff"; });
+    var rec = L.filter(function (x) { return x.kind === "client" || x.kind === "site"; });
+    var h = '';
+    if (bad.length) h += '<div class="card" style="border-color:#fca5a5;background:#fef2f2;font-size:13px"><b>Not a client\u2019s number.</b>' + bad.slice(0, 3).map(function (x) {
+      return '<div>It belongs to ' + (x.kind === "staff" ? 'our staff member' : 'partner') + ' <b>' + esc((x.code ? x.code + " " : "") + x.what) + '</b>' + (x.role ? ' (' + esc(x.role) + ')' : '') + '.</div>'; }).join("") +
+      '<div>Ask for the owner\u2019s own mobile.</div></div>';
+    if (rec.length) h += '<div class="card" style="border-color:#fcd34d;background:#fffbeb;font-size:13px"><b>Already registered</b>' + rec.slice(0, 5).map(function (x) {
+      return '<div style="padding:4px 0;border-top:1px solid #fde68a">' + (x.kind === "site" ? 'Site ' : 'Client ') + '<b>' + esc((x.code ? x.code + " " : "") + x.what) + '</b>' + (x.client && x.client !== x.what ? ' (' + esc(x.client) + ')' : '') +
+        ' &mdash; by <b>' + esc(x.by || "-") + '</b>' + (x.at ? ' on ' + esc(dmy(x.at)) : '') + (x.stage ? ' &middot; ' + esc(x.stage) : '') + '</div>'; }).join("") +
+      '<div class="sub" style="font-size:12px">Same person, another site? Saving is allowed - the owner is told.</div></div>';
+    return h;
+  }
   function modalClient(c) {
     c = c || {};
     /* v6.9.294 - only a NEW record carries the tick list, so only a new record needs the state.
@@ -21482,6 +21527,10 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       '<p class="sub">Enter a new lead — or an old client. Partners named here flow into every quote, challan and incentive. Mark his brands on the board afterwards.</p>' +
       /* v6.9.213 - first question on the form, and the only one in colour. */
       ownerBanner("c_owner", c.ownedBy || c.createdBy, !c.id) +
+      /* 6.9.1050 - HIS WORDS (20 Nov): "first we have to enter mobile no, if its duplicate it will show its already registered with such name
+         and by this executive". A NEW lead asks the mobile first and checks it, as it is typed, against every client, site, partner and staff member. */
+      (c.id ? '' : '<label>Mobile &mdash; first</label><input id="c_mob" inputmode="numeric" autocomplete="off" placeholder="10 digits - checked against the whole book" value="' + esc(c.mobile || "") + '"/>' +
+        '<div id="c_mobchk">' + mobChkHtml(c.mobile, "") + '</div>') +
       '<label>Client name</label><input id="c_name" data-ta="client"' + (c.id ? '' : ' data-ta-new="1"') + ' autocomplete="off" value="' + esc(c.name) + '"/>' +   /* 6.9.685 */
       /* v6.9.186: DISTRICT and AREA are one answer, so they are asked as one row, directly
          under the name. They used to be five fields apart - District (labelled "Location", a
@@ -21513,7 +21562,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
          with no stage is a lead nobody can sell to. Answering it also creates the site record,
          so the pitch board has something to work with from day one. */
       stageChips("c_stage", c.stage || clientStage(c.name), "Construction stage of his site") +
-      '<div class="grid2"><div><label>Mobile</label><input id="c_mob" inputmode="numeric" value="' + esc(c.mobile) + '"/></div>' +
+      '<div class="grid2">' + (c.id ? '<div><label>Mobile</label><input id="c_mob" inputmode="numeric" value="' + esc(c.mobile) + '"/></div>' : '') +
       '<div><label>Alternate mobile</label><input id="c_mob2" inputmode="numeric" value="' + esc(c.mobile2 || "") + '"/></div></div>' +
       /* v6.9.549 - his consent, asked once and kept. Template messages from the business number
          (reminder with the ledger, a quotation) go only to a client who has agreed. */
@@ -63316,11 +63365,44 @@ function viewCatalogue() {
       (d.list.length ? '<button class="btn sm ghost" style="min-height:44px" data-act="stk-dead-xlsx">&#8681; Excel</button>' : '') + '</div>' +
       '<div class="meta" style="font-size:12.5px;margin-top:3px">Counted, in stock, and nothing went out on a challan in the last <b>' + d.days + ' days</b>' + (d.days < 180 ? ' (that is all the challan history there is yet; the full test is 180 days)' : '') + '. Value = on hand × purchase rate, or the price-list rate where no purchase rate is set. Do not reorder these: offer them to plumbers, return them to the supplier, or put them in a site order.</div></div>';
     if (!d.list.length) return h + '<div class="empty">Nothing counted is sitting still.</div>';
-    return h + '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px">' + d.list.slice(0, 200).map(function (x, i) {
-      return '<div class="acts" style="align-items:center;flex-wrap:nowrap;gap:8px;margin:0;padding:8px 10px' + (i ? ';border-top:1px solid #eef2f7' : '') + '"><div class="grow" style="min-width:0">' +
-        '<div style="font-weight:700">' + esc(x.desc) + '</div><div style="font-size:12px;color:#64748b">' + esc([x.code, x.brand].filter(Boolean).join(" · ")) + ' · ' + (x.last ? 'last out ' + esc(dmy(x.last)) : 'never out on a challan') + '</div></div>' +
-        '<div style="text-align:right;white-space:nowrap"><div style="font-weight:800">' + money(x.value) + '</div><div style="font-size:12px;color:#64748b">' + esc(stkQ(x.onhand, x.code)) + '</div></div></div>';
-    }).join("") + '</div>';
+    return h + stkDeadTable(d.list.slice(0, 200), ctx);
+  }
+  /* 6.9.1050 - the non-moving list as a table, with the product's picture and colour */
+  var DEAD_PAL = [["#0F766E", "#CCFBF1"], ["#1D4ED8", "#DBEAFE"], ["#9F1239", "#FFE4E6"], ["#6D28D9", "#EDE9FE"], ["#B45309", "#FEF3C7"], ["#0E7490", "#CFFAFE"], ["#BE185D", "#FCE7F3"], ["#15803D", "#DCFCE7"], ["#C2410C", "#FFEDD5"], ["#334155", "#E2E8F0"]];
+  function deadBrandPill(b) {
+    if (!b) return '<span style="color:#94a3b8">\u2014</span>';
+    var hsh = 0; String(b).toLowerCase().split("").forEach(function (ch) { hsh = (hsh * 31 + ch.charCodeAt(0)) % 9973; });
+    var c = DEAD_PAL[hsh % DEAD_PAL.length];
+    return '<span style="display:inline-block;font-size:12px;font-weight:800;color:' + c[0] + ';background:' + c[1] + ';border-radius:999px;padding:2px 9px;white-space:nowrap">' + esc(b) + '</span>';
+  }
+  function deadAgePill(last) {
+    if (!last) return '<span style="display:inline-block;font-size:12px;font-weight:800;color:#fff;background:#DC2626;border-radius:999px;padding:2px 9px;white-space:nowrap">Never out</span>';
+    var n = Math.max(0, -daysTo(last)), c = n > 180 ? ["#B91C1C", "#FEE2E2"] : n > 90 ? ["#B45309", "#FEF3C7"] : ["#0F766E", "#CCFBF1"];
+    return '<span style="display:inline-block;font-size:12px;font-weight:800;color:' + c[0] + ';background:' + c[1] + ';border-radius:999px;padding:2px 9px;white-space:nowrap">' + n + ' days</span>' +
+      '<div style="font-size:11.5px;color:#64748b;margin-top:2px">' + esc(dmy(last)) + '</div>';
+  }
+  function stkDeadTable(list, ctx) {
+    var max = list.reduce(function (a, x) { return Math.max(a, x.value); }, 0) || 1;
+    var TH = function (t, al) { return '<th style="padding:9px 8px;text-align:' + (al || 'left') + ';font-size:12px;letter-spacing:.05em;white-space:nowrap">' + t + '</th>'; };
+    return '<div style="overflow-x:auto;background:#fff;border:1px solid #e2e8f0;border-radius:12px"><table style="width:100%;border-collapse:collapse;font-size:13.5px;min-width:620px">' +
+      '<thead><tr style="background:linear-gradient(90deg,#92400E,#B45309);color:#fff">' + TH("#", "right") + TH("") + TH("PRODUCT") + TH("BRAND") + TH("ON HAND", "right") + TH("RATE", "right") + TH("VALUE", "right") + TH("SITTING") + '</tr></thead><tbody>' +
+      list.map(function (x, i) {
+        var p = (ctx && ctx.pmap && ctx.pmap[x.code]) || {}, pic = p.pic ? driveImg(p.pic, 120) : "";
+        var w = Math.max(4, Math.round(x.value / max * 100));
+        return '<tr style="border-top:1px solid #f1f5f9;background:' + (i % 2 ? '#FFFBF2' : '#fff') + '">' +
+          '<td style="padding:8px;text-align:right;color:#94a3b8;font-weight:700;font-size:12px">' + (i + 1) + '</td>' +
+          '<td style="padding:6px 4px">' + (pic
+            ? '<img src="' + esc(pic) + '" loading="lazy" alt="" data-act="pv-open" data-code="' + esc(x.code) + '" title="Open ' + esc(x.code) + '" style="width:52px;height:52px;object-fit:contain;border-radius:10px;background:#fff;border:1px solid #e2e8f0;cursor:pointer;display:block"/>'
+            : '<div data-act="pv-open" data-code="' + esc(x.code) + '" style="width:52px;height:52px;border-radius:10px;background:#F1F5F9;color:#94a3b8;font-size:11px;display:flex;align-items:center;justify-content:center;text-align:center;cursor:pointer">no picture</div>') + '</td>' +
+          '<td style="padding:8px;min-width:200px"><div style="font-weight:700;color:#0f172a;word-break:break-word">' + esc(x.desc) + '</div>' +
+            '<div style="font-size:12px;color:#0f766e;font-weight:700;cursor:pointer" data-act="pv-open" data-code="' + esc(x.code) + '">' + esc(x.code) + '</div></td>' +
+          '<td style="padding:8px">' + deadBrandPill(x.brand) + '</td>' +
+          '<td style="padding:8px;text-align:right;white-space:nowrap;font-weight:700">' + esc(stkQ(x.onhand, x.code)) + '</td>' +
+          '<td style="padding:8px;text-align:right;white-space:nowrap;color:#475569">' + money(x.rate) + '</td>' +
+          '<td style="padding:8px;text-align:right;white-space:nowrap;min-width:110px"><div style="font-weight:800;color:#92400E">' + money(x.value) + '</div>' +
+            '<div style="height:6px;border-radius:3px;background:#FEF3C7;margin-top:4px"><div style="height:6px;border-radius:3px;width:' + w + '%;background:linear-gradient(90deg,#F59E0B,#DC2626);margin-left:auto"></div></div></td>' +
+          '<td style="padding:8px">' + deadAgePill(x.last) + '</td></tr>';
+      }).join("") + '</tbody></table></div>';
   }
   function stkDeadXlsx() {
     var d = stkDead();
@@ -68936,6 +69018,13 @@ function viewCatalogue() {
         /* 6.9.736 - machines at his place: "yes" / "no" / "" (not asked) */
         inst: (function () { var q = document.querySelector('input[name="c_inst"]:checked'); return q ? q.value : (el("c_instq") ? "?" : ""); })()
       };
+      /* 6.9.1050 - a NEW lead whose mobile is already on the book: shown once; the second Save goes through and the owner is told (dup:mobile) */
+      if (!S.clEditing) {
+        var _mh = mobHits(f.mob, "");
+        if (_mh.length && S._mobOkFor !== String(f.mob)) { S._mobOkFor = String(f.mob); var _mc = el("c_mobchk"); if (_mc) { _mc.innerHTML = mobChkHtml(f.mob, ""); _mc.scrollIntoView({ block: "center" }); }
+          toast("This mobile is already on the book - see who has it. Press Save again if it is a different site."); return; }
+        if (_mh.length) { try { auditFact("dup:mobile", String(f.mob).replace(/\D/g, "").slice(-10), { mobile: String(f.mob).replace(/\D/g, "").slice(-10), kind: "client", what: cn || "", by: S.user || "", existing: _mh.slice(0, 5).map(function (x) { return { kind: x.kind, what: x.what, by: x.by || "", at: x.at || "" }; }) }); } catch (e) { } }
+      }
       if (f.inst === "?") { toast("Say whether any of our machines are already at his place — Yes or No."); var _iq = el("c_instq"); if (_iq) _iq.scrollIntoView({ block: "center" }); return; }
       /* Money owed from before the app means he is an OLD lead, whatever the dropdown says.
          Otherwise a migrated client quietly inflates next month's "new leads" figure. */
