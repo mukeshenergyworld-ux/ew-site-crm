@@ -455,7 +455,8 @@
 /* ==EWCORE:drivers:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.1050";   /* 6.9.1050 (20 Nov 2026) - ALSO: a new lead asks the MOBILE FIRST and shows, as it is typed, who already has it - name, entered by which executive, when - across clients, sites, partners and staff (his words: "first we have to enter mobile no, if its duplicate it will show its already registered with such name and by this executive"). HIS WORDS (the Non-moving stock list): "this is also to be shown as table like format, with item pic,
+  var APP_VERSION = "6.9.1051";   /* 6.9.1051 (20 Nov 2026) - HIS WORDS (on the Non-moving table): "arange them catagory / brand wise". The table is grouped - Brand (default) or Category, or one list - each group headed with its count and the money sitting in it, biggest first; inside a group the costliest first. Long descriptions are cut to 3 lines (the full text shows on hover and in the product view). */
+  /* before: */   /* 6.9.1050 (20 Nov 2026) - ALSO: a new lead asks the MOBILE FIRST and shows, as it is typed, who already has it - name, entered by which executive, when - across clients, sites, partners and staff (his words: "first we have to enter mobile no, if its duplicate it will show its already registered with such name and by this executive"). HIS WORDS (the Non-moving stock list): "this is also to be shown as table like format, with item pic,
      colorful". The list is now a table: picture (tap to open the product), product and code, the brand in its own colour, on hand, rate, the value with a bar
      against the biggest, and how long it has sat (never out = red). Same rows, same order, same Excel. */
   /* before: */   /* 6.9.1049 (20 Nov 2026) - HIS WORDS: "after receipt of 2 lac again its showing same amt in receipt pdf, it must show balance amt
@@ -63354,7 +63355,7 @@ function viewCatalogue() {
     Object.keys(ctx.pos).forEach(function (k) {
       var x = ctx.pos[k], p = ctx.pmap[k]; if (!p || !x.counted || !(x.onhand > 0) || ctx.fsn[k] !== "N") return;
       var r = rate[k] || Number(p.price) || 0, h = ctx.hist.by[k];
-      out.push({ code: k, desc: p.desc || k, brand: p.brand || "", onhand: x.onhand, rate: r, value: Math.round(x.onhand * r), last: h ? h.last : "" });
+      out.push({ code: k, desc: p.desc || k, brand: p.brand || "", cat: String(p.cat || "").trim(), onhand: x.onhand, rate: r, value: Math.round(x.onhand * r), last: h ? h.last : "" });
     });
     out.sort(function (a, b) { return b.value - a.value; });
     return { list: out, total: out.reduce(function (a, x) { return a + x.value; }, 0), days: ctx.nDays };
@@ -63365,7 +63366,10 @@ function viewCatalogue() {
       (d.list.length ? '<button class="btn sm ghost" style="min-height:44px" data-act="stk-dead-xlsx">&#8681; Excel</button>' : '') + '</div>' +
       '<div class="meta" style="font-size:12.5px;margin-top:3px">Counted, in stock, and nothing went out on a challan in the last <b>' + d.days + ' days</b>' + (d.days < 180 ? ' (that is all the challan history there is yet; the full test is 180 days)' : '') + '. Value = on hand × purchase rate, or the price-list rate where no purchase rate is set. Do not reorder these: offer them to plumbers, return them to the supplier, or put them in a site order.</div></div>';
     if (!d.list.length) return h + '<div class="empty">Nothing counted is sitting still.</div>';
-    return h + stkDeadTable(d.list.slice(0, 200), ctx);
+    var g = S.stkDeadGrp || "brand";   /* 6.9.1051 */
+    var seg = function (k, t) { return '<button class="btn sm' + (g === k ? '' : ' ghost') + '" style="min-height:44px" data-act="stk-dead-grp" data-k="' + k + '">' + t + '</button>'; };
+    return h + '<div class="acts" style="align-items:center;gap:6px;margin:8px 0"><span class="meta" style="font-size:12.5px">Arrange by</span>' + seg("brand", "Brand") + seg("cat", "Category") + seg("none", "Costliest first") + '</div>' +
+      stkDeadTable(d.list.slice(0, 300), ctx, g);
   }
   /* 6.9.1050 - the non-moving list as a table, with the product's picture and colour */
   var DEAD_PAL = [["#0F766E", "#CCFBF1"], ["#1D4ED8", "#DBEAFE"], ["#9F1239", "#FFE4E6"], ["#6D28D9", "#EDE9FE"], ["#B45309", "#FEF3C7"], ["#0E7490", "#CFFAFE"], ["#BE185D", "#FCE7F3"], ["#15803D", "#DCFCE7"], ["#C2410C", "#FFEDD5"], ["#334155", "#E2E8F0"]];
@@ -63381,35 +63385,59 @@ function viewCatalogue() {
     return '<span style="display:inline-block;font-size:12px;font-weight:800;color:' + c[0] + ';background:' + c[1] + ';border-radius:999px;padding:2px 9px;white-space:nowrap">' + n + ' days</span>' +
       '<div style="font-size:11.5px;color:#64748b;margin-top:2px">' + esc(dmy(last)) + '</div>';
   }
-  function stkDeadTable(list, ctx) {
+  /* 6.9.1051 - the groups, biggest money first; inside, costliest first */
+  function stkDeadGroups(list, g) {
+    if (g !== "brand" && g !== "cat") return [{ name: "", rows: list.slice().sort(function (a, b) { return b.value - a.value; }) }];
+    var m = {}, order = [];
+    list.forEach(function (x) {
+      var k = String((g === "brand" ? x.brand : x.cat) || "").trim() || (g === "brand" ? "No brand" : "No category");
+      if (!m[k]) { m[k] = { name: k, rows: [], value: 0 }; order.push(m[k]); }
+      m[k].rows.push(x); m[k].value += x.value;
+    });
+    order.forEach(function (o) { o.rows.sort(function (a, b) { return b.value - a.value; }); });
+    return order.sort(function (a, b) { return (b.value - a.value) || a.name.localeCompare(b.name); });
+  }
+  function stkDeadTable(list, ctx, g) {
     var max = list.reduce(function (a, x) { return Math.max(a, x.value); }, 0) || 1;
+    var groups = stkDeadGroups(list, g), all = list.reduce(function (a, x) { return a + x.value; }, 0) || 1, n = 0;
+    var col3 = g === "brand" ? "CATEGORY" : "BRAND";
     var TH = function (t, al) { return '<th style="padding:9px 8px;text-align:' + (al || 'left') + ';font-size:12px;letter-spacing:.05em;white-space:nowrap">' + t + '</th>'; };
     return '<div style="overflow-x:auto;background:#fff;border:1px solid #e2e8f0;border-radius:12px"><table style="width:100%;border-collapse:collapse;font-size:13.5px;min-width:620px">' +
-      '<thead><tr style="background:linear-gradient(90deg,#92400E,#B45309);color:#fff">' + TH("#", "right") + TH("") + TH("PRODUCT") + TH("BRAND") + TH("ON HAND", "right") + TH("RATE", "right") + TH("VALUE", "right") + TH("SITTING") + '</tr></thead><tbody>' +
-      list.map(function (x, i) {
+      '<thead><tr style="background:linear-gradient(90deg,#92400E,#B45309);color:#fff">' + TH("#", "right") + TH("") + TH("PRODUCT") + TH(col3) + TH("ON HAND", "right") + TH("RATE", "right") + TH("VALUE", "right") + TH("SITTING") + '</tr></thead><tbody>' +
+      groups.map(function (G) {
+        var head = G.name ? '<tr><td colspan="8" style="padding:10px 10px 8px;background:#FFF7ED;border-top:2px solid #FDBA74">' +
+          '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px">' + (g === "brand" ? deadBrandPill(G.name) : '<b style="font-size:14px;color:#7C2D12">' + esc(G.name) + '</b>') +
+          '<span style="font-size:12.5px;color:#475569">' + plural(G.rows.length, "product") + '</span>' +
+          '<span style="margin-left:auto;font-weight:800;color:#92400E">' + money(G.value) + '<span style="font-weight:600;color:#94a3b8;font-size:12px"> &middot; ' + Math.round(G.value / all * 100) + '%</span></span></div></td></tr>' : '';
+        return head + G.rows.map(function (x, i) {
+        n++;
         var p = (ctx && ctx.pmap && ctx.pmap[x.code]) || {}, pic = p.pic ? driveImg(p.pic, 120) : "";
         var w = Math.max(4, Math.round(x.value / max * 100));
         return '<tr style="border-top:1px solid #f1f5f9;background:' + (i % 2 ? '#FFFBF2' : '#fff') + '">' +
-          '<td style="padding:8px;text-align:right;color:#94a3b8;font-weight:700;font-size:12px">' + (i + 1) + '</td>' +
+          '<td style="padding:8px;text-align:right;color:#94a3b8;font-weight:700;font-size:12px">' + n + '</td>' +
           '<td style="padding:6px 4px">' + (pic
             ? '<img src="' + esc(pic) + '" loading="lazy" alt="" data-act="pv-open" data-code="' + esc(x.code) + '" title="Open ' + esc(x.code) + '" style="width:52px;height:52px;object-fit:contain;border-radius:10px;background:#fff;border:1px solid #e2e8f0;cursor:pointer;display:block"/>'
             : '<div data-act="pv-open" data-code="' + esc(x.code) + '" style="width:52px;height:52px;border-radius:10px;background:#F1F5F9;color:#94a3b8;font-size:11px;display:flex;align-items:center;justify-content:center;text-align:center;cursor:pointer">no picture</div>') + '</td>' +
-          '<td style="padding:8px;min-width:200px"><div style="font-weight:700;color:#0f172a;word-break:break-word">' + esc(x.desc) + '</div>' +
+          '<td style="padding:8px;min-width:200px"><div title="' + esc(x.desc) + '" style="font-weight:700;color:#0f172a;word-break:break-word;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden">' + esc(x.desc) + '</div>' +
             '<div style="font-size:12px;color:#0f766e;font-weight:700;cursor:pointer" data-act="pv-open" data-code="' + esc(x.code) + '">' + esc(x.code) + '</div></td>' +
-          '<td style="padding:8px">' + deadBrandPill(x.brand) + '</td>' +
+          '<td style="padding:8px">' + (g === "brand" ? (x.cat ? '<span style="font-size:12.5px;color:#475569;font-weight:600">' + esc(x.cat) + '</span>' : '<span style="color:#cbd5e1">&mdash;</span>') : deadBrandPill(x.brand)) + '</td>' +
           '<td style="padding:8px;text-align:right;white-space:nowrap;font-weight:700">' + esc(stkQ(x.onhand, x.code)) + '</td>' +
           '<td style="padding:8px;text-align:right;white-space:nowrap;color:#475569">' + money(x.rate) + '</td>' +
           '<td style="padding:8px;text-align:right;white-space:nowrap;min-width:110px"><div style="font-weight:800;color:#92400E">' + money(x.value) + '</div>' +
             '<div style="height:6px;border-radius:3px;background:#FEF3C7;margin-top:4px"><div style="height:6px;border-radius:3px;width:' + w + '%;background:linear-gradient(90deg,#F59E0B,#DC2626);margin-left:auto"></div></div></td>' +
           '<td style="padding:8px">' + deadAgePill(x.last) + '</td></tr>';
+      }).join("");
       }).join("") + '</tbody></table></div>';
   }
   function stkDeadXlsx() {
     var d = stkDead();
-    var out = [[{ v: "Energy World · Non-moving stock · " + fullDate(today()), s: XL.BOLD }], [], ["Code", "Product", "Brand", "On hand", "Rate", "Value", "Last out"].map(function (t) { return { v: t, s: XL.HEAD }; })];
-    d.list.forEach(function (x) { out.push([x.code, x.desc, x.brand, x.onhand, x.rate, x.value, x.last ? dmy(x.last) : "never"]); });
+    var out = [[{ v: "Energy World · Non-moving stock · " + fullDate(today()), s: XL.BOLD }], [], ["Code", "Product", "Brand", "Category", "On hand", "Rate", "Value", "Last out"].map(function (t) { return { v: t, s: XL.HEAD }; })];
+    stkDeadGroups(d.list, S.stkDeadGrp || "brand").forEach(function (G) {   /* 6.9.1051 - same order as the screen */
+      if (G.name) out.push([{ v: G.name + " - " + G.rows.length + " products", s: XL.BOLD }, "", "", "", "", "", { v: G.value, s: XL.BOLD }]);
+      G.rows.forEach(function (x) { out.push([x.code, x.desc, x.brand, x.cat || "", x.onhand, x.rate, x.value, x.last ? dmy(x.last) : "never"]); });
+    });
     out.push([]); out.push(["Counted, in stock, and nothing out on a challan in the last " + d.days + " days. Total " + d.total + "."]);
-    dlXlsx("Non_moving_" + today() + ".xlsx", "Non-moving", out, [14, 38, 16, 10, 10, 12, 12]);
+    dlXlsx("Non_moving_" + today() + ".xlsx", "Non-moving", out, [14, 38, 16, 16, 10, 10, 12, 12]);
   }
 
   /* ---- 6: today's count ---- */
@@ -67275,6 +67303,7 @@ function viewCatalogue() {
       return;
     }
     if (act === "stk-dead-xlsx") { stkDeadXlsx(); return; }
+    if (act === "stk-dead-grp") { S.stkDeadGrp = t.getAttribute("data-k") || "brand"; keepScroll = true; render(); return; }   /* 6.9.1051 */
     if (act === "stk-lv-xlsx") { stkLevelsXlsx(); return; }   /* 6.9.629 */
     /* 6.9.635 - the twice-weekly review */
     if (act === "rv-per") { S.rvPer = t.getAttribute("data-k") || "since"; S.rvMore = {}; keepScroll = true; render(); return; }
