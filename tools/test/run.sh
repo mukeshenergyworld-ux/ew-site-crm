@@ -34,6 +34,7 @@ node tools/test/t_visit_quote3.js || fail=1
 node tools/test/t_visit_month.js || fail=1
 node tools/test/t_mobile_first.js || fail=1
 node tools/test/t_crm_mob_first.js || fail=1
+node tools/test/t_dead_grouped.js || fail=1
 node tools/test/t_master_tag.js || fail=1
 node tools/test/t_bill_ask.js || fail=1
 node tools/test/t_bill_vehicle.js || fail=1
