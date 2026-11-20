@@ -27,7 +27,8 @@ H.ok("Visit: the plumber / architect lists say how many tools he has", /function
   var m = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "..", a, "manifest.webmanifest"), "utf8"));
   H.ok(a + ": its own icon, any + maskable", m.icons.length === 3 && m.icons[2].purpose === "maskable" && fs.existsSync(path.join(__dirname, "..", "..", a, "icon-maskable-512.png")));
 });
-H.ok("Apps page: a tile for every app", ["team", "challan", "collect", "visit", "service", "saathi", "brand", "tooltrack", "complaint", "console", "social"].every(function (a) { return fs.readFileSync(path.join(__dirname, "..", "..", "apps", "index.html"), "utf8").indexOf('["' + a + '",') >= 0; }));
+/* 20 Nov 2026 - the apps page finds the apps itself (a folder with a manifest is an app); every app folder has its manifest and its tile wording */
+H.ok("Apps page: every app folder carries a manifest, and the page knows its tile", ["team", "challan", "collect", "visit", "service", "saathi", "brand", "tooltrack", "complaint", "console", "social"].every(function (a) { var hub = fs.readFileSync(path.join(__dirname, "..", "..", "apps", "index.html"), "utf8"); return fs.existsSync(path.join(__dirname, "..", "..", a, "manifest.webmanifest")) && new RegExp("\\b" + a + ': \\["').test(hub); }));
 ["challan", "service", "collect", "visit"].forEach(function (a) {
   var t = fs.readFileSync(path.join(__dirname, "..", "..", a, "index.src.html"), "utf8");
   H.ok(a + ": Mark your attendance, saved only with the location taken now", />Mark your attendance<\/button>/.test(t) && /enableHighAccuracy: true, timeout: 15000, maximumAge: 0/.test(t) && /if \(!attGeoOk\(\)\) return;/.test(t) && /id="att_geo"/.test(t));

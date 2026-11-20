@@ -46,6 +46,7 @@ node tools/test/t_extra_disc.js || fail=1
 node tools/test/t_rates_before_card.js || fail=1
 node tools/test/t_collect_disc.js || fail=1
 node tools/test/t_club_v3.js || fail=1
+node tools/test/t_receipt_account.js || fail=1
 node tools/test/t_alias_once.js || fail=1
 node tools/test/t_items_supplied.js || fail=1
 node tools/test/t_challan_catalog.js || fail=1
