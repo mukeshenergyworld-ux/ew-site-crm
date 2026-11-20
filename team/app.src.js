@@ -455,7 +455,8 @@
 /* ==EWCORE:drivers:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.1051";   /* 6.9.1051 (20 Nov 2026) - HIS WORDS (on the Non-moving table): "arange them catagory / brand wise". The table is grouped - Brand (default) or Category, or one list - each group headed with its count and the money sitting in it, biggest first; inside a group the costliest first. Long descriptions are cut to 3 lines (the full text shows on hover and in the product view). */
+  var APP_VERSION = "6.9.1052";   /* 6.9.1052 (20 Nov 2026) - HIS WORDS: "Its not showing billing details as its saved with name of GC and Co, its also not fetching vechile details, we have to streamline send to billing process, its very imp and pending for long time". Send for billing was one empty box. Now it is three taps: the billing names this client was billed under (G.C. & Company - GSTIN ...) are buttons, the only one is already picked, + New name for another; the driver, his vehicle and the freight are fetched from the challan and shown; remarks are optional. Accounts gets all of it on the Billing desk, and the bill sheet opens with that name already picked. */
+  /* before: */   /* 6.9.1051 (20 Nov 2026) - HIS WORDS (on the Non-moving table): "arange them catagory / brand wise". The table is grouped - Brand (default) or Category, or one list - each group headed with its count and the money sitting in it, biggest first; inside a group the costliest first. Long descriptions are cut to 3 lines (the full text shows on hover and in the product view). */
   /* before: */   /* 6.9.1050 (20 Nov 2026) - ALSO: a new lead asks the MOBILE FIRST and shows, as it is typed, who already has it - name, entered by which executive, when - across clients, sites, partners and staff (his words: "first we have to enter mobile no, if its duplicate it will show its already registered with such name and by this executive"). HIS WORDS (the Non-moving stock list): "this is also to be shown as table like format, with item pic,
      colorful". The list is now a table: picture (tap to open the product), product and code, the brand in its own colour, on hand, rate, the value with a bar
      against the biggest, and how long it has sat (never out = red). Same rows, same order, same Excel. */
@@ -28475,7 +28476,7 @@ function viewCatalogue() {
       '<div id="b_vehbox" style="display:none;margin-top:6px"><label>Vehicle no</label><input id="b_veh" value="" style="min-height:44px;font-size:15px;text-transform:uppercase"/></div>', false);
   }
   function billFormHtml(c, nameOnly) {
-    var profs = billProfiles(c), cur = String(c.billTo || "");
+    var profs = billProfiles(c), cur = String(c.billTo || "") || (function () { try { var a = billAskOf(c); return a ? a.billTo : ""; } catch (e) { return ""; } })();   /* 6.9.1052 */
     var opt = function (p) { var v = p.gstin ? p.name + " - " + p.gstin : p.name; return '<option value="' + esc(v) + '"' + (v === cur ? ' selected' : '') + '>' + esc(p.name) + (p.gstin ? ' · GSTIN ' + esc(p.gstin) : ' · no GSTIN') + '</option>'; };
     var known = profs.some(function (p) { return (p.gstin ? p.name + " - " + p.gstin : p.name) === cur; });
     return '<div class="card" style="margin-top:10px;border-color:' + (c.billNo ? '#86efac' : '#fca5a5') + ';background:' + (c.billNo ? '#f0fdf4' : '#fef2f2') + ';padding:10px 12px">' +
@@ -28548,7 +28549,7 @@ function viewCatalogue() {
       var k = String(a.target || ""), at = String(a.createdAt || "");
       if (!k || (m[k] && m[k].at >= at)) return;
       var d = {}; try { d = JSON.parse(a.detail || "{}") || {}; } catch (e) { d = {}; }
-      m[k] = { on: Number(d.on) === 1, note: String(d.note || ""), at: at, by: String(a.actor || "") };
+      m[k] = { on: Number(d.on) === 1, note: String(d.note || ""), at: at, by: String(a.actor || ""), billTo: String(d.billTo || "") };   /* 6.9.1052 - billTo */
     });
     return m;
   }
@@ -28567,14 +28568,38 @@ function viewCatalogue() {
       esc(L.slice(0, 4).map(function (c) { return (c.challanNo || "") + " \u00b7 " + (c.customerName || ""); }).join("; ")) + (L.length > 4 ? ' and ' + (L.length - 4) + ' more' : '') + '</div></div>' +
       '<button class="btn sm" data-act="del-sub" data-s="bill" style="min-height:44px">Open the Billing desk</button></div>';
   }
+  /* 6.9.1052 - the driver, his vehicle and the freight, as the bill will carry them (billVehSrc: challan, register, his nearest challan) */
+  function billAskDrv(c) {
+    var dr = String((c && c.driver) || "").trim(), vs = billVehSrc(c), fr = Number(c && c.freight) || 0;
+    var need = true; try { need = billVehNeed(c); } catch (e) { }
+    return { driver: dr, vehicle: dr && need ? vs.v : "", from: vs.from, freight: fr, need: need };
+  }
+  function billAskDrvLine(c) {
+    var d = billAskDrv(c), frT = d.freight ? ' &middot; freight ' + money(d.freight) : '';
+    if (!d.driver) return '<div style="padding:9px 11px;border-radius:10px;border:1px solid #fcd34d;background:#fffbeb;font-size:13.5px">No driver on this challan' + frT + '. Accounts picks the driver while billing' + (d.freight ? ' &mdash; the freight goes to his hisab' : ' (or SELF if the client took it)') + '.</div>';
+    return '<div style="padding:9px 11px;border-radius:10px;border:1px solid #86efac;background:#f0fdf4;font-size:13.5px"><b>Driver:</b> ' + esc(d.driver) +
+      (d.vehicle ? ' &middot; <b>Vehicle:</b> <span style="letter-spacing:.5px">' + esc(d.vehicle) + '</span>' : (d.need ? ' &middot; <span style="color:#b91c1c">vehicle not known yet &mdash; accounts types it once</span>' : '')) + frT +
+      (d.vehicle && d.from ? '<div class="meta" style="font-size:12px">Fetched from ' + esc(d.from) + '.</div>' : '') + '</div>';
+  }
+  function billAskNote(billTo, c, rem) {
+    var d = billAskDrv(c), L = [];
+    if (billTo) L.push("Bill to: " + billTo);
+    L.push("Delivery: " + (d.driver ? d.driver + (d.vehicle ? " \u00b7 " + d.vehicle : "") : "no driver on the challan") + (d.freight ? " \u00b7 freight " + d.freight : ""));
+    if (rem) L.push(rem);
+    return L.join("\n").slice(0, 800);
+  }
   function modalBillAsk(id) {
     var c = (S.data.challans || []).filter(function (x) { return String(x.id) === String(id); })[0];
     if (!c) return '<h2>Not found</h2><div class="foot"><button class="btn" data-act="close">Close</button></div>';
     var x = billAskOf(c);
+    /* 6.9.1052 - the name is tapped, the delivery is fetched, the remarks are only what is left */
+    var rem = x ? String(x.note || "").split("\n").filter(function (l) { return !/^(Bill to|Delivery): /.test(l); }).join("\n") : "";
     return '<h2>Send for billing</h2><p class="sub">' + esc(c.challanNo || "") + ' &middot; ' + esc(c.customerName || "") + ' &middot; ' + money(chValue(c)) + '</p>' +
-      '<label for="ba_note">Billing details for accounts</label>' +
-      '<textarea id="ba_note" rows="5" style="width:100%;box-sizing:border-box;font-size:14px" placeholder="Bill in whose name, GSTIN, billing address, the PO number, anything accounts must know">' + esc(x ? x.note : "") + '</textarea>' +
-      '<div class="meta" style="font-size:12.5px;margin-top:4px">Accounts sees it on the Billing desk with these remarks, and it stays there until the bill number is entered.</div>' +
+      billPick(c, "ba", (x && x.billTo) || String(c.billTo || "")) +
+      '<label style="margin-top:10px">Delivery &mdash; from the challan</label>' + billAskDrvLine(c) +
+      '<label for="ba_note" style="margin-top:10px">Anything else for accounts <span class="meta" style="font-weight:400">(optional)</span></label>' +
+      '<textarea id="ba_note" rows="2" style="width:100%;box-sizing:border-box;font-size:14px" placeholder="PO number, a different billing address, split the bill...">' + esc(rem) + '</textarea>' +
+      '<div class="meta" style="font-size:12.5px;margin-top:4px">Accounts sees it on the Billing desk, with the bill sheet opening on this name, until the bill number is entered.</div>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
       (x ? '<button class="btn ghost" data-act="ba-off" data-id="' + esc(c.id) + '">Take it back</button>' : '') +
       '<button class="btn" data-act="ba-save" data-id="' + esc(c.id) + '">' + (x ? 'Save the remarks' : 'Send to accounts') + '</button></div>';
@@ -71348,9 +71373,20 @@ function viewCatalogue() {
       if (!canHisabRole()) { toast("The owner or accounts sends a challan for billing."); return; }
       var _bac = (S.data.challans || []).filter(function (x) { return String(x.id) === String(t.getAttribute("data-id")); })[0];
       if (!_bac) { toast("That challan is not on this device."); return; }
-      var _ban = act === "ba-off" ? "" : String(val("ba_note") || "").trim().slice(0, 600);
-      if (act === "ba-save" && _ban.length < 3) { toast("Write the billing details \u2014 whose name, GSTIN, address."); return; }
-      auditFact("bill:ask", String(_bac.id), { on: act === "ba-off" ? 0 : 1, note: _ban, challan: String(_bac.challanNo || ""), client: String(_bac.customerName || "") })
+      var _ban = "", _bto = "";
+      if (act === "ba-save") {   /* 6.9.1052 - a tapped billing name, the fetched delivery, optional remarks */
+        var _bsel = String(val("ba_to") || "");
+        if (_bsel === "__new") {
+          var _bnn = nmTitle(String(val("ba_newname") || "").trim()), _bng = String(val("ba_newgst") || "").trim().toUpperCase();
+          if (_bnn.length < 2) { toast("Type the new billing name."); return; }
+          if (_bng && !/^[0-9]{2}[A-Z0-9]{13}$/.test(_bng)) { toast("The GSTIN is 15 letters and numbers \u2014 or leave it empty."); return; }
+          _bto = _bng ? _bnn + " - " + _bng : _bnn;
+        } else _bto = _bsel;
+        if (!_bto) { toast("Tap the billing name, or + New billing name."); return; }
+        _ban = billAskNote(_bto, _bac, String(val("ba_note") || "").trim().slice(0, 500));
+      }
+      var _bdv = billAskDrv(_bac);
+      auditFact("bill:ask", String(_bac.id), { on: act === "ba-off" ? 0 : 1, note: _ban, billTo: _bto, driver: _bdv.driver, vehicle: _bdv.vehicle, challan: String(_bac.challanNo || ""), client: String(_bac.customerName || "") })
         .catch(function () { toast("Kept on this phone \u2014 it goes up with the next sync."); });
       S.modal = null; keepScroll = true; render();
       toast(act === "ba-off" ? "Taken back from accounts." : (_bac.challanNo || "The challan") + " sent to accounts for billing.");
