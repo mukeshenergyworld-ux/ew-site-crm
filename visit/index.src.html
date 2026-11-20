@@ -257,7 +257,8 @@ table.att td.ok,table.att td.no{font-size:16px}
       button: function () { return '<button type="button" class="ewthm" onclick="ewTheme.next(this)">' + ewtLabel() + '</button>'; }
     };
   })();
-  var APP_VERSION = "1.24.0";   /* 1.24.0 (18 Nov 2026) - "Mark your attendance", with the location taken now and shown before it is saved */   /* 1.23.0 (18 Nov 2026) - a partner holding Energy World tools says so in the plumber / architect pick lists; new app icon */   /* 1.22.0 (17 Nov 2026) - the menu opens the Tool Tracking app */   /* 1.21.0 (17 Nov 2026) - Follow-up tab: brand by brand, his clients - going on / won / lost, quotes given, and the brand executive on the site */   /* 1.20.0 (17 Nov 2026) - one tap Present with where the day is and the plan; a visit still counts; one mark shows in every app */   /* 1.19.1 (17 Nov 2026) - FIX: a quote stamped with a plain date threw "Can't find variable: d10" on the quote list; the version is in the header */   /* 1.19.0 (1.19.0 (16 Nov 2026) - a visit is logged straight from the site list (the stage starts at the last one); My day shows the month as a calendar, present = a visit marked; the 7-day grid uses the same rule; an executive has his own daily report */   /* 1.18.0 (1.18.0 (16 Nov 2026) - a quote in three steps: the discount sits at the top of the check instead of a screen of its own; and the app counts which buttons are tapped, sent weekly to the owner's Health screen */   /* 1.17.7 (1.17.7 (15 Nov 2026) - FIX: no family-rate fallback here, so a quote line reading "Huliot HT PRO" for a client given a Huliot rate was quoted at FULL MRP - 9 client-and-brand pairs on his own book */   /* 1.17.6 (1.17.6 (11 Nov 2026) - GHP+ logo in the registered Green Heat+ colours (#00539F / #ED1D24) on PDFs, quotes, challans and QR centres */   /* 1.17.5 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 1.17.4 (9 Nov 2026) - FIMA finish codes with their own finish photo */     /* 1.17.3 (9 Nov 2026) - a small finish-colour dot on FIMA product pictures */     /* 1.17.2 (9 Nov 2026) - FIMA handles S1-S4 in every finish and the S2 glass handles */     /* 1.17.1 (9 Nov 2026) - brand tiles on the quote line: real logos, compact, on one row with Pending / Won / Lost */     /* 1.17.0 (9 Nov 2026) - brand-wise Won / Lost on a quote line: tap a brand once = Won, twice = Lost, again = open */     /* 1.16.0 (9 Nov 2026) - FIMA in every finish: type F1301WLX9CS (or any of 14,260 finish codes) and it is on the quote at its own MRP */     /* 1.15.0 (9 Nov 2026) - incentive ready (clients paid) and waiting for payment, on the plan header */     /* 1.14.0 (9 Nov 2026) - ask the owner to approve a discount above the brand limit, right on the quote line */     /* 1.13.0 (9 Nov 2026) - target limit shown under each quote discount; plan updates list (slab reached, lines left out, returns, month closed, 20th reminder) */     /* 1.12.0 (9 Nov 2026) - the 2027 plan on top (counted sales, slab ladder, left-out lines, quarter) and daily reports: entered, missed, streak */   /* 1.11.0 (8 Nov 2026) - my month on top: sales, returns, target, incentive, what to dispatch */   /* 1.10.1 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */   /* 1.10.0 (4 Nov 2026) - quote as in the CRM: item-wise discount, option lines, item-wise rates without total, GST */   /* 1.9.1 (31 Oct 2026) - one tap, one entry */   /* 1.9.0 (29 Oct 2026) - Menu -> Online enquiries (FB, IG, Google, Justdial, IndiaMART ... from the OnlineEnquiries tab) */   /* 1.8.4 (27 Oct 2026) - GHp mark in the middle of every QR, level H */   /* 1.6.1 - Huliot Group introduction on quotes; 1.6.0 (17 Oct 2026) - a dropped POST never loses a quote; admin sees every executive; daily report; attendance grid */
+  var APP_VERSION = "1.25.0";   /* 1.25.0 (20 Nov 2026) - HIS WORDS: "rearrange our lead or client entry system that first we have to enter mobile no, if its duplicate it will show its already registered with such name and by this executive ... to avoid duplicate entry". New site and New client now open with the MOBILE alone; the rest of the form appears once it has 10 digits, after it has been checked against the whole book - every site, every client (not only his), every partner and every staff member. A hit names who has it, under what name, entered by whom and when, with the stage, and offers to open that record; a partner's or staff member's number is called out as the wrong number to file a client under. A genuinely different site of the same person can still be saved, and the office is told, as before. */
+  /* before: */   /* 1.24.0 (18 Nov 2026) - "Mark your attendance", with the location taken now and shown before it is saved */   /* 1.23.0 (18 Nov 2026) - a partner holding Energy World tools says so in the plumber / architect pick lists; new app icon */   /* 1.22.0 (17 Nov 2026) - the menu opens the Tool Tracking app */   /* 1.21.0 (17 Nov 2026) - Follow-up tab: brand by brand, his clients - going on / won / lost, quotes given, and the brand executive on the site */   /* 1.20.0 (17 Nov 2026) - one tap Present with where the day is and the plan; a visit still counts; one mark shows in every app */   /* 1.19.1 (17 Nov 2026) - FIX: a quote stamped with a plain date threw "Can't find variable: d10" on the quote list; the version is in the header */   /* 1.19.0 (1.19.0 (16 Nov 2026) - a visit is logged straight from the site list (the stage starts at the last one); My day shows the month as a calendar, present = a visit marked; the 7-day grid uses the same rule; an executive has his own daily report */   /* 1.18.0 (1.18.0 (16 Nov 2026) - a quote in three steps: the discount sits at the top of the check instead of a screen of its own; and the app counts which buttons are tapped, sent weekly to the owner's Health screen */   /* 1.17.7 (1.17.7 (15 Nov 2026) - FIX: no family-rate fallback here, so a quote line reading "Huliot HT PRO" for a client given a Huliot rate was quoted at FULL MRP - 9 client-and-brand pairs on his own book */   /* 1.17.6 (1.17.6 (11 Nov 2026) - GHP+ logo in the registered Green Heat+ colours (#00539F / #ED1D24) on PDFs, quotes, challans and QR centres */   /* 1.17.5 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 1.17.4 (9 Nov 2026) - FIMA finish codes with their own finish photo */     /* 1.17.3 (9 Nov 2026) - a small finish-colour dot on FIMA product pictures */     /* 1.17.2 (9 Nov 2026) - FIMA handles S1-S4 in every finish and the S2 glass handles */     /* 1.17.1 (9 Nov 2026) - brand tiles on the quote line: real logos, compact, on one row with Pending / Won / Lost */     /* 1.17.0 (9 Nov 2026) - brand-wise Won / Lost on a quote line: tap a brand once = Won, twice = Lost, again = open */     /* 1.16.0 (9 Nov 2026) - FIMA in every finish: type F1301WLX9CS (or any of 14,260 finish codes) and it is on the quote at its own MRP */     /* 1.15.0 (9 Nov 2026) - incentive ready (clients paid) and waiting for payment, on the plan header */     /* 1.14.0 (9 Nov 2026) - ask the owner to approve a discount above the brand limit, right on the quote line */     /* 1.13.0 (9 Nov 2026) - target limit shown under each quote discount; plan updates list (slab reached, lines left out, returns, month closed, 20th reminder) */     /* 1.12.0 (9 Nov 2026) - the 2027 plan on top (counted sales, slab ladder, left-out lines, quarter) and daily reports: entered, missed, streak */   /* 1.11.0 (8 Nov 2026) - my month on top: sales, returns, target, incentive, what to dispatch */   /* 1.10.1 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */   /* 1.10.0 (4 Nov 2026) - quote as in the CRM: item-wise discount, option lines, item-wise rates without total, GST */   /* 1.9.1 (31 Oct 2026) - one tap, one entry */   /* 1.9.0 (29 Oct 2026) - Menu -> Online enquiries (FB, IG, Google, Justdial, IndiaMART ... from the OnlineEnquiries tab) */   /* 1.8.4 (27 Oct 2026) - GHp mark in the middle of every QR, level H */   /* 1.6.1 - Huliot Group introduction on quotes; 1.6.0 (17 Oct 2026) - a dropped POST never loses a quote; admin sees every executive; daily report; attendance grid */
   /* 1.6.0 - ONLY THE SERVER'S OWN "NO" SIGNS A MAN OUT. The old test was /pin|locked|not allowed|blocked|removed/:
      any data error that happened to contain "not allowed" or "removed" (a refused row, a removed brand) signed the
      executive out and wiped his snapshot. These are the sign-in answers the server gives (teamAuth: "Wrong name or
@@ -2969,17 +2970,28 @@ table.att td.ok,table.att td.no{font-size:16px}
       (c.ownedBy && dkey(c.ownedBy) !== dkey(c.createdBy) ? ' &middot; his executive <b>' + esc(c.ownedBy) + '</b>' : '');
   }
   /* the same mobile anywhere on the book this phone can see: sites (everyone's) and clients (his) */
-  function dupByMobile(m) {
+  function dupByMobile(m) {   /* 1.25.0 - every site, every client, every partner and every staff member */
     if (!m || m.length !== 10) return [];
-    var out = [];
-    (S.data.sites || []).forEach(function (st) { if (mob10(st.mobile) === m) out.push({ kind: "site", id: st.id, what: st.name || st.client || "", client: st.client || "", by: siteOwner(st).by || st.createdBy || "", at: siteOwner(st).at || st.createdAt || "" }); });
-    (S.data.clients || []).forEach(function (c) { if (mob10(c.mobile) === m || mob10(c.mobile2) === m) out.push({ kind: "client", id: c.id, what: c.name, client: c.name, by: c.ownedBy || c.createdBy || "", at: c.createdAt || "" }); });
+    var out = [], hit = function (x) { return mob10(x.mobile) === m || mob10(x.mobile2) === m; };
+    (S.data.sites || []).forEach(function (st) { if (st && mob10(st.mobile) === m && !isCancelled("sites", st.id)) out.push({ kind: "site", id: st.id, what: st.name || st.client || "", client: st.client || "", by: siteOwner(st).by || st.createdBy || "", at: siteOwner(st).at || st.createdAt || "", stage: st.stage || "" }); });
+    (S.data.clients || []).forEach(function (c) { if (c && hit(c) && !isCancelled("clients", c.id)) out.push({ kind: "client", id: c.id, what: c.name, code: c.code || "", client: c.name, by: c.ownedBy || c.createdBy || "", at: c.createdAt || "", stage: c.stage || "" }); });
+    (S.data.associates || []).forEach(function (a) { if (a && hit(a)) out.push({ kind: "partner", id: a.id, what: a.name, code: a.code || "", role: a.role || "", by: a.createdBy || "", at: a.createdAt || "" }); });
+    (S.data.team || []).forEach(function (u) { if (u && hit(u)) out.push({ kind: "staff", what: u.name, role: u.role || "" }); });
     return out;
   }
-  function dupHtml(list) {
-    return '<div class="note warn"><b>This mobile is already on the book</b>' + list.slice(0, 5).map(function (x) {
-      return '<div style="margin-top:4px">' + (x.kind === "site" ? 'Site ' : 'Client ') + '<b>' + esc(x.what) + '</b>' + (x.client && x.client !== x.what ? ' (' + esc(x.client) + ')' : '') + ' &mdash; entered by <b>' + esc(x.by || "-") + '</b>' + (x.at ? ' on ' + esc(fd(x.at)) : '') + '</div>';
+  function dupHtml(list) {   /* 1.25.0 - who has it, under what name, entered by whom and when */
+    var bad = list.filter(function (x) { return x.kind === "partner" || x.kind === "staff"; });
+    var recs = list.filter(function (x) { return x.kind === "site" || x.kind === "client"; });
+    var h = '';
+    if (bad.length) h += '<div class="note warn" style="border-color:#fca5a5;background:#fef2f2"><b>This is not a client\u2019s number.</b>' + bad.slice(0, 3).map(function (x) {
+      return '<div style="margin-top:4px">It belongs to ' + (x.kind === "staff" ? 'our staff member' : 'partner') + ' <b>' + esc((x.code ? x.code + " " : "") + x.what) + '</b>' + (x.role ? ' (' + esc(x.role) + ')' : '') + '.</div>'; }).join("") +
+      '<div style="margin-top:4px">Ask for the owner\u2019s own mobile.</div></div>';
+    if (recs.length) h += '<div class="note warn"><b>Already registered</b>' + recs.slice(0, 5).map(function (x) {
+      return '<div style="margin-top:6px">' + (x.kind === "site" ? 'Site ' : 'Client ') + '<b>' + esc((x.code ? x.code + " " : "") + x.what) + '</b>' + (x.client && x.client !== x.what ? ' (' + esc(x.client) + ')' : '') +
+        ' &mdash; by <b>' + esc(x.by || "-") + '</b>' + (x.at ? ' on ' + esc(fd(x.at)) : '') + (x.stage ? ' &middot; ' + esc(x.stage) : '') +
+        (x.kind === "site" ? ' <button class="btn gry" style="min-height:40px;padding:4px 10px;margin-left:4px" data-act="site-open" data-id="' + esc(x.id) + '">Open</button>' : '') + '</div>';
     }).join("") + '</div>';
+    return h;
   }
   function dupLog(mobile, kind, what, list) {
     saveRow("audit", { id: "", createdAt: iso(), actor: S.user, action: "dup:mobile", target: mobile, detail: JSON.stringify({
@@ -3756,11 +3768,15 @@ table.att td.ok,table.att td.no{font-size:16px}
     var cl = myClients();
     /* 1.1.0 - HIS FIELDS (11 Oct): site address, client name, mobile (must), district and area (pick, else add new), stage (must),
        plumber and architect (pick, else add new) - two to a line, four to a line */
-    return '<h2>New site</h2><div class="meta">The site is yours. If the mobile is already on the book you are told who has it.</div>' +
+    var _m10 = mob10(N.mobile || "");
+    var _mobRow = '<label for="sn_mob">Client\u2019s mobile &mdash; first</label><input id="sn_mob" inputmode="numeric" value="' + esc(N.mobile || "") + '" placeholder="10 digits" autocomplete="off"/>' +
+      '<div id="sn_dup">' + (N.dupNote || '') + '</div>';
+    if (_m10.length !== 10) return '<h2>New site</h2><div class="meta">Start with the client\u2019s mobile. It is checked against the whole book &mdash; every site, client, partner and staff member &mdash; before anything else is typed.</div>' + _mobRow +
+      '<div class="acts"><button class="btn gry" data-act="close">Cancel</button></div>';
+    return '<h2>New site</h2><div class="meta">The site is yours.</div>' + _mobRow +
       '<label for="sn_name">Site address</label><input id="sn_name" value="' + esc(N.name || "") + '" placeholder="e.g. 96 R, Model Town"/>' +
       '<div class="g2"><div><label for="sn_client">Client name</label><input id="sn_client" list="sn_cl" value="' + esc(N.client || "") + '" placeholder="Owner"/>' + dl("sn_cl", cl.map(function (c) { return c.name; })) + '</div>' +
-      '<div><label for="sn_mob">Mobile</label><input id="sn_mob" inputmode="numeric" value="' + esc(N.mobile || "") + '" placeholder="10 digits - fills in the rest"/></div></div>' +
-      '<div id="sn_dup">' + (N.dupNote || '') + '</div>' +   /* 1.5.0 */
+      '<div></div></div>' +
       '<div class="g4"><div><label for="sn_dist">District</label><input id="sn_dist" list="sn_dists" value="' + esc(N.dist || "") + '" placeholder="Pick or add"/>' + dl("sn_dists", districts()) + '</div>' +
       '<div><label for="sn_city">Area</label><input id="sn_city" list="sn_cities" value="' + esc(N.city || "") + '" placeholder="Pick or add"/><span id="sn_cdl">' + dl("sn_cities", areasFor(N.dist)) + '</span></div>' +
       '<div><label for="sn_pl">Plumber</label><input id="sn_pl" list="sn_pls" value="' + esc(N.plumber || "") + '" placeholder="Pick or add"/>' + dl("sn_pls", partners("plumber").map(function (a) { return a.name; })) + '</div>' +
@@ -3820,9 +3836,12 @@ table.att td.ok,table.att td.no{font-size:16px}
   /* ================= CLIENT (for a quote) ================= */
   function clNewSheet() {
     var N = S.cn || (S.cn = {});
-    return '<h2>New client</h2><div class="meta">Needed to make a quote. He is yours; the office sees him in the CRM.</div>' +
-      '<div class="g2"><div><label for="cn_name">Client name</label><input id="cn_name" value="' + esc(N.name || "") + '"/></div>' +
-      '<div><label for="cn_mob">Mobile</label><input id="cn_mob" inputmode="numeric" value="' + esc(N.mobile || "") + '" placeholder="10 digits"/></div></div>' +
+    var _mobRow = '<label for="cn_mob">Client\u2019s mobile &mdash; first</label><input id="cn_mob" inputmode="numeric" value="' + esc(N.mobile || "") + '" placeholder="10 digits" autocomplete="off"/>' +
+      '<div id="cn_dup">' + (N.dupNote || '') + '</div>';   /* 1.25.0 - mobile first */
+    if (mob10(N.mobile || "").length !== 10) return '<h2>New client</h2><div class="meta">Start with his mobile. It is checked against the whole book &mdash; every client, site, partner and staff member &mdash; before anything else is typed.</div>' + _mobRow +
+      '<div class="acts"><button class="btn gry" data-act="close">Cancel</button></div>';
+    return '<h2>New client</h2><div class="meta">Needed to make a quote. He is yours; the office sees him in the CRM.</div>' + _mobRow +
+      '<label for="cn_name">Client name</label><input id="cn_name" value="' + esc(N.name || "") + '"/>' +
       '<label for="cn_addr">Address</label><input id="cn_addr" value="' + esc(N.addr || "") + '" placeholder="House / site address"/>' +
       '<div class="g4"><div><label for="cn_dist">District</label><input id="cn_dist" list="cn_dists" value="' + esc(N.dist || "") + '" placeholder="Pick or add"/>' + dl("cn_dists", districts()) + '</div>' +
       '<div><label for="cn_area">Area</label><input id="cn_area" list="cn_areas" value="' + esc(N.area || "") + '" placeholder="Pick or add"/><span id="cn_adl">' + dl("cn_areas", areasFor(N.dist)) + '</span></div>' +
@@ -3830,7 +3849,7 @@ table.att td.ok,table.att td.no{font-size:16px}
       '<div><label for="cn_ar">Architect</label><input id="cn_ar" list="cn_ars" value="' + esc(N.architect || "") + '" placeholder="Pick or add"/>' + dl("cn_ars", partners("architect").map(function (a) { return a.name; })) + '</div></div>' +
       '<div class="acts"><button class="btn gry" data-act="close">Cancel</button><button class="btn" data-act="cn-save">Save the client</button></div>';
   }
-  function cnKeep() { var N = S.cn || (S.cn = {}); if (el("cn_name")) { N.name = val("cn_name"); N.mobile = mob10(val("cn_mob")); N.addr = val("cn_addr"); N.dist = val("cn_dist"); N.area = val("cn_area"); N.plumber = val("cn_pl"); N.architect = val("cn_ar"); } return N; }
+  function cnKeep() { var N = S.cn || (S.cn = {}); if (el("cn_mob")) N.mobile = mob10(val("cn_mob")); if (el("cn_name")) { N.name = val("cn_name"); N.mobile = mob10(val("cn_mob")); N.addr = val("cn_addr"); N.dist = val("cn_dist"); N.area = val("cn_area"); N.plumber = val("cn_pl"); N.architect = val("cn_ar"); } return N; }
   function cnSave() {
     var N = cnKeep();
     N.name = nmTitle(N.name);   /* 1.8.2 */
@@ -4555,7 +4574,9 @@ table.att td.ok,table.att td.no{font-size:16px}
     if (act === "pv-save") { pvSave(k, t); return; }
     if (act === "vp-rm") { var _vl = vpList(k); _vl.splice(Number(id) || 0, 1); vpPaint(k); return; }   /* 1.5.0 */
     if (act === "near") { nearMe(t); return; }
-    if (act === "site-new") { S.sn = { client: S.q || "" }; S.sheet = siteNewSheet(); render(); return; }
+    if (act === "site-new") { var _q10 = mob10(S.q || ""); S.sn = _q10.length === 10 && /^[\s\d+-]+$/.test(S.q) ? { mobile: _q10 } : { client: S.q || "" };   /* 1.25.0 - a searched number becomes the mobile */
+      if (S.sn.mobile) { var _d0 = dupByMobile(_q10); S.sn.dupNote = _d0.length ? dupHtml(_d0) : '<div class="meta">New mobile - not on the book yet.</div>'; }
+      S.sheet = siteNewSheet(); render(); return; }
     if (act === "sn-save") { snSave(t); return; }
     if (act === "sn-back") { S.sheet = siteNewSheet(); render(); return; }
     if (act === "sn-dupok") { if (S.sn) S.sn.dupOk = true; S.sheet = siteNewSheet(); render(); snSave(null); return; }   /* 1.1.0 */
@@ -4664,6 +4685,21 @@ table.att td.ok,table.att td.no{font-size:16px}
         var _dd = dupByMobile(_sm);
         N0.dupNote = _dd.length ? dupHtml(_dd) : (_c ? '' : '<div class="meta">New mobile - not on the book yet.</div>');
         S.sheet = siteNewSheet(); render();
+        var _sf = el(_dd.length ? "sn_mob" : "sn_name"); if (_sf) try { _sf.focus(); } catch (e) { }   /* 1.25.0 */
+      }
+      return;
+    }
+    if (t.id === "cn_mob") {   /* 1.25.0 - mobile first: who has it, under what name, entered by whom */
+      var _cm = mob10(t.value);
+      if (_cm.length === 10) {
+        var N1 = cnKeep(), _dc = dupByMobile(_cm);
+        N1.dupNote = _dc.length ? dupHtml(_dc) + (function () { var c0 = _dc.filter(function (x) { return x.kind === "client"; })[0];
+          return c0 ? '<div class="acts" style="margin-top:6px"><button class="btn" data-act="qz-for" data-k="' + esc(c0.what) + '">Quote ' + esc(c0.what) + ' instead</button></div>' : ''; })()
+          : '<div class="meta">New mobile - not on the book yet.</div>';
+        var _sr1 = _dc.filter(function (x) { return x.kind === "site"; })[0];
+        if (_sr1 && !N1.name) N1.name = _sr1.client || "";
+        S.sheet = clNewSheet(); render();
+        var _cf = el(_dc.length ? "cn_mob" : "cn_name"); if (_cf) try { _cf.focus(); } catch (e) { }
       }
       return;
     }
