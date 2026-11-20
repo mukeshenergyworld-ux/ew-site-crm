@@ -455,7 +455,12 @@
 /* ==EWCORE:drivers:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.1048";   /* 6.9.1048 (19 Nov 2026) - HIS WORDS: "assume visa free". Almaty is listed as visa-free on an Indian passport; the "confirm at the embassy" warning is gone. */
+  var APP_VERSION = "6.9.1049";   /* 6.9.1049 (20 Nov 2026) - HIS WORDS: "after receipt of 2 lac again its showing same amt in receipt pdf, it must show balance amt
+     after receipt". MEASURED on Pawan Narang's receipt RC-261120-262668 (Rs 2,00,000, 20 Nov): the account block read "Received in all 2,66,151 /
+     Balance 2,66,596" - his account BEFORE this payment. The receipt is made the moment the payment is saved, from a ledger worked out (and kept)
+     before the new row was in it. Now receiptAccount() counts this receipt's own payment once, whatever the ledger held: received 4,59,000,
+     balance 66,596. And a DISCOUNT is no longer counted as money received on a receipt: his 7,151 "Extra Discount" (11 Oct) is its own line. */
+  /* before: */   /* 6.9.1048 (19 Nov 2026) - HIS WORDS: "assume visa free". Almaty is listed as visa-free on an Indian passport; the "confirm at the embassy" warning is gone. */
   /* before: */   /* 6.9.1047 (19 Nov 2026) - HIS WORD: "Oyster" - the brand that funds the Goa seat (Gold, 20%, Rs 10,660). */
   /* before: */   /* 6.9.1046 (19 Nov 2026) - HIS WORDS: "fima going to fund 50% only"; his answers: international trip only, keep the bars, we
      save. Platinum's international trip is now 50% Energy World (Rs 55,250) and 50% FIMA (Rs 55,250) instead of 80/20. The bar stays Rs 30 L, so a
@@ -2939,6 +2944,11 @@
        very next read serves the row as it was a second ago. */
     if (tab === "pitch") _pitchIdx = null;
     if (tab === "visits" || tab === "installs" || tab === "clients") _vmCache = null;   /* v6.9.402 */
+    /* 6.9.1049 - AND THE MONEY CACHES. The ledger (clientLedger) and the dues built on it were cached per paint and only
+       dropped by a pull or a few named screens - never by a save. So a payment saved here was in S.data, but the ledger
+       still answered from before it: Pawan Narang's receipt of Rs 2,00,000 (20 Nov) printed his balance as if it had not
+       been paid. Any row that moves money drops them; the next read works them out again from the book as it now is. */
+    if (/^(payments|challans|returns|discounts|clients|commpay|driverpay)$/.test(tab)) { try { bustCaches(); } catch (e) { } }
     if (tab === "clients" && _chgBefore) { try { incNoteChange(_chgBefore, row); } catch (e) { } }   /* 6.9.693 */
     /* Send the FULL merged in-memory row, not just the handful of fields the caller passed. The
        backend writes the whole sheet row from whatever it receives - any column it is NOT sent is
@@ -45091,9 +45101,22 @@ function viewCatalogue() {
     var s = ("000000" + String(p.id || "").replace(/\D/g, "")).slice(-6);
     return "RC-" + (d || "000000") + "-" + s;
   }
+  /* 6.9.1049 - HIS ACCOUNT ON A RECEIPT: the ledger, with THIS receipt's payment counted exactly once (it may not be in the
+     ledger yet - the receipt is made the moment the payment is saved, and the ledger is cached), and the money received
+     told apart from a discount allowed. Billed, returns and the rest are the ledger's own figures. */
+  function receiptAccount(p) {
+    var led = clientLedger(p.client) || {}, pays = (led.pays || []).slice();
+    var inIt = pays.some(function (x) { return x && p && x.id && String(x.id) === String(p.id); });
+    if (!inIt) pays.push(p);
+    var paid = 0, disc = 0;
+    pays.forEach(function (x) { var a = payAmt(x); if (payIsDisc(x)) disc += a; else paid += a; });
+    var due = (led.opening || 0) + (led.billed || 0) + (led.freight || 0) - paid - disc - (led.returned || 0);
+    return { opening: led.opening || 0, billed: led.billed || 0, freight: led.freight || 0, returned: led.returned || 0,
+      money: paid, disc: disc, paid: paid + disc, due: due, added: !inIt };
+  }
   function receiptPdf(p) {
     if (payIsDisc(p)) return Promise.reject(new Error("A discount is not money received - it has no receipt."));   /* 6.9.735 */
-    var cl = clientByName(p.client) || {}, led = clientLedger(p.client);
+    var cl = clientByName(p.client) || {}, led = receiptAccount(p);   /* 6.9.1049 */
     return commPdfBase("PAYMENT RECEIPT", { customerName: p.client, site: p.siteName || "" }, p.date || today())
       .then(function (b) {
         var doc = b.doc, F = b.F, L = b.L, R = b.R, y = 46;
@@ -45137,16 +45160,17 @@ function viewCatalogue() {
         doc.text("HIS ACCOUNT WITH US TODAY", L, y); y += 9;
         var pos = [
           ["Total billed", (led.opening || 0) + (led.billed || 0) + (led.freight || 0), 0],
-          ["Received in all", led.paid || 0, 0],
+          ["Received in all", led.money || 0, 0],
+          ["Discount allowed", led.disc || 0, 0],   /* 6.9.1049 - not money: shown apart */
           ["Returns credited", led.returned || 0, 0],
           /* v6.9.398 - a client who has paid more than he was billed is not "outstanding"
              anything. The firm is holding his money, and the receipt says so, as a positive
              figure with the right word on it. */
           (led.due || 0) < 0 ? ["Advance held for him", -(led.due || 0), 1]
-                             : ["Balance outstanding", led.due || 0, 1]
+                             : ["Balance outstanding after this receipt", led.due || 0, 1]
         ];
         pos.forEach(function (r) {
-          if (!r[1] && !r[2] && r[0] === "Returns credited") return;
+          if (!r[1] && !r[2] && (r[0] === "Returns credited" || r[0] === "Discount allowed")) return;
           if (r[2]) { F("bold"); doc.setFontSize(10.5); doc.setTextColor(17, 34, 45); }
           else { F("normal"); doc.setFontSize(9.5); doc.setTextColor(71, 85, 105); }
           doc.text(r[0], L, y); doc.text(Rs(r[1]), R, y, { align: "right" });
