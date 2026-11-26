@@ -449,7 +449,8 @@
 /* ==EWCORE:drivers:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.1054";   /* 6.9.1054 (26 Nov 2026) - HIS WORDS: "all discounts must be independent never to be interlinked" - the family rate (DRP reading Heliroma’s, HT PRO reading Ultra Silent’s, Sanitaar reading Stellar’s) is gone from all four apps; the 8 pairs billed on a sister’s rate got it as their own first (Vinay Gupta DRP at 32, his choice). "drp is always from 32 % to 35% maximum" - a DRP rate above 35% is refused on every rate screen. "make provision to download quote in excel, sometime needed to make comparision with competitive brands" - Excel on every quote: our lines, and yellow columns for the competitor’s brand, MRP and discount that work out his rate, amount and the difference. */
+  var APP_VERSION = "6.9.1055";   /* 6.9.1055 (26 Nov 2026) - HIS WORDS: "Quote in excel will be brand wise sheet and brand summary of all in one sheet, if viega only comparison enter show of that only, that of each quoted brand". The quote Excel is a workbook: Summary first, then one sheet per quoted brand, each with its own competitor box; the summary shows a figure only for a brand that was compared, and a part comparison against our amount on the same lines. */
+  /* before: */   /* 6.9.1054 (26 Nov 2026) - HIS WORDS: "all discounts must be independent never to be interlinked" - the family rate (DRP reading Heliroma’s, HT PRO reading Ultra Silent’s, Sanitaar reading Stellar’s) is gone from all four apps; the 8 pairs billed on a sister’s rate got it as their own first (Vinay Gupta DRP at 32, his choice). "drp is always from 32 % to 35% maximum" - a DRP rate above 35% is refused on every rate screen. "make provision to download quote in excel, sometime needed to make comparision with competitive brands" - Excel on every quote: our lines, and yellow columns for the competitor’s brand, MRP and discount that work out his rate, amount and the difference. */
   /* before: */   /* 6.9.1053 (26 Nov 2026) - FIX, HIS WORDS: "changing drp discount changed heliroma also and vice versa, its big problem". DRP and Heliroma are one rate family (17 Oct 2026: a brand with no row of its own borrows its sister’s rate). Every save then looked up the row IN FORCE - the borrowed sister row - and wrote over it under its own brand name: saving DRP renamed Heliroma’s row to DRP, and Heliroma then borrowed DRP’s. A save now edits a row only when it is that brand’s own row; a borrowed rate is copied into a NEW row for the brand typed, and the sister is never touched. Same fix on the discount screen, the rate-before-card sheet, and the rate set from a delivery. Stellar / Sanitaar and Huliot / HT Pro / Ultra Silent had the same trap. */
   /* before: */   /* 6.9.1052 (20 Nov 2026) - HIS WORDS: "Its not showing billing details as its saved with name of GC and Co, its also not fetching vechile details, we have to streamline send to billing process, its very imp and pending for long time". Send for billing was one empty box. Now it is three taps: the billing names this client was billed under (G.C. & Company - GSTIN ...) are buttons, the only one is already picked, + New name for another; the driver, his vehicle and the freight are fetched from the challan and shown; remarks are optional. Accounts gets all of it on the Billing desk, and the bill sheet opens with that name already picked. */
   /* before: */   /* 6.9.1051 (20 Nov 2026) - HIS WORDS (on the Non-moving table): "arange them catagory / brand wise". The table is grouped - Brand (default) or Category, or one list - each group headed with its count and the money sitting in it, biggest first; inside a group the costliest first. Long descriptions are cut to 3 lines (the full text shows on hover and in the product view). */
@@ -24434,15 +24435,19 @@ function viewCatalogue() {
 
   /* v6.9.770 - the TOTO technologies and the brand introductions are read before the paper is drawn */
   /* 6.9.1054 - HIS WORDS: "make provision to download quote in excel, sometime needed to make comparision with competitive
-     brands". Our lines exactly as the PDF prices them (qLineDisc / qLineNet), then yellow boxes for the competitor's brand,
-     product, MRP and discount; Excel works out his rate, his amount and the difference line by line and in total. */
-  function quoteXlsxRows(q) {
-    var items = qItems(q), out = [], GST = 18;
-    out.push([{ v: "Energy World · Quotation " + qNo(q), s: XL.BOLD }]);
+     brands". 6.9.1055 - HIS WORDS: "Quote in excel will be brand wise sheet and brand summary of all in one sheet, if viega
+     only comparison enter show of that only, that of each quoted brand". So: a Summary sheet first, then ONE SHEET PER
+     QUOTED BRAND. On each brand sheet the competitor is named once (yellow box N3) and his MRP / discount typed against
+     the lines he is compared on. A brand with nothing typed shows "not compared" in the summary; a brand compared on only
+     some lines is set against OUR amount on THOSE lines alone, so a part comparison is never read as a whole one. */
+  function quoteXlsxRows(q, items, label) {
+    items = items || qItems(q);
+    var out = [], GST = 18;
+    out.push([{ v: "Energy World · Quotation " + qNo(q) + (label ? " · " + label : ""), s: XL.BOLD }]);
     out.push([(q.client || "") + " · " + (q.createdAt ? fullDate(String(q.createdAt).slice(0, 10)) : "") + (q.createdBy ? " · " + q.createdBy : "")]);
-    out.push(["", "", "", "", "", "", "", { v: "OUR QUOTE", s: XL.BOLD }, "", "", "", "", { v: "COMPETITOR - type in the yellow boxes", s: XL.BOLD }]);
+    out.push(["", "", "", "", "", "", "", { v: "OUR QUOTE", s: XL.BOLD }, "", "", "", "", { v: "Competitor brand:", s: XL.BOLD }, { v: "", s: XL.INPUT }, { v: "type his MRP and disc % in the yellow boxes of the lines you compare" }]);
     out.push(["#", "Room", "Code", "Product", "Brand", "Unit", "Qty", "MRP", "Disc %", "Net rate", "Amount", "",
-      "Competitor brand", "Competitor product / code", "Competitor MRP", "Competitor disc %", "Competitor net rate", "Competitor amount", "Difference (his - ours)"].map(function (h) { return { v: h, s: XL.HEAD }; }));
+      "Competitor brand (if not the one above)", "Competitor product / code", "Competitor MRP", "Competitor disc %", "Competitor net rate", "Competitor amount", "Difference (his - ours)"].map(function (h) { return { v: h, s: XL.HEAD }; }));
     var first = out.length + 1, n = 0;
     items.forEach(function (i) {
       var r = out.length + 1, d = qLineDisc(q, i), net = qLineNet(q, i), qty = Number(i.qty) || 0;
@@ -24457,21 +24462,105 @@ function viewCatalogue() {
     });
     var last = out.length;
     out.push([]);
-    var tr = out.length + 1;
+    var tr = out.length + 1, K = "K" + first + ":K" + last, Rg = "R" + first + ":R" + last, O = "O" + first + ":O" + last;
     var ours = items.reduce(function (a, i) { return a + (i.optional ? 0 : Math.round(qLineNet(q, i) * (Number(i.qty) || 0))); }, 0);
-    out.push([{ v: "Total (net, before GST)", s: XL.BAND }, "", "", "", "", "", "", "", "", "", { v: ours, f: "SUM(K" + first + ":K" + last + ")", s: XL.BAND }, "",
-      "", "", "", "", "", { v: "", f: "SUM(R" + first + ":R" + last + ")", s: XL.BAND }, { v: "", f: 'IF(R' + tr + '=0,"",R' + tr + '-K' + tr + ')', s: XL.BAND }]);
+    out.push([{ v: "Total (net, before GST)", s: XL.BAND }, "", "", "", "", "", "", "", "", "", { v: ours, f: "SUM(" + K + ")", s: XL.BAND }, "",
+      "", "", "", "", "", { v: "", f: "SUM(" + Rg + ")", s: XL.BAND }, { v: "", f: 'IF(R' + tr + '=0,"",R' + tr + '-K' + (tr + 3) + ')', s: XL.BAND }]);
     out.push(["GST " + GST + "%", "", "", "", "", "", "", "", "", "", { v: Math.round(ours * GST / 100), f: "ROUND(K" + tr + "*" + (GST / 100) + ",0)" }, "", "", "", "", "", "", { v: "", f: "ROUND(R" + tr + "*" + (GST / 100) + ",0)" }]);
-    out.push([{ v: "Total incl GST", s: XL.BOLD }, "", "", "", "", "", "", "", "", "", { v: Math.round(ours * (1 + GST / 100)), f: "K" + tr + "+K" + (tr + 1), s: XL.BOLD }, "", "", "", "", "", "", { v: "", f: "R" + tr + "+R" + (tr + 1), s: XL.BOLD },
-      { v: "", f: 'IF(R' + (tr + 2) + '=0,"",R' + (tr + 2) + '-K' + (tr + 2) + ')', s: XL.BOLD }]);
+    out.push([{ v: "Total incl GST", s: XL.BOLD }, "", "", "", "", "", "", "", "", "", { v: Math.round(ours * (1 + GST / 100)), f: "K" + tr + "+K" + (tr + 1), s: XL.BOLD }, "", "", "", "", "", "", { v: "", f: "R" + tr + "+R" + (tr + 1), s: XL.BOLD }]);
+    /* the like-for-like line: OUR amount on only the lines he was priced on */
+    out.push([{ v: "Ours on the compared lines only (net)", s: XL.BOLD }, "", "", "", "", "", "", "", "", { v: 0, f: "COUNT(" + O + ")" }, { v: 0, f: "SUMPRODUCT((" + O + "<>\"\")*" + K + ")", s: XL.BOLD }]);
     out.push([]);
-    out.push(["MRP and discount as quoted. A positive difference means the competitor is dearer. Internal working sheet."]);
+    out.push(["MRP and discount as quoted. A positive difference means the competitor is dearer. The difference is on the compared lines only. Internal working sheet."]);
+    out.meta = { first: first, last: last, tr: tr, cmp: tr + 3, n: items.length, ours: ours };
     return out;
+  }
+  function quoteBrandGroups(q) {
+    var m = {}, order = [];
+    qItems(q).forEach(function (i) { var b = String(i.brand || "").trim() || "Other"; if (!m[b]) { m[b] = []; order.push(b); } m[b].push(i); });
+    return order.map(function (b) { return { brand: b, items: m[b] }; });
+  }
+  function xlSheetName(s, used) {
+    var b = String(s || "Sheet").replace(/[\[\]\:\*\?\/\\']/g, " ").replace(/\s+/g, " ").trim().slice(0, 28) || "Sheet", n = b, k = 2;
+    while (used[n.toLowerCase()]) n = b.slice(0, 26) + " " + (k++);
+    used[n.toLowerCase()] = 1; return n;
+  }
+  function quoteXlsxBook(q) {
+    var used = { summary: 1 }, sheets = [], groups = quoteBrandGroups(q), sum = [], GST = 18;
+    groups.forEach(function (g) { g.sheet = xlSheetName(g.brand, used); g.rows = quoteXlsxRows(q, g.items, g.brand); });
+    sum.push([{ v: "Energy World · Quotation " + qNo(q) + " · brand summary", s: XL.BOLD }]);
+    sum.push([(q.client || "") + " · " + (q.createdAt ? fullDate(String(q.createdAt).slice(0, 10)) : "") + (q.createdBy ? " · " + q.createdBy : "")]);
+    sum.push([]);
+    sum.push(["Brand", "Lines", "Our amount (net)", "Our amount incl GST", "Competitor", "Lines compared", "Ours on those lines", "Competitor on those lines", "Difference (his - ours)", "Comparison"].map(function (h) { return { v: h, s: XL.HEAD }; }));
+    var f0 = sum.length + 1;
+    groups.forEach(function (g) {
+      var r = sum.length + 1, S = "'" + g.sheet + "'!", M = g.rows.meta;
+      sum.push([g.brand, M.n,
+        { v: M.ours, f: S + "K" + M.tr },
+        { v: Math.round(M.ours * (1 + GST / 100)), f: S + "K" + (M.tr + 2) },
+        { v: "", f: "IF(" + S + "N3=\"\",IF(F" + r + "=0,\"\",\"(see the sheet)\")," + S + "N3)" },
+        { v: 0, f: S + "J" + M.cmp },
+        { v: "", f: "IF(F" + r + "=0,\"\"," + S + "K" + M.cmp + ")" },
+        { v: "", f: "IF(F" + r + "=0,\"\"," + S + "R" + M.tr + ")" },
+        { v: "", f: "IF(F" + r + "=0,\"\",H" + r + "-G" + r + ")" },
+        { v: "not compared", f: "IF(F" + r + "=0,\"not compared\",IF(F" + r + "<B" + r + ",\"part - \"&F" + r + "&\" of \"&B" + r + "&\" lines\",\"all lines\"))" }]);
+    });
+    var fl = sum.length;
+    sum.push([]);
+    var t = sum.length + 1;
+    var all = groups.reduce(function (a, g) { return a + g.rows.meta.ours; }, 0);
+    sum.push([{ v: "All brands", s: XL.BAND }, { v: 0, f: "SUM(B" + f0 + ":B" + fl + ")", s: XL.BAND }, { v: all, f: "SUM(C" + f0 + ":C" + fl + ")", s: XL.BAND }, { v: Math.round(all * (1 + GST / 100)), f: "SUM(D" + f0 + ":D" + fl + ")", s: XL.BAND },
+      { v: "", s: XL.BAND }, { v: 0, f: "SUM(F" + f0 + ":F" + fl + ")", s: XL.BAND }, { v: "", f: "IF(F" + t + "=0,\"\",SUM(G" + f0 + ":G" + fl + "))", s: XL.BAND },
+      { v: "", f: "IF(F" + t + "=0,\"\",SUM(H" + f0 + ":H" + fl + "))", s: XL.BAND }, { v: "", f: "IF(F" + t + "=0,\"\",H" + t + "-G" + t + ")", s: XL.BAND }, { v: "", s: XL.BAND }]);
+    sum.push([]);
+    sum.push(["Each brand has its own sheet. Name the competitor in the yellow box at the top of that sheet and type his MRP and discount against the lines you compare."]);
+    sum.push(["Only the brands you compare show figures here; a part comparison is set against our amount on the same lines, never the whole brand."]);
+    sheets.push({ name: "Summary", rows: sum, cols: [24, 8, 16, 18, 20, 10, 18, 20, 18, 20], freeze: { r: 4, c: 1 } });
+    groups.forEach(function (g) { sheets.push({ name: g.sheet, rows: g.rows, cols: [5, 18, 16, 46, 16, 7, 7, 11, 8, 11, 13, 2, 22, 28, 13, 11, 13, 14, 16], freeze: { r: 4, c: 4 } }); });
+    return sheets;
+  }
+  /* several sheets in one workbook - xlBook's parts, one worksheet per sheet */
+  function xlBookMulti(sheets) {
+    var NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+    return xlZip([
+      { name: "[Content_Types].xml", data:
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+        '<Default Extension="xml" ContentType="application/xml"/>' +
+        '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
+        sheets.map(function (s, i) { return '<Override PartName="/xl/worksheets/sheet' + (i + 1) + '.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'; }).join("") +
+        '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>' +
+        '</Types>' },
+      { name: "_rels/.rels", data:
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+        '<Relationship Id="rId1" Type="' + NS + '/officeDocument" Target="xl/workbook.xml"/></Relationships>' },
+      { name: "xl/workbook.xml", data:
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+        '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="' + NS + '"><sheets>' +
+        sheets.map(function (s, i) { return '<sheet name="' + xlEsc(String(s.name).slice(0, 31)) + '" sheetId="' + (i + 1) + '" r:id="rId' + (i + 1) + '"/>'; }).join("") +
+        '</sheets><calcPr calcId="191029" fullCalcOnLoad="1"/></workbook>' },
+      { name: "xl/_rels/workbook.xml.rels", data:
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+        sheets.map(function (s, i) { return '<Relationship Id="rId' + (i + 1) + '" Type="' + NS + '/worksheet" Target="worksheets/sheet' + (i + 1) + '.xml"/>'; }).join("") +
+        '<Relationship Id="rId' + (sheets.length + 1) + '" Type="' + NS + '/styles" Target="styles.xml"/></Relationships>' },
+      { name: "xl/styles.xml", data: xlStyles() }
+    ].concat(sheets.map(function (s, i) { return { name: "xl/worksheets/sheet" + (i + 1) + ".xml", data: xlSheet(s.rows, s.cols, false, { freeze: s.freeze }) }; })));
   }
   function quoteXlsx(q) {
     if (!qItems(q).length) { toast("This quote has no lines."); return; }
-    dlXlsx(String(qNo(q) || "Quote").replace(/[^\w.-]/g, "_") + "_compare.xlsx", String(qNo(q) || "Quote").slice(0, 28), quoteXlsxRows(q),
-      [5, 18, 16, 46, 16, 7, 7, 11, 8, 11, 13, 2, 18, 28, 13, 11, 13, 14, 16]);
+    var name = String(qNo(q) || "Quote").replace(/[^\w.-]/g, "_") + "_compare.xlsx";
+    try {
+      var blob = new Blob([xlBookMulti(quoteXlsxBook(q))], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+      var url = URL.createObjectURL(blob), a = document.createElement("a");
+      a.href = url; a.download = name; a.style.display = "none";
+      document.body.appendChild(a); a.click();
+      setTimeout(function () { try { document.body.removeChild(a); URL.revokeObjectURL(url); } catch (e) { } }, 2000);
+      toast("Downloaded " + name);
+      try { dlPanel(blob, name); } catch (e) { }
+    } catch (e) { toast("Could not build the file on this device."); }
   }
   function quotePdf(q) {
     var _it = []; try { _it = JSON.parse(q.items || "[]"); } catch (e) { }
