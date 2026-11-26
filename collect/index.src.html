@@ -209,7 +209,8 @@ table.ct td.wd{white-space:nowrap}
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.79.0";   /* 1.79.0 (19 Nov 2026) - a DISCOUNT is not money, here as in the CRM (6.9.735 / 6.9.1043): a line filed as Discount, or narrated "extra discount" / "extra dist" under any mode, still clears the bill (the due is unchanged), but it is left out of "Collected today", is not a promise kept, is not his last payment, and says "Discount - not money" on his list. MEASURED 19 Nov: 18 such lines, Rs 83,749, were counted as cash here. */
+  var APP_VERSION = "1.80.0";   /* 1.80.0 (26 Nov 2026) - HIS RULE: "all discounts must be independent never to be interlinked": a brand reads its own rate or none - DRP no longer borrows Heliroma's, HT PRO no longer borrows Ultra Silent's (the shared core). */
+  /* before: */   /* 1.79.0 (19 Nov 2026) - a DISCOUNT is not money, here as in the CRM (6.9.735 / 6.9.1043): a line filed as Discount, or narrated "extra discount" / "extra dist" under any mode, still clears the bill (the due is unchanged), but it is left out of "Collected today", is not a promise kept, is not his last payment, and says "Discount - not money" on his list. MEASURED 19 Nov: 18 such lines, Rs 83,749, were counted as cash here. */
   /* before: */   /* 1.78.0 (18 Nov 2026) - "Mark your attendance", with the location taken now and shown before it is saved */   /* 1.77.0 (18 Nov 2026) - new app icon */   /* 1.76.0 (17 Nov 2026) - one tap Present in the header, asks where the day is and the plan; one mark shows in every app */   /* 1.75.5 (17 Nov 2026) - FIX: RAWB and LIVE_TABS declared again; every pull had thrown "Can't find variable" since the 15 Nov core build, so the book on the phone stopped updating */   /* 1.75.4 (1.75.4 (15 Nov 2026) - the discount rule moves to its own shared section, now covering the Visit app too; no figure moves */   /* 1.75.3 (1.75.3 (15 Nov 2026) - FIX ON THE FIX: discRowsFor and discRowOn are now the CRM's text byte for byte, not merely the same behaviour; plus the shared stamp reader */   /* 1.75.2 (1.75.2 (15 Nov 2026) - six money rules now shared with the CRM as well, not just the Challan app */   /* 1.75.1 (1.75.1 (15 Nov 2026) - nine money rules now come from core/ew-core.js, byte-identical with the Challan app; no figure changes */   /* 1.75.0 (1.75.0 (14 Nov 2026) - FIX: a return line frozen at 0%% was credited at full list price; the CRM's rule (6.9.728) is now this app's rule too - Rs 2,12,214 across 5 clients */   /* 1.74.1 (1.74.1 (11 Nov 2026) - GHP+ logo in the registered Green Heat+ colours (#00539F / #ED1D24) on PDFs, quotes, challans and QR centres */   /* 1.74.0 (9 Nov 2026) - FIMA in every finish: a return or a hisab line in a finish code (F1301WLX9CS) finds its product, brand and price */     /* 1.73.1 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */   /* 1.73.0 (3 Nov 2026) - the old hisab paper opens from here, for everyone */   /* 1.72.0 (3 Nov 2026) - a return is priced the same on every phone: old product codes found, a stale shelf catalogue refreshed */   /* 1.71.0 (31 Oct 2026) - one tap, one entry */   /* 1.70.1 (27 Oct 2026) - GHp mark in the middle of every QR, level H */   /* 1.67.0 - flush busy flag + B9 owner guard, narrower sign-out, Old book under ☰ */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
      HIS WORDS: "dark mode light mode for every app". Three settings, kept on this phone: Auto (follow the
@@ -952,16 +953,10 @@ function rnLines(r) {
     }
     var i, r;
     for (i = 0; i < names.length; i++) { r = pick(names[i]); if (r.length) return r; }
-    /* 17 Oct 2026 - the family rate: head name first, then any sister brand, exact brand excluded */
-    var f = discFam(brand);
-    if (!f) return [];
-    var fx = dscFamIndex();
-    for (i = 0; i < names.length; i++) {
-      var rows = (fx[dkey(names[i]) + "||" + f] || []).filter(function (x) { return dkey(x.brand) !== b; });
-      if (!rows.length) continue;
-      var head = rows.filter(function (x) { return dkey(x.brand) === f; });
-      return (head.length ? head : rows).slice();
-    }
+    /* 26 Nov 2026 - HIS RULE: "all discounts must be independent never to be interlinked". The family rate of 17 Oct
+       (DRP reading Heliroma's, HT PRO reading Ultra Silent's) is gone: a brand has its own rate or none. Before it went,
+       the 8 client-brand pairs whose deliveries were priced on a sister's rate were given that rate as their own (owner
+       approved; Vinay Gupta DRP at 32), so no delivered rupee moved. DRP had been quoting up to 62% off Heliroma. */
     return [];
   }
 
