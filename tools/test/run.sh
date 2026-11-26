@@ -39,6 +39,7 @@ node tools/test/t_bill_ask_stream.js || fail=1
 node tools/test/t_disc_family_save.js || fail=1
 node tools/test/t_disc_independent.js || fail=1
 node tools/test/t_quote_xlsx_brands.js || fail=1
+node tools/test/t_cmp_book.js || fail=1
 node tools/test/t_master_tag.js || fail=1
 node tools/test/t_bill_ask.js || fail=1
 node tools/test/t_bill_vehicle.js || fail=1
