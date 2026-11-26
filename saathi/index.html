@@ -771,9 +771,26 @@ function bookHome(){
     (Number(b.ob) ? '<div class="card" style="padding:11px 13px;margin-top:10px"><div class="sm"><b>Purana hisab (old balance)</b>' + (b.obOn ? ' &middot; ' + esc(String(b.obOn).split('-').reverse().join('/')) : '') +
       '</div><div style="font-size:20px;font-weight:800;margin-top:2px">' + (Number(b.ob) < 0 ? '- ' : '') + bP(Math.abs(Number(b.ob))) + ' <small class="xs mut">points</small></div>' +
       '<div class="xs mut">' + (Number(b.ob) > 0 ? 'Purane hisab ka baaki - ready amount mein juda hai' : 'Advance liya hua - kamai se adjust hoga') + '</div></div>' : '');
+  h += clubCard(b);   /* 26 Nov 2026 - Partner Club */
   h += '<h2 class="sec">Your sites</h2>' + bookSites();
   if (!ST) h += '<button class="wide" style="min-height:48px;margin-top:14px;background:linear-gradient(90deg,#C13584,#1877F2,#25D366);color:#fff;border:0;font-weight:700" onclick="renderFollow(false)">Follow Energy World - Instagram, Facebook, WhatsApp</button>';   /* 27 Oct 2026 - follow links any time, not only after registration */
   return h;
+}
+
+/* 26 Nov 2026 - THE PARTNER CLUB, as the CRM counts it: what his clients PAID this year before GST, his tier, how far to the next */
+function clubCard(b){
+  var c = b && b.club; if (!c) return '';
+  var TC = { Platinum: '#1e293b', Gold: '#b8860b', Silver: '#64748b', Bronze: '#9a5226', Member: '#0f766e' };
+  var pct = c.nextCut ? Math.max(3, Math.min(100, Math.round(c.coll / c.nextCut * 100))) : 100;
+  return '<div class="card" style="padding:13px 14px;margin-top:12px;border-color:' + (c.tier ? (TC[c.tier] || '#0f766e') : '#e5e7eb') + '">' +
+    '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><b>Partner Club ' + esc(c.y || '') + '</b>' +
+    (c.tier ? '<span style="background:' + (TC[c.tier] || '#0f766e') + ';color:#fff;border-radius:6px;padding:1px 8px;font-size:12px;font-weight:800">' + esc(c.tier) + '</span>' : '') +
+    (c.joined ? '<span class="xs" style="color:#166534;font-weight:700">&#10003; member</span>' : '<span class="xs" style="color:#b45309;font-weight:700">join karein - office ko bataiye</span>') + '</div>' +
+    '<div class="sm" style="margin-top:6px">Is saal aapke clients ka payment (GST se pehle): <b>' + inr(c.coll) + '</b></div>' +
+    (c.tier ? '<div class="sm">Aapka 3% = <b>' + inr(c.earned) + '</b>' + (c.menu && c.menu.length ? ' &middot; inaam: ' + esc(c.menu.join(' / ')) : '') + '</div>' : '') +
+    (c.next ? '<div style="height:8px;border-radius:4px;background:#eef2f6;margin-top:8px"><div style="height:8px;border-radius:4px;width:' + pct + '%;background:linear-gradient(90deg,#0f766e,#c9a227)"></div></div>' +
+      '<div class="xs mut" style="margin-top:4px"><b>' + inr(c.gap) + '</b> aur, aur aap <b>' + esc(c.next) + '</b> ban jaate hain.</div>' : '') +
+    '<div class="xs mut" style="margin-top:4px">Sirf wahi payment gina jaata hai jo aa chuka hai.</div></div>';
 }
 
 function ledRow(l){
@@ -1083,6 +1100,7 @@ function renderGate(){
       'maxlength="6" placeholder="4 to 6 digits">' +
     '<button class="go" id="gbtn" onclick="doLogin()">Sign in</button>' +
     '<button class="lnk" onclick="gateHelp()">Forgotten your PIN?</button>' +
+    '<button class="lnk" style="font-weight:700;color:#0f766e" onclick="renderJoin()">Naye hain? Partner Club se judiye</button>' +
     '<button class="lnk" onclick="renderStaffGate()">Energy World staff? Sign in with your CRM login</button>' +
     '<div class="gfoot">Version ' + esc(BUILD) + '<br>Energy World &middot; Sonipat &middot; Panipat &middot; Karnal &middot; Rohtak<br>' +
     'If your number has changed, have the office update it first - ' +
@@ -1092,6 +1110,36 @@ function renderGate(){
   pi.addEventListener('keydown', function(e){ if (e.key === 'Enter') doLogin(); });
   mi.addEventListener('keydown', function(e){ if (e.key === 'Enter') pi.focus(); });
   try { (A.mobile ? pi : mi).focus(); } catch(e){}
+}
+
+/* 26 Nov 2026 - JOIN. Not a partner yet: name, mobile, city, trade - sent to the Energy World office on WhatsApp, who register
+   him in the CRM the same day; then he signs in here. Nothing is stored on this phone and nothing goes to a server from here. */
+var OFFICE_WA = '919466600611';
+function renderJoin(){
+  var g = document.getElementById('gate');
+  g.innerHTML = '<div class="gwrap">' +
+    '<div class="gmark">'+DROPS+'</div>' +
+    '<h2>Partner Club</h2><div class="gtag">Energy World Saathi se judiye</div>' +
+    '<p class="lede">Aapke clients jo payment Energy World ko karte hain, uska <b>3%</b> aapko inaam ke roop mein - trip, sone ka sikka, tool. Apni jaankari bhejiye, office usi din aapko jod dega.</p>' +
+    '<label for="jn">Naam</label><input id="jn" autocomplete="name" placeholder="Poora naam">' +
+    '<label for="jm">Mobile number</label><input id="jm" type="tel" inputmode="numeric" maxlength="10" placeholder="10 digit">' +
+    '<label for="jc">Shehar</label><input id="jc" placeholder="e.g. Panipat">' +
+    '<label for="jt">Aap kya kaam karte hain</label><select id="jt" style="width:100%;min-height:48px;font-size:16px;border-radius:12px;border:1px solid #d5dbe2;padding:0 12px;background:#fff">' +
+      ['Plumber', 'Architect', 'Builder', 'Contractor / PMC', 'Site engineer', 'Other'].map(function(x){ return '<option>' + x + '</option>'; }).join('') + '</select>' +
+    (GERR ? '<div class="gerr" role="alert">' + esc(GERR) + '</div>' : '') +
+    '<button class="go" onclick="sendJoin()">WhatsApp par bhejiye</button>' +
+    '<button class="lnk" onclick="GERR=\'\';renderGate()">Pehle se partner hain? Sign in</button>' +
+    '<div class="gfoot">Energy World office: +91 94666 00611</div></div>';
+  gate(true);
+}
+function sendJoin(){
+  var n = String(document.getElementById('jn').value || '').trim(), m = String(document.getElementById('jm').value || '').replace(/\D/g, '').slice(-10);
+  var c = String(document.getElementById('jc').value || '').trim(), t = String(document.getElementById('jt').value || '');
+  if (n.length < 2){ GERR = 'Apna naam likhiye.'; renderJoin(); return; }
+  if (m.length !== 10){ GERR = 'Poora 10 digit mobile number likhiye.'; renderJoin(); return; }
+  GERR = '';
+  var txt = 'Namaste Energy World, I want to join the Energy World Saathi Partner Club.\nName: ' + n + '\nMobile: ' + m + '\nCity: ' + c + '\nI am a: ' + t + '\n(sent from the Saathi app)';
+  window.open('https://wa.me/' + OFFICE_WA + '?text=' + encodeURIComponent(txt), '_blank');
 }
 
 function gateHelp(){
@@ -1283,7 +1331,7 @@ function ewRefresh(){
    Nothing you have typed or queued is touched. The sign-in and the
    offline queue live in localStorage and this never goes near them.
 --------------------------------------------------------------------- */
-var BUILD  = '2026.11.26-1';   /* 26 Nov 2026 - his old balance (purana hisab) shown from the CRM */   /* 18 Nov 2026 - new app icon */   /* 17 Nov 2026 - the Energy World tools a partner is holding, from the Tool Tracking app */   /* 17 Nov 2026 - ongoing sites come from the CRM's own count, a site with no material yet shown with 0 points */
+var BUILD  = '2026.11.26-2';   /* 26 Nov 2026 - his Partner Club standing; Join the Partner Club from the sign-in screen */   /* before: */   /* 26 Nov 2026 - his old balance (purana hisab) shown from the CRM */   /* 18 Nov 2026 - new app icon */   /* 17 Nov 2026 - the Energy World tools a partner is holding, from the Tool Tracking app */   /* 17 Nov 2026 - ongoing sites come from the CRM's own count, a site with no material yet shown with 0 points */
 var DROPS = '<svg viewBox="0 0 130 120" width="100%" height="100%" aria-hidden="true"><path d="M48 6C48 6 12 52 12 76a36 36 0 0 0 72 0C84 52 48 6 48 6Z" fill="#0A4F94"/><path d="M82 6C82 6 46 52 46 76a36 36 0 0 0 72 0C118 52 82 6 82 6Z" fill="#F28C28" fill-opacity=".88"/></svg>';   /* the Saathi mark */        /* which build of this file is running */
 var APPKEY = 'SAATHI';
 var VKEY   = 'ew_saathi_ver_v1';
