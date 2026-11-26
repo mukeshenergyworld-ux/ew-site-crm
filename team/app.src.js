@@ -449,7 +449,8 @@
 /* ==EWCORE:drivers:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.1062";   /* 6.9.1062 (26 Nov 2026) - the Hindi scheme PDF was 12 MB (its text images stored uncompressed), too heavy for WhatsApp: compressed, about 0.7 MB, still sharp. */
+  var APP_VERSION = "6.9.1063";   /* 6.9.1063 (26 Nov 2026) - HIS WORDS: "show pdf for employee salary vs incentive, want a little incentive scheme for timely payment ... and vice versa for late payment", slabs at 15 / 30 / 45 / 60 days, his rates 0.5% / 0.25% / 0.1% / 0 / -0.25%, -0.5% unpaid at 90 days, trial in December, paid from January 2027. The plan card, each statement and WhatsApp carry the payment-speed line; a team PDF sets six months of salary against incentive. */
+  /* before: */   /* 6.9.1062 (26 Nov 2026) - the Hindi scheme PDF was 12 MB (its text images stored uncompressed), too heavy for WhatsApp: compressed, about 0.7 MB, still sharp. */
   /* before: */   /* 6.9.1061 (26 Nov 2026) - HIS WORDS: "ok do all" (to: the club tier and enrolment on the partner's own card and in Saathi, a Join form inside Saathi, Hindi versions of the scheme PDF). A partner card says where he stands in the Partner Club, whether he is enrolled, and offers Enrol / Send scheme; Saathi is sent the same; the scheme PDF comes in Hindi too (Devanagari drawn by the phone's own fonts, so the letters join correctly). */
   /* before: */   /* 6.9.1060 (26 Nov 2026) - HIS WORDS: "Make provision to download pdf of partners scheme, for all builders, executives, contractors, architects every one, and ways to register all in scheme, a proper professional system for managing all partners". The Partner Club scheme as a PDF for each trade (plumbers, architects, builders, contractors / PMC, everyone) and a briefing for our sales executives, printed from the scheme on file, with two QR codes (join on WhatsApp to the office, Saathi); enrolment as a dated record, counted by trade, with Send scheme and Enrol for everyone not yet in. */
   /* before: */   /* 6.9.1059 (26 Nov 2026) - the old-balance form says the old hisab goes up when Save is pressed (it read the client screen's "press Attach ... save the client"). */
@@ -36204,6 +36205,143 @@ function viewCatalogue() {
       done: m === q0 + 2, label: "Q" + (Math.floor((m - 1) / 3) + 1) + " " + y };
   }
   function xpL(v) { return "₹" + (Math.round(v / 1000) / 100).toFixed(2).replace(/\.?0+$/, "") + " L"; }
+  /* ===== 6.9.1063 - PAYMENT SPEED: A REWARD FOR QUICK PAYMENT, A CUT FOR LATE (EXECUTIVE PLAN 2027) =====
+     HIS WORDS: "want a little incentive scheme for timely payment ... and vice versa for late payment", then "make a slab 15 days,
+     30 days, 45 days, 60 days", then the rates he chose (26 Nov 2026): on every payment a client of his makes, counted before
+     GST, by the days from dispatch to that payment -
+         0-15 days +0.5%    16-30 days +0.25%    31-45 days +0.1%    46-60 days 0    61-90 days -0.25%
+     and a delivery still unpaid 90 days after dispatch costs -0.5% of what is unpaid that day (once; a payment after 90 days
+     then counts nothing more). Same calendar as the plan: December 2026 is the trial, paid from January 2027, and only
+     deliveries dispatched from 1 December 2026 count - an old unpaid bill never cuts anyone.
+     WHICH PAYMENT PAYS WHICH BILL. The oldest bill first, exactly as the ageing and the dues work it (the opening balance
+     first, then deliveries by dispatch date). Returns and discount entries settle bills but earn and cost nothing.
+     A cut only ever comes out of incentive: the month's total incentive never goes below zero; salary is never touched.
+     Measured before it was set (May-Nov 2026, pre-GST): about Rs 1,390 a month for Vivek, Rs 1,030 for Ashish, Rs 540 for Imran. */
+  var XPS_FROM = "2026-12-01";
+  var XPS_SLABS = [[15, 0.5], [30, 0.25], [45, 0.1], [60, 0], [90, -0.25]], XPS_LATE = -0.5;
+  function xpsRate(days) { for (var i = 0; i < XPS_SLABS.length; i++) if (days <= XPS_SLABS[i][0]) return XPS_SLABS[i][1]; return 0; }   /* after 90: already cut at day 90 */
+  var _xpsC = { k: "", m: {} };
+  /* every allocation of money to his deliveries, one pass per client family, cached until the book moves */
+  function xpsEvents(name) {
+    var k = (S.data.payments || []).length + "|" + (S.data.challans || []).length + "|" + (S.data.returns || []).length + "|" + (S.data.audit || []).length + "|" + today();
+    if (_xpsC.k !== k) _xpsC = { k: k, m: {} };
+    if (_xpsC.m[name]) return _xpsC.m[name];
+    var mine = xpMine(name), fam = {}, ev = [], td = today();
+    dedupeChallans((S.data.challans || []).filter(function (c) {
+      return c && !isCancelled("challans", c.id) && mine[dkey(c.customerName)] && /^(dispatched|received|delivered)$/i.test(String(c.status || "").trim());
+    })).forEach(function (c) { var f = dkey(dupMainName(c.customerName)); (fam[f] = fam[f] || { ch: [], cr: [], nm: c.customerName }).ch.push({ id: c.id, no: c.challanNo || "", d: localDay(c.dispatchedAt || c.createdAt), left: Number(challanNet(c)) || 0, cl: c.customerName || "" }); });
+    Object.keys(fam).forEach(function (f) {
+      var F = fam[f], fn = {}; dupFamily(F.nm).forEach(function (n) { fn[dkey(n)] = 1; });
+      (S.data.payments || []).forEach(function (p) {
+        if (!p || isCancelled("payments", p.id) || !fn[dkey(p.client)]) return;
+        F.cr.push({ d: dstr(p.date || p.createdAt), v: payAmt(p), pay: !(typeof payIsDisc === "function" && payIsDisc(p)) });
+      });
+      (S.data.returns || []).forEach(function (rt) {
+        if (!rt || isCancelled("returns", rt.id) || !fn[dkey(rt.customerName)] || String(rt.status || "").trim().toLowerCase() !== "received") return;
+        F.cr.push({ d: localDay(rt.receivedAt || rt.createdAt), v: Number(returnNet(rt)) || 0, pay: false });
+      });
+      F.ch.sort(function (a, b) { return a.d.localeCompare(b.d); });
+      F.cr.sort(function (a, b) { return a.d.localeCompare(b.d) || (b.pay - a.pay); });
+      var op = 0; try { op = Math.max(0, Number(clientOpening(F.nm)) || 0); } catch (e) { op = 0; }
+      F.cr.forEach(function (p) {
+        var amt = p.v; if (op > 0.5) { var u = Math.min(op, amt); op -= u; amt -= u; }
+        for (var i = 0; i < F.ch.length && amt > 0.5; i++) {
+          var c = F.ch[i]; if (c.left <= 0.5) continue;
+          var u2 = Math.min(c.left, amt); c.left -= u2; amt -= u2;
+          if (c.d < XPS_FROM || !p.pay) continue;
+          var dd = daysBetweenXp(c.d, p.d);
+          ev.push({ t: "pay", ym: xYm(p.d), d: p.d, no: c.no, cl: c.cl, disp: c.d, days: dd, base: u2 / 1.18, rate: xpsRate(dd) });
+        }
+      });
+      F.ch.forEach(function (c) {   /* the day-90 cut on what is still unpaid that day */
+        if (c.d < XPS_FROM || c.left <= 0.5) return;
+        var d90 = new Date(c.d + "T12:00:00"); d90.setDate(d90.getDate() + 90);
+        var s90 = d90.getFullYear() + "-" + String(d90.getMonth() + 1).padStart(2, "0") + "-" + String(d90.getDate()).padStart(2, "0");
+        if (s90 > td) return;
+        ev.push({ t: "late", ym: xYm(s90), d: s90, no: c.no, cl: c.cl, disp: c.d, days: 90, base: c.left / 1.18, rate: XPS_LATE });
+      });
+    });
+    return (_xpsC.m[name] = ev);
+  }
+  function xpSpeed(name, ym) {
+    var ev = xpsEvents(name).filter(function (e) { return e.ym === ym; }), bonus = 0, cut = 0, by = {};
+    ev.forEach(function (e) {
+      var v = e.base * e.rate / 100; if (v > 0) bonus += v; else cut += -v;
+      var k = e.t === "late" ? "unpaid at 90 days" : (e.days <= 15 ? "0-15 days" : e.days <= 30 ? "16-30 days" : e.days <= 45 ? "31-45 days" : e.days <= 60 ? "46-60 days" : e.days <= 90 ? "61-90 days" : "after 90 days");
+      var b = by[k] = by[k] || { base: 0, v: 0, rate: e.rate }; b.base += e.base; b.v += v;
+    });
+    return { bonus: bonus, cut: cut, net: bonus - cut, by: by, n: ev.length, trial: !!xpRule(ym).trial, whatIf: ym < XP_START };
+  }
+  /* the month's incentive with the speed line: never below zero, so a cut never reaches his salary */
+  function xpTotal(x, sp) { return Math.max(0, (Number(x.inc) || 0) + (Number(x.sep) || 0) + (sp ? sp.net : 0)); }
+  /* ===== 6.9.1063 - SALARY AGAINST INCENTIVE, ONE PAPER FOR THE TEAM =====
+     HIS WORDS: "show pdf for employee salary vs incentive". Month by month for each executive: salary, counted sales, the plan's
+     incentive, the payment-speed line, the total, and what it comes to as a share of salary and of sales - the months before
+     December 2026 worked as a what-if under the plan's rules, December the trial, 2027 the plan in force. Owner only. */
+  function xpTeamPdf(ym1) {
+    var team = execTeam().map(function (u) { return u.name; }), months = [];
+    var e = ym1 || xYm(today()), y = Number(e.slice(0, 4)), m = Number(e.slice(5, 7));
+    for (var i = 5; i >= 0; i--) { var dd = new Date(y, m - 1 - i, 1); months.push(dd.getFullYear() + "-" + String(dd.getMonth() + 1).padStart(2, "0")); }
+    var data = team.map(function (n) {
+      return { n: n, rows: months.map(function (mm) { var x = xpMonth(n, mm), sp = xpSpeed(n, mm), tot = xpTotal(x, sp); return { ym: mm, sal: x.sal, cnt: x.net, inc: x.inc + x.sep, sp: sp.net, tot: tot, rule: x.rule }; }) };
+    });
+    return loadLogo().then(function () {
+      var doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4", orientation: "landscape" });
+      var F = function (b) { doc.setFont(ppEmbed(doc), b ? "bold" : "normal"); };
+      var M = function (v) { return pdfSafe(money(v)); }, W = 297, L = 12, R = W - 12, yy = 0;
+      doc.setFillColor(11, 59, 54); doc.rect(0, 0, W, 24, "F"); doc.setFillColor(201, 162, 39); doc.rect(0, 24, W, 1, "F");
+      if (LOGO_B64) { try { doc.addImage(LOGO_B64, "JPEG", L, 5, 26, 14); } catch (e2) { } }
+      F(1); doc.setFontSize(14); doc.setTextColor(255, 255, 255); doc.text("SALARY AGAINST INCENTIVE - SALES TEAM", R, 11, { align: "right" });
+      F(0); doc.setFontSize(8.5); doc.setTextColor(186, 230, 223); doc.text(monthLabel(months[0]) + " to " + monthLabel(months[5]) + "  |  internal - owner only", R, 18, { align: "right" });
+      yy = 34;
+      /* the picture first: per man, the six months' salary against the six months' incentive */
+      var tot = data.map(function (d) { var s = 0, t = 0; d.rows.forEach(function (r) { s += r.sal; t += r.tot; }); return { n: d.n, s: s, t: t }; });
+      var mx = Math.max.apply(null, tot.map(function (t) { return Math.max(t.s, t.t); }).concat([1]));
+      F(1); doc.setFontSize(10.5); doc.setTextColor(15, 23, 42); doc.text("Six months, salary against incentive", L, yy); yy += 6;
+      tot.forEach(function (t) {
+        F(1); doc.setFontSize(9); doc.setTextColor(30, 41, 59); doc.text(t.n, L, yy + 3.5);
+        var bw = 150;
+        doc.setFillColor(148, 163, 184); doc.rect(L + 40, yy, bw * t.s / mx, 4, "F");
+        doc.setFillColor(15, 118, 110); doc.rect(L + 40, yy + 5, Math.max(0.5, bw * t.t / mx), 4, "F");
+        F(0); doc.setFontSize(8); doc.setTextColor(71, 85, 105);
+        doc.text("salary " + M(t.s), L + 42 + bw * t.s / mx, yy + 3.3); doc.text("incentive " + M(t.t) + (t.s ? "  (" + Math.round(t.t / t.s * 100) + "% of salary)" : ""), L + 42 + Math.max(0.5, bw * t.t / mx), yy + 8.3);
+        yy += 13;
+      });
+      yy += 2;
+      var cols = [["Month", L], ["Status", L + 26], ["Salary", L + 70], ["Counted sales", L + 104], ["Plan incentive", L + 140], ["Payment speed", L + 176], ["Total incentive", L + 212], ["% of salary", L + 244], ["% of sales", R - 2]];
+      data.forEach(function (d) {
+        if (yy > 170) { doc.addPage(); yy = 18; }
+        F(1); doc.setFontSize(10.5); doc.setTextColor(11, 59, 54); doc.text(d.n, L, yy); yy += 3;
+        doc.setFillColor(11, 59, 54); doc.rect(L, yy, R - L, 6.5, "F"); F(1); doc.setFontSize(8); doc.setTextColor(255, 255, 255);
+        cols.forEach(function (c, i) { doc.text(c[0], i < 2 ? c[1] + 1.5 : c[1], yy + 4.5, i < 2 ? {} : { align: "right" }); });
+        yy += 6.5;
+        var S6 = { sal: 0, cnt: 0, inc: 0, sp: 0, tot: 0 };
+        d.rows.forEach(function (r, i) {
+          if (i % 2) { doc.setFillColor(248, 250, 252); doc.rect(L, yy, R - L, 6, "F"); }
+          var st = r.rule.whatIf ? "what-if" : r.rule.trial ? "trial - not paid" : "in force";
+          F(0); doc.setFontSize(8.5); doc.setTextColor(30, 41, 59);
+          var vals = [monthLabel(r.ym), st, M(r.sal), M(r.cnt), M(r.inc), r.ym < XPS_FROM.slice(0, 7) ? "-" : (r.sp >= 0 ? "+" : "-") + M(Math.abs(r.sp)), M(r.tot), r.sal ? Math.round(r.tot / r.sal * 100) + "%" : "-", r.cnt > 0.5 ? (Math.round(r.tot / r.cnt * 1000) / 10) + "%" : "-"];
+          vals.forEach(function (v, j) { if (j === 5) doc.setTextColor(r.sp < -0.5 ? 185 : 22, r.sp < -0.5 ? 28 : 101, r.sp < -0.5 ? 28 : 52); else doc.setTextColor(30, 41, 59); doc.text(String(v), j < 2 ? cols[j][1] + 1.5 : cols[j][1], yy + 4.2, j < 2 ? {} : { align: "right" }); });
+          S6.sal += r.sal; S6.cnt += r.cnt; S6.inc += r.inc; S6.sp += r.sp; S6.tot += r.tot; yy += 6;
+        });
+        F(1); doc.setFontSize(8.5); doc.setTextColor(15, 23, 42); doc.setDrawColor(203, 213, 225); doc.line(L, yy, R, yy);
+        [["Six months", 0], ["", 1], [M(S6.sal), 2], [M(S6.cnt), 3], [M(S6.inc), 4], [(S6.sp >= 0 ? "+" : "-") + M(Math.abs(S6.sp)), 5], [M(S6.tot), 6], [S6.sal ? Math.round(S6.tot / S6.sal * 100) + "%" : "-", 7], [S6.cnt > 0.5 ? (Math.round(S6.tot / S6.cnt * 1000) / 10) + "%" : "-", 8]]
+          .forEach(function (v) { doc.text(String(v[0]), v[1] < 2 ? cols[v[1]][1] + 1.5 : cols[v[1]][1], yy + 4.5, v[1] < 2 ? {} : { align: "right" }); });
+        yy += 11;
+      });
+      if (yy > 165) { doc.addPage(); yy = 18; }
+      F(1); doc.setFontSize(9.5); doc.setTextColor(15, 23, 42); doc.text("How it is worked out", L, yy); yy += 5;
+      F(0); doc.setFontSize(8); doc.setTextColor(71, 85, 105);
+      ["Counted sales: target brands within each brand's discount limit, before GST, less returns. Plan incentive: the slab reached (30-70 x salary from Jan 2027) pays its % on all counted sales, capped at 1.5 x salary; other brands' separate incentive is included.",
+       "Payment speed, on each payment of his clients, before GST, by days from dispatch: 0-15 days +0.5%, 16-30 +0.25%, 31-45 +0.1%, 46-60 nil, 61-90 -0.25%; unpaid at 90 days -0.5%. Only deliveries from 1 Dec 2026 count. A cut comes only out of incentive - the total never goes below zero.",
+       "Months before December 2026 are a what-if under the plan's rules; December 2026 is the trial (worked out, not paid); 2027 is in force. Incentive is paid as clients pay; a delivery unpaid 180 days after dispatch lapses."].forEach(function (t) {
+        var ls = doc.splitTextToSize(t, R - L); doc.text(ls, L, yy); yy += ls.length * 3.8 + 1.5;
+      });
+      var pages = doc.getNumberOfPages();
+      for (var p = 1; p <= pages; p++) { doc.setPage(p); F(0); doc.setFontSize(7.5); doc.setTextColor(120, 130, 140); doc.text("Energy World  |  salary against incentive  |  printed " + fullDate(today()), L, 203); doc.text(p + " / " + pages, R, 203, { align: "right" }); }
+      return doc;
+    });
+  }
   function xPlanCard() {
     if (!roleIs("admin")) return "";
     var team = execTeam(); if (!team.length) return "";
@@ -36215,14 +36353,15 @@ function viewCatalogue() {
     var td = function (t, al, x) { return '<td style="padding:6px;border-top:1px solid #e2e8f0;font-size:13px;text-align:' + (al || 'right') + ';vertical-align:top' + (x || '') + '">' + t + '</td>'; };
     var SC = ["#38bdf8", "#0ea5e9", "#2563eb", "#7c3aed", "#16a34a"];
     var h = '<div class="card"><div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:6px">' +
-      '<h3 style="margin:0;flex:1 1 auto">Executive incentive plan 2027</h3>' + tag + '</div>' +
+      '<h3 style="margin:0;flex:1 1 auto">Executive incentive plan 2027</h3>' + tag +
+      '<button class="btn sm ghost" data-act="xp-team-pdf" style="min-height:44px">Salary vs incentive (PDF)</button></div>' +   /* 6.9.1063 */
       '<div style="display:flex;gap:6px;align-items:center;margin-bottom:8px">' +
         '<button class="btn sm ghost" data-act="xp-ym" data-d="-1" style="min-height:44px">&lsaquo;</button>' +
         '<b style="min-width:120px;text-align:center">' + esc(monthLabel(ym)) + '</b>' +
         '<button class="btn sm ghost" data-act="xp-ym" data-d="1" style="min-height:44px">&rsaquo;</button>' +
         '<span class="meta" style="font-size:12px">Ladder ' + r0.mult.join(" / ") + ' × salary' + (r0.grace ? ' · 2% grace at half value' : '') + '</span></div>' + xpAskHtml() +
       '<div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%;min-width:980px">' +
-      '<tr>' + th("Executive", "left") + th("All sales") + th("Counted") + th("Left out") + th("Slab", "left") + th("Incentive") + th("Other brands") + th("Quarter so far", "left") + th("Daily reports") + '</tr>';
+      '<tr>' + th("Executive", "left") + th("All sales") + th("Counted") + th("Left out") + th("Slab", "left") + th("Incentive") + th("Payment speed") + th("Other brands") + th("Quarter so far", "left") + th("Daily reports") + '</tr>';
     team.forEach(function (u) {
       var x = xpMonth(u.name, ym), q = xpQuarter(u.name, ym), open = S.xpOpen && S.xpOpen[u.name];
       var slab = x.sal ? (x.k >= 0 ? '<span style="background:' + SC[x.k] + ';color:#fff;font-weight:700;border-radius:99px;padding:2px 8px;font-size:12px">' + (x.k + 1) + '</span> ' + XP_PCT[x.k] + '%' : '<span class="meta">below slab 1</span>') +
@@ -36237,6 +36376,9 @@ function viewCatalogue() {
             (x.ip.incLap > 0.5 ? '<div class="meta" style="font-size:12px;color:#b91c1c">lapsed ' + money(x.ip.incLap) + '</div>' : '') : '') +
           '<div style="display:flex;gap:4px;justify-content:flex-end;margin-top:4px"><button class="btn sm ghost" data-act="xp-pdf" data-n="' + esc(u.name) + '" style="min-height:44px">PDF</button>' +
           '<button class="btn sm ghost" data-act="xp-wa" data-n="' + esc(u.name) + '" style="min-height:44px;color:#15803d">WhatsApp</button></div>') +
+        (function () { var sp = xpSpeed(u.name, ym); return td(sp.n ? '<b style="color:' + (sp.net < -0.5 ? '#b91c1c' : '#166534') + '">' + (sp.net >= 0 ? '+' : '&minus;') + money(Math.abs(sp.net)) + '</b>' +   /* 6.9.1063 */
+          Object.keys(sp.by).map(function (k) { var b = sp.by[k]; return '<div class="meta" style="font-size:11.5px">' + esc(k) + ' ' + (b.rate > 0 ? '+' : '') + b.rate + '% on ' + money(b.base) + '</div>'; }).join("") +
+          '<div class="meta" style="font-size:11.5px">total ' + money(xpTotal(x, sp)) + '</div>' : '<span class="meta">' + (ym < "2026-12" ? 'from Dec 2026' : '&mdash;') + '</span>'); })() +
         td(x.sep > 0.5 ? money(x.sep) : '&mdash;') +
         td(esc(q.label) + ': ' + money(q.tot) + '<div class="meta" style="font-size:12px">' + (q.qk >= 0 ? 'Q' + (q.qk + 1) + ' reached · +' + money(q.extra) + ' (ready ' + money(q.xPaid) + ')' : 'Q1 at ' + xpL(q.th[0])) + '</div>', 'left') +
         (function () { try { var rp = xpReports(u.name, ym); return td(rp.work ? '<b>' + rp.rep + ' / ' + rp.work + '</b>' + (rp.miss ? '<div class="meta" style="font-size:12px;color:#b45309">' + rp.miss + ' missed</div>' : '<div class="meta" style="font-size:12px;color:#166534">all reported</div>') : '&mdash;'); } catch (e) { return td('&mdash;'); } })() + '</tr>';
@@ -36269,6 +36411,7 @@ function viewCatalogue() {
     if (x.next) L.push((cur ? "Still to go: " : "Was short by ") + money(x.next.need) + " for slab " + (x.next.i + 1) + " (" + x.next.pct + "% on everything)" + (cur ? " - " + (new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate() - d.getDate() + 1) + " days left" : ""));
     if (x.inc > 0.5) L.push("Ready (clients paid): " + money(x.ip.incPaid) + (x.ip.incWait > 0.5 ? " | waits for payment: " + money(x.ip.incWait) : "") + (x.ip.incLap > 0.5 ? " | lapsed: " + money(x.ip.incLap) : ""));
     if (x.sep > 0.5) L.push("Other brands (separate): " + money(x.sep));
+    try { var _sp = xpSpeed(name, ym); if (_sp.n) L.push("Payment speed: " + (_sp.net >= 0 ? "+" : "-") + money(Math.abs(_sp.net)) + " (paid within 15 days +0.5%, 30 days +0.25%, 45 days +0.1%; 61-90 days -0.25%; unpaid at 90 days -0.5%)"); } catch (eS) { }   /* 6.9.1063 */
     if (x.left.length) L.push(x.left.length + " line" + (x.left.length === 1 ? "" : "s") + " left out of target (" + money(x.leftV) + ") - see Visit app");
     L.push(q.label + " so far: " + money(q.tot) + (q.qk >= 0 ? " - Q" + (q.qk + 1) + " reached" : " - Q1 at " + money(q.th[0])));
     try { var rp = xpReports(name, ym); if (rp.work) L.push("Daily reports: " + rp.rep + " of " + rp.work + " working days" + (rp.miss ? " (" + rp.miss + " missed)" : "")); } catch (e) { }
@@ -36321,6 +36464,9 @@ function viewCatalogue() {
       row("Counted sales", money(x.net), [15, 23, 42], 1);
       y += 3; F(1); doc.setFontSize(10.5); doc.setTextColor(15, 23, 42); doc.text("Incentive and payment", L, y); y += 6;
       row(x.k >= 0 ? "Slab " + (x.k + 1) + ": " + XP_PCT[x.k] + "% on " + money(x.net) + (x.capped ? " (capped at 1.5 x salary)" : "") : "Below slab 1 - no target incentive", money(x.inc), [15, 118, 110], 1);
+      (function () { var sp = xpSpeed(name, ym); if (!sp.n) return;   /* 6.9.1063 */
+        row("Payment speed - " + Object.keys(sp.by).map(function (k) { return k + " " + (sp.by[k].rate > 0 ? "+" : "") + sp.by[k].rate + "%"; }).join(", "), (sp.net >= 0 ? "+" : "- ") + money(Math.abs(sp.net)), sp.net < -0.5 ? [185, 28, 28] : [22, 101, 52]);
+        row("Total incentive this month (never below zero)", money(xpTotal(x, sp)), [15, 118, 110], 1); })();
       row("Ready - your clients have paid", money(x.ip.incPaid), [22, 101, 52]);
       row("Waits for the clients' payment", money(x.ip.incWait), [71, 85, 105]);
       if (x.ip.incLap > 0.5) row("Lapsed - unpaid 180 days after dispatch", money(x.ip.incLap), [185, 28, 28]);
@@ -70494,6 +70640,7 @@ function viewCatalogue() {
     }
     if (act === "xp-ym") { var _d = Number(t.getAttribute("data-d")) || 0, _c = S.xpYm || xYm(today()); var _y = Number(_c.slice(0, 4)), _m = Number(_c.slice(5, 7)) - 1 + _d; S.xpYm = new Date(_y, _m, 1).getFullYear() + "-" + String(new Date(_y, _m, 1).getMonth() + 1).padStart(2, "0"); keepScroll = true; render(); return; }   /* 6.9.937 */
     if (act === "xp-open") { var _n = t.getAttribute("data-n") || ""; S.xpOpen = S.xpOpen || {}; S.xpOpen[_n] = !S.xpOpen[_n]; keepScroll = true; render(); return; }
+    if (act === "xp-team-pdf") { if (!roleIs("admin")) return; toast("Building the team PDF\u2026"); xpTeamPdf(S.xpYm || xYm(today())).then(function (d) { pdfOut(d, "EW_salary_vs_incentive_" + (S.xpYm || xYm(today())) + ".pdf", "Salary against incentive"); }).catch(function (e) { toast("Could not make the PDF: " + String((e && e.message) || e)); }); return; }   /* 6.9.1063 */
     if (act === "xp-pdf") { var _pn = t.getAttribute("data-n"); xpStatementPdf(_pn, S.xpYm || xYm(today())).catch(function (e) { toast("Could not make the PDF: " + String((e && e.message) || e)); }); return; }   /* 6.9.940 */
     if (act === "xp-wa") {
       var _wn = t.getAttribute("data-n"), _wm = (S.data.team || []).filter(function (u) { return u && dkey(u.name) === dkey(_wn); })[0] || {};
