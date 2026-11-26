@@ -449,7 +449,8 @@
 /* ==EWCORE:drivers:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.1056";   /* 6.9.1056 (26 Nov 2026) - HIS WORDS: "Avoid product code and this other unnecessary column in excel, include graphical representation in summary": the quote Excel drops the code, brand, unit, spacer and second competitor-brand columns (Room only when the quote has rooms), and the summary carries a bar chart of ours against the competitor, brand by brand. */
+  var APP_VERSION = "6.9.1057";   /* 6.9.1057 (26 Nov 2026) - HIS WORDS: "add all" - (1) the competitor price book: Competitor prices on a quote reads the filled Excel back, remembers every competitor price typed, and the next Excel fills them in; (2) our figures are locked in the quote Excel, only the yellow boxes take typing; (3) print ready, landscape, one page wide; (4) the DRP 35% ceiling also where a brand's discount is set at finalise, here and in the Challan and Visit apps. */
+  /* before: */   /* 6.9.1056 (26 Nov 2026) - HIS WORDS: "Avoid product code and this other unnecessary column in excel, include graphical representation in summary": the quote Excel drops the code, brand, unit, spacer and second competitor-brand columns (Room only when the quote has rooms), and the summary carries a bar chart of ours against the competitor, brand by brand. */
   /* before: */   /* 6.9.1055 (26 Nov 2026) - HIS WORDS: "Quote in excel will be brand wise sheet and brand summary of all in one sheet, if viega only comparison enter show of that only, that of each quoted brand". The quote Excel is a workbook: Summary first, then one sheet per quoted brand, each with its own competitor box; the summary shows a figure only for a brand that was compared, and a part comparison against our amount on the same lines. */
   /* before: */   /* 6.9.1054 (26 Nov 2026) - HIS WORDS: "all discounts must be independent never to be interlinked" - the family rate (DRP reading Heliroma’s, HT PRO reading Ultra Silent’s, Sanitaar reading Stellar’s) is gone from all four apps; the 8 pairs billed on a sister’s rate got it as their own first (Vinay Gupta DRP at 32, his choice). "drp is always from 32 % to 35% maximum" - a DRP rate above 35% is refused on every rate screen. "make provision to download quote in excel, sometime needed to make comparision with competitive brands" - Excel on every quote: our lines, and yellow columns for the competitor’s brand, MRP and discount that work out his rate, amount and the difference. */
   /* before: */   /* 6.9.1053 (26 Nov 2026) - FIX, HIS WORDS: "changing drp discount changed heliroma also and vice versa, its big problem". DRP and Heliroma are one rate family (17 Oct 2026: a brand with no row of its own borrows its sister’s rate). Every save then looked up the row IN FORCE - the borrowed sister row - and wrote over it under its own brand name: saving DRP renamed Heliroma’s row to DRP, and Heliroma then borrowed DRP’s. A save now edits a row only when it is that brand’s own row; a borrowed rate is copied into a NEW row for the brand typed, and the sister is never touched. Same fix on the discount screen, the rate-before-card sheet, and the rate set from a delivery. Stellar / Sanitaar and Huliot / HT Pro / Ultra Silent had the same trap. */
@@ -4077,6 +4078,12 @@ window.addEventListener("beforeunload", function (ev) {
     if (!t || t.id !== "c_mob") return;
     var b = el("c_mobchk"); if (!b) return;
     b.innerHTML = mobChkHtml(t.value, "");
+  });
+  /* 6.9.1057 - a filled comparison chosen on the Competitor prices sheet */
+  document.addEventListener("change", function (ev) {
+    var t = ev && ev.target; if (!t || t.id !== "cmp_file" || !t.files || !t.files[0]) return;
+    var q = (S.data.quotes || []).filter(function (x) { return x.id === t.getAttribute("data-id"); })[0];
+    if (q) cmpImport(q, t.files[0]);
   });
   /* 6.9.1030 - the brand executive's site search */
   document.addEventListener("input", function (ev) {
@@ -22116,6 +22123,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       '<select class="qs" data-id="' + esc(q.id) + '" style="width:auto;padding:5px 8px;font-size:12.5px">' + opts(QSTATUS, q.status) + '</select>' +
       '<button class="btn sm" data-act="q-pdf" data-id="' + esc(q.id) + '">Download PDF</button>' +
       '<button class="btn sm ghost" data-act="q-xl" data-id="' + esc(q.id) + '" title="The quote in Excel, with columns to compare a competitor brand">Excel</button>' +   /* 6.9.1054 */
+      '<button class="btn sm ghost" data-act="qcmp-open" data-id="' + esc(q.id) + '" title="Bring a filled comparison back; see competitor prices on file">Competitor prices</button>' +   /* 6.9.1057 */
       '<button class="btn sm ghost" data-act="q-pres" data-id="' + esc(q.id) + '">Proposal</button>' +
       '<button class="btn sm ghost" data-act="q-tg" data-id="' + esc(q.id) + '">Telegram</button>' + waExecBtn("q-wa", q.client, 'data-id="' + esc(q.id) + '"') +
       /* v6.9.343 - a two-brand quote whose Green Heat Plus is sold and whose Pentair is
@@ -24444,7 +24452,8 @@ function viewCatalogue() {
      carries a bar chart, ours against the competitor, brand by brand. */
   function quoteXlsxRows(q, items, label) {
     items = items || qItems(q);
-    var out = [], GST = 18;
+    var out = [], GST = 18, IN = XL.INPUTU != null ? XL.INPUTU : XL.INPUT;   /* 6.9.1057 - the unlocked yellow box */
+    var pf = null; try { pf = label && typeof cmpPrefill === "function" ? cmpPrefill(label) : null; } catch (e) { pf = null; }   /* the competitor's prices on file */
     var hasRoom = items.some(function (i) { return i.rq && typeof i.rq === "object" && Object.keys(i.rq).some(function (k) { return Number(i.rq[k]) > 0; }); });
     /* the column map - every formula below is written from these letters, so a column dropped or added moves nothing by hand */
     var keys = ["n"].concat(hasRoom ? ["room"] : []).concat(["prod", "qty", "mrp", "disc", "rate", "amt", "cprod", "cmrp", "cdisc", "crate", "camt", "diff"]);
@@ -24454,19 +24463,20 @@ function viewCatalogue() {
       cprod: "Competitor product", cmrp: "His MRP", cdisc: "His disc %", crate: "His net rate", camt: "His amount", diff: "Difference (his - ours)" };
     out.push([{ v: "Energy World · Quotation " + qNo(q) + (label ? " · " + label : ""), s: XL.BOLD }]);
     out.push([(q.client || "") + " · " + (q.createdAt ? fullDate(String(q.createdAt).slice(0, 10)) : "") + (q.createdBy ? " · " + q.createdBy : "")]);
-    var r3 = {}; r3.mrp = { v: "OUR QUOTE", s: XL.BOLD }; r3.cprod = { v: "Competitor brand:", s: XL.BOLD }; r3.cmrp = { v: "", s: XL.INPUT };
-    r3.cdisc = "← name him once, then type his MRP and disc % on the lines you compare";
+    var r3 = {}; r3.mrp = { v: "OUR QUOTE", s: XL.BOLD }; r3.cprod = { v: "Competitor brand:", s: XL.BOLD }; r3.cmrp = { v: pf ? pf.comp : "", s: IN };
+    r3.cdisc = pf ? "← filled from the price book (" + fullDate(String(pf.at).slice(0, 10)) + ") - change or clear any yellow box" : "← name him once, then type his MRP and disc % on the lines you compare";
     out.push(row(r3));
     out.push(keys.map(function (k) { return { v: HEAD[k], s: XL.HEAD }; }));
     var first = out.length + 1, n = 0;
     items.forEach(function (i) {
       var r = out.length + 1, d = qLineDisc(q, i), net = qLineNet(q, i), qty = Number(i.qty) || 0, L = function (k) { return C[k] + r; };
+      var p0 = pf && pf.by[String(i.code || "")];   /* his last price for this very product */
       var rooms = []; if (i.rq && typeof i.rq === "object") Object.keys(i.rq).forEach(function (k) { if (Number(i.rq[k]) > 0) rooms.push(k + (Number(i.rq[k]) !== 1 ? " x" + i.rq[k] : "")); });
       var title = ""; try { title = descLines(i.desc).title; } catch (e) { title = String(i.desc || ""); }
       out.push(row({ n: ++n, room: rooms.join(", "),
         prod: title + (i.unit ? " (" + String(i.unit).replace(/\.$/, "") + ")" : "") + (i.optional ? "  [OPTIONAL - not in the total]" : ""),
         qty: qty, mrp: { v: Number(i.price) || 0, s: XL.MONEY }, disc: d, rate: { v: net, s: XL.MONEY }, amt: { v: i.optional ? 0 : Math.round(net * qty), s: XL.MONEY },   /* rupees the Indian way */
-        cprod: { v: "", s: XL.INPUT }, cmrp: { v: "", s: XL.INPUT }, cdisc: { v: "", s: XL.INPUT },
+        cprod: { v: p0 ? p0.cprod || "" : "", s: IN }, cmrp: { v: p0 ? p0.mrp : "", s: IN }, cdisc: { v: p0 ? p0.disc : "", s: IN },
         crate: { v: "", f: 'IF(' + L("cmrp") + '="","",ROUND(' + L("cmrp") + '*(1-N(' + L("cdisc") + ')/100),0))', s: XL.MONEY },
         camt: { v: "", f: 'IF(' + L("crate") + '="","",' + (i.optional ? '0' : 'ROUND(' + L("crate") + '*' + L("qty") + ',0)') + ')', s: XL.MONEY },
         diff: { v: "", f: 'IF(' + L("camt") + '="","",' + L("camt") + '-' + L("amt") + ')', s: XL.MONEY } }));
@@ -24538,8 +24548,8 @@ function viewCatalogue() {
       { name: "Our amount (whole brand)", ref: "$C$" + f0 + ":$C$" + fl, color: "1F3A5F" },
       { name: "Ours on compared lines", ref: "$G$" + f0 + ":$G$" + fl, color: "0F766E" },
       { name: "Competitor on those lines", ref: "$H$" + f0 + ":$H$" + fl, color: "DC2626" }] };
-    sheets.push({ name: "Summary", rows: sum, cols: [24, 8, 16, 18, 20, 10, 18, 20, 18, 20], freeze: { r: 4, c: 1 }, chart: chart });
-    groups.forEach(function (g) { sheets.push({ name: g.sheet, rows: g.rows, cols: g.rows.meta.cols, freeze: { r: 4, c: g.rows.meta.freezeC } }); });
+    sheets.push({ name: "Summary", rows: sum, cols: [24, 8, 16, 18, 20, 10, 18, 20, 18, 20], freeze: { r: 4, c: 1 }, chart: chart, protect: true });
+    groups.forEach(function (g) { sheets.push({ name: g.sheet, rows: g.rows, cols: g.rows.meta.cols, freeze: { r: 4, c: g.rows.meta.freezeC }, protect: true }); });
     return sheets;
   }
   /* 6.9.1056 - a clustered bar chart (DrawingML), anchored under the summary table */
@@ -24608,7 +24618,7 @@ function viewCatalogue() {
         sheets.map(function (s, i) { return '<Relationship Id="rId' + (i + 1) + '" Type="' + NS + '/worksheet" Target="worksheets/sheet' + (i + 1) + '.xml"/>'; }).join("") +
         '<Relationship Id="rId' + (sheets.length + 1) + '" Type="' + NS + '/styles" Target="styles.xml"/></Relationships>' },
       { name: "xl/styles.xml", data: xlStyles() }
-    ].concat(sheets.map(function (s, i) { return { name: "xl/worksheets/sheet" + (i + 1) + ".xml", data: xlSheet(s.rows, s.cols, false, { freeze: s.freeze, drawing: !!(i === 0 && ch) }) }; })).concat(parts));
+    ].concat(sheets.map(function (s, i) { return { name: "xl/worksheets/sheet" + (i + 1) + ".xml", data: xlSheet(s.rows, s.cols, false, { freeze: s.freeze, drawing: !!(i === 0 && ch), protect: !!s.protect, print: true }) }; })).concat(parts));
   }
   function quoteXlsx(q) {
     if (!qItems(q).length) { toast("This quote has no lines."); return; }
@@ -24622,6 +24632,139 @@ function viewCatalogue() {
       toast("Downloaded " + name);
       try { dlPanel(blob, name); } catch (e) { }
     } catch (e) { toast("Could not build the file on this device."); }
+  }
+  /* ===== 6.9.1057 - THE COMPETITOR PRICE BOOK =====
+     HIS WORDS: "add all" (to: bring a filled comparison back so the competitor's prices are remembered and filled in next time,
+     lock our figures, print ready, the DRP ceiling in the phone apps). He fills the yellow boxes of the quote Excel and sends the
+     file back here (Import comparison on the quote). Each line he priced becomes a fact - which competitor, against which of our
+     products, his product, his MRP and discount, when, from which quote. The next Excel of any quote fills those boxes for the
+     same products from the newest price on file. Nothing is changed in the quote itself. */
+  /* a zip, read in the browser: central directory -> each file, stored or deflated (DecompressionStream) */
+  function xlUnzip(buf) {
+    var u = new Uint8Array(buf), dv = new DataView(u.buffer, u.byteOffset, u.byteLength), e = -1;
+    for (var i = u.length - 22; i >= Math.max(0, u.length - 66000); i--) if (dv.getUint32(i, true) === 0x06054b50) { e = i; break; }
+    if (e < 0) return Promise.reject(new Error("not an Excel file"));
+    var n = dv.getUint16(e + 10, true), p = dv.getUint32(e + 16, true), jobs = [], out = {};
+    var dec = function (b) { return new TextDecoder("utf-8").decode(b); };
+    for (var k = 0; k < n; k++) {
+      if (dv.getUint32(p, true) !== 0x02014b50) break;
+      var meth = dv.getUint16(p + 10, true), csz = dv.getUint32(p + 20, true), nl = dv.getUint16(p + 28, true), xl = dv.getUint16(p + 30, true), cl = dv.getUint16(p + 32, true), lo = dv.getUint32(p + 42, true);
+      var name = dec(u.subarray(p + 46, p + 46 + nl));
+      p += 46 + nl + xl + cl;
+      if (!/^xl\/(workbook\.xml|_rels\/workbook\.xml\.rels|sharedStrings\.xml|worksheets\/[^\/]+\.xml)$/.test(name)) continue;   /* only what the import reads */
+      var ds = lo + 30 + dv.getUint16(lo + 26, true) + dv.getUint16(lo + 28, true), data = u.subarray(ds, ds + csz);
+      jobs.push((function (nm, m, d) {
+        if (m === 0) { out[nm] = dec(d); return Promise.resolve(); }
+        if (m !== 8 || typeof DecompressionStream === "undefined") return Promise.reject(new Error("this phone cannot open a compressed Excel - use a computer"));
+        return new Response(new Blob([d]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).text().then(function (t) { out[nm] = t; });
+      })(name, meth, data));
+    }
+    return Promise.all(jobs).then(function () { return out; });
+  }
+  /* every sheet of a workbook as { name: { "A1": value } } */
+  function xlReadBook(files) {
+    var P = function (x) { return new DOMParser().parseFromString(x || "<x/>", "application/xml"); };
+    var tag = function (doc, t) { return Array.prototype.slice.call(doc.getElementsByTagNameNS("*", t)); };
+    var ss = files["xl/sharedStrings.xml"] ? tag(P(files["xl/sharedStrings.xml"]), "si").map(function (si) { return tag(si, "t").map(function (t) { return t.textContent; }).join(""); }) : [];
+    var rel = {}; tag(P(files["xl/_rels/workbook.xml.rels"]), "Relationship").forEach(function (r) { rel[r.getAttribute("Id")] = r.getAttribute("Target"); });
+    var book = {};
+    tag(P(files["xl/workbook.xml"]), "sheet").forEach(function (s) {
+      var rid = s.getAttribute("r:id") || s.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "id");
+      var tg = String(rel[rid] || "").replace(/^\/?xl\//, "").replace(/^\//, ""), x = files["xl/" + tg];
+      if (!x) return;
+      var cells = {};
+      tag(P(x), "c").forEach(function (c) {
+        var t = c.getAttribute("t"), vEl = tag(c, "v")[0], v;
+        if (t === "s") v = ss[Number(vEl && vEl.textContent)] || "";
+        else if (t === "inlineStr") v = tag(c, "t").map(function (q) { return q.textContent; }).join("");
+        else if (t === "str" || t === "e") v = vEl ? vEl.textContent : "";
+        else if (t === "b") v = vEl ? vEl.textContent === "1" : false;
+        else v = vEl && vEl.textContent !== "" ? Number(vEl.textContent) : "";
+        cells[c.getAttribute("r")] = v;
+      });
+      book[s.getAttribute("name")] = cells;
+    });
+    return book;
+  }
+  /* the priced lines of one filled quote workbook, matched back to the quote's own lines by sheet (brand) and # */
+  function cmpFromBook(q, book) {
+    var groups = quoteBrandGroups(q), no = String(qNo(q) || ""), rows = [], seen = 0;
+    Object.keys(book).forEach(function (sn) {
+      var c = book[sn], a1 = String(c.A1 || "");
+      if (sn === "Summary" || a1.indexOf("Quotation " + no + " · ") < 0) return;
+      seen++;
+      var label = a1.split(" · ").slice(2).join(" · ").trim();
+      var g = groups.filter(function (x) { return x.brand === label; })[0]; if (!g) return;
+      var col = {}; for (var i = 0; i < 30; i++) { var L = xlCol(i), h = String(c[L + "4"] || "").trim(); if (h) col[h] = L; }
+      if (!col["His MRP"] || !col["#"]) return;
+      var comp = String(c[col["His MRP"] + "3"] || "").trim();
+      for (var r = 5; r < 5 + g.items.length + 2; r++) {
+        var n = Number(c[col["#"] + r]), it = n > 0 ? g.items[n - 1] : null, mrp = Number(c[col["His MRP"] + r]);
+        if (!it || !(mrp > 0)) continue;
+        var dsc = Number(c[col["His disc %"] + r]) || 0;
+        rows.push({ comp: comp || "Competitor", ourBrand: g.brand, code: String(it.code || ""), desc: String(it.desc || "").split("\n")[0].slice(0, 120),
+          cprod: String((col["Competitor product"] && c[col["Competitor product"] + r]) || "").slice(0, 120), mrp: mrp, disc: Math.max(0, Math.min(100, dsc)) });
+      }
+    });
+    return { rows: rows, sheets: seen };
+  }
+  /* the newest price per competitor per product */
+  function cmpBook() {
+    var m = {};
+    ((S.data && S.data.audit) || []).forEach(function (a) {
+      if (!a || a.action !== "cmp:import") return;
+      var d = {}; try { d = JSON.parse(a.detail || "{}") || {}; } catch (e) { return; }
+      (d.rows || []).forEach(function (r) {
+        var k = dkey(r.comp) + "|" + String(r.code || "");
+        var x = Object.assign({}, r, { at: String(a.createdAt || ""), by: a.actor || "", quote: d.quote || "", client: d.client || "" });
+        if (!m[k] || m[k].at <= x.at) m[k] = x;
+      });
+    });
+    return m;
+  }
+  /* for the next Excel: the competitor last priced against this brand, and his price per product */
+  function cmpPrefill(brand) {
+    var b = {}; try { b = cmpBook(); } catch (e) { return null; }
+    var L = Object.keys(b).map(function (k) { return b[k]; }).filter(function (x) { return dkey(x.ourBrand) === dkey(brand); });
+    if (!L.length) return null;
+    L.sort(function (x, y) { return String(y.at).localeCompare(String(x.at)); });
+    var comp = L[0].comp, by = {};
+    L.forEach(function (x) { if (dkey(x.comp) === dkey(comp) && !by[x.code]) by[x.code] = x; });
+    return { comp: comp, at: L[0].at, by: by };
+  }
+  function cmpImport(q, file) {
+    if (!file) return;
+    toast("Reading " + (file.name || "the file") + "…");
+    (file.arrayBuffer ? file.arrayBuffer() : new Response(file).arrayBuffer()).then(xlUnzip).then(function (files) {
+      var res = cmpFromBook(q, xlReadBook(files));
+      if (!res.sheets) { toast("This is not the Excel of " + qNo(q) + " — nothing was read."); return; }
+      if (!res.rows.length) { toast("No competitor MRP typed in this file — nothing to remember."); return; }
+      auditFact("cmp:import", String(qNo(q) || q.id), { quote: String(qNo(q) || ""), client: String(q.client || ""), file: String(file.name || "").slice(0, 80), rows: res.rows })
+        .catch(function () { toast("Kept on this device — it goes up with the next sync."); });
+      S.modal = modalCmpBook(q.id); render();
+      toast(plural(res.rows.length, "competitor price") + " remembered from " + (file.name || "the file") + ".");
+    }).catch(function (e) { toast("Could not read that file: " + (e && e.message || e)); });
+  }
+  function modalCmpBook(qid) {
+    var q = (S.data.quotes || []).filter(function (x) { return x.id === qid; })[0];
+    if (!q) return '<h2>Not found</h2><div class="foot"><button class="btn" data-act="close">Close</button></div>';
+    var brands = {}; quoteBrandGroups(q).forEach(function (g) { brands[dkey(g.brand)] = 1; });
+    var b = cmpBook(), L = Object.keys(b).map(function (k) { return b[k]; }).filter(function (x) { return brands[dkey(x.ourBrand)]; })
+      .sort(function (x, y) { return String(x.ourBrand).localeCompare(String(y.ourBrand)) || String(x.comp).localeCompare(String(y.comp)) || String(y.at).localeCompare(String(x.at)); });
+    var td = function (t, r) { return '<td style="padding:5px 6px;border-top:1px solid #e2e8f0;' + (r ? 'text-align:right;white-space:nowrap' : '') + '">' + t + '</td>'; };
+    return '<h2>Competitor prices</h2><p class="sub">' + esc(qNo(q)) + ' &middot; ' + esc(q.client || "") + '</p>' +
+      '<div class="meta" style="font-size:13px">Download the Excel, fill the competitor’s MRP and discount in the yellow boxes, then bring the file back here. ' +
+      'Every price you typed is remembered, and the next Excel of any quote fills them in for the same products.</div>' +
+      '<label style="margin-top:10px">Import a filled comparison (.xlsx)</label>' +
+      '<input type="file" id="cmp_file" data-id="' + esc(q.id) + '" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style="min-height:44px"/>' +
+      '<h3 style="margin:14px 0 4px;font-size:15px">On file for the brands of this quote · ' + L.length + '</h3>' +
+      (L.length ? '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px"><tr style="color:#475569;text-align:left">' +
+        '<th>Our brand</th><th>Our product</th><th>Competitor</th><th>His product</th><th style="text-align:right">His MRP</th><th style="text-align:right">Disc</th><th style="text-align:right">His net</th><th>When</th></tr>' +
+        L.slice(0, 300).map(function (x) {
+          return '<tr>' + td(esc(x.ourBrand)) + td(esc(x.desc)) + td('<b>' + esc(x.comp) + '</b>') + td(esc(x.cprod || "")) + td(money(x.mrp), 1) + td(esc(String(x.disc)) + '%', 1) +
+            td(money(Math.round(x.mrp * (1 - x.disc / 100))), 1) + td(esc(dmy(String(x.at).slice(0, 10))) + (x.quote ? ' <span class="meta">' + esc(x.quote) + '</span>' : '')) + '</tr>';
+        }).join("") + '</table></div>' : '<div class="empty">Nothing on file yet for these brands.</div>') +
+      '<div class="foot"><button class="btn ghost" data-act="q-xl" data-id="' + esc(q.id) + '">Download the Excel</button><button class="btn" data-act="close">Close</button></div>';
   }
   function quotePdf(q) {
     var _it = []; try { _it = JSON.parse(q.items || "[]"); } catch (e) { }
@@ -43010,7 +43153,7 @@ function viewCatalogue() {
   /* style ids, in the order they are written into cellXfs below */
   var XL = { PLAIN: 0, HEAD: 1, WON: 2, LIVE: 3, NONE: 4, LOST: 5, NR: 6, BOLD: 7, BAND: 8, INPUT: 9, MID: 10, MIDB: 11, HEADW: 12, C_WON: 13, C_LIVE: 14, C_NONE: 15, C_LOST: 16, C_NR: 17,
     /* 6.9.637 - the review sheet: money in Indian grouping, and the four-colour scale */
-    MONEY: 18, MONEYB: 19, G: 20, A: 21, O: 22, R: 23, G_M: 24, A_M: 25, O_M: 26, R_M: 27, TITLE: 28, SECT: 29, TILE: 30, TILE_M: 31, EXEC: 32, EXECC: 33, EXEC_M: 34, QTYB: 35 };
+    MONEY: 18, MONEYB: 19, G: 20, A: 21, O: 22, R: 23, G_M: 24, A_M: 25, O_M: 26, R_M: 27, TITLE: 28, SECT: 29, TILE: 30, TILE_M: 31, EXEC: 32, EXECC: 33, EXEC_M: 34, QTYB: 35, INPUTU: 36 };
   var XL_STATUS = { won: XL.WON, live: XL.LIVE, none: XL.NONE, lost: XL.LOST, nr: XL.NR };
   function xlStyles() {
     var solid = function (hex) {
@@ -43043,7 +43186,7 @@ function viewCatalogue() {
       '<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border>' +
         '<border><left style="thin"><color rgb="FFD97706"/></left><right style="thin"><color rgb="FFD97706"/></right><top style="thin"><color rgb="FFD97706"/></top><bottom style="thin"><color rgb="FFD97706"/></bottom><diagonal/></border></borders>' +
       '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
-      '<cellXfs count="36">' +
+      '<cellXfs count="37">' +
         '<xf xfId="0" numFmtId="0" fontId="0" fillId="0" borderId="0"/>' +
         '<xf xfId="0" fontId="1" fillId="2" borderId="0" applyFont="1" applyFill="1"/>' +
         '<xf xfId="0" fontId="1" fillId="3" borderId="0" applyFont="1" applyFill="1"/>' +
@@ -43086,6 +43229,8 @@ function viewCatalogue() {
         '<xf xfId="0" numFmtId="164" fontId="4" fillId="17" borderId="0" applyNumberFormat="1" applyFont="1" applyFill="1"/>' +
         /* 6.9.720 - 35 the order quantity */
         '<xf xfId="0" numFmtId="164" fontId="1" fillId="18" borderId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>' +
+        /* 6.9.1057 - 36 the yellow box on a LOCKED sheet: the only cell that takes typing */
+        '<xf xfId="0" fontId="2" fillId="9" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1" applyProtection="1"><alignment horizontal="center" vertical="center"/><protection locked="0"/></xf>' +
       '</cellXfs>' +
       /* openpyxl warns "workbook contains no default style" without this, and Excel is stricter
          than openpyxl - a repair prompt on first open is exactly the thing that would make him
@@ -43126,9 +43271,12 @@ function viewCatalogue() {
     }
     return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
       '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+      (opts.print ? '<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>' : '') +   /* 6.9.1057 - one page wide when printed */
       view + colXml + '<sheetData>' + body + '</sheetData>' +
+      (opts.protect ? '<sheetProtection sheet="1" objects="1" scenarios="1" formatColumns="0" formatRows="0"/>' : '') +   /* 6.9.1057 - our figures locked; no password, Review > Unprotect lifts it */
       (opts.filter ? '<autoFilter ref="' + opts.filter + '"/>' : '') +
       (opts.merges && opts.merges.length ? '<mergeCells count="' + opts.merges.length + '">' + opts.merges.map(function (m) { return '<mergeCell ref="' + m + '"/>'; }).join("") + '</mergeCells>' : '') +
+      (opts.print ? '<pageMargins left="0.4" right="0.4" top="0.5" bottom="0.5" header="0.3" footer="0.3"/><pageSetup paperSize="9" orientation="landscape" fitToWidth="1" fitToHeight="0"/>' : '') +
       (opts.drawing ? '<drawing r:id="rId1"/>' : '') + '</worksheet>';
   }
   /* 6.9.629 - PICTURES IN THE SHEET. opts.media = [Uint8Array jpeg, ...]; opts.pics = [{ r: row index,
@@ -57123,6 +57271,7 @@ function viewCatalogue() {
         '<div class="acts">' +
         '<button class="btn sm" data-act="q-pdf" data-id="' + esc(q.id) + '">Download PDF</button>' +
         '<button class="btn sm ghost" data-act="q-xl" data-id="' + esc(q.id) + '" title="The quote in Excel, with columns to compare a competitor brand">Excel</button>' +   /* 6.9.1054 */
+      '<button class="btn sm ghost" data-act="qcmp-open" data-id="' + esc(q.id) + '" title="Bring a filled comparison back; see competitor prices on file">Competitor prices</button>' +   /* 6.9.1057 */
       '<button class="btn sm ghost" data-act="q-pres" data-id="' + esc(q.id) + '">Proposal</button>' +
         '<button class="btn sm ghost" data-act="q-tg" data-id="' + esc(q.id) + '">Telegram</button>' + waExecBtn("q-wa", q.client, 'data-id="' + esc(q.id) + '"') +
         '<button class="btn sm ghost" data-act="rad-status" data-id="' + esc(q.id) + '" data-s="Won">Won</button>' +
@@ -69458,6 +69607,7 @@ function viewCatalogue() {
       toast(qbB + ": " + qbSt + (qbSt === "Later" ? " - back on " + d10(qbTill) : "") + ".");
       render(); return;
     }
+    if (act === "qcmp-open") { S.modal = modalCmpBook(id); render(); return; }   /* 6.9.1057 */
     if (act === "q-xl") { var _qx = (S.data.quotes || []).filter(function (x) { return x.id === id; })[0]; if (_qx) quoteXlsx(_qx); return; }   /* 6.9.1054 */
     if (act === "q-pdf") {
       var qd = S.data.quotes.filter(function (x) { return x.id === id; })[0];
@@ -70872,9 +71022,10 @@ function viewCatalogue() {
         if (!no && !raw) return;
         var v = no ? 0 : Number(raw);
         if (!no && (!/^[0-9]+(\.[0-9]+)?$/.test(raw) || v > 100)) { _pbad = _pbad || b; return; }
+        if (!no && discOverCeil(b, v)) { _pbad = _pbad || (b + " is " + discCeil(b) + "% at most \u2014 " + v + "% was typed"); return; }   /* 6.9.1057 */
         _pset.push({ brand: b, pct: v });
       });
-      if (_pbad) { toast(_pbad + ": a discount is a number from 0 to 100."); return; }
+      if (_pbad) { toast(/% at most/.test(_pbad) ? _pbad + ". Nothing was saved." : _pbad + ": a discount is a number from 0 to 100."); return; }
       if (!_pset.length) { toast("Put a % in, or tick No discount, for at least one brand."); return; }
       var _pkeep = hsbKeep();
       _pset.forEach(function (x) {
@@ -74195,6 +74346,8 @@ function viewCatalogue() {
       document.querySelectorAll(".hsb-non").forEach(function (el) {
         hnon[el.getAttribute("data-brand")] = !!el.checked;
       });
+      var _hCeil = Object.keys(hpct).filter(function (b) { return !hnon[b] && discOverCeil(b, hpct[b]); })[0];   /* 6.9.1057 - DRP 35% at most */
+      if (_hCeil) { toast(_hCeil + " is " + discCeil(_hCeil) + "% at most \u2014 " + hpct[_hCeil] + "% was typed. Nothing was stamped."); return; }
       /* Nothing is stamped while a brand is still an open question. */
       /* v6.9.357 - accounts cannot decide a discount, so it cannot stamp a delivery that still
          needs one. Refused with the name of the brand and whose answer to fetch, not a locked
