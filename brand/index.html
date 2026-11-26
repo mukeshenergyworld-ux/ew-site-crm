@@ -75,7 +75,8 @@ body.away::after{content:"Hidden while you are away";position:fixed;inset:0;disp
 <script>
 (function () {
   "use strict";
-  var APP_VERSION = "1.2.1";   /* 18 Nov 2026 - new app icon */   /* 1.2.0 (17 Nov 2026) - he adds a site himself: checked at once against Energy World's book and his own list, a duplicate said in plain words; his added sites show what Energy World decided */
+  var APP_VERSION = "1.3.0";   /* 1.3.0 (26 Nov 2026) - THE OWNER'S WORDS: "executive can enter new site which is in their followup not in ours list, to avoid duplicate make provision to check by entering phone no initially ... if brand executive search client by entering phone no and found its there in our record, show him he is our client for which brand and quoted for which brand, do not show any quote or any download option... he can only view site assigned to him or sites added by him". Adding a site starts with the mobile alone. Already Energy World's: he sees the name, the brands bought and the brands quoted (names only - no quote, no value, no file) and one tap puts it on his list. New: the form, and it is on his list at once (Energy World's CRM adds it by itself). Measured first: with no site given yet the screen stopped at "No site has been given to you yet" and the Add button never showed (Naveen Kumar, Oyster, 26 Nov). */
+  /* before: */   /* 18 Nov 2026 - new app icon */   /* 1.2.0 (17 Nov 2026) - he adds a site himself: checked at once against Energy World's book and his own list, a duplicate said in plain words; his added sites show what Energy World decided */
   var APP_VERSION_PREV = "1.1.0";   /* 1.1.0 (17 Nov 2026) - Energy World admin sign-in: every brand executive, his sites, every follow-up and quote, a download; none of the guards */   /* 1.0.0 (17 Nov 2026) - first release */
   var SERVER = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var IDLE_MS = 15 * 60000, TOK = "ew_bx_tok", ST = ["Ongoing", "Won", "Lost", "Not required"];
@@ -272,7 +273,7 @@ body.away::after{content:"Hidden while you are away";position:fixed;inset:0;disp
       return '<button class="chip' + (S.f === x[0] ? ' on' : '') + '" data-act="f" data-k="' + esc(x[0]) + '">' + x[1] + ' <b>' + cnt(x[0]) + '</b></button>'; }).join("") + '</div>' +
       '<input id="q" type="search" placeholder="Search client, area, architect or plumber" value="' + esc(S.q) + '" autocomplete="off">';
     if (S.busy && !S.sites.length) return h + '<div class="empty">Loading your sites…</div>';
-    if (!S.sites.length) return h + '<div class="empty">No site has been given to you yet.<br>Energy World will add them.</div>';
+    if (!S.sites.length) return h + '<div class="empty">No site in your list yet.<br>Energy World gives you sites, and you can add the ones you are following.</div>' + addsHtml();   /* 1.3.0 - the Add button was never reached here */
     h += '<div id="list">' + listHtml(list) + '</div>';
     h += addsHtml();
     return h;
@@ -286,7 +287,7 @@ body.away::after{content:"Hidden while you are away";position:fixed;inset:0;disp
   var ADD_DIST = ["Panipat", "Sonipat", "Karnal", "Rohtak", "Kurukshetra", "Delhi", "Other"];
   var ADD_TYPE = ["Bungalow", "Apartment", "Villa Project", "Commercial", "Hotel", "Hospital", "Other"];
   var ADD_STAGE = ["Design / Drawing", "Excavation / Foundation", "Structure / Slab", "Brickwork / Masonry", "Concealed Plumbing (rough-in)", "Concealed Electrical", "Plastering", "Waterproofing", "Flooring / Tiling", "Sanitary & CP Fitting", "False Ceiling / Painting", "Final Fitout / Handover", "Post-Handover / AMC"];
-  var ADD_SAY = { "new": ["Sent \u00b7 waiting for Energy World", "p-new"], accepted: ["Added \u00b7 now in your list", "p-Won"], linked: ["Already a client \u00b7 now in your list", "p-Ongoing"], rejected: ["Not taken", "p-Lost"] };
+  var ADD_SAY = { "new": ["In your list \u00b7 Energy World adding it", "p-new"], accepted: ["In your list \u00b7 on Energy World's book", "p-Won"], linked: ["In your list \u00b7 already with Energy World", "p-Ongoing"], rejected: ["Not taken", "p-Lost"] };   /* 1.3.0 */
   function addsHtml() {
     var h = '<div style="margin-top:14px"><button class="btn full" data-act="add-open">+ Add a site you are following</button></div>';
     if (!S.adds.length) return h;
@@ -299,15 +300,37 @@ body.away::after{content:"Hidden while you are away";position:fixed;inset:0;disp
   }
   function sel(id, list, cur, ph) { return '<select id="' + id + '" style="width:100%;min-height:48px;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;font-size:16px"><option value="">' + esc(ph || "Pick") + '</option>' + list.map(function (x) { return '<option' + (x === cur ? ' selected' : '') + '>' + esc(x) + '</option>'; }).join("") + '</select>'; }
   function txt(id, v, ph, im) { return '<input id="' + id + '" type="' + (im === "tel" ? "tel" : "text") + '"' + (im === "tel" ? ' inputmode="numeric" maxlength="14"' : '') + ' value="' + esc(v || "") + '" placeholder="' + esc(ph || "") + '" autocomplete="off" style="width:100%;min-height:48px;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;font-size:16px">'; }
+  /* 1.3.0 - step 1: the mobile alone. Step 2 only when Energy World does not have it. */
+  function brandChips(list, none) { return list && list.length ? list.map(function (b) { return '<span class="pill" style="background:#E8EEF5;color:#1F3A5F;margin:2px 4px 2px 0">' + esc(b) + '</span>'; }).join("") : '<span class="meta">' + esc(none) + '</span>'; }
   function viewAdd() {
-    var F = S.add || {}, ask = S.addAsk;
-    return '<div class="sheet" data-act="bg"><div class="in" data-stop="1">' +
-      '<div style="display:flex;gap:10px;align-items:center"><h2 style="flex:1;margin:4px 0">Add a site</h2><button class="btn ghost" data-act="add-close" style="min-height:44px;padding:0 14px">Close</button></div>' +
-      '<div class="meta">Energy World checks it against their book and adds it to your list.</div>' +
+    var F = S.add || {}, ask = S.addAsk, C = F.chk;
+    var h = '<div class="sheet" data-act="bg"><div class="in" data-stop="1">' +
+      '<div style="display:flex;gap:10px;align-items:center"><h2 style="flex:1;margin:4px 0">Add a site</h2><button class="btn ghost" data-act="add-close" style="min-height:44px;padding:0 14px">Close</button></div>';
+    if (F.step !== "form") {
+      h += '<div class="meta">First the client’s mobile — so the same site is never added twice.</div>' +
+        '<div class="card"><label for="ad_m">Client mobile *</label>' + txt("ad_m", F.mobile, "10 digits", "tel") +
+        '<button class="btn full" style="margin-top:12px" data-act="add-chk">Check</button></div>';
+      if (C && C.found === "yours") h += '<div class="card" style="border-color:#bfdbfe;background:#eff6ff"><b>Already in your list' + (C.ew && C.ew.name ? ': ' + esc(C.ew.name) : '') + '</b>' +
+        (C.ew && C.ew.name && siteOf(C.ew.name) ? '<button class="btn full" style="margin-top:10px" data-act="add-see" data-k="' + esc(C.ew.name) + '">Open it</button>' : '') + '</div>';
+      else if (C && C.found === "ew") {
+        var E = C.ew || {};
+        h += '<div class="card" style="border-color:#99f6e4;background:#f0fdfa"><div style="font-weight:800;color:#0f766e">' + (E.kind === "Client" ? "Energy World’s client" : "Already with Energy World") + '</div>' +
+          (E.name ? '<div style="font-size:17px;font-weight:800;margin-top:2px">' + (E.code ? '<span class="code">' + esc(E.code) + '</span>' : '') + esc(E.name) + '</div>' : '') +
+          (E.area ? '<div class="meta">' + esc(E.area) + '</div>' : '') +
+          '<dl class="kv" style="margin-top:8px"><dt>Bought from Energy World</dt><dd>' + brandChips(E.won, "nothing yet") + '</dd>' +
+          '<dt>Quoted by Energy World</dt><dd>' + brandChips(E.quoted, "no quote yet") + '</dd></dl>' +
+          '<div class="meta" style="margin-top:6px">Brand names only. Quotes and prices stay with Energy World.</div>' +
+          '<button class="btn full" style="margin-top:12px" data-act="add-link">Put it on my list</button></div>';
+      } else if (C && C.found === "sent") h += '<div class="card" style="border-color:#fcd34d;background:#fffbeb"><b style="color:#92400e">' + (C.sameBrand ? 'Someone from your brand has already sent this site' : 'Another brand is following this site too') + (C.name ? ' (' + esc(C.name) + ')' : '') + '.</b>' +
+        '<div class="meta" style="margin:4px 0 8px">' + (C.sameBrand ? 'Send it only if it is a different site of the same client.' : 'That is fine — add it for your brand.') + '</div>' +
+        '<button class="btn full" data-act="add-form">' + (C.sameBrand ? 'It is different — fill in the site' : 'Fill in the site') + '</button></div>';
+      return h + '</div></div>';
+    }
+    h += '<div class="meta">Not with Energy World yet. It goes on your list at once, and into Energy World’s book.</div>' +
       (ask ? '<div class="card" style="border-color:#fcd34d;background:#fffbeb"><b style="color:#92400e">' + esc(ask) + '</b><div class="meta" style="margin:4px 0 8px">Send it anyway and Energy World will put you on the site already there, if it fits.</div>' +
         '<div style="display:flex;gap:8px"><button class="btn ghost" data-act="add-close" style="flex:1">Cancel</button><button class="btn" data-act="add-go" data-k="1" style="flex:2">Send anyway</button></div></div>' : '') +
-      '<div class="card"><label for="ad_c">Client name *</label>' + txt("ad_c", F.client, "e.g. Ramesh Kumar") +
-      '<label for="ad_m">Client mobile *</label>' + txt("ad_m", F.mobile, "10 digits", "tel") +
+      '<div class="card"><label>Client mobile</label><div style="display:flex;gap:8px;align-items:center"><b style="flex:1;font-size:17px">' + esc(F.mobile || "") + '</b><button class="btn ghost" data-act="add-back" style="min-height:44px;padding:0 14px">Change</button></div>' +
+      '<label for="ad_c">Client name *</label>' + txt("ad_c", F.client, "e.g. Ramesh Kumar") +
       '<label for="ad_d">District *</label>' + sel("ad_d", ADD_DIST, F.city, "Pick the district") +
       '<label for="ad_a">Area / colony</label>' + txt("ad_a", F.area, "e.g. Model Town") +
       '<label for="ad_ad">Address</label>' + txt("ad_ad", F.address, "House no, street, landmark") +
@@ -316,27 +339,49 @@ body.away::after{content:"Hidden while you are away";position:fixed;inset:0;disp
       '<label for="ad_ar">Architect (name)</label>' + txt("ad_ar", F.architect, "If you know") +
       '<label for="ad_pl">Plumber (name)</label>' + txt("ad_pl", F.plumber, "If you know") +
       '<label for="ad_r">Remark</label><textarea id="ad_r" maxlength="500" placeholder="What you know about it">' + esc(F.remark || "") + '</textarea>' +
-      (ask ? '' : '<button class="btn full" style="margin-top:14px" data-act="add-go">Send to Energy World</button>') + '</div></div></div>';
+      (ask ? '' : '<button class="btn full" style="margin-top:14px" data-act="add-go">Add to my list</button>') + '</div>';
+    return h + '</div></div>';
   }
   function addKeep() {
-    var g = function (id) { var e = el(id); return e ? String(e.value || "") : ""; };
-    S.add = { client: g("ad_c").trim(), mobile: g("ad_m").replace(/\D/g, "").slice(-10), city: g("ad_d"), area: g("ad_a").trim(), address: g("ad_ad").trim(),
-      type: g("ad_t"), stage: g("ad_s"), architect: g("ad_ar").trim(), plumber: g("ad_pl").trim(), remark: g("ad_r").trim() };
-    return S.add;
+    var g = function (id) { var e = el(id); return e ? String(e.value || "") : null; }, F = S.add || {};
+    var m = g("ad_m"); if (m !== null) F.mobile = m.replace(/\D/g, "").slice(-10);
+    if (F.step === "form") { F.client = String(g("ad_c") || "").trim(); F.city = g("ad_d") || ""; F.area = String(g("ad_a") || "").trim(); F.address = String(g("ad_ad") || "").trim();
+      F.type = g("ad_t") || ""; F.stage = g("ad_s") || ""; F.architect = String(g("ad_ar") || "").trim(); F.plumber = String(g("ad_pl") || "").trim(); F.remark = String(g("ad_r") || "").trim(); }
+    S.add = F; return F;
+  }
+  function addCheck(b) {
+    var F = addKeep();
+    if (String(F.mobile || "").length !== 10) { toast("The client's 10-digit mobile."); return; }
+    b.disabled = true; b.textContent = "Checking…";
+    call("bxCheck", { mobile: F.mobile }).then(function (r) {
+      b.disabled = false; b.textContent = "Check";
+      if (!r || !r.ok) { if (r && r.err && !/Too many|mobile|signed/i.test(r.err)) { F.chk = null; F.step = "form"; render(); return; } toast((r && r.err) || "Not checked."); return; }   /* a server not yet on BX5: straight to the form, the old check runs on Save */
+      if (!r.found) { F.chk = r; F.step = "form"; render(); return; }
+      F.chk = r; render();
+    }, function (e) { b.disabled = false; b.textContent = "Check"; if (e.message !== "signed out") toast("No signal — try again."); });
+  }
+  function addLink(b) {
+    var F = S.add || {}; b.disabled = true; b.textContent = "Adding…";
+    call("bxAddSite", { site: { mobile: F.mobile } }).then(function (r) {
+      if (r && r.ok) { S.add = null; S.addAsk = null; toast("On your list now."); pull(); return; }
+      b.disabled = false; b.textContent = "Put it on my list"; toast((r && r.err) || "Not added.");
+      if (r && r.dup === "yours") { S.add = null; render(); }
+    }, function (e) { b.disabled = false; b.textContent = "Put it on my list"; if (e.message !== "signed out") toast("No signal — try again."); });
   }
   function addGo(b, confirm) {
     var F = S.addAsk ? S.add : addKeep();
-    if (F.client.length < 3) { toast("The client's name."); return; }
-    if (F.mobile.length !== 10) { toast("The client's 10-digit mobile."); return; }
+    if (String(F.client || "").length < 3) { toast("The client's name."); return; }
+    if (String(F.mobile || "").length !== 10) { toast("The client's 10-digit mobile."); return; }
     if (!F.city) { toast("Pick the district."); return; }
-    b.disabled = true; b.textContent = "Checking\u2026";
-    call("bxAddSite", { site: F, confirm: confirm ? 1 : 0 }).then(function (r) {
-      if (r && r.ok) { S.adds.unshift(r.add); S.add = null; S.addAsk = null; render(); toast(r.dup ? "Sent. Energy World will link it to the one already there." : "Sent to Energy World. It shows below until they add it."); return; }
-      b.disabled = false; b.textContent = confirm ? "Send anyway" : "Send to Energy World";
+    b.disabled = true; b.textContent = "Adding…";
+    var site = { client: F.client, mobile: F.mobile, city: F.city, area: F.area, address: F.address, type: F.type, stage: F.stage, architect: F.architect, plumber: F.plumber, remark: F.remark };
+    call("bxAddSite", { site: site, confirm: confirm ? 1 : 0 }).then(function (r) {
+      if (r && r.ok) { S.add = null; S.addAsk = null; toast(r.linked ? "Already with Energy World — on your list now." : "On your list now. Energy World adds it to their book."); pull(); return; }
+      b.disabled = false; b.textContent = confirm ? "Send anyway" : "Add to my list";
       if (r && r.ask) { S.addAsk = r.err; render(); return; }   /* a duplicate: say it, let him decide */
-      toast((r && r.err) || "Not sent.");
+      toast((r && r.err) || "Not added.");
       if (r && r.dup === "yours") { S.add = null; S.addAsk = null; render(); }
-    }, function (e) { b.disabled = false; b.textContent = "Send to Energy World"; if (e.message !== "signed out") toast("No signal \u2014 try again."); });
+    }, function (e) { b.disabled = false; b.textContent = "Add to my list"; if (e.message !== "signed out") toast("No signal — try again."); });
   }
   function listHtml(list) {
     if (!list.length) return '<div class="empty">Nothing here.</div>';
@@ -344,7 +389,8 @@ body.away::after{content:"Hidden while you are away";position:fixed;inset:0;disp
     return list.map(function (x) {
       var s = x.s, f = x.f, due = f && f.next && f.next <= td && x.st === "Ongoing";
       return '<div class="card site" data-act="open" data-k="' + esc(s.client) + '"><div class="top"><div class="nm">' + (s.code ? '<span class="code">' + esc(s.code) + '</span>' : '') + esc(s.client) + '</div>' + pillFor(x.st) + '</div>' +
-        '<div class="meta">' + esc([s.area, s.city].filter(Boolean).join(", ")) + (s.stage ? ' · ' + esc(s.stage) : '') + ' · ' + esc(s.brand || "") + '</div>' +
+        '<div class="meta">' + esc([s.area, s.city].filter(Boolean).join(", ")) + (s.stage ? ' · ' + esc(s.stage) : '') + ' · ' + esc(s.brand || "") + (s.mine ? ' · <b>added by you</b>' : '') + '</div>' +
+        (s.won && s.won.length ? '<div class="meta" style="margin-top:2px">Energy World\u2019s client \u00b7 bought ' + esc(s.won.join(", ")) + '</div>' : '') +   /* 1.3.0 */
         (f ? '<div class="meta" style="margin-top:4px">' + esc(dm(f.at)) + ': “' + esc(String(f.remark || "").slice(0, 90)) + '”' + (f.next ? ' · <span class="' + (due ? 'due' : '') + '">next ' + esc(dm(f.next)) + '</span>' : '') + '</div>' : '') + '</div>';
     }).join("");
   }
@@ -359,6 +405,7 @@ body.away::after{content:"Hidden while you are away";position:fixed;inset:0;disp
       '<div class="meta">' + esc([s.area, s.city].filter(Boolean).join(", ")) + ' · ' + esc(s.kind || "") + '</div></div><button class="btn ghost" data-act="close" style="min-height:44px;padding:0 14px">Close</button></div>' +
       '<div class="card"><dl class="kv"><dt>Brand</dt><dd><b>' + esc(s.brand || "") + '</b></dd><dt>Stage</dt><dd>' + esc(s.stage || "not set") + '</dd>' +
       '<dt>With Energy World</dt><dd>' + esc(s.ew || "") + (s.quotes ? ' · ' + s.quotes + ' quote' + (s.quotes === 1 ? '' : 's') + ' for ' + esc(s.brand) + (s.lastQuote ? ', last ' + esc(dm(s.lastQuote)) : '') : ' · no quote yet') + '</dd>' +
+      '<dt>Bought from Energy World</dt><dd>' + brandChips(s.won, "nothing yet") + '</dd><dt>Quoted by Energy World</dt><dd>' + brandChips(s.quoted, "no quote yet") + '</dd>' +   /* 1.3.0 - brand names only */
       '<dt>Architect</dt>' + pcard(s.architect) + '<dt>Plumber</dt>' + pcard(s.plumber) +
       '<dt>EW executive</dt><dd>' + esc(ex.name || "") + (ex.mobile ? ' <a class="btn ghost" style="min-height:40px;padding:0 12px;margin-left:6px;text-decoration:none" href="tel:' + esc(ex.mobile) + '">Call</a>' : '') + '</dd></dl>' +
       '<div class="meta" style="margin-top:8px">Talk to the architect and plumber through the Energy World executive.</div></div>' +
@@ -450,7 +497,12 @@ body.away::after{content:"Hidden while you are away";position:fixed;inset:0;disp
     if (act === "close" || act === "bg") { if (S.add && !S.open) { addKeep(); return; } keepForm(); S.open = null; S.form = null; render(); return; }
     if (act === "st") { keepForm(); S.form.status = k; render(); return; }
     if (act === "save") { doSave(t); return; }
-    if (act === "add-open") { S.add = {}; S.addAsk = null; render(); return; }   /* 1.2.0 */
+    if (act === "add-open") { S.add = {}; S.addAsk = null; render(); setTimeout(function () { var m = el("ad_m"); if (m) m.focus(); }, 60); return; }   /* 1.2.0, 1.3.0 - the mobile first */
+    if (act === "add-chk") { addCheck(t); return; }
+    if (act === "add-link") { addLink(t); return; }
+    if (act === "add-form") { addKeep(); S.add.step = "form"; render(); return; }
+    if (act === "add-back") { addKeep(); S.add.step = ""; S.add.chk = null; S.addAsk = null; render(); return; }
+    if (act === "add-see") { S.add = null; S.open = k; S.form = null; render(); return; }
     if (act === "add-close") { S.add = null; S.addAsk = null; render(); return; }
     if (act === "add-go") { addGo(t, k === "1"); return; }
   });
@@ -458,7 +510,7 @@ body.away::after{content:"Hidden while you are away";position:fixed;inset:0;disp
     var t = ev.target;
     if (t.id === "q") { S.q = t.value; var L = el("list"); if (L) { var q = low(S.q); L.innerHTML = listHtml(S.sites.map(function (s) { return { s: s, st: myState(s), f: lastFu(s.client) }; }).filter(function (x) { return (S.f === "all" || x.st === S.f) && (!q || low([x.s.client, x.s.code, x.s.area, x.s.city, x.s.stage, x.s.architect && x.s.architect.name, x.s.plumber && x.s.plumber.name].join(" ")).indexOf(q) >= 0); })); } }
   });
-  document.addEventListener("keydown", function (ev) { if (ev.key === "Enter" && (ev.target.id === "lp" || ev.target.id === "lm")) { var b = document.querySelector('[data-act="login"]'); if (b) doLogin(b); } if (ev.key === "Enter" && (ev.target.id === "ap" || ev.target.id === "an")) { var b2 = document.querySelector('[data-act="adm-login"]'); if (b2) doAdmLogin(b2); } });
+  document.addEventListener("keydown", function (ev) { if (ev.key === "Enter" && ev.target.id === "ad_m") { var bc = document.querySelector('[data-act="add-chk"]'); if (bc) addCheck(bc); return; } if (ev.key === "Enter" && (ev.target.id === "lp" || ev.target.id === "lm")) { var b = document.querySelector('[data-act="login"]'); if (b) doLogin(b); } if (ev.key === "Enter" && (ev.target.id === "ap" || ev.target.id === "an")) { var b2 = document.querySelector('[data-act="adm-login"]'); if (b2) doAdmLogin(b2); } });
   document.addEventListener("input", function (ev) { if (ev.target.id === "aq") { S.q = ev.target.value; var L = el("alist"); if (L) { var q = low(S.q); L.innerHTML = admList(admRows().filter(function (r) { return (!S.ax || r.p.id === S.ax) && (S.f === "all" || r.st === S.f) && (!q || low([r.s.client, r.s.code, r.s.area, r.s.city, r.p.name, r.p.company].join(" ")).indexOf(q) >= 0); })); } } });
 
   S.tok = load(TOK);
