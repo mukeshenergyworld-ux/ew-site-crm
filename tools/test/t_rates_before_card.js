@@ -3,8 +3,8 @@
 var H = require("./harness.js");
 var ROWS = [{ id: "D1", client: "Sanjeev Aggarwal", brand: "Huliot HT PRO", pct: "44", notes: JSON.stringify({ from: "2026-09-26" }) }];
 var ctx = { discRowOn: function (cl, b, day) { return day >= "2026-09-26" ? ROWS[0] : null; }, incMap: function (r) { try { return JSON.parse(r.notes || "{}"); } catch (e) { return {}; } },
-  incRoleLabel: function (r) { return r; } };
-var F = H.lift("team", ["admOldRows"], ctx);
+  incRoleLabel: function (r) { return r; }, dkey: function (s) { return String(s || "").trim().toLowerCase(); }, mintId: function () { return "D-NEW"; } };
+var F = H.lift("team", ["discOwn", "admOldRows"], ctx);
 var r = F.admOldRows("Sanjeev Aggarwal", "2026-09-26", { "huliot ht pro": { brand: "Huliot HT PRO", vals: { architect: "3", exec: "1" } } });
 var n = JSON.parse(r.rows[0].notes);
 H.ok("the rates go onto the rate row of that day, its start date and discount kept", r.rows.length === 1 && r.rows[0].id === "D1" && r.rows[0].pct === "44" && n.from === "2026-09-26" && n.architect === 3 && n.exec === 1 && n.execOn === 1);
