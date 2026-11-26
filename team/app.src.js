@@ -449,7 +449,8 @@
 /* ==EWCORE:drivers:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.1057";   /* 6.9.1057 (26 Nov 2026) - HIS WORDS: "add all" - (1) the competitor price book: Competitor prices on a quote reads the filled Excel back, remembers every competitor price typed, and the next Excel fills them in; (2) our figures are locked in the quote Excel, only the yellow boxes take typing; (3) print ready, landscape, one page wide; (4) the DRP 35% ceiling also where a brand's discount is set at finalise, here and in the Challan and Visit apps. */
+  var APP_VERSION = "6.9.1058";   /* 6.9.1058 (26 Nov 2026) - HIS WORDS: "Make provision to add partner old balance with old hisab attached, want to make it a professional incentive calculation and payout system for Energy world Saathi". A partner carries the balance he arrived with (owed to him, or an advance he holds), as on a day, with the old hisab attached; it is payable at once, the first line of his ledger and his statement, and sent to Saathi. A payout above what is due stops and asks: his old balance, or an advance. */
+  /* before: */   /* 6.9.1057 (26 Nov 2026) - HIS WORDS: "add all" - (1) the competitor price book: Competitor prices on a quote reads the filled Excel back, remembers every competitor price typed, and the next Excel fills them in; (2) our figures are locked in the quote Excel, only the yellow boxes take typing; (3) print ready, landscape, one page wide; (4) the DRP 35% ceiling also where a brand's discount is set at finalise, here and in the Challan and Visit apps. */
   /* before: */   /* 6.9.1056 (26 Nov 2026) - HIS WORDS: "Avoid product code and this other unnecessary column in excel, include graphical representation in summary": the quote Excel drops the code, brand, unit, spacer and second competitor-brand columns (Room only when the quote has rooms), and the summary carries a bar chart of ours against the competitor, brand by brand. */
   /* before: */   /* 6.9.1055 (26 Nov 2026) - HIS WORDS: "Quote in excel will be brand wise sheet and brand summary of all in one sheet, if viega only comparison enter show of that only, that of each quoted brand". The quote Excel is a workbook: Summary first, then one sheet per quoted brand, each with its own competitor box; the summary shows a figure only for a brand that was compared, and a part comparison against our amount on the same lines. */
   /* before: */   /* 6.9.1054 (26 Nov 2026) - HIS WORDS: "all discounts must be independent never to be interlinked" - the family rate (DRP reading Heliroma’s, HT PRO reading Ultra Silent’s, Sanitaar reading Stellar’s) is gone from all four apps; the 8 pairs billed on a sister’s rate got it as their own first (Vinay Gupta DRP at 32, his choice). "drp is always from 32 % to 35% maximum" - a DRP rate above 35% is refused on every rate screen. "make provision to download quote in excel, sometime needed to make comparision with competitive brands" - Excel on every quote: our lines, and yellow columns for the competitor’s brand, MRP and discount that work out his rate, amount and the difference. */
@@ -35571,6 +35572,100 @@ function viewCatalogue() {
       return [st.architect, st.plumber, st.builder, st.pmc].some(function (x) { return String(x || "").trim().toLowerCase() === nm; });
     }));   /* 6.9.929 */
   }
+  /* ===== 6.9.1058 - A PARTNER'S OLD BALANCE, WITH THE OLD HISAB ON FILE =====
+     HIS WORDS: "Make provision to add partner old balance with old hisab attached, want to make it a professional incentive
+     calculation and payout system for Energy world Saathi". Seen on Sandeep Bhardwaj (LD133): Rs 28,000 paid in cash on
+     26 Nov against Rs 1,131 earned in the app - the rest was owed from the old books, so his card read "Due now -28,000".
+     Now a partner can carry the balance he arrived with: the amount (we owe him, or an advance he holds), the day it was
+     struck on, a note, and the old hisab itself (PDF or photographed pages, hosted like a client's). It is due at once - it
+     waits on no client - so it is added to what is PAYABLE, never to what was EARNED here; it is the first line of his
+     ledger, a line of his statement, and part of what Saathi shows him. Owner only, PIN every time; every change is a new
+     row, the latest wins, nothing is deleted. */
+  function partnerObMap() {
+    var m = {};
+    ((S.data && S.data.audit) || []).forEach(function (a) {
+      if (!a || a.action !== "partner:ob") return;
+      var d = {}; try { d = JSON.parse(a.detail || "{}") || {}; } catch (e) { return; }
+      var k = dkey(d.name || a.target), at = String(a.createdAt || "");
+      if (!k || (m[k] && m[k].at > at)) return;
+      m[k] = { name: String(d.name || a.target || ""), amt: Math.round(Number(d.amt) || 0), asOn: String(d.asOn || "").slice(0, 10), note: String(d.note || ""), on: Number(d.on) !== 0, at: at, by: String(a.actor || "") };
+    });
+    return m;
+  }
+  function partnerOb(name) { var x = partnerObMap()[dkey(name)]; return x && x.on && Math.abs(x.amt) >= 1 ? x : null; }
+  function partnerObDocs(name) {
+    var k = dkey(name), out = [];
+    ((S.data && S.data.audit) || []).forEach(function (a) {
+      if (!a || a.action !== "partner:hisab") return;
+      var d = {}; try { d = JSON.parse(a.detail || "{}") || {}; } catch (e) { return; }
+      if (dkey(d.name || a.target) !== k || !d.url || d.removed) return;
+      out.push({ url: String(d.url), file: String(d.file || ""), note: String(d.note || ""), at: String(d.at || a.createdAt || ""), by: String(a.actor || "") });
+    });
+    return out.sort(function (x, y) { return String(y.at).localeCompare(String(x.at)); });
+  }
+  /* the strip on his card: what he arrived with, and the paper behind it */
+  function partnerObStrip(name) {
+    var ob = partnerOb(name), docs = partnerObDocs(name), own = roleIs("admin");
+    if (!ob && !docs.length && !own) return "";
+    var links = docs.slice(0, 4).map(function (d, i) { return '<a href="' + esc(d.url) + '" target="_blank" rel="noopener" style="color:#0f766e;font-weight:600">' + esc(d.file || ("Old hisab " + (docs.length - i))) + ' &#8599;</a>'; }).join(" &middot; ");
+    return '<div class="card" style="border-color:' + (ob ? '#99f6e4' : '#e2e8f0') + ';background:' + (ob ? '#f0fdfa' : '#fff') + ';padding:10px 12px">' +
+      '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center"><div style="flex:1 1 240px">' +
+      (ob ? '<b>Old balance ' + (ob.amt >= 0 ? 'due to him' : 'he holds as advance') + ': ' + money(Math.abs(ob.amt)) + '</b>' + (ob.asOn ? ' <span class="meta">as on ' + esc(dmy(ob.asOn)) + '</span>' : '') +
+          (ob.note ? '<div class="meta" style="font-size:12.5px">' + esc(ob.note) + '</div>' : '') +
+          '<div class="meta" style="font-size:12px">Brought from the old books &middot; ' + (ob.amt >= 0 ? 'payable now, it waits on no client' : 'set against what he earns') + '</div>'
+        : '<b>No old balance recorded</b><div class="meta" style="font-size:12.5px">If he was owed incentive from the old books, or holds an advance, enter it here with the old hisab.</div>') +
+      (docs.length ? '<div style="font-size:13px;margin-top:4px">Old hisab: ' + links + '</div>' : (ob ? '<div class="meta" style="font-size:12px;color:#b45309;margin-top:3px">No old hisab attached yet.</div>' : '')) +
+      '</div>' + (own ? '<button class="btn sm' + (ob ? ' ghost' : '') + '" style="min-height:44px" data-act="pob-open" data-n="' + esc(name) + '">' + (ob ? 'Change / attach' : '+ Old balance') + '</button>' : '') + '</div></div>';
+  }
+  function modalPartnerOb(name, pre) {
+    if (!roleIs("admin")) return '<h2>The owner enters this</h2><p class="sub">A partner’s old balance is set by the owner.</p><div class="foot"><button class="btn" data-act="close">Close</button></div>';
+    var ob = partnerOb(name), docs = partnerObDocs(name), amt = pre && pre.amt != null ? pre.amt : (ob ? ob.amt : "");
+    var dir = amt !== "" && Number(amt) < 0 ? "adv" : "owe";
+    return '<h2>Old balance &mdash; ' + esc(name) + '</h2>' +
+      '<p class="sub">What stood in the old books on the day he came onto the app. It is payable at once (it waits on no client), it is the first line of his ledger and his statement, and Saathi shows it to him.</p>' +
+      (ob ? '<div class="meta" style="font-size:12.5px">On file now: <b>' + money(Math.abs(ob.amt)) + '</b> ' + (ob.amt >= 0 ? 'due to him' : 'advance he holds') + (ob.asOn ? ' as on ' + esc(dmy(ob.asOn)) : '') + ' &middot; set by ' + esc(ob.by || "?") + '. Saving makes a new row; the old one is kept.</div>' : '') +
+      '<div class="grid2"><div><label>Amount (Rs)</label><input id="pob_amt" inputmode="numeric" value="' + esc(amt === "" ? "" : String(Math.abs(Number(amt)))) + '" placeholder="e.g. 26869"/></div>' +
+      '<div><label>Which way</label><select id="pob_dir"><option value="owe"' + (dir === "owe" ? ' selected' : '') + '>We owe him (incentive due from the old books)</option>' +
+      '<option value="adv"' + (dir === "adv" ? ' selected' : '') + '>He holds an advance (paid ahead, to be set off)</option></select></div></div>' +
+      '<div class="grid2"><div><label>As on</label><input id="pob_on" type="date" value="' + esc((ob && ob.asOn) || (pre && pre.asOn) || today()) + '"/></div>' +
+      '<div><label>Note</label><input id="pob_note" value="' + esc((ob && ob.note) || (pre && pre.note) || "") + '" placeholder="e.g. old register page 14, till 31 Oct"/></div></div>' +
+      '<label style="margin-top:8px">The old hisab (PDF or photos of the pages)</label>' +
+      '<input type="file" id="c_hisab" multiple accept="application/pdf,image/*" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;background:#fff"/>' +
+      '<div id="c_hisab_note" class="meta" style="margin-top:4px;color:#94a3b8">' + hdNoteHtml() + '</div>' +
+      (docs.length ? '<div class="meta" style="font-size:12.5px;margin-top:6px">Already on file: ' + docs.map(function (d) { return '<a href="' + esc(d.url) + '" target="_blank" rel="noopener">' + esc(d.file || "old hisab") + '</a>'; }).join(" &middot; ") + '</div>' : '') +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
+      (ob ? '<button class="btn ghost" data-act="pob-clear" data-n="' + esc(name) + '">Set to nil</button>' : '') +
+      '<button class="btn" data-act="pob-save" data-n="' + esc(name) + '">Save</button></div>';
+  }
+  /* the old hisab goes up exactly as a client's does: a PDF as it is, photographed pages joined into one PDF */
+  function pobUpload(name, files, note) {
+    var fs = (files || []).slice();
+    if (!fs.length) return Promise.resolve(0);
+    if (fs.length > 1 && fs.every(function (x) { return x.kind === "image"; })) fs = [{ kind: "pages", pages: fs.map(function (x) { return x.b64; }), name: fs.length + " pages" }];
+    var n = 0;
+    return fs.reduce(function (p, f, i) {
+      return p.then(function () {
+        return (f.kind === "pdf" ? Promise.resolve(f.b64)
+          : (f.kind === "pages" ? imgsToPdf(f.pages, name + " — old hisab") : imgToPdf(f.b64, name + " — old hisab")).then(function (d) { return d.output("datauristring").split(",")[1]; }))
+          .then(function (b64) { return api("pdfHost", { pdfBase64: b64, filename: "PARTNER-HISAB-" + String(name).replace(/[^\w.-]+/g, "-") + (fs.length > 1 ? "-" + (i + 1) : "") + ".pdf" }); })
+          .then(function (r) {
+            if (!r || !r.ok || !r.url) throw new Error((r && r.error) ? String(r.error) : "the server took the file but sent no link back");
+            n++;
+            return auditFact("partner:hisab", name, { name: name, url: r.url, file: String(f.name || ""), note: note || "" });
+          });
+      });
+    }, Promise.resolve()).then(function () { return n; });
+  }
+  /* a payout above what is due: say so, and offer the two honest answers */
+  function modalPoOver(name, kind, amt, due) {
+    return '<h2>More than is due</h2><p class="sub">' + esc(name) + '</p>' +
+      '<div class="card" style="border-color:#fca5a5;background:#fef2f2">You are paying <b>' + money(amt) + '</b>; due to him now is <b>' + money(Math.max(0, due)) + '</b>. ' +
+      'The extra <b>' + money(amt - Math.max(0, due)) + '</b> will show as paid ahead.</div>' +
+      '<div class="meta" style="font-size:13px;margin-top:6px">If it settles what he was owed from the <b>old books</b>, enter that old balance first (with the old hisab) &mdash; then this payout is simply against it. If it is an <b>advance</b>, record it as one.</div>' +
+      '<div class="foot" style="flex-wrap:wrap"><button class="btn ghost" data-act="close">Cancel</button>' +
+      (kind !== "exec" && roleIs("admin") ? '<button class="btn ghost" data-act="pob-open" data-n="' + esc(name) + '" data-amt="' + esc(String(Math.round(amt - Math.max(0, due)))) + '">It is his old balance</button>' : '') +
+      '<button class="btn" data-act="po-force-adv">Record as an advance</button></div>';
+  }
   function partnerBook(name) {
     var nm = String(name).trim().toLowerCase();
     /* A partner earns on every client he is NAMED on (as plumber / architect / builder /
@@ -35590,6 +35685,9 @@ function viewCatalogue() {
       return partnerBookRate(cl, br, c, nm, dsc);
     }, nm);
     bk.sites = partnerSites(name);
+    /* 6.9.1058 - the old balance he arrived with: payable at once, never part of what was earned here */
+    var _ob = partnerOb(name);
+    if (_ob) { bk.opening = _ob.amt; bk.obAsOn = _ob.asOn; bk.payable += _ob.amt; bk.pending = bk.payable - bk.paid; }
     /* 6.9.1042 - tool damage to recover from him is cut from his incentive: counted like a payout, so what is due to him drops by it */
     var _tc = tkCutsFor(name);
     if (_tc.total) { bk.toolCut = _tc.total; bk.toolCuts = _tc.rows; bk.paid += _tc.total; bk.pending = bk.payable - bk.paid; }
@@ -35636,10 +35734,11 @@ function viewCatalogue() {
       if (String(p.associate || "").trim().toLowerCase() !== nm) return;
       ev.push({ d: dstr(p.date || p.createdAt), t: "pay", amt: payAmt(p), mode: String(p.mode || ""), note: String(p.notes || ""), site: String(p.siteName || "") });
     });
+    if (kind !== "exec" && b.opening) ev.push({ d: String(b.obAsOn || "0000-00-00"), t: "ob", amt: Number(b.opening) || 0 });   /* 6.9.1058 - first line */
     if (kind !== "exec") (b.toolCuts || []).forEach(function (x) {   /* 6.9.1042 - the tool damage cut, a line like a payout */
       ev.push({ d: dstr(x.at), t: "pay", tool: 1, amt: Number(x.amt) || 0, mode: "", note: x.code + " " + x.tool + " \u00b7 " + x.kind + (x.note ? " \u00b7 " + x.note : ""), site: x.site || "" });
     });
-    ev.sort(function (a, c) { return String(a.d).localeCompare(String(c.d)) || ((a.t === "pay") - (c.t === "pay")); });
+    ev.sort(function (a, c) { return String(a.d).localeCompare(String(c.d)) || ((c.t === "ob") - (a.t === "ob")) || ((a.t === "pay") - (c.t === "pay")); });
     var bal = 0;
     ev.forEach(function (e) { bal += e.t === "pay" ? -e.amt : e.amt; e.bal = bal; });
     return { b: b, ev: ev };
@@ -35649,9 +35748,9 @@ function viewCatalogue() {
     S.ldgAll = S.ldgAll || {};
     var key = (kind === "exec" ? "x:" : "p:") + dkey(name), all = !!S.ldgAll[key], SHOW = 15;
     var list = all ? ev : ev.slice(-SHOW);
-    var earned = 0, paid = 0;
-    ev.forEach(function (e) { if (e.t === "pay") paid += e.amt; else earned += e.amt; });
-    var due = Math.max(0, (Number(b.payable) || 0) - paid), wait = Math.max(0, earned - (Number(b.payable) || 0));
+    var earned = 0, paid = 0, obL = 0;
+    ev.forEach(function (e) { if (e.t === "pay") paid += e.amt; else if (e.t === "ob") obL += e.amt; else earned += e.amt; });   /* 6.9.1058 - the old balance on its own */
+    var due = Math.max(0, (Number(b.payable) || 0) - paid), wait = Math.max(0, earned - ((Number(b.payable) || 0) - obL));
     var td = 'padding:6px 6px;border-top:1px solid #e2e8f0;vertical-align:top;font-size:13px';
     var h = '<div class="card" style="border-color:#0b3b36;padding:10px 12px"><h3 style="margin:0 0 2px">' + esc(name) + ' &mdash; ledger</h3>' +
       '<div class="meta" style="font-size:13px;margin-bottom:6px">Every delivery he earned on, every return and every payout, oldest first, with the balance after each line.</div>';
@@ -35662,8 +35761,16 @@ function viewCatalogue() {
       '<th style="padding:6px;text-align:left">DATE &middot; PARTICULARS</th>' +
       '<th style="padding:6px;text-align:right;width:84px">EARNED / PAID</th><th style="padding:6px;text-align:right;width:84px">BALANCE</th></tr></thead><tbody>';
     list.forEach(function (e, i) {
-      var bg = e.t === "pay" ? "#eff6ff" : (e.t === "ret" ? "#fef2f2" : (i % 2 ? "#f8fafc" : "#fff"));
+      var bg = e.t === "pay" ? "#eff6ff" : (e.t === "ret" ? "#fef2f2" : e.t === "ob" ? "#f0fdfa" : (i % 2 ? "#f8fafc" : "#fff"));
       var part;
+      if (e.t === "ob") {   /* 6.9.1058 */
+        var _od = partnerObDocs(name);
+        h += '<tr style="background:' + bg + '"><td style="' + td + ';word-break:break-word"><span style="color:#64748b;font-size:12px">' + esc(dmy(e.d)) + '</span><br><b style="color:#0f766e">Old balance</b> &middot; brought from the old books' +
+          (_od.length ? '<div style="font-size:12px">' + _od.slice(0, 3).map(function (d) { return '<a href="' + esc(d.url) + '" target="_blank" rel="noopener" style="color:#0f766e">' + esc(d.file || "old hisab") + ' &#8599;</a>'; }).join(" &middot; ") + '</div>' : '<div class="meta" style="font-size:12px;color:#b45309">old hisab not attached</div>') + '</td>' +
+          '<td style="' + td + ';text-align:right;white-space:nowrap">' + (e.amt < 0 ? '<span style="color:#b91c1c">' + money(e.amt) + '</span><div style="font-size:12px;color:#b91c1c">advance held</div>' : '+ ' + money(e.amt) + '<div style="font-size:12px;color:#0f766e">brought forward</div>') + '</td>' +
+          '<td style="' + td + ';text-align:right;white-space:nowrap;font-weight:700">' + money(e.bal) + '</td></tr>';
+        return;
+      }
       if (e.t === "pay") part = (e.tool ? '<b style="color:#b91c1c">Tool damage recovery</b>' : '<b style="color:#1d4ed8">Payout</b>') + (e.mode ? ' &middot; ' + esc(e.mode) : '') + (e.site ? ' &middot; ' + esc(e.site) : '') + (e.note ? '<div class="meta" style="font-size:12px">' + esc(e.note) + '</div>' : '');
       else part = (e.t === "ret" ? '<b style="color:#b91c1c">Return</b> ' : '') + '<b>' + esc(e.client) + '</b>' + (e.site && dkey(e.site) !== dkey(e.client) ? ' &middot; ' + esc(e.site) : '') +
         '<div class="meta" style="font-size:12px">' + esc(e.no) + (e.brand ? ' &middot; ' + esc(e.brand) : '') +
@@ -35673,10 +35780,10 @@ function viewCatalogue() {
           (e.amt < 0 ? '<span style="color:#b91c1c">' + money(e.amt) + '</span><div style="font-size:12px;color:#b91c1c">reversed</div>' : '+ ' + money(e.amt) + '<div style="font-size:12px;color:#047857">earned</div>')) + '</td>' +
         '<td style="' + td + ';text-align:right;white-space:nowrap;font-weight:700">' + money(e.bal) + '</td></tr>';
     });
-    h += '<tr style="background:#ecfdf5;font-weight:700"><td style="' + td + '">Total earned ' + money(earned) + '<br>Total paid ' + money(paid) + '</td><td style="' + td + '"></td><td style="' + td + ';text-align:right;white-space:nowrap">' + money(earned - paid) + '</td></tr>';
+    h += '<tr style="background:#ecfdf5;font-weight:700"><td style="' + td + '">' + (obL ? 'Old balance ' + money(obL) + '<br>' : '') + 'Total earned ' + money(earned) + '<br>Total paid ' + money(paid) + '</td><td style="' + td + '"></td><td style="' + td + ';text-align:right;white-space:nowrap">' + money(obL + earned - paid) + '</td></tr>';
     h += '</tbody></table>' +
       '<div style="display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:8px;font-size:13px">' +
-      '<span>Balance <b>' + money(earned - paid) + '</b></span>' +
+      '<span>Balance <b>' + money(obL + earned - paid) + '</b></span>' +
       '<span>Due now (client has paid) <b style="color:' + (due > 0.5 ? '#b91c1c' : 'inherit') + '">' + money(due) + '</b></span>' +
       '<span>Waiting for client payment <b style="color:#b45309">' + money(wait) + '</b></span></div></div>';
     return h;
@@ -36531,7 +36638,7 @@ function viewCatalogue() {
     return partnerClientRows(b, "ALL").map(function (g) { return { client: g.client, wait: Math.max(0, g.inc - g.rel) }; })
       .filter(function (x) { return x.wait > 0.5; }).sort(function (p, q) { return q.wait - p.wait; });
   }
-  function incWaitTotal(b) { return Math.max(0, (Number(b.earned) || 0) - (Number(b.payable) || 0)); }
+  function incWaitTotal(b) { return Math.max(0, (Number(b.earned) || 0) - ((Number(b.payable) || 0) - (Number(b.opening) || 0))); }   /* 6.9.1058 - the old balance is payable, not waiting */
   function viewPartnerCard(name) {
     /* v6.9.234 - one card for a partner and for a sales executive. They differ only in
        which book is read and what the sections are called; the statement, the reversal
@@ -36550,7 +36657,7 @@ function viewCatalogue() {
       '<div class="stat ' + (b.pending > 0 ? "alert" : "") + '"><div class="n">' + money(b.pending) + '</div><div class="l">Due now (client has paid)</div></div>' +   /* 6.9.791 */
       '<div class="stat"><div class="n" style="color:#b45309">' + money(incWaitTotal(b)) + '</div><div class="l">Waiting for client payment</div></div>' +
       '<div class="stat"><div class="n">' + money(b.paid) + '</div><div class="l">Paid</div></div>' +
-      '</div>';
+      '</div>' + (isX ? '' : partnerObStrip(name));   /* 6.9.1058 */
     (function () {   /* 6.9.791 - the same, in words */
       var w = incWaitTotal(b); if (w < 0.5) return;
       var by = incWaitByClient(b);
@@ -36749,14 +36856,14 @@ function viewCatalogue() {
   function modalPayout(name, kind) {
     var b = bookFor(name, kind === "exec" ? "exec" : "partner");
     return '<h2>Record incentive payout</h2><p class="sub">' + esc(name) + '</p>' +
-      '<div class="card"><div class="meta">Pending: <b>' + money(b.pending) + '</b><br>Earned ' + money(b.earned) +
-      ', payable ' + money(b.payable) + ', already paid ' + money(b.paid) + '</div></div>' +
+      '<div class="card"><div class="meta">Due now: <b>' + money(b.pending) + '</b><br>Earned ' + money(b.earned) +
+      ', released ' + money((Number(b.payable) || 0) - (Number(b.opening) || 0)) + (b.opening ? ', old balance ' + money(b.opening) : '') + ', already paid ' + money(b.paid) + '</div></div>' +   /* 6.9.1058 */
       '<label>Amount</label><input id="po_amt" inputmode="numeric" value="' + Math.round(b.pending > 0 ? b.pending : 0) + '"/>' +
       '<div class="grid2"><div><label>Date</label><input id="po_date" type="date" value="' + today() + '"/></div>' +
       '<div><label>Mode</label><select id="po_mode">' + opts(["Cash", "Bank transfer", "Cheque", "UPI", "Adjustment"], "Bank transfer") + '</select></div></div>' +
       '<label>Notes</label><input id="po_note"/>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
-      '<button class="btn" data-act="po-save" data-n="' + esc(name) + '">Save payout</button></div>';
+      '<button class="btn" data-act="po-save" data-n="' + esc(name) + '" data-k="' + esc(kind === "exec" ? "exec" : "partner") + '">Save payout</button></div>';
   }
 
   /* ---------------- client discounts (sales may set these) ---------------- */
@@ -45834,9 +45941,10 @@ function viewCatalogue() {
       room(42);
       F("bold"); doc.setFontSize(9); doc.setTextColor(30, 41, 59);
       doc.text("Overall position (all months)", L, y); y += 7;
-      [["Total incentive earned", b.earned], ["Released (your clients have paid)", b.payable],
-       ["Paid out so far", b.paid], ["Due to you now", b.pending],
-       ["Earned, waiting for client payment", incWaitTotal(b)]].forEach(function (p) {   /* 6.9.791 */
+      [["Total incentive earned", b.earned], ["Released (your clients have paid)", (Number(b.payable) || 0) - (Number(b.opening) || 0)]]
+       .concat(b.opening ? [[b.opening > 0 ? "Old balance brought forward" + (b.obAsOn ? " (as on " + dmy(b.obAsOn) + ")" : "") : "Advance held (old books)", b.opening]] : [])   /* 6.9.1058 */
+       .concat([["Paid out so far", b.paid], ["Due to you now", b.pending],
+       ["Earned, waiting for client payment", incWaitTotal(b)]]).forEach(function (p) {   /* 6.9.791 */
         F("normal"); doc.setFontSize(8.5); doc.setTextColor(80, 90, 100); doc.text(p[0], L, y);
         F("bold"); doc.setTextColor(17, 34, 45); doc.text(R2(p[1]), Rt - 2, y, { align: "right" }); y += 6.4;
       });
@@ -53929,7 +54037,7 @@ function viewCatalogue() {
       var earned = Math.round(Number(b.earned) || 0), payable = Math.round(Number(b.payable) || 0), paid = Math.round(Number(b.paid) || 0);
       return { id: String(a.id || ""), name: String(a.name || ""), role: String(a.role || ""), exec: String(a.ownedBy || ""), city: String(a.location || a.area || ""),
         tier: x.tier || "Base", rank: x.rank == null ? 3 : x.rank, b12: Math.round(Number(x.b12) || 0),
-        earned: earned, payable: payable, paid: paid, pending: Math.max(0, Math.round(Number(b.pending) || 0)), wait: Math.max(0, earned - payable), sites: sites, sentAt: new Date().toISOString() };
+        earned: earned, payable: payable, paid: paid, pending: Math.max(0, Math.round(Number(b.pending) || 0)), wait: Math.max(0, Math.round(incWaitTotal(b))), ob: Math.round(Number(b.opening) || 0), obOn: String(b.obAsOn || ""), sites: sites, sentAt: new Date().toISOString() };   /* 6.9.1058 - ob */
     }).filter(function (b) { return b.id; });
   }
   var _ssBusy = false;
@@ -73511,6 +73619,60 @@ function viewCatalogue() {
       return;
     }
 
+    if (act === "po-force-adv") {   /* 6.9.1058 - recorded, and called what it is */
+      var _pa = _poPend; _poPend = null; S.poAfterOb = null;
+      if (!_pa) { S.modal = null; render(); toast("That entry has gone stale \u2014 open it again."); return; }
+      _pa.notes = "Advance" + (_pa.notes ? " \u00b7 " + _pa.notes : "");
+      save("commpay", _pa).then(function () { toast("Advance of " + money(_pa.amount) + " recorded for " + _pa.associate + "."); }).catch(function () { toast("Held on this phone \u2014 it will sync by itself."); });
+      S.modal = null; render(); return;
+    }
+    if (act === "pob-open") {   /* 6.9.1058 */
+      S.hdFile = null; S.hdFiles = null;
+      var _pam = t.getAttribute("data-amt");
+      S.modal = modalPartnerOb(t.getAttribute("data-n"), _pam ? { amt: Number(_pam) + ((partnerOb(t.getAttribute("data-n")) || {}).amt || 0) } : null); render(); return;
+    }
+    if (act === "pob-save" || act === "pob-clear") {
+      if (!roleIs("admin")) { toast("The owner sets a partner\u2019s old balance."); return; }
+      var _pn = t.getAttribute("data-n") || "", _pclr = act === "pob-clear";
+      var _pv0 = Math.round(nAmt(val("pob_amt"))), _pdir = val("pob_dir"), _pon = String(val("pob_on") || "");
+      if (!_pclr && !(_pv0 > 0)) { toast("Type the amount from the old hisab."); return; }
+      if (!_pclr && !/^\d{4}-\d{2}-\d{2}$/.test(_pon)) { toast("Pick the day the old balance was struck on."); return; }
+      if (_pon > today()) { toast("That day has not come yet."); return; }
+      var _pamt = _pclr ? 0 : (_pdir === "adv" ? -_pv0 : _pv0);
+      S.pobPend = { name: _pn, amt: _pamt, asOn: _pon, note: String(val("pob_note") || "").trim().slice(0, 200), on: _pclr ? 0 : 1,
+        files: (S.hdFiles && S.hdFiles.length) ? S.hdFiles.slice() : (S.hdFile ? [S.hdFile] : []) };
+      S.modal = sheetMoneyPin("Your PIN to set the old balance",
+        '<b>' + esc(_pn) + '</b><br>' + (_pclr ? 'Old balance set to <b>nil</b>' : 'Old balance <b>' + money(Math.abs(_pamt)) + '</b> ' + (_pamt >= 0 ? 'due to him' : 'held by him as advance') + ' as on ' + esc(dmy(_pon))) +
+        (S.pobPend.files.length ? '<br>' + plural(S.pobPend.files.length, "file") + ' of the old hisab will be attached' : '') +
+        '<br><span style="color:#64748b">A new row; the one before is kept.</span>', "pob_pin", "pob-pin-go", "Save it", "");
+      render(); return;
+    }
+    if (act === "pob-pin-go") {
+      if (!roleIs("admin")) return;
+      var _pp = S.pobPend; if (!_pp) { S.modal = null; render(); return; }
+      var _ppv = el("pob_pin") ? String(el("pob_pin").value || "").trim() : "";
+      if (!_ppv) { pinNote("pob_pin", "Type your PIN first. Nothing has changed."); return; }
+      var _pgo = function () {
+        S.pobPend = null; S.modal = null; render();
+        auditFact("partner:ob", _pp.name, { name: _pp.name, amt: _pp.amt, asOn: _pp.asOn, note: _pp.note, on: _pp.on }).catch(function () { });
+        try { bustCaches(); } catch (eC) { }
+        toast(_pp.on ? "Old balance saved for " + _pp.name + "." : "Old balance set to nil for " + _pp.name + ".");
+        if (_pp.files.length) {
+          toast("Attaching the old hisab\u2026");
+          pobUpload(_pp.name, _pp.files, _pp.note).then(function (n) { S.hdFile = null; S.hdFiles = null; toast(plural(n, "old hisab file") + " attached for " + _pp.name + "."); render(); })
+            .catch(function (e) { toast("The balance is saved, but the old hisab did not go up \u2014 " + ((e && e.message) || e) + ". Open it again and attach."); });
+        }
+        var _after = S.poAfterOb; S.poAfterOb = null; _poPend = null;
+        if (_after && dkey(_after.associate) === dkey(_pp.name) && _pp.on) {   /* the payout that started this, now against the old balance */
+          save("commpay", _after).then(function () { toast("Payout of " + money(_after.amount) + " recorded against it."); }).catch(function () { toast("Payout held on this phone \u2014 it will sync by itself."); });
+        }
+        render();
+      };
+      if (S.pin) { if (String(_ppv) !== String(S.pin)) { pinNote("pob_pin", "PIN incorrect \u2014 nothing has changed."); return; } _pgo(); return; }
+      api("teamAuth", { pin: _ppv }).then(function (r) { if (r && r.ok) { S.pin = _ppv; _pgo(); } else pinNote("pob_pin", "PIN incorrect \u2014 nothing has changed."); })
+        .catch(function () { pinNote("pob_pin", "Could not reach the server \u2014 nothing has changed."); });
+      return;
+    }
     if (act === "pay-out") { S.modal = modalPayout(t.getAttribute("data-n"), t.getAttribute("data-k")); render(); return; }
     if (act === "inc-qclear") {
       var iq = el("inc_q");
@@ -73540,6 +73702,12 @@ function viewCatalogue() {
         if (pod > today()) { unlockBtn(t); toast("That date has not arrived yet \u2014 check it once."); return; }
         poRow = { id: "", createdBy: S.user, associate: pn, siteId: "", siteName: "",
           date: pod, amount: amt, mode: val("po_mode"), notes: val("po_note") };
+        /* 6.9.1058 - more than is due: his old balance, or an advance - asked, never assumed */
+        var _pk = t.getAttribute("data-k") || "partner", _pbk = null; try { _pbk = bookFor(pn, _pk); } catch (eB) { _pbk = null; }
+        if (_pbk && amt > (Number(_pbk.pending) || 0) + 0.5 && act !== "po-force") {
+          unlockBtn(t); _poPend = poRow; S.poAfterOb = poRow;
+          S.modal = modalPoOver(pn, _pk, amt, Number(_pbk.pending) || 0); render(); return;
+        }
         var pot = poTwin(poRow);
         if (pot) {
           unlockBtn(t); _poPend = poRow;
