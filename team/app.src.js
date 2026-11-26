@@ -455,7 +455,8 @@
 /* ==EWCORE:drivers:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.1052";   /* 6.9.1052 (20 Nov 2026) - HIS WORDS: "Its not showing billing details as its saved with name of GC and Co, its also not fetching vechile details, we have to streamline send to billing process, its very imp and pending for long time". Send for billing was one empty box. Now it is three taps: the billing names this client was billed under (G.C. & Company - GSTIN ...) are buttons, the only one is already picked, + New name for another; the driver, his vehicle and the freight are fetched from the challan and shown; remarks are optional. Accounts gets all of it on the Billing desk, and the bill sheet opens with that name already picked. */
+  var APP_VERSION = "6.9.1053";   /* 6.9.1053 (26 Nov 2026) - FIX, HIS WORDS: "changing drp discount changed heliroma also and vice versa, its big problem". DRP and Heliroma are one rate family (17 Oct 2026: a brand with no row of its own borrows its sister’s rate). Every save then looked up the row IN FORCE - the borrowed sister row - and wrote over it under its own brand name: saving DRP renamed Heliroma’s row to DRP, and Heliroma then borrowed DRP’s. A save now edits a row only when it is that brand’s own row; a borrowed rate is copied into a NEW row for the brand typed, and the sister is never touched. Same fix on the discount screen, the rate-before-card sheet, and the rate set from a delivery. Stellar / Sanitaar and Huliot / HT Pro / Ultra Silent had the same trap. */
+  /* before: */   /* 6.9.1052 (20 Nov 2026) - HIS WORDS: "Its not showing billing details as its saved with name of GC and Co, its also not fetching vechile details, we have to streamline send to billing process, its very imp and pending for long time". Send for billing was one empty box. Now it is three taps: the billing names this client was billed under (G.C. & Company - GSTIN ...) are buttons, the only one is already picked, + New name for another; the driver, his vehicle and the freight are fetched from the challan and shown; remarks are optional. Accounts gets all of it on the Billing desk, and the bill sheet opens with that name already picked. */
   /* before: */   /* 6.9.1051 (20 Nov 2026) - HIS WORDS (on the Non-moving table): "arange them catagory / brand wise". The table is grouped - Brand (default) or Category, or one list - each group headed with its count and the money sitting in it, biggest first; inside a group the costliest first. Long descriptions are cut to 3 lines (the full text shows on hover and in the product view). */
   /* before: */   /* 6.9.1050 (20 Nov 2026) - ALSO: a new lead asks the MOBILE FIRST and shows, as it is typed, who already has it - name, entered by which executive, when - across clients, sites, partners and staff (his words: "first we have to enter mobile no, if its duplicate it will show its already registered with such name and by this executive"). HIS WORDS (the Non-moving stock list): "this is also to be shown as table like format, with item pic,
      colorful". The list is now a table: picture (tap to open the product), product and code, the brand in its own colour, on hand, rate, the value with a bar
@@ -13437,6 +13438,8 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     ["geberit", ["geberit"]], ["oyster", ["oyster"]], ["mea", ["mea"]], ["ioncare", ["ioncare", "ion care"]],
     ["adani", ["adani"]], ["leo", ["leo"]]
   ];
+  /* 6.9.1053 - a row may be written over only by its OWN brand; a family-borrowed row is read, never rewritten */
+  function discOwn(row, brand) { return !!(row && dkey(row.brand) === dkey(brand)); }
   function discFam(b) {
     var s = " " + String(b == null ? "" : b).toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/^\s+|\s+$/g, "") + " ";
     if (s === "  ") return "";
@@ -34927,7 +34930,8 @@ function viewCatalogue() {
         if (role === "exec") { if (n > 0) { notes.exec = n; notes.execOn = 1; } else { delete notes.exec; delete notes.execOn; } }
         else if (n > 0) notes[role] = n; else delete notes[role];
       });
-      if (JSON.stringify(notes) !== was) out.push({ id: row.id, client: row.client, brand: row.brand, pct: row.pct, notes: JSON.stringify(notes) });
+      if (JSON.stringify(notes) !== was) out.push(discOwn(row, g.brand) ? { id: row.id, client: row.client, brand: row.brand, pct: row.pct, notes: JSON.stringify(notes) }
+        : { id: mintId("D"), client: cl, brand: g.brand, pct: row.pct, notes: JSON.stringify(notes) });   /* 6.9.1053 */
     });
     return { rows: out, bad: bad };
   }
@@ -69871,7 +69875,7 @@ function viewCatalogue() {
              deliveries it covered keep it; overwriting would rewrite what a partner earned on
              every challan since the first one. An undated change still edits in place, exactly as
              it always has, so a man correcting a typo does not litter the sheet. */
-          save("discounts", { id: (admFrom ? mintId("D") : ((exd ? exd.id : "") || mintId("D"))),
+          save("discounts", { id: (admFrom ? mintId("D") : ((discOwn(exd, g.brand) ? exd.id : "") || mintId("D"))),   /* 6.9.1053 */
             client: admCl, brand: g.brand, pct: pct, notes: notesStr }, true);
           admTouch.push({ client: admCl, brand: g.brand, pct: pct });   /* v6.9.489 */
           admN++;
@@ -70622,7 +70626,7 @@ function viewCatalogue() {
           var isEmpty = (pct === "" || pct === 0) && !notesStr;
           if (isEmpty && !exd) return;       // don't create a blank row for a brand never touched
           /* v6.9.350 - dated changes append; undated ones edit in place as they always have */
-          save("discounts", { id: (dsFrom ? mintId("D") : ((exd ? exd.id : "") || mintId("D"))),
+          save("discounts", { id: (dsFrom ? mintId("D") : ((discOwn(exd, g.brand) ? exd.id : "") || mintId("D"))),   /* 6.9.1053 */
             client: g.client, brand: g.brand, pct: pct, notes: notesStr }, true);
           touched.push({ client: g.client, brand: g.brand, pct: pct });
           saved++;
@@ -70733,7 +70737,8 @@ function viewCatalogue() {
             if (!exd) return;
             var notes = incMap(exd);
             if (_rrole === "exec") { notes.exec = x.pct; notes.execOn = 1; } else notes[_rrole.toLowerCase()] = x.pct;
-            save("discounts", { id: exd.id, client: exd.client, brand: exd.brand, pct: exd.pct, notes: JSON.stringify(notes) }, true);
+            if (discOwn(exd, x.brand)) save("discounts", { id: exd.id, client: exd.client, brand: exd.brand, pct: exd.pct, notes: JSON.stringify(notes) }, true);
+            else save("discounts", { id: mintId("D"), client: _rcl, brand: x.brand, pct: exd.pct, notes: JSON.stringify(notes) }, true);   /* 6.9.1053 - his own row, the sister untouched */
             _done++;
           });
           bustCaches();
