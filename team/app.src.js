@@ -449,7 +449,8 @@
 /* ==EWCORE:drivers:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.1061";   /* 6.9.1061 (26 Nov 2026) - HIS WORDS: "ok do all" (to: the club tier and enrolment on the partner's own card and in Saathi, a Join form inside Saathi, Hindi versions of the scheme PDF). A partner card says where he stands in the Partner Club, whether he is enrolled, and offers Enrol / Send scheme; Saathi is sent the same; the scheme PDF comes in Hindi too (Devanagari drawn by the phone's own fonts, so the letters join correctly). */
+  var APP_VERSION = "6.9.1062";   /* 6.9.1062 (26 Nov 2026) - the Hindi scheme PDF was 12 MB (its text images stored uncompressed), too heavy for WhatsApp: compressed, about 0.7 MB, still sharp. */
+  /* before: */   /* 6.9.1061 (26 Nov 2026) - HIS WORDS: "ok do all" (to: the club tier and enrolment on the partner's own card and in Saathi, a Join form inside Saathi, Hindi versions of the scheme PDF). A partner card says where he stands in the Partner Club, whether he is enrolled, and offers Enrol / Send scheme; Saathi is sent the same; the scheme PDF comes in Hindi too (Devanagari drawn by the phone's own fonts, so the letters join correctly). */
   /* before: */   /* 6.9.1060 (26 Nov 2026) - HIS WORDS: "Make provision to download pdf of partners scheme, for all builders, executives, contractors, architects every one, and ways to register all in scheme, a proper professional system for managing all partners". The Partner Club scheme as a PDF for each trade (plumbers, architects, builders, contractors / PMC, everyone) and a briefing for our sales executives, printed from the scheme on file, with two QR codes (join on WhatsApp to the office, Saathi); enrolment as a dated record, counted by trade, with Send scheme and Enrol for everyone not yet in. */
   /* before: */   /* 6.9.1059 (26 Nov 2026) - the old-balance form says the old hisab goes up when Save is pressed (it read the client screen's "press Attach ... save the client"). */
   /* before: */   /* 6.9.1058 (26 Nov 2026) - HIS WORDS: "Make provision to add partner old balance with old hisab attached, want to make it a professional incentive calculation and payout system for Energy world Saathi". A partner carries the balance he arrived with (owed to him, or an advance he holds), as on a day, with the old hisab attached; it is payable at once, the first line of his ledger and his statement, and sent to Saathi. A payout above what is due stops and asks: his old balance, or an advance. */
@@ -56123,7 +56124,7 @@ function viewCatalogue() {
   }
   /* one block of Hindi as an image: wrapped to wMm, returns its height in mm */
   function hiPut(doc, text, x, y, wMm, pt, rgb, bold, align) {
-    var K = 12, fpx = Math.round(pt * 0.3528 * K), lh = Math.round(fpx * 1.5);
+    var K = 10, fpx = Math.round(pt * 0.3528 * K), lh = Math.round(fpx * 1.5);
     var c = document.createElement("canvas"), ctx = c.getContext("2d");
     var font = (bold ? "700 " : "400 ") + fpx + "px " + HI_FONT;
     ctx.font = font;
@@ -56139,7 +56140,7 @@ function viewCatalogue() {
     ctx.fillStyle = "rgb(" + (rgb || [51, 65, 85]).join(",") + ")";
     lines.forEach(function (l, i) { ctx.fillText(l, 2, i * lh + Math.round(fpx * 0.12)); });
     var wOut = used / K, hOut = c.height / K, x0 = align === "right" ? x - wOut : x;
-    try { doc.addImage(c.toDataURL("image/png"), "PNG", x0, y, wOut, hOut); } catch (e) { }
+    try { doc.addImage(c.toDataURL("image/png"), "PNG", x0, y, wOut, hOut, undefined, "FAST"); } catch (e) { }   /* compressed: uncompressed it was 12 MB, too heavy for WhatsApp */
     return hOut;
   }
   var CLUB_HI = {
