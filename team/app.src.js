@@ -369,16 +369,10 @@
     }
     var i, r;
     for (i = 0; i < names.length; i++) { r = pick(names[i]); if (r.length) return r; }
-    /* 17 Oct 2026 - the family rate: head name first, then any sister brand, exact brand excluded */
-    var f = discFam(brand);
-    if (!f) return [];
-    var fx = dscFamIndex();
-    for (i = 0; i < names.length; i++) {
-      var rows = (fx[dkey(names[i]) + "||" + f] || []).filter(function (x) { return dkey(x.brand) !== b; });
-      if (!rows.length) continue;
-      var head = rows.filter(function (x) { return dkey(x.brand) === f; });
-      return (head.length ? head : rows).slice();
-    }
+    /* 26 Nov 2026 - HIS RULE: "all discounts must be independent never to be interlinked". The family rate of 17 Oct
+       (DRP reading Heliroma's, HT PRO reading Ultra Silent's) is gone: a brand has its own rate or none. Before it went,
+       the 8 client-brand pairs whose deliveries were priced on a sister's rate were given that rate as their own (owner
+       approved; Vinay Gupta DRP at 32), so no delivered rupee moved. DRP had been quoting up to 62% off Heliroma. */
     return [];
   }
 
@@ -455,7 +449,8 @@
 /* ==EWCORE:drivers:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.1053";   /* 6.9.1053 (26 Nov 2026) - FIX, HIS WORDS: "changing drp discount changed heliroma also and vice versa, its big problem". DRP and Heliroma are one rate family (17 Oct 2026: a brand with no row of its own borrows its sister’s rate). Every save then looked up the row IN FORCE - the borrowed sister row - and wrote over it under its own brand name: saving DRP renamed Heliroma’s row to DRP, and Heliroma then borrowed DRP’s. A save now edits a row only when it is that brand’s own row; a borrowed rate is copied into a NEW row for the brand typed, and the sister is never touched. Same fix on the discount screen, the rate-before-card sheet, and the rate set from a delivery. Stellar / Sanitaar and Huliot / HT Pro / Ultra Silent had the same trap. */
+  var APP_VERSION = "6.9.1054";   /* 6.9.1054 (26 Nov 2026) - HIS WORDS: "all discounts must be independent never to be interlinked" - the family rate (DRP reading Heliroma’s, HT PRO reading Ultra Silent’s, Sanitaar reading Stellar’s) is gone from all four apps; the 8 pairs billed on a sister’s rate got it as their own first (Vinay Gupta DRP at 32, his choice). "drp is always from 32 % to 35% maximum" - a DRP rate above 35% is refused on every rate screen. "make provision to download quote in excel, sometime needed to make comparision with competitive brands" - Excel on every quote: our lines, and yellow columns for the competitor’s brand, MRP and discount that work out his rate, amount and the difference. */
+  /* before: */   /* 6.9.1053 (26 Nov 2026) - FIX, HIS WORDS: "changing drp discount changed heliroma also and vice versa, its big problem". DRP and Heliroma are one rate family (17 Oct 2026: a brand with no row of its own borrows its sister’s rate). Every save then looked up the row IN FORCE - the borrowed sister row - and wrote over it under its own brand name: saving DRP renamed Heliroma’s row to DRP, and Heliroma then borrowed DRP’s. A save now edits a row only when it is that brand’s own row; a borrowed rate is copied into a NEW row for the brand typed, and the sister is never touched. Same fix on the discount screen, the rate-before-card sheet, and the rate set from a delivery. Stellar / Sanitaar and Huliot / HT Pro / Ultra Silent had the same trap. */
   /* before: */   /* 6.9.1052 (20 Nov 2026) - HIS WORDS: "Its not showing billing details as its saved with name of GC and Co, its also not fetching vechile details, we have to streamline send to billing process, its very imp and pending for long time". Send for billing was one empty box. Now it is three taps: the billing names this client was billed under (G.C. & Company - GSTIN ...) are buttons, the only one is already picked, + New name for another; the driver, his vehicle and the freight are fetched from the challan and shown; remarks are optional. Accounts gets all of it on the Billing desk, and the bill sheet opens with that name already picked. */
   /* before: */   /* 6.9.1051 (20 Nov 2026) - HIS WORDS (on the Non-moving table): "arange them catagory / brand wise". The table is grouped - Brand (default) or Category, or one list - each group headed with its count and the money sitting in it, biggest first; inside a group the costliest first. Long descriptions are cut to 3 lines (the full text shows on hover and in the product view). */
   /* before: */   /* 6.9.1050 (20 Nov 2026) - ALSO: a new lead asks the MOBILE FIRST and shows, as it is typed, who already has it - name, entered by which executive, when - across clients, sites, partners and staff (his words: "first we have to enter mobile no, if its duplicate it will show its already registered with such name and by this executive"). HIS WORDS (the Non-moving stock list): "this is also to be shown as table like format, with item pic,
@@ -13439,6 +13434,10 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     ["adani", ["adani"]], ["leo", ["leo"]]
   ];
   /* 6.9.1053 - a row may be written over only by its OWN brand; a family-borrowed row is read, never rewritten */
+  /* 6.9.1054 - HIS RULE: DRP is 32-35%, never more */
+  var DISC_CEIL = { drp: 35 };
+  function discCeil(brand) { var s = " " + String(brand || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim() + " "; for (var k in DISC_CEIL) if (s.indexOf(" " + k + " ") > -1) return DISC_CEIL[k]; return 0; }
+  function discOverCeil(brand, pct) { var c = discCeil(brand); return c && Number(pct) > c ? c : 0; }
   function discOwn(row, brand) { return !!(row && dkey(row.brand) === dkey(brand)); }
   function discFam(b) {
     var s = " " + String(b == null ? "" : b).toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/^\s+|\s+$/g, "") + " ";
@@ -22114,6 +22113,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       '<div class="acts" style="margin:0;flex:1 1 auto;min-width:0;flex-wrap:wrap;justify-content:flex-end;gap:6px">' +
       '<select class="qs" data-id="' + esc(q.id) + '" style="width:auto;padding:5px 8px;font-size:12.5px">' + opts(QSTATUS, q.status) + '</select>' +
       '<button class="btn sm" data-act="q-pdf" data-id="' + esc(q.id) + '">Download PDF</button>' +
+      '<button class="btn sm ghost" data-act="q-xl" data-id="' + esc(q.id) + '" title="The quote in Excel, with columns to compare a competitor brand">Excel</button>' +   /* 6.9.1054 */
       '<button class="btn sm ghost" data-act="q-pres" data-id="' + esc(q.id) + '">Proposal</button>' +
       '<button class="btn sm ghost" data-act="q-tg" data-id="' + esc(q.id) + '">Telegram</button>' + waExecBtn("q-wa", q.client, 'data-id="' + esc(q.id) + '"') +
       /* v6.9.343 - a two-brand quote whose Green Heat Plus is sold and whose Pentair is
@@ -24433,6 +24433,46 @@ function viewCatalogue() {
   }
 
   /* v6.9.770 - the TOTO technologies and the brand introductions are read before the paper is drawn */
+  /* 6.9.1054 - HIS WORDS: "make provision to download quote in excel, sometime needed to make comparision with competitive
+     brands". Our lines exactly as the PDF prices them (qLineDisc / qLineNet), then yellow boxes for the competitor's brand,
+     product, MRP and discount; Excel works out his rate, his amount and the difference line by line and in total. */
+  function quoteXlsxRows(q) {
+    var items = qItems(q), out = [], GST = 18;
+    out.push([{ v: "Energy World · Quotation " + qNo(q), s: XL.BOLD }]);
+    out.push([(q.client || "") + " · " + (q.createdAt ? fullDate(String(q.createdAt).slice(0, 10)) : "") + (q.createdBy ? " · " + q.createdBy : "")]);
+    out.push(["", "", "", "", "", "", "", { v: "OUR QUOTE", s: XL.BOLD }, "", "", "", "", { v: "COMPETITOR - type in the yellow boxes", s: XL.BOLD }]);
+    out.push(["#", "Room", "Code", "Product", "Brand", "Unit", "Qty", "MRP", "Disc %", "Net rate", "Amount", "",
+      "Competitor brand", "Competitor product / code", "Competitor MRP", "Competitor disc %", "Competitor net rate", "Competitor amount", "Difference (his - ours)"].map(function (h) { return { v: h, s: XL.HEAD }; }));
+    var first = out.length + 1, n = 0;
+    items.forEach(function (i) {
+      var r = out.length + 1, d = qLineDisc(q, i), net = qLineNet(q, i), qty = Number(i.qty) || 0;
+      var rooms = []; if (i.rq && typeof i.rq === "object") Object.keys(i.rq).forEach(function (k) { if (Number(i.rq[k]) > 0) rooms.push(k + (Number(i.rq[k]) !== 1 ? " x" + i.rq[k] : "")); });
+      var title = ""; try { title = descLines(i.desc).title; } catch (e) { title = String(i.desc || ""); }
+      out.push([++n, rooms.join(", "), i.code || "", title + (i.optional ? "  [OPTIONAL - not in the total]" : ""), i.brand || "", i.unit || "", qty,
+        Number(i.price) || 0, d, net, i.optional ? 0 : Math.round(net * qty), "",
+        { v: "", s: XL.INPUT }, { v: "", s: XL.INPUT }, { v: "", s: XL.INPUT }, { v: "", s: XL.INPUT },
+        { v: "", f: 'IF(O' + r + '="","",ROUND(O' + r + '*(1-N(P' + r + ')/100),0))' },
+        { v: "", f: 'IF(Q' + r + '="","",' + (i.optional ? '0' : 'ROUND(Q' + r + '*G' + r + ',0)') + ')' },
+        { v: "", f: 'IF(R' + r + '="","",R' + r + '-K' + r + ')' }]);
+    });
+    var last = out.length;
+    out.push([]);
+    var tr = out.length + 1;
+    var ours = items.reduce(function (a, i) { return a + (i.optional ? 0 : Math.round(qLineNet(q, i) * (Number(i.qty) || 0))); }, 0);
+    out.push([{ v: "Total (net, before GST)", s: XL.BAND }, "", "", "", "", "", "", "", "", "", { v: ours, f: "SUM(K" + first + ":K" + last + ")", s: XL.BAND }, "",
+      "", "", "", "", "", { v: "", f: "SUM(R" + first + ":R" + last + ")", s: XL.BAND }, { v: "", f: 'IF(R' + tr + '=0,"",R' + tr + '-K' + tr + ')', s: XL.BAND }]);
+    out.push(["GST " + GST + "%", "", "", "", "", "", "", "", "", "", { v: Math.round(ours * GST / 100), f: "ROUND(K" + tr + "*" + (GST / 100) + ",0)" }, "", "", "", "", "", "", { v: "", f: "ROUND(R" + tr + "*" + (GST / 100) + ",0)" }]);
+    out.push([{ v: "Total incl GST", s: XL.BOLD }, "", "", "", "", "", "", "", "", "", { v: Math.round(ours * (1 + GST / 100)), f: "K" + tr + "+K" + (tr + 1), s: XL.BOLD }, "", "", "", "", "", "", { v: "", f: "R" + tr + "+R" + (tr + 1), s: XL.BOLD },
+      { v: "", f: 'IF(R' + (tr + 2) + '=0,"",R' + (tr + 2) + '-K' + (tr + 2) + ')', s: XL.BOLD }]);
+    out.push([]);
+    out.push(["MRP and discount as quoted. A positive difference means the competitor is dearer. Internal working sheet."]);
+    return out;
+  }
+  function quoteXlsx(q) {
+    if (!qItems(q).length) { toast("This quote has no lines."); return; }
+    dlXlsx(String(qNo(q) || "Quote").replace(/[^\w.-]/g, "_") + "_compare.xlsx", String(qNo(q) || "Quote").slice(0, 28), quoteXlsxRows(q),
+      [5, 18, 16, 46, 16, 7, 7, 11, 8, 11, 13, 2, 18, 28, 13, 11, 13, 14, 16]);
+  }
   function quotePdf(q) {
     var _it = []; try { _it = JSON.parse(q.items || "[]"); } catch (e) { }
     return qxReady(_it).then(function () { return quotePdf0(q); });
@@ -56932,6 +56972,7 @@ function viewCatalogue() {
         (roleIs("admin") && q.createdBy ? ' &middot; ' + esc(q.createdBy) : '') + '</div>' +
         '<div class="acts">' +
         '<button class="btn sm" data-act="q-pdf" data-id="' + esc(q.id) + '">Download PDF</button>' +
+        '<button class="btn sm ghost" data-act="q-xl" data-id="' + esc(q.id) + '" title="The quote in Excel, with columns to compare a competitor brand">Excel</button>' +   /* 6.9.1054 */
       '<button class="btn sm ghost" data-act="q-pres" data-id="' + esc(q.id) + '">Proposal</button>' +
         '<button class="btn sm ghost" data-act="q-tg" data-id="' + esc(q.id) + '">Telegram</button>' + waExecBtn("q-wa", q.client, 'data-id="' + esc(q.id) + '"') +
         '<button class="btn sm ghost" data-act="rad-status" data-id="' + esc(q.id) + '" data-s="Won">Won</button>' +
@@ -69267,6 +69308,7 @@ function viewCatalogue() {
       toast(qbB + ": " + qbSt + (qbSt === "Later" ? " - back on " + d10(qbTill) : "") + ".");
       render(); return;
     }
+    if (act === "q-xl") { var _qx = (S.data.quotes || []).filter(function (x) { return x.id === id; })[0]; if (_qx) quoteXlsx(_qx); return; }   /* 6.9.1054 */
     if (act === "q-pdf") {
       var qd = S.data.quotes.filter(function (x) { return x.id === id; })[0];
       if (!qd) return;
@@ -69839,6 +69881,8 @@ function viewCatalogue() {
               ". Nothing was saved.");
         return;
       }
+      var admCeil = Object.keys(admG).filter(function (k) { return admG[k].vals.disc !== undefined && discOverCeil(admG[k].brand, admG[k].vals.disc); });   /* 6.9.1054 */
+      if (admCeil.length) { toast(admG[admCeil[0]].brand + " is " + discCeil(admG[admCeil[0]].brand) + "% at most \u2014 " + admG[admCeil[0]].vals.disc + "% was typed. Nothing was saved."); return; }
       /* v6.9.350 - ASK ONCE, for the whole save, and only if a money figure actually moved.
          Asking per brand would be five prompts to change five rows he thinks of as one decision. */
       /* v6.9.453 - every row is decided FIRST, the date asked once (a sheet, a Promise), the rows
@@ -70598,6 +70642,8 @@ function viewCatalogue() {
       });
       /* v6.9.350 - one question for the whole save, asked only if a figure actually moved.
          v6.9.453 - decided first, asked once in a sheet, written after (see adm-save). */
+      var _dsCeil = Object.keys(groups).filter(function (k) { return groups[k].pctSet && discOverCeil(groups[k].brand, groups[k].pct); })[0];   /* 6.9.1054 */
+      if (_dsCeil) { toast(groups[_dsCeil].brand + " is " + discCeil(groups[_dsCeil].brand) + "% at most \u2014 " + groups[_dsCeil].pct + "% was typed for " + groups[_dsCeil].client + ". Nothing was saved."); return; }
       var dsJobs = [];
       Object.keys(groups).forEach(function (k) {
         var g = groups[k], exd = discRow(g.client, g.brand);
