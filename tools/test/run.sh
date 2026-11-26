@@ -44,6 +44,7 @@ node tools/test/t_partner_ob.js || fail=1
 node tools/test/t_club_paper_join.js || fail=1
 node tools/test/t_club_card_saathi_hi.js || fail=1
 node tools/test/t_xp_speed.js || fail=1
+node tools/test/t_bx_auto.js || fail=1
 node tools/test/t_master_tag.js || fail=1
 node tools/test/t_bill_ask.js || fail=1
 node tools/test/t_bill_vehicle.js || fail=1
