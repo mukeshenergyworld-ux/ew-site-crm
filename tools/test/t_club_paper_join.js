@@ -24,5 +24,5 @@ H.ok("left the club: a newer row, the earlier kept", !F.clubJoined("Ramesh") && 
 H.ok("the enrol sheet offers 'He has left' only to one who is in", !/data-on="0"/.test(F.modalClubJoin("Ramesh")));
 var S = H.read("team");
 H.ok("the paper never prints EW's cost or the brand funding a seat", (function () { var i = S.indexOf("function clubSchemePdf("), j = S.indexOf("function clubJoinCard("); var b = S.slice(i, j); return !/t\.ew\b[^)]*doc\.text|brandName|\.brand\b/.test(b) && /pdfQr\(doc, clubJoinUrl\(aud\)/.test(b) && /pdfQr\(doc, CLUB_SAATHI/.test(b); })());
-H.ok("the paper is printed from the scheme on file", /function clubSchemePdf\(aud\) \{[\s\S]{0,200}var SC = clubScheme\(\)/.test(S));
+H.ok("the paper is printed from the scheme on file", /function clubSchemePdf\(aud, lang\) \{[\s\S]{0,300}var SC = clubScheme\(\)/.test(S) && /function clubSchemePdfHi\(aud\) \{[\s\S]{0,200}var SC = clubScheme\(\)/.test(S));
 H.done();

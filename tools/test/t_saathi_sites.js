@@ -5,6 +5,7 @@ var sites = [
   { id: "s2", name: "Sachin", client: "Sachin", stage: "Structure / Slab", architect: "Roshan Lal - Radiant", status: "Active" },
   { id: "s3", name: "Old Villa", client: "Gopal", stage: "Post-Handover / AMC", architect: "Roshan Lal - Radiant", status: "Active" }];
 var ctx = { S: { user: "Mukesh Verma", data: { sites: sites, clients: [] } },
+  clubYear: function () { return "2026"; }, clubScheme: function () { return { tiers: [] }; }, clubRewards: function () { return {}; }, clubRowOf: function () { return { tierK: "", coll: 0, earned: 0, next: null, gap: 0, menu: [] }; }, clubJoined: function () { return null; }, localDay: function (s) { return String(s).slice(0, 10); },
   dkey: function (x) { return String(x || "").trim().toLowerCase(); },
   siteFoldFam: function (l) { return l; },
   dupFamily: function (n) { return [n]; }, clientByName: function () { return null; }, isCancelled: function () { return false; },   /* 6.9.1029 - saathiSiteKind */

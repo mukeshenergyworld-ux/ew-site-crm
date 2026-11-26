@@ -11,7 +11,7 @@ var AUD = [];
 var ctx = { S: { data: { audit: AUD } }, assocLive: function () { return A; }, partnerBook: function (n) { return { rows: BOOKS[n] || [] }; },
   dkey: function (s) { return String(s || "").trim().toLowerCase(); }, nAmt: function (v) { return Number(String(v).replace(/[^0-9.-]/g, "")) || 0; },
   cmpJ: function (s) { try { return JSON.parse(s); } catch (e) { return null; } } };
-var F = H.lift("team", ["clubScheme", "clubMenu", "clubRewards", "clubRows"], ctx, ["CLUB_GST", "CLUB_PCT", "CLUB_TIERS", "CLUB_TRIPS"]);
+var F = H.lift("team", ["clubScheme", "clubMenu", "clubRewards", "clubRowOf", "clubRows"], ctx, ["CLUB_GST", "CLUB_PCT", "CLUB_TIERS", "CLUB_TRIPS"]);
 var R = F.clubRows("2026"), by = {}; R.forEach(function (r) { by[r.name] = r; });
 H.eq("collected is counted before GST, inside the year only", by.Mahabir.coll, 2200000);
 H.eq("Mahabir at 22 L is Gold (bar 15 L)", by.Mahabir.tierK, "Gold");
