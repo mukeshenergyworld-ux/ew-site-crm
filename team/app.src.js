@@ -449,7 +449,8 @@
 /* ==EWCORE:drivers:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.1060";   /* 6.9.1060 (26 Nov 2026) - HIS WORDS: "Make provision to download pdf of partners scheme, for all builders, executives, contractors, architects every one, and ways to register all in scheme, a proper professional system for managing all partners". The Partner Club scheme as a PDF for each trade (plumbers, architects, builders, contractors / PMC, everyone) and a briefing for our sales executives, printed from the scheme on file, with two QR codes (join on WhatsApp to the office, Saathi); enrolment as a dated record, counted by trade, with Send scheme and Enrol for everyone not yet in. */
+  var APP_VERSION = "6.9.1061";   /* 6.9.1061 (26 Nov 2026) - HIS WORDS: "ok do all" (to: the club tier and enrolment on the partner's own card and in Saathi, a Join form inside Saathi, Hindi versions of the scheme PDF). A partner card says where he stands in the Partner Club, whether he is enrolled, and offers Enrol / Send scheme; Saathi is sent the same; the scheme PDF comes in Hindi too (Devanagari drawn by the phone's own fonts, so the letters join correctly). */
+  /* before: */   /* 6.9.1060 (26 Nov 2026) - HIS WORDS: "Make provision to download pdf of partners scheme, for all builders, executives, contractors, architects every one, and ways to register all in scheme, a proper professional system for managing all partners". The Partner Club scheme as a PDF for each trade (plumbers, architects, builders, contractors / PMC, everyone) and a briefing for our sales executives, printed from the scheme on file, with two QR codes (join on WhatsApp to the office, Saathi); enrolment as a dated record, counted by trade, with Send scheme and Enrol for everyone not yet in. */
   /* before: */   /* 6.9.1059 (26 Nov 2026) - the old-balance form says the old hisab goes up when Save is pressed (it read the client screen's "press Attach ... save the client"). */
   /* before: */   /* 6.9.1058 (26 Nov 2026) - HIS WORDS: "Make provision to add partner old balance with old hisab attached, want to make it a professional incentive calculation and payout system for Energy world Saathi". A partner carries the balance he arrived with (owed to him, or an advance he holds), as on a day, with the old hisab attached; it is payable at once, the first line of his ledger and his statement, and sent to Saathi. A payout above what is due stops and asks: his old balance, or an advance. */
   /* before: */   /* 6.9.1057 (26 Nov 2026) - HIS WORDS: "add all" - (1) the competitor price book: Competitor prices on a quote reads the filled Excel back, remembers every competitor price typed, and the next Excel fills them in; (2) our figures are locked in the quote Excel, only the yellow boxes take typing; (3) print ready, landscape, one page wide; (4) the DRP 35% ceiling also where a brand's discount is set at finalise, here and in the Challan and Visit apps. */
@@ -36659,7 +36660,7 @@ function viewCatalogue() {
       '<div class="stat ' + (b.pending > 0 ? "alert" : "") + '"><div class="n">' + money(b.pending) + '</div><div class="l">Due now (client has paid)</div></div>' +   /* 6.9.791 */
       '<div class="stat"><div class="n" style="color:#b45309">' + money(incWaitTotal(b)) + '</div><div class="l">Waiting for client payment</div></div>' +
       '<div class="stat"><div class="n">' + money(b.paid) + '</div><div class="l">Paid</div></div>' +
-      '</div>' + (isX ? '' : partnerObStrip(name));   /* 6.9.1058 */
+      '</div>' + (isX ? '' : partnerObStrip(name) + clubCardStrip(a, b));   /* 6.9.1058, 6.9.1061 */
     (function () {   /* 6.9.791 - the same, in words */
       var w = incWaitTotal(b); if (w < 0.5) return;
       var by = incWaitByClient(b);
@@ -54002,6 +54003,7 @@ function viewCatalogue() {
     return "lead";
   }
   function saathiBooks() {
+    var _cy = clubYear(), _cT = clubScheme().tiers, _cRW = clubRewards(_cy);   /* 6.9.1061 */
     var sup = {}; try { pevSupport().forEach(function (x) { sup[dkey(x.name)] = x; }); } catch (e) { }
     return assocLive().map(function (a) {
       var b = {}; try { b = partnerBook(a.name) || {}; } catch (e) { b = {}; }
@@ -54039,7 +54041,10 @@ function viewCatalogue() {
       var earned = Math.round(Number(b.earned) || 0), payable = Math.round(Number(b.payable) || 0), paid = Math.round(Number(b.paid) || 0);
       return { id: String(a.id || ""), name: String(a.name || ""), role: String(a.role || ""), exec: String(a.ownedBy || ""), city: String(a.location || a.area || ""),
         tier: x.tier || "Base", rank: x.rank == null ? 3 : x.rank, b12: Math.round(Number(x.b12) || 0),
-        earned: earned, payable: payable, paid: paid, pending: Math.max(0, Math.round(Number(b.pending) || 0)), wait: Math.max(0, Math.round(incWaitTotal(b))), ob: Math.round(Number(b.opening) || 0), obOn: String(b.obAsOn || ""), sites: sites, sentAt: new Date().toISOString() };   /* 6.9.1058 - ob */
+        earned: earned, payable: payable, paid: paid, pending: Math.max(0, Math.round(Number(b.pending) || 0)), wait: Math.max(0, Math.round(incWaitTotal(b))), ob: Math.round(Number(b.opening) || 0), obOn: String(b.obAsOn || ""),
+        club: (function () { try { var cr = clubRowOf(a, _cy, b, _cT, _cRW), cj = clubJoined(a.name);   /* 6.9.1061 - his Partner Club standing */
+          return { y: _cy, tier: cr.tierK, coll: cr.coll, earned: cr.earned, next: cr.next ? cr.next.k : "", gap: Math.round(cr.gap || 0), nextCut: cr.next ? cr.next.cut : 0, menu: cr.menu, joined: cj ? localDay(cj.at) : "" }; } catch (eC) { return null; } })(),
+        sites: sites, sentAt: new Date().toISOString() };   /* 6.9.1058 - ob */
     }).filter(function (b) { return b.id; });
   }
   var _ssBusy = false;
@@ -55917,10 +55922,11 @@ function viewCatalogue() {
     return m;
   }
   /* collected inside the scheme year, per partner, BEFORE GST - the same arithmetic pevSupport uses, with a year window */
-  function clubRows(ym) {
-    var y0 = ym + "-01-01", y1 = ym + "-12-31", T = clubScheme().tiers, RW = clubRewards(ym);
-    var out = assocLive().map(function (a) {
-      var bk = null; try { bk = partnerBook(a.name); } catch (e) { bk = null; }
+  /* 6.9.1061 - one partner's standing, the same arithmetic for the Club screen, his card and Saathi */
+  function clubRowOf(a, ym, bk0, T0, RW0) {
+    var y0 = ym + "-01-01", y1 = ym + "-12-31", T = T0 || clubScheme().tiers, RW = RW0 || clubRewards(ym);
+    return (function (a) {
+      var bk = bk0 || null; if (!bk) try { bk = partnerBook(a.name); } catch (e) { bk = null; }
       var rows = (bk && bk.rows) || [], coll = 0, deliv = 0, last = "";
       rows.forEach(function (r) {
         var amt = Number(r.amount) || 0; if (r.ret && amt > 0) amt = -amt;
@@ -55938,7 +55944,11 @@ function viewCatalogue() {
         next: nextT, gap: nextT ? Math.max(0, nextT.cut - coll) : 0,
         earned: earned, prize: prize, coin: Math.max(0, earned - prize),
         menu: tier ? clubMenu(tier, a.role) : [], rw: rw, state: rw ? String(rw.d.state || "") : (tier ? "earned" : "") };
-    });
+    })(a);
+  }
+  function clubRows(ym) {
+    var T = clubScheme().tiers, RW = clubRewards(ym);
+    var out = assocLive().map(function (a) { return clubRowOf(a, ym, null, T, RW); });
     out.sort(function (x, y2) { return y2.coll - x.coll; });
     if (out.length && out[0].tierK) out[0].poty = true;   /* Partner of the Year: the highest collector, inside his own 3% */
     return out;
@@ -56075,8 +56085,9 @@ function viewCatalogue() {
     return m;
   }
   function clubJoined(name) { var x = clubJoinMap()[dkey(name)]; return x && x.on ? x : null; }
-  function clubJoinText(aud) {
-    return "Namaste Energy World, I want to join the Energy World Saathi Partner Club.\nName: \nCity: \nI am a: " + (aud && aud !== "all" && aud !== "exec" ? CLUB_AUD[aud].t.replace(/s$/, "").replace(/s \/ PMC$/, " / PMC") : "Plumber / Architect / Builder / Contractor") + "\nMobile: ";
+  function clubJoinText(aud) {   /* 6.9.1061 - kept short: a shorter message is a coarser QR that any phone camera reads */
+    var tr = { plumber: "Plumber", architect: "Architect", builder: "Builder", contractor: "Contractor" }[aud] || "";
+    return "Join Partner Club\nName: \nCity: \nTrade: " + tr;
   }
   function clubJoinUrl(aud) { return "https://wa.me/" + CLUB_OFFICE + "?text=" + encodeURIComponent(clubJoinText(aud)); }
   /* what the paper says for each trade */
@@ -56090,7 +56101,153 @@ function viewCatalogue() {
       exec: "Your job: every plumber, architect, builder and contractor on your sites enrolled, told where he stands, and called when he is close to the next bar. The Club screen in the CRM shows who to call."
     }[aud] || "";
   }
-  function clubSchemePdf(aud) {
+  /* ===== 6.9.1061 - THE SCHEME IN HINDI =====
+     jsPDF writes letters one by one and cannot join Devanagari (matras and conjuncts come out broken), so every Hindi line
+     is set by the browser's own text engine on a canvas - the same engine that shows Hindi correctly on his phone - and
+     placed on the page as a sharp image (12 px per mm, ~300 dpi). Noto Sans Devanagari is asked for from Google Fonts
+     first; if it does not come, the phone's own Hindi font is used. Figures, tier names and the prize menu (typed in
+     English in the scheme) stay as they are. */
+  var HI_FONT = '"Noto Sans Devanagari","Kohinoor Devanagari","Nirmala UI","Mangal","Lohit Devanagari",sans-serif';
+  function hiFontReady() {
+    try {
+      if (!document.getElementById("hi_font_css")) {
+        var l = document.createElement("link"); l.id = "hi_font_css"; l.rel = "stylesheet";
+        l.href = "https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;700&display=swap"; document.head.appendChild(l);
+      }
+      if (!document.fonts || !document.fonts.load) return Promise.resolve();
+      return Promise.race([
+        Promise.all([document.fonts.load('400 20px "Noto Sans Devanagari"', "क"), document.fonts.load('700 20px "Noto Sans Devanagari"', "क")]),
+        new Promise(function (r) { setTimeout(r, 4000); })
+      ]).catch(function () { });
+    } catch (e) { return Promise.resolve(); }
+  }
+  /* one block of Hindi as an image: wrapped to wMm, returns its height in mm */
+  function hiPut(doc, text, x, y, wMm, pt, rgb, bold, align) {
+    var K = 12, fpx = Math.round(pt * 0.3528 * K), lh = Math.round(fpx * 1.5);
+    var c = document.createElement("canvas"), ctx = c.getContext("2d");
+    var font = (bold ? "700 " : "400 ") + fpx + "px " + HI_FONT;
+    ctx.font = font;
+    var maxW = Math.round(wMm * K), lines = [];
+    String(text).split("\n").forEach(function (para) {
+      var words = para.split(" "), cur = "";
+      words.forEach(function (w) { var t = cur ? cur + " " + w : w; if (ctx.measureText(t).width > maxW && cur) { lines.push(cur); cur = w; } else cur = t; });
+      lines.push(cur);
+    });
+    var used = Math.min(maxW, Math.ceil(Math.max.apply(null, lines.map(function (l) { return ctx.measureText(l).width; }).concat([1])))) + 4;
+    c.width = used; c.height = lines.length * lh + Math.round(fpx * 0.45);
+    ctx = c.getContext("2d"); ctx.font = font; ctx.textBaseline = "top";
+    ctx.fillStyle = "rgb(" + (rgb || [51, 65, 85]).join(",") + ")";
+    lines.forEach(function (l, i) { ctx.fillText(l, 2, i * lh + Math.round(fpx * 0.12)); });
+    var wOut = used / K, hOut = c.height / K, x0 = align === "right" ? x - wOut : x;
+    try { doc.addImage(c.toDataURL("image/png"), "PNG", x0, y, wOut, hOut); } catch (e) { }
+    return hOut;
+  }
+  var CLUB_HI = {
+    who: { all: "सभी पार्टनर्स के लिए — प्लंबर, आर्किटेक्ट, बिल्डर और ठेकेदार", plumber: "प्लंबर और प्लंबिंग ठेकेदारों के लिए", architect: "आर्किटेक्ट और इंटीरियर डिज़ाइनरों के लिए",
+      builder: "बिल्डर और डेवलपर्स के लिए", contractor: "ठेकेदार और प्रोजेक्ट मैनेजरों के लिए", exec: "एनर्जी वर्ल्ड सेल्स टीम के लिए" },
+    pitch: {
+      plumber: "साइट आप लाते हैं, काम आप सँभालते हैं। इस साल आपके क्लाइंट्स एनर्जी वर्ल्ड को जितना भी भुगतान करेंगे, उसका हर रुपया आपके इनाम में गिना जाएगा — और आपका नियमित ब्रांड इंसेंटिव पहले की तरह मिलता रहेगा।",
+      architect: "सामान आप तय करते हैं, क्लाइंट बनवाते हैं। जब वे आपका बताया सामान एनर्जी वर्ल्ड से लेते हैं, तो इस साल उनका हर भुगतान आपके इनाम में गिना जाता है — आपके नियमित इंसेंटिव के अलावा।",
+      builder: "एनर्जी वर्ल्ड के साथ बना आपका हर प्रोजेक्ट गिना जाता है। इस साल आपकी साइटों का भुगतान आपको अगली सीढ़ी पर ले जाता है — आपके नियमित इंसेंटिव के अलावा।",
+      contractor: "एनर्जी वर्ल्ड के साथ सँभाली गई आपकी हर साइट गिनी जाती है। इस साल आपकी साइटों का भुगतान आपको अगली सीढ़ी पर ले जाता है — आपके नियमित इंसेंटिव के अलावा।",
+      all: "इस साल आपके क्लाइंट्स एनर्जी वर्ल्ड को जितना भुगतान करेंगे, उसका हर रुपया आपके इनाम में गिना जाएगा — आपके नियमित ब्रांड इंसेंटिव के अलावा।",
+      exec: "आपका काम: आपकी साइटों के हर प्लंबर, आर्किटेक्ट, बिल्डर और ठेकेदार को क्लब में जोड़ना, उसे बताना कि वह कहाँ खड़ा है, और अगली सीढ़ी के पास पहुँचने पर उसे फ़ोन करना। CRM की क्लब स्क्रीन बताती है कि किसे फ़ोन करना है।"
+    }
+  };
+  function clubSchemePdfHi(aud) {
+    aud = CLUB_AUD[aud] ? aud : "all";
+    var SC = clubScheme(), T = SC.tiers.slice(), year = clubYear();
+    return Promise.all([loadLogo(), hiFontReady()]).then(function () {
+      var doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4" });
+      var F = function (w) { doc.setFont(ppEmbed(doc), w === "bold" ? "bold" : "normal"); };
+      var R = function (n) { return "₹" + Math.round(Number(n) || 0).toLocaleString("en-IN"); };
+      var W = 210, L = 14, Rt = W - 14, y = 0;
+      var room = function (h) { if (y + h > 276) { doc.addPage(); y = 18; } };
+      var para = function (t, pt, rgb, gap, bold) { room(8); y += hiPut(doc, t, L, y, Rt - L, pt || 9.5, rgb, bold) + (gap == null ? 2 : gap); };
+      var head = function (t) { room(26); var h = hiPut(doc, t, L, y - 1, Rt - L, 12, [11, 59, 54], true);   /* a heading never sits alone at the foot of a page */ doc.setDrawColor(94, 234, 212); doc.setLineWidth(0.6); doc.line(L, y - 1 + h * 0.78, L + 22, y - 1 + h * 0.78); y += h + 2; };
+      doc.setFillColor(11, 59, 54); doc.rect(0, 0, W, 40, "F"); doc.setFillColor(201, 162, 39); doc.rect(0, 40, W, 1.4, "F");
+      if (LOGO_B64) { try { doc.addImage(LOGO_B64, "JPEG", L, 9, 34, 18); } catch (e) { } }
+      hiPut(doc, "एनर्जी वर्ल्ड साथी", Rt, 7, 120, 16, [255, 255, 255], true, "right");
+      hiPut(doc, "पार्टनर क्लब " + year, Rt, 17, 120, 12, [253, 230, 138], true, "right");
+      hiPut(doc, CLUB_HI.who[aud], Rt, 26, 140, 9, [186, 230, 223], false, "right");
+      y = 47;
+      y += hiPut(doc, aud === "exec" ? "पार्टनर क्लब कैसे चलता है — और इसे कैसे समझाएँ" : "तीन प्रतिशत वापस — आपकी पसंद का इनाम", L, y, Rt - L, 15, [17, 24, 39], true) + 2;
+      para(CLUB_HI.pitch[aud], 10.5, [30, 41, 59], 4);
+      head("यह कैसे काम करता है");
+      [["1", "आपके क्लाइंट एनर्जी वर्ल्ड से सामान लेते हैं", "हर वह साइट जिस पर आपका नाम है — प्लंबर, आर्किटेक्ट, बिल्डर या ठेकेदार के रूप में।"],
+       ["2", "हम वही गिनते हैं जो उन्होंने चुकाया है", "1 जनवरी से 31 दिसंबर " + year + " तक, GST से पहले। सिर्फ़ आया हुआ भुगतान गिना जाता है — बकाया बिल कभी नहीं।"],
+       ["3", "उसका 3% आपको वापस मिलता है", "सीढ़ी पार करते ही उस टियर का इनाम आपका। उसके ऊपर भी 3% ही रहता है: इनाम के बाद बचा हुआ 3% सिक्के के रूप में मिलता है — ऊपर चढ़ने में कुछ नहीं खोते।"]].forEach(function (s) {
+        room(18); doc.setFillColor(201, 162, 39); doc.circle(L + 3.5, y + 2.6, 3.5, "F"); doc.setTextColor(255, 255, 255); F("bold"); doc.setFontSize(10); doc.text(s[0], L + 3.5, y + 4.1, { align: "center" });
+        var h1 = hiPut(doc, s[1], L + 10, y - 0.5, Rt - L - 10, 10, [17, 24, 39], true);
+        var h2 = hiPut(doc, s[2], L + 10, y + h1 - 0.5, Rt - L - 10, 9, [71, 85, 105], false);
+        y += h1 + h2 + 2;
+      });
+      y += 1; head("सीढ़ी, " + year);
+      var TC = { Platinum: [30, 41, 59], Gold: [180, 130, 20], Silver: [100, 116, 139], Bronze: [154, 82, 38], Member: [15, 118, 110] };
+      room(10); doc.setFillColor(11, 59, 54); doc.rect(L, y - 1, Rt - L, 8, "F");
+      hiPut(doc, "टियर", L + 2, y - 0.3, 26, 8.5, [255, 255, 255], true); hiPut(doc, "साल में क्लाइंट्स का भुगतान", L + 30, y - 0.3, 56, 8.5, [255, 255, 255], true); hiPut(doc, "आपका इनाम — कोई एक चुनें", L + 86, y - 0.3, 90, 8.5, [255, 255, 255], true);
+      y += 10;
+      T.forEach(function (t, i) {
+        var menu = (aud === "all" || aud === "exec") ? String(t.menu || "").replace(/\(plumbers\)/i, "(plumbers only)") : clubMenu(t, aud === "plumber" ? "Plumber" : aud).join(" / ").replace(/\s*\(plumbers\)/i, "");
+        F("normal"); doc.setFontSize(8.5); var ls = doc.splitTextToSize(menu, Rt - L - 88), h = Math.max(9, ls.length * 4.3 + 4);
+        room(h + 1);
+        if (i % 2) { doc.setFillColor(248, 250, 252); doc.rect(L, y - 4.5, Rt - L, h, "F"); }
+        var c = TC[t.k] || [71, 85, 105]; doc.setFillColor(c[0], c[1], c[2]); doc.roundedRect(L + 1, y - 3.6, 24, 6, 1.5, 1.5, "F");
+        doc.setTextColor(255, 255, 255); F("bold"); doc.setFontSize(8.5); doc.text(t.k, L + 13, y + 0.4, { align: "center" });
+        doc.setTextColor(17, 24, 39); doc.setFontSize(10); doc.text(R(t.cut) + "+", L + 30, y + 0.4);
+        F("normal"); doc.setFontSize(8.5); doc.setTextColor(30, 41, 59); doc.text(ls, L + 86, y + 0.4);
+        y += h;
+      });
+      y += 2;
+      var G = T.filter(function (t) { return t.k === "Gold"; })[0] || T[Math.min(1, T.length - 1)];
+      if (G) {
+        var ex = Math.round(G.cut * 1.4), ex3 = Math.round(ex * CLUB_PCT / 100), coin = Math.max(0, ex3 - G.ew);
+        room(24); var yb = y;
+        var ht = hiPut(doc, "उदाहरण", L + 4, y - 1, 60, 9.5, [120, 80, 10], true);
+        var hb = hiPut(doc, "आपके क्लाइंट्स साल में " + R(ex) + " चुकाते हैं (GST से पहले)। यह " + G.k + " है। आपका 3% " + R(ex3) + " है: " + G.k + " का अपनी पसंद का इनाम आपका" + (coin ? ", और बचे हुए " + R(coin) + " का सोने या चाँदी का सिक्का।" : "।"), L + 4, y - 1 + ht, Rt - L - 8, 9, [51, 65, 85], false);
+        doc.setDrawColor(201, 162, 39); doc.setLineWidth(0.4); doc.roundedRect(L, yb - 3, Rt - L, ht + hb + 4, 2, 2, "S");
+        y = yb + ht + hb + 4;
+      }
+      head("अंतरराष्ट्रीय यात्रा (प्लैटिनम)");
+      para("4 रात / 5 दिन, दो लोगों के कमरे में, हवाई जहाज़ से — एक तय राशि, सब कुछ शामिल। इनमें से एक चुनें: " + CLUB_TRIPS.map(function (d) { return d.k; }).join(", ") + "। तय राशि से महँगी जगह भी चुन सकते हैं — अंतर आप जोड़ें।", 9);
+      para("पार्टनर ऑफ़ द ईयर: साल के सबसे ज़्यादा भुगतान वाले पार्टनर को यह ख़िताब और ट्रॉफ़ी।", 9, [51, 65, 85], 3);
+      if (aud === "exec") {
+        head("आपकी ज़िम्मेदारी");
+        ["अपनी साइटों के हर पार्टनर को जोड़िए: CRM > Partners > Partner Club > Enrol। उसी स्क्रीन से उसके काम की स्कीम PDF व्हाट्सऐप पर जाती है।",
+         "उसे बताइए कि वह कहाँ खड़ा है — साथी ऐप में उसे यह हर समय दिखता है, और क्लब स्क्रीन पर अगली सीढ़ी के पास पहुँचे सभी पार्टनर्स की सूची है।",
+         "सीढ़ी के पास पहुँचे और 60 दिन से चुप पार्टनर्स को फ़ोन कीजिए। उसके क्लाइंट्स का भुगतान ही उसे सबसे जल्दी इनाम दिलाता है।",
+         "इस पर्चे से अलग किसी इनाम का वादा न करें, और बकाया बिल कभी न गिनें।"].forEach(function (s) { para("•  " + s, 9, [51, 65, 85], 1); });
+        y += 2;
+      }
+      head("नियम");
+      ["सिर्फ़ आया हुआ भुगतान गिना जाता है, GST से पहले, कैलेंडर साल के अंदर। बकाया बिल उसी दिन गिना जाता है जिस दिन उसका भुगतान आता है।",
+       "गोदाम में वापस जमा हुआ माल, जितना वापस आया उतना गिनती से घटा देता है।",
+       "पार्टनर उन्हीं साइटों को गिनता है जिन पर एनर्जी वर्ल्ड के रिकॉर्ड में उसका नाम है। एक साइट पर दो पार्टनर हों तो दोनों उसे गिनते हैं।",
+       "इनाम पहुँचे हुए टियर की सूची में से चुना जाता है; बचा हुआ 3% सिक्के के रूप में मिलता है।",
+       "आपका नियमित ब्रांड इंसेंटिव अलग है और पहले की तरह चलता रहेगा।",
+       "आपकी स्थिति साथी ऐप में हर समय दिखती है। यह पर्चा पेज के नीचे लिखी तारीख़ की स्कीम से छपा है।"].forEach(function (s) { para("•  " + s, 8.6, [71, 85, 105], 0.8); });
+      y += 3;
+      room(60); head(aud === "exec" ? "जुड़ने के दो रास्ते — उसे दोनों दीजिए" : "कैसे जुड़ें");
+      var q = 34, yq = y;
+      try { pdfQr(doc, clubJoinUrl(aud), L, yq, q); } catch (e) { }
+      try { pdfQr(doc, CLUB_SAATHI, L + 92, yq, q); } catch (e) { }
+      var a1 = hiPut(doc, "नए हैं? व्हाट्सऐप पर जुड़िए", L + q + 4, yq, 54, 10, [17, 24, 39], true);
+      hiPut(doc, "स्कैन करें, अपना नाम, शहर और काम भेजें। ऑफ़िस उसी दिन आपको जोड़ देगा। या किसी भी एनर्जी वर्ल्ड एग्ज़ीक्यूटिव को बताइए।", L + q + 4, yq + a1, 52, 8.5, [71, 85, 105], false);
+      F("normal"); doc.setFontSize(8.5); doc.setTextColor(71, 85, 105); doc.text("+91 94666 00611", L + q + 4, yq + 31);
+      var b1 = hiPut(doc, "पहले से पार्टनर हैं? साथी खोलिए", L + 92 + q + 4, yq, Rt - (L + 92 + q + 4), 10, [17, 24, 39], true);
+      hiPut(doc, "अपने मोबाइल नंबर से साइन इन करें। अपनी साइटें, पॉइंट्स और अगली सीढ़ी कितनी दूर है — सब देखिए।", L + 92 + q + 4, yq + b1, Rt - (L + 92 + q + 4), 8.5, [71, 85, 105], false);
+      y = yq + q + 6;
+      var pages = doc.getNumberOfPages();
+      for (var p = 1; p <= pages; p++) {
+        doc.setPage(p); F("normal"); doc.setFontSize(7.5); doc.setTextColor(120, 130, 140);
+        doc.text("Energy World  |  Sonipat · Panipat · Karnal · Rohtak  |  Partner Club " + year + (SC.at ? "  |  scheme of " + dmy(localDay(SC.at)) : ""), L, 290);
+        doc.text(p + " / " + pages, Rt, 290, { align: "right" });
+      }
+      return doc;
+    });
+  }
+  function clubSchemePdf(aud, lang) {
+    if (lang === "hi") return clubSchemePdfHi(aud);   /* 6.9.1061 */
     aud = CLUB_AUD[aud] ? aud : "all";
     var SC = clubScheme(), T = SC.tiers.slice(), year = clubYear();
     return loadLogo().then(function () { return loadFonts(); }).then(function (f) {
@@ -56101,7 +56258,7 @@ function viewCatalogue() {
       var W = 210, L = 14, Rt = W - 14, y = 0;
       var room = function (h) { if (y + h > 276) { doc.addPage(); y = 18; } };
       var para = function (t, size, col, gap) { F("normal"); doc.setFontSize(size || 9.5); doc.setTextColor.apply(doc, col || [51, 65, 85]); var ls = doc.splitTextToSize(t, Rt - L); room(ls.length * 4.6 + 2); doc.text(ls, L, y); y += ls.length * 4.6 + (gap == null ? 3 : gap); };
-      var head = function (t) { room(14); F("bold"); doc.setFontSize(12); doc.setTextColor(11, 59, 54); doc.text(t, L, y); doc.setDrawColor(94, 234, 212); doc.setLineWidth(0.6); doc.line(L, y + 1.8, L + 22, y + 1.8); y += 8; };
+      var head = function (t) { room(24); F("bold"); doc.setFontSize(12); doc.setTextColor(11, 59, 54); doc.text(t, L, y); doc.setDrawColor(94, 234, 212); doc.setLineWidth(0.6); doc.line(L, y + 1.8, L + 22, y + 1.8); y += 8; };
       /* the band */
       doc.setFillColor(11, 59, 54); doc.rect(0, 0, W, 40, "F"); doc.setFillColor(201, 162, 39); doc.rect(0, 40, W, 1.4, "F");
       if (LOGO_B64) { try { doc.addImage(LOGO_B64, "JPEG", L, 9, 34, 18); } catch (e) { } }
@@ -56202,7 +56359,8 @@ function viewCatalogue() {
         var x = by[k] || { inn: 0, out: 0 };
         return '<div style="border:1px solid #e2e8f0;border-radius:10px;padding:6px 10px;min-width:120px"><div style="font-size:12px;color:#64748b">' + lbl[k] + '</div><div><b style="color:#166534">' + x.inn + '</b> in &middot; <b style="color:#b45309">' + x.out + '</b> not yet</div></div>';
       }).join("") + '</div>' +
-      '<div style="font-weight:700;margin-top:6px">Download the scheme (PDF)</div>' +
+      '<div style="font-weight:700;margin-top:6px">Download the scheme (PDF) <span style="font-weight:400">&middot; language</span> ' +   /* 6.9.1061 */
+        [["en", "English"], ["hi", "\u0939\u093f\u0928\u094d\u0926\u0940"]].map(function (x) { return '<button class="btn sm' + ((S.clubLang || "en") === x[0] ? '' : ' ghost') + '" style="min-height:40px" data-act="club-lang" data-k="' + x[0] + '">' + x[1] + '</button>'; }).join(" ") + '</div>' +
       '<div class="acts" style="gap:6px;flex-wrap:wrap;margin-top:4px">' + ["plumber", "architect", "builder", "contractor", "all", "exec"].map(function (k) {
         return '<button class="btn sm' + (k === "exec" ? ' ghost' : '') + '" style="min-height:44px" data-act="club-pdf" data-k="' + k + '">' + esc(CLUB_AUD[k].t) + '</button>';
       }).join("") + '</div>';
@@ -56214,6 +56372,23 @@ function viewCatalogue() {
           '<button class="btn sm" style="min-height:44px" data-act="club-join" data-n="' + esc(r.name) + '">Enrol</button></div>'];
       }), true) : '<div class="meta" style="font-size:12.5px">Everyone is enrolled.</div>';
     return h + '</div>';
+  }
+  /* 6.9.1061 - his Partner Club standing on his own card */
+  function clubCardStrip(a, bk) {
+    if (!a || !a.name) return "";
+    var ym = clubYear(), r = null; try { r = clubRowOf(a, ym, bk); } catch (e) { return ""; }
+    var j = clubJoined(a.name), own = roleIs("admin");
+    var nxt = r.next ? '<b>' + money(r.gap) + '</b> more to ' + clubPill(r.next.k) : (r.tierK ? 'top tier' : '');
+    var pct = r.next ? Math.max(3, Math.min(100, Math.round(r.coll / r.next.cut * 100))) : 100;
+    return '<div class="card" style="border-color:' + (j ? '#99f6e4' : '#fcd34d') + ';padding:10px 12px">' +
+      '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center"><div style="flex:1 1 260px">' +
+      '<b>Partner Club ' + esc(ym) + '</b> ' + (r.tierK ? clubPill(r.tierK) : '<span class="meta">below the first bar</span>') + ' ' +
+      (j ? '<span style="font-size:12px;font-weight:800;color:#166534">\u2713 enrolled ' + esc(dmy(localDay(j.at))) + '</span>' : '<span style="font-size:12px;font-weight:800;color:#b45309">not enrolled</span>') +
+      '<div class="meta" style="font-size:12.5px;margin-top:3px">His clients paid <b>' + money(r.coll) + '</b> this year (before GST)' + (r.tierK ? ' &middot; his 3% ' + money(r.earned) : '') + (nxt ? ' &middot; ' + nxt : '') + '</div>' +
+      '<div style="height:6px;border-radius:3px;background:#f1f5f9;margin-top:5px"><div style="height:6px;border-radius:3px;width:' + pct + '%;background:linear-gradient(90deg,#0f766e,#c9a227)"></div></div></div>' +
+      (own ? '<div style="display:flex;gap:6px;flex-wrap:wrap">' + (String(a.mobile || "").replace(/\D/g, "").length >= 10 ? '<button class="btn sm ghost" style="min-height:44px" data-act="club-send" data-n="' + esc(a.name) + '">Send scheme</button>' : '') +
+        '<button class="btn sm' + (j ? ' ghost' : '') + '" style="min-height:44px" data-act="club-join" data-n="' + esc(a.name) + '">' + (j ? 'Enrolment' : 'Enrol') + '</button></div>' : '') +
+      '</div></div>';
   }
   function modalClubJoin(name) {
     var j = clubJoined(name);
@@ -68143,18 +68318,19 @@ function viewCatalogue() {
     if (act === "club-y") { S.clubY = t.getAttribute("data-v"); keepScroll = true; render(); return; }   /* 6.9.954 */
     if (act === "club-pdf") {   /* 6.9.1060 */
       var _ck = t.getAttribute("data-k") || "all"; toast("Building the scheme PDF\u2026");
-      clubSchemePdf(_ck).then(function (d) { pdfOut(d, "Energy_World_Partner_Club_" + clubYear() + "_" + CLUB_AUD[_ck].t.replace(/[^\w]+/g, "_") + ".pdf"); });
+      clubSchemePdf(_ck, S.clubLang).then(function (d) { pdfOut(d, "Energy_World_Partner_Club_" + clubYear() + "_" + CLUB_AUD[_ck].t.replace(/[^\w]+/g, "_") + (S.clubLang === "hi" ? "_Hindi" : "") + ".pdf"); });
       return;
     }
     if (act === "club-send") {   /* 6.9.1060 - his trade's paper, on WhatsApp */
       var _cs = clubRows(clubYear()).filter(function (x) { return dkey(x.name) === dkey(t.getAttribute("data-n")); })[0];
       if (!_cs || _cs.mob.length !== 10) { toast("No 10-digit mobile for him."); return; }
       var _ca = clubAudOf(_cs.role);
-      waShareDoc(clubSchemePdf(_ca), "Energy_World_Partner_Club_" + clubYear() + ".pdf", _cs.mob,
+      waShareDoc(clubSchemePdf(_ca, S.clubLang), "Energy_World_Partner_Club_" + clubYear() + (S.clubLang === "hi" ? "_Hindi" : "") + ".pdf", _cs.mob,
         "Namaste " + _cs.name + " ji,\nEnergy World Saathi Partner Club " + clubYear() + " - aapke clients jo payment karte hain uska 3% aapko inaam ke roop mein. Poori jaankari PDF mein hai.\nJudne ke liye haan bhejiye.\nSaathi app: " + CLUB_SAATHI + "\nEnergy World, Panipat");
       try { auditFact("club:sent", _cs.name, { partner: _cs.name, aud: _ca, year: clubYear() }).catch(function () { }); } catch (eS) { }
       return;
     }
+    if (act === "club-lang") { S.clubLang = t.getAttribute("data-k") === "hi" ? "hi" : "en"; keepScroll = true; render(); return; }   /* 6.9.1061 */
     if (act === "club-join") { S.modal = modalClubJoin(t.getAttribute("data-n")); render(); return; }
     if (act === "club-join-save") {
       if (!roleIs("admin")) { toast("The Partner Club is the owner\u2019s."); return; }
