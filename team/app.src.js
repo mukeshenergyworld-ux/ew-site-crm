@@ -449,7 +449,8 @@
 /* ==EWCORE:drivers:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.1059";   /* 6.9.1059 (26 Nov 2026) - the old-balance form says the old hisab goes up when Save is pressed (it read the client screen's "press Attach ... save the client"). */
+  var APP_VERSION = "6.9.1060";   /* 6.9.1060 (26 Nov 2026) - HIS WORDS: "Make provision to download pdf of partners scheme, for all builders, executives, contractors, architects every one, and ways to register all in scheme, a proper professional system for managing all partners". The Partner Club scheme as a PDF for each trade (plumbers, architects, builders, contractors / PMC, everyone) and a briefing for our sales executives, printed from the scheme on file, with two QR codes (join on WhatsApp to the office, Saathi); enrolment as a dated record, counted by trade, with Send scheme and Enrol for everyone not yet in. */
+  /* before: */   /* 6.9.1059 (26 Nov 2026) - the old-balance form says the old hisab goes up when Save is pressed (it read the client screen's "press Attach ... save the client"). */
   /* before: */   /* 6.9.1058 (26 Nov 2026) - HIS WORDS: "Make provision to add partner old balance with old hisab attached, want to make it a professional incentive calculation and payout system for Energy world Saathi". A partner carries the balance he arrived with (owed to him, or an advance he holds), as on a day, with the old hisab attached; it is payable at once, the first line of his ledger and his statement, and sent to Saathi. A payout above what is due stops and asks: his old balance, or an advance. */
   /* before: */   /* 6.9.1057 (26 Nov 2026) - HIS WORDS: "add all" - (1) the competitor price book: Competitor prices on a quote reads the filled Excel back, remembers every competitor price typed, and the next Excel fills them in; (2) our figures are locked in the quote Excel, only the yellow boxes take typing; (3) print ready, landscape, one page wide; (4) the DRP 35% ceiling also where a brand's discount is set at finalise, here and in the Challan and Visit apps. */
   /* before: */   /* 6.9.1056 (26 Nov 2026) - HIS WORDS: "Avoid product code and this other unnecessary column in excel, include graphical representation in summary": the quote Excel drops the code, brand, unit, spacer and second competitor-brand columns (Room only when the quote has rooms), and the summary carries a bar chart of ours against the competitor, brand by brand. */
@@ -55892,7 +55893,8 @@ function viewCatalogue() {
     return { tiers: T, at: ok ? best.createdAt : "", by: ok ? best.actor : "" };
   }
   function clubMenu(t, role) {
-    var L = String((t && t.menu) || "").split("/").map(function (s) { return s.trim(); }).filter(Boolean);
+    /* 6.9.1060 - FIX: "Goa trip, 4N/5D" was cut at its own slash, so a non-plumber's Gold menu offered "5D (plumbers)" as a prize. A slash before nights/days ("4N/5D") is not a separator. */
+    var L = String((t && t.menu) || "").split(/\s*\/\s*(?!\d+\s*D\b)/).map(function (s) { return s.trim(); }).filter(Boolean);
     if (t && t.k === "Platinum") return [t.menu];
     if (!/plumb/i.test(String(role || ""))) L = L.filter(function (s) { return !/goa/i.test(s); });   /* Goa is the plumbers' Gold prize */
     return L;
@@ -55992,6 +55994,7 @@ function viewCatalogue() {
       '<details style="margin-top:8px"><summary style="cursor:pointer;font-weight:700;min-height:44px;display:flex;align-items:center">The international trip — one allowance, ' + money(110500) + ' all in, half paid by FIMA</summary>' +
       pevTable([["Destination"], ["All in", "right"], ["Note"]], CLUB_TRIPS.map(function (d) { return ['<b>' + esc(d.k) + '</b>', money(d.all), '<span style="font-size:12.5px">' + esc(d.note) + '</span>']; })) +
       '<div class="meta" style="font-size:12px;margin-top:4px">4 nights / 5 days, twin sharing, by air, plus 30% cash in hand. Get one written group quote per destination before it is announced. A brand that funds a seat may want the partner’s number — ask the partner first, every time.</div></details></div>';
+    h += clubJoinCard(rows);   /* 6.9.1060 - joining, and the scheme on paper */
     /* ---- who to call ---- */
     var near = rows.filter(function (r) { return r.coll > 0 && r.next && r.gap > 0 && r.gap <= Math.max(50000, (r.next.cut - (r.tier ? r.tier.cut : 0)) * 0.35); })
       .sort(function (a, b) { return a.gap - b.gap; });
@@ -56015,7 +56018,7 @@ function viewCatalogue() {
       '<div class="meta" style="font-size:12.5px">Sorted by what his clients paid this year, before GST. Reward: earned → chosen → given, each step kept.</div>' +
       pevTable([["#", "right"], ["Partner"], ["Tier"], ["Paid, pre-GST", "right"], ["His 3%", "right"], ["Prize (EW)", "right"], ["Coin", "right"], ["Reward"], ["To next bar", "right"], ["Last delivery"], [""]],
         rows.filter(function (r) { return r.deliv > 0 || r.coll > 0 || r.rw; }).slice(0, 200).map(function (r, i) {
-          return [i + 1, '<b>' + esc(r.name) + '</b>' + (r.poty ? ' <span style="font-size:11px;font-weight:800;color:#92400e">★ Partner of the Year</span>' : '') + '<div style="font-size:12px;color:#64748b">' + esc([r.role, r.loc].filter(Boolean).join(" · ")) + '</div>', clubPill(r.tierK),
+          return [i + 1, '<b>' + esc(r.name) + '</b>' + (clubJoined(r.name) ? ' <span title="Enrolled" style="font-size:11px;font-weight:800;color:#166534">\u2713 in</span>' : ' <span style="font-size:11px;color:#b45309">not enrolled</span>') + (r.poty ? ' <span style="font-size:11px;font-weight:800;color:#92400e">★ Partner of the Year</span>' : '') + '<div style="font-size:12px;color:#64748b">' + esc([r.role, r.loc].filter(Boolean).join(" · ")) + '</div>', clubPill(r.tierK),
             '<b>' + money(r.coll) + '</b>', r.earned ? money(r.earned) : '—', r.prize ? money(r.prize) : '—', r.coin ? money(r.coin) : '—', clubStatePill(r),
             r.next ? money(r.gap) + ' <span style="font-size:11px;color:#64748b">to ' + esc(r.next.k) + '</span>' : '—', r.last ? esc(dmy(r.last)) : '—',
             (r.tierK || r.rw) ? '<button class="btn sm ghost" style="min-height:44px" data-act="club-rew" data-n="' + esc(r.name) + '">Reward</button>' : '']; })) + '</div>';
@@ -56035,6 +56038,191 @@ function viewCatalogue() {
       }).join("") + '</table></div>' +
       '<div class="acts" style="margin-top:8px"><button class="btn" style="min-height:44px" data-act="club-save">Save the scheme</button></div></div>';
     return h;
+  }
+  /* ===== 6.9.1060 - THE SCHEME ON PAPER, AND WHO HAS JOINED =====
+     HIS WORDS: "Make provision to download pdf of partners scheme, for all builders, executives, contractors, architects every
+     one, and ways to register all in scheme, a proper professional system for managing all partners".
+     THE PAPER. One PDF per audience - plumbers, architects, builders, contractors / PMC, everyone, and a briefing for our own
+     sales executives - built from the scheme ON FILE (clubScheme), so the paper can never promise a different bar or prize
+     from the one the CRM pays on. What a partner sees: how it works, the ladder with HIS prize menu (Goa is the plumbers'
+     Gold prize), a worked example, the trip, the rules the CRM actually applies, and two QR codes - Saathi to see his own
+     standing, WhatsApp the office to join. Energy World's costs and the brands funding seats are never printed.
+     JOINING. A partner is in the club on the day he is ENROLLED: one audit row "club:join" (how he joined - Saathi,
+     executive, office, WhatsApp - who enrolled him, when). The Club screen counts enrolled and not-yet by trade, sends the
+     scheme to anyone not yet in (his own trade's PDF, shared to WhatsApp), and enrols with one press. Nothing is deleted;
+     "left the club" is a newer row. */
+  var CLUB_OFFICE = "919466600611";   /* the office WhatsApp, as on the Care app */
+  var CLUB_SAATHI = "https://mukeshenergyworld-ux.github.io/ew-site-crm/saathi/";
+  var CLUB_AUD = {
+    all: { t: "Every partner", who: "plumbers, architects, builders and contractors" },
+    plumber: { t: "Plumbers", who: "plumbers and plumbing contractors" },
+    architect: { t: "Architects", who: "architects and interior designers" },
+    builder: { t: "Builders", who: "builders and developers" },
+    contractor: { t: "Contractors / PMC", who: "contractors and project managers" },
+    exec: { t: "Sales executive briefing", who: "the Energy World sales team" }
+  };
+  function clubAudOf(role) {
+    var r = String(role || "").toLowerCase();
+    return /plumb/.test(r) ? "plumber" : /archit|interior|design/.test(r) ? "architect" : /build|develop/.test(r) ? "builder" : /pmc|contract|project/.test(r) ? "contractor" : "all";
+  }
+  function clubJoinMap() {
+    var m = {};
+    ((S.data && S.data.audit) || []).forEach(function (a) {
+      if (!a || a.action !== "club:join") return;
+      var d = cmpJ(a.detail) || {}, k = dkey(d.partner || a.target); if (!k) return;
+      if (!m[k] || String(a.createdAt) > m[k].at) m[k] = { at: String(a.createdAt || ""), by: String(a.actor || ""), how: String(d.how || ""), on: Number(d.on) !== 0 };
+    });
+    return m;
+  }
+  function clubJoined(name) { var x = clubJoinMap()[dkey(name)]; return x && x.on ? x : null; }
+  function clubJoinText(aud) {
+    return "Namaste Energy World, I want to join the Energy World Saathi Partner Club.\nName: \nCity: \nI am a: " + (aud && aud !== "all" && aud !== "exec" ? CLUB_AUD[aud].t.replace(/s$/, "").replace(/s \/ PMC$/, " / PMC") : "Plumber / Architect / Builder / Contractor") + "\nMobile: ";
+  }
+  function clubJoinUrl(aud) { return "https://wa.me/" + CLUB_OFFICE + "?text=" + encodeURIComponent(clubJoinText(aud)); }
+  /* what the paper says for each trade */
+  function clubPitch(aud) {
+    return {
+      plumber: "You bring the site and stand by the job. Every rupee your clients pay Energy World this year counts towards your prize - and your regular brand incentive stays exactly as it is.",
+      architect: "You specify, your clients build. When they buy what you specify from Energy World, every rupee they pay this year counts towards your prize - on top of your regular incentive.",
+      builder: "Every project you build with Energy World counts. What your sites pay us this year moves you up the ladder - on top of your regular incentive.",
+      contractor: "Every site you manage with Energy World counts. What your sites pay us this year moves you up the ladder - on top of your regular incentive.",
+      all: "Every rupee your clients pay Energy World this year counts towards your prize - on top of your regular brand incentive.",
+      exec: "Your job: every plumber, architect, builder and contractor on your sites enrolled, told where he stands, and called when he is close to the next bar. The Club screen in the CRM shows who to call."
+    }[aud] || "";
+  }
+  function clubSchemePdf(aud) {
+    aud = CLUB_AUD[aud] ? aud : "all";
+    var SC = clubScheme(), T = SC.tiers.slice(), year = clubYear();
+    return loadLogo().then(function () { return loadFonts(); }).then(function (f) {
+      var doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4" }), uni = false;
+      if (f) { doc.addFileToVFS("DejaVuSans.ttf", f.reg); doc.addFont("DejaVuSans.ttf", "DJ", "normal"); doc.addFileToVFS("DejaVuSans-Bold.ttf", f.bold); doc.addFont("DejaVuSans-Bold.ttf", "DJ", "bold"); uni = true; }
+      var F = function (w) { doc.setFont(ppEmbed(doc), w === "bold" ? "bold" : "normal"); };
+      var R = function (n) { return (uni ? "₹" : "Rs.") + Math.round(Number(n) || 0).toLocaleString("en-IN"); };
+      var W = 210, L = 14, Rt = W - 14, y = 0;
+      var room = function (h) { if (y + h > 276) { doc.addPage(); y = 18; } };
+      var para = function (t, size, col, gap) { F("normal"); doc.setFontSize(size || 9.5); doc.setTextColor.apply(doc, col || [51, 65, 85]); var ls = doc.splitTextToSize(t, Rt - L); room(ls.length * 4.6 + 2); doc.text(ls, L, y); y += ls.length * 4.6 + (gap == null ? 3 : gap); };
+      var head = function (t) { room(14); F("bold"); doc.setFontSize(12); doc.setTextColor(11, 59, 54); doc.text(t, L, y); doc.setDrawColor(94, 234, 212); doc.setLineWidth(0.6); doc.line(L, y + 1.8, L + 22, y + 1.8); y += 8; };
+      /* the band */
+      doc.setFillColor(11, 59, 54); doc.rect(0, 0, W, 40, "F"); doc.setFillColor(201, 162, 39); doc.rect(0, 40, W, 1.4, "F");
+      if (LOGO_B64) { try { doc.addImage(LOGO_B64, "JPEG", L, 9, 34, 18); } catch (e) { } }
+      doc.setTextColor(255, 255, 255); F("bold"); doc.setFontSize(17); doc.text("Energy World Saathi", Rt, 15, { align: "right" });
+      doc.setFontSize(12); doc.setTextColor(253, 230, 138); doc.text("Partner Club " + year, Rt, 23, { align: "right" });
+      F("normal"); doc.setFontSize(9); doc.setTextColor(186, 230, 223); doc.text("For " + CLUB_AUD[aud].who, Rt, 30, { align: "right" });
+      y = 52;
+      F("bold"); doc.setFontSize(15); doc.setTextColor(17, 24, 39); doc.text(aud === "exec" ? "How the Partner Club works - and how to sell it" : "Three percent back, as a prize you choose", L, y); y += 8;
+      para(clubPitch(aud), 10.5, [30, 41, 59], 5);
+      head("How it works");
+      [["1", "Your clients buy from Energy World", "Every site you are named on - as plumber, architect, builder or contractor."],
+       ["2", "We count what they have PAID", "Between 1 January and 31 December " + year + ", counted before GST. Only money received counts - never a bill that is still unpaid."],
+       ["3", "3% of it comes back to you", "Cross a bar and you take that tier's prize. Above the bar the rate stays 3%: the balance of your 3% comes as a coin, so nothing is lost by climbing."]].forEach(function (s) {
+        room(15); doc.setFillColor(201, 162, 39); doc.circle(L + 3.5, y - 1.2, 3.5, "F"); doc.setTextColor(255, 255, 255); F("bold"); doc.setFontSize(10); doc.text(s[0], L + 3.5, y + 0.3, { align: "center" });
+        doc.setTextColor(17, 24, 39); doc.setFontSize(10); doc.text(s[1], L + 10, y); F("normal"); doc.setFontSize(9); doc.setTextColor(71, 85, 105);
+        var ls = doc.splitTextToSize(s[2], Rt - L - 10); doc.text(ls, L + 10, y + 4.6); y += 6 + ls.length * 4.4;
+      });
+      y += 2; head("The ladder, " + year);
+      var TC = { Platinum: [30, 41, 59], Gold: [180, 130, 20], Silver: [100, 116, 139], Bronze: [154, 82, 38], Member: [15, 118, 110] };
+      room(10); doc.setFillColor(11, 59, 54); doc.rect(L, y - 5, Rt - L, 8, "F"); doc.setTextColor(255, 255, 255); F("bold"); doc.setFontSize(8.5);
+      doc.text("TIER", L + 2, y); doc.text("YOUR CLIENTS PAY IN THE YEAR", L + 30, y); doc.text("YOUR PRIZE - CHOOSE ONE", L + 86, y); y += 6;
+      T.forEach(function (t, i) {
+        /* his trade's menu (clubMenu drops Goa for anyone not a plumber); the all-trades paper names who Goa is for */
+        var menu = (aud === "all" || aud === "exec") ? String(t.menu || "").replace(/\(plumbers\)/i, "(plumbers only)") : clubMenu(t, aud === "plumber" ? "Plumber" : aud).join(" / ").replace(/\s*\(plumbers\)/i, "");
+        var ls = doc.splitTextToSize(menu, Rt - L - 88), h = Math.max(9, ls.length * 4.3 + 4);
+        room(h + 1);
+        if (i % 2) { doc.setFillColor(248, 250, 252); doc.rect(L, y - 4.5, Rt - L, h, "F"); }
+        var c = TC[t.k] || [71, 85, 105]; doc.setFillColor(c[0], c[1], c[2]); doc.roundedRect(L + 1, y - 3.6, 24, 6, 1.5, 1.5, "F");
+        doc.setTextColor(255, 255, 255); F("bold"); doc.setFontSize(8.5); doc.text(t.k, L + 13, y + 0.4, { align: "center" });
+        doc.setTextColor(17, 24, 39); doc.setFontSize(10); doc.text(R(t.cut) + "+", L + 30, y + 0.4);
+        F("normal"); doc.setFontSize(8.5); doc.setTextColor(30, 41, 59); doc.text(ls, L + 86, y + 0.4);
+        y += h;
+      });
+      y += 2;
+      var G = T.filter(function (t) { return t.k === "Gold"; })[0] || T[Math.min(1, T.length - 1)];
+      if (G) {
+        var ex = Math.round(G.cut * 1.4), ex3 = Math.round(ex * CLUB_PCT / 100), coin = Math.max(0, ex3 - G.ew);
+        room(22); doc.setFillColor(254, 249, 231); doc.setDrawColor(201, 162, 39); doc.roundedRect(L, y - 3, Rt - L, 19, 2, 2, "FD");
+        F("bold"); doc.setFontSize(9.5); doc.setTextColor(120, 80, 10); doc.text("An example", L + 4, y + 2);
+        F("normal"); doc.setFontSize(9); doc.setTextColor(51, 65, 85);
+        doc.text(doc.splitTextToSize("Your clients pay " + R(ex) + " in the year (before GST). That is " + G.k + ". Your 3% is " + R(ex3) + ": you take the " + G.k + " prize of your choice" + (coin ? ", and the balance of " + R(coin) + " comes as a gold or silver coin." : "."), Rt - L - 8), L + 4, y + 7);
+        y += 21;
+      }
+      head("The international trip (Platinum)");
+      para("4 nights / 5 days, twin sharing, by air - one allowance, all in. Choose one: " + CLUB_TRIPS.map(function (d) { return d.k; }).join(", ") + ". " +
+        "A destination above the allowance is open to you; you add the difference.", 9);
+      para("Partner of the Year: the highest collector of the year receives the title and a trophy.", 9, [51, 65, 85], 4);
+      if (aud === "exec") {
+        head("Your part");
+        ["Enrol every partner on your sites: CRM > Partners > Partner Club > Enrol. The scheme PDF for his trade goes to him on WhatsApp from the same screen.",
+         "Show him where he stands - Saathi shows it to him at any time, and the Club screen lists everyone within reach of the next bar.",
+         "Call partners close to a bar and partners gone quiet for 60 days. Nothing pays him faster than his clients paying us.",
+         "Never promise a prize that is not on this paper, and never count a bill that is unpaid."].forEach(function (s) { para("•  " + s, 9, [51, 65, 85], 1.5); });
+        y += 2;
+      }
+      head("The rules");
+      ["Only payments received count, before GST, inside the calendar year. A bill not yet paid counts the day it is paid.",
+       "Material returned and booked in at the godown reduces the count by what came back.",
+       "A partner counts the sites he is named on in Energy World's records. Two partners on one site each count it.",
+       "The prize is chosen from the menu of the tier reached; the balance of your 3% comes as a coin.",
+       "Your regular brand incentive is separate and continues exactly as before.",
+       "Your standing is in the Saathi app at any time. This paper is printed from the scheme on file on the date at the foot of the page."].forEach(function (s) { para("•  " + s, 8.6, [71, 85, 105], 1.4); });
+      y += 3;
+      /* the two doors in */
+      room(58); head(aud === "exec" ? "Two doors in - give him both" : "How to join");
+      var q = 34, yq = y;
+      try { pdfQr(doc, clubJoinUrl(aud), L, yq, q); } catch (e) { }
+      try { pdfQr(doc, CLUB_SAATHI, L + 92, yq, q); } catch (e) { }
+      F("bold"); doc.setFontSize(10); doc.setTextColor(17, 24, 39);
+      doc.text("New? Join on WhatsApp", L + q + 4, yq + 5); doc.text(["Already a partner?", "Open Saathi"], L + 92 + q + 4, yq + 5);
+      F("normal"); doc.setFontSize(8.5); doc.setTextColor(71, 85, 105);
+      doc.text(doc.splitTextToSize("Scan, send your name, city and trade. The office registers you the same day. Or tell any Energy World executive.", 50), L + q + 4, yq + 10);
+      doc.text(doc.splitTextToSize("Sign in with your mobile number. See your sites, your points, and how far you are from the next bar.", Rt - (L + 92 + q + 4)), L + 92 + q + 4, yq + 15);
+      doc.text("+91 94666 00611", L + q + 4, yq + 30);
+      y = yq + q + 6;
+      var pages = doc.getNumberOfPages();
+      for (var p = 1; p <= pages; p++) {
+        doc.setPage(p); F("normal"); doc.setFontSize(7.5); doc.setTextColor(120, 130, 140);
+        doc.text("Energy World  |  Sonipat · Panipat · Karnal · Rohtak  |  Partner Club " + year + (SC.at ? "  |  scheme of " + dmy(localDay(SC.at)) : ""), L, 290);
+        doc.text(p + " / " + pages, Rt, 290, { align: "right" });
+      }
+      return doc;
+    });
+  }
+  /* the enrolment card on the Club screen */
+  function clubJoinCard(rows) {
+    var J = clubJoinMap(), by = {}, notIn = [];
+    (rows || []).forEach(function (r) {
+      var k = clubAudOf(r.role); by[k] = by[k] || { inn: 0, out: 0 };
+      var j = J[dkey(r.name)];
+      if (j && j.on) by[k].inn++; else { by[k].out++; notIn.push(r); }
+    });
+    var lbl = { plumber: "Plumbers", architect: "Architects", builder: "Builders", contractor: "Contractors / PMC", all: "Others" };
+    var aud = S.clubAud || "all";
+    var h = '<div class="card"><h3 style="margin:0">Joining the club &mdash; and the scheme on paper</h3>' +
+      '<div class="meta" style="font-size:12.5px;line-height:1.55">A partner is in the club once he is enrolled. Send him the scheme for his trade on WhatsApp, and press Enrol when he says yes. Both QR codes on the paper work on their own: <b>Join on WhatsApp</b> comes to the office (+91 94666 00611), <b>Saathi</b> shows him his standing.</div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:8px;margin:8px 0">' + ["plumber", "architect", "builder", "contractor", "all"].map(function (k) {
+        var x = by[k] || { inn: 0, out: 0 };
+        return '<div style="border:1px solid #e2e8f0;border-radius:10px;padding:6px 10px;min-width:120px"><div style="font-size:12px;color:#64748b">' + lbl[k] + '</div><div><b style="color:#166534">' + x.inn + '</b> in &middot; <b style="color:#b45309">' + x.out + '</b> not yet</div></div>';
+      }).join("") + '</div>' +
+      '<div style="font-weight:700;margin-top:6px">Download the scheme (PDF)</div>' +
+      '<div class="acts" style="gap:6px;flex-wrap:wrap;margin-top:4px">' + ["plumber", "architect", "builder", "contractor", "all", "exec"].map(function (k) {
+        return '<button class="btn sm' + (k === "exec" ? ' ghost' : '') + '" style="min-height:44px" data-act="club-pdf" data-k="' + k + '">' + esc(CLUB_AUD[k].t) + '</button>';
+      }).join("") + '</div>';
+    h += '<div style="font-weight:700;margin-top:12px;color:#b45309">Not yet enrolled &mdash; ' + notIn.length + '</div>';
+    h += notIn.length ? pevTable([["Partner"], ["Trade"], ["Business so far", "right"], [""]],
+      notIn.sort(function (a, b) { return (b.coll || 0) - (a.coll || 0); }).slice(0, 60).map(function (r) {
+        return ['<b>' + esc(r.name) + '</b><div style="font-size:12px;color:#64748b">' + esc([r.role, r.loc].filter(Boolean).join(" · ")) + '</div>', esc(lbl[clubAudOf(r.role)] || "Others"), r.coll ? money(r.coll) : '—',
+          '<div style="display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap">' + (r.mob.length === 10 ? '<button class="btn sm ghost" style="min-height:44px" data-act="club-send" data-n="' + esc(r.name) + '">Send scheme</button>' : '<span class="meta">no mobile</span>') +
+          '<button class="btn sm" style="min-height:44px" data-act="club-join" data-n="' + esc(r.name) + '">Enrol</button></div>'];
+      }), true) : '<div class="meta" style="font-size:12.5px">Everyone is enrolled.</div>';
+    return h + '</div>';
+  }
+  function modalClubJoin(name) {
+    var j = clubJoined(name);
+    return '<h2>Enrol in the Partner Club</h2><p class="sub">' + esc(name) + '</p>' +
+      (j ? '<div class="meta">Enrolled ' + esc(dmy(localDay(j.at))) + ' by ' + esc(j.by) + (j.how ? ' (' + esc(j.how) + ')' : '') + '.</div>' : '') +
+      '<label>How did he join</label><select id="cj_how" style="min-height:44px">' + ["Executive", "Office", "WhatsApp", "Saathi", "Partner meet"].map(function (s) { return '<option' + (j && j.how === s ? ' selected' : '') + '>' + s + '</option>'; }).join("") + '</select>' +
+      '<div class="meta" style="font-size:12.5px;margin-top:6px">He has been told the scheme and agrees to be in it. Kept as a dated record; nothing is overwritten.</div>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' + (j ? '<button class="btn ghost" data-act="club-join-save" data-n="' + esc(name) + '" data-on="0">He has left the club</button>' : '') +
+      '<button class="btn" data-act="club-join-save" data-n="' + esc(name) + '" data-on="1">Enrol him</button></div>';
   }
   function modalClubReward(name) {
     var r = clubRows(clubYear()).filter(function (x) { return dkey(x.name) === dkey(name); })[0];
@@ -67953,6 +68141,29 @@ function viewCatalogue() {
       return;
     }
     if (act === "club-y") { S.clubY = t.getAttribute("data-v"); keepScroll = true; render(); return; }   /* 6.9.954 */
+    if (act === "club-pdf") {   /* 6.9.1060 */
+      var _ck = t.getAttribute("data-k") || "all"; toast("Building the scheme PDF\u2026");
+      clubSchemePdf(_ck).then(function (d) { pdfOut(d, "Energy_World_Partner_Club_" + clubYear() + "_" + CLUB_AUD[_ck].t.replace(/[^\w]+/g, "_") + ".pdf"); });
+      return;
+    }
+    if (act === "club-send") {   /* 6.9.1060 - his trade's paper, on WhatsApp */
+      var _cs = clubRows(clubYear()).filter(function (x) { return dkey(x.name) === dkey(t.getAttribute("data-n")); })[0];
+      if (!_cs || _cs.mob.length !== 10) { toast("No 10-digit mobile for him."); return; }
+      var _ca = clubAudOf(_cs.role);
+      waShareDoc(clubSchemePdf(_ca), "Energy_World_Partner_Club_" + clubYear() + ".pdf", _cs.mob,
+        "Namaste " + _cs.name + " ji,\nEnergy World Saathi Partner Club " + clubYear() + " - aapke clients jo payment karte hain uska 3% aapko inaam ke roop mein. Poori jaankari PDF mein hai.\nJudne ke liye haan bhejiye.\nSaathi app: " + CLUB_SAATHI + "\nEnergy World, Panipat");
+      try { auditFact("club:sent", _cs.name, { partner: _cs.name, aud: _ca, year: clubYear() }).catch(function () { }); } catch (eS) { }
+      return;
+    }
+    if (act === "club-join") { S.modal = modalClubJoin(t.getAttribute("data-n")); render(); return; }
+    if (act === "club-join-save") {
+      if (!roleIs("admin")) { toast("The Partner Club is the owner\u2019s."); return; }
+      var _jn = t.getAttribute("data-n") || "", _jon = t.getAttribute("data-on") === "1";
+      auditFact("club:join", _jn, { partner: _jn, how: val("cj_how") || "", on: _jon ? 1 : 0, year: clubYear() }).catch(function () { toast("Kept on this phone \u2014 it goes up with the next sync."); });
+      S.modal = null; keepScroll = true; render();
+      toast(_jon ? _jn + " enrolled in the Partner Club." : _jn + " marked as left the club.");
+      return;
+    }
     if (act === "club-wa") {
       var _cn = t.getAttribute("data-n") || "", _cr = clubRows(clubYear()).filter(function (r) { return dkey(r.name) === dkey(_cn); })[0];
       if (!_cr || _cr.mob.length !== 10) { toast("No ten-digit mobile on his record."); return; }
