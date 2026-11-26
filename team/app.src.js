@@ -449,7 +449,8 @@
 /* ==EWCORE:drivers:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.1055";   /* 6.9.1055 (26 Nov 2026) - HIS WORDS: "Quote in excel will be brand wise sheet and brand summary of all in one sheet, if viega only comparison enter show of that only, that of each quoted brand". The quote Excel is a workbook: Summary first, then one sheet per quoted brand, each with its own competitor box; the summary shows a figure only for a brand that was compared, and a part comparison against our amount on the same lines. */
+  var APP_VERSION = "6.9.1056";   /* 6.9.1056 (26 Nov 2026) - HIS WORDS: "Avoid product code and this other unnecessary column in excel, include graphical representation in summary": the quote Excel drops the code, brand, unit, spacer and second competitor-brand columns (Room only when the quote has rooms), and the summary carries a bar chart of ours against the competitor, brand by brand. */
+  /* before: */   /* 6.9.1055 (26 Nov 2026) - HIS WORDS: "Quote in excel will be brand wise sheet and brand summary of all in one sheet, if viega only comparison enter show of that only, that of each quoted brand". The quote Excel is a workbook: Summary first, then one sheet per quoted brand, each with its own competitor box; the summary shows a figure only for a brand that was compared, and a part comparison against our amount on the same lines. */
   /* before: */   /* 6.9.1054 (26 Nov 2026) - HIS WORDS: "all discounts must be independent never to be interlinked" - the family rate (DRP reading Heliroma’s, HT PRO reading Ultra Silent’s, Sanitaar reading Stellar’s) is gone from all four apps; the 8 pairs billed on a sister’s rate got it as their own first (Vinay Gupta DRP at 32, his choice). "drp is always from 32 % to 35% maximum" - a DRP rate above 35% is refused on every rate screen. "make provision to download quote in excel, sometime needed to make comparision with competitive brands" - Excel on every quote: our lines, and yellow columns for the competitor’s brand, MRP and discount that work out his rate, amount and the difference. */
   /* before: */   /* 6.9.1053 (26 Nov 2026) - FIX, HIS WORDS: "changing drp discount changed heliroma also and vice versa, its big problem". DRP and Heliroma are one rate family (17 Oct 2026: a brand with no row of its own borrows its sister’s rate). Every save then looked up the row IN FORCE - the borrowed sister row - and wrote over it under its own brand name: saving DRP renamed Heliroma’s row to DRP, and Heliroma then borrowed DRP’s. A save now edits a row only when it is that brand’s own row; a borrowed rate is copied into a NEW row for the brand typed, and the sister is never touched. Same fix on the discount screen, the rate-before-card sheet, and the rate set from a delivery. Stellar / Sanitaar and Huliot / HT Pro / Ultra Silent had the same trap. */
   /* before: */   /* 6.9.1052 (20 Nov 2026) - HIS WORDS: "Its not showing billing details as its saved with name of GC and Co, its also not fetching vechile details, we have to streamline send to billing process, its very imp and pending for long time". Send for billing was one empty box. Now it is three taps: the billing names this client was billed under (G.C. & Company - GSTIN ...) are buttons, the only one is already picked, + New name for another; the driver, his vehicle and the freight are fetched from the challan and shown; remarks are optional. Accounts gets all of it on the Billing desk, and the bill sheet opens with that name already picked. */
@@ -24435,44 +24436,61 @@ function viewCatalogue() {
 
   /* v6.9.770 - the TOTO technologies and the brand introductions are read before the paper is drawn */
   /* 6.9.1054 - HIS WORDS: "make provision to download quote in excel, sometime needed to make comparision with competitive
-     brands". 6.9.1055 - HIS WORDS: "Quote in excel will be brand wise sheet and brand summary of all in one sheet, if viega
-     only comparison enter show of that only, that of each quoted brand". So: a Summary sheet first, then ONE SHEET PER
-     QUOTED BRAND. On each brand sheet the competitor is named once (yellow box N3) and his MRP / discount typed against
-     the lines he is compared on. A brand with nothing typed shows "not compared" in the summary; a brand compared on only
-     some lines is set against OUR amount on THOSE lines alone, so a part comparison is never read as a whole one. */
+     brands". 6.9.1055 - "Quote in excel will be brand wise sheet and brand summary of all in one sheet, if viega only
+     comparison enter show of that only, that of each quoted brand": a Summary sheet first, then ONE SHEET PER QUOTED BRAND.
+     6.9.1056 - "Avoid product code and this other unnecessary column in excel, include graphical representation in summary":
+     no code, no brand column (the sheet IS the brand), no unit column (the unit rides after the product name), no spacer,
+     no second competitor-brand column (he is named once at the top); Room only when the quote has rooms. The summary
+     carries a bar chart, ours against the competitor, brand by brand. */
   function quoteXlsxRows(q, items, label) {
     items = items || qItems(q);
     var out = [], GST = 18;
+    var hasRoom = items.some(function (i) { return i.rq && typeof i.rq === "object" && Object.keys(i.rq).some(function (k) { return Number(i.rq[k]) > 0; }); });
+    /* the column map - every formula below is written from these letters, so a column dropped or added moves nothing by hand */
+    var keys = ["n"].concat(hasRoom ? ["room"] : []).concat(["prod", "qty", "mrp", "disc", "rate", "amt", "cprod", "cmrp", "cdisc", "crate", "camt", "diff"]);
+    var C = {}; keys.forEach(function (k, ix) { C[k] = xlCol(ix); });
+    var row = function (o) { return keys.map(function (k) { return o[k] === undefined ? "" : o[k]; }); };
+    var HEAD = { n: "#", room: "Room", prod: "Product", qty: "Qty", mrp: "MRP", disc: "Disc %", rate: "Net rate", amt: "Amount",
+      cprod: "Competitor product", cmrp: "His MRP", cdisc: "His disc %", crate: "His net rate", camt: "His amount", diff: "Difference (his - ours)" };
     out.push([{ v: "Energy World · Quotation " + qNo(q) + (label ? " · " + label : ""), s: XL.BOLD }]);
     out.push([(q.client || "") + " · " + (q.createdAt ? fullDate(String(q.createdAt).slice(0, 10)) : "") + (q.createdBy ? " · " + q.createdBy : "")]);
-    out.push(["", "", "", "", "", "", "", { v: "OUR QUOTE", s: XL.BOLD }, "", "", "", "", { v: "Competitor brand:", s: XL.BOLD }, { v: "", s: XL.INPUT }, { v: "type his MRP and disc % in the yellow boxes of the lines you compare" }]);
-    out.push(["#", "Room", "Code", "Product", "Brand", "Unit", "Qty", "MRP", "Disc %", "Net rate", "Amount", "",
-      "Competitor brand (if not the one above)", "Competitor product / code", "Competitor MRP", "Competitor disc %", "Competitor net rate", "Competitor amount", "Difference (his - ours)"].map(function (h) { return { v: h, s: XL.HEAD }; }));
+    var r3 = {}; r3.mrp = { v: "OUR QUOTE", s: XL.BOLD }; r3.cprod = { v: "Competitor brand:", s: XL.BOLD }; r3.cmrp = { v: "", s: XL.INPUT };
+    r3.cdisc = "← name him once, then type his MRP and disc % on the lines you compare";
+    out.push(row(r3));
+    out.push(keys.map(function (k) { return { v: HEAD[k], s: XL.HEAD }; }));
     var first = out.length + 1, n = 0;
     items.forEach(function (i) {
-      var r = out.length + 1, d = qLineDisc(q, i), net = qLineNet(q, i), qty = Number(i.qty) || 0;
+      var r = out.length + 1, d = qLineDisc(q, i), net = qLineNet(q, i), qty = Number(i.qty) || 0, L = function (k) { return C[k] + r; };
       var rooms = []; if (i.rq && typeof i.rq === "object") Object.keys(i.rq).forEach(function (k) { if (Number(i.rq[k]) > 0) rooms.push(k + (Number(i.rq[k]) !== 1 ? " x" + i.rq[k] : "")); });
       var title = ""; try { title = descLines(i.desc).title; } catch (e) { title = String(i.desc || ""); }
-      out.push([++n, rooms.join(", "), i.code || "", title + (i.optional ? "  [OPTIONAL - not in the total]" : ""), i.brand || "", i.unit || "", qty,
-        Number(i.price) || 0, d, net, i.optional ? 0 : Math.round(net * qty), "",
-        { v: "", s: XL.INPUT }, { v: "", s: XL.INPUT }, { v: "", s: XL.INPUT }, { v: "", s: XL.INPUT },
-        { v: "", f: 'IF(O' + r + '="","",ROUND(O' + r + '*(1-N(P' + r + ')/100),0))' },
-        { v: "", f: 'IF(Q' + r + '="","",' + (i.optional ? '0' : 'ROUND(Q' + r + '*G' + r + ',0)') + ')' },
-        { v: "", f: 'IF(R' + r + '="","",R' + r + '-K' + r + ')' }]);
+      out.push(row({ n: ++n, room: rooms.join(", "),
+        prod: title + (i.unit ? " (" + String(i.unit).replace(/\.$/, "") + ")" : "") + (i.optional ? "  [OPTIONAL - not in the total]" : ""),
+        qty: qty, mrp: { v: Number(i.price) || 0, s: XL.MONEY }, disc: d, rate: { v: net, s: XL.MONEY }, amt: { v: i.optional ? 0 : Math.round(net * qty), s: XL.MONEY },   /* rupees the Indian way */
+        cprod: { v: "", s: XL.INPUT }, cmrp: { v: "", s: XL.INPUT }, cdisc: { v: "", s: XL.INPUT },
+        crate: { v: "", f: 'IF(' + L("cmrp") + '="","",ROUND(' + L("cmrp") + '*(1-N(' + L("cdisc") + ')/100),0))', s: XL.MONEY },
+        camt: { v: "", f: 'IF(' + L("crate") + '="","",' + (i.optional ? '0' : 'ROUND(' + L("crate") + '*' + L("qty") + ',0)') + ')', s: XL.MONEY },
+        diff: { v: "", f: 'IF(' + L("camt") + '="","",' + L("camt") + '-' + L("amt") + ')', s: XL.MONEY } }));
     });
     var last = out.length;
     out.push([]);
-    var tr = out.length + 1, K = "K" + first + ":K" + last, Rg = "R" + first + ":R" + last, O = "O" + first + ":O" + last;
+    var tr = out.length + 1, rg = function (k) { return C[k] + first + ":" + C[k] + last; };
     var ours = items.reduce(function (a, i) { return a + (i.optional ? 0 : Math.round(qLineNet(q, i) * (Number(i.qty) || 0))); }, 0);
-    out.push([{ v: "Total (net, before GST)", s: XL.BAND }, "", "", "", "", "", "", "", "", "", { v: ours, f: "SUM(" + K + ")", s: XL.BAND }, "",
-      "", "", "", "", "", { v: "", f: "SUM(" + Rg + ")", s: XL.BAND }, { v: "", f: 'IF(R' + tr + '=0,"",R' + tr + '-K' + (tr + 3) + ')', s: XL.BAND }]);
-    out.push(["GST " + GST + "%", "", "", "", "", "", "", "", "", "", { v: Math.round(ours * GST / 100), f: "ROUND(K" + tr + "*" + (GST / 100) + ",0)" }, "", "", "", "", "", "", { v: "", f: "ROUND(R" + tr + "*" + (GST / 100) + ",0)" }]);
-    out.push([{ v: "Total incl GST", s: XL.BOLD }, "", "", "", "", "", "", "", "", "", { v: Math.round(ours * (1 + GST / 100)), f: "K" + tr + "+K" + (tr + 1), s: XL.BOLD }, "", "", "", "", "", "", { v: "", f: "R" + tr + "+R" + (tr + 1), s: XL.BOLD }]);
-    /* the like-for-like line: OUR amount on only the lines he was priced on */
-    out.push([{ v: "Ours on the compared lines only (net)", s: XL.BOLD }, "", "", "", "", "", "", "", "", { v: 0, f: "COUNT(" + O + ")" }, { v: 0, f: "SUMPRODUCT((" + O + "<>\"\")*" + K + ")", s: XL.BOLD }]);
+    var lab = function (t, s) { var o = {}; o.n = { v: t, s: s }; return o; };
+    var t1 = lab("Total (net, before GST)", XL.BAND);
+    t1.amt = { v: ours, f: "SUM(" + rg("amt") + ")", s: XL.MONEYB }; t1.camt = { v: "", f: "SUM(" + rg("camt") + ")", s: XL.MONEYB };
+    t1.diff = { v: "", f: 'IF(' + C.camt + tr + '=0,"",' + C.camt + tr + '-' + C.amt + (tr + 3) + ')', s: XL.MONEYB };   /* his against ours on the SAME lines */
+    out.push(row(t1));
+    var t2 = lab("GST " + GST + "%"); t2.amt = { v: Math.round(ours * GST / 100), f: "ROUND(" + C.amt + tr + "*" + (GST / 100) + ",0)", s: XL.MONEY }; t2.camt = { v: "", f: "ROUND(" + C.camt + tr + "*" + (GST / 100) + ",0)", s: XL.MONEY };
+    out.push(row(t2));
+    var t3 = lab("Total incl GST", XL.BOLD); t3.amt = { v: Math.round(ours * (1 + GST / 100)), f: C.amt + tr + "+" + C.amt + (tr + 1), s: XL.MONEYB }; t3.camt = { v: "", f: C.camt + tr + "+" + C.camt + (tr + 1), s: XL.MONEYB };
+    out.push(row(t3));
+    var t4 = lab("Ours on the compared lines only (net)", XL.BOLD); t4.rate = { v: "", f: "COUNT(" + rg("cmrp") + ")" };   /* no stored value on a cell his typing moves - every reader recalculates it */
+    t4.amt = { v: "", f: "SUMPRODUCT((" + rg("cmrp") + "<>\"\")*" + rg("amt") + ")", s: XL.MONEYB };
+    out.push(row(t4));
     out.push([]);
-    out.push(["MRP and discount as quoted. A positive difference means the competitor is dearer. The difference is on the compared lines only. Internal working sheet."]);
-    out.meta = { first: first, last: last, tr: tr, cmp: tr + 3, n: items.length, ours: ours };
+    out.push(["MRP and discount as quoted. A positive difference means the competitor is dearer; the difference is on the compared lines only. Internal working sheet."]);
+    out.meta = { first: first, last: last, tr: tr, cmp: tr + 3, n: items.length, ours: ours, C: C, name: C.cmrp + "3", freezeC: keys.indexOf("prod") + 1,
+      cols: keys.map(function (k) { return { n: 5, room: 18, prod: 50, qty: 7, mrp: 11, disc: 8, rate: 11, amt: 13, cprod: 30, cmrp: 12, cdisc: 10, crate: 12, camt: 13, diff: 16 }[k]; }) };
     return out;
   }
   function quoteBrandGroups(q) {
@@ -24494,34 +24512,75 @@ function viewCatalogue() {
     sum.push(["Brand", "Lines", "Our amount (net)", "Our amount incl GST", "Competitor", "Lines compared", "Ours on those lines", "Competitor on those lines", "Difference (his - ours)", "Comparison"].map(function (h) { return { v: h, s: XL.HEAD }; }));
     var f0 = sum.length + 1;
     groups.forEach(function (g) {
-      var r = sum.length + 1, S = "'" + g.sheet + "'!", M = g.rows.meta;
+      var r = sum.length + 1, S = "'" + g.sheet + "'!", M = g.rows.meta, C = M.C;
       sum.push([g.brand, M.n,
-        { v: M.ours, f: S + "K" + M.tr },
-        { v: Math.round(M.ours * (1 + GST / 100)), f: S + "K" + (M.tr + 2) },
-        { v: "", f: "IF(" + S + "N3=\"\",IF(F" + r + "=0,\"\",\"(see the sheet)\")," + S + "N3)" },
-        { v: 0, f: S + "J" + M.cmp },
-        { v: "", f: "IF(F" + r + "=0,\"\"," + S + "K" + M.cmp + ")" },
-        { v: "", f: "IF(F" + r + "=0,\"\"," + S + "R" + M.tr + ")" },
-        { v: "", f: "IF(F" + r + "=0,\"\",H" + r + "-G" + r + ")" },
-        { v: "not compared", f: "IF(F" + r + "=0,\"not compared\",IF(F" + r + "<B" + r + ",\"part - \"&F" + r + "&\" of \"&B" + r + "&\" lines\",\"all lines\"))" }]);
+        { v: M.ours, f: S + C.amt + M.tr, s: XL.MONEY },
+        { v: Math.round(M.ours * (1 + GST / 100)), f: S + C.amt + (M.tr + 2), s: XL.MONEY },
+        { v: "", f: "IF(" + S + M.name + "=\"\",IF(F" + r + "=0,\"\",\"(see the sheet)\")," + S + M.name + ")" },
+        { v: "", f: S + C.rate + M.cmp },
+        { v: "", f: "IF(F" + r + "=0,\"\"," + S + C.amt + M.cmp + ")", s: XL.MONEY },
+        { v: "", f: "IF(F" + r + "=0,\"\"," + S + C.camt + M.tr + ")", s: XL.MONEY },
+        { v: "", f: "IF(F" + r + "=0,\"\",H" + r + "-G" + r + ")", s: XL.MONEY },
+        { v: "", f: "IF(F" + r + "=0,\"not compared\",IF(F" + r + "<B" + r + ",\"part - \"&F" + r + "&\" of \"&B" + r + "&\" lines\",\"all lines\"))" }]);
     });
     var fl = sum.length;
     sum.push([]);
     var t = sum.length + 1;
     var all = groups.reduce(function (a, g) { return a + g.rows.meta.ours; }, 0);
-    sum.push([{ v: "All brands", s: XL.BAND }, { v: 0, f: "SUM(B" + f0 + ":B" + fl + ")", s: XL.BAND }, { v: all, f: "SUM(C" + f0 + ":C" + fl + ")", s: XL.BAND }, { v: Math.round(all * (1 + GST / 100)), f: "SUM(D" + f0 + ":D" + fl + ")", s: XL.BAND },
-      { v: "", s: XL.BAND }, { v: 0, f: "SUM(F" + f0 + ":F" + fl + ")", s: XL.BAND }, { v: "", f: "IF(F" + t + "=0,\"\",SUM(G" + f0 + ":G" + fl + "))", s: XL.BAND },
-      { v: "", f: "IF(F" + t + "=0,\"\",SUM(H" + f0 + ":H" + fl + "))", s: XL.BAND }, { v: "", f: "IF(F" + t + "=0,\"\",H" + t + "-G" + t + ")", s: XL.BAND }, { v: "", s: XL.BAND }]);
+    sum.push([{ v: "All brands", s: XL.BAND }, { v: groups.reduce(function (a, g) { return a + g.rows.meta.n; }, 0), f: "SUM(B" + f0 + ":B" + fl + ")", s: XL.BAND }, { v: all, f: "SUM(C" + f0 + ":C" + fl + ")", s: XL.MONEYB }, { v: Math.round(all * (1 + GST / 100)), f: "SUM(D" + f0 + ":D" + fl + ")", s: XL.MONEYB },
+      { v: "", s: XL.BAND }, { v: "", f: "SUM(F" + f0 + ":F" + fl + ")", s: XL.BAND }, { v: "", f: "IF(F" + t + "=0,\"\",SUM(G" + f0 + ":G" + fl + "))", s: XL.MONEYB },
+      { v: "", f: "IF(F" + t + "=0,\"\",SUM(H" + f0 + ":H" + fl + "))", s: XL.MONEYB }, { v: "", f: "IF(F" + t + "=0,\"\",H" + t + "-G" + t + ")", s: XL.MONEYB }, { v: "", s: XL.BAND }]);
     sum.push([]);
     sum.push(["Each brand has its own sheet. Name the competitor in the yellow box at the top of that sheet and type his MRP and discount against the lines you compare."]);
-    sum.push(["Only the brands you compare show figures here; a part comparison is set against our amount on the same lines, never the whole brand."]);
-    sheets.push({ name: "Summary", rows: sum, cols: [24, 8, 16, 18, 20, 10, 18, 20, 18, 20], freeze: { r: 4, c: 1 } });
-    groups.forEach(function (g) { sheets.push({ name: g.sheet, rows: g.rows, cols: [5, 18, 16, 46, 16, 7, 7, 11, 8, 11, 13, 2, 22, 28, 13, 11, 13, 14, 16], freeze: { r: 4, c: 4 } }); });
+    sum.push(["Only the brands you compare show figures; a part comparison is set against our amount on the same lines, never the whole brand."]);
+    /* 6.9.1056 - the chart: per brand, ours on the compared lines against his (blank until compared), and our whole amount */
+    var chart = { sheet: "Summary", cats: "$A$" + f0 + ":$A$" + fl, at: t + 5, series: [
+      { name: "Our amount (whole brand)", ref: "$C$" + f0 + ":$C$" + fl, color: "1F3A5F" },
+      { name: "Ours on compared lines", ref: "$G$" + f0 + ":$G$" + fl, color: "0F766E" },
+      { name: "Competitor on those lines", ref: "$H$" + f0 + ":$H$" + fl, color: "DC2626" }] };
+    sheets.push({ name: "Summary", rows: sum, cols: [24, 8, 16, 18, 20, 10, 18, 20, 18, 20], freeze: { r: 4, c: 1 }, chart: chart });
+    groups.forEach(function (g) { sheets.push({ name: g.sheet, rows: g.rows, cols: g.rows.meta.cols, freeze: { r: 4, c: g.rows.meta.freezeC } }); });
     return sheets;
   }
-  /* several sheets in one workbook - xlBook's parts, one worksheet per sheet */
+  /* 6.9.1056 - a clustered bar chart (DrawingML), anchored under the summary table */
+  function xlChartXml(ch) {
+    var q = "'" + String(ch.sheet).replace(/'/g, "''") + "'!";
+    var ser = ch.series.map(function (s, i) {
+      return '<c:ser><c:idx val="' + i + '"/><c:order val="' + i + '"/><c:tx><c:v>' + xlEsc(s.name) + '</c:v></c:tx>' +
+        '<c:spPr><a:solidFill><a:srgbClr val="' + s.color + '"/></a:solidFill></c:spPr><c:invertIfNegative val="0"/>' +
+        '<c:cat><c:strRef><c:f>' + xlEsc(q + ch.cats) + '</c:f></c:strRef></c:cat>' +
+        '<c:val><c:numRef><c:f>' + xlEsc(q + s.ref) + '</c:f></c:numRef></c:val></c:ser>';
+    }).join("");
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+      '<c:chart><c:title><c:tx><c:rich><a:bodyPr/><a:p><a:r><a:t>Ours against the competitor, by brand (net, Rs)</a:t></a:r></a:p></c:rich></c:tx><c:overlay val="0"/></c:title>' +
+      '<c:autoTitleDeleted val="0"/><c:plotArea><c:layout/><c:barChart><c:barDir val="col"/><c:grouping val="clustered"/><c:varyColors val="0"/>' + ser +
+      '<c:gapWidth val="80"/><c:axId val="5001"/><c:axId val="5002"/></c:barChart>' +
+      '<c:catAx><c:axId val="5001"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="b"/><c:crossAx val="5002"/></c:catAx>' +
+      '<c:valAx><c:axId val="5002"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="l"/><c:majorGridlines/><c:numFmt formatCode="#,##0" sourceLinked="0"/><c:crossAx val="5001"/></c:valAx>' +
+      '</c:plotArea><c:legend><c:legendPos val="b"/><c:overlay val="0"/></c:legend><c:plotVisOnly val="1"/><c:dispBlanksAs val="gap"/></c:chart></c:chartSpace>';
+  }
+  function xlChartDrawing(ch) {
+    var r0 = ch.at - 1;
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">' +
+      '<xdr:twoCellAnchor><xdr:from><xdr:col>0</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>' + r0 + '</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>' +
+      '<xdr:to><xdr:col>8</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>' + (r0 + 20) + '</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to>' +
+      '<xdr:graphicFrame macro=""><xdr:nvGraphicFramePr><xdr:cNvPr id="2" name="Chart 1"/><xdr:cNvGraphicFramePr/></xdr:nvGraphicFramePr>' +
+      '<xdr:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></xdr:xfrm><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart">' +
+      '<c:chart xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:id="rId1"/>' +
+      '</a:graphicData></a:graphic></xdr:graphicFrame><xdr:clientData/></xdr:twoCellAnchor></xdr:wsDr>';
+  }
+  /* several sheets in one workbook - xlBook's parts, one worksheet per sheet; the first sheet may carry one chart */
   function xlBookMulti(sheets) {
-    var NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+    var NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships", ch = sheets[0] && sheets[0].chart;
+    var parts = ch ? [
+      { name: "xl/worksheets/_rels/sheet1.xml.rels", data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+        '<Relationship Id="rId1" Type="' + NS + '/drawing" Target="../drawings/drawing1.xml"/></Relationships>' },
+      { name: "xl/drawings/drawing1.xml", data: xlChartDrawing(ch) },
+      { name: "xl/drawings/_rels/drawing1.xml.rels", data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+        '<Relationship Id="rId1" Type="' + NS + '/chart" Target="../charts/chart1.xml"/></Relationships>' },
+      { name: "xl/charts/chart1.xml", data: xlChartXml(ch) }] : [];
     return xlZip([
       { name: "[Content_Types].xml", data:
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
@@ -24530,6 +24589,8 @@ function viewCatalogue() {
         '<Default Extension="xml" ContentType="application/xml"/>' +
         '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
         sheets.map(function (s, i) { return '<Override PartName="/xl/worksheets/sheet' + (i + 1) + '.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'; }).join("") +
+        (ch ? '<Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>' +
+          '<Override PartName="/xl/charts/chart1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/>' : '') +
         '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>' +
         '</Types>' },
       { name: "_rels/.rels", data:
@@ -24547,7 +24608,7 @@ function viewCatalogue() {
         sheets.map(function (s, i) { return '<Relationship Id="rId' + (i + 1) + '" Type="' + NS + '/worksheet" Target="worksheets/sheet' + (i + 1) + '.xml"/>'; }).join("") +
         '<Relationship Id="rId' + (sheets.length + 1) + '" Type="' + NS + '/styles" Target="styles.xml"/></Relationships>' },
       { name: "xl/styles.xml", data: xlStyles() }
-    ].concat(sheets.map(function (s, i) { return { name: "xl/worksheets/sheet" + (i + 1) + ".xml", data: xlSheet(s.rows, s.cols, false, { freeze: s.freeze }) }; })));
+    ].concat(sheets.map(function (s, i) { return { name: "xl/worksheets/sheet" + (i + 1) + ".xml", data: xlSheet(s.rows, s.cols, false, { freeze: s.freeze, drawing: !!(i === 0 && ch) }) }; })).concat(parts));
   }
   function quoteXlsx(q) {
     if (!qItems(q).length) { toast("This quote has no lines."); return; }
