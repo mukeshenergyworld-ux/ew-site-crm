@@ -12,7 +12,7 @@ var ctx = { S: { user: "Mukesh Verma", data: { sites: sites, clients: [] } },
   assocLive: function () { return [{ id: "AS-1", name: "Roshan Lal - Radiant", role: "Architect", ownedBy: "Mukesh Verma", location: "Panipat" }]; },
   partnerBook: function () { return { rows: [{ client: "Sachin", site: "", inc: 500, rel: 0, ymd: "2026-11-01" }], earned: 500, payable: 0, paid: 0, pending: 0 }; } };
 ctx.S.data.challans = [{ customerName: "Sachin" }]; ctx.S.data.pitch = []; ctx.S.data.quotes = [];
-var F = H.lift("team", ["partnerSiteIdx", "partnerSiteRows", "partnerOngoing", "saathiSiteKind", "saathiBooks"], ctx, ["PS_DONE", "_psIdx", "_psKey"]);
+var F = H.lift("team", ["partnerSiteIdx", "partnerSiteRows", "partnerOngoing", "saathiSiteKind", "saathiBooks", "incWaitTotal"], ctx, ["PS_DONE", "_psIdx", "_psKey"]);
 var b = F.saathiBooks()[0];
 var on = b.sites.filter(function (x) { return x.on; });
 H.eq("the two ongoing sites the CRM counts are on the book; the handed-over one is not", on.map(function (x) { return x.n; }).sort().join(","), "Amrik,Sachin");
