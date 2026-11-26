@@ -7,20 +7,24 @@ var items = [
   { code: "A1", desc: "Clamp", brand: "Accessory", unit: "Nos", qty: 100, price: 50, disc: 0 },
   { code: "U110", desc: "US PIPE 110", brand: "Huliot ULTRA SILENT", unit: "Pipe", qty: 20, price: 1417, bd: 50 }];
 var Q = { quoteNo: "QT177", client: "Swasthik Ar", createdAt: "2026-11-25", items: JSON.stringify(items) };
-var G = H.lift("team", ["quoteXlsxBook", "quoteXlsxRows", "quoteBrandGroups", "xlSheetName", "qLineDisc", "qLineNet", "qItems"],
-  { XL: { BOLD: 7, HEAD: 1, INPUT: 9, BAND: 8 }, qNo: function (q) { return q.quoteNo; }, fullDate: function (s) { return s; }, descLines: function (d) { return { title: d }; } });
+var G = H.lift("team", ["quoteXlsxBook", "quoteXlsxRows", "quoteBrandGroups", "xlSheetName", "qLineDisc", "qLineNet", "qItems", "xlCol"],
+  { XL: { BOLD: 7, HEAD: 1, INPUT: 9, BAND: 8, MONEY: 18, MONEYB: 19 }, qNo: function (q) { return q.quoteNo; }, fullDate: function (s) { return s; }, descLines: function (d) { return { title: d }; } });
 var B = G.quoteXlsxBook(Q);
 H.eq("Summary first, then one sheet per quoted brand", B.map(function (s) { return s.name; }).join("|"), "Summary|SANITAAR|Accessory|Huliot ULTRA SILENT");
 var san = B[1].rows;
 H.eq("the SANITAAR sheet carries only SANITAAR lines", san.filter(function (r) { return typeof r[0] === "number"; }).length, 2);
-H.ok("each brand sheet names its competitor once (yellow N3)", san[2][13].s === 9);
+H.ok("each brand sheet names its competitor once (yellow box, row 3)", san[2][8].s === 9 && san.meta.name === "I3");
 H.eq("SANITAAR net on its sheet", san.meta.ours, 47520);
 var sumRow = B[0].rows[4];
-H.eq("summary row reads the brand sheet's total", sumRow[2].f, "'SANITAAR'!K" + san.meta.tr);
-H.ok("a brand not compared says so", /not compared/.test(sumRow[9].f) && sumRow[9].v === "not compared");
-H.ok("a part comparison is named and set against our amount on the same lines", /part - /.test(sumRow[9].f) && sumRow[6].f === "IF(F5=0,\"\",'SANITAAR'!K" + san.meta.cmp + ")");
-H.ok("ours on compared lines = SUMPRODUCT over lines with a competitor MRP", /SUMPRODUCT\(\(O5:O6<>""\)\*K5:K6\)/.test(san[san.meta.cmp - 1][10].f));
+H.eq("summary row reads the brand sheet's total", sumRow[2].f, "'SANITAAR'!G" + san.meta.tr);
+H.ok("a brand not compared says so (worked out by Excel, no stored value)", /not compared/.test(sumRow[9].f) && sumRow[9].v === "");
+H.ok("a part comparison is named and set against our amount on the same lines", /part - /.test(sumRow[9].f) && sumRow[6].f === "IF(F5=0,\"\",'SANITAAR'!G" + san.meta.cmp + ")");
+H.ok("ours on compared lines = SUMPRODUCT over lines with a competitor MRP", /SUMPRODUCT\(\(I5:I6<>""\)\*G5:G6\)/.test(san[san.meta.cmp - 1][6].f));
 var all = B[0].rows.filter(function (r) { return r[0] && r[0].v === "All brands"; })[0];
 H.eq("all brands total", all[2].v, 66700);
 H.eq("a sheet name loses characters Excel refuses", G.xlSheetName("A/B: [x]?", {}), "A B x");
+var Bc = B[0].chart;
+H.ok("the summary carries a chart: ours whole, ours on compared lines, his", Bc && Bc.series.length === 3 && Bc.series[2].ref === "$H$5:$H$7" && Bc.cats === "$A$5:$A$7");
+var Q2 = { quoteNo: "Q2", items: JSON.stringify([{ code: "X", desc: "Basin", brand: "TOTO", qty: 1, price: 100, rq: { "Master Bath": 1 } }]) };
+H.eq("Room appears only when the quote has rooms", G.quoteXlsxRows(Q2)[3][1].v, "Room");
 H.done();

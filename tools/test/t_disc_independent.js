@@ -16,15 +16,18 @@ H.ok("Heliroma has no ceiling", !F.discOverCeil("Heliroma", 55));
 var Q = { quoteNo: "QT177", client: "Swasthik Ar", createdAt: "2026-11-25", items: JSON.stringify([
   { code: "SN1", desc: "Sink", brand: "SANITAAR", unit: "Nos", qty: 2, price: 1000, bd: 46 },
   { code: "OP1", desc: "Option", brand: "Accessory", unit: "Nos", qty: 1, price: 500, disc: 0, optional: 1 }]) };
-var G = H.lift("team", ["quoteXlsxRows", "qLineDisc", "qLineNet", "qItems"], { XL: { BOLD: 7, HEAD: 1, INPUT: 9, BAND: 8 },
+var G = H.lift("team", ["quoteXlsxRows", "qLineDisc", "qLineNet", "qItems", "xlCol"], { XL: { BOLD: 7, HEAD: 1, INPUT: 9, BAND: 8, MONEY: 18, MONEYB: 19 },
   qNo: function (q) { return q.quoteNo; }, fullDate: function (s) { return s; }, descLines: function (d) { return { title: d }; } });
 var R = G.quoteXlsxRows(Q);
-var line = R[4];
-H.eq("line 1: MRP, disc, net rate, amount as the PDF prices them", [line[7], line[8], line[9], line[10]].join(","), "1000,46,540,1080");
-H.ok("yellow input boxes for the competitor", line[12].s === 9 && line[14].s === 9 && line[15].s === 9);
-H.eq("his net rate is worked out by Excel", line[16].f, 'IF(O5="","",ROUND(O5*(1-N(P5)/100),0))');
-H.eq("the difference is his minus ours", line[18].f, 'IF(R5="","",R5-K5)');
-H.eq("an optional line is not in our amount", R[5][10], 0);
+var line = R[4], vv = function (c) { return c && typeof c === "object" ? c.v : c; };
+/* 6.9.1056 layout: # | Product | Qty | MRP | Disc % | Net rate | Amount | Competitor product | His MRP | His disc % | His net rate | His amount | Difference */
+H.eq("no product code, no brand, no unit column", R[3].map(vv).join("|"), "#|Product|Qty|MRP|Disc %|Net rate|Amount|Competitor product|His MRP|His disc %|His net rate|His amount|Difference (his - ours)");
+H.eq("line 1: MRP, disc, net rate, amount as the PDF prices them", [vv(line[3]), line[4], vv(line[5]), vv(line[6])].join(","), "1000,46,540,1080");
+H.ok("the unit rides after the product name", line[1] === "Sink (Nos)");
+H.ok("yellow input boxes for the competitor", line[7].s === 9 && line[8].s === 9 && line[9].s === 9);
+H.eq("his net rate is worked out by Excel", line[10].f, 'IF(I5="","",ROUND(I5*(1-N(J5)/100),0))');
+H.eq("the difference is his minus ours", line[12].f, 'IF(L5="","",L5-G5)');
+H.eq("an optional line is not in our amount", vv(R[5][6]), 0);
 var tot = R.filter(function (r) { return r[0] && r[0].v === "Total (net, before GST)"; })[0];
-H.ok("totals are SUM formulas over the lines", tot[10].f === "SUM(K5:K6)" && tot[10].v === 1080 && tot[17].f === "SUM(R5:R6)");
+H.ok("totals are SUM formulas over the lines", tot[6].f === "SUM(G5:G6)" && tot[6].v === 1080 && tot[11].f === "SUM(L5:L6)");
 H.done();
