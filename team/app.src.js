@@ -449,7 +449,8 @@
 /* ==EWCORE:drivers:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.1063";   /* 6.9.1063 (26 Nov 2026) - HIS WORDS: "show pdf for employee salary vs incentive, want a little incentive scheme for timely payment ... and vice versa for late payment", slabs at 15 / 30 / 45 / 60 days, his rates 0.5% / 0.25% / 0.1% / 0 / -0.25%, -0.5% unpaid at 90 days, trial in December, paid from January 2027. The plan card, each statement and WhatsApp carry the payment-speed line; a team PDF sets six months of salary against incentive. */
+  var APP_VERSION = "6.9.1064";   /* 6.9.1064 (26 Nov 2026) - HIS WORDS: "Brand followup app, make provision that executive can enter new site which is in their followup not in ours list, to avoid duplicate make provision to check by entering phone no initially, site added by brand executives will auto add to our CRM if brand executive search client by entering phone no and found its there in our record, show him he is our client for which brand and quoted for which brand, do not show any quote or any download option... he can only view site assigned to him or sites added by him". The book of fingerprints now carries, per mobile, the client name, code, area and the brand NAMES won and quoted (no value, no quote); a site he adds is handled by the owner's CRM by itself - same mobile on the book: linked; nobody on the book by mobile or name: added as a lead; only a name-only match waits for the owner. */
+  /* before: */   /* 6.9.1063 (26 Nov 2026) - HIS WORDS: "show pdf for employee salary vs incentive, want a little incentive scheme for timely payment ... and vice versa for late payment", slabs at 15 / 30 / 45 / 60 days, his rates 0.5% / 0.25% / 0.1% / 0 / -0.25%, -0.5% unpaid at 90 days, trial in December, paid from January 2027. The plan card, each statement and WhatsApp carry the payment-speed line; a team PDF sets six months of salary against incentive. */
   /* before: */   /* 6.9.1062 (26 Nov 2026) - the Hindi scheme PDF was 12 MB (its text images stored uncompressed), too heavy for WhatsApp: compressed, about 0.7 MB, still sharp. */
   /* before: */   /* 6.9.1061 (26 Nov 2026) - HIS WORDS: "ok do all" (to: the club tier and enrolment on the partner's own card and in Saathi, a Join form inside Saathi, Hindi versions of the scheme PDF). A partner card says where he stands in the Partner Club, whether he is enrolled, and offers Enrol / Send scheme; Saathi is sent the same; the scheme PDF comes in Hindi too (Devanagari drawn by the phone's own fonts, so the letters join correctly). */
   /* before: */   /* 6.9.1060 (26 Nov 2026) - HIS WORDS: "Make provision to download pdf of partners scheme, for all builders, executives, contractors, architects every one, and ways to register all in scheme, a proper professional system for managing all partners". The Partner Club scheme as a PDF for each trade (plumbers, architects, builders, contractors / PMC, everyone) and a briefing for our sales executives, printed from the scheme on file, with two QR codes (join on WhatsApp to the office, Saathi); enrolment as a dated record, counted by trade, with Send scheme and Enrol for everyone not yet in. */
@@ -15412,6 +15413,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       return { client: c.name, code: String(c.code || ""), area: String(c.area || ""), city: String(c.location || (st && st.city) || ""),
         stage: String((st && st.stage) || c.stage || ""), brand: g, kind: isClient(c.name) ? "Client" : "Lead", ew: bxRole(clientGroupState(c.name, g)),
         quotes: qs.length, lastQuote: qs[0] || "", architect: bxPartnerCard(c.architect || (st && st.architect)), plumber: bxPartnerCard(c.plumber || (st && st.plumber)),
+        won: bxBrandsOf(c.name).w, quoted: bxBrandsOf(c.name).q,   /* 6.9.1064 - brand names only */
         exec: { name: own, mobile: mob(own) } };
     });
   }
@@ -15445,10 +15447,46 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     (S.data.clients || []).forEach(function (c) {
       if (!c || !c.name || isCancelled("clients", c.id)) return;
       var k = /^CL/.test(String(c.code || "")) || isClient(c.name) ? "CL" : "LD";
-      [c.mobile, c.mobile2].forEach(function (mv) { var m = String(mv || "").replace(/\D/g, "").slice(-10); if (m.length === 10) jobs.push(bxFp("m", m).then(function (f) { if (out.m[f] !== "CL") out.m[f] = k; })); });
+      var info = bxBrandsOf(c.name), v = { k: k, n: c.name, c: String(c.code || ""), a: [c.area, c.location].filter(Boolean).join(", "), w: info.w, q: info.q };   /* 6.9.1064 - names of brands only */
+      [c.mobile, c.mobile2].forEach(function (mv) { var m = String(mv || "").replace(/\D/g, "").slice(-10); if (m.length === 10) jobs.push(bxFp("m", m).then(function (f) { var o = out.m[f]; if (!o || (o.k !== "CL" && k === "CL")) out.m[f] = v; })); });
       var nk = bxNameKey(c.name); if (nk.length >= 3) jobs.push(bxFp("n", nk).then(function (f) { if (out.n[f] !== "CL") out.n[f] = k; }));
     });
     return Promise.all(jobs).then(function () { return out; });
+  }
+  /* 6.9.1064 - which brands this client took from us, and which we quoted and he has not taken: brand GROUP names only */
+  function bxBrandsOf(name) {
+    var w = {}, q = {};
+    try { clientWonBrands(name).forEach(function (b) { var g = brandGroup(b); if (g) w[g] = 1; }); } catch (e) { }
+    try { clientQuotes(name).forEach(function (qq) { if (isCancelled("quotes", qq.id)) return; quoteBrands(qq).forEach(function (b) { var g = brandGroup(b); if (g && !w[g]) q[g] = 1; }); }); } catch (e) { }
+    return { w: Object.keys(w).sort(), q: Object.keys(q).sort() };
+  }
+  /* 6.9.1064 - his words: "site added by brand executives will auto add to our CRM". Oldest first, one at a time:
+     same mobile on the book -> linked to that client; nobody on the book by mobile or by name -> a lead, the owner's;
+     a name-only match (could be another man of the same name) and a turned-down site wait for the owner. */
+  function bxLeadAddNow(x, own, auto) {
+    var nm = nmTitle(x.client), mob = String(x.mobile || "").replace(/\D/g, "").slice(-10);
+    var notes = "From brand executive " + (x.bxName || "") + " (" + (x.brand || "") + "), " + dmy(String(x.at || "").slice(0, 10)) + (auto ? ", added by itself" : "") + "." +
+      (x.type ? " Site: " + x.type + "." : "") + (x.architect ? " Architect named: " + x.architect + "." : "") + (x.plumber ? " Plumber named: " + x.plumber + "." : "") + (x.remark ? " Remark: " + x.remark : "");
+    return save("clients", { id: "", createdBy: S.user, name: nm, shortName: shortNameOf(nm, mob), location: x.city || "", area: x.area || "", mobile: mob, mobile2: "",
+      address: x.address || "", type: "Home owner", architect: "", plumber: "", builder: "", pmc: "", notes: notes, leadType: "New", ownedBy: own, stage: x.stage || "" }, !!auto).then(function (r) {
+      if (!r) throw new Error("not saved");
+      if (x.stage) { try { saveClientStage(r.name, x.stage, { mobile: mob, city: x.city, owner: own }); } catch (eSt) { } }
+      return bxLeadDecide(x, "accepted", "Added as lead" + (r.code ? " " + r.code : ""), r.name, !!auto).then(function () { return r; });
+    });
+  }
+  function bxLeadsAuto() {
+    if (!roleIs("admin") || S._bxAuto) return Promise.resolve(0);
+    var todo = (S.bxLeads || []).filter(function (x) { return (x.status || "new") === "new"; }).sort(function (a, b) { return String(a.at || "").localeCompare(String(b.at || "")); });
+    if (!todo.length) return Promise.resolve(0);
+    S._bxAuto = 1; var n = 0, ch = Promise.resolve();
+    todo.forEach(function (x) {
+      ch = ch.then(function () {
+        var hits = bxMatch(x), byM = hits.filter(function (h) { return h.by === "mobile"; });
+        if (byM.length) return bxLeadDecide(x, "linked", "On your list - already with Energy World", byM[0].c.name, true).then(function () { n++; });
+        if (!hits.length && String(x.mobile || "").replace(/\D/g, "").length >= 10) return bxLeadAddNow(x, S.user, true).then(function () { n++; });
+      }).catch(function () { });
+    });
+    return ch.then(function () { S._bxAuto = 0; if (n) { _bxIx = null; bxSyncRun(true); render(); } return n; });
   }
   function bxLeadsPull(quiet) {
     if (!roleIs("admin")) return Promise.resolve(0);
@@ -15456,7 +15494,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       S.bxLeads = (r.rows || []).slice().sort(function (a, b) { return String(b.at || "").localeCompare(String(a.at || "")); }); S.bxLeadsAt = Date.now();
       var n = S.bxLeads.filter(function (x) { return (x.status || "new") === "new"; }).length;
       if (!quiet) toast(n ? plural(n, "new site") + " from brand executives." : "No new site from brand executives.");
-      render(); return n;
+      render(); return bxLeadsAuto().then(function (m) { if (m && !quiet) toast(plural(m, "site") + " from brand executives added by itself."); return n; });   /* 6.9.1064 */
     }, function (e) { if (!quiet) toast("Not pulled — " + e.message + "."); return 0; });
   }
   function bxMatch(L) {   /* the clients this site already is, by mobile first, then by name */
@@ -15498,7 +15536,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       '<div class="meta" style="font-size:12.5px;margin-top:6px">The architect and plumber he named go into the notes, not the partner slots — set those yourself once confirmed.</div>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button><button class="btn" data-act="bx-ladd-go" data-id="' + esc(lid) + '">Add lead</button></div>';
   }
-  function bxLeadDecide(x, status, note, client) {   /* the decision, his site on his list, and his app told */
+  function bxLeadDecide(x, status, note, client, noSync) {   /* the decision, his site on his list, and his app told (6.9.1064 - noSync: the auto run sends once at the end) */
     var jobs = [];
     if (client) {
       var e = bxIndex().ex[x.bxId];
@@ -15506,8 +15544,8 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     }
     return Promise.all(jobs).then(function () { return bxCall("leadset", { lid: x.lid, status: status, note: note || "" }); }).then(function () {
       x.status = status; x.note = note || ""; _bxIx = null;
-      auditFact("bx:lead", x.client, { lid: x.lid, bxId: x.bxId, bxName: x.bxName, client: x.client, status: status, note: note || "", into: client || "" });
-      render(); if (client) bxSyncRun(true);
+      auditFact("bx:lead", x.client, { lid: x.lid, bxId: x.bxId, bxName: x.bxName, client: x.client, status: status, note: note || "", into: client || "", auto: noSync ? 1 : 0 });
+      render(); if (client && !noSync) bxSyncRun(true);
     });
   }
   function bxSyncRun(quiet) {
@@ -15539,6 +15577,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     if (!roleIs("admin") || !bxExecs().length) return;
     var L = bxLs(), now = Date.now();
     if (!L.pulledAt || now - Date.parse(L.pulledAt) > 30 * 60000) setTimeout(function () { bxPullRun(true); bxLeadsPull(true); }, 12000);   /* 6.9.1031 - and their new sites */
+    else if (!S._bxLP && (!S.bxLeadsAt || now - S.bxLeadsAt > 10 * 60000)) { S._bxLP = 1; setTimeout(function () { var dn = function () { S._bxLP = 0; S.bxLeadsAt = S.bxLeadsAt || Date.now(); }; bxLeadsPull(true).then(dn, dn); }, 15000); }   /* 6.9.1064 - his new sites are added by themselves, so look every 10 minutes */
     if (!L.sync || String(L.sync).slice(0, 10) !== today()) setTimeout(function () { bxSyncRun(true); }, 20000);
   }
   function viewBrandExecs() {
@@ -70997,15 +71036,7 @@ function viewCatalogue() {
       var _own = val("bx_lown") || S.user, _nm = nmTitle(_ax.client), _mob = String(_ax.mobile || "").replace(/\D/g, "").slice(-10);
       if (bxMatch(_ax).some(function (h2) { return h2.by === "mobile"; })) { toast("That mobile is already on the book \u2014 link it instead."); return; }
       t.disabled = true; t.textContent = "Adding\u2026";
-      var _notes = "From brand executive " + (_ax.bxName || "") + " (" + (_ax.brand || "") + "), " + dmy(String(_ax.at || "").slice(0, 10)) + "." +
-        (_ax.type ? " Site: " + _ax.type + "." : "") + (_ax.architect ? " Architect named: " + _ax.architect + "." : "") + (_ax.plumber ? " Plumber named: " + _ax.plumber + "." : "") + (_ax.remark ? " Remark: " + _ax.remark : "");
-      save("clients", { id: "", createdBy: S.user, name: _nm, shortName: shortNameOf(_nm, _mob), location: _ax.city || "", area: _ax.area || "", mobile: _mob, mobile2: "",
-        address: _ax.address || "", type: "Home owner", architect: "", plumber: "", builder: "", pmc: "", notes: _notes, leadType: "New", ownedBy: _own, stage: _ax.stage || "" }).then(function (r) {
-        if (!r) throw new Error("not saved");
-        if (_ax.stage) { try { saveClientStage(r.name, _ax.stage, { mobile: _mob, city: _ax.city, owner: _own }); } catch (eSt) { } }
-        S.modal = null;
-        return bxLeadDecide(_ax, "accepted", "Added as lead" + (r.code ? " " + r.code : ""), r.name).then(function () { toast(r.name + " added as a lead for " + _own + "; " + (_ax.bxName || "he") + " is on it."); });
-      }).catch(function (e) { t.disabled = false; t.textContent = "Add lead"; toast("Not added \u2014 " + (e && e.message || "try again") + "."); });
+      bxLeadAddNow(_ax, _own, false).then(function (r) { S.modal = null; render(); toast(r.name + " added as a lead for " + _own + "; " + (_ax.bxName || "he") + " is on it."); }).catch(function (e) { t.disabled = false; t.textContent = "Add lead"; toast("Not added \u2014 " + (e && e.message || "try again") + "."); });
       return;
     }
     if (act === "bx-pull") { bxPullRun(false); return; }
