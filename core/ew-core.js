@@ -733,16 +733,10 @@
     }
     var i, r;
     for (i = 0; i < names.length; i++) { r = pick(names[i]); if (r.length) return r; }
-    /* 17 Oct 2026 - the family rate: head name first, then any sister brand, exact brand excluded */
-    var f = discFam(brand);
-    if (!f) return [];
-    var fx = dscFamIndex();
-    for (i = 0; i < names.length; i++) {
-      var rows = (fx[dkey(names[i]) + "||" + f] || []).filter(function (x) { return dkey(x.brand) !== b; });
-      if (!rows.length) continue;
-      var head = rows.filter(function (x) { return dkey(x.brand) === f; });
-      return (head.length ? head : rows).slice();
-    }
+    /* 26 Nov 2026 - HIS RULE: "all discounts must be independent never to be interlinked". The family rate of 17 Oct
+       (DRP reading Heliroma's, HT PRO reading Ultra Silent's) is gone: a brand has its own rate or none. Before it went,
+       the 8 client-brand pairs whose deliveries were priced on a sister's rate were given that rate as their own (owner
+       approved; Vinay Gupta DRP at 32), so no delivered rupee moved. DRP had been quoting up to 62% off Heliroma. */
     return [];
   }
 
