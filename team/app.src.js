@@ -449,7 +449,8 @@
 /* ==EWCORE:drivers:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.1067";   /* 6.9.1067 (27 Nov 2026) - HIS WORDS: "Stock in hand section is very confusing, we have to make it simple, let us say i want to check current TOTO stock in hand its not showing any option, want proper display in table format with product pics". The Stock screen opens on "Stock in hand": a button per brand (TOTO, Huliot, ...) with how many products and their value, search, a category pick, and a table with the picture, product, category, in hand, on challans, free, rate and value - grouped by category with subtotals. The per-box ordering table he had as "All stock" is one tap away as "Ordering sheet", unchanged. */
+  var APP_VERSION = "6.9.1068";   /* 6.9.1068 (27 Nov 2026) - Stock in hand: MRP and value at MRP beside the purchase rate (live: 17 TOTO lines in hand, none with a purchase rate, so the value read Rs 0); names held to two lines. */
+  /* before: */   /* 6.9.1067 (27 Nov 2026) - HIS WORDS: "Stock in hand section is very confusing, we have to make it simple, let us say i want to check current TOTO stock in hand its not showing any option, want proper display in table format with product pics". The Stock screen opens on "Stock in hand": a button per brand (TOTO, Huliot, ...) with how many products and their value, search, a category pick, and a table with the picture, product, category, in hand, on challans, free, rate and value - grouped by category with subtotals. The per-box ordering table he had as "All stock" is one tap away as "Ordering sheet", unchanged. */
   /* before: */   /* 6.9.1066 (27 Nov 2026) - FIX: the plan slabs as multiples of salary never reached the Visit app - 6.9.1065 wrote them before the plan part of the snapshot existed. Found reading the live snapshot after deploy. */
   /* before: */   /* 6.9.1065 (27 Nov 2026) - HIS WORDS: "for brand executives ... plumber and architect name also to avoid duplicate entry, type initial name or initial phone no will show drop down ... if any site won he can mark won and type model no ... payment details, finalized at what amount, GST extra or included ... executive can see at top of app - sale this month, collection this month, total pending". The brand app's server is sent Energy World's plumbers and architects (searched there; the mobile never reaches a brand phone). A site added with a picked partner is filed with that partner; a new one with a mobile is added to Partners once. Won details and payments show in Their follow-ups and the Excel. Each executive's month snapshot for the Visit app now carries collection this month and the total pending on his clients. */
   /* before: */   /* 6.9.1064 (26 Nov 2026) - HIS WORDS: "Brand followup app, make provision that executive can enter new site which is in their followup not in ours list, to avoid duplicate make provision to check by entering phone no initially, site added by brand executives will auto add to our CRM if brand executive search client by entering phone no and found its there in our record, show him he is our client for which brand and quoted for which brand, do not show any quote or any download option... he can only view site assigned to him or sites added by him". The book of fingerprints now carries, per mobile, the client name, code, area and the brand NAMES won and quoted (no value, no quote); a site he adds is handled by the owner's CRM by itself - same mobile on the book: linked; nobody on the book by mobile or name: added as a lead; only a name-only match waits for the owner. */
@@ -64031,7 +64032,8 @@ function viewCatalogue() {
       var b = ""; try { b = brandGroup(realBrand(p) || p.brand || "") || ""; } catch (e) { b = p.brand || ""; }
       var rt = rate[k] || 0;
       out.push({ code: k, desc: p.desc || P.desc || k, brand: String(b || "").trim() || "No brand", cat: String(p.cat || "").trim() || "Other", pic: p.pic || "", unit: p.unit || "",
-        onhand: P.onhand, held: P.held, free: P.free, counted: P.counted, rate: rt, value: P.onhand > 0 ? P.onhand * rt : 0 });
+        onhand: P.onhand, held: P.held, free: P.free, counted: P.counted, rate: rt, value: P.onhand > 0 ? P.onhand * rt : 0,
+        mrp: Number(p.price) || 0, mrpV: P.onhand > 0 ? P.onhand * (Number(p.price) || 0) : 0 });   /* 6.9.1068 */
     });
     return out;
   }
@@ -64055,9 +64057,9 @@ function viewCatalogue() {
     var n = 0;
     return '<style>@media(max-width:639px){.stks .ph0{display:none}.stks td,.stks th{padding-left:5px!important;padding-right:5px!important}}</style>' +
       '<div class="stks" style="overflow-x:auto;background:#fff;border:1px solid #e2e8f0;border-radius:12px"><table style="width:100%;border-collapse:collapse;font-size:13.5px">' +
-      '<thead><tr style="background:#1F3A5F;color:#fff">' + TH("#", "right", "ph0") + TH("", "left") + TH("PRODUCT", "left") + TH("IN HAND") + TH("ON CHALLANS", "right", "ph0") + TH("FREE") + TH("RATE", "right", "ph0") + TH("VALUE", "right", "ph0") + '</tr></thead><tbody>' +
+      '<thead><tr style="background:#1F3A5F;color:#fff">' + TH("#", "right", "ph0") + TH("", "left") + TH("PRODUCT", "left") + TH("IN HAND") + TH("ON CHALLANS", "right", "ph0") + TH("FREE") + TH("MRP", "right", "ph0") + TH("PURCHASE RATE", "right", "ph0") + TH("VALUE", "right", "ph0") + '</tr></thead><tbody>' +
       groups.map(function (G) {
-        return '<tr><td colspan="8" style="padding:9px 10px;background:#EEF2F7;border-top:2px solid #CBD5E1"><div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center"><b style="color:#1F3A5F">' + esc(G.name) + '</b>' +
+        return '<tr><td colspan="9" style="padding:9px 10px;background:#EEF2F7;border-top:2px solid #CBD5E1"><div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center"><b style="color:#1F3A5F">' + esc(G.name) + '</b>' +
           '<span style="font-size:12.5px;color:#475569">' + plural(G.rows.length, "product") + ' &middot; ' + stkQty(G.q) + ' in hand</span><span style="margin-left:auto;font-weight:800;color:#1F3A5F">' + (G.v ? money(G.v) : '') + '</span></div></td></tr>' +
           G.rows.map(function (x, i) {
             n++;
@@ -64067,21 +64069,22 @@ function viewCatalogue() {
               '<td style="padding:6px 4px;width:60px">' + (pic
                 ? '<img src="' + esc(pic) + '" loading="lazy" alt="" data-act="pv-open" data-code="' + esc(x.code) + '" style="width:54px;height:54px;object-fit:contain;border-radius:10px;background:#fff;border:1px solid #e2e8f0;cursor:pointer;display:block"/>'
                 : '<div data-act="pv-open" data-code="' + esc(x.code) + '" style="width:54px;height:54px;border-radius:10px;background:#F1F5F9;color:#94a3b8;font-size:11px;display:flex;align-items:center;justify-content:center;text-align:center;cursor:pointer">no photo</div>') + '</td>' +
-              '<td style="padding:8px;min-width:160px"><div style="font-weight:700;color:#0f172a;word-break:break-word;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden">' + esc(x.desc) + '</div>' +
+              '<td style="padding:8px;min-width:160px"><div style="font-weight:700;color:#0f172a;word-break:break-word;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden" title="' + esc(x.desc) + '">' + esc(x.desc) + '</div>' +
                 '<div style="font-size:12px;color:#64748b"><span style="color:#0f766e;font-weight:700;cursor:pointer" data-act="pv-open" data-code="' + esc(x.code) + '">' + esc(x.code) + '</span>' + (S.stkBr ? '' : ' &middot; ' + esc(x.brand)) + (x.counted ? '' : ' &middot; <span style="color:#b45309">not counted yet</span>') + '</div></td>' +
               '<td data-act="stk-open" data-code="' + esc(x.code) + '" style="padding:8px;text-align:right;font-weight:900;font-size:16px;color:' + col + ';white-space:nowrap;cursor:pointer" title="Tap for how it came to this">' + stkQty(x.onhand) + (x.unit ? '<div style="font-size:11.5px;font-weight:600;color:#94a3b8">' + esc(x.unit) + '</div>' : '') + '</td>' +
               '<td class="ph0" style="padding:8px;text-align:right;color:#475569;white-space:nowrap">' + (x.held ? stkQty(x.held) : '&mdash;') + '</td>' +
               '<td style="padding:8px;text-align:right;font-weight:800;color:' + fcol + ';white-space:nowrap">' + stkQty(x.free) + '</td>' +
-              '<td class="ph0" style="padding:8px;text-align:right;color:#64748b;white-space:nowrap">' + (x.rate ? money(x.rate) : '&mdash;') + '</td>' +
-              '<td class="ph0" style="padding:8px;text-align:right;font-weight:700;white-space:nowrap">' + (x.value ? money(x.value) : '&mdash;') + '</td></tr>' +
-              (S.stkOpen === x.code ? '<tr><td colspan="8" style="padding:0 0 10px">' + stockLedgerPanel(x.code) + '</td></tr>' : '');
+              '<td class="ph0" style="padding:8px;text-align:right;color:#334155;white-space:nowrap">' + (x.mrp ? money(x.mrp) : '&mdash;') + '</td>' +
+              '<td class="ph0" style="padding:8px;text-align:right;color:#64748b;white-space:nowrap">' + (x.rate ? money(x.rate) : '<span style="font-size:12px;color:#94a3b8">not set</span>') + '</td>' +
+              '<td class="ph0" style="padding:8px;text-align:right;font-weight:700;white-space:nowrap">' + (x.value ? money(x.value) : x.mrpV ? '<span style="color:#64748b">' + money(x.mrpV) + '<div style="font-size:11px;font-weight:600">at MRP</div></span>' : '&mdash;') + '</td></tr>' +
+              (S.stkOpen === x.code ? '<tr><td colspan="9" style="padding:0 0 10px">' + stockLedgerPanel(x.code) + '</td></tr>' : '');
           }).join("");
       }).join("") + '</tbody></table></div>' + (list.length > 600 ? '<div class="meta">The first 600 are shown &mdash; pick a brand or type to narrow it.</div>' : '');
   }
   function stkSimpleSum(list) {
-    var q = 0, v = 0; list.forEach(function (x) { q += Math.max(0, x.onhand); v += x.value; });
+    var q = 0, v = 0, mv = 0, nr = 0; list.forEach(function (x) { q += Math.max(0, x.onhand); v += x.value; mv += x.mrpV; if (x.onhand > 0 && !x.rate) nr++; });
     return '<div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0">' +
-      [[plural(list.length, "product"), S.stkBr ? esc(S.stkBr) + (S.stkCat ? ' &middot; ' + esc(S.stkCat) : '') : 'all brands'], [stkQty(q), 'pieces in hand'], [money(v), 'value at purchase rate']].map(function (t) {
+      [[plural(list.length, "product"), S.stkBr ? esc(S.stkBr) + (S.stkCat ? ' &middot; ' + esc(S.stkCat) : '') : 'all brands'], [stkQty(q), 'pieces in hand'], [money(mv), 'value at MRP'], [money(v), 'value at purchase rate' + (nr ? ' &middot; <span style="color:#b45309">' + nr + ' without a rate</span>' : '')]].map(function (t) {
         return '<div style="flex:1 1 150px;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:10px 12px"><div style="font-size:20px;font-weight:900;color:#1F3A5F">' + t[0] + '</div><div class="meta" style="font-size:12.5px">' + t[1] + '</div></div>';
       }).join("") + '</div>';
   }
@@ -64107,9 +64110,9 @@ function viewCatalogue() {
   function stkSimplePaint() { var all = stkSimpleRows(), list = stkSimpleFilter(all), a = el("stk_tb"), b = el("stk_sum"); if (a) a.innerHTML = stkSimpleTable(list); if (b) b.innerHTML = stkSimpleSum(list); }
   function stkSimpleXlsx() {
     var list = stkSimpleFilter(stkSimpleRows());
-    var rows = [["Brand", "Category", "Code", "Product", "In hand", "On challans", "Free", "Rate", "Value"].map(function (x) { return { v: x, s: XL.HEAD }; })];
-    list.forEach(function (x) { rows.push([x.brand, x.cat, x.code, x.desc, x.onhand, x.held, x.free, x.rate || "", Math.round(x.value) || ""]); });
-    dlXlsx("Stock_in_hand_" + (S.stkBr ? S.stkBr.replace(/[^A-Za-z0-9]+/g, "_") + "_" : "") + today() + ".xlsx", "Stock in hand", rows, [14, 20, 14, 48, 10, 11, 10, 11, 13]);
+    var rows = [["Brand", "Category", "Code", "Product", "In hand", "On challans", "Free", "MRP", "Value at MRP", "Purchase rate", "Value"].map(function (x) { return { v: x, s: XL.HEAD }; })];
+    list.forEach(function (x) { rows.push([x.brand, x.cat, x.code, x.desc, x.onhand, x.held, x.free, x.mrp || "", Math.round(x.mrpV) || "", x.rate || "", Math.round(x.value) || ""]); });
+    dlXlsx("Stock_in_hand_" + (S.stkBr ? S.stkBr.replace(/[^A-Za-z0-9]+/g, "_") + "_" : "") + today() + ".xlsx", "Stock in hand", rows, [14, 20, 14, 48, 10, 11, 10, 11, 13, 12, 13]);
   }
   document.addEventListener("input", function (ev) { var _t = ev.target; if (_t && _t.id === "stkq") { S.stkQ = _t.value; stkSimplePaint(); } });   /* 6.9.1067 - the table only: the cursor stays */
   document.addEventListener("change", function (ev) { var _t = ev.target; if (_t && _t.id === "stkcat") { S.stkCat = _t.value; render(); } });
