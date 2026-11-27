@@ -71,6 +71,22 @@ textarea{min-height:84px}
 .hist b.h{display:block;font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:#92400e;margin-bottom:4px}
 .hist .ln{padding:4px 0;border-top:1px solid #fef3c7}
 .hist .ln:first-of-type{border-top:0}
+/* 1.28.0 - the month table, score, areas, the partner drop-down, tablets */
+.mtab{width:100%;border-collapse:separate;border-spacing:0;background:#fff;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;margin-top:8px}
+.mtab th{background:#1F3A5F;color:#fff;font-size:12px;font-weight:700;padding:8px;text-align:right;line-height:1.25}.mtab th:first-child{text-align:left}
+.mtab td{padding:10px 8px;font-weight:800;font-size:16px;text-align:right;border-top:1px solid #eef2f6;font-variant-numeric:tabular-nums;white-space:nowrap}
+.mtab td:first-child{text-align:left;font-size:13px;white-space:normal}.mtab tr.tot td{background:#f1f5f9}
+.mtab.one th{text-align:center}.mtab.one td{text-align:center;font-size:19px;padding:12px 6px}
+.sct{width:100%;border-collapse:collapse;font-size:13px}.sct th{background:#1b3a34;color:#fff;padding:8px 6px;text-align:right;font-size:12px}.sct th:first-child{text-align:left}
+.sct td{padding:8px 6px;border-top:1px solid #e2e8f0;text-align:right;font-variant-numeric:tabular-nums}.sct td:first-child{text-align:left}.sct tr.tot td{background:#f1f5f9;font-weight:800}
+.sct tr.on td{background:#ecfdf5}
+@media (max-width:520px){.sct .meta{display:none}.sct td,.sct th{padding:7px 4px}.sct{font-size:12.5px}}
+.tw{overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:12px;border:1px solid #e2e8f0;background:#fff;margin-top:6px}
+.bch{display:inline-block;font-size:12px;font-weight:800;border-radius:99px;padding:3px 9px;margin:2px 4px 2px 0}.bch.w{background:#dcfce7;color:#166534}.bch.q{background:#dbeafe;color:#1e40af}.bch.l{background:#fee2e2;color:#991b1b}.bch.t{background:#f1f5f9;color:#475569}
+.pkl{border:1px solid #cbd5e1;border-radius:12px;background:#fff;margin-top:4px;overflow:hidden;box-shadow:0 6px 16px rgba(15,23,42,.08)}
+.pkl button{display:block;width:100%;text-align:left;min-height:46px;padding:8px 12px;border:0;border-top:1px solid #eef2f6;background:#fff;font-size:15px;color:#0f172a}.pkl button:first-child{border-top:0}
+.art td{cursor:pointer}
+@media (min-width:768px){#root{max-width:1000px;padding-left:20px;padding-right:20px}.sheet .inner{max-width:900px;border-radius:18px;margin-bottom:20px}.sheet{align-items:center}.tiles{grid-template-columns:repeat(4,1fr)}.arg{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}}
 .vpics{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0}.vpic{display:flex;flex-direction:column;align-items:center;gap:4px}.vpic img{width:76px;height:76px;object-fit:cover;border-radius:10px;border:1px solid #cbd5e1}
 .vpbtns{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0}.vpbtns label{position:relative;overflow:hidden}.vpbtns input[type=file]{position:absolute;inset:0;opacity:0;width:100%;cursor:pointer}
 .info{border:1px solid #bae6fd;background:#f0f9ff;border-radius:12px;padding:8px 10px;margin:8px 0;font-size:13px}
@@ -257,7 +273,8 @@ table.att td.ok,table.att td.no{font-size:16px}
       button: function () { return '<button type="button" class="ewthm" onclick="ewTheme.next(this)">' + ewtLabel() + '</button>'; }
     };
   })();
-  var APP_VERSION = "1.27.0";   /* 1.27.0 (26 Nov 2026) - HIS RULE: "drp is always from 32 % to 35% maximum" - a DRP discount above 35% typed on a quote (the brand box or a line) is brought down to 35 and he is told. */
+  var APP_VERSION = "1.28.0";   /* 1.28.0 (27 Nov 2026) - HIS WORDS: "executive can see their daily visit log with site pic and site location, can see area wise site details and visit log, provide to enter site location at the time of visit entry, in future he can see nearby sites for that location, if executive type model town then he can see how many sites he has visited and entered for that area, clicking a site will show how many times that site visited and which brands are quoted, which brands we won at site, which brands still to quote, executive can see at top of app - sale this month, collection this month, total pending - in attractive table format ... type initial name or initial phone no will show drop down to select" and "show executive score to him ... salary X 4 time or something that we have designed for executives, also include that incentive for timely payment collection". My day opens with the month table (sale, collection, pending), his Scorecard, the plan slabs as multiples of salary and the payment-speed slabs. A Visit log by day with photos and the map. An Areas tab. The first visit with GPS fixes a site's location; Near me looks 1 km round and says how far. Plumber / architect boxes drop down by name, code or the first digits of the mobile. */
+  /* before: */   /* 1.27.0 (26 Nov 2026) - HIS RULE: "drp is always from 32 % to 35% maximum" - a DRP discount above 35% typed on a quote (the brand box or a line) is brought down to 35 and he is told. */
   /* before: */   /* 1.26.0 (26 Nov 2026) - HIS RULE: "all discounts must be independent never to be interlinked": a brand reads its own rate or none - DRP no longer borrows Heliroma's, HT PRO no longer borrows Ultra Silent's (the shared core). */
   /* before: */   /* 1.25.0 (20 Nov 2026) - HIS WORDS: "rearrange our lead or client entry system that first we have to enter mobile no, if its duplicate it will show its already registered with such name and by this executive ... to avoid duplicate entry". New site and New client now open with the MOBILE alone; the rest of the form appears once it has 10 digits, after it has been checked against the whole book - every site, every client (not only his), every partner and every staff member. A hit names who has it, under what name, entered by whom and when, with the stage, and offers to open that record; a partner's or staff member's number is called out as the wrong number to file a client under. A genuinely different site of the same person can still be saved, and the office is told, as before. */
   /* before: */   /* 1.24.0 (18 Nov 2026) - "Mark your attendance", with the location taken now and shown before it is saved */   /* 1.23.0 (18 Nov 2026) - a partner holding Energy World tools says so in the plumber / architect pick lists; new app icon */   /* 1.22.0 (17 Nov 2026) - the menu opens the Tool Tracking app */   /* 1.21.0 (17 Nov 2026) - Follow-up tab: brand by brand, his clients - going on / won / lost, quotes given, and the brand executive on the site */   /* 1.20.0 (17 Nov 2026) - one tap Present with where the day is and the plan; a visit still counts; one mark shows in every app */   /* 1.19.1 (17 Nov 2026) - FIX: a quote stamped with a plain date threw "Can't find variable: d10" on the quote list; the version is in the header */   /* 1.19.0 (1.19.0 (16 Nov 2026) - a visit is logged straight from the site list (the stage starts at the last one); My day shows the month as a calendar, present = a visit marked; the 7-day grid uses the same rule; an executive has his own daily report */   /* 1.18.0 (1.18.0 (16 Nov 2026) - a quote in three steps: the discount sits at the top of the check instead of a screen of its own; and the app counts which buttons are tapped, sent weekly to the owner's Health screen */   /* 1.17.7 (1.17.7 (15 Nov 2026) - FIX: no family-rate fallback here, so a quote line reading "Huliot HT PRO" for a client given a Huliot rate was quoted at FULL MRP - 9 client-and-brand pairs on his own book */   /* 1.17.6 (1.17.6 (11 Nov 2026) - GHP+ logo in the registered Green Heat+ colours (#00539F / #ED1D24) on PDFs, quotes, challans and QR centres */   /* 1.17.5 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 1.17.4 (9 Nov 2026) - FIMA finish codes with their own finish photo */     /* 1.17.3 (9 Nov 2026) - a small finish-colour dot on FIMA product pictures */     /* 1.17.2 (9 Nov 2026) - FIMA handles S1-S4 in every finish and the S2 glass handles */     /* 1.17.1 (9 Nov 2026) - brand tiles on the quote line: real logos, compact, on one row with Pending / Won / Lost */     /* 1.17.0 (9 Nov 2026) - brand-wise Won / Lost on a quote line: tap a brand once = Won, twice = Lost, again = open */     /* 1.16.0 (9 Nov 2026) - FIMA in every finish: type F1301WLX9CS (or any of 14,260 finish codes) and it is on the quote at its own MRP */     /* 1.15.0 (9 Nov 2026) - incentive ready (clients paid) and waiting for payment, on the plan header */     /* 1.14.0 (9 Nov 2026) - ask the owner to approve a discount above the brand limit, right on the quote line */     /* 1.13.0 (9 Nov 2026) - target limit shown under each quote discount; plan updates list (slab reached, lines left out, returns, month closed, 20th reminder) */     /* 1.12.0 (9 Nov 2026) - the 2027 plan on top (counted sales, slab ladder, left-out lines, quarter) and daily reports: entered, missed, streak */   /* 1.11.0 (8 Nov 2026) - my month on top: sales, returns, target, incentive, what to dispatch */   /* 1.10.1 (4 Nov 2026) - Set 2 logos: Energy World (World raised), GHP+ with TM; PDFs, quotes, challans and every QR centre */   /* 1.10.0 (4 Nov 2026) - quote as in the CRM: item-wise discount, option lines, item-wise rates without total, GST */   /* 1.9.1 (31 Oct 2026) - one tap, one entry */   /* 1.9.0 (29 Oct 2026) - Menu -> Online enquiries (FB, IG, Google, Justdial, IndiaMART ... from the OnlineEnquiries tab) */   /* 1.8.4 (27 Oct 2026) - GHp mark in the middle of every QR, level H */   /* 1.6.1 - Huliot Group introduction on quotes; 1.6.0 (17 Oct 2026) - a dropped POST never loses a quote; admin sees every executive; daily report; attendance grid */
@@ -3269,6 +3286,219 @@ table.att td.ok,table.att td.no{font-size:16px}
       '<div style="margin-top:8px;padding:8px 10px;border-radius:10px;background:' + msg[0] + ';color:' + msg[1] + ';font-size:13px">' + msg[2] + '</div>' +
       '<div class="meta" style="font-size:12px;margin-top:4px">Net sales = sales less returns. Incentive counts deliveries whose signed receipt is in, and becomes payable as the client pays. As of ' + esc(fd(x.at)) + ' ' + esc(String(new Date(x.at).toTimeString()).slice(0, 5)) + '.</div></div>';
   }
+  /* ================= 1.28.0 - MY MONTH ON TOP, MY SCORE, MY PLAN (27 Nov 2026) =================
+     HIS WORDS: "executive can see at top of app - sale this month, collection this month, total pending - in a attractive
+     and table format" and "show executive score to him ... salary X 4 time or something that we have designed for executives,
+     also include that incentive for timely payment collection". All from the month the office CRM publishes (exec:snap):
+     sales before GST, collection with GST (a discount entry is not money), pending = what his clients owe today. The plan
+     slabs go as multiples of his salary - the salary itself is never on a phone. */
+  function vSnapNames() {
+    var names = {}; ((S.data && S.data.audit) || []).forEach(function (a) { if (a && a.action === "exec:snap") names[dkey(a.target)] = a.target; });
+    return Object.keys(names).map(function (k) { return names[k]; }).sort(alpha);
+  }
+  function vTopTable() {
+    var ym = today().slice(0, 7), adm = roleIs("admin"), team = adm && !S.ex;
+    var rows = (team ? vSnapNames() : [adm ? S.ex : S.user]).map(function (n) { var x = xSnapOf(n); return x && x.ym === ym ? { n: n, x: x } : null; }).filter(Boolean);
+    var mon = new Date().toLocaleString("en-IN", { month: "long" });
+    if (!rows.length) return '<div class="card" style="margin-top:8px"><div class="meta">Your sale, collection and pending show here once the office CRM has refreshed today.</div></div>';
+    var mv = function (v, c) { return v == null ? '&mdash;' : '<span style="color:' + c + '">' + money(v) + '</span>'; };
+    if (!team) {
+      var x = rows[0].x;
+      return '<table class="mtab one"><tr><th>Sale<br>' + esc(mon) + '</th><th>Collection<br>' + esc(mon) + '</th><th>Total<br>pending</th></tr>' +
+        '<tr><td>' + mv(x.sales, "#1F3A5F") + '</td><td>' + mv(x.coll, "#166534") + '</td><td>' + mv(x.pend, x.pend > 0 ? "#b91c1c" : "#0f172a") + '</td></tr></table>' +
+        '<div class="meta" style="font-size:12px;margin-top:3px">Sale = your clients&rsquo; dispatches before GST &middot; collection = money received with GST &middot; pending = what your clients owe today.</div>';
+    }
+    var T = { s: 0, c: 0, p: 0 };
+    rows.forEach(function (r) { T.s += r.x.sales || 0; T.c += r.x.coll || 0; T.p += r.x.pend || 0; });
+    return '<div class="tw"><table class="mtab" style="margin:0;border:0"><tr><th>Executive</th><th>Sale ' + esc(mon) + '</th><th>Collection</th><th>Pending</th><th>Score</th></tr>' +
+      rows.map(function (r) { return '<tr data-act="ex-pick" data-k="' + esc(r.n) + '" style="cursor:pointer"><td>' + esc(r.n) + '</td><td>' + mv(r.x.sales, "#1F3A5F") + '</td><td>' + mv(r.x.coll, "#166534") + '</td><td>' + mv(r.x.pend, "#b91c1c") + '</td><td>' + (r.x.sc ? '<span style="color:' + esc(r.x.sc.c) + '">' + r.x.sc.s + '</span>' : '&mdash;') + '</td></tr>'; }).join("") +
+      '<tr class="tot"><td>Team</td><td>' + money(T.s) + '</td><td>' + money(T.c) + '</td><td>' + money(T.p) + '</td><td></td></tr></table></div>';
+  }
+  /* his Scorecard - the same five areas, weights and targets as the office's Scorecard screen */
+  function vScoreCard(who) {
+    var x = xSnapOf(who); if (!x || x.ym !== today().slice(0, 7) || !x.sc) return "";
+    var c = x.sc, fmt = function (a, v) { return a.m ? money(v) : a.p ? Math.round(v * 100) + "%" : String(Math.round(v)); };
+    var achC = function (p) { return p >= 100 ? "#16a34a" : p >= 70 ? "#c2410c" : "#dc2626"; };
+    return '<div class="card" style="margin-top:8px"><div style="display:flex;gap:10px;align-items:flex-start"><div style="flex:1;min-width:0"><div class="ttl2">' + (roleIs("admin") ? esc(who) + '&rsquo;s score' : 'My score') + '</div>' +
+      '<div class="meta">' + esc(new Date().toLocaleString("en-IN", { month: "long", year: "numeric" })) + ' &middot; five areas, as the office sees them</div></div>' +
+      '<div style="text-align:center"><div style="font-size:34px;font-weight:900;color:#0f5f56;line-height:1">' + c.s + '</div><div class="meta" style="font-size:12px">out of 100</div>' +
+      '<span style="display:inline-block;margin-top:4px;font-size:12px;font-weight:800;padding:3px 10px;border-radius:99px;background:' + esc(c.bg) + ';color:' + esc(c.c) + '">' + esc(c.b) + '</span></div></div>' +
+      '<div class="tw"><table class="sct"><tr><th>Area</th><th>Weight</th><th>Target</th><th>Actual</th><th>Achieved</th><th>Score</th></tr>' +
+      c.a.map(function (a) { return '<tr><td><b>' + esc(a.l) + '</b><div class="meta" style="font-size:12px">' + esc(a.k) + '</div></td><td>' + a.w + '%</td><td>' + fmt(a, a.t) + (a.h ? '' : ' max') + '</td><td><b>' + fmt(a, a.v) + '</b></td>' +
+        '<td style="color:' + achC(a.ach) + ';font-weight:800">' + a.ach + '%</td><td><b>' + a.sc + '</b></td></tr>'; }).join("") +
+      '<tr class="tot"><td>Total</td><td>100%</td><td></td><td></td><td></td><td>' + c.s + '</td></tr></table></div></div>';
+  }
+  /* the 2027 plan as he should read it: each slab a multiple of his own salary, and the payment-speed slabs */
+  function vPlanCard(who) {
+    var x = xSnapOf(who); if (!x || x.ym !== today().slice(0, 7) || !x.p || !x.p.mult) return "";
+    var p = x.p, k = p.k, pct = p.pct || [0.25, 0.5, 0.75, 1, 1.5], sp = x.sp;
+    var tag = p.whatIf ? ' <span style="background:#fef3c7;color:#92400e;font-weight:700;font-size:12px;padding:3px 8px;border-radius:99px">preview &middot; plan starts 1 Dec</span>' : p.trial ? ' <span style="background:#dbeafe;color:#1e40af;font-weight:700;font-size:12px;padding:3px 8px;border-radius:99px">trial month</span>' : '';
+    var h = '<div class="card" style="margin-top:8px"><div class="ttl2">' + (roleIs("admin") ? esc(who) + '&rsquo;s incentive plan' : 'My incentive plan') + tag + '</div>' +
+      '<div class="meta">Reach a slab in counted sales and that slab&rsquo;s % is paid on <b>all</b> your counted sales of the month.</div>' +
+      '<div class="tw"><table class="sct"><tr><th>Slab</th><th>Counted sales needed</th><th>Amount</th><th>Incentive</th></tr>' +
+      p.mult.map(function (m, i) { return '<tr class="' + (i === k ? 'on' : '') + '"><td><b>' + (i + 1) + '</b>' + (i === k ? ' &#10003;' : '') + '</td><td>' + m + ' &times; salary</td><td>' + money((p.slabs || [])[i] || 0) + '</td><td><b>' + pct[i] + '%</b></td></tr>'; }).join("") +
+      '</table></div><div class="meta" style="font-size:12px;margin-top:4px">Counted this month: <b>' + money(p.net) + '</b>' + (k >= 0 ? ' &middot; slab ' + (k + 1) + ' reached' : ' &middot; below slab 1') +
+      ' &middot; the month&rsquo;s incentive is at most ' + (p.cap || 1.5) + ' &times; salary' + (p.qmult ? ' &middot; quarter bonus: ' + p.qmult[0] + ' &times; salary +0.25%, ' + p.qmult[1] + ' &times; salary +0.5%' : '') + '.</div>';
+    if (sp && sp.slabs) {
+      var by = {}; (sp.by || []).forEach(function (b) { by[b.l] = b; });
+      var lab = function (i) { var sl = sp.slabs; return i === 0 ? "0-" + sl[0][0] + " days" : (i < sl.length ? (sl[i - 1][0] + 1) + "-" + sl[i][0] + " days" : "unpaid at 90 days"); };
+      var rows = sp.slabs.map(function (sl, i) { return [lab(i), sl[1]]; }).concat([[lab(sp.slabs.length), sp.late]]);
+      h += '<div class="ttl2" style="margin-top:12px">Payment speed &mdash; reward for quick collection</div>' +
+        '<div class="meta">On each delivery&rsquo;s value before GST, by how fast the client paid it. Only deliveries from ' + esc(fd(sp.from)) + '.' + (sp.trial ? ' December is the trial month.' : '') + '</div>' +
+        '<div class="tw"><table class="sct"><tr><th>Paid within</th><th>Rate</th><th>This month on</th><th>Amount</th></tr>' +
+        rows.map(function (r) { var b = by[r[0]] || null, c = r[1] > 0 ? "#166534" : r[1] < 0 ? "#b91c1c" : "#475569";
+          return '<tr><td>' + esc(r[0]) + '</td><td style="color:' + c + ';font-weight:800">' + (r[1] > 0 ? '+' : '') + r[1] + '%</td><td>' + (b ? money(b.base) : '&mdash;') + '</td><td style="color:' + c + '">' + (b ? (b.v > 0 ? '+' : '') + money(b.v) : '&mdash;') + '</td></tr>'; }).join("") +
+        '<tr class="tot"><td>Payment speed this month</td><td></td><td></td><td style="color:' + (sp.net >= 0 ? '#166534' : '#b91c1c') + '">' + (sp.net > 0 ? '+' : '') + money(sp.net) + '</td></tr></table></div>' +
+        '<div class="meta" style="font-size:12px;margin-top:4px">A cut is taken only from incentive &mdash; never from your salary.' + (p.tot != null ? ' Total incentive this month so far: <b>' + money(p.tot) + '</b>.' : '') + '</div>';
+    }
+    return h + '</div>';
+  }
+  /* ================= 1.28.0 - VISIT LOG: the day's visits with photos and where they were made ================= */
+  function vlogWho(by) { return roleIs("admin") ? exOk(by) : isMe(by); }
+  function vlogItems(day) {
+    var out = [];
+    (S.data.sitevisits || []).forEach(function (v) {
+      if (!v || dstr(v.createdAt || v.date) !== day || !vlogWho(v.createdBy)) return;
+      var st = siteById(v.siteId) || {};
+      out.push({ kind: "site", at: String(v.createdAt || v.date || ""), by: v.createdBy || "", who: v.siteName || st.name || v.client || "", siteId: v.siteId || "", area: [st.city, st.location].filter(Boolean).join(", "),
+        met: v.visitType || "", note: v.purpose || "", lat: v.lat, lng: v.lng, ver: v.verified || "", dm: v.distanceM || "" });
+    });
+    (S.data.audit || []).forEach(function (r) {
+      if (!r || r.action !== "visit:mark" || dstr(r.createdAt) !== day || !vlogWho(r.actor)) return;
+      var d = {}; try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
+      out.push({ kind: d.kind || "", at: String(r.createdAt || ""), by: r.actor || "", who: d.who || r.target || "", siteId: "", area: "", met: d.whoKind || "", note: d.note || "", lat: d.lat, lng: d.lng, ver: "", dm: "" });
+    });
+    var ph = (S.data.audit || []).filter(function (r) { return r && r.action === "visit:photo"; }).map(function (r) {
+      var d = {}; try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { d = {}; } d.by = d.by || r.actor; d.at = d.at || r.createdAt; return d;
+    }).filter(function (d) { return d.url && dstr(d.at) === day; });
+    out.forEach(function (o) { o.pics = ph.filter(function (d) { return dkey(d.by) === dkey(o.by) && (o.siteId ? String(d.siteId) === String(o.siteId) : (!d.siteId && dkey(d.who) === dkey(o.who))); }); });
+    return out.sort(function (a, b) { return a.at.localeCompare(b.at); });
+  }
+  function vTime(at) { try { return new Date(at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }); } catch (e) { return ""; } }
+  function vMapLink(lat, lng, txt) { return Number(lat) && Number(lng) ? '<a class="btn sm gry" style="min-height:40px" target="_blank" rel="noopener" href="https://maps.google.com/?q=' + esc(lat) + ',' + esc(lng) + '">&#128205; ' + esc(txt || "Map") + '</a>' : ''; }
+  function vlogCard(o, showBy) {
+    var verC = o.ver === "Verified" ? "#166534" : o.ver === "Far" ? "#b45309" : "#64748b";
+    return '<div class="card"><div style="display:flex;gap:8px;align-items:flex-start"><div style="flex:1;min-width:0"><div class="ttl2">' + esc(o.who || "(no name)") + '</div>' +
+      '<div class="meta">' + esc(vTime(o.at)) + ' &middot; ' + esc(VM_KINDS[o.kind] || o.kind || "Visit") + (o.area ? ' &middot; ' + esc(o.area) : '') + (showBy ? ' &middot; <b>' + esc(o.by) + '</b>' : '') + '</div></div>' +
+      (o.siteId ? '<button class="btn sm gry" data-act="ar-site" data-id="' + esc(o.siteId) + '" style="min-height:40px">Site</button>' : '') + '</div>' +
+      (o.met ? '<div class="meta">Met: ' + esc(o.met) + '</div>' : '') + (o.note ? '<div style="margin-top:3px;font-size:14px">' + esc(o.note) + '</div>' : '') +
+      '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px">' + (Number(o.lat) ? vMapLink(o.lat, o.lng, "Where it was marked") : '<span class="meta">No location with this visit</span>') +
+      (o.ver ? '<span style="font-size:12px;font-weight:800;color:' + verC + '">' + esc(o.ver === "Far" && o.dm ? "Far - " + o.dm + " m from the site" : o.ver === "Verified" ? "At the site" : o.ver) + '</span>' : '') + '</div>' +
+      (o.pics.length ? '<div class="vpics">' + o.pics.map(function (p) { return '<a class="vpic" href="' + esc(p.url) + '" target="_blank" rel="noopener"><img alt="" src="data:image/jpeg;base64,' + esc(p.thumb || "") + '"/></a>'; }).join("") + '</div>' : '') + '</div>';
+  }
+  function vlogSheet(day) {
+    day = /^\d{4}-\d{2}-\d{2}$/.test(day || "") ? day : today();
+    var L = vlogItems(day), np = L.reduce(function (a, o) { return a + o.pics.length; }, 0), ng = L.filter(function (o) { return Number(o.lat); }).length, team = roleIs("admin") && !S.ex;
+    return '<h2>Visit log</h2><div class="meta">' + (roleIs("admin") ? (S.ex ? esc(S.ex) : 'The whole team') : 'Your visits') + ', one day at a time, with photos and where each was marked.</div>' +
+      '<label for="vlog_day">Day</label><div class="nrow"><input id="vlog_day" type="date" max="' + today() + '" value="' + esc(day) + '"/>' +
+      '<div class="chips" style="margin:0;flex-wrap:nowrap"><button type="button" class="chip" data-act="vlog-day" data-k="-1">Yesterday</button><button type="button" class="chip" data-act="vlog-day" data-k="0">Today</button></div></div>' +
+      '<div class="tiles">' + tile(L.length, "Visits", L.length ? "good" : "warn") + tile(ng, "With location", ng === L.length ? "good" : "warn") + tile(np, "Photos", "") + tile(L.filter(function (o) { return o.ver === "Verified"; }).length, "At the site (checked)", "") + '</div>' +
+      (L.length ? L.map(function (o) { return vlogCard(o, team); }).join("") : '<div class="empty">No visit on ' + esc(fd(day)) + '.</div>') +
+      '<div class="acts"><button class="btn gry full" data-act="close">Close</button></div>';
+  }
+  /* ================= 1.28.0 - AREAS: what he has done in Model Town, site by site ================= */
+  function arKey(v) { return lower(v).replace(/[^a-z0-9]+/g, " ").trim(); }
+  function arOfSite(st) { var c = st.client ? clientByName(st.client) : null; return String(st.city || (c && c.area) || "").trim(); }
+  function arVisMine(v) { return roleIs("admin") ? exOk(v.createdBy) : isMe(v.createdBy); }
+  function arEntMine(st) { return roleIs("admin") ? exOk(st.createdBy) : isMe(st.createdBy); }
+  function arSites() {
+    return (S.data.sites || []).filter(function (st) { return st && !isCancelled("sites", st.id) && (arEntMine(st) || (!roleIs("admin") && isMe(siteOwner(st).by)) || vlVisits(st).some(arVisMine) || (roleIs("admin") && !S.ex)); });
+  }
+  function arIndex() {
+    var m = {};
+    arSites().forEach(function (st) {
+      var a = arOfSite(st), k = arKey(a) || "~"; var g = m[k] = m[k] || { k: k, label: a || "(no area written)", dist: st.location || "", sites: [], ent: 0, vis: 0, nv: 0, last: "" };
+      var vs = vlVisits(st).filter(arVisMine);
+      g.sites.push(st); if (arEntMine(st)) g.ent++; if (vs.length) g.vis++; g.nv += vs.length;
+      if (vs[0]) { var d = dstr(vs[0].createdAt || vs[0].date); if (d > g.last) g.last = d; }
+    });
+    return Object.keys(m).map(function (k) { return m[k]; }).sort(function (a, b) { return b.nv - a.nv || b.sites.length - a.sites.length || alpha(a.label, b.label); });
+  }
+  function arRows(q) {
+    q = arKey(q);
+    var L = arIndex().filter(function (g) { return !q || (" " + g.k + " " + arKey(g.dist)).indexOf(" " + q) >= 0 || g.k.indexOf(q) >= 0; });
+    if (!L.length) return '<div class="empty">' + (q ? 'No site of yours in an area like &ldquo;' + esc(q) + '&rdquo;.' : 'No site yet.') + '</div>';
+    return '<div class="tw"><table class="sct art"><tr><th>Area</th><th>Sites</th><th>Entered by ' + (roleIs("admin") && !S.ex ? 'the team' : 'you') + '</th><th>Visited</th><th>Visits</th><th>Last visit</th></tr>' +
+      L.slice(0, 120).map(function (g) { return '<tr data-act="ar-open" data-k="' + esc(g.k) + '"><td><b style="color:#1d4ed8">' + esc(g.label) + '</b>' + (g.dist ? '<div class="meta" style="font-size:12px">' + esc(g.dist) + '</div>' : '') + '</td><td>' + g.sites.length + '</td><td>' + g.ent + '</td><td>' + g.vis + '</td><td><b>' + g.nv + '</b></td><td>' + (g.last ? esc(fd(g.last)) : '&mdash;') + '</td></tr>'; }).join("") +
+      '</table></div>' + (L.length > 120 ? '<div class="meta">Type to find the rest.</div>' : '');
+  }
+  function siteBrands(st) {   /* the site's client, brand group by brand group: won / quoted (going on) / lost / still to quote */
+    var nm = st.client || st.name, out = { won: [], quoted: [], lost: [], todo: [] };
+    try { fuFresh(); } catch (e) { }
+    brandGroupList().forEach(function (g) {
+      var s = clientGroupState(nm, g), q = fuBrandQuotes(nm, g).length;
+      if (s === "won") out.won.push(g); else if (s === "lost") out.lost.push(g); else if (s === "nr") { } else if (q || s === "live") out.quoted.push(g); else out.todo.push(g);
+    });
+    return out;
+  }
+  function bchips(L, cls, max) { if (!L.length) return '<span class="meta">none</span>'; var a = L.slice(0, max || 99); return a.map(function (b) { return '<span class="bch ' + cls + '">' + esc(b) + '</span>'; }).join("") + (L.length > a.length ? '<span class="bch t">+' + (L.length - a.length) + ' more</span>' : ''); }
+  function arSiteCard(st) {
+    var vs = vlVisits(st), mine = vs.filter(arVisMine), b = siteBrands(st), lv = vs[0];
+    return '<div class="card tap" data-act="ar-site" data-id="' + esc(st.id) + '"><div class="ttl2">' + (st.client ? codeTag(st.client) : '') + esc(st.name || st.client || "Site") + '</div>' +
+      '<div class="meta">' + esc([st.client && st.client !== st.name ? st.client : "", st.stage].filter(Boolean).join(" · ")) + (arEntMine(st) ? ' &middot; entered by ' + (roleIs("admin") ? esc(st.createdBy || "") : 'you') : '') + '</div>' +
+      '<div class="meta" style="margin-top:3px"><b>' + vs.length + '</b> visit' + (vs.length === 1 ? '' : 's') + (mine.length !== vs.length ? ' (' + mine.length + ' ' + (roleIs("admin") && !S.ex ? 'shown' : 'yours') + ')' : '') + (lv ? ' &middot; last ' + esc(fd(lv.createdAt || lv.date)) : '') + '</div>' +
+      '<div style="margin-top:4px"><span class="meta" style="font-size:12px">Won</span> ' + bchips(b.won, "w") + '</div>' +
+      '<div><span class="meta" style="font-size:12px">Quoted</span> ' + bchips(b.quoted, "q") + (b.lost.length ? ' ' + bchips(b.lost, "l") : '') + '</div>' +
+      '<div><span class="meta" style="font-size:12px">Still to quote</span> ' + bchips(b.todo, "t", 6) + '</div></div>';
+  }
+  function arSiteSheet(st) {
+    var vs = vlVisits(st), b = siteBrands(st), qs = vlQuotes(st).filter(function (q) { return !isCancelled("quotes", q.id); });
+    return '<h2>' + (st.client ? codeTag(st.client) : '') + esc(st.name || st.client || "Site") + '</h2><div class="meta">' + esc([arOfSite(st), st.location, st.stage].filter(Boolean).join(" · ")) + '</div>' +
+      '<div style="margin-top:6px">' + (Number(st.lat) ? vMapLink(st.lat, st.lng, "Site location") : '<span class="meta">No site location yet &mdash; the next visit with GPS fixes it.</span>') + '</div>' +
+      '<div class="tiles">' + tile(vs.length, "Times visited", vs.length ? "good" : "warn") + tile(qs.length, "Quotes", "") + tile(b.won.length, "Brands won", b.won.length ? "good" : "") + tile(b.todo.length, "Still to quote", b.todo.length ? "warn" : "good") + '</div>' +
+      '<h3 class="sec">Brands at this site</h3><div class="card"><div><b style="color:#166534">Won</b><br>' + bchips(b.won, "w") + '</div><div style="margin-top:6px"><b style="color:#1e40af">Quoted, going on</b><br>' + bchips(b.quoted, "q") + '</div>' +
+      (b.lost.length ? '<div style="margin-top:6px"><b style="color:#991b1b">Lost</b><br>' + bchips(b.lost, "l") + '</div>' : '') + '<div style="margin-top:6px"><b style="color:#475569">Still to quote</b><br>' + bchips(b.todo, "t") + '</div></div>' +
+      '<h3 class="sec">Visits &mdash; ' + vs.length + '</h3>' + (vs.length ? vs.slice(0, 40).map(function (v) {
+        return '<div class="card"><div class="meta"><b>' + esc(fd(v.createdAt || v.date)) + '</b> ' + esc(vTime(v.createdAt)) + ' &middot; ' + esc(v.createdBy || "") + (v.visitType ? ' &middot; ' + esc(v.visitType) : '') + '</div>' +
+          (v.purpose ? '<div style="font-size:14px;margin-top:2px">' + esc(v.purpose) + '</div>' : '') + (Number(v.lat) ? '<div style="margin-top:4px">' + vMapLink(v.lat, v.lng, v.verified === "Verified" ? "At the site" : "Map") + '</div>' : '') + '</div>';
+      }).join("") : '<div class="empty">Not visited yet.</div>') +
+      '<div class="acts"><button class="btn gry" data-act="close">Close</button><button class="btn gry" data-act="site-open" data-id="' + esc(st.id) + '">Full site details</button><button class="btn" data-act="sv-log" data-id="' + esc(st.id) + '">&#10003; Log visit</button></div>';
+  }
+  function viewArea() {
+    var h = '<h2>Areas</h2>' + exChips();
+    if (S.near) {
+      return h + '<div class="acts"><button class="btn sm gry" data-act="ar-back" style="min-height:44px">&larr; All areas</button></div>' +
+        '<div class="meta">Sites within 1 km of where you stand, nearest first.</div>' + (S.near.length ? S.near.map(siteRow).join("") : '<div class="empty">No site on the book within 1 km.</div>');
+    }
+    if (!S.arA) {
+      return h + '<div class="meta" style="margin-bottom:6px">Type an area &mdash; e.g. Model Town &mdash; to see what you have entered and visited there.</div>' +
+        '<div class="bar"><input id="arq" placeholder="Area or colony" value="' + esc(S.arQ || "") + '" autocomplete="off"/></div>' +
+        '<div class="acts" style="margin:6px 0"><button class="btn gry full" data-act="ar-near">&#128205; Sites near me (1 km)</button></div><div id="arres">' + arRows(S.arQ || "") + '</div>';
+    }
+    var g = arIndex().filter(function (x) { return x.k === S.arA; })[0];
+    if (!g) { S.arA = ""; return viewArea(); }
+    var vis = [];
+    g.sites.forEach(function (st) { vlVisits(st).filter(arVisMine).forEach(function (v) { vis.push({ v: v, st: st }); }); });
+    vis.sort(function (a, b) { return String(b.v.createdAt || "").localeCompare(String(a.v.createdAt || "")); });
+    var won = 0; var cards = g.sites.slice().sort(function (a, b) { var la = (vlVisits(a)[0] || {}).createdAt || a.createdAt || "", lb = (vlVisits(b)[0] || {}).createdAt || b.createdAt || ""; return String(lb).localeCompare(String(la)); }).slice(0, 60).map(function (st) { return arSiteCard(st); });
+    return h + '<div class="acts"><button class="btn sm gry" data-act="ar-back" style="min-height:44px">&larr; All areas</button><b style="font-size:17px;align-self:center">' + esc(g.label) + '</b></div>' +
+      '<div class="tiles">' + tile(g.sites.length, "Sites", "") + tile(g.ent, roleIs("admin") && !S.ex ? "Entered by the team" : "Entered by you", "") + tile(g.vis, "Sites visited", g.vis ? "good" : "warn") + tile(g.nv, "Visits", "") + '</div>' +
+      '<h3 class="sec">Sites</h3><div class="arg">' + cards.join("") + '</div>' + (g.sites.length > 60 ? '<div class="meta">The 60 latest are shown.</div>' : '') +
+      '<h3 class="sec">Visit log in ' + esc(g.label) + '</h3>' + (vis.length ? vis.slice(0, 25).map(function (x) {
+        return '<div class="card tap" data-act="ar-site" data-id="' + esc(x.st.id) + '"><div class="meta"><b>' + esc(fd(x.v.createdAt || x.v.date)) + '</b> ' + esc(vTime(x.v.createdAt)) + ' &middot; ' + esc(x.st.name || x.st.client || "") + ' &middot; ' + esc(x.v.createdBy || "") + '</div>' + (x.v.purpose ? '<div style="font-size:14px">' + esc(x.v.purpose) + '</div>' : '') + '</div>';
+      }).join("") : '<div class="empty">No visit here yet.</div>');
+  }
+  /* ================= 1.28.0 - PLUMBER / ARCHITECT: a drop-down by name, code or the first digits of the mobile =================
+     The browser's own list matches the start of the name only. This one also takes "981.." and picks the man, so the same
+     plumber is not entered twice under another spelling. A name not in the list is still taken as new (as before). */
+  var PK_V = { sn_pl: "plumber", sn_ar: "architect", cn_pl: "plumber", cn_ar: "architect", sl_who: "met" };
+  function pkvKind(id) { var k = PK_V[id]; if (k !== "met") return k || ""; var m = (S.sl || {}).met; return m === "Plumber" ? "plumber" : m === "Architect" ? "architect" : m === "Builder" ? "builder" : ""; }
+  function pkvPaint(t) {
+    var kind = pkvKind(t.id), box = el(t.id + "_pk");
+    if (!box) { box = document.createElement("div"); box.id = t.id + "_pk"; t.parentNode.insertBefore(box, t.nextSibling); }
+    var q = String(t.value || "").trim(), dig = q.replace(/\D/g, ""), byMob = dig.length >= 3 && dig.length >= q.replace(/\s/g, "").length - 1, words = lower(q).split(/\s+/).filter(Boolean);
+    if (!kind || (!byMob && q.length < 2)) { box.innerHTML = ""; return; }
+    var rx = kind === "plumber" ? /plumb/i : kind === "architect" ? /archit/i : /build/i;
+    var L = assocLive().filter(function (a) {
+      if (!a || !a.name || !rx.test(String(a.role || ""))) return false;
+      if (byMob) return [a.mobile, a.mobile2].some(function (m) { return mob10(m).indexOf(dig) === 0; });
+      var hay = " " + lower(a.name) + " " + lower(a.code || ""); return words.every(function (w) { return hay.indexOf(" " + w) >= 0; });
+    }).slice(0, 8);
+    if (L.length === 1 && dkey(L[0].name) === dkey(q)) { box.innerHTML = ""; return; }
+    box.innerHTML = '<div class="pkl">' + L.map(function (a) {
+      return '<button type="button" data-act="pkv" data-id="' + esc(t.id) + '" data-k="' + esc(a.name) + '">' + (a.code ? '<span class="code">' + esc(a.code) + '</span>' : '') + '<b>' + esc(a.name) + '</b> <span class="meta">' + esc([a.location || a.area, mob10(a.mobile)].filter(Boolean).join(" · ")) + '</span></button>';
+    }).join("") + (L.length ? '' : '<div class="meta" style="padding:8px 12px">' + (byMob ? 'No one with this mobile. Type his name to add him new.' : 'Not in the list &mdash; he will be added new.') + '</div>') + '</div>';
+  }
   function viewDay() {
     var td = today(), mv = myVisits(), vt = mv.filter(function (v) { return dstr(v.at) === td; });
     var adm = roleIs("admin");   /* 1.6.0 - admin's day is the team's day: the chip row decides whose */
@@ -3284,7 +3514,10 @@ table.att td.ok,table.att td.no{font-size:16px}
     var h = '<h2>' + (new Date().getHours() < 12 ? 'Good morning' : new Date().getHours() < 17 ? 'Good afternoon' : 'Good evening') + ', ' + esc(String(S.user).split(" ")[0]) + '</h2>' +
       '<div class="meta">' + esc(fd(td)) + (adm && S.ex ? ' &middot; showing <b>' + esc(S.ex) + '</b>' : adm ? ' &middot; showing the whole team' : '') + '</div>' +
       exChips() +   /* 1.6.0 - admin only */
+      vTopTable() +   /* 1.28.0 - sale, collection, pending */
       xHeadHtml() +   /* 1.11.0 - his month: sales, returns, target, incentive */
+      (function () { var _w = roleIs("admin") ? (S.ex || "") : (S.user || ""); return _w ? vScoreCard(_w) + vPlanCard(_w) : ""; })() +   /* 1.28.0 - his score, the plan in multiples of salary, payment speed */
+      '<div class="acts" style="margin-top:8px"><button class="btn gry full" data-act="vlog-open">&#128247; Visit log &mdash; photos and locations, day by day</button></div>' +
       '<div class="big2"><button class="btn" data-act="go-visit">+ Mark a visit</button><button class="btn" data-act="qz-new">+ New quote</button></div>' +
       '<div class="tiles">' +
         tile(vt.length, adm && !S.ex ? "Team visits today" : "Visits today", vt.length ? "good" : "", "go-visit") +
@@ -3568,12 +3801,12 @@ table.att td.ok,table.att td.no{font-size:16px}
     else if (q.length >= 2) list = all.filter(function (st) { return siteHay(st).indexOf(q) >= 0 || (qd.length >= 4 && digits(st.mobile).indexOf(qd) >= 0); }).slice(0, 40);
     else list = all.filter(function (st) { return isMe(siteOwner(st).by); }).sort(function (a, b) { return String(lastTouch(b)).localeCompare(String(lastTouch(a))); }).slice(0, 15);
     if (!list.length) return '<div class="empty">' + (q.length >= 2 ? 'No site matches. Use + New site.' : 'No site of yours yet. Search above, or + New site.') + '</div>';
-    return (S.near ? '<div class="meta">Within 400 m of you</div>' : q.length < 2 ? '<div class="meta">My sites, latest first</div>' : '') + list.map(siteRow).join("");
+    return (S.near ? '<div class="meta">Within 1 km of you, nearest first</div>' : q.length < 2 ? '<div class="meta">My sites, latest first</div>' : '') + list.map(siteRow).join("");
   }
   function lastTouch(st) { var v = vlVisits(st)[0]; return v ? String(v.createdAt || v.date || "") : String(st.createdAt || ""); }
   function siteRow(st) {
     var o = siteOwner(st), mine = !o.by || isMe(o.by), lv = vlVisits(st)[0];
-    return '<div class="card tap ' + (mine ? 'mine' : 'other') + '" data-act="site-open" data-id="' + esc(st.id) + '"><div class="ttl2">' + esc(st.name || st.client || "Site") + '</div>' +
+    return '<div class="card tap ' + (mine ? 'mine' : 'other') + '" data-act="site-open" data-id="' + esc(st.id) + '"><div class="ttl2">' + esc(st.name || st.client || "Site") + (S.near && S.nearD && S.nearD[st.id] != null ? ' <span class="pill" style="background:#e0f2fe;color:#075985">' + (S.nearD[st.id] >= 1000 ? (S.nearD[st.id] / 1000).toFixed(1) + ' km' : S.nearD[st.id] + ' m') + ' away</span>' : '') + '</div>' +   /* 1.28.0 */
       '<div class="meta">' + (st.client ? codeTag(st.client) : '') + esc([st.client && st.client !== st.name ? st.client : "", st.city || st.location, st.stage].filter(Boolean).join(" · ")) + '</div>' +
       (mine ? '' : '<div class="who">Already visited by ' + esc(o.by) + (o.at ? ' on ' + esc(fd(o.at)) : '') + '</div>') +
       (lv ? '<div class="meta">Last visit ' + esc(fd(lv.createdAt || lv.date)) + ' by ' + esc(lv.createdBy || "") + '</div>' : '<div class="meta">No visit logged yet</div>') +
@@ -3587,9 +3820,11 @@ table.att td.ok,table.att td.no{font-size:16px}
       if (!g.lat) { toast("This phone did not give a location. Allow location for this app and try again."); render(); return; }
       var R = 6371000, rad = Math.PI / 180;
       var d = function (a, b, c, e) { var x = (e - b) * rad * Math.cos((a + c) / 2 * rad), y = (c - a) * rad; return Math.sqrt(x * x + y * y) * R; };
-      S.near = (S.data.sites || []).filter(function (st) { return Number(st.lat) && Number(st.lng) && d(g.lat, g.lng, Number(st.lat), Number(st.lng)) <= 400; });
+      S.nearD = {};   /* 1.28.0 - 1 km round, nearest first, and how far */
+      S.near = (S.data.sites || []).filter(function (st) { if (!(Number(st.lat) && Number(st.lng))) return false; var m = d(g.lat, g.lng, Number(st.lat), Number(st.lng)); if (m > 1000) return false; S.nearD[st.id] = Math.round(m); return true; })
+        .sort(function (a, b) { return S.nearD[a.id] - S.nearD[b.id]; });
       S.q = ""; render();
-      if (!S.near.length) toast("No site on the book within 400 m. Use + New site.");
+      if (!S.near.length) toast("No site on the book within 1 km." + (S.tab === "visit" ? " Use + New site." : ""));
     });
   }
   /* ===== STAGE -> WHAT TO PITCH, IN OUR BRANDS (CRM 6.9.787 / Visit 1.4.21) ===== */
@@ -3711,6 +3946,7 @@ table.att td.ok,table.att td.no{font-size:16px}
       nextHtml("sl_next", L.next) +
       '<label>Stage now <span class="req">*</span>' + (st.stage ? ' <span class="meta">(was ' + esc(st.stage) + ' &mdash; change it only if it moved)</span>' : '') + '</label><select id="sl_stage"><option value="">&mdash; pick the stage you saw &mdash;</option>' + STAGES.map(function (s) { return '<option' + (L.stage === s ? ' selected' : '') + '>' + esc(s) + '</option>'; }).join("") + '</select>' +   /* 1.5.0 - must be picked */
       '<label>Site photos <span class="meta">(as many as you like)</span></label>' + picsHtml("sl") +   /* 1.5.0 */
+      (Number(st.lat) && Number(st.lng) ? '' : '<label style="display:flex;gap:10px;align-items:center;min-height:44px;font-weight:700"><input type="checkbox" data-act="sl-setloc"' + (L.setLoc === false ? '' : ' checked') + ' style="width:22px;height:22px"/> I am at the site &mdash; save this as the site&rsquo;s location</label>') +   /* 1.28.0 */
       '<div class="meta" style="margin-top:6px">Your location is taken with the visit, to show you were at the site.</div>' +
       '<div class="acts"><button class="btn gry" data-act="close">Cancel</button><button class="btn gry" data-act="site-open" data-id="' + esc(st.id) + '">Site details</button><button class="btn" data-act="sl-save">Save the visit</button></div>';
   }
@@ -3742,7 +3978,8 @@ table.att td.ok,table.att td.no{font-size:16px}
         var _fld = ({ Plumber: "plumber", Architect: "architect", Builder: "builder" })[L.met];
         if (!String(st[_fld] || "").trim()) { var _up = {}; _up[_fld] = _wNm; saveRow("sites", Object.assign({}, st, _up)); st[_fld] = _wNm; }   /* the site had none: he is the one */
       }
-      var extra = { siteId: st.id, setLocation: false, purpose: _purp, photoB64: "", visitType: _vt, lat: g.lat || "", lng: g.lng || "", accuracy: g.acc || "" };
+      var _setLoc = !(Number(st.lat) && Number(st.lng)) && !!g.lat && L.setLoc !== false;   /* 1.28.0 - the first visit with GPS fixes where the site is */
+      var extra = { siteId: st.id, setLocation: _setLoc, purpose: _purp, photoB64: "", visitType: _vt, lat: g.lat || "", lng: g.lng || "", accuracy: g.acc || "" };
       /* shown at once; the server's own row replaces it on the next update */
       var local = { id: "LV-" + Date.now(), siteId: st.id, siteName: st.name || "", client: st.client || "", createdBy: S.user, createdAt: iso(), date: today(), visitType: _vt, purpose: _purp, verified: "" };
       (S.data.sitevisits = S.data.sitevisits || []).push(local);
@@ -3751,7 +3988,8 @@ table.att td.ok,table.att td.no{font-size:16px}
       vpSend("sl", { kind: "site", visitKey: "SV-" + Date.now(), siteId: st.id, who: st.name || st.client || "" });   /* 1.5.0 */
       nextFollow(st.client || st.name, _next, "Next meeting (site visit, " + (st.name || "") + ") - For: " + _brands.join(", ") + ": " + L.note);   /* 1.2.0 */
       api("siteVisit", extra).then(function (r) {
-        if (r && r.ok) { local.verified = r.verified || ""; toast("Visit saved" + (r.verified === "Verified" ? " — at the site." : r.note ? " — " + r.note : ".")); }
+        if (r && r.ok && _setLoc) { st.lat = g.lat; st.lng = g.lng; }   /* 1.28.0 */
+        if (r && r.ok) { local.verified = r.verified || ""; local.lat = g.lat || ""; local.lng = g.lng || ""; toast("Visit saved" + (_setLoc ? " — site location saved." : r.verified === "Verified" ? " — at the site." : r.note ? " — " + r.note : ".")); }
         else toast("Not saved: " + ((r && r.error) || "the server refused it"));
         render();
       }).catch(function () { callKeep("siteVisit", extra); toast("No signal — the visit is kept on this phone and goes up by itself."); paintSync(); });
@@ -4370,14 +4608,14 @@ table.att td.ok,table.att td.no{font-size:16px}
   /* ================= PAINT ================= */
   function render() {
     if (!S.user || !S.data) return;
-    var t = S.tab, body = t === "day" ? viewDay() : t === "visit" ? viewVisit() : t === "quote" ? viewQz() : t === "fu" ? viewFu() : viewQuotes();   /* 1.21.0 - fu */
+    var t = S.tab, body = t === "day" ? viewDay() : t === "visit" ? viewVisit() : t === "quote" ? viewQz() : t === "fu" ? viewFu() : t === "area" ? viewArea() : viewQuotes();   /* 1.21.0 - fu; 1.28.0 - area */
     var ae = document.activeElement, aid = ae && ae.id, ss = null;
     try { if (ae && ae.selectionStart != null) ss = [ae.selectionStart, ae.selectionEnd]; } catch (e) { ss = null; }
     el("root").innerHTML = '<div class="top"><div class="ttl"><b>Visit &amp; Quote</b><span class="sub">' + esc(S.user) + ' &middot; v' + APP_VERSION + '</span></div>' +
       (function () { try { return attMeBtn(); } catch (e) { return ""; } })() + '<button data-act="refresh" aria-label="Update">&#8635;</button><button data-act="menu">Menu</button></div>' +
       (S.newVer ? '<div class="note warn" style="margin-top:10px"><b>Version ' + esc(S.newVer) + ' is ready.</b> You are on ' + APP_VERSION + '. <button class="btn sm" data-act="vq-upd">Update now</button></div>' : '') +   /* 1.4.0 */
       body + '<div class="sync" id="ew_sync">' + syncLine() + '</div>' +
-      '<div class="nav">' + [["day", "&#9728;", "My day"], ["visit", "&#128205;", "Visit"], ["quotes", "&#8377;", "Quotes"], ["fu", "&#9989;", "Follow-up"]].map(function (x) {
+      '<div class="nav">' + [["day", "&#9728;", "My day"], ["visit", "&#128205;", "Visit"], ["area", "&#128506;", "Areas"], ["quotes", "&#8377;", "Quotes"], ["fu", "&#9989;", "Follow-up"]].map(function (x) {
         return '<button class="' + (t === x[0] || (t === "quote" && x[0] === "quotes") ? 'on' : '') + '" data-act="tab" data-k="' + x[0] + '"><span class="i">' + x[1] + '</span>' + x[2] + '</button>'; }).join("") + '</div>' +
       (S.sheet ? '<div class="sheet" data-act="sheet-bg"><div class="inner">' + S.sheet + '</div></div>' : '');
     if (aid && el(aid)) { var e2 = el(aid); try { e2.focus(); if (ss) e2.setSelectionRange(ss[0], ss[1]); } catch (e) { } }
@@ -4522,6 +4760,15 @@ table.att td.ok,table.att td.no{font-size:16px}
     if (act === "login") { doLogin(t); return; }
     if (!S.data) return;
     if (act === "tab") { S.tab = k; S.q = ""; S.near = null; S.sheet = null; render(); window.scrollTo(0, 0); return; }
+    if (act === "vlog-open") { S.vlDay = S.vlDay || today(); S.sheet = vlogSheet(S.vlDay); render(); return; }   /* 1.28.0 */
+    if (act === "vlog-day") { var _d0 = new Date(); _d0.setDate(_d0.getDate() + Number(k || 0)); S.vlDay = ymdLocal(_d0); S.sheet = vlogSheet(S.vlDay); render(); return; }
+    if (act === "ar-open") { S.arA = k; render(); window.scrollTo(0, 0); return; }
+    if (act === "ar-back") { S.arA = ""; S.near = null; render(); return; }
+    if (act === "ar-near") { nearMe(t); return; }
+    if (act === "ar-site") { var _as = siteById(t.getAttribute("data-id")); if (_as) { S.sheet = arSiteSheet(_as); render(); } return; }
+    if (act === "ex-pick") { S.ex = k; render(); return; }
+    if (act === "sl-setloc") { S.sl = S.sl || {}; S.sl.setLoc = !!t.checked; return; }
+    if (act === "pkv") { var _pi = el(t.getAttribute("data-id")); if (_pi) { _pi.value = k; var _pb = el(_pi.id + "_pk"); if (_pb) _pb.innerHTML = ""; try { _pi.dispatchEvent(new Event("input", { bubbles: true })); _pi.dispatchEvent(new Event("change", { bubbles: true })); } catch (eP) { } } return; }
     if (act === "fu-b") { S.fuB = k || ""; S.fuF = "live"; S.fuQ = ""; render(); window.scrollTo(0, 0); return; }   /* 1.21.0 */
     if (act === "fu-f") { S.fuF = k || "live"; render(); return; }
     if (act === "refresh") { S.sheet = null; pull(true); loadCat(true); return; }
@@ -4710,6 +4957,9 @@ table.att td.ok,table.att td.no{font-size:16px}
     if (t.id === "sn_dist") { var _sd = el("sn_cdl"); if (_sd) _sd.innerHTML = dl("sn_cities", areasFor(t.value)); return; }
     if (t.id === "cn_dist") { var _cd = el("cn_adl"); if (_cd) _cd.innerHTML = dl("cn_areas", areasFor(t.value)); return; }
     if (t.id === "sq") { S.q = t.value; S.near = null; var r = el("sres"); if (r) r.innerHTML = siteResults(); return; }
+    if (t.id === "arq") { S.arQ = t.value; var ra = el("arres"); if (ra) ra.innerHTML = arRows(S.arQ); return; }   /* 1.28.0 */
+    if (t.id === "vlog_day") { S.vlDay = t.value || today(); S.sheet = vlogSheet(S.vlDay); render(); return; }
+    if (PK_V[t.id]) { pkvPaint(t); }
     if (t.id === "fuq") { S.fuQ = t.value; var _fr = el("fures"); if (_fr && S.fuB) { var _q = lower(S.fuQ), _f = S.fuF || "live"; _fr.innerHTML = fuList(fuRows(S.fuB).filter(function (r) { return r.st === _f && (!_q || lower([r.c.name, r.c.code, r.c.area, r.c.location].join(" ")).indexOf(_q) >= 0); }), S.fuB); } return; }   /* 1.21.0 */
     if (t.id === "qq") { S.q = t.value; var r2 = el("qres"); if (r2) { var f = S.fq || "all", q = lower(S.q); var list = myQuotes().filter(function (x) { return fqOk(x, f); }).filter(function (x) { return !q || lower([x.client, x.quoteNo, x.code, x.brand, x.siteName].join(" ")).indexOf(q) >= 0; }); r2.innerHTML = list.length ? qTable(list.slice(0, 120)) : '<div class="empty">No quote here.</div>'; } return; }   /* 1.6.0 - the same table as the list it filters (it switched to cards while typing) */
     if (t.id === "qz_cq") { S.qz.cq = t.value; var q3 = lower(t.value), cl = myClients(); var hits = q3.length >= 2 ? cl.filter(function (c) { return lower([c.code, c.oldCode, c.name, c.area, c.location, c.mobile].join(" ")).indexOf(q3) >= 0; }) : []; el("qz_hits").innerHTML = qzHits(hits, q3); return; }
