@@ -449,7 +449,8 @@
 /* ==EWCORE:drivers:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.1066";   /* 6.9.1066 (27 Nov 2026) - FIX: the plan slabs as multiples of salary never reached the Visit app - 6.9.1065 wrote them before the plan part of the snapshot existed. Found reading the live snapshot after deploy. */
+  var APP_VERSION = "6.9.1067";   /* 6.9.1067 (27 Nov 2026) - HIS WORDS: "Stock in hand section is very confusing, we have to make it simple, let us say i want to check current TOTO stock in hand its not showing any option, want proper display in table format with product pics". The Stock screen opens on "Stock in hand": a button per brand (TOTO, Huliot, ...) with how many products and their value, search, a category pick, and a table with the picture, product, category, in hand, on challans, free, rate and value - grouped by category with subtotals. The per-box ordering table he had as "All stock" is one tap away as "Ordering sheet", unchanged. */
+  /* before: */   /* 6.9.1066 (27 Nov 2026) - FIX: the plan slabs as multiples of salary never reached the Visit app - 6.9.1065 wrote them before the plan part of the snapshot existed. Found reading the live snapshot after deploy. */
   /* before: */   /* 6.9.1065 (27 Nov 2026) - HIS WORDS: "for brand executives ... plumber and architect name also to avoid duplicate entry, type initial name or initial phone no will show drop down ... if any site won he can mark won and type model no ... payment details, finalized at what amount, GST extra or included ... executive can see at top of app - sale this month, collection this month, total pending". The brand app's server is sent Energy World's plumbers and architects (searched there; the mobile never reaches a brand phone). A site added with a picked partner is filed with that partner; a new one with a mobile is added to Partners once. Won details and payments show in Their follow-ups and the Excel. Each executive's month snapshot for the Visit app now carries collection this month and the total pending on his clients. */
   /* before: */   /* 6.9.1064 (26 Nov 2026) - HIS WORDS: "Brand followup app, make provision that executive can enter new site which is in their followup not in ours list, to avoid duplicate make provision to check by entering phone no initially, site added by brand executives will auto add to our CRM if brand executive search client by entering phone no and found its there in our record, show him he is our client for which brand and quoted for which brand, do not show any quote or any download option... he can only view site assigned to him or sites added by him". The book of fingerprints now carries, per mobile, the client name, code, area and the brand NAMES won and quoted (no value, no quote); a site he adds is handled by the owner's CRM by itself - same mobile on the book: linked; nobody on the book by mobile or name: added as a lead; only a name-only match waits for the owner. */
   /* before: */   /* 6.9.1063 (26 Nov 2026) - HIS WORDS: "show pdf for employee salary vs incentive, want a little incentive scheme for timely payment ... and vice versa for late payment", slabs at 15 / 30 / 45 / 60 days, his rates 0.5% / 0.25% / 0.1% / 0 / -0.25%, -0.5% unpaid at 90 days, trial in December, paid from January 2027. The plan card, each statement and WhatsApp carry the payment-speed line; a team PDF sets six months of salary against incentive. */
@@ -63030,7 +63031,7 @@ function viewCatalogue() {
     ensureStock();
     gdStaffSync();
     var h = '<div class="card"><h2 style="margin:0">Stock on hand</h2>' + gdBarHtml() +
-      '<div class="meta" style="font-size:13px">On hand = physical count + <b>purchase bills uploaded from Tally</b> + adjustments &minus; <b>challans dispatched</b> + returns booked in. Free = on hand &minus; challans made but not yet dispatched.</div>' +
+      (S.stkView ? '<div class="meta" style="font-size:13px">On hand = physical count + <b>purchase bills uploaded from Tally</b> + adjustments &minus; <b>challans dispatched</b> + returns booked in. Free = on hand &minus; challans made but not yet dispatched.</div>' : '') +   /* 6.9.1067 - the long sum lives under the simple table */
       '<div class="acts" style="margin-top:8px;flex-wrap:wrap;gap:6px">' +
       '<button class="btn sm" data-act="stock-import">&#8593; Upload Tally bills / register</button>' +
       '<button class="btn sm ghost" data-act="pc-open">Physical count</button>' +
@@ -63045,6 +63046,7 @@ function viewCatalogue() {
     if (S.stkView === "levels") return h + stkLevelsHtml();
     if (S.stkView === "dead") return h + stkDeadHtml();
     if (S.stkView === "count") return h + stkCountHtml();
+    if (!S.stkView) return h + stkSimpleHtml();   /* 6.9.1067 - Stock in hand: brand, search, pictures */
     h += stkOrderHtml(false);
     /* v6.9.605 - THE MONTH'S BILLS, TALLY AGAINST STOCK: which bills on the uploaded Purchase
        Register are in stock and which are still to upload */
@@ -63884,7 +63886,7 @@ function viewCatalogue() {
     var h = '<div class="card" style="border-color:' + (L.length ? '#fecaca' : '#99f6e4') + ';background:' + (L.length ? '#fef2f2' : '#f0fdfa') + '">' +
       '<div class="acts" style="align-items:center;margin:0;flex-wrap:wrap;gap:6px"><h3 class="grow" style="margin:0;color:' + (L.length ? '#b91c1c' : '#0f766e') + '">Stock to order' +
         (L.length ? ' — ' + plural(L.length, "item") : ' — nothing at or below its reorder point') + (_uncS.length ? ' <span style="color:#b45309">+ ' + _uncS.length + ' not counted</span>' : '') + '</h3>' +
-        (full ? '<button class="btn sm ghost" style="min-height:44px" data-act="stk-ord" data-v="">All stock</button>'
+        (full ? '<button class="btn sm ghost" style="min-height:44px" data-act="stk-ord" data-v="">Stock in hand</button>'
               : '<button class="btn sm" data-act="stk-ord" data-v="1">Open the list</button>') + '</div>' +
       '<div class="meta" style="font-size:12.5px;margin-top:3px">Only products with a reorder point (“Min”) set. One is listed when its <b>free</b> stock (on hand less challans made but not yet dispatched) is at or below it. <b>Order</b> = maximum less free, rounded up to whole boxes when Per box is set; with no maximum set, up to the reorder point only.</div>';
     var _oc = full && (L.length || _uncS.length) ? stkCtx() : null;   /* 6.9.707 */
@@ -64014,6 +64016,103 @@ function viewCatalogue() {
       "\n\nPlease confirm the delivery date.";
   }
 
+  /* ===== 6.9.1067 - STOCK IN HAND, MADE SIMPLE  (27 Nov 2026) =====
+     HIS WORDS: "Stock in hand section is very confusing, we have to make it simple, let us say i want to check current TOTO
+     stock in hand its not showing any option, want proper display in table format with product pics".
+     One row per product of the godown chosen above, from the same positions every other stock screen reads (stkCtx().pos):
+     In hand = on hand; On challans = held on challans made but not dispatched; Free = in hand less that. A button per brand
+     (brand GROUP, so "TOTO" takes every TOTO line), the search box, a category pick, and by default only what is in hand -
+     a product at zero or below is one tap away. Grouped by category, subtotal per category, picture on every row. */
+  function stkSimpleRows() {
+    var ctx = stkCtx(), rate = rateByCode(), out = [];
+    Object.keys(ctx.pos).forEach(function (k) {
+      var P = ctx.pos[k], p = ctx.pmap[k] || prodByCode(k) || {};
+      if (!P || (!P.onhand && !P.held && !P.counted && !P.min)) return;   /* at nil: kept when counted or given a minimum - that is "out of stock", shown with the tick */
+      var b = ""; try { b = brandGroup(realBrand(p) || p.brand || "") || ""; } catch (e) { b = p.brand || ""; }
+      var rt = rate[k] || 0;
+      out.push({ code: k, desc: p.desc || P.desc || k, brand: String(b || "").trim() || "No brand", cat: String(p.cat || "").trim() || "Other", pic: p.pic || "", unit: p.unit || "",
+        onhand: P.onhand, held: P.held, free: P.free, counted: P.counted, rate: rt, value: P.onhand > 0 ? P.onhand * rt : 0 });
+    });
+    return out;
+  }
+  function stkSimpleFilter(all) {
+    var br = S.stkBr || "", cat = S.stkCat || "", q = String(S.stkQ || "").trim().toLowerCase(), z = !!S.stkZero;
+    var words = q.split(/\s+/).filter(Boolean);
+    return all.filter(function (x) {
+      if (br && x.brand !== br) return false;
+      if (cat && x.cat !== cat) return false;
+      if (!z && !(x.onhand > 0)) return false;
+      if (words.length) { var hay = (x.desc + " " + x.code + " " + x.brand + " " + x.cat).toLowerCase(); if (!words.every(function (w) { return hay.indexOf(w) >= 0; })) return false; }
+      return true;
+    }).sort(function (a, b) { return a.cat.localeCompare(b.cat) || b.value - a.value || a.desc.localeCompare(b.desc); });
+  }
+  function stkQty(v) { v = Math.round((Number(v) || 0) * 100) / 100; return String(v); }
+  function stkSimpleTable(list) {
+    if (!list.length) return '<div class="empty">Nothing here' + (S.stkZero ? '' : ' in hand') + '. ' + (S.stkQ ? 'Try fewer letters, or ' : '') + (S.stkZero ? '' : 'tap <b>Show zero / minus too</b> to see products at nil.') + '</div>';
+    var TH = function (t, al, cls) { return '<th' + (cls ? ' class="' + cls + '"' : '') + ' style="padding:9px 8px;text-align:' + (al || 'right') + ';font-size:12px;letter-spacing:.04em;white-space:nowrap">' + t + '</th>'; };
+    var groups = [], m = {};
+    list.slice(0, 600).forEach(function (x) { if (!m[x.cat]) { m[x.cat] = { name: x.cat, rows: [], q: 0, v: 0 }; groups.push(m[x.cat]); } m[x.cat].rows.push(x); m[x.cat].q += Math.max(0, x.onhand); m[x.cat].v += x.value; });
+    var n = 0;
+    return '<style>@media(max-width:639px){.stks .ph0{display:none}.stks td,.stks th{padding-left:5px!important;padding-right:5px!important}}</style>' +
+      '<div class="stks" style="overflow-x:auto;background:#fff;border:1px solid #e2e8f0;border-radius:12px"><table style="width:100%;border-collapse:collapse;font-size:13.5px">' +
+      '<thead><tr style="background:#1F3A5F;color:#fff">' + TH("#", "right", "ph0") + TH("", "left") + TH("PRODUCT", "left") + TH("IN HAND") + TH("ON CHALLANS", "right", "ph0") + TH("FREE") + TH("RATE", "right", "ph0") + TH("VALUE", "right", "ph0") + '</tr></thead><tbody>' +
+      groups.map(function (G) {
+        return '<tr><td colspan="8" style="padding:9px 10px;background:#EEF2F7;border-top:2px solid #CBD5E1"><div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center"><b style="color:#1F3A5F">' + esc(G.name) + '</b>' +
+          '<span style="font-size:12.5px;color:#475569">' + plural(G.rows.length, "product") + ' &middot; ' + stkQty(G.q) + ' in hand</span><span style="margin-left:auto;font-weight:800;color:#1F3A5F">' + (G.v ? money(G.v) : '') + '</span></div></td></tr>' +
+          G.rows.map(function (x, i) {
+            n++;
+            var pic = x.pic ? driveImg(x.pic, 120) : "", col = x.onhand <= 0 ? '#b91c1c' : '#0f172a', fcol = x.free < 0 ? '#b91c1c' : x.free === 0 ? '#c2410c' : '#0f766e';
+            return '<tr style="border-top:1px solid #f1f5f9;background:' + (i % 2 ? '#F8FAFC' : '#fff') + '">' +
+              '<td class="ph0" style="padding:8px;text-align:right;color:#94a3b8;font-weight:700;font-size:12px">' + n + '</td>' +
+              '<td style="padding:6px 4px;width:60px">' + (pic
+                ? '<img src="' + esc(pic) + '" loading="lazy" alt="" data-act="pv-open" data-code="' + esc(x.code) + '" style="width:54px;height:54px;object-fit:contain;border-radius:10px;background:#fff;border:1px solid #e2e8f0;cursor:pointer;display:block"/>'
+                : '<div data-act="pv-open" data-code="' + esc(x.code) + '" style="width:54px;height:54px;border-radius:10px;background:#F1F5F9;color:#94a3b8;font-size:11px;display:flex;align-items:center;justify-content:center;text-align:center;cursor:pointer">no photo</div>') + '</td>' +
+              '<td style="padding:8px;min-width:160px"><div style="font-weight:700;color:#0f172a;word-break:break-word;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden">' + esc(x.desc) + '</div>' +
+                '<div style="font-size:12px;color:#64748b"><span style="color:#0f766e;font-weight:700;cursor:pointer" data-act="pv-open" data-code="' + esc(x.code) + '">' + esc(x.code) + '</span>' + (S.stkBr ? '' : ' &middot; ' + esc(x.brand)) + (x.counted ? '' : ' &middot; <span style="color:#b45309">not counted yet</span>') + '</div></td>' +
+              '<td data-act="stk-open" data-code="' + esc(x.code) + '" style="padding:8px;text-align:right;font-weight:900;font-size:16px;color:' + col + ';white-space:nowrap;cursor:pointer" title="Tap for how it came to this">' + stkQty(x.onhand) + (x.unit ? '<div style="font-size:11.5px;font-weight:600;color:#94a3b8">' + esc(x.unit) + '</div>' : '') + '</td>' +
+              '<td class="ph0" style="padding:8px;text-align:right;color:#475569;white-space:nowrap">' + (x.held ? stkQty(x.held) : '&mdash;') + '</td>' +
+              '<td style="padding:8px;text-align:right;font-weight:800;color:' + fcol + ';white-space:nowrap">' + stkQty(x.free) + '</td>' +
+              '<td class="ph0" style="padding:8px;text-align:right;color:#64748b;white-space:nowrap">' + (x.rate ? money(x.rate) : '&mdash;') + '</td>' +
+              '<td class="ph0" style="padding:8px;text-align:right;font-weight:700;white-space:nowrap">' + (x.value ? money(x.value) : '&mdash;') + '</td></tr>' +
+              (S.stkOpen === x.code ? '<tr><td colspan="8" style="padding:0 0 10px">' + stockLedgerPanel(x.code) + '</td></tr>' : '');
+          }).join("");
+      }).join("") + '</tbody></table></div>' + (list.length > 600 ? '<div class="meta">The first 600 are shown &mdash; pick a brand or type to narrow it.</div>' : '');
+  }
+  function stkSimpleSum(list) {
+    var q = 0, v = 0; list.forEach(function (x) { q += Math.max(0, x.onhand); v += x.value; });
+    return '<div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0">' +
+      [[plural(list.length, "product"), S.stkBr ? esc(S.stkBr) + (S.stkCat ? ' &middot; ' + esc(S.stkCat) : '') : 'all brands'], [stkQty(q), 'pieces in hand'], [money(v), 'value at purchase rate']].map(function (t) {
+        return '<div style="flex:1 1 150px;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:10px 12px"><div style="font-size:20px;font-weight:900;color:#1F3A5F">' + t[0] + '</div><div class="meta" style="font-size:12.5px">' + t[1] + '</div></div>';
+      }).join("") + '</div>';
+  }
+  function stkSimpleHtml() {
+    var all = stkSimpleRows(), inH = all.filter(function (x) { return x.onhand > 0; });
+    var bm = {}; inH.forEach(function (x) { var b = bm[x.brand] = bm[x.brand] || { n: 0, v: 0 }; b.n++; b.v += x.value; });
+    var brands = Object.keys(bm).sort(function (a, b) { return (bm[b].v - bm[a].v) || a.localeCompare(b); });
+    if (S.stkBr && !bm[S.stkBr] && !all.some(function (x) { return x.brand === S.stkBr; })) S.stkBr = "";
+    var cats = {}; all.forEach(function (x) { if ((!S.stkBr || x.brand === S.stkBr) && (S.stkZero || x.onhand > 0)) cats[x.cat] = (cats[x.cat] || 0) + 1; });
+    var bb = function (k, label, sub) { var on = (S.stkBr || "") === k; return '<button class="btn sm' + (on ? '' : ' ghost') + '" style="min-height:44px;flex:none" data-act="stk-br" data-k="' + esc(k) + '">' + label + (sub ? ' <span style="font-weight:600;opacity:.75;font-size:12px">' + sub + '</span>' : '') + '</button>'; };
+    var list = stkSimpleFilter(all);
+    return '<div class="card" style="padding:10px 12px"><div style="font-weight:800;color:#1F3A5F;margin-bottom:4px">Pick a brand</div>' +
+      '<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch;flex-wrap:wrap">' + bb("", "All brands", inH.length) +
+        brands.map(function (b) { return bb(b, esc(b), bm[b].n); }).join("") + '</div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;align-items:center">' +
+        '<input id="stkq" class="grow" style="flex:1 1 220px;min-height:44px" placeholder="Search product, code or size&hellip;" value="' + esc(S.stkQ || "") + '" autocomplete="off"/>' +
+        '<select id="stkcat" style="min-height:44px;flex:0 1 220px"><option value="">Every category</option>' + Object.keys(cats).sort().map(function (c) { return '<option' + (S.stkCat === c ? ' selected' : '') + ' value="' + esc(c) + '">' + esc(c) + ' (' + cats[c] + ')</option>'; }).join("") + '</select>' +
+        '<label style="display:flex;gap:6px;align-items:center;min-height:44px;font-size:13px;font-weight:700"><input type="checkbox" data-act="stk-zero"' + (S.stkZero ? ' checked' : '') + ' style="width:20px;height:20px"/> Show zero / minus too</label>' +
+        '<button class="btn sm ghost" style="min-height:44px" data-act="stk-sxl">&#8681; Excel of this list</button></div></div>' +
+      '<div id="stk_sum">' + stkSimpleSum(list) + '</div><div id="stk_tb">' + stkSimpleTable(list) + '</div>' +
+      '<div class="meta" style="font-size:12px;margin-top:6px"><b>In hand</b> = physical count + purchase bills uploaded from Tally + adjustments &minus; challans dispatched + returns booked in. <b>On challans</b> = on challans made but not yet dispatched. <b>Free</b> = in hand less that. Tap the in-hand number to see how it came to that; tap the picture for the product. Bills to upload, Tally checks and the per-box ordering table are under <b>Ordering sheet</b>.</div>';
+  }
+  function stkSimplePaint() { var all = stkSimpleRows(), list = stkSimpleFilter(all), a = el("stk_tb"), b = el("stk_sum"); if (a) a.innerHTML = stkSimpleTable(list); if (b) b.innerHTML = stkSimpleSum(list); }
+  function stkSimpleXlsx() {
+    var list = stkSimpleFilter(stkSimpleRows());
+    var rows = [["Brand", "Category", "Code", "Product", "In hand", "On challans", "Free", "Rate", "Value"].map(function (x) { return { v: x, s: XL.HEAD }; })];
+    list.forEach(function (x) { rows.push([x.brand, x.cat, x.code, x.desc, x.onhand, x.held, x.free, x.rate || "", Math.round(x.value) || ""]); });
+    dlXlsx("Stock_in_hand_" + (S.stkBr ? S.stkBr.replace(/[^A-Za-z0-9]+/g, "_") + "_" : "") + today() + ".xlsx", "Stock in hand", rows, [14, 20, 14, 48, 10, 11, 10, 11, 13]);
+  }
+  document.addEventListener("input", function (ev) { var _t = ev.target; if (_t && _t.id === "stkq") { S.stkQ = _t.value; stkSimplePaint(); } });   /* 6.9.1067 - the table only: the cursor stays */
+  document.addEventListener("change", function (ev) { var _t = ev.target; if (_t && _t.id === "stkcat") { S.stkCat = _t.value; render(); } });
   /* ---- the Planning bar on the Stock screen ---- */
   function stkPlanBar() {
     var v = S.stkOrd ? "order" : (S.stkView || ""), ctx = stkCtx();
@@ -64023,8 +64122,9 @@ function viewCatalogue() {
       return '<button class="btn sm' + (on ? '' : ' ghost') + '" style="min-height:44px" data-act="' + act + '"' + (extra || '') + '>' + label + '</button>';
     };
     return '<div class="acts" style="flex-wrap:wrap;gap:6px;margin:8px 0">' +
-      chip("", "All stock", "stk-view", ' data-v=""') +
+      chip("", "Stock in hand", "stk-view", ' data-v=""') +   /* 6.9.1067 */
       chip("order", "Stock to order" + (nOrd ? " (" + nOrd + ")" : ""), "stk-ord", ' data-v="1"') +
+      chip("sheet", "Ordering sheet", "stk-view", ' data-v="sheet"') +
       chip("levels", "Levels", "stk-view", ' data-v="levels"') +
       chip("dead", "Non-moving" + (nDead ? " (" + nDead + ")" : ""), "stk-view", ' data-v="dead"') +
       chip("count", "Today’s count", "stk-view", ' data-v="count"') +
@@ -68293,6 +68393,9 @@ function viewCatalogue() {
     if (act === "stk-ord-xlsx") { if (!STOCK_LOADED) { ensureStock(); toast("Stock is still loading \u2014 try again in a moment."); return; } stkOrderXlsx(t.getAttribute("data-b") || ""); return; }
     /* ---- 6.9.621 - planning ---- */
     if (act === "stk-view") { S.stkView = t.getAttribute("data-v") || ""; S.stkOrd = false; render(); window.scrollTo(0, 0); return; }
+    if (act === "stk-br") { S.stkBr = t.getAttribute("data-k") || ""; S.stkCat = ""; S.stkOpen = ""; render(); return; }   /* 6.9.1067 */
+    if (act === "stk-zero") { S.stkZero = !!t.checked; render(); return; }
+    if (act === "stk-sxl") { stkSimpleXlsx(); return; }
     if (act === "stk-ord-wa") {
       var _wb = t.getAttribute("data-b") || "", _wt = stkOrderText(_wb);
       window.open("https://wa.me/?text=" + encodeURIComponent(_wt), "_blank");
