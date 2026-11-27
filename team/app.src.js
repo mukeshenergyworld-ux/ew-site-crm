@@ -449,7 +449,8 @@
 /* ==EWCORE:drivers:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.1064";   /* 6.9.1064 (26 Nov 2026) - HIS WORDS: "Brand followup app, make provision that executive can enter new site which is in their followup not in ours list, to avoid duplicate make provision to check by entering phone no initially, site added by brand executives will auto add to our CRM if brand executive search client by entering phone no and found its there in our record, show him he is our client for which brand and quoted for which brand, do not show any quote or any download option... he can only view site assigned to him or sites added by him". The book of fingerprints now carries, per mobile, the client name, code, area and the brand NAMES won and quoted (no value, no quote); a site he adds is handled by the owner's CRM by itself - same mobile on the book: linked; nobody on the book by mobile or name: added as a lead; only a name-only match waits for the owner. */
+  var APP_VERSION = "6.9.1065";   /* 6.9.1065 (27 Nov 2026) - HIS WORDS: "for brand executives ... plumber and architect name also to avoid duplicate entry, type initial name or initial phone no will show drop down ... if any site won he can mark won and type model no ... payment details, finalized at what amount, GST extra or included ... executive can see at top of app - sale this month, collection this month, total pending". The brand app's server is sent Energy World's plumbers and architects (searched there; the mobile never reaches a brand phone). A site added with a picked partner is filed with that partner; a new one with a mobile is added to Partners once. Won details and payments show in Their follow-ups and the Excel. Each executive's month snapshot for the Visit app now carries collection this month and the total pending on his clients. */
+  /* before: */   /* 6.9.1064 (26 Nov 2026) - HIS WORDS: "Brand followup app, make provision that executive can enter new site which is in their followup not in ours list, to avoid duplicate make provision to check by entering phone no initially, site added by brand executives will auto add to our CRM if brand executive search client by entering phone no and found its there in our record, show him he is our client for which brand and quoted for which brand, do not show any quote or any download option... he can only view site assigned to him or sites added by him". The book of fingerprints now carries, per mobile, the client name, code, area and the brand NAMES won and quoted (no value, no quote); a site he adds is handled by the owner's CRM by itself - same mobile on the book: linked; nobody on the book by mobile or name: added as a lead; only a name-only match waits for the owner. */
   /* before: */   /* 6.9.1063 (26 Nov 2026) - HIS WORDS: "show pdf for employee salary vs incentive, want a little incentive scheme for timely payment ... and vice versa for late payment", slabs at 15 / 30 / 45 / 60 days, his rates 0.5% / 0.25% / 0.1% / 0 / -0.25%, -0.5% unpaid at 90 days, trial in December, paid from January 2027. The plan card, each statement and WhatsApp carry the payment-speed line; a team PDF sets six months of salary against incentive. */
   /* before: */   /* 6.9.1062 (26 Nov 2026) - the Hindi scheme PDF was 12 MB (its text images stored uncompressed), too heavy for WhatsApp: compressed, about 0.7 MB, still sharp. */
   /* before: */   /* 6.9.1061 (26 Nov 2026) - HIS WORDS: "ok do all" (to: the club tier and enrolment on the partner's own card and in Saathi, a Join form inside Saathi, Hindi versions of the scheme PDF). A partner card says where he stands in the Partner Club, whether he is enrolled, and offers Enrol / Send scheme; Saathi is sent the same; the scheme PDF comes in Hindi too (Devanagari drawn by the phone's own fonts, so the letters join correctly). */
@@ -15463,12 +15464,28 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
   /* 6.9.1064 - his words: "site added by brand executives will auto add to our CRM". Oldest first, one at a time:
      same mobile on the book -> linked to that client; nobody on the book by mobile or by name -> a lead, the owner's;
      a name-only match (could be another man of the same name) and a turned-down site wait for the owner. */
+  /* 6.9.1065 - the architect / plumber the brand executive picked (by code) or added new with his mobile */
+  function bxLeadPartner(name, code, mob, role, loc, area) {
+    name = String(name || "").trim(); code = String(code || "").trim(); mob = String(mob || "").replace(/\D/g, "").slice(-10);
+    if (!name && !code) return Promise.resolve("");
+    var all = assocLive(), hit = null;
+    if (code) hit = all.filter(function (a) { return String(a.code || "") === code; })[0];
+    if (!hit && mob.length === 10) hit = all.filter(function (a) { return [a.mobile, a.mobile2].some(function (m) { return String(m || "").replace(/\D/g, "").slice(-10) === mob; }); })[0];
+    if (!hit) hit = partnerByName(name);
+    if (hit) return Promise.resolve(hit.name);
+    return save("associates", { id: "", name: nmTitle(name), role: role, mobile: mob.length === 10 ? mob : "", mobile2: "", location: loc || "", area: area || "", address: "", birthday: "", anniversary: "",
+      rate: "", notes: "added by a brand executive's site" }, true).then(function (r) { return r ? r.name : nmTitle(name); }, function () { return nmTitle(name); });
+  }
   function bxLeadAddNow(x, own, auto) {
     var nm = nmTitle(x.client), mob = String(x.mobile || "").replace(/\D/g, "").slice(-10);
+    var _ar = "", _pl = "";
+    return bxLeadPartner(x.architect, x.archCode, x.archMob, "Architect", x.city, x.area).then(function (a) { _ar = a; return bxLeadPartner(x.plumber, x.plumCode, x.plumMob, "Plumber", x.city, x.area); }).then(function (p) { _pl = p; return bxLeadAddNow2(x, own, auto, nm, mob, _ar, _pl); });
+  }
+  function bxLeadAddNow2(x, own, auto, nm, mob, _ar, _pl) {
     var notes = "From brand executive " + (x.bxName || "") + " (" + (x.brand || "") + "), " + dmy(String(x.at || "").slice(0, 10)) + (auto ? ", added by itself" : "") + "." +
       (x.type ? " Site: " + x.type + "." : "") + (x.architect ? " Architect named: " + x.architect + "." : "") + (x.plumber ? " Plumber named: " + x.plumber + "." : "") + (x.remark ? " Remark: " + x.remark : "");
     return save("clients", { id: "", createdBy: S.user, name: nm, shortName: shortNameOf(nm, mob), location: x.city || "", area: x.area || "", mobile: mob, mobile2: "",
-      address: x.address || "", type: "Home owner", architect: "", plumber: "", builder: "", pmc: "", notes: notes, leadType: "New", ownedBy: own, stage: x.stage || "" }, !!auto).then(function (r) {
+      address: x.address || "", type: "Home owner", architect: _ar || "", plumber: _pl || "", builder: "", pmc: "", notes: notes, leadType: "New", ownedBy: own, stage: x.stage || "" }, !!auto).then(function (r) {   /* 6.9.1065 - filed with the partner */
       if (!r) throw new Error("not saved");
       if (x.stage) { try { saveClientStage(r.name, x.stage, { mobile: mob, city: x.city, owner: own }); } catch (eSt) { } }
       return bxLeadDecide(x, "accepted", "Added as lead" + (r.code ? " " + r.code : ""), r.name, !!auto).then(function () { return r; });
@@ -15553,7 +15570,9 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     var people = all.map(function (e) { return { id: e.id, name: e.name, mobile: String(e.mobile || "").replace(/\D/g, "").slice(-10), brand: e.brand || "", company: e.company || "", city: e.city || "", active: e.status === "active" ? "Y" : "N" }; });
     var books = all.filter(function (e) { return e.status === "active"; }).map(function (e) { return { bxId: e.id, sites: bxBookFor(e) }; });
     if (!quiet) toast("Sending " + plural(books.length, "brand executive") + " to the brand app…");
-    return bxDupIx().catch(function () { return null; }).then(function (dup) { return bxCall("sync", { people: people, books: books, dup: dup || undefined }); }).then(function () {   /* 6.9.1031 - and the fingerprints */
+    var partners = [];   /* 6.9.1065 - Energy World's plumbers and architects for the picker; the server keeps the mobile to itself */
+    try { assocLive().forEach(function (a) { if (a && a.name && /plumb|archit/i.test(String(a.role || ""))) partners.push({ n: a.name, c: String(a.code || ""), t: String(a.location || a.area || ""), r: String(a.role || ""), m: String(a.mobile || "").replace(/\D/g, "").slice(-10) }); }); } catch (eP) { }
+    return bxDupIx().catch(function () { return null; }).then(function (dup) { return bxCall("sync", { people: people, books: books, dup: dup || undefined, partners: partners }); }).then(function () {   /* 6.9.1031 - and the fingerprints */
       try { localStorage.setItem(BX_LS, JSON.stringify(Object.assign(bxLs(), { sync: new Date().toISOString() }))); } catch (e) { }
       if (!quiet) toast("Brand app updated: " + plural(books.length, "brand executive") + ", " + plural(books.reduce(function (a, b) { return a + b.sites.length; }, 0), "site") + ".");
       render(); return true;
@@ -15613,7 +15632,9 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       '<div style="display:flex;gap:6px;flex-wrap:wrap"><select data-act="bx-fx" id="bx_fx" style="min-height:44px"><option value="">Everyone</option>' + bxExecs(true).map(function (e) { return '<option value="' + esc(e.id) + '"' + (fx === e.id ? ' selected' : '') + '>' + esc(e.name) + '</option>'; }).join("") + '</select>' +
       '<button class="btn sm ghost" data-act="bx-xl">Excel</button></div></div>' +
       (shown.length ? pevTable([["When"], ["Who"], ["Client"], ["Brand"], ["Status"], ["Remark"], ["Next"], ["Quote"]], shown.map(function (f) {
-        return [esc(dmy(String(f.at || "").slice(0, 10))), esc(f.bxName || ""), esc(f.client || ""), esc(f.brand || ""), '<b>' + esc(f.status || "") + '</b>', esc(f.remark || ""), esc(f.next ? dmy(String(f.next).slice(0, 10)) : ""),
+        var w = f.won, wHtml = w ? '<div class="meta" style="font-size:12px;margin-top:3px;color:#166534">' + (w.models ? 'Models: ' + esc(String(w.models).replace(/\n+/g, ", ")) + '<br>' : '') +   /* 6.9.1065 - what was won and paid */
+          (w.amount ? 'Finalised ' + money(w.amount) + (w.gst === "extra" ? ' + GST' : ' incl. GST') : '') + ((w.pays || []).length ? (w.amount ? ' &middot; ' : '') + 'received ' + (w.pays || []).map(function (p) { return money(p.amt) + ' ' + esc(p.mode) + ' (' + esc(p.kind) + ', ' + esc(dmy(p.date)) + (p.ref ? ', ' + esc(p.ref) : '') + ')'; }).join(", ") : '') + '</div>' : '';
+        return [esc(dmy(String(f.at || "").slice(0, 10))), esc(f.bxName || ""), esc(f.client || ""), esc(f.brand || ""), '<b>' + esc(f.status || "") + '</b>', esc(f.remark || "") + wHtml, esc(f.next ? dmy(String(f.next).slice(0, 10)) : ""),
           f.file && f.file.url ? '<a href="' + esc(f.file.url) + '" target="_blank" rel="noopener">' + esc(f.file.name || "open") + ' ↗</a>' : ''];
       })) : '<div class="empty">No follow-up pulled yet.</div>') + '</div>';
     return h;
@@ -35928,6 +35949,24 @@ function viewCatalogue() {
     var rate = (base > 0.5 && earned > 0) ? earned / base : (allBase > 0.5 ? allInc / allBase : 0);   /* a month a return pulled negative reads his usual rate */
     return { sales: sales, n: n, ret: ret, net: sales - ret, earned: earned, rel: rel, rate: Math.max(0, rate), tgt: xTgtFor(name, ym) };
   }
+  /* 6.9.1065 - HIS WORDS: "executive can see at top of app - sale this month, collection this month, total pending".
+     On his own clients (every spelling merged into them): money in this month (a discount entry is not money), and what
+     they owe today - the same figure the client book shows (clientDue, one amount per family). */
+  function xCollPend(name, ym) {
+    var nm = dkey(name), fam = {}, mains = {};
+    (S.data.clients || []).forEach(function (cl) {
+      if (!cl || isCancelled("clients", cl.id) || dkey(cl.ownedBy || cl.createdBy) !== nm) return;
+      dupFamily(cl.name).forEach(function (n) { fam[dkey(n)] = 1; });
+      mains[dkey(dupMainName(cl.name))] = dupMainName(cl.name);
+    });
+    var coll = 0;
+    (S.data.payments || []).forEach(function (p) {
+      if (!p || isCancelled("payments", p.id) || payIsDisc(p) || !fam[dkey(p.client)]) return;
+      if (xYm(p.date || p.createdAt) === ym) coll += payAmt(p);
+    });
+    var pend = 0; Object.keys(mains).forEach(function (k) { pend += Math.max(0, clientDue(mains[k]) || 0); });
+    return { coll: coll, pend: pend };
+  }
   /* pace: share of the month gone vs share of the target done */
   function xPace(x, ym) {
     var d = new Date(), days = new Date(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)), 0).getDate();
@@ -35988,6 +36027,16 @@ function viewCatalogue() {
       var x = xMonth(u.name, ym);
       var sn = { exec: u.name, ym: ym, tgt: Math.round(x.tgt), sales: Math.round(x.sales), n: x.n, ret: Math.round(x.ret),
         earned: Math.round(x.earned), rel: Math.round(x.rel), rate: Math.round(x.rate * 10000) / 10000 };
+      try { var cp = xCollPend(u.name, ym); sn.coll = Math.round(cp.coll); sn.pend = Math.round(cp.pend); } catch (eCp) { }   /* 6.9.1065 */
+      /* 6.9.1065 - HIS WORDS: "show executive score to him on visit and quote app, also show that salary X 4 time or something that we
+         have designed for executives, also include that incentive for timely payment collection". The Scorecard (same five areas, same
+         weights, the owner's targets from this CRM) and the payment-speed slabs go to his phone; the salary itself never does. */
+      try { var sc = scExecMetrics(u.name, ym), bd = scBand(sc.score);
+        sn.sc = { s: Math.round(sc.score), b: bd.t, c: bd.c, bg: bd.bg, a: sc.areas.map(function (a) { return { l: a.label, k: a.kpi, w: a.w, t: Math.round(a.target * (a.pct ? 1000 : 1)) / (a.pct ? 1000 : 1), v: Math.round(a.actual * (a.pct ? 1000 : 1)) / (a.pct ? 1000 : 1), h: a.higher ? 1 : 0, m: a.money ? 1 : 0, p: a.pct ? 1 : 0, ach: Math.round(a.ach * 100), sc: Math.round(a.score * 10) / 10 }; }) }; } catch (eSc) { }
+      try { var sp = xpSpeed(u.name, ym), rl = xpRule(ym);
+        sn.sp = { net: Math.round(sp.net), bonus: Math.round(sp.bonus), cut: Math.round(sp.cut), trial: !!sp.trial, whatIf: !!sp.whatIf, from: XPS_FROM, slabs: XPS_SLABS, late: XPS_LATE,
+          by: Object.keys(sp.by || {}).map(function (k2) { var b2 = sp.by[k2]; return { l: k2, base: Math.round(b2.base), v: Math.round(b2.v), r: b2.rate }; }) };
+        if (sn.p) { sn.p.mult = rl.mult; sn.p.qmult = rl.qmult; sn.p.cap = XP_CAP; sn.p.tot = Math.round(xpTotal(xpMonth(u.name, ym), sp)); } } catch (eSp) { }
       try {   /* 6.9.937 - the plan month, for the Visit header (no salary in it: slabs only) */
         var xp = xpMonth(u.name, ym), xq = xpQuarter(u.name, ym);
         sn.p = { v: 1, trial: !!xp.rule.trial, whatIf: !!xp.rule.whatIf, slabs: xp.slabs.map(Math.round), pct: XP_PCT, k: xp.k, net: Math.round(xp.net), cnt: Math.round(xp.cnt),
@@ -35996,7 +36045,7 @@ function viewCatalogue() {
           q: { label: xq.label, tot: Math.round(xq.tot), th: xq.th.map(Math.round), k: xq.qk, x: Math.round(xq.extra) } };
         if (ym >= XP_START) sn.tgt = Math.round(xp.slabs[0] || 0);
       } catch (eXp) { }
-      var key = function (o) { return o ? [o.ym, o.tgt, o.sales, o.n, o.ret, o.earned, o.rel, o.p ? [o.p.net, o.p.k, o.p.inc, o.p.sep, o.p.leftN, o.p.q && o.p.q.tot, o.p.ip ? o.p.ip.r : ""].join(",") : ""].join("|") : ""; };
+      var key = function (o) { return o ? [o.ym, o.tgt, o.sales, o.n, o.ret, o.earned, o.rel, o.coll, o.pend, o.sc ? o.sc.s + "/" + o.sc.a.map(function (a) { return a.v; }).join(",") : "", o.sp ? o.sp.net + "/" + o.sp.by.length : "", o.p ? [o.p.net, o.p.k, o.p.inc, o.p.sep, o.p.leftN, o.p.q && o.p.q.tot, o.p.ip ? o.p.ip.r : ""].join(",") : ""].join("|") : ""; };
       if (key(xSnapLast(u.name)) === key(sn)) return;   /* nothing moved - nothing written */
       auditFact("exec:snap", u.name, sn);
     });
@@ -71041,9 +71090,12 @@ function viewCatalogue() {
     }
     if (act === "bx-pull") { bxPullRun(false); return; }
     if (act === "bx-xl") {
-      var _rows = [["When", "Brand executive", "Company", "Client", "Brand", "Status", "Remark", "Next follow-up", "Quote file"].map(function (x) { return { v: x, s: XL.HEAD }; })];
-      bxIndex().fus.filter(function (f) { return !S.bxFx || f.bxId === S.bxFx; }).forEach(function (f) { var e = bxIndex().ex[f.bxId] || {}; _rows.push([String(f.at || "").slice(0, 16).replace("T", " "), f.bxName || e.name || "", e.company || "", f.client || "", f.brand || "", f.status || "", f.remark || "", f.next || "", (f.file && f.file.url) || ""]); });
-      dlXlsx("Brand_followups_" + today() + ".xlsx", "Follow-ups", _rows, [16, 20, 22, 30, 12, 13, 40, 13, 40]);
+      var _rows = [["When", "Brand executive", "Company", "Client", "Brand", "Status", "Remark", "Next follow-up", "Quote file", "Models won", "Finalised at", "GST", "Received", "Payments"].map(function (x) { return { v: x, s: XL.HEAD }; })];   /* 6.9.1065 */
+      bxIndex().fus.filter(function (f) { return !S.bxFx || f.bxId === S.bxFx; }).forEach(function (f) { var e = bxIndex().ex[f.bxId] || {}, w = f.won || {}, ps = w.pays || [];
+        _rows.push([String(f.at || "").slice(0, 16).replace("T", " "), f.bxName || e.name || "", e.company || "", f.client || "", f.brand || "", f.status || "", f.remark || "", f.next || "", (f.file && f.file.url) || "",
+          String(w.models || ""), w.amount || "", w.gst === "extra" ? "Extra" : w.gst === "incl" ? "Included" : "", ps.reduce(function (a, p) { return a + (Number(p.amt) || 0); }, 0) || "",
+          ps.map(function (p) { return p.date + " " + p.kind + " " + p.mode + " " + p.amt + (p.ref ? " (" + p.ref + ")" : ""); }).join("; ")]); });
+      dlXlsx("Brand_followups_" + today() + ".xlsx", "Follow-ups", _rows, [16, 20, 22, 30, 12, 13, 40, 13, 40, 30, 14, 10, 14, 50]);
       return;
     }
     if (act === "adm-ptn") {   /* 6.9.1028 - from the challan card: which role, then the Client & lead log's own change sheet */
