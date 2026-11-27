@@ -66,6 +66,18 @@ textarea{min-height:96px;resize:vertical}
 body.away #app,body.away .sheet{filter:blur(18px)}
 body.adm{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
 body.away::after{content:"Hidden while you are away";position:fixed;inset:0;display:grid;place-items:center;z-index:70;font-weight:800;color:#0D2340;background:rgba(244,246,249,.6)}
+/* 1.4.0 - the partner picker, the won form, tablets */
+.pkl{border:1px solid var(--line);border-radius:12px;background:#fff;margin-top:4px;overflow:hidden}
+.pkl button{display:block;width:100%;text-align:left;min-height:48px;padding:8px 12px;border:0;border-top:1px solid var(--line);background:#fff;font-size:15px;color:var(--ink)}
+.pkl button:first-child{border-top:0}.pkl button.new{color:var(--navy);font-weight:800;background:#f8fafc}
+.pkd{display:flex;gap:8px;align-items:center;border:1px solid #99f6e4;background:#f0fdfa;border-radius:12px;padding:8px 10px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:8px}.g2 label{margin-top:6px}
+.tog{display:flex;gap:8px}.tog button{flex:1;min-height:48px;border-radius:12px;border:2px solid var(--line);background:#fff;font-weight:800;font-size:15px;color:var(--ink)}
+.tog button.on{border-color:var(--won);background:#f0fdf4;color:var(--won)}
+.payr{border:1px solid var(--line);border-radius:12px;padding:8px 10px;margin-top:8px;background:#fff}
+.deal{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px}.deal div{border:1px solid var(--line);border-radius:12px;padding:8px;text-align:center;background:#fff}
+.deal b{display:block;font-size:17px;font-variant-numeric:tabular-nums}.deal span{font-size:12px;color:var(--muted)}
+@media (min-width:768px){.wrap,header .row{max-width:960px}.sheet .in{max-width:860px;border-radius:18px;margin-bottom:24px}.sheet{align-items:center}#list{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}}
 @media print{body *{display:none!important}body::before{content:"Printing is not allowed in Brand Followup.";display:block;padding:40px;font:20px sans-serif}}
 </style>
 </head>
@@ -75,7 +87,8 @@ body.away::after{content:"Hidden while you are away";position:fixed;inset:0;disp
 <script>
 (function () {
   "use strict";
-  var APP_VERSION = "1.3.0";   /* 1.3.0 (26 Nov 2026) - THE OWNER'S WORDS: "executive can enter new site which is in their followup not in ours list, to avoid duplicate make provision to check by entering phone no initially ... if brand executive search client by entering phone no and found its there in our record, show him he is our client for which brand and quoted for which brand, do not show any quote or any download option... he can only view site assigned to him or sites added by him". Adding a site starts with the mobile alone. Already Energy World's: he sees the name, the brands bought and the brands quoted (names only - no quote, no value, no file) and one tap puts it on his list. New: the form, and it is on his list at once (Energy World's CRM adds it by itself). Measured first: with no site given yet the screen stopped at "No site has been given to you yet" and the Add button never showed (Naveen Kumar, Oyster, 26 Nov). */
+  var APP_VERSION = "1.4.0";   /* 1.4.0 (27 Nov 2026) - THE OWNER'S WORDS: "plumber and architect name also to avoid duplicate entry, type initial name or initial phone no will show drop down to select ... add new if not there, option to attach quotation by brand executive, if any site won he can mark won and type model no which won or can mark any quote won, can also enter payment details, finalized at what amount, GST extra or included, payment received details advance received, part payment received, cash, upi or cheque". Architect and plumber are picked from Energy World's own list (name, code or the first digits of his mobile; the number itself never comes to this phone) or added new with his mobile. Won carries the models, the quote that won, the final amount, GST extra / included and every payment; the site shows the deal: amount, received, balance. "Attach a quotation" is one tap on the site. */
+  /* before: */   /* 1.3.0 (26 Nov 2026) - THE OWNER'S WORDS: "executive can enter new site which is in their followup not in ours list, to avoid duplicate make provision to check by entering phone no initially ... if brand executive search client by entering phone no and found its there in our record, show him he is our client for which brand and quoted for which brand, do not show any quote or any download option... he can only view site assigned to him or sites added by him". Adding a site starts with the mobile alone. Already Energy World's: he sees the name, the brands bought and the brands quoted (names only - no quote, no value, no file) and one tap puts it on his list. New: the form, and it is on his list at once (Energy World's CRM adds it by itself). Measured first: with no site given yet the screen stopped at "No site has been given to you yet" and the Add button never showed (Naveen Kumar, Oyster, 26 Nov). */
   /* before: */   /* 18 Nov 2026 - new app icon */   /* 1.2.0 (17 Nov 2026) - he adds a site himself: checked at once against Energy World's book and his own list, a duplicate said in plain words; his added sites show what Energy World decided */
   var APP_VERSION_PREV = "1.1.0";   /* 1.1.0 (17 Nov 2026) - Energy World admin sign-in: every brand executive, his sites, every follow-up and quote, a download; none of the guards */   /* 1.0.0 (17 Nov 2026) - first release */
   var SERVER = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
@@ -225,16 +238,21 @@ body.away::after{content:"Hidden while you are away";position:fixed;inset:0;disp
       '<div class="card"><dl class="kv"><dt>Brand executive</dt><dd><b>' + esc(r.p.name) + '</b> <span class="meta">' + esc([r.p.company, r.p.mobile].filter(Boolean).join(" \u00b7 ")) + '</span></dd>' +
       '<dt>Brand</dt><dd>' + esc(s.brand || "") + '</dd><dt>Stage</dt><dd>' + esc(s.stage || "not set") + '</dd><dt>With Energy World</dt><dd>' + esc(s.ew || "") + (s.quotes ? ' \u00b7 ' + s.quotes + ' quote(s)' : '') + '</dd>' +
       '<dt>Architect</dt>' + pc(s.architect) + '<dt>Plumber</dt>' + pc(s.plumber) + '<dt>EW executive</dt><dd>' + esc(ex.name || "") + '</dd></dl></div>' +
+      dealHtml(dealOf(cl, hist), hist) +   /* 1.4.0 */
       '<h2>His follow-ups here</h2>' + (hist.length ? hist.map(function (f) {
         return '<div class="hist"><div>' + pillFor(f.status) + ' <span class="meta">' + esc(dm(f.at)) + ' ' + esc(String(f.at || "").slice(11, 16)) + ' UTC</span></div><div style="margin-top:2px">' + esc(f.remark || "") + '</div>' +
-          '<div class="meta">' + (f.next ? 'next ' + esc(dm(f.next)) : '') + (f.file && f.file.url ? (f.next ? ' \u00b7 ' : '') + '<a href="' + esc(f.file.url) + '" target="_blank" rel="noopener">' + esc(f.file.name || "quote") + ' \u2197</a>' : '') + '</div></div>';
+          '<div class="meta">' + (f.next ? 'next ' + esc(dm(f.next)) : '') + (f.file && f.file.url ? (f.next ? ' \u00b7 ' : '') + '<a href="' + esc(f.file.url) + '" target="_blank" rel="noopener">' + esc(f.file.name || "quote") + ' \u2197</a>' : '') +
+          (f.won && f.won.amount ? ' \u00b7 finalised ' + inr(f.won.amount) + (f.won.gst === "extra" ? ' + GST' : ' incl. GST') : '') + '</div></div>';
       }).join("") : '<div class="meta">None yet.</div>') + '</div></div>';
   }
   function admCsv() {
     var P = {}; admPeople().forEach(function (p) { P[p.id] = p; });
     var q = function (v) { v = String(v == null ? "" : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
-    var lines = [["When", "Brand executive", "Company", "Brand", "Client", "Status", "Remark", "Next follow-up", "Quote file", "Quote link"].join(",")];
-    ((S.all && S.all.fus) || []).filter(function (f) { return !S.ax || f.bxId === S.ax; }).forEach(function (f) { var p = P[f.bxId] || {}; lines.push([String(f.at || "").slice(0, 16).replace("T", " "), f.bxName || p.name, p.company, f.brand, f.client, f.status, f.remark, f.next, f.file ? f.file.name : "", f.file ? f.file.url : ""].map(q).join(",")); });
+    var lines = [["When", "Brand executive", "Company", "Brand", "Client", "Status", "Remark", "Next follow-up", "Quote file", "Quote link", "Models won", "Finalised at", "GST", "Received", "Payments"].join(",")];   /* 1.4.0 */
+    ((S.all && S.all.fus) || []).filter(function (f) { return !S.ax || f.bxId === S.ax; }).forEach(function (f) { var p = P[f.bxId] || {}; lines.push([String(f.at || "").slice(0, 16).replace("T", " "), f.bxName || p.name, p.company, f.brand, f.client, f.status, f.remark, f.next, f.file ? f.file.name : "", f.file ? f.file.url : "",
+      f.won ? f.won.models : "", f.won && f.won.amount ? f.won.amount : "", f.won ? (f.won.gst === "extra" ? "Extra" : f.won.gst === "incl" ? "Included" : "") : "",
+      f.won ? (f.won.pays || []).reduce(function (a, p) { return a + (Number(p.amt) || 0); }, 0) || "" : "",
+      f.won ? (f.won.pays || []).map(function (p) { return p.date + " " + p.kind + " " + p.mode + " " + p.amt + (p.ref ? " (" + p.ref + ")" : ""); }).join("; ") : ""].map(q).join(",")); });
     var a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(["\ufeff" + lines.join("\n")], { type: "text/csv;charset=utf-8" }));
     a.download = "Brand_followups_" + today() + ".csv"; document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
   }
@@ -336,8 +354,7 @@ body.away::after{content:"Hidden while you are away";position:fixed;inset:0;disp
       '<label for="ad_ad">Address</label>' + txt("ad_ad", F.address, "House no, street, landmark") +
       '<label for="ad_t">Type of site</label>' + sel("ad_t", ADD_TYPE, F.type, "Pick") +
       '<label for="ad_s">Stage</label>' + sel("ad_s", ADD_STAGE, F.stage, "Pick the stage") +
-      '<label for="ad_ar">Architect (name)</label>' + txt("ad_ar", F.architect, "If you know") +
-      '<label for="ad_pl">Plumber (name)</label>' + txt("ad_pl", F.plumber, "If you know") +
+      pkHtml("ar", "Architect", F.ar) + pkHtml("pl", "Plumber", F.pl) +   /* 1.4.0 - picked from Energy World's list */
       '<label for="ad_r">Remark</label><textarea id="ad_r" maxlength="500" placeholder="What you know about it">' + esc(F.remark || "") + '</textarea>' +
       (ask ? '' : '<button class="btn full" style="margin-top:14px" data-act="add-go">Add to my list</button>') + '</div>';
     return h + '</div></div>';
@@ -346,7 +363,13 @@ body.away::after{content:"Hidden while you are away";position:fixed;inset:0;disp
     var g = function (id) { var e = el(id); return e ? String(e.value || "") : null; }, F = S.add || {};
     var m = g("ad_m"); if (m !== null) F.mobile = m.replace(/\D/g, "").slice(-10);
     if (F.step === "form") { F.client = String(g("ad_c") || "").trim(); F.city = g("ad_d") || ""; F.area = String(g("ad_a") || "").trim(); F.address = String(g("ad_ad") || "").trim();
-      F.type = g("ad_t") || ""; F.stage = g("ad_s") || ""; F.architect = String(g("ad_ar") || "").trim(); F.plumber = String(g("ad_pl") || "").trim(); F.remark = String(g("ad_r") || "").trim(); }
+      F.type = g("ad_t") || ""; F.stage = g("ad_s") || ""; F.remark = String(g("ad_r") || "").trim();
+      ["ar", "pl"].forEach(function (f) {   /* 1.4.0 - typed and not picked: kept as his words; new: with the mobile */
+        var o = F[f] || {}, t = g("pk_" + f), mm = g("pkm_" + f);
+        if (t !== null && !o.code && !o.isNew) o = { name: String(t).trim() };
+        if (mm !== null) o.mob = String(mm).replace(/\D/g, "").slice(-10);
+        F[f] = o;
+      }); }
     S.add = F; return F;
   }
   function addCheck(b) {
@@ -374,7 +397,10 @@ body.away::after{content:"Hidden while you are away";position:fixed;inset:0;disp
     if (String(F.mobile || "").length !== 10) { toast("The client's 10-digit mobile."); return; }
     if (!F.city) { toast("Pick the district."); return; }
     b.disabled = true; b.textContent = "Adding…";
-    var site = { client: F.client, mobile: F.mobile, city: F.city, area: F.area, address: F.address, type: F.type, stage: F.stage, architect: F.architect, plumber: F.plumber, remark: F.remark };
+    var A = F.ar || {}, Pl = F.pl || {};
+    if ((A.isNew && A.mob && A.mob.length !== 10) || (Pl.isNew && Pl.mob && Pl.mob.length !== 10)) { b.disabled = false; b.textContent = "Add to my list"; toast("A new architect or plumber: his 10-digit mobile, or leave it empty."); return; }
+    var site = { client: F.client, mobile: F.mobile, city: F.city, area: F.area, address: F.address, type: F.type, stage: F.stage, remark: F.remark,
+      architect: A.name || "", archCode: A.code || "", archMob: A.isNew ? (A.mob || "") : "", plumber: Pl.name || "", plumCode: Pl.code || "", plumMob: Pl.isNew ? (Pl.mob || "") : "" };   /* 1.4.0 */
     call("bxAddSite", { site: site, confirm: confirm ? 1 : 0 }).then(function (r) {
       if (r && r.ok) { S.add = null; S.addAsk = null; toast(r.linked ? "Already with Energy World — on your list now." : "On your list now. Energy World adds it to their book."); pull(); return; }
       b.disabled = false; b.textContent = confirm ? "Send anyway" : "Add to my list";
@@ -382,6 +408,73 @@ body.away::after{content:"Hidden while you are away";position:fixed;inset:0;disp
       toast((r && r.err) || "Not added.");
       if (r && r.dup === "yours") { S.add = null; S.addAsk = null; render(); }
     }, function (e) { b.disabled = false; b.textContent = "Add to my list"; if (e.message !== "signed out") toast("No signal — try again."); });
+  }
+  /* ===== 1.4.0 - ARCHITECT / PLUMBER FROM ENERGY WORLD'S LIST =====
+     He types the first letters of the name, the code, or the first digits of the mobile; the server answers with name, code
+     and town (the mobile stays on the server). Not there: "+ Add new" with his mobile - a mobile already on the book is
+     turned into that partner by the server, so the same man is never entered twice. */
+  var _pkT = {}, _pkN = 0;
+  function pkHtml(f, label, o) {
+    o = o || {};
+    if (o.code || o.isNew) return '<label>' + label + '</label><div class="pkd"><div style="flex:1;min-width:0">' + (o.code ? '<span class="code">' + esc(o.code) + '</span>' : '<span class="pill p-new">new</span> ') + '<b>' + esc(o.name) + '</b>' +
+      (o.town ? ' <span class="meta">\u00b7 ' + esc(o.town) + '</span>' : '') + '</div><button class="btn ghost" data-act="pk-clear" data-k="' + f + '" style="min-height:44px;padding:0 12px">Change</button></div>' +
+      (o.isNew ? '<label for="pkm_' + f + '">His mobile (so Energy World does not enter him twice)</label>' + txt("pkm_" + f, o.mob, "10 digits", "tel") : '');
+    return '<label for="pk_' + f + '">' + label + '</label>' + txt("pk_" + f, o.name, "Type his name or mobile") + '<div id="pkl_' + f + '"></div>';
+  }
+  function pkFind(f) {
+    var inp = el("pk_" + f), box = el("pkl_" + f); if (!inp || !box) return;
+    var q = String(inp.value || "").trim(), dig = q.replace(/\D/g, ""), my = ++_pkN;
+    if (q.length < 2 && dig.length < 3) { box.innerHTML = ""; return; }
+    call("bxPartners", { q: q, kind: f === "ar" ? "architect" : "plumber" }).then(function (r) {
+      if (my !== _pkN || !el("pkl_" + f)) return;
+      var rows = (r && r.ok && r.rows) || [];
+      S.pkR = S.pkR || {}; S.pkR[f] = rows;
+      var digits = dig.length >= 3 && dig.length >= q.replace(/\s/g, "").length - 1;
+      box.innerHTML = '<div class="pkl">' + rows.map(function (x, i) {
+        return '<button data-act="pk-pick" data-k="' + f + '" data-i="' + i + '">' + (x.c ? '<span class="code">' + esc(x.c) + '</span>' : '') + '<b>' + esc(x.n) + '</b>' + (x.t ? ' <span class="meta">\u00b7 ' + esc(x.t) + '</span>' : '') + '</button>';
+      }).join("") + (digits ? (rows.length ? '' : '<div class="meta" style="padding:10px 12px">No one with this mobile. Type his name to add him new.</div>')
+        : '<button class="new" data-act="pk-new" data-k="' + f + '">+ Add new: \u201c' + esc(q) + '\u201d</button>') + '</div>';
+      if (r && !r.ok && r.err && !/Too many/.test(r.err)) box.innerHTML = '<div class="pkl"><button class="new" data-act="pk-new" data-k="' + f + '">+ Use \u201c' + esc(q) + '\u201d</button></div>';
+    }, function () { });
+  }
+  /* ===== 1.4.0 - WON: the models, the quote that won, the amount, GST, the payments ===== */
+  var PAY_KIND = ["Advance", "Part payment", "Full payment"], PAY_MODE = ["Cash", "UPI", "Cheque", "Bank transfer"];
+  function inr(v) { v = Math.round(Number(v) || 0); var s0 = String(Math.abs(v)), l3 = s0.slice(-3), r0 = s0.slice(0, -3); return (v < 0 ? "-" : "") + "\u20b9" + (r0 ? r0.replace(/\B(?=(\d{2})+(?!\d))/g, ",") + "," : "") + l3; }
+  function dealOf(client, fus) {   /* everything his Won saves on this site add up to */
+    var c = low(client), L = (fus || S.fus).filter(function (f) { return low(f.client) === c && f.won; }).slice().reverse(), d = { models: "", quote: "", amount: 0, gst: "", pays: [], n: 0 };
+    L.forEach(function (f) { var w = f.won; d.n++; if (w.models) d.models = w.models; if (w.quote) d.quote = w.quote; if (w.amount) { d.amount = w.amount; d.gst = w.gst; } (w.pays || []).forEach(function (p) { d.pays.push(p); }); });
+    d.got = d.pays.reduce(function (a, p) { return a + (Number(p.amt) || 0); }, 0);
+    return d.n ? d : null;
+  }
+  function dealHtml(d, fus) {
+    if (!d) return "";
+    var qf = d.quote ? (fus || S.fus).filter(function (f) { return f.fid === d.quote; })[0] : null;
+    return '<div class="card" style="border-color:#bbf7d0;background:#f0fdf4"><b style="color:var(--won)">Won \u2014 the deal</b>' +
+      '<div class="deal"><div><b>' + (d.amount ? inr(d.amount) : '\u2014') + '</b><span>Final' + (d.gst ? (d.gst === "extra" ? ' \u00b7 GST extra' : ' \u00b7 GST included') : '') + '</span></div>' +
+      '<div><b style="color:var(--won)">' + inr(d.got) + '</b><span>Received</span></div><div><b style="color:' + (d.amount && d.amount - d.got > 0 ? 'var(--lost)' : 'var(--ink)') + '">' + (d.amount ? inr(Math.max(0, d.amount - d.got)) : '\u2014') + '</b><span>Balance</span></div></div>' +
+      (d.models ? '<div style="margin-top:8px"><span class="meta">Models won</span><div style="white-space:pre-wrap">' + esc(d.models) + '</div></div>' : '') +
+      (qf ? '<div class="meta" style="margin-top:6px">Quote that won: ' + esc(qf.fileName || (qf.file && qf.file.name) || "") + ' (' + esc(dm(qf.at)) + ')</div>' : '') +
+      (d.pays.length ? '<div style="margin-top:8px;overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px"><tr style="text-align:left;color:var(--muted)"><th>Date</th><th>Type</th><th>Mode</th><th style="text-align:right">Amount</th></tr>' +
+        d.pays.map(function (p) { return '<tr style="border-top:1px solid var(--line)"><td>' + esc(dm(p.date)) + '</td><td>' + esc(p.kind) + '</td><td>' + esc(p.mode) + (p.ref ? ' <span class="meta">' + esc(p.ref) + '</span>' : '') + '</td><td style="text-align:right;font-weight:700">' + inr(p.amt) + '</td></tr>'; }).join("") + '</table></div>' : '') +
+      '</div>';
+  }
+  function wonForm(F, s) {
+    var quotes = S.fus.filter(function (f) { return low(f.client) === low(s.client) && (f.hasFile || f.fileName); });
+    var pays = F.pays || [];
+    return '<div class="card" style="border-color:#bbf7d0"><b style="color:var(--won)">' + (F.payOnly ? 'Payment received' : 'Won \u2014 what was finalised') + '</b>' +
+      (F.payOnly ? '' : '<label for="wm_mod">Models won</label><textarea id="wm_mod" maxlength="600" style="min-height:72px" placeholder="Model numbers, one per line">' + esc(F.models || "") + '</textarea>' +
+      '<label for="wm_q">Which of your quotes won</label>' + '<select id="wm_q" style="width:100%;min-height:48px;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;font-size:16px"><option value="">' + (quotes.length ? 'Not one of my attached quotes' : 'No quote attached on this site yet') + '</option>' +
+        quotes.map(function (f) { return '<option value="' + esc(f.fid) + '"' + (F.quote === f.fid ? ' selected' : '') + '>' + esc(dm(f.at) + " \u00b7 " + (f.fileName || "quote")) + '</option>'; }).join("") + '</select>' +
+      '<div class="g2"><div><label for="wm_amt">Finalised at (\u20b9)</label>' + '<input id="wm_amt" type="tel" inputmode="numeric" value="' + esc(F.amount || "") + '" placeholder="e.g. 185000" style="width:100%;min-height:48px;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;font-size:16px"></div>' +
+      '<div><label>GST</label><div class="tog"><button data-act="wm-gst" data-k="extra" class="' + (F.gst === "extra" ? 'on' : '') + '">Extra</button><button data-act="wm-gst" data-k="incl" class="' + (F.gst === "incl" ? 'on' : '') + '">Included</button></div></div></div>') +
+      '<label>Payments received</label>' + pays.map(function (p, i) {
+        var sl = function (id, L, cur) { return '<select id="' + id + '" style="width:100%;min-height:48px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;font-size:16px"><option value="">Pick</option>' + L.map(function (x) { return '<option' + (x === cur ? ' selected' : '') + '>' + esc(x) + '</option>'; }).join("") + '</select>'; };
+        return '<div class="payr"><div class="g2"><div>' + sl("wp_k" + i, PAY_KIND, p.kind) + '</div><div>' + sl("wp_m" + i, PAY_MODE, p.mode) + '</div>' +
+          '<div><input id="wp_a' + i + '" type="tel" inputmode="numeric" placeholder="Amount \u20b9" value="' + esc(p.amt || "") + '" style="width:100%;min-height:48px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:10px;font-size:16px"></div>' +
+          '<div><input id="wp_d' + i + '" type="date" max="' + today() + '" value="' + esc(p.date || today()) + '"></div></div>' +
+          '<div style="display:flex;gap:8px;margin-top:8px"><input id="wp_r' + i + '" type="text" placeholder="Cheque no. / UPI ref (if any)" value="' + esc(p.ref || "") + '" style="flex:1;min-height:48px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:10px;font-size:16px">' +
+          '<button class="btn ghost" data-act="wm-pay-rm" data-k="' + i + '" style="min-height:48px;padding:0 14px" aria-label="Remove this payment">\u2715</button></div></div>';
+      }).join("") + '<button class="btn ghost full" style="margin-top:8px" data-act="wm-pay-add">+ Add a payment (advance / part / full)</button></div>';
   }
   function listHtml(list) {
     if (!list.length) return '<div class="empty">Nothing here.</div>';
@@ -409,15 +502,20 @@ body.away::after{content:"Hidden while you are away";position:fixed;inset:0;disp
       '<dt>Architect</dt>' + pcard(s.architect) + '<dt>Plumber</dt>' + pcard(s.plumber) +
       '<dt>EW executive</dt><dd>' + esc(ex.name || "") + (ex.mobile ? ' <a class="btn ghost" style="min-height:40px;padding:0 12px;margin-left:6px;text-decoration:none" href="tel:' + esc(ex.mobile) + '">Call</a>' : '') + '</dd></dl>' +
       '<div class="meta" style="margin-top:8px">Talk to the architect and plumber through the Energy World executive.</div></div>' +
-      '<div class="card"><b>New follow-up</b><label>Where does it stand?</label><div class="st4">' + ST.map(function (k) { return '<button data-act="st" data-k="' + esc(k) + '" class="' + (F.status === k ? 'on' : '') + '">' + esc(k) + '</button>'; }).join("") + '</div>' +
+      dealHtml(dealOf(s.client)) +   /* 1.4.0 - the deal, once won */
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0"><button class="btn ghost" style="flex:1 1 200px" data-act="qf-pick">&#128206; Attach a quotation</button>' +
+        (dealOf(s.client) ? '<button class="btn ghost" style="flex:1 1 200px" data-act="pay-add">+ Payment received</button>' : '') + '</div>' +
+      '<div class="card" id="fuform"><b>' + (F.payOnly ? 'Payment received' : 'New follow-up') + '</b>' + (F.payOnly ? '' : '<label>Where does it stand?</label><div class="st4">' + ST.map(function (k) { return '<button data-act="st" data-k="' + esc(k) + '" class="' + (F.status === k ? 'on' : '') + '">' + esc(k) + '</button>'; }).join("") + '</div>') +
+      (F.status === "Won" ? wonForm(F, s) : '') +
       '<label for="rm">Remark</label><textarea id="rm" maxlength="1000" placeholder="What happened, what was agreed">' + esc(F.remark || "") + '</textarea>' +
-      '<label for="nx">Next follow-up</label><input id="nx" type="date" min="' + today() + '" value="' + esc(F.next || "") + '">' +
+      (F.status === "Ongoing" || !F.status ? '<label for="nx">Next follow-up</label><input id="nx" type="date" min="' + today() + '" value="' + esc(F.next || "") + '">' : '') +
       '<label for="qf">Attach your quote (PDF or photo, up to 6 MB)</label><input id="qf" type="file" accept="application/pdf,image/*" style="min-height:48px">' +
       (F.fileName ? '<div class="meta">Attached: ' + esc(F.fileName) + '</div>' : '') +
       '<button class="btn full" style="margin-top:14px" data-act="save">Save follow-up</button></div>' +
       '<h2>Your follow-ups here</h2>' + (mine.length ? mine.map(function (f) {
         return '<div class="hist"><div>' + pillFor(f.status) + ' <span class="meta">' + esc(dm(f.at)) + '</span></div><div style="margin-top:2px">' + esc(f.remark || "") + '</div>' +
-          '<div class="meta">' + (f.next ? 'next ' + esc(dm(f.next)) : '') + (f.fileName ? (f.next ? ' · ' : '') + 'quote attached: ' + esc(f.fileName) : '') + '</div></div>';
+          '<div class="meta">' + (f.next ? 'next ' + esc(dm(f.next)) : '') + (f.fileName ? (f.next ? ' · ' : '') + 'quote attached: ' + esc(f.fileName) : '') +
+          (f.won ? ' \u00b7 ' + (f.won.amount ? 'finalised ' + inr(f.won.amount) + (f.won.gst === "extra" ? ' + GST' : ' incl. GST') : 'won') + ((f.won.pays || []).length ? ' \u00b7 received ' + inr(f.won.pays.reduce(function (a, p) { return a + (Number(p.amt) || 0); }, 0)) : '') : '') + '</div></div>';
       }).join("") : '<div class="meta">None yet.</div>') + '</div></div>';
   }
   /* a photo is made small before it goes; a PDF goes as it is */
@@ -443,17 +541,31 @@ body.away::after{content:"Hidden while you are away";position:fixed;inset:0;disp
       } else rej(new Error("Attach a PDF or a photo."));
     });
   }
-  function keepForm() { S.form = S.form || {}; var r = el("rm"), n = el("nx"); if (r) S.form.remark = r.value; if (n) S.form.next = n.value; }
+  function keepForm() { S.form = S.form || {}; var r = el("rm"), n = el("nx"); if (r) S.form.remark = r.value; if (n) S.form.next = n.value;
+    var F = S.form, v = function (id) { var e = el(id); return e ? String(e.value || "") : null; };   /* 1.4.0 - the won form */
+    if (v("wm_mod") !== null) F.models = v("wm_mod"); if (v("wm_q") !== null) F.quote = v("wm_q"); if (v("wm_amt") !== null) F.amount = v("wm_amt").replace(/\D/g, "");
+    (F.pays || []).forEach(function (p, i) { if (v("wp_k" + i) === null) return; p.kind = v("wp_k" + i); p.mode = v("wp_m" + i); p.amt = v("wp_a" + i).replace(/\D/g, ""); p.date = v("wp_d" + i); p.ref = v("wp_r" + i).trim(); });
+  }
   function doSave(b) {
     keepForm(); var F = S.form || {}, s = siteOf(S.open);
     if (!s) return;
     if (!F.status) { toast("Tap where it stands: Ongoing, Won, Lost or Not required."); return; }
+    if (!String(F.remark || "").trim() && F.payOnly) F.remark = "Payment received";   /* 1.4.0 */
     if (!String(F.remark || "").trim()) { toast("Write a remark."); return; }
     if (F.status === "Ongoing" && !F.next) { toast("When is the next follow-up?"); return; }
+    var won = null;
+    if (F.status === "Won") {   /* 1.4.0 */
+      var pays = (F.pays || []).filter(function (p) { return p.amt || p.kind || p.mode; });
+      for (var i = 0; i < pays.length; i++) { var p = pays[i];
+        if (!p.kind || !p.mode || !(Number(p.amt) > 0) || !p.date) { toast("Each payment: advance / part / full, cash / UPI / cheque, amount and date."); return; }
+        if (p.mode === "Cheque" && !p.ref) { toast("Write the cheque number."); return; } }
+      if (F.amount && !F.gst) { toast("GST extra or included?"); return; }
+      won = { models: String(F.models || "").trim(), quote: F.quote || "", amount: Number(F.amount) || 0, gst: F.amount ? F.gst : "", pays: pays.map(function (p) { return { kind: p.kind, amt: Number(p.amt), mode: p.mode, date: p.date, ref: p.ref || "" }; }) };
+    }
     var fi = el("qf"), file = fi && fi.files && fi.files[0];
     b.disabled = true; b.textContent = "Saving…";
     readFile(file).then(function (fl) {
-      return call("bxSave", { fu: { client: s.client, status: F.status, remark: String(F.remark).trim(), next: F.status === "Ongoing" ? F.next : "" }, file: fl });
+      return call("bxSave", { fu: { client: s.client, status: F.status, remark: String(F.remark).trim(), next: F.status === "Ongoing" ? F.next : "", won: won }, file: fl });
     }).then(function (r) {
       if (!r || !r.ok) { b.disabled = false; b.textContent = "Save follow-up"; toast((r && r.err) || "Not saved."); return; }
       S.fus.unshift(r.fu); S.form = null; render(); toast("Saved. Energy World sees it.");
@@ -495,7 +607,17 @@ body.away::after{content:"Hidden while you are away";position:fixed;inset:0;disp
     if (act === "f") { S.f = k; render(); return; }
     if (act === "open") { S.open = k; S.form = null; render(); return; }
     if (act === "close" || act === "bg") { if (S.add && !S.open) { addKeep(); return; } keepForm(); S.open = null; S.form = null; render(); return; }
-    if (act === "st") { keepForm(); S.form.status = k; render(); return; }
+    if (act === "st") { keepForm(); S.form.status = k;
+      if (k === "Won" && !S.form._wonSeed) { var d0 = dealOf(S.open); S.form._wonSeed = 1; if (d0) { S.form.models = S.form.models || d0.models; S.form.quote = S.form.quote || d0.quote; S.form.amount = S.form.amount || (d0.amount ? String(d0.amount) : ""); S.form.gst = S.form.gst || d0.gst; } }   /* 1.4.0 - what was said before */
+      render(); return; }
+    if (act === "wm-gst") { keepForm(); S.form.gst = k; render(); return; }   /* 1.4.0 */
+    if (act === "wm-pay-add") { keepForm(); (S.form.pays = S.form.pays || []).push({ date: today() }); render(); return; }
+    if (act === "wm-pay-rm") { keepForm(); (S.form.pays || []).splice(Number(k), 1); render(); return; }
+    if (act === "pay-add") { var d1 = dealOf(S.open) || {}; S.form = { status: "Won", payOnly: 1, _wonSeed: 1, pays: [{ date: today() }] }; render(); setTimeout(function () { var e = el("fuform"); if (e) e.scrollIntoView({ block: "start", behavior: "smooth" }); }, 60); return; }
+    if (act === "qf-pick") { var qfi = el("qf"); if (qfi) { qfi.scrollIntoView({ block: "center" }); qfi.click(); } return; }
+    if (act === "pk-pick") { addKeep(); var rr = ((S.pkR || {})[k] || [])[Number(t.getAttribute("data-i"))]; if (rr) { S.add[k] = { name: rr.n, code: rr.c, town: rr.t }; } render(); return; }
+    if (act === "pk-new") { addKeep(); var tv = el("pk_" + k); var nm = String((tv && tv.value) || (S.add[k] || {}).name || "").trim(); if (nm.length < 2) { toast("Type his name."); return; } S.add[k] = { name: nm, isNew: 1, mob: /^\d{10}$/.test(nm.replace(/\D/g, "")) ? nm.replace(/\D/g, "") : "" }; render(); setTimeout(function () { var m = el("pkm_" + k); if (m) m.focus(); }, 60); return; }
+    if (act === "pk-clear") { addKeep(); S.add[k] = {}; render(); setTimeout(function () { var m = el("pk_" + k); if (m) m.focus(); }, 60); return; }
     if (act === "save") { doSave(t); return; }
     if (act === "add-open") { S.add = {}; S.addAsk = null; render(); setTimeout(function () { var m = el("ad_m"); if (m) m.focus(); }, 60); return; }   /* 1.2.0, 1.3.0 - the mobile first */
     if (act === "add-chk") { addCheck(t); return; }
@@ -508,6 +630,7 @@ body.away::after{content:"Hidden while you are away";position:fixed;inset:0;disp
   });
   document.addEventListener("input", function (ev) {
     var t = ev.target;
+    if (/^pk_(ar|pl)$/.test(t.id || "")) { var f = t.id.slice(3); clearTimeout(_pkT[f]); _pkT[f] = setTimeout(function () { pkFind(f); }, 280); return; }   /* 1.4.0 */
     if (t.id === "q") { S.q = t.value; var L = el("list"); if (L) { var q = low(S.q); L.innerHTML = listHtml(S.sites.map(function (s) { return { s: s, st: myState(s), f: lastFu(s.client) }; }).filter(function (x) { return (S.f === "all" || x.st === S.f) && (!q || low([x.s.client, x.s.code, x.s.area, x.s.city, x.s.stage, x.s.architect && x.s.architect.name, x.s.plumber && x.s.plumber.name].join(" ")).indexOf(q) >= 0); })); } }
   });
   document.addEventListener("keydown", function (ev) { if (ev.key === "Enter" && ev.target.id === "ad_m") { var bc = document.querySelector('[data-act="add-chk"]'); if (bc) addCheck(bc); return; } if (ev.key === "Enter" && (ev.target.id === "lp" || ev.target.id === "lm")) { var b = document.querySelector('[data-act="login"]'); if (b) doLogin(b); } if (ev.key === "Enter" && (ev.target.id === "ap" || ev.target.id === "an")) { var b2 = document.querySelector('[data-act="adm-login"]'); if (b2) doAdmLogin(b2); } });
