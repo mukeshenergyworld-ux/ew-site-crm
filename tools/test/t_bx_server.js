@@ -2,7 +2,7 @@ const crypto=require('crypto'),fs=require('fs'),vm=require('vm');
 function Sheet(name){this.name=name;this.v=[];}
 Sheet.prototype.getRange=function(r,c,nr,nc){const sh=this;if(typeof r==="string")return{setNumberFormat(){}};return{setValues(vals){for(let i=0;i<vals.length;i++){while(sh.v.length<r+i)sh.v.push([]);sh.v[r-1+i]=vals[i].slice();}return this;},setFontWeight(){return this;},clearContent(){for(let i=0;i<nr;i++)sh.v[r-1+i]=Array(nc).fill("");}}};
 Sheet.prototype.getDataRange=function(){const sh=this;return{getValues(){return sh.v.filter((row,i)=>i===0||row.some(x=>x!==""&&x!=null)).map(r=>r.slice());}}};
-Sheet.prototype.appendRow=function(a){this.v.push(a.slice());};Sheet.prototype.setFrozenRows=function(){};Sheet.prototype.getLastRow=function(){return this.v.length;};
+Sheet.prototype.appendRow=function(a){this.v.push(a.slice());};Sheet.prototype.getLastColumn=function(){return (this.v[0]||[]).length;};Sheet.prototype.setFrozenRows=function(){};Sheet.prototype.getLastRow=function(){return this.v.length;};
 const SS={sheets:{},getSheetByName(n){return this.sheets[n]||null},insertSheet(n){return this.sheets[n]=new Sheet(n)},getSheets(){return Object.values(this.sheets)},deleteSheet(){},getId(){return "SSID"},getUrl(){return "url"}};
 const props={},cache={};const files=[];
 const ctx={JSON,Math,Date,String,Number,Array,Object,Error,
@@ -20,7 +20,7 @@ const call=b=>{const r=ctx.bxTry_({postData:{contents:JSON.stringify(b)}});retur
 let pass=0,fail=0;const ok=(m,c)=>{if(c){pass++;console.log("  ok   ",m)}else{fail++;console.log("  FAIL ",m)}};
 ctx.bxSetup();
 ok("not ours: another action is left to the Companion", call({action:"login"})===null);
-ok("ping", call({action:"bxPing"}).v==="BX5");
+ok("ping", call({action:"bxPing"}).v==="BX6");
 const own={action:"bxAdmin",crmUser:"Mukesh Verma",crmPin:"9999"};
 ok("a non-owner cannot sync", call({action:"bxAdmin",crmUser:"Vivek",crmPin:"1",op:"sync"}).ok===false);
 const site={client:"Nitin Jain",code:"CL010",area:"Model Town",city:"Panipat",stage:"Brickwork",brand:"HULIOT",kind:"Client",ew:"Going on",quotes:2,lastQuote:"2026-11-02",architect:{name:"Roshan Lal - Radiant",code:"AR020",town:"Panipat"},plumber:null,exec:{name:"Mukesh Verma",mobile:"9466600611"}};
@@ -117,4 +117,44 @@ ok("BX3: the owner's decision goes back to his app", call(Object.assign({op:"lea
   ok("BX5: an old-style fingerprint still says lead", call({action:"bxCheck",tok:tn,mobile:"9811111111"}).found!=="" );
   for(let i=0;i<70;i++) call({action:"bxCheck",tok:tn,mobile:"9800000009"});
   ok("BX5: no more than 60 checks an hour", /Too many checks/.test(call({action:"bxCheck",tok:tn,mobile:"9800000009"}).err)); }
+/* ---- BX6: partners by name or mobile, Won with payments ---- */
+{ const own6={action:"bxAdmin",crmUser:"Mukesh Verma",crmPin:"9999"};
+  SS.sheets.BX_Fu.v[0]=SS.sheets.BX_Fu.v[0].slice(0,11);   /* a sheet made before BX6 */
+  const P=[{n:"Roshan Lal - Radiant",c:"AR020",t:"Panipat",r:"Architect",m:"9812000001"},{n:"Ramesh Plumber",c:"PL011",t:"Karnal",r:"Plumber",m:"9812000002"},{n:"Rakesh Kumar",c:"PL012",t:"Panipat",r:"Plumber",m:"9900000003"}];
+  let r6=call(Object.assign({op:"sync",people:[{id:"BX9",name:"Naveen Kumar",mobile:"8860000002",brand:"OYSTER",company:"Oyster India",active:"Y"}],books:[{bxId:"BX9",sites:[{client:"Anil Site",brand:"OYSTER"}]}],partners:P},own6));
+  ok("BX6: the owner's sync carries the partners", r6.ok&&SS.sheets.BX_Partners.v.length===2);
+  call(Object.assign({op:"pin",id:"BX9",pin:"5555"},own6));
+  const t9=call({action:"bxLogin",mobile:"8860000002",pin:"5555"}).tok;
+  let q=call({action:"bxPartners",tok:t9,q:"ros",kind:"architect"});
+  ok("BX6: typing the name finds the architect", q.ok&&q.rows.length===1&&q.rows[0].c==="AR020");
+  ok("BX6: the answer never carries a mobile", !JSON.stringify(q).includes("98120"));
+  q=call({action:"bxPartners",tok:t9,q:"98120",kind:"plumber"});
+  ok("BX6: the first digits of the mobile find the plumber - plumbers only", q.rows.length===1&&q.rows[0].n==="Ramesh Plumber"&&!JSON.stringify(q).includes("9812000002"));
+  ok("BX6: two letters list every plumber starting so", call({action:"bxPartners",tok:t9,q:"ra",kind:"plumber"}).rows.length===2);
+  ok("BX6: the code finds him", call({action:"bxPartners",tok:t9,q:"PL012"}).rows[0].n==="Rakesh Kumar");
+  ok("BX6: one letter asks nothing", call({action:"bxPartners",tok:t9,q:"r"}).rows.length===0);
+  ok("BX6: signed out cannot search", call({action:"bxPartners",tok:"y".repeat(40),q:"ros"}).out===1);
+  let a6=call({action:"bxAddSite",tok:t9,site:{client:"Kamal Garg",mobile:"9700000001",city:"Panipat",architect:"Roshan",archCode:"AR020",plumber:"Ramesh P",plumMob:"9812000002"}});
+  const L6=SS.sheets.BX_Leads.v[0], row6=SS.sheets.BX_Leads.v.find(x=>x[L6.indexOf("client")]==="Kamal Garg"), g6=k=>row6[L6.indexOf(k)];
+  ok("BX6: a picked architect is saved under Energy World's name and code", a6.ok&&g6("architect")==="Roshan Lal - Radiant"&&g6("archCode")==="AR020");
+  ok("BX6: a 'new' plumber whose mobile is on the book becomes that plumber", g6("plumber")==="Ramesh Plumber"&&g6("plumCode")==="PL011"&&!g6("plumMob"));
+  call({action:"bxAddSite",tok:t9,site:{client:"Om Prakash",mobile:"9700000002",city:"Panipat",plumber:"Sonu Fitter",plumMob:"9700011111"}});
+  const row7=SS.sheets.BX_Leads.v.find(x=>x[L6.indexOf("client")]==="Om Prakash");
+  ok("BX6: a really new plumber keeps his name and mobile for Energy World", row7[L6.indexOf("plumber")]==="Sonu Fitter"&&row7[L6.indexOf("plumMob")]==="9700011111"&&!row7[L6.indexOf("plumCode")]);
+  ok("BX6: his added site shows the partner's code", call({action:"bxBook",tok:t9}).sites.find(x=>x.client==="Kamal Garg").architect.code==="AR020");
+  let qf=call({action:"bxSave",tok:t9,fu:{client:"Kamal Garg",status:"Ongoing",remark:"quote given",next:"2026-12-01"},file:{b64:Buffer.from("%PDF q").toString("base64"),type:"application/pdf",name:"q.pdf"}});
+  ok("BX6: an old sheet's heading grows a won column", SS.sheets.BX_Fu.v[0].length===12&&SS.sheets.BX_Fu.v[0][11]==="won");
+  const W={models:"OY-201 basin\nOY-330 WC",quote:qf.fu.fid,amount:185000,gst:"extra",pays:[{kind:"Advance",amt:50000,mode:"UPI",date:"2026-11-27",ref:"UTR123"}]};
+  ok("BX6: Won with an amount needs GST extra or included", /GST/.test(call({action:"bxSave",tok:t9,fu:{client:"Kamal Garg",status:"Won",remark:"won",won:Object.assign({},W,{gst:""})}}).err));
+  ok("BX6: a payment without its mode is refused", /cash \/ UPI/.test(call({action:"bxSave",tok:t9,fu:{client:"Kamal Garg",status:"Won",remark:"won",won:Object.assign({},W,{pays:[{kind:"Advance",amt:5,date:"2026-11-27"}]})}}).err));
+  ok("BX6: a cheque needs its number", /cheque number/.test(call({action:"bxSave",tok:t9,fu:{client:"Kamal Garg",status:"Won",remark:"won",won:Object.assign({},W,{pays:[{kind:"Part payment",amt:5,mode:"Cheque",date:"2026-11-27"}]})}}).err));
+  ok("BX6: a quote from another site cannot be the one that won", /not one of yours/.test(call({action:"bxSave",tok:t9,fu:{client:"Om Prakash",status:"Won",remark:"won",won:W}}).err));
+  let w6=call({action:"bxSave",tok:t9,fu:{client:"Kamal Garg",status:"Won",remark:"Order confirmed",won:W}});
+  ok("BX6: Won saved with models, the quote, amount, GST and the advance", w6.ok&&w6.fu.won.amount===185000&&w6.fu.won.gst==="extra"&&w6.fu.won.pays[0].mode==="UPI"&&w6.fu.won.quote===qf.fu.fid);
+  ok("BX6: a Won save with nothing extra is still fine", call({action:"bxSave",tok:t9,fu:{client:"Kamal Garg",status:"Won",remark:"still won"}}).ok);
+  ok("BX6: his book carries the won details", call({action:"bxBook",tok:t9}).fus.some(f=>f.won&&f.won.models.includes("OY-330")));
+  const pl=call(Object.assign({op:"pull",since:""},own6)).rows.find(f=>f.won);
+  ok("BX6: the owner's pull carries them", pl&&pl.won.pays[0].ref==="UTR123");
+  ok("BX6: and the owner's whole view", call(Object.assign({op:"all"},own6)).fus.some(f=>f.won&&f.won.amount===185000));
+}
 console.log(`\n${pass} passed, ${fail} failed`);process.exit(fail?1:0);

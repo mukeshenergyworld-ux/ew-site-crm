@@ -9,11 +9,13 @@ var ctx = {
   S: { user: "Mukesh Verma", data: { clients: CL }, bxLeads: [
     { lid: "L3", at: "2026-11-26T10:03", status: "new", client: "Ram Lal", mobile: "9811112222", bxName: "Naveen", brand: "OYSTER" },            /* name only: waits */
     { lid: "L1", at: "2026-11-26T10:01", status: "new", client: "V Gupta", mobile: "+91 94666 00611", bxName: "Naveen", brand: "OYSTER" },      /* mobile: link */
-    { lid: "L2", at: "2026-11-26T10:02", status: "new", client: "Suresh Kumar", mobile: "9800000001", city: "Karnal", bxName: "Naveen", brand: "OYSTER" }, /* new: lead */
+    { lid: "L2", at: "2026-11-26T10:02", status: "new", client: "Suresh Kumar", mobile: "9800000001", city: "Karnal", bxName: "Naveen", brand: "OYSTER",
+      architect: "Roshan", archCode: "AR020", plumber: "Sonu Fitter", plumMob: "9700011111" }, /* new: lead; 6.9.1065 - a picked architect, a new plumber */
     { lid: "L0", at: "2026-11-25T10:00", status: "rejected", client: "Old", mobile: "9800000003" }] },
   roleIs: function (r) { return r === "admin"; }, isCancelled: function () { return false; }, dmy: function (s) { return s; },
   nmTitle: function (s) { return s; }, shortNameOf: function (n) { return n; }, saveClientStage: function () { },
-  save: function (tab, row) { saved.push(row); var r = { name: row.name, code: "LD10" }; CL.push({ id: "n", name: row.name, mobile: row.mobile }); return Promise.resolve(r); },
+  assocLive: function () { return [{ name: "Roshan Lal - Radiant", code: "AR020", role: "Architect", mobile: "9812000001" }]; }, partnerByName: function () { return null; },
+  save: function (tab, row) { row._tab = tab; saved.push(row); if (tab === "associates") return Promise.resolve({ name: row.name }); var r = { name: row.name, code: "LD10" }; CL.push({ id: "n", name: row.name, mobile: row.mobile }); return Promise.resolve(r); },
   bxLeadDecide: function (x, st, note, client, noSync) { decided.push([x.lid, st, client, !!noSync]); x.status = st; return Promise.resolve(); },
   bxSyncRun: function () { synced++; return Promise.resolve(); }, render: function () { }, _bxIx: null,
   clientWonBrands: function (n) { return n === "Vinay Gupta" ? ["HT PRO", "Hindware Italian"] : []; },
@@ -21,14 +23,18 @@ var ctx = {
   clientQuotes: function (n) { return n === "Vinay Gupta" ? [{ id: "q1", brand: "DRP, HT PRO" }, { id: "q2", brand: "Hindware Italian" }] : []; },
   quoteBrands: function (q) { return String(q.brand).split(/,\s*/); }
 };
-var F = H.lift("team", ["bxNameKey", "bxMatch", "bxBrandsOf", "bxLeadAddNow", "bxLeadsAuto"], ctx, []);
+var F = H.lift("team", ["bxNameKey", "bxMatch", "bxBrandsOf", "bxLeadPartner", "bxLeadAddNow", "bxLeadAddNow2", "bxLeadsAuto"], ctx, []);
 var b = F.bxBrandsOf("Vinay Gupta");
 H.eq("brands bought, as groups", b.w.join(","), "HINDWARE,HULIOT");
 H.eq("brands quoted and not bought", b.q.join(","), "DRP");
 F.bxLeadsAuto().then(function (n) {
   H.eq("two of three handled by themselves", n, 2);
   H.eq("oldest first: the mobile match is linked to the client on the book", JSON.stringify(decided[0]), JSON.stringify(["L1", "linked", "Vinay Gupta", true]));
-  H.eq("the new mobile becomes a lead, owner's", saved.length === 1 && saved[0].name === "Suresh Kumar" && saved[0].ownedBy === "Mukesh Verma" && /added by itself/.test(saved[0].notes), true);
+  var cls = saved.filter(function (r) { return r._tab === "clients"; }), asc = saved.filter(function (r) { return r._tab === "associates"; });
+  H.eq("the new mobile becomes a lead, owner's", cls.length === 1 && cls[0].name === "Suresh Kumar" && cls[0].ownedBy === "Mukesh Verma" && /added by itself/.test(cls[0].notes), true);
+  H.eq("6.9.1065: the architect he picked is filed on the lead by Energy World's own name", cls[0].architect, "Roshan Lal - Radiant");
+  H.eq("6.9.1065: a new plumber is added to Partners once, with his mobile", asc.length === 1 && asc[0].name === "Sonu Fitter" && asc[0].mobile === "9700011111" && asc[0].role === "Plumber", true);
+  H.eq("6.9.1065: ...and filed on the lead", cls[0].plumber, "Sonu Fitter");
   H.eq("...and he is put on it", JSON.stringify(decided[1]), JSON.stringify(["L2", "accepted", "Suresh Kumar", true]));
   H.ok("a name-only match waits for the owner", ctx.S.bxLeads.filter(function (x) { return x.lid === "L3"; })[0].status === "new");
   H.eq("one send to the brand app at the end", synced, 1);

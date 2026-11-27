@@ -3,7 +3,7 @@ const crypto=require('crypto'),fs=require('fs'),vm=require('vm'),path=require('p
 function Sheet(name){this.name=name;this.v=[];}
 Sheet.prototype.getRange=function(r,c,nr,nc){const sh=this;if(typeof r==="string")return{setNumberFormat(){}};return{getValues(){const out=[];for(let i=0;i<(nr||1);i++){const row=(sh.v[r-1+i]||[]).slice(c-1);while(row.length<(nc||1))row.push("");out.push(row.slice(0,nc||1));}return out},setValues(vals){for(let i=0;i<vals.length;i++){while(sh.v.length<r+i)sh.v.push([]);sh.v[r-1+i]=vals[i].slice();}return this},setFontWeight(){return this},clearContent(){for(let i=0;i<nr;i++)sh.v[r-1+i]=[];}}};
 Sheet.prototype.getDataRange=function(){const sh=this;return{getValues(){return sh.v.filter((row,i)=>i===0||row.some(x=>x!==""&&x!=null)).map(r=>r.slice());}}};
-Sheet.prototype.appendRow=function(a){this.v=this.v.filter((row,i)=>i===0||row.some(x=>x!==""&&x!=null));this.v.push(a.slice());};Sheet.prototype.setFrozenRows=function(){};Sheet.prototype.getLastRow=function(){return this.v.length;};
+Sheet.prototype.getLastColumn=function(){return (this.v[0]||[]).length;};Sheet.prototype.appendRow=function(a){this.v=this.v.filter((row,i)=>i===0||row.some(x=>x!==""&&x!=null));this.v.push(a.slice());};Sheet.prototype.setFrozenRows=function(){};Sheet.prototype.getLastRow=function(){return this.v.length;};
 const SS={sheets:{},getSheetByName(n){return this.sheets[n]||null},insertSheet(n){return this.sheets[n]=new Sheet(n)},getSheets(){return Object.values(this.sheets)},deleteSheet(){},getId(){return "SSID"},getUrl(){return "u"}};
 const props={},cache={},DRIVE=[];let fetches=0;
 const STAFF={"Mukesh Verma":["9999","admin"],"Gautam":["1111","accounts"],"Jaiprakash":["2222","godown"],"Vivek":["3333","sales"]};
