@@ -20,17 +20,20 @@
 
    SET-UP (once) - see the paste steps.
    ===================================================================================================== */
-var BX_V = "BX5";   /* BX5 (26 Nov 2026) - HIS WORDS: "executive can enter new site which is in their followup not in ours list, to avoid duplicate make provision to check by entering phone no initially, site added by brand executives will auto add to our CRM if brand executive search client by entering phone no and found its there in our record, show him he is our client for which brand and quoted for which brand, do not show any quote or any download option... he can only view site assigned to him or sites added by him". bxCheck: the mobile first, nothing else; the CRM now sends, per mobile fingerprint, the client name, code, area and the BRAND NAMES won and quoted (never a value, never a quote). A mobile already with Energy World goes on his list at once (linked); a new one goes on his list at once too and the owner's CRM adds it as a lead by itself. A site added by him shows in his list until the owner says Not taken. 60 checks an hour per man, every check logged. */   /* BX4 (17 Nov 2026) - the owner check is made BEFORE the lock, read-only ops take no lock, and the book's fingerprints are kept over as many cells as they need. MEASURED: one owner call sat 177 s inside the lock waiting on the CRM server's teamAuth, and every call after it failed "Lock timeout"; the fingerprints were 2,400+ keys, more than one cell holds, so the cut JSON would not read. */
+var BX_V = "BX6";   /* BX6 (27 Nov 2026) - HIS WORDS: "plumber and architect name also to avoid duplicate entry, type initial name or initial phone no will show drop down to select ... add new if not there, option to attach quotation by brand executive, if any site won he can mark won and type model no which won or can mark any quote won, can also enter payment details, finalized at what amount, GST extra or included, payment received details advance received, part payment received, cash, upi or cheque". bxPartners: search Energy World's plumbers and architects by name, code or the first digits of the mobile - the answer is name, code, town, never a number. A new one typed with a mobile already on the book is turned into that partner. bxSave: Won carries {models, quote, amount, gst, pays[]}. */
+/* before: */   /* BX5 (26 Nov 2026) - HIS WORDS: "executive can enter new site which is in their followup not in ours list, to avoid duplicate make provision to check by entering phone no initially, site added by brand executives will auto add to our CRM if brand executive search client by entering phone no and found its there in our record, show him he is our client for which brand and quoted for which brand, do not show any quote or any download option... he can only view site assigned to him or sites added by him". bxCheck: the mobile first, nothing else; the CRM now sends, per mobile fingerprint, the client name, code, area and the BRAND NAMES won and quoted (never a value, never a quote). A mobile already with Energy World goes on his list at once (linked); a new one goes on his list at once too and the owner's CRM adds it as a lead by itself. A site added by him shows in his list until the owner says Not taken. 60 checks an hour per man, every check logged. */   /* BX4 (17 Nov 2026) - the owner check is made BEFORE the lock, read-only ops take no lock, and the book's fingerprints are kept over as many cells as they need. MEASURED: one owner call sat 177 s inside the lock waiting on the CRM server's teamAuth, and every call after it failed "Lock timeout"; the fingerprints were 2,400+ keys, more than one cell holds, so the cut JSON would not read. */
 var BX_CRM_URL = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
 var BX_TABS = {
   BX_People: ["id", "name", "mobile", "brand", "company", "city", "active", "pinHash", "salt", "updatedAt"],
   BX_Book:   ["bxId", "json", "at"],
-  BX_Fu:     ["fid", "at", "bxId", "bxName", "client", "brand", "status", "remark", "next", "fileName", "fileUrl"],
+  BX_Fu:     ["fid", "at", "bxId", "bxName", "client", "brand", "status", "remark", "next", "fileName", "fileUrl", "won"],   /* BX6 - won: JSON {models, quote, amount, gst, pays} */
   BX_Log:    ["at", "who", "what", "detail"],
   /* BX3 - sites a brand executive adds himself; the CRM pulls them, the owner decides */
-  BX_Leads:  ["lid", "at", "bxId", "bxName", "brand", "client", "mobile", "city", "area", "address", "type", "stage", "architect", "plumber", "remark", "dup", "dupWhat", "status", "note", "decidedAt"],
+  BX_Leads:  ["lid", "at", "bxId", "bxName", "brand", "client", "mobile", "city", "area", "address", "type", "stage", "architect", "plumber", "remark", "dup", "dupWhat", "status", "note", "decidedAt", "archCode", "archMob", "plumCode", "plumMob"],   /* BX6 - the partner picked (code) or a new one with his mobile */
   /* BX3 - the CRM's book, as fingerprints only: never a name or a number in the clear */
-  BX_Dup:    ["json", "at"]
+  BX_Dup:    ["json", "at"],
+  /* BX6 - Energy World's plumbers and architects {n, c, t, r, m}, sent by the CRM; searched here, the mobile never leaves */
+  BX_Partners: ["json", "at"]
 };
 var BX_STATUS = ["Ongoing", "Won", "Lost", "Not required"];
 var BX_FILE_MAX = 6 * 1024 * 1024;
@@ -41,7 +44,7 @@ function bxTry_(e) {
   var body = null;
   try { body = JSON.parse((e && e.postData && e.postData.contents) || "{}"); } catch (x) { return null; }
   var a = String((body && body.action) || "");
-  if (["bxPing", "bxLogin", "bxBook", "bxSave", "bxAdmin", "bxAddSite", "bxCheck"].indexOf(a) < 0) return null;
+  if (["bxPing", "bxLogin", "bxBook", "bxSave", "bxAdmin", "bxAddSite", "bxCheck", "bxPartners"].indexOf(a) < 0) return null;
   var lock = LockService.getScriptLock();
   try {
     if (a === "bxAdmin") {   /* BX4 - who he is is asked first, outside the lock */
@@ -56,6 +59,7 @@ function bxTry_(e) {
     if (a === "bxSave") return bxOut_(bxSave_(body));
     if (a === "bxAddSite") return bxOut_(bxAddSite_(body));
     if (a === "bxCheck") return bxOut_(bxCheck_(body));   /* BX5 */
+    if (a === "bxPartners") return bxOut_(bxPartners_(body));   /* BX6 */
     return bxOut_(bxAdmin_(body));
   } catch (err) {
     return bxOut_({ ok: false, err: "server: " + String((err && err.message) || err).slice(0, 200) });
@@ -86,6 +90,7 @@ function bxSs_() {
 }
 function bxSh_(n) {
   var ss = bxSs_(), sh = ss.getSheetByName(n);
+  if (sh && BX_TABS[n] && sh.getLastColumn() < BX_TABS[n].length) sh.getRange(1, 1, 1, BX_TABS[n].length).setValues([BX_TABS[n]]).setFontWeight("bold");   /* BX6 - a column added later gets its heading */
   if (!sh && BX_TABS[n]) { sh = ss.insertSheet(n); sh.getRange(1, 1, 1, BX_TABS[n].length).setValues([BX_TABS[n]]).setFontWeight("bold"); sh.setFrozenRows(1); if (n === "BX_Leads") sh.getRange("G:G").setNumberFormat("@"); }   /* BX3 - a tab added later makes itself */
   return sh;
 }
@@ -154,8 +159,8 @@ function bxMySites_(p, ix0) {
     var hit = bxIxHit_(ix, bxMob_(x.mobile));
     book.push({ client: String(x.client), code: hit ? hit.c : "", area: String(x.area || (hit && hit.a) || ""), city: String(x.city || ""), stage: String(x.stage || ""),
       brand: String(x.brand || p.brand || ""), kind: hit ? hit.kind : "Lead", ew: hit ? "" : "Added by you", quotes: 0, lastQuote: "",
-      won: hit ? hit.w : [], quoted: hit ? hit.q : [], architect: x.architect ? { name: String(x.architect), code: "", town: "" } : null,
-      plumber: x.plumber ? { name: String(x.plumber), code: "", town: "" } : null, exec: { name: "", mobile: "" }, mine: 1 });
+      won: hit ? hit.w : [], quoted: hit ? hit.q : [], architect: x.architect ? { name: String(x.architect), code: String(x.archCode || ""), town: "" } : null,   /* BX6 - with his code when picked */
+      plumber: x.plumber ? { name: String(x.plumber), code: String(x.plumCode || ""), town: "" } : null, exec: { name: "", mobile: "" }, mine: 1 });
   });
   return book;
 }
@@ -192,7 +197,7 @@ function bxCheck_(b) {
 function bxBook_(b) {
   var p = bxWho_(b); if (!p) return { ok: false, err: "signed out", out: 1 };
   var fus = bxRows_("BX_Fu").filter(function (x) { return String(x.bxId) === String(p.id); }).slice(-400).reverse()
-    .map(function (x) { return { fid: x.fid, at: x.at, client: x.client, brand: x.brand, status: x.status, remark: x.remark, next: x.next, fileName: x.fileName, hasFile: !!x.fileUrl }; });   /* his own file name, never its link */
+    .map(function (x) { return { fid: x.fid, at: x.at, client: x.client, brand: x.brand, status: x.status, remark: x.remark, next: x.next, fileName: x.fileName, hasFile: !!x.fileUrl, won: bxWonRead_(x.won) }; });   /* his own file name, never its link; BX6 - won */
   var adds = bxRows_("BX_Leads").filter(function (x) { return String(x.bxId) === String(p.id); }).slice(-200).reverse()
     .map(function (x) { return { lid: x.lid, at: x.at, client: x.client, city: x.city, area: x.area, stage: x.stage, dup: x.dup, status: x.status || "new", note: x.note }; });   /* BX3 */
   bxLog_(p.name, "open", "");
@@ -206,6 +211,8 @@ function bxSave_(b) {
   if (BX_STATUS.indexOf(status) < 0) return { ok: false, err: "Pick Ongoing, Won, Lost or Not required." };
   if (!remark) return { ok: false, err: "Write a remark." };
   var next = String(f.next || "").slice(0, 10); if (next && !/^\d{4}-\d{2}-\d{2}$/.test(next)) next = "";
+  var won = "";
+  if (status === "Won") { var wv = bxWonCheck_(f.won, p, client); if (wv.err) return { ok: false, err: wv.err }; won = wv.json; }   /* BX6 */
   var fileName = "", fileUrl = "";
   if (b.file && b.file.b64) {
     var type = String(b.file.type || ""), ext = BX_FILE_TYPES[type];
@@ -218,11 +225,38 @@ function bxSave_(b) {
     fileUrl = file.getUrl();   /* private: the owner's account opens it */
   }
   var row = { fid: "BF-" + Date.now() + "-" + bxRand_(5), at: new Date().toISOString(), bxId: String(p.id), bxName: String(p.name),
-    client: site.client, brand: String(site.brand || p.brand || ""), status: status, remark: remark, next: next, fileName: fileName, fileUrl: fileUrl };
+    client: site.client, brand: String(site.brand || p.brand || ""), status: status, remark: remark, next: next, fileName: fileName, fileUrl: fileUrl, won: won };
   bxWrite_("BX_Fu", 0, row);
   bxLog_(p.name, "follow-up", client + " - " + status);
-  return { ok: true, fu: { fid: row.fid, at: row.at, client: row.client, brand: row.brand, status: status, remark: remark, next: next, fileName: fileName, hasFile: !!fileUrl } };
+  return { ok: true, fu: { fid: row.fid, at: row.at, client: row.client, brand: row.brand, status: status, remark: remark, next: next, fileName: fileName, hasFile: !!fileUrl, won: bxWonRead_(won) } };
 }
+/* BX6 - what a Won follow-up carries. Models won, the quote that won (one of his own attached quotes, by its fid),
+   the final amount, GST extra or included, and the payments the client has made: advance / part / full, cash / UPI /
+   cheque, amount, date, reference. A later follow-up may carry only a new payment. */
+var BX_PAY_KIND = ["Advance", "Part payment", "Full payment"], BX_PAY_MODE = ["Cash", "UPI", "Cheque", "Bank transfer"];
+function bxWonCheck_(w, p, client) {
+  w = (w && typeof w === "object") ? w : {};
+  var models = String(w.models || "").replace(/\s+\n/g, "\n").trim().slice(0, 600), quote = String(w.quote || "").slice(0, 60);
+  var amount = Math.round(Number(w.amount) || 0), gst = String(w.gst || "");
+  if (amount < 0 || amount > 100000000) return { err: "The final amount does not look right." };
+  if (amount && ["extra", "incl"].indexOf(gst) < 0) return { err: "GST extra or included?" };
+  if (quote) {
+    var q = bxRows_("BX_Fu").filter(function (x) { return String(x.fid) === quote && String(x.bxId) === String(p.id) && x.fileUrl; })[0];
+    if (!q || String(q.client).trim().toLowerCase() !== String(client).trim().toLowerCase()) return { err: "That quote is not one of yours on this site." };
+  }
+  var pays = (Array.isArray(w.pays) ? w.pays : []).slice(0, 12).map(function (x) {
+    return { kind: BX_PAY_KIND.indexOf(String(x.kind)) >= 0 ? String(x.kind) : "", amt: Math.round(Number(x.amt) || 0), mode: BX_PAY_MODE.indexOf(String(x.mode)) >= 0 ? String(x.mode) : "",
+      date: /^\d{4}-\d{2}-\d{2}$/.test(String(x.date || "")) ? String(x.date) : "", ref: String(x.ref || "").trim().slice(0, 60) };
+  });
+  for (var i = 0; i < pays.length; i++) {
+    var y = pays[i];
+    if (!y.kind || !y.mode || !(y.amt > 0) || !y.date) return { err: "Each payment needs advance / part / full, cash / UPI / cheque, the amount and the date." };
+    if (y.mode === "Cheque" && !y.ref) return { err: "Write the cheque number." };
+  }
+  if (!models && !quote && !amount && !pays.length) return { json: "" };
+  return { json: JSON.stringify({ models: models, quote: quote, amount: amount, gst: amount ? gst : "", pays: pays }) };
+}
+function bxWonRead_(v) { if (!v) return null; try { return JSON.parse(String(v)); } catch (e) { return null; } }
 
 /* ---------- BX3: a site the brand executive adds himself ----------
    Checked at once against (1) his own sites, (2) Energy World's whole book - by fingerprint of the mobile and of the
@@ -276,13 +310,52 @@ function bxAddSite_(b) {
   }
   if (dup === "yours") return { ok: false, dup: dup, err: what };
   if (dup && dup !== "other-brand" && !b.confirm) return { ok: false, dup: dup, ask: 1, err: what };
+  var A6 = bxPartnerOf_(s.architect, s.archCode, s.archMob, "architect"), P6 = bxPartnerOf_(s.plumber, s.plumCode, s.plumMob, "plumber");   /* BX6 */
+  s.architect = A6.n; s.plumber = P6.n;
   var row = { lid: "BL-" + Date.now() + "-" + bxRand_(5), at: new Date().toISOString(), bxId: String(p.id), bxName: String(p.name), brand: String(p.brand || ""),
-    client: client, mobile: mob, city: city, area: String(s.area || "").trim().slice(0, 60), address: String(s.address || "").trim().slice(0, 200),
+    client: client, mobile: mob, city: city, archCode: A6.c, archMob: A6.m, plumCode: P6.c, plumMob: P6.m, area: String(s.area || "").trim().slice(0, 60), address: String(s.address || "").trim().slice(0, 200),
     type: String(s.type || "").slice(0, 30), stage: String(s.stage || "").slice(0, 40), architect: String(s.architect || "").trim().slice(0, 80),
     plumber: String(s.plumber || "").trim().slice(0, 80), remark: String(s.remark || "").trim().slice(0, 500), dup: dup, dupWhat: what, status: "new", note: "", decidedAt: "" };
   bxWrite_("BX_Leads", 0, row);
   bxLog_(p.name, "site added", client + (dup ? " (" + dup + ")" : ""));
   return { ok: true, add: { lid: row.lid, at: row.at, client: client, city: city, area: row.area, stage: row.stage, dup: dup, status: "new", note: "" }, dup: dup, msg: what };
+}
+
+/* ---------- BX6: Energy World's plumbers and architects, searched by name, code or the first digits of the mobile ---------- */
+function bxPartnerDir_() {
+  var cache = CacheService.getScriptCache(), c = cache.get("bx_partners");
+  if (c) { try { return JSON.parse(c); } catch (e) { } }
+  var rs = bxRows_("BX_Partners"), L = [];
+  try { L = JSON.parse(rs.map(function (r) { return String(r.json || ""); }).join("") || "[]") || []; } catch (e2) { L = []; }
+  try { var j = JSON.stringify(L); if (j.length < 95000) cache.put("bx_partners", j, 600); } catch (e3) { }
+  return L;
+}
+function bxRoleOk_(r, kind) { return !kind || (kind === "architect" ? /archit/i : /plumb/i).test(String(r || "")); }
+function bxPartners_(b) {
+  var p = bxWho_(b); if (!p) return { ok: false, err: "signed out", out: 1 };
+  var cache = CacheService.getScriptCache(), ck = "bx_pq_" + p.id + "_" + Utilities.formatDate(new Date(), "Asia/Kolkata", "yyyyMMddHH"), n = Number(cache.get(ck) || 0);
+  if (n >= 400) return { ok: false, err: "Too many searches this hour." };
+  cache.put(ck, String(n + 1), 3700);
+  var q = String(b.q || "").trim(), kind = String(b.kind || ""), dig = q.replace(/\D/g, "");
+  var byMob = dig.length >= 3 && dig.length >= q.replace(/\s/g, "").length - 1;   /* mostly digits: the mobile */
+  var words = bxNameKey_(q).split(" ").filter(Boolean);
+  if (!byMob && (!words.length || q.length < 2)) return { ok: true, rows: [] };
+  var out = bxPartnerDir_().filter(function (x) {
+    if (!bxRoleOk_(x.r, kind)) return false;
+    if (byMob) return String(x.m || "").indexOf(dig) === 0;
+    var nk = bxNameKey_(x.n) + " " + String(x.c || "").toLowerCase();
+    return words.every(function (w) { return (" " + nk).indexOf(" " + w) >= 0; });
+  }).slice(0, 8).map(function (x) { return { n: x.n, c: x.c, t: x.t, r: x.r }; });   /* never the mobile */
+  return { ok: true, rows: out, exact: byMob && dig.length === 10 && out.length ? 1 : 0 };
+}
+/* a partner typed on the add-site form: picked (code), or new with a mobile - a mobile already on the book is that partner */
+function bxPartnerOf_(name, code, mob, kind) {
+  name = String(name || "").replace(/\s+/g, " ").trim().slice(0, 80); code = String(code || "").trim().slice(0, 20); mob = bxMob_(mob);
+  if (!name && !code) return { n: "", c: "", m: "" };
+  var dir = bxPartnerDir_();
+  if (code) { var hc = dir.filter(function (x) { return String(x.c) === code; })[0]; if (hc) return { n: hc.n, c: hc.c, m: "" }; }
+  if (mob.length === 10) { var hm = dir.filter(function (x) { return x.m === mob && bxRoleOk_(x.r, kind); })[0] || dir.filter(function (x) { return x.m === mob; })[0]; if (hm) return { n: hm.n, c: hm.c, m: "" }; }
+  return { n: name, c: "", m: mob.length === 10 ? mob : "" };
 }
 
 /* ---------- the owner, through his CRM sign-in ---------- */
@@ -323,6 +396,13 @@ function bxAdmin_(b) {
       for (var di = 0; di < dj.length; di += 45000) dparts.push([dj.slice(di, di + 45000), now]);
       if (dparts.length) dsh.getRange(2, 1, dparts.length, 2).setValues(dparts);
     }
+    if (Array.isArray(b.partners)) {   /* BX6 - the plumbers and architects, replaced whole */
+      var psh = bxSh_("BX_Partners"); if (psh.getLastRow() > 1) psh.getRange(2, 1, psh.getLastRow() - 1, 2).clearContent();
+      var pj = JSON.stringify(b.partners.slice(0, 5000).map(function (x) { return { n: String(x.n || "").slice(0, 80), c: String(x.c || "").slice(0, 20), t: String(x.t || "").slice(0, 40), r: String(x.r || "").slice(0, 20), m: bxMob_(x.m) }; })), pparts = [];
+      for (var pi = 0; pi < pj.length; pi += 45000) pparts.push([pj.slice(pi, pi + 45000), now]);
+      if (pparts.length) psh.getRange(2, 1, pparts.length, 2).setValues(pparts);
+      CacheService.getScriptCache().remove("bx_partners");
+    }
     bxLog_(b.crmUser, "sync", ppl.length + " people, " + books.length + " books");
     return { ok: true, people: ppl.length, books: books.length };
   }
@@ -340,7 +420,7 @@ function bxAdmin_(b) {
     var since = String(b.since || "");
     var rows = bxRows_("BX_Fu").filter(function (x) { return String(x.at || "") > since; }).slice(0, 500).map(function (x) {
       return { fid: x.fid, at: x.at, bxId: x.bxId, bxName: x.bxName, client: x.client, brand: x.brand, status: x.status, remark: x.remark, next: x.next,
-        file: x.fileUrl ? { name: x.fileName, url: x.fileUrl } : null };
+        file: x.fileUrl ? { name: x.fileName, url: x.fileUrl } : null, won: bxWonRead_(x.won) };   /* BX6 */
     });
     return { ok: true, rows: rows };
   }
@@ -348,7 +428,7 @@ function bxAdmin_(b) {
     var people = bxRows_("BX_People").map(function (x) { return { id: String(x.id), name: x.name, mobile: bxMob_(x.mobile), brand: x.brand, company: x.company, city: x.city, active: x.active, hasPin: !!x.pinHash }; });
     var books = bxRows_("BX_Book").filter(function (x) { return x.bxId; }).map(function (x) { var st = []; try { st = JSON.parse(x.json || "[]") || []; } catch (e) { st = []; } return { bxId: String(x.bxId), sites: st }; });
     var fus = bxRows_("BX_Fu").slice(-2000).reverse().map(function (x) {
-      return { fid: x.fid, at: x.at, bxId: String(x.bxId), bxName: x.bxName, client: x.client, brand: x.brand, status: x.status, remark: x.remark, next: x.next, file: x.fileUrl ? { name: x.fileName, url: x.fileUrl } : null };
+      return { fid: x.fid, at: x.at, bxId: String(x.bxId), bxName: x.bxName, client: x.client, brand: x.brand, status: x.status, remark: x.remark, next: x.next, file: x.fileUrl ? { name: x.fileName, url: x.fileUrl } : null, won: bxWonRead_(x.won) };   /* BX6 */
     });
     bxLog_(b.crmUser, "admin view", people.length + " people");
     return { ok: true, people: people, books: books, fus: fus };
