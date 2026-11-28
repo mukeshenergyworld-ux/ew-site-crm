@@ -449,7 +449,8 @@
 /* ==EWCORE:drivers:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.1068";   /* 6.9.1068 (27 Nov 2026) - Stock in hand: MRP and value at MRP beside the purchase rate (live: 17 TOTO lines in hand, none with a purchase rate, so the value read Rs 0); names held to two lines. */
+  var APP_VERSION = "6.9.1069";   /* 6.9.1069 (28 Nov 2026) - HIS WORDS: "make it a standard rule that at the time of challan finalization, if item included tablet salt, always ask to add service charge" and "in hisab client, master account and sites under it can have different owners ... all sites can also have different owners". Finalise asks, every time a challan carries salt and no service line: add the service charge (filled from the rate card / the client's past charge, Rs 0 when the softener is under warranty or AMC) or say why not - one of the two is required, both are audited. Master accounts: each site's owner is shown and changed on the master's card (the same PIN-checked change, from today or from the start); a new site opened under a master asks whose it is; the HISAB list names each site's owner under its builder. */
+  /* before: */   /* 6.9.1068 (27 Nov 2026) - Stock in hand: MRP and value at MRP beside the purchase rate (live: 17 TOTO lines in hand, none with a purchase rate, so the value read Rs 0); names held to two lines. */
   /* before: */   /* 6.9.1067 (27 Nov 2026) - HIS WORDS: "Stock in hand section is very confusing, we have to make it simple, let us say i want to check current TOTO stock in hand its not showing any option, want proper display in table format with product pics". The Stock screen opens on "Stock in hand": a button per brand (TOTO, Huliot, ...) with how many products and their value, search, a category pick, and a table with the picture, product, category, in hand, on challans, free, rate and value - grouped by category with subtotals. The per-box ordering table he had as "All stock" is one tap away as "Ordering sheet", unchanged. */
   /* before: */   /* 6.9.1066 (27 Nov 2026) - FIX: the plan slabs as multiples of salary never reached the Visit app - 6.9.1065 wrote them before the plan part of the snapshot existed. Found reading the live snapshot after deploy. */
   /* before: */   /* 6.9.1065 (27 Nov 2026) - HIS WORDS: "for brand executives ... plumber and architect name also to avoid duplicate entry, type initial name or initial phone no will show drop down ... if any site won he can mark won and type model no ... payment details, finalized at what amount, GST extra or included ... executive can see at top of app - sale this month, collection this month, total pending". The brand app's server is sent Energy World's plumbers and architects (searched there; the mobile never reaches a brand phone). A site added with a picked partner is filed with that partner; a new one with a mobile is added to Partners once. Won details and payments show in Their follow-ups and the Excel. Each executive's month snapshot for the Visit app now carries collection this month and the total pending on his clients. */
@@ -3061,12 +3062,20 @@ window.addEventListener("beforeunload", function (ev) {
      The guards are the ones quietSync already had, for the reasons it already had them: not
      while a save is in flight, not while a challan move is, not while the tab is hidden. A
      heartbeat must never be the thing that takes a man's typing away. */
-  var BEAT_EVERY = 30000, _beatSeen = "", _beatOn = null, _beatBusy = false;
+  var BEAT_EVERY = 30000, _beatSeen = "", _beatOn = null, _beatBusy = false, _beatAt = 0;
   function beatMark(st) { if (st) _beatSeen = String(st); }
   function beat() {
+    if (_beatBusy && Date.now() - _beatAt > 20000) _beatBusy = false;   /* 6.9.1069 - see below */
     if (_beatBusy || beatSkip()) return;
-    _beatBusy = true;
+    _beatBusy = true; _beatAt = Date.now();
+    /* 6.9.1069 - MEASURED in his crash log (28 Nov, 6.9.1066): 20 of 25 entries were the watchdog finding the book 12 to 71
+       minutes old with "beatBusy". The call's own timer only starts once it reaches the wire (wireTurn), so the heartbeat
+       could wait, untimed, behind a long upload or pull - and while it waited nothing refreshed. It now gives up after 20 s
+       in all and the next beat asks again; a late answer is ignored. */
+    var _bt = _beatAt, _late = false;
+    setTimeout(function () { if (_beatBusy && _beatAt === _bt) { _late = true; _beatBusy = false; } }, 20000);
     api("teamStamp").then(function (r) {
+      if (_late) return;
       _beatBusy = false;
       var st = (r && r.stamp) ? String(r.stamp) : "";
       if (!st) return;
@@ -18129,7 +18138,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
   }
   function hsbKeep() {
     var v = {}, ck = {};
-    ["hsb_extra", "hsb_extrapc", "hsb_noproof", "hsb_extranote", "hsb_offbrand"].forEach(function (k) { var e = document.getElementById(k); if (e) v[k] = e.value; });
+    ["hsb_extra", "hsb_extrapc", "hsb_noproof", "hsb_extranote", "hsb_offbrand", "hsb_svc", "hsb_svcwhy"].forEach(function (k) { var e = document.getElementById(k); if (e) v[k] = e.value; });
     var nx = document.getElementById("hsb_noextra"); if (nx) ck.nx = nx.checked;
     var inc = Array.prototype.map.call(document.querySelectorAll("input.hsb-inc"), function (e) { return [e.getAttribute("data-role") + "|" + e.getAttribute("data-name"), e.checked]; });
     var cls = function (sel) { return Array.prototype.map.call(document.querySelectorAll(sel), function (e) { return [e.getAttribute("data-brand"), e.type === "checkbox" ? e.checked : e.value]; }); };
@@ -18210,6 +18219,35 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         '&#127970; Billed through <b>' + esc(m) + '</b> &mdash; that account owes <b>' + money(mt.due) + '</b> across all its sites.</div>' : '') +
       '</div>';
   }
+  /* ===== 6.9.1069 - SALT ON A CHALLAN: THE SERVICE CHARGE IS ASKED AT FINALISE, EVERY TIME =====
+     HIS RULE: "at the time of challan finalization, if item included tablet salt, always ask to add service charge".
+     Asked only while the challan has salt and no service (job) line - once a line is on it, it is not asked again. The
+     figure offered is the one a salt-delivery visit would carry: the rate card, else what this client has paid for a visit;
+     Rs 0 and "covered" when his softener is in warranty or on an AMC. He adds it (a job line: no brand, no discount, no
+     incentive) or says in one line why not. Both are audit rows (challan:svc-add / challan:svc-none). */
+  function hsbSaltSvc(c) {
+    if (!c) return null;
+    var items = []; try { items = JSON.parse(c.itemsJson || "[]") || []; } catch (e) { items = []; }
+    var bags = chSaltBags(items);
+    if (!(bags > 0) || items.some(isJobLine)) return null;
+    var cl = c.customerName || "", ins = null, vc = null;
+    try { ins = softenerFor(cl); } catch (e2) { ins = null; }
+    try { if (ins) vc = visitChargeFor(ins, "Salt delivery"); } catch (e3) { vc = null; }
+    var amt = vc && vc.amt !== "" ? Number(vc.amt) || 0 : 0;
+    if (!vc) { var r = (cmpRates().r || {})["Visit / inspection"]; amt = Number(r) > 0 ? Number(r) : (clientVisitCharge(cl) || 0); }
+    return { bags: bags, items: items, amt: amt, covered: !!(vc && vc.why === "covered"), cover: vc && vc.cv ? String(vc.cv.txt || "") : "", ins: ins };
+  }
+  function hsbSaltSvcHtml(c) {
+    var x = hsbSaltSvc(c); if (!x) return "";
+    return '<div class="card" style="border:2px solid #0f766e;background:#f0fdfa">' +
+      '<b style="color:#0f766e;font-size:15px">' + x.bags + ' bag' + (x.bags === 1 ? '' : 's') + ' of tablet salt &mdash; add the service charge?</b>' +
+      '<div class="meta" style="font-size:12.5px;color:#134e4a;margin-top:3px">' + (x.covered ? 'His softener is covered (' + esc(x.cover) + ') &mdash; normally no charge.' : 'Standard rule: salt goes with a service charge.') +
+      ' It goes on this challan as a service line &mdash; no brand, no discount, no incentive.</div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:8px"><div style="flex:0 1 180px"><label for="hsb_svc">Service charge (&#8377;)</label>' +
+      '<input id="hsb_svc" inputmode="numeric" value="' + (x.covered ? '' : esc(x.amt ? String(x.amt) : '')) + '" placeholder="' + (x.amt ? esc(String(x.amt)) : 'amount') + '"/></div>' +
+      '<label style="display:flex;gap:8px;align-items:center;min-height:44px;font-weight:700"><input type="checkbox" id="hsb_nosvc"' + (x.covered ? ' checked' : '') + ' style="width:20px;height:20px"/> No service charge on this one</label></div>' +
+      '<input id="hsb_svcwhy" maxlength="120" style="margin-top:8px" placeholder="If no charge: why, in one line (e.g. under AMC, salt only - no visit)" value="' + (x.covered ? esc("Covered - " + x.cover) : '') + '"/></div>';
+  }
   function modalAddToHisab(id) {
     var c = (S.data.challans || []).filter(function (x) { return x.id === id; })[0];
     if (!c) return '<h2>Not found</h2><div class="foot"><button class="btn" data-act="close">Close</button></div>';
@@ -18223,7 +18261,8 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       '. ' + (p.has ? 'Check the paper first &mdash; this' : 'This') +
       ' is the last look before the delivery counts as part of his hisab.</p>' +
       hsbWhoStrip(c, cl) +   /* 6.9.862 */
-      hisabStandingHtml(c, cl) + hisabReceiptPic(p) + chTrailBox(c) + hisabGapBox(c);
+      hisabStandingHtml(c, cl) + hisabReceiptPic(p) + chTrailBox(c) + hisabGapBox(c) +
+      hsbSaltSvcHtml(c);   /* 6.9.1069 - salt: the service charge, asked every time */
 
     /* ---- 0. NO PAPER, AND ONE LINE SAYING WHY  (v6.9.342) ----
        His answer, in his own choice of the three: "show it, ask one line why". A delivery he
@@ -21176,6 +21215,8 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       }).join("") + '</div>' +
       (z.msNew
         ? '<label style="margin-top:8px">The new site\u2019s name</label><input id="ms_new" placeholder="e.g. Tower B, Sector 18" autocomplete="off"/>' +
+          (roleIs("admin") ? (function () { var mo = String(((clientByName(name) || {}).ownedBy) || ((clientByName(name) || {}).createdBy) || ""), L = [mo].concat(execTeam().map(function (u) { return u.name; })).filter(function (v, i, a) { return v && a.indexOf(v) === i; });   /* 6.9.1069 */
+            return '<label style="margin-top:6px">Whose site is it</label><select id="ms_own">' + L.map(function (n) { return '<option value="' + esc(n) + '"' + (n === mo ? ' selected' : '') + '>' + esc(n) + (n === mo ? ' (as ' + esc(name) + ')' : '') + '</option>'; }).join("") + '</select>'; })() : '') +
           '<div class="acts" style="margin-top:6px;gap:6px;flex-wrap:wrap"><button class="btn sm" data-act="ms-go" data-n="' + esc(name) + '">' +
             (roleIs("admin") ? 'Open this site and pick it' : 'Carry on with this site') + '</button>' +
           '<button class="btn sm ghost" data-act="ms-new" data-off="1">Back to the list</button></div>'
@@ -21191,7 +21232,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     msAskPaint();
   }
   /* the owner opens a site: a client under the builder, priced as the builder */
-  function msOpenSite(master, site) {
+  function msOpenSite(master, site, owner) {   /* 6.9.1069 - owner: whose site it is (the master's when not said) */
     var m = clientByName(master); if (!m) { toast(master + " is not on this device - refresh."); return Promise.resolve(null); }
     var nm = String(m.name).trim() + " - " + String(site).trim();
     var have = clientByName(nm); if (have) return Promise.resolve(have.name);
@@ -21206,7 +21247,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       notes: "Site of " + m.name + " - opened " + today() + " by " + S.user,
       billingJson: m.billingJson || "[]", openingAmt: "", openingAsOn: "", leadType: "Old",
       creditLimit: "", creditDays: m.creditDays || "", stage: "",
-      ownedBy: String(m.ownedBy || m.createdBy || S.user), billedThrough: m.name
+      ownedBy: String(owner || m.ownedBy || m.createdBy || S.user), billedThrough: m.name
     }).then(function (r) {
       if (!r) return null;
       var made = r.name || nm;
@@ -28462,16 +28503,27 @@ function viewCatalogue() {
     step();
   }
   /* manual: called from a tap, so the browser may ask for permission */
+  /* 6.9.1069 - HIS WORDS: "Clicking check now button not doing anything". It could not say anything: a check still marked
+     running (the flag stays up if one upload never answers) and every "can't" returned in silence. Now a tap says Checking...,
+     a run older than 2 minutes is let go, and every outcome - or why it could not run - is said on the screen. */
+  var _rcfBusyAt = 0;
   function rcfAuto(manual) {
+    if (_rcfBusy && Date.now() - _rcfBusyAt > 120000) _rcfBusy = false;
+    if (manual) {
+      var why = _rcfBusy ? "A check is already running \u2014 give it a moment." : !rcfCanLink() ? "This browser cannot read a folder (use Chrome on the computer)." :
+        !canSeeRcptQueue() ? "Receipts from the folder are for the owner and accounts." : !S.data || !(S.data.challans || []).length ? "The challans are still loading \u2014 try again in a few seconds." : "";
+      if (why) { toast(why); return Promise.resolve(); }
+      toast("Checking the folder\u2026");
+    }
     if (_rcfBusy || !canSeeRcptQueue() || !rcfCanLink() || !S.data || !(S.data.challans || []).length) return Promise.resolve();
     return idbGet("ew_rcf_dir").then(function (dir) {
-      if (!dir) { rcfMetaSet({ linked: "" }); return; }
+      if (!dir) { rcfMetaSet({ linked: "" }); if (manual) toast("No folder is linked on this computer \u2014 tap Receipts from your folder to link it."); renderBg(); return; }
       return (dir.queryPermission ? dir.queryPermission({ mode: "read" }) : Promise.resolve("granted")).then(function (p) {
         if (p !== "granted" && manual && dir.requestPermission) return dir.requestPermission({ mode: "read" });
         return p;
       }).then(function (p) {
-        if (p !== "granted") { rcfMetaSet({ linked: dir.name || "", need: 1 }); renderBg(); return; }
-        _rcfBusy = true;
+        if (p !== "granted") { rcfMetaSet({ linked: dir.name || "", need: 1 }); if (manual) toast("Chrome did not allow reading the folder \u2014 tap Check now again and choose Allow on every visit."); renderBg(); return; }
+        _rcfBusy = true; _rcfBusyAt = Date.now();
         return rcfScan(dir).then(function (fs) {
           var q = rcfQueued(), dn = rcfDone();
           var todo = rcfPlan(fs).list.filter(function (g) { return !g.have && !q[g.c.id] && !dn[g.c.id]; });
@@ -28488,9 +28540,9 @@ function viewCatalogue() {
             toast(plural(n, "receipt") + " attached from " + (dir.name || "your folder") + (names.length ? " — " + names.slice(0, 8).join(", ") + (names.length > 8 ? "…" : "") : "") + ".");
             renderBg();
           });
-        }, function () { _rcfBusy = false; });
+        }, function (e) { _rcfBusy = false; if (manual) toast("Could not read the folder \u2014 " + String((e && e.message) || "it may have been moved or renamed") + ". Unlink and link it again."); });
       });
-    }).catch(function () { _rcfBusy = false; });
+    }).catch(function (e) { _rcfBusy = false; if (manual) toast("The folder check stopped \u2014 " + String((e && e.message) || "try again") + "."); });
   }
   function rcfStartAuto() {
     if (_rcfTimer || !rcfCanLink()) return;
@@ -39356,11 +39408,13 @@ function viewCatalogue() {
         '<button class="btn sm" data-act="mst-pdf" data-n="' + esc(cl) + '">Combined statement (PDF)</button>' +
         (own ? link("mst-add", cl, "+ Add a site") : '') + '</div>' +
         '<div class="meta" style="font-size:12.5px;margin-top:3px">' + esc(cl) + ' owes for every site below. Each site keeps its own hisab and its own statement; the combined statement is all of them, one after another, with this summary first.</div>' +
-        '<div style="overflow-x:auto;margin-top:8px"><table style="width:100%;min-width:560px;border-collapse:collapse;font-size:12.5px"><thead><tr style="background:#312e81;color:#fff">' +
-        ['SITE', 'AREA', 'BILLED', 'RECEIVED', 'OWES', 'OLDEST', ''].map(function (t, i) { return '<th style="padding:5px 7px;text-align:' + (i >= 2 && i <= 5 ? 'right' : 'left') + ';white-space:nowrap">' + t + '</th>'; }).join("") + '</tr></thead><tbody>' +
+        '<div style="overflow-x:auto;margin-top:8px"><table style="width:100%;min-width:680px;border-collapse:collapse;font-size:12.5px"><thead><tr style="background:#312e81;color:#fff">' +
+        ['SITE', 'OWNER', 'AREA', 'BILLED', 'RECEIVED', 'OWES', 'OLDEST', ''].map(function (t, i) { return '<th style="padding:5px 7px;text-align:' + (i >= 3 && i <= 6 ? 'right' : 'left') + ';white-space:nowrap">' + t + '</th>'; }).join("") +   /* 6.9.1069 - OWNER */ '</tr></thead><tbody>' +
         M.rows.map(function (r, i) {
           return '<tr style="border-top:1px solid #e0e7ff;background:' + (i % 2 ? '#f5f7ff' : '#fff') + '">' +
             '<td style="padding:5px 7px;font-weight:700">' + esc(r.name) + (r.own ? ' <span style="font-weight:500;color:#64748b;font-size:12px">(his own)</span>' : '') + '</td>' +
+            '<td style="padding:5px 7px;white-space:nowrap">' + (function () { var _c9 = clientByName(r.name) || {}, _o9 = String(_c9.ownedBy || _c9.createdBy || "");   /* 6.9.1069 - each site its own owner */
+              return whoChip(_o9 || "Unassigned") + (own && _c9.name ? ' <button class="btn sm ghost" style="min-height:36px" data-act="crl-edit" data-id="' + esc(_c9.id || "") + '" data-n="' + esc(_c9.name) + '" data-r="exec" title="Change whose site this is">Change</button>' : ''); })() + '</td>' +
             '<td style="padding:5px 7px;color:#64748b">' + esc(r.area || "—") + '</td>' +
             '<td style="padding:5px 7px;text-align:right;white-space:nowrap">' + money(r.billed) + '</td>' +
             '<td style="padding:5px 7px;text-align:right;white-space:nowrap;color:#0f766e">' + money(r.paid + r.returned) + '</td>' +
@@ -39369,7 +39423,7 @@ function viewCatalogue() {
             '<td style="padding:5px 7px;white-space:nowrap"><span class="xlrow">' + (r.own ? '' : '<button class="btn sm ghost" data-act="bill-open" data-n="' + esc(r.name) + '">Hisab</button>') +
               (own && !r.own ? '<button class="btn sm ghost" data-act="mst-off" data-n="' + esc(r.name) + '" title="Take this site out from under ' + esc(cl) + '">Remove</button>' : '') + '</span></td></tr>';
         }).join("") +
-        '<tr style="background:#312e81;color:#fff;font-weight:800"><td style="padding:6px 7px" colspan="2">TOTAL &middot; ' + esc(cl) + ' owes</td>' +
+        '<tr style="background:#312e81;color:#fff;font-weight:800"><td style="padding:6px 7px" colspan="3">TOTAL &middot; ' + esc(cl) + ' owes</td>' +
         '<td style="padding:6px 7px;text-align:right;white-space:nowrap">' + money(M.tot.billed) + '</td><td style="padding:6px 7px;text-align:right;white-space:nowrap">' + money(M.tot.paid + M.tot.returned) + '</td>' +
         '<td style="padding:6px 7px;text-align:right;white-space:nowrap">' + money(M.tot.due) + '</td><td style="padding:6px 7px;text-align:right">' + (M.tot.oldest ? M.tot.oldest + 'd' : '') + '</td><td></td></tr>' +
         '</tbody></table></div></div>';
@@ -40917,8 +40971,10 @@ function viewCatalogue() {
             name: '<b data-act="bill-open" data-n="' + esc(r.name) + '" style="cursor:pointer;color:' + (dim ? '#94a3b8' : '#0d766c') + '">' + esc(r.name) + '</b>' +
                   (_mob ? ' <span style="font-size:12px;color:#94a3b8">' + esc(_mob) + '</span>' : '') +
                   (r.sites ? ' <span class="pill" style="background:#e0e7ff;color:#312e81;font-size:12px">builder &middot; ' + plural(r.sites.length, "site") + '</span>' +   /* 6.9.692 */
-                    r.sites.map(function (x) { return '<div data-act="bill-open" data-n="' + esc(x.name) + '" style="font-size:12px;color:#475569;cursor:pointer;white-space:nowrap">\u21b3 ' + esc(x.name) + ' &middot; <b style="color:#b91c1c">' + money(x.due) + '</b>' + (x.ag && x.ag.oldest ? ' &middot; ' + x.ag.oldest + 'd' : '') + '</div>'; }).join("") : ''),
-            exec: whoChip(r.owner || "Unassigned"),
+                    r.sites.map(function (x) { return '<div data-act="bill-open" data-n="' + esc(x.name) + '" style="font-size:12px;color:#475569;cursor:pointer;white-space:nowrap">\u21b3 ' + esc(x.name) + ' &middot; <b style="color:#b91c1c">' + money(x.due) + '</b>' + (x.ag && x.ag.oldest ? ' &middot; ' + x.ag.oldest + 'd' : '') +
+                      (String(x.owner || "") !== String(r.owner || "") ? ' &middot; <span style="color:#4338ca;font-weight:700">' + esc(x.owner || "Unassigned") + '</span>' : '') + '</div>'; }).join("") : ''),   /* 6.9.1069 - a site owned by someone else says whose */
+            exec: whoChip(r.owner || "Unassigned") + (r.sites ? (function () { var o = {}; r.sites.forEach(function (x) { var k = String(x.owner || "Unassigned"); if (k !== String(r.owner || "Unassigned")) o[k] = 1; }); var k2 = Object.keys(o);
+              return k2.length ? '<div style="font-size:12px;color:#4338ca;margin-top:2px">sites also: ' + k2.map(esc).join(", ") + '</div>' : ''; })() : ''),
             age: agePill(r.ag),
             net: '<span style="' + _st + '">' + money(r.net) + '</span>', paid: '<span style="' + _st + '">' + money(r.paid) + '</span>',
             due: '<b style="color:' + (dim ? '#94a3b8' : '#dc2626') + '">' + money(r.due) + '</b>',
@@ -61950,8 +62006,16 @@ function viewCatalogue() {
   }
   function crashLogList() { try { return JSON.parse(localStorage.getItem(CRASH_KEY) || "[]"); } catch (e) { return []; } }
   window.ewCrashLog = crashLogList;
-  window.addEventListener("error", function (ev) { logCrash("window.error", (ev && ev.error) || { message: ev && ev.message }); });
-  window.addEventListener("unhandledrejection", function (ev) { logCrash("promise", ev); });
+  /* 6.9.1069 - HIS WORDS: "remove all these small bugs to make all apps more responsive". A button whose code trips is a button
+     that "does nothing". Now an error within 2 seconds of a tap is said on the screen as well as logged, so it is never silent. */
+  var _tapAt = 0;
+  try { document.addEventListener("click", function () { _tapAt = Date.now(); }, true); } catch (eT) { }
+  function tapFail(err) {
+    if (Date.now() - _tapAt > 2000) return;
+    try { var m = String((err && (err.message || (err.reason && err.reason.message))) || err || "").slice(0, 90); toast("That did not work \u2014 " + (m || "an error") + ". It is logged; tap again or Refresh."); } catch (eX) { }
+  }
+  window.addEventListener("error", function (ev) { logCrash("window.error", (ev && ev.error) || { message: ev && ev.message }); tapFail((ev && ev.error) || { message: ev && ev.message }); });
+  window.addEventListener("unhandledrejection", function (ev) { logCrash("promise", ev); tapFail(ev); });
 
   /* ===== 6.9.631 - WHEN SAFARI RESTARTS THE APP =====
      His words, under Safari's bar "This web app was reloaded because a problem occurred":
@@ -71984,7 +72048,7 @@ function viewCatalogue() {
       var _diff = _nowG - _was;
       /* v6.9.571 - the sheet comes back the moment he answers, with what he had typed */
       var _keep = {};
-      ["hsb_extra", "hsb_extrapc", "hsb_noproof", "hsb_offbrand"].forEach(function (k) { var e = document.getElementById(k); if (e) _keep[k] = e.value; });
+      ["hsb_extra", "hsb_extrapc", "hsb_noproof", "hsb_offbrand", "hsb_svc", "hsb_svcwhy"].forEach(function (k) { var e = document.getElementById(k); if (e) _keep[k] = e.value; });
       var _keepNx = document.getElementById("hsb_noextra"); _keepNx = _keepNx ? _keepNx.checked : null;
       var _keepB = {}, _keepL = {};
       Array.prototype.forEach.call(document.querySelectorAll("[data-bdisc]"), function (inp) { _keepB[inp.getAttribute("data-bdisc")] = inp.value; });
@@ -75233,6 +75297,15 @@ function viewCatalogue() {
           return;
         }
       }
+      /* 6.9.1069 - salt: a service charge, or the line that says why not. Asked before anything is written. */
+      var _sv = hsbSaltSvc(hc), _svAmt = 0, _svWhy = "";
+      if (_sv) {
+        var _svNo = !!(el("hsb_nosvc") && el("hsb_nosvc").checked);
+        _svAmt = Math.round(num(el("hsb_svc") ? el("hsb_svc").value : 0));
+        _svWhy = String((el("hsb_svcwhy") && el("hsb_svcwhy").value) || "").trim();
+        if (_svNo) { if (_svWhy.length < 4) { toast("Tablet salt on this challan: no service charge - say why in one line. Nothing was stamped."); return; } _svAmt = 0; }
+        else if (!(_svAmt > 0)) { toast("Tablet salt on this challan: put the service charge in, or tick No service charge. Nothing was stamped."); return; }
+      }
       var hmiss = hisabBrandsMissingDisc(hc);
       var hpct = {}, hnon = {};
       document.querySelectorAll(".hsb-pct").forEach(function (el) {
@@ -75271,6 +75344,15 @@ function viewCatalogue() {
          stored-0 line takes the rate on file here, at the moment the money is decided, the
          challan is saved with it, and an audit row names every line and the difference. The
          refusal, the reason box and the "correct or explain" toast are gone. */
+      if (_sv && _svAmt > 0) {   /* 6.9.1069 - the service line goes on the challan before the money is read */
+        var _svL = _sv.items.concat([jobLine("Service charge - salt delivery (" + _sv.bags + " bag" + (_sv.bags === 1 ? "" : "s") + ")", _svAmt)]);
+        hc.itemsJson = JSON.stringify(_svL);
+        hc.amount = _svL.reduce(function (a, l) { return a + (Number(l.qty) || 0) * (Number(l.rate) || 0); }, 0);
+        save("challans", Object.assign({}, hc), true);
+        try { save("audit", { action: "challan:svc-add", actor: S.user, recId: hc.id, detail: JSON.stringify({ chId: hc.id, no: hc.challanNo, client: hc.customerName, bags: _sv.bags, amt: _svAmt, offered: _sv.amt }) }, true); } catch (eS) { }
+      } else if (_sv) {
+        try { save("audit", { action: "challan:svc-none", actor: S.user, recId: hc.id, detail: JSON.stringify({ chId: hc.id, no: hc.challanNo, client: hc.customerName, bags: _sv.bags, why: _svWhy }) }, true); } catch (eS2) { }
+      }
       var hGap = chDiscGap(hc);
       var hAuto = "";
       if (hGap && hGap.n) {
@@ -76877,7 +76959,7 @@ function viewCatalogue() {
       if (_hit) { msPickClient(_hit); toast("That site is already on the book \u2014 picked " + _hit + "."); return; }
       if (roleIs("admin")) {
         t.disabled = true;
-        msOpenSite(_mm, _mt).then(function (made) {
+        msOpenSite(_mm, _mt, String(val("ms_own") || "").trim()).then(function (made) {
           t.disabled = false; if (!made) return;
           var _sel = el("m_client");
           if (_sel && !Array.prototype.some.call(_sel.options, function (o) { return o.value === made; })) { var _o = document.createElement("option"); _o.value = made; _o.textContent = made; _sel.appendChild(_o); }
