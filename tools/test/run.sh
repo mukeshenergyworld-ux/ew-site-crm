@@ -47,6 +47,7 @@ node tools/test/t_xp_speed.js || fail=1
 node tools/test/t_visit_128.js || fail=1
 node tools/test/t_stk_simple.js || fail=1
 node tools/test/t_salt_svc.js || fail=1
+node tools/test/t_pass_steps.js || fail=1
 node tools/test/t_bx_auto.js || fail=1
 node tools/test/t_master_tag.js || fail=1
 node tools/test/t_bill_ask.js || fail=1
