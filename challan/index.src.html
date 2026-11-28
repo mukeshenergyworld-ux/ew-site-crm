@@ -284,7 +284,8 @@ body{background:#F4F6F9}
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.169.0";   /* 1.169.0 (28 Nov 2026) - the challan detail shows each item's name (it read only "- Heliroma": the name is in desc, the detail looked in name / product); the Passed step is done only when a pass is on record, as in the CRM 6.9.1070 (a delivery that skipped the pass no longer reads Passed). */
+  var APP_VERSION = "1.170.0";   /* 1.170.0 (28 Nov 2026) - a challan that went past Draft without a pass says so on its strip and where it is put right (the CRM's Record the pass); the update bar never offers the version already running. */
+  /* before: */ /* 1.169.0 */   /* 1.169.0 (28 Nov 2026) - the challan detail shows each item's name (it read only "- Heliroma": the name is in desc, the detail looked in name / product); the Passed step is done only when a pass is on record, as in the CRM 6.9.1070 (a delivery that skipped the pass no longer reads Passed). */
   /* before: */ /* 1.168.0 */   /* 1.168.0 (28 Nov 2026) - the heartbeat no longer waits untimed behind a long upload: after 20 s it lets go and the next beat asks again (measured: the CRM's book went 12-71 min stale this way, "beatBusy"). */
   /* before: */ /* 1.167.0 */   /* 1.167.0 (26 Nov 2026) - HIS RULE: "drp is always from 32 % to 35% maximum" - a DRP discount above 35% typed when a delivery is added to the hisab is refused, as in the CRM. */
   /* before: */   /* 1.166.0 (26 Nov 2026) - HIS RULE: "all discounts must be independent never to be interlinked": a brand reads its own rate or none - DRP no longer borrows Heliroma's, HT PRO no longer borrows Ultra Silent's (the shared core). */
@@ -711,7 +712,7 @@ body{background:#F4F6F9}
     setTimeout(go, 2500);                      /* never hang on a stuck cache */
   }
   function newVerBar() {
-    if (!S.newVer) return "";
+    if (!S.newVer || !ewNewer(S.newVer, APP_VERSION)) return "";   /* 28 Nov 2026 - HIS SCREENSHOT: "Version 1.169.0 is ready. You are on 1.169.0." The bar never offers the version already running */
     return '<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:#0f766e;' +
       'color:#fff;font-size:12.5px;font-weight:600">' +
       '<span style="flex:1">Version ' + esc(S.newVer) + ' is ready. You are on ' + esc(APP_VERSION) + '.</span>' +
@@ -7069,7 +7070,9 @@ function rnLines(r) {
          says WHO did it. Every button on it is the button that was in the row beneath: same act,
          same permission test, same colour. Nothing was moved out of anybody's reach. */
       chStepStrip(c, {
-        pass: (st === "Draft" && canApprove()
+        pass: (st !== "Draft" && st !== "Approved" && !String(c.approvedBy || c.approvedAt || "").trim()   /* 1.170.0 - it went past Draft without a pass (28/11/2026/456) */
+                ? '<span class="muted" style="font-size:12px;color:#b91c1c;font-weight:700">Never passed &mdash; the owner records the pass in the CRM (challan card &rsaquo; Record the pass)</span>'
+                : st === "Draft" && canApprove()
                 ? (held ? '<span class="pill amb">Cannot be passed until it uploads</span>'
                         : (passGate(c).ok
                             ? '<button class="btn sm red" data-act="ch-approve" data-no="' + esc(c.id || c.challanNo) + '">Pass &amp; Dispatch</button>'
