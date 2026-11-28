@@ -315,7 +315,7 @@
     setTimeout(go, 2500);                      /* never hang on a stuck cache */
   }
   function newVerBar() {
-    if (!S.newVer) return "";
+    if (!S.newVer || !ewNewer(S.newVer, APP_VERSION)) return "";   /* 28 Nov 2026 - HIS SCREENSHOT: "Version 1.169.0 is ready. You are on 1.169.0." The bar never offers the version already running */
     return '<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:#0f766e;' +
       'color:#fff;font-size:12.5px;font-weight:600">' +
       '<span style="flex:1">Version ' + esc(S.newVer) + ' is ready. You are on ' + esc(APP_VERSION) + '.</span>' +
