@@ -449,7 +449,8 @@
 /* ==EWCORE:drivers:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.1069";   /* 6.9.1069 (28 Nov 2026) - HIS WORDS: "make it a standard rule that at the time of challan finalization, if item included tablet salt, always ask to add service charge" and "in hisab client, master account and sites under it can have different owners ... all sites can also have different owners". Finalise asks, every time a challan carries salt and no service line: add the service charge (filled from the rate card / the client's past charge, Rs 0 when the softener is under warranty or AMC) or say why not - one of the two is required, both are audited. Master accounts: each site's owner is shown and changed on the master's card (the same PIN-checked change, from today or from the start); a new site opened under a master asks whose it is; the HISAB list names each site's owner under its builder. */
+  var APP_VERSION = "6.9.1070";   /* 6.9.1070 (28 Nov 2026) - HIS WORDS: "Challan above showing not passed, below its showing passed, what is this new problem, fix this". CAUSE: Finalise on a challan not yet received opens "Not counted yet" with Mark as received - and that button moved a challan that was never passed (Draft) straight to Received (28/11/2026/456; one more, 12/09/2026/098, from before). The steps strip called it Passed because Received was done, the row said not passed. Now: Mark as received refuses a Draft everywhere (that screen offers Pass & Dispatch instead); Passed is done only when a pass is on record; a delivery that skipped it says "never passed" and the owner can record the pass (audited). */
+  /* before: */   /* 6.9.1069 (28 Nov 2026) - HIS WORDS: "make it a standard rule that at the time of challan finalization, if item included tablet salt, always ask to add service charge" and "in hisab client, master account and sites under it can have different owners ... all sites can also have different owners". Finalise asks, every time a challan carries salt and no service line: add the service charge (filled from the rate card / the client's past charge, Rs 0 when the softener is under warranty or AMC) or say why not - one of the two is required, both are audited. Master accounts: each site's owner is shown and changed on the master's card (the same PIN-checked change, from today or from the start); a new site opened under a master asks whose it is; the HISAB list names each site's owner under its builder. */
   /* before: */   /* 6.9.1068 (27 Nov 2026) - Stock in hand: MRP and value at MRP beside the purchase rate (live: 17 TOTO lines in hand, none with a purchase rate, so the value read Rs 0); names held to two lines. */
   /* before: */   /* 6.9.1067 (27 Nov 2026) - HIS WORDS: "Stock in hand section is very confusing, we have to make it simple, let us say i want to check current TOTO stock in hand its not showing any option, want proper display in table format with product pics". The Stock screen opens on "Stock in hand": a button per brand (TOTO, Huliot, ...) with how many products and their value, search, a category pick, and a table with the picture, product, category, in hand, on challans, free, rate and value - grouped by category with subtotals. The per-box ordering table he had as "All stock" is one tap away as "Ordering sheet", unchanged. */
   /* before: */   /* 6.9.1066 (27 Nov 2026) - FIX: the plan slabs as multiples of salary never reached the Visit app - 6.9.1065 wrote them before the plan part of the snapshot existed. Found reading the live snapshot after deploy. */
@@ -17580,7 +17581,9 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       'Punit Jain\u2019s challan on 15 August, and it is worth one extra tap to not repeat it.' +
       '<br><br>Mark it received. Then Finalise does exactly what it says.</div></div>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Not now</button>' +
-      '<button class="btn" data-act="ch-move" data-id="' + esc(c.id) + '" data-to="Received">Mark as received</button></div>';
+      (String(c.status || "Draft") === "Draft"   /* 6.9.1070 - not passed: the pass first, never straight to Received */
+        ? '<button class="btn" data-act="ch-pass" data-id="' + esc(c.id) + '">Not passed yet &mdash; Pass &amp; Dispatch</button></div>'
+        : '<button class="btn" data-act="ch-move" data-id="' + esc(c.id) + '" data-to="Received">Mark as received</button></div>');
   }
   /* ============ NOT STAMPED, AND NOTHING SAID SO  (v6.9.374, 29 Aug 2026) ============
      HE REPORTED IT: "add to hisab is pending of lots of challans and its not red marked
@@ -33641,7 +33644,11 @@ function viewCatalogue() {
          dispatched, then edited in the Challan app, which sends an edited challan back to Draft on
          purpose; approvedBy stayed on the row, so this step drew "Passed \u00b7 Mukesh" in green
          beside a red "To pass". A Draft is not passed, whoever passed an earlier version of it. */
-      { k: "pass",  label: "Passed",     done: gone || arrived || st === "Approved" || (st !== "Draft" && !!String((c && c.approvedBy) || "").trim()),
+      /* 28 Nov 2026 (CRM 6.9.1070 / Challan 1.169.0) - HIS WORDS: "Challan above showing not passed, below its showing passed".
+         28/11/2026/456 went Draft -> Received in one tap and was never passed; this step called it Passed because a later step was
+         done, while the row (approvedBy) said "not passed". Passed now means a pass is on record - the name - or the status
+         Approved; a delivery that skipped it says so here too. */
+      { k: "pass",  label: "Passed",     done: st === "Approved" || (st !== "Draft" && !!String((c && (c.approvedBy || c.approvedAt)) || "").trim()),
         why: "Waiting for the accounts desk to pass it." },
       { k: "disp",  label: "Dispatched", done: gone || arrived,
         why: "Nothing has left the godown on this challan yet." },
@@ -33721,7 +33728,7 @@ function viewCatalogue() {
     var under = {
       made:  none(c.createdBy) ? "name not recorded" : c.createdBy,
       pass:  (none(c.approvedAt) && none(c.approvedBy))
-               ? (st === "Draft" ? "not passed yet" : "not recorded")
+               ? (st === "Draft" ? "not passed yet" : "never passed")   /* 6.9.1070 */
                : (none(c.approvedBy) ? "name not recorded" : c.approvedBy),
       disp:  "",
       recd:  "",
@@ -33795,7 +33802,9 @@ function viewCatalogue() {
          decides WHERE a button sits and whether a struck label stands in its place. */
       var stepBtns = {
         /* v6.9.387 - !chArrived: a delivery already signed for is never offered again */
-        pass: (st === "Draft" && !chArrived(c)
+        pass: (st !== "Draft" && st !== "Approved" && !String(c.approvedBy || c.approvedAt || "").trim()   /* 6.9.1070 - it skipped the pass */
+          ? (roleIs("admin") ? '<button class="btn sm act-approve" data-act="ch-passlate" data-id="' + esc(c.id) + '">Record the pass</button>' : '<span class="meta" style="font-size:12px;color:#b91c1c">never passed &mdash; the owner records it</span>')
+          : st === "Draft" && !chArrived(c)
           ? (passGate(c).ok ? '<button class="btn sm act-approve" data-act="ch-pass" data-id="' + esc(c.id) + '">Pass &amp; Dispatch</button>'
              : (canApprove() && passGate(c).why ? '<span class="meta" style="font-size:12px;color:#b45309">' + esc(passGate(c).why) + '</span>' : ""))
           : ""),
@@ -77746,6 +77755,21 @@ function viewCatalogue() {
        is visible and finishable, never silent.
 
        The credit gate runs HERE, because this is now the last moment the money can be saved. */
+    if (act === "ch-passlate") {   /* 6.9.1070 - a delivery that skipped the pass: the owner records it, with an audit row */
+      if (!roleIs("admin")) { toast("Only the owner records a pass."); return; }
+      var _pl = (S.data.challans || []).filter(function (x) { return x.id === id; })[0]; if (!_pl) return;
+      askSheet({ title: "Record the pass on " + esc(_pl.challanNo || "") + "?", yes: "Record it", no: "Not now",
+        body: "This delivery went to <b>" + esc(_pl.status || "") + "</b> without being passed. Recording it puts <b>your name</b> as the one who passed it, today, and writes an audit row. Nothing else changes &mdash; not the items, not the money." })
+      .then(function (y) {
+        if (!y) return;
+        var was = String(_pl.approvedBy || "");
+        _pl.approvedBy = S.user; _pl.approvedAt = new Date().toISOString();
+        save("audit", { action: "challan:pass-late", actor: S.user, recId: _pl.id, detail: JSON.stringify({ chId: _pl.id, no: _pl.challanNo, status: _pl.status, was: was, why: "went past Draft without a pass" }) }, true);
+        save("challans", Object.assign({}, _pl)).then(function (r) { toast(r && r.ok === false ? "Not saved: " + (r.error || "the server said no") : "Pass recorded on " + _pl.challanNo + "."); render(); }, function () { toast("Kept on this device - it goes up on the next sync."); });
+        render();
+      });
+      return;
+    }
     if (act === "ch-pass") {
       var pc = S.data.challans.filter(function (x) { return x.id === id; })[0];
       if (!pc) return;
@@ -77848,6 +77872,9 @@ function viewCatalogue() {
       var to = t.getAttribute("data-to");
       var ch2 = S.data.challans.filter(function (x) { return x.id === id; })[0];
       if (!ch2) return;
+      if (to === "Received" && String(ch2.status || "Draft") === "Draft") {   /* 6.9.1070 - passing comes first, always (the Challan app's rule since 1.10.0) */
+        toast(ch2.challanNo + " has not been passed yet \u2014 Pass & Dispatch it first, then mark it received."); S.modal = null; render(); return;
+      }
       if (to === "Received") { S.alt = { id: id, rows: null, by: "", photo: "", sig: "" }; S.modal = modalAlter(); render(); return; }
       /* v6.9.387 - nothing moves a signed-for delivery backwards. */
       if ((to === "Approved" || to === "Dispatched") && chArrived(ch2)) {
