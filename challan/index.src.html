@@ -284,7 +284,8 @@ body{background:#F4F6F9}
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.167.0";   /* 1.167.0 (26 Nov 2026) - HIS RULE: "drp is always from 32 % to 35% maximum" - a DRP discount above 35% typed when a delivery is added to the hisab is refused, as in the CRM. */
+  var APP_VERSION = "1.168.0";   /* 1.168.0 (28 Nov 2026) - the heartbeat no longer waits untimed behind a long upload: after 20 s it lets go and the next beat asks again (measured: the CRM's book went 12-71 min stale this way, "beatBusy"). */
+  /* before: */ /* 1.167.0 */   /* 1.167.0 (26 Nov 2026) - HIS RULE: "drp is always from 32 % to 35% maximum" - a DRP discount above 35% typed when a delivery is added to the hisab is refused, as in the CRM. */
   /* before: */   /* 1.166.0 (26 Nov 2026) - HIS RULE: "all discounts must be independent never to be interlinked": a brand reads its own rate or none - DRP no longer borrows Heliroma's, HT PRO no longer borrows Ultra Silent's (the shared core). */
   /* before: */   /* 1.165.0 (18 Nov 2026) - "Mark your attendance", with the location taken now and shown before it is saved */   /* 1.164.0 (18 Nov 2026) - Modern Plumbing Solutions (our second godown) owes no signed receipt: off every receipt list and count, and "Mark received" without a photo */   /* 1.163.0 (17 Nov 2026) - the account sheet opens the Tool Tracking app */   /* 1.162.0 (17 Nov 2026) - a delivery with a fare but no driver takes the driver accounts tapped at billing, so its freight is in his hisab */   /* 1.161.0 (17 Nov 2026) - the Present tap asks where the day is and the plan; one mark shows in every app */   /* 1.160.0 (17 Nov 2026) - one tap "Present" in the header for the godown; it writes the office's attendance row */   /* 1.159.1 (1.159.1 (17 Nov 2026) - FIX: RAWB and LIVE_TABS declared again; every pull had thrown "Can't find variable" since the 15 Nov core build, so the book on the phone stopped updating */   /* 1.159.0 (1.159.0 (16 Nov 2026) - FIX: the product picker said "catalogue has not loaded" and stayed so; the 1.7 MB list now has a time limit, a second try, says why it failed, offers Load now, and the open picker fills itself when it lands */   /* 1.158.0 (1.158.0 (15 Nov 2026) - driver payouts are counted the CRM's way: one cancelled or edited in the CRM is cancelled or edited here too, so the godown cannot pay a driver short */   /* 1.157.4 (1.157.4 (15 Nov 2026) - the discount rule moves to its own shared section, now covering the Visit app too; no figure moves */   /* 1.157.3 (1.157.3 (15 Nov 2026) - the discount rules and the stamp reader come from the shared core; no figure moves */   /* 1.157.2 (1.157.2 (15 Nov 2026) - six money rules now shared with the CRM as well, not just the Payment app */   /* 1.157.1 (1.157.1 (15 Nov 2026) - nine money rules now come from core/ew-core.js, byte-identical with the Payment app; no figure changes */   /* 1.157.0 (1.157.0 (14 Nov 2026) - FIX: a return line frozen at 0%% was credited at full list price; the CRM's rule (6.9.728) is now this app's rule too - Rs 2,12,214 across 5 clients */   /* 1.156.0 (1.156.0 (12 Nov 2026) - the product picker lists a family in catalogue order, like the CRM, not A to Z */   /* 1.155.0 (11 Nov 2026) - a challan carrying freight must name the driver it is paid to */     /* 1.154.1 (10 Nov 2026) - a space can be typed in the client search box again */     /* 1.154.0 (10 Nov 2026) - admin: a client not on the book is added from the challan itself, as a new lead or an old client */     /* 1.153.4 (9 Nov 2026) - 4 more FIMA finish photos (catalogue 2025); finish list read fresh (v=4) */     /* 1.153.3 (9 Nov 2026) - FIMA finish codes with their own finish photo */     /* 1.153.2 (9 Nov 2026) - a small finish-colour dot on FIMA product pictures */     /* 1.153.1 (9 Nov 2026) - FIMA handles S1-S4 in every finish and the S2 glass handles */     /* 1.153.0 (9 Nov 2026) - FIMA in every finish: any of 14,260 finish codes (F1301WLX9CS ...) can go on a challan at its own MRP */     /* 1.152.0 (8 Nov 2026) - Add to Hisab: who earns, without incentive % or amount */   /* 1.151.0 (8 Nov 2026) - incentive card: any number of discount slabs (shared block) */   /* 1.150.0 (2 Nov 2026) - EW <-> MPS are normal challans again; they add to the other godown after its count */   /* 1.149.0 (1 Nov 2026) - the godown receives a transfer on this phone */   /* 1.148.0 (1 Nov 2026) - a transfer lands only when the other godown receives it */   /* 1.147.0 (1 Nov 2026) - two godowns: MPS Sonipat has its own stock; MPS staff see MPS work only; no challan to MPS (it is a transfer) */   /* 1.146.0 (31 Oct 2026) - one tap, one entry: a second tap on a write button is swallowed */   /* 1.145.0 - vehicle no asked every time a driver is picked (not for Porter / Rapido); 1.144.0 lorry check */
   /* ==EW-THEME== 11 Oct 2026 - DARK OR LIGHT, ON EVERY APP.
@@ -11964,7 +11965,7 @@ function rnLines(r) {
      FIRST ANSWER IS A BASELINE, NOT A CHANGE. The first stamp seen is simply remembered - the
      app has just pulled, so it is already current, and treating that first reading as news
      would mean every app pulled twice on every open. */
-  var BEAT_EVERY = 30000, _beatSeen = "", _beatOn = null, _beatBusy = false;
+  var BEAT_EVERY = 30000, _beatSeen = "", _beatOn = null, _beatBusy = false, _beatAt = 0;
   /* ---- THE STAMP BEATS THE CLOCK (20 Aug 2026) ----
      "Serious issue - Challan made at godown, taking very long to sync all device, hence
      approval delaying."
@@ -11998,9 +11999,13 @@ function rnLines(r) {
   function restTook() { S.restAt = Date.now(); _restStamp = _beatSeen; }
   function beatMark(st) { if (st) _beatSeen = String(st); }
   function beat() {
+    if (_beatBusy && Date.now() - _beatAt > 20000) _beatBusy = false;   /* 1.168.0 - a heartbeat waiting more than 20 s is let go (CRM 6.9.1069) */
     if (_beatBusy || beatSkip()) return;
-    _beatBusy = true;
+    _beatBusy = true; _beatAt = Date.now();
+    var _bt = _beatAt, _late = false;
+    setTimeout(function () { if (_beatBusy && _beatAt === _bt) { _late = true; _beatBusy = false; } }, 20000);
     api("teamStamp").then(function (r) {
+      if (_late) return;
       _beatBusy = false;
       var st = (r && r.stamp) ? String(r.stamp) : "";
       if (!st) return;
